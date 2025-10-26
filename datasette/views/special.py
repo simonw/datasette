@@ -62,14 +62,18 @@ class JsonDataView(BaseView):
                 add_cors_headers(headers)
             return Response.json(data, headers=headers)
         else:
+            context = {
+                "filename": self.filename,
+                "data": data,
+                "data_json": json.dumps(data, indent=4, default=repr),
+            }
+            # Add has_debug_permission if this view requires permissions-debug
+            if self.permission == "permissions-debug":
+                context["has_debug_permission"] = True
             return await self.render(
                 [self.template],
                 request=request,
-                context={
-                    "filename": self.filename,
-                    "data": data,
-                    "data_json": json.dumps(data, indent=4, default=repr),
-                },
+                context=context,
             )
 
 
@@ -150,12 +154,13 @@ class PermissionsDebugView(BaseView):
                 if (check.actor or {}).get("id") == request.actor["id"]
             ]
         return await self.render(
-            ["permissions_debug.html"],
+            ["debug_permissions_playground.html"],
             request,
             # list() avoids error if check is performed during template render:
             {
                 "permission_checks": permission_checks,
                 "filter": filter_,
+                "has_debug_permission": True,
                 "permissions": [
                     {
                         "name": p.name,
@@ -415,6 +420,7 @@ class PermissionRulesView(BaseView):
                 request,
                 {
                     "sorted_actions": sorted(self.ds.actions.keys()),
+                    "has_debug_permission": True,
                 },
             )
 
@@ -519,6 +525,44 @@ class PermissionRulesView(BaseView):
         return Response.json(response, headers=headers)
 
 
+async def _check_permission_for_actor(ds, action, parent, child, actor):
+    """Shared logic for checking permissions. Returns a dict with check results."""
+    if action not in ds.actions:
+        return {"error": f"Unknown action: {action}"}, 404
+
+    if child and not parent:
+        return {"error": "parent is required when child is provided"}, 400
+
+    # Use the action's properties to create the appropriate resource object
+    action_obj = ds.actions.get(action)
+    if not action_obj:
+        return {"error": f"Unknown action: {action}"}, 400
+
+    if action_obj.takes_parent and action_obj.takes_child:
+        resource_obj = action_obj.resource_class(database=parent, table=child)
+    elif action_obj.takes_parent:
+        resource_obj = action_obj.resource_class(database=parent)
+    else:
+        resource_obj = action_obj.resource_class()
+
+    allowed = await ds.allowed(action=action, resource=resource_obj, actor=actor)
+
+    response = {
+        "action": action,
+        "allowed": bool(allowed),
+        "resource": {
+            "parent": parent,
+            "child": child,
+            "path": _resource_path(parent, child),
+        },
+    }
+
+    if actor and "id" in actor:
+        response["actor_id"] = actor["id"]
+
+    return response, 200
+
+
 class PermissionCheckView(BaseView):
     name = "permission_check"
     has_json_alternate = False
@@ -533,6 +577,7 @@ class PermissionCheckView(BaseView):
                 request,
                 {
                     "sorted_actions": sorted(self.ds.actions.keys()),
+                    "has_debug_permission": True,
                 },
             )
 
@@ -540,62 +585,14 @@ class PermissionCheckView(BaseView):
         action = request.args.get("action")
         if not action:
             return Response.json({"error": "action parameter is required"}, status=400)
-        if action not in self.ds.actions:
-            return Response.json({"error": f"Unknown action: {action}"}, status=404)
 
         parent = request.args.get("parent")
         child = request.args.get("child")
-        if child and not parent:
-            return Response.json(
-                {"error": "parent is required when child is provided"}, status=400
-            )
 
-        # Use the action's properties to create the appropriate resource object
-        action_obj = self.ds.actions.get(action)
-        if not action_obj:
-            return Response.json({"error": f"Unknown action: {action}"}, status=400)
-
-        if action_obj.takes_parent and action_obj.takes_child:
-            resource_obj = action_obj.resource_class(database=parent, table=child)
-            resource = (parent, child)
-        elif action_obj.takes_parent:
-            resource_obj = action_obj.resource_class(database=parent)
-            resource = parent
-        else:
-            resource_obj = action_obj.resource_class()
-            resource = None
-
-        before_checks = len(self.ds._permission_checks)
-        allowed = await self.ds.allowed(
-            action=action, resource=resource_obj, actor=request.actor
+        response, status = await _check_permission_for_actor(
+            self.ds, action, parent, child, request.actor
         )
-
-        info = None
-        if len(self.ds._permission_checks) > before_checks:
-            for check in reversed(self.ds._permission_checks):
-                if (
-                    check.actor == request.actor
-                    and check.action == action
-                    and check.parent == parent
-                    and check.child == child
-                ):
-                    info = check
-                    break
-
-        response = {
-            "action": action,
-            "allowed": bool(allowed),
-            "resource": {
-                "parent": parent,
-                "child": child,
-                "path": _resource_path(parent, child),
-            },
-        }
-
-        if request.actor and "id" in request.actor:
-            response["actor_id"] = request.actor["id"]
-
-        return Response.json(response)
+        return Response.json(response, status=status)
 
 
 class AllowDebugView(BaseView):

@@ -1835,7 +1835,11 @@ class Datasette:
         )
         add_route(
             JsonDataView.as_view(
-                self, "actions.json", self._actions, template="actions.html"
+                self,
+                "actions.json",
+                self._actions,
+                template="debug_actions.html",
+                permission="permissions-debug",
             ),
             r"/-/actions(\.(?P<format>json))?$",
         )

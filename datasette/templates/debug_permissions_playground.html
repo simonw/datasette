@@ -3,6 +3,7 @@
 {% block title %}Debug permissions{% endblock %}
 
 {% block extra_head %}
+{% include "_permission_ui_styles.html" %}
 <style type="text/css">
 .check-result-true {
     color: green;
@@ -42,32 +43,46 @@ textarea {
 {% endblock %}
 
 {% block content %}
+<h1>Permission playground</h1>
 
-<h1>Permission check testing tool</h1>
+{% set current_tab = "permissions" %}
+{% include "_permissions_debug_tabs.html" %}
 
 <p>This tool lets you simulate an actor and a permission check for that actor.</p>
 
-<form class="core" action="{{ urls.path('-/permissions') }}" id="debug-post" method="post" style="margin-bottom: 1em">
-    <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
-    <div class="two-col">
-        <p><label>Actor</label></p>
-        <textarea name="actor">{% if actor_input %}{{ actor_input }}{% else %}{"id": "root"}{% endif %}</textarea>
-    </div>
-    <div class="two-col" style="vertical-align: top">
-        <p><label for="permission" style="display:block">Permission</label>
-        <select name="permission" id="permission">
-            {% for permission in permissions %}
-                <option value="{{ permission.name }}">{{ permission.name }}</option>
-            {% endfor %}
-        </select>
-        <p><label for="resource_1">Database name</label><input type="text" id="resource_1" name="resource_1"></p>
-        <p><label for="resource_2">Table or query name</label><input type="text" id="resource_2" name="resource_2"></p>
-    </div>
-    <div style="margin-top: 1em;">
-        <input type="submit" value="Simulate permission check">
-    </div>
-    <pre style="margin-top: 1em" id="debugResult"></pre>
-</form>
+<div class="permission-form">
+    <form action="{{ urls.path('-/permissions') }}" id="debug-post" method="post">
+        <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
+        <div class="two-col">
+            <div class="form-section">
+                <label>Actor</label>
+                <textarea name="actor">{% if actor_input %}{{ actor_input }}{% else %}{"id": "root"}{% endif %}</textarea>
+            </div>
+        </div>
+        <div class="two-col" style="vertical-align: top">
+            <div class="form-section">
+                <label for="permission">Action</label>
+                <select name="permission" id="permission">
+                    {% for permission in permissions %}
+                        <option value="{{ permission.name }}">{{ permission.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-section">
+                <label for="resource_1">Parent</label>
+                <input type="text" id="resource_1" name="resource_1" placeholder="e.g., database name">
+            </div>
+            <div class="form-section">
+                <label for="resource_2">Child</label>
+                <input type="text" id="resource_2" name="resource_2" placeholder="e.g., table name">
+            </div>
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="submit-btn">Simulate permission check</button>
+        </div>
+        <pre style="margin-top: 1em" id="debugResult"></pre>
+    </form>
+</div>
 
 <script>
 var rawPerms = {{ permissions|tojson }};
@@ -144,9 +159,5 @@ debugPost.addEventListener('submit', function(ev) {
         {% endif %}
     </div>
 {% endfor %}
-
-<h1>All registered permissions</h1>
-
-<pre>{{ permissions|tojson(2) }}</pre>
 
 {% endblock %}

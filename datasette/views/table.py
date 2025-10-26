@@ -978,7 +978,7 @@ async def table_view_data(
     visible, private = await datasette.check_visibility(
         request.actor,
         action="view-table",
-        resource=(database_name, table_name),
+        resource=TableResource(database=database_name, table=table_name),
     )
     if not visible:
         raise Forbidden("You do not have permission to view this table")

@@ -454,20 +454,17 @@ Example:
 
 .. _datasette_check_visibility:
 
-await .check_visibility(actor, action=None, resource=None, permissions=None)
-----------------------------------------------------------------------------
+await .check_visibility(actor, action, resource=None)
+-----------------------------------------------------
 
 ``actor`` - dictionary
     The authenticated actor. This is usually ``request.actor``.
 
-``action`` - string, optional
+``action`` - string
     The name of the action that is being permission checked.
 
-``resource`` - string or tuple, optional
-    The resource, e.g. the name of the database, or a tuple of two strings containing the name of the database and the name of the table. Only some permissions apply to a resource.
-
-``permissions`` - list of ``action`` strings or ``(action, resource)`` tuples, optional
-    Provide this instead of ``action`` and ``resource`` to check multiple permissions at once.
+``resource`` - Resource object, optional
+    The resource being checked, as a Resource object such as ``DatabaseResource(database=...)``, ``TableResource(database=..., table=...)``, or ``QueryResource(database=..., query=...)``. Only some permissions apply to a resource.
 
 This convenience method can be used to answer the question "should this item be considered private, in that it is visible to me but it is not visible to anonymous users?"
 
@@ -477,23 +474,12 @@ This example checks if the user can access a specific table, and sets ``private`
 
 .. code-block:: python
 
+    from datasette.resources import TableResource
+
     visible, private = await datasette.check_visibility(
         request.actor,
         action="view-table",
-        resource=(database, table),
-    )
-
-The following example runs three checks in a row. If any of the checks are denied before one of them is explicitly granted then ``visible`` will be ``False``. ``private`` will be ``True`` if an anonymous user would not be able to view the resource.
-
-.. code-block:: python
-
-    visible, private = await datasette.check_visibility(
-        request.actor,
-        permissions=[
-            ("view-table", (database, table)),
-            ("view-database", database),
-            "view-instance",
-        ],
+        resource=TableResource(database=database, table=table),
     )
 
 .. _datasette_create_token:

@@ -5,6 +5,7 @@ Tests for the datasette.app.Datasette class
 import dataclasses
 from datasette import Forbidden, Context
 from datasette.app import Datasette, Database
+from datasette.resources import DatabaseResource
 from itsdangerous import BadSignature
 import pytest
 
@@ -93,7 +94,7 @@ ALLOW_ROOT = {"allow": {"id": "root"}}
             None,
             {"databases": {"_memory": ALLOW_ROOT}},
             "view-database",
-            "_memory",
+            DatabaseResource(database="_memory"),
             False,
             False,
         ),
@@ -101,7 +102,7 @@ ALLOW_ROOT = {"allow": {"id": "root"}}
             ROOT,
             {"databases": {"_memory": ALLOW_ROOT}},
             "view-database",
-            "_memory",
+            DatabaseResource(database="_memory"),
             True,
             True,
         ),

@@ -13,7 +13,7 @@ from typing import List
 
 from datasette.events import AlterTableEvent, CreateTableEvent, InsertRowsEvent
 from datasette.database import QueryInterrupted
-from datasette.resources import DatabaseResource
+from datasette.resources import DatabaseResource, QueryResource
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
@@ -51,7 +51,7 @@ class DatabaseView(View):
         visible, private = await datasette.check_visibility(
             request.actor,
             action="view-database",
-            resource=database,
+            resource=DatabaseResource(database=database),
         )
         if not visible:
             raise Forbidden("You do not have permission to view this database")
@@ -541,7 +541,7 @@ class QueryView(View):
             visible, private = await datasette.check_visibility(
                 request.actor,
                 action="view-query",
-                resource=(database, canned_query["name"]),
+                resource=QueryResource(database=database, query=canned_query["name"]),
             )
             if not visible:
                 raise Forbidden("You do not have permission to view this query")

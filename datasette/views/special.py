@@ -789,7 +789,9 @@ class ApiExplorerView(BaseView):
             if name == "_internal":
                 continue
             database_visible, _ = await self.ds.check_visibility(
-                request.actor, action="view-database", resource=name
+                request.actor,
+                action="view-database",
+                resource=DatabaseResource(database=name),
             )
             if not database_visible:
                 continue
@@ -799,7 +801,7 @@ class ApiExplorerView(BaseView):
                 visible, _ = await self.ds.check_visibility(
                     request.actor,
                     action="view-table",
-                    resource=(name, table),
+                    resource=TableResource(database=name, table=table),
                 )
                 if not visible:
                     continue

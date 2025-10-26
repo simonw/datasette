@@ -1072,7 +1072,7 @@ class Datasette:
         self,
         actor: dict,
         action: str,
-        resource: Optional[Union[str, Tuple[str, str]]] = None,
+        resource: Optional["Resource"] = None,
     ):
         """
         Check if actor can see a resource and if it's private.
@@ -1081,26 +1081,22 @@ class Datasette:
         - visible: bool - can the actor see it?
         - private: bool - if visible, can anonymous users NOT see it?
         """
-        # Convert old-style resource to Resource object
-        if resource is None:
-            resource_obj = None
-        elif isinstance(resource, str):
-            # Database resource
-            resource_obj = self.resource_for_action(action, parent=resource, child=None)
-        elif isinstance(resource, tuple) and len(resource) == 2:
-            # Database + child resource (table or query)
-            resource_obj = self.resource_for_action(
-                action, parent=resource[0], child=resource[1]
+        from datasette.permissions import Resource
+
+        # Validate that resource is a Resource object or None
+        if resource is not None and not isinstance(resource, Resource):
+            raise TypeError(
+                f"resource must be a Resource object or None, not {type(resource).__name__}. "
+                f"Use DatabaseResource(database=...), TableResource(database=..., table=...), "
+                f"or QueryResource(database=..., query=...) instead."
             )
-        else:
-            resource_obj = None
 
         # Check if actor can see it
-        if not await self.allowed(action=action, resource=resource_obj, actor=actor):
+        if not await self.allowed(action=action, resource=resource, actor=actor):
             return False, False
 
         # Check if anonymous user can see it (for "private" flag)
-        if not await self.allowed(action=action, resource=resource_obj, actor=None):
+        if not await self.allowed(action=action, resource=resource, actor=None):
             # Actor can see it but anonymous cannot - it's private
             return True, True
 
@@ -1386,12 +1382,14 @@ class Datasette:
         except IndexError:
             return {}
         # Ensure user has permission to view the referenced table
+        from datasette.resources import TableResource
+
         other_table = fk["other_table"]
         other_column = fk["other_column"]
         visible, _ = await self.check_visibility(
             actor,
             action="view-table",
-            resource=(database, other_table),
+            resource=TableResource(database=database, table=other_table),
         )
         if not visible:
             return {}

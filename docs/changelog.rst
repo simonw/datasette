@@ -577,7 +577,7 @@ Documentation
 .. _v0_62:
 
 0.62 (2022-08-14)
--------------------
+-----------------
 
 Datasette can now run entirely in your browser using WebAssembly. Try out `Datasette Lite <https://lite.datasette.io/>`__, take a look `at the code <https://github.com/simonw/datasette-lite>`__ or read more about it in `Datasette Lite: a server-side Python web application running in a browser <https://simonwillison.net/2022/May/4/datasette-lite/>`__.
 

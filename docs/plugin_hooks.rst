@@ -780,7 +780,7 @@ The plugin hook can then be used to register the new facet class like this:
 .. _plugin_register_permissions:
 
 register_permissions(datasette)
---------------------------------
+-------------------------------
 
 .. note::
     This hook is deprecated. Use :ref:`plugin_register_actions` instead, which provides a more flexible resource-based permission system.
@@ -830,7 +830,7 @@ The fields of the ``Permission`` class are as follows:
 .. _plugin_register_actions:
 
 register_actions(datasette)
-----------------------------
+---------------------------
 
 If your plugin needs to register actions that can be checked with Datasette's new resource-based permission system, return a list of those actions from this hook.
 
@@ -931,7 +931,7 @@ The fields of the ``Action`` dataclass are as follows:
     - Have an ``__init__`` method that accepts appropriate parameters and calls ``super().__init__(parent=..., child=...)``
 
 The ``resources_sql()`` method
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The ``resources_sql()`` classmethod is crucial to Datasette's permission system. It returns a SQL query that lists all resources of that type that exist in the system.
 
@@ -1445,7 +1445,7 @@ Example: `datasette-permissions-sql <https://datasette.io/plugins/datasette-perm
 .. _plugin_hook_permission_resources_sql:
 
 permission_resources_sql(datasette, actor, action)
----------------------------------------------------
+--------------------------------------------------
 
 ``datasette`` - :ref:`internals_datasette`
     Access to the Datasette instance.

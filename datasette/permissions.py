@@ -14,9 +14,9 @@ class Resource(ABC):
 
     # Class-level metadata (subclasses must define these)
     name: str = None  # e.g., "table", "database", "model"
-    parent_name: Optional[str] = None  # e.g., "database" for tables
+    parent_name: str | None = None  # e.g., "database" for tables
 
-    def __init__(self, parent: Optional[str] = None, child: Optional[str] = None):
+    def __init__(self, parent: str | None = None, child: str | None = None):
         """
         Create a resource instance.
 
@@ -98,8 +98,8 @@ class PermissionSQL:
 @dataclass
 class Permission:
     name: str
-    abbr: Optional[str]
-    description: Optional[str]
+    abbr: str | None
+    description: str | None
     takes_database: bool
     takes_resource: bool
     default: bool

@@ -834,6 +834,35 @@ async def test_versions_json(ds_client):
 
 
 @pytest.mark.asyncio
+async def test_actions_json(ds_client):
+    response = await ds_client.get("/-/actions.json")
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) > 0
+    # Check structure of first action
+    action = data[0]
+    for key in (
+        "name",
+        "abbr",
+        "description",
+        "takes_parent",
+        "takes_child",
+        "resource_class",
+        "also_requires",
+    ):
+        assert key in action
+    # Check that some expected actions exist
+    action_names = {a["name"] for a in data}
+    for expected_action in (
+        "view-instance",
+        "view-database",
+        "view-table",
+        "execute-sql",
+    ):
+        assert expected_action in action_names
+
+
+@pytest.mark.asyncio
 async def test_settings_json(ds_client):
     response = await ds_client.get("/-/settings.json")
     assert response.json() == {

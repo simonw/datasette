@@ -1176,3 +1176,13 @@ async def test_custom_csrf_error(ds_client):
     assert response.status_code == 403
     assert response.headers["content-type"] == "text/html; charset=utf-8"
     assert "Error code is FORM_URLENCODED_MISMATCH." in response.text
+
+
+@pytest.mark.asyncio
+async def test_actions_page(ds_client):
+    response = await ds_client.get("/-/actions")
+    assert response.status_code == 200
+    assert "Registered Actions" in response.text
+    assert "<th>Name</th>" in response.text
+    assert "view-instance" in response.text
+    assert "view-database" in response.text

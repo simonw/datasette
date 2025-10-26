@@ -3,7 +3,6 @@ from datasette.resources import DatabaseResource
 from datasette.views.base import DatasetteError
 from datasette.utils.asgi import BadRequest
 import json
-import numbers
 from .utils import detect_json1, escape_sqlite, path_with_removed_args
 
 

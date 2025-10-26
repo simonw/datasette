@@ -3,7 +3,7 @@ Tests for the datasette.app.Datasette class
 """
 
 import dataclasses
-from datasette import Forbidden, Context
+from datasette import Context
 from datasette.app import Datasette, Database
 from datasette.resources import DatabaseResource
 from itsdangerous import BadSignature

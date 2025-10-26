@@ -146,7 +146,6 @@ def inspect(files, inspect_file, sqlite_extensions):
     This can then be passed to "datasette --inspect-file" to speed up count
     operations against immutable database files.
     """
-    app = Datasette([], immutables=files, sqlite_extensions=sqlite_extensions)
     inspect_data = run_sync(lambda: inspect_(files, sqlite_extensions))
     if inspect_file == "-":
         sys.stdout.write(json.dumps(inspect_data, indent=2))

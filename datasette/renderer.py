@@ -20,7 +20,7 @@ def convert_specific_columns_to_json(rows, columns, json_cols):
             if column in json_cols:
                 try:
                     value = json.loads(value)
-                except (TypeError, ValueError) as e:
+                except (TypeError, ValueError):
                     pass
             new_row.append(value)
         new_rows.append(new_row)

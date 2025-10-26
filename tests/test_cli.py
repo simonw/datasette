@@ -1,5 +1,4 @@
 from .fixtures import (
-    app_client,
     make_app_client,
     TestClient as _TestClient,
     EXPECTED_PLUGINS,

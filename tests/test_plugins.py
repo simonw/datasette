@@ -1,6 +1,5 @@
 from bs4 import BeautifulSoup as Soup
 from .fixtures import (
-    app_client,
     make_app_client,
     TABLES,
     TEMP_PLUGIN_SECRET_FILE,
@@ -9,7 +8,7 @@ from .fixtures import (
 )  # noqa
 from click.testing import CliRunner
 from datasette.app import Datasette
-from datasette import cli, hookimpl, Permission
+from datasette import cli, hookimpl
 from datasette.filters import FilterArguments
 from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
 from datasette.permissions import PermissionSQL

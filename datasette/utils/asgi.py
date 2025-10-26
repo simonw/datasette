@@ -1,4 +1,3 @@
-import hashlib
 import json
 from datasette.utils import MultiParams, calculate_etag
 from mimetypes import guess_type

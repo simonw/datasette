@@ -9,7 +9,6 @@ import os
 import re
 import sqlite_utils
 import textwrap
-from typing import List
 
 from datasette.events import AlterTableEvent, CreateTableEvent, InsertRowsEvent
 from datasette.database import QueryInterrupted
@@ -71,7 +70,6 @@ class DatabaseView(View):
         metadata = await datasette.get_database_metadata(database)
 
         # Get all tables/views this actor can see in bulk with private flag
-        from datasette.resources import TableResource
 
         allowed_tables = await datasette.allowed_resources(
             "view-table", request.actor, parent=database, include_is_private=True
@@ -344,7 +342,6 @@ async def get_tables(datasette, request, db, allowed_dict):
         allowed_dict: Dict mapping table name -> Resource object with .private attribute
     """
     tables = []
-    database = db.name
     table_counts = await db.table_counts(100)
     hidden_table_names = set(await db.hidden_table_names())
     all_foreign_keys = await db.get_all_foreign_keys()
@@ -512,7 +509,6 @@ class QueryView(View):
         database = db.name
 
         # Get all tables/views this actor can see in bulk with private flag
-        from datasette.resources import TableResource
 
         allowed_tables = await datasette.allowed_resources(
             "view-table", request.actor, parent=database, include_is_private=True

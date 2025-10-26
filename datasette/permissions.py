@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, NamedTuple
+from typing import Any, Dict, NamedTuple
 
 
 class Resource(ABC):

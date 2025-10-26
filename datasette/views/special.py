@@ -503,16 +503,10 @@ class PermissionCheckView(BaseView):
     has_json_alternate = False
 
     async def get(self, request):
-        # Check if user has permissions-debug (to show sensitive fields)
-        has_debug_permission = await self.ds.allowed(
-            action="permissions-debug", actor=request.actor
-        )
-
-        # Check if this is a request for JSON (has .json extension)
+        await self.ds.ensure_permission(action="permissions-debug", actor=request.actor)
         as_format = request.url_vars.get("format")
 
         if not as_format:
-            # Render the HTML form (even if query parameters are present)
             return await self.render(
                 ["debug_check.html"],
                 request,

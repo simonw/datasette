@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from asgi_csrf import Errors
 import asyncio
-from typing import Any, Dict, Iterable, List
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List
+
+if TYPE_CHECKING:
+    from datasette.permissions import AllowedResource, Resource
 import asgi_csrf
 import collections
 import dataclasses
@@ -117,8 +120,7 @@ from .tracer import AsgiTracer
 from .plugins import pm, DEFAULT_PLUGINS, get_plugins
 from .version import __version__
 
-from .permissions import PermissionSQL
-from .resources import InstanceResource, DatabaseResource, TableResource
+from .resources import DatabaseResource, TableResource
 
 app_root = Path(__file__).parent.parent
 
@@ -1176,7 +1178,6 @@ class Datasette:
                 if table.private:
                     print(f"{table.child} is private")
         """
-        from datasette.permissions import Resource
 
         action_obj = self.actions.get(action)
         if not action_obj:
@@ -1217,7 +1218,7 @@ class Datasette:
             for allowed in debug_info:
                 print(f"{allowed.resource}: {allowed.reason}")
         """
-        from datasette.permissions import AllowedResource, Resource
+        from datasette.permissions import AllowedResource
 
         action_obj = self.actions.get(action)
         if not action_obj:
@@ -1277,7 +1278,6 @@ class Datasette:
         """
         from datasette.utils.actions_sql import check_permission_for_resource
         from datasette.resources import InstanceResource
-        import datetime
 
         if resource is None:
             resource = InstanceResource()

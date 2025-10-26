@@ -1,6 +1,5 @@
 import json
 
-from datasette import Forbidden
 from datasette.plugins import pm
 from datasette.utils import (
     add_cors_headers,

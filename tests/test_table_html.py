@@ -8,7 +8,7 @@ from .fixtures import (  # noqa
 import pathlib
 import pytest
 import urllib.parse
-from .utils import assert_footer_links, inner_html
+from .utils import inner_html
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,4 @@
 from bs4 import BeautifulSoup as Soup
-from .fixtures import app_client
 from .utils import cookie_was_deleted, last_event
 from click.testing import CliRunner
 from datasette.utils import baseconv

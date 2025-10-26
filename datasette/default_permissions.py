@@ -1,3 +1,10 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from datasette.app import Datasette
+
 from datasette import hookimpl
 from datasette.permissions import PermissionSQL
 from datasette.utils import actor_matches_allow

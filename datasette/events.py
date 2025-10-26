@@ -2,7 +2,6 @@ from abc import ABC, abstractproperty
 from dataclasses import asdict, dataclass, field
 from datasette.hookspecs import hookimpl
 from datetime import datetime, timezone
-from typing import Optional
 
 
 @dataclass

@@ -6,7 +6,6 @@ from datasette.app import Datasette
 from datasette.database import Database, Results, MultipleValues
 from datasette.utils.sqlite import sqlite3, sqlite_version
 from datasette.utils import Column
-from .fixtures import app_client, app_client_two_attached_databases_crossdb_enabled
 import pytest
 import time
 import uuid

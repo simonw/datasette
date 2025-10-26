@@ -50,7 +50,7 @@ def after(outcome, hook_name, hook_impls, kwargs):
     results = outcome.get_result()
     if not isinstance(results, list):
         results = [results]
-    print(f"Results:", file=sys.stderr)
+    print("Results:", file=sys.stderr)
     pprint(results, width=40, indent=4, stream=sys.stderr)
 
 

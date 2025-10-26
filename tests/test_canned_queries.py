@@ -2,7 +2,7 @@ from bs4 import BeautifulSoup as Soup
 import json
 import pytest
 import re
-from .fixtures import make_app_client, app_client
+from .fixtures import make_app_client
 
 
 @pytest.fixture

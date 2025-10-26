@@ -1,6 +1,5 @@
 from datasette.app import Datasette
 from datasette.plugins import DEFAULT_PLUGINS
-from datasette.utils.sqlite import supports_table_xinfo
 from datasette.version import __version__
 from .fixtures import (  # noqa
     app_client,

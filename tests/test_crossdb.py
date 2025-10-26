@@ -2,7 +2,6 @@ from datasette.cli import cli
 from click.testing import CliRunner
 import urllib
 import sqlite3
-from .fixtures import app_client_two_attached_databases_crossdb_enabled
 
 
 def test_crossdb_join(app_client_two_attached_databases_crossdb_enabled):

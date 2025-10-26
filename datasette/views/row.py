@@ -247,7 +247,7 @@ class RowUpdateView(BaseView):
 
         if not isinstance(data, dict):
             return _error(["JSON must be a dictionary"])
-        if not "update" in data or not isinstance(data["update"], dict):
+        if "update" not in data or not isinstance(data["update"], dict):
             return _error(["JSON must contain an update dictionary"])
 
         invalid_keys = set(data.keys()) - {"update", "return", "alter"}

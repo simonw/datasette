@@ -166,7 +166,6 @@ async def display_columns_and_rows(
     column_details = {
         col.name: col for col in await db.table_column_details(table_name)
     }
-    table_config = await datasette.table_config(database_name, table_name)
     pks = await db.primary_keys(table_name)
     pks_for_display = pks
     if not pks_for_display:

@@ -231,3 +231,27 @@ def ds_unix_domain_socket_server(tmp_path_factory):
     yield ds_proc, uds
     # Shut it down at the end of the pytest session
     ds_proc.terminate()
+
+
+# Import fixtures from fixtures.py to make them available
+from .fixtures import (  # noqa: E402, F401
+    app_client,
+    app_client_base_url_prefix,
+    app_client_conflicting_database_names,
+    app_client_csv_max_mb_one,
+    app_client_immutable_and_inspect_file,
+    app_client_larger_cache_size,
+    app_client_no_files,
+    app_client_returned_rows_matches_page_size,
+    app_client_shorter_time_limit,
+    app_client_two_attached_databases,
+    app_client_two_attached_databases_crossdb_enabled,
+    app_client_two_attached_databases_one_immutable,
+    app_client_with_cors,
+    app_client_with_dot,
+    app_client_with_trace,
+    generate_compound_rows,
+    generate_sortable_rows,
+    make_app_client,
+    TEMP_PLUGIN_SECRET_FILE,
+)

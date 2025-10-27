@@ -23,7 +23,7 @@
 {% endif %}
 
 <div class="permission-form">
-    <form id="rules-form">
+    <form id="rules-form" method="get" action="{{ urls.path("-/rules") }}">
         <div class="form-section">
             <label for="action">Action (permission name):</label>
             <select id="action" name="action" required>
@@ -70,23 +70,6 @@ const resultsContent = document.getElementById('results-content');
 const resultsCount = document.getElementById('results-count');
 const pagination = document.getElementById('pagination');
 const submitBtn = document.getElementById('submit-btn');
-let currentData = null;
-
-form.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    updateURL('rules-form', 1);
-    await fetchResults(1, false);
-});
-
-// Handle browser back/forward
-window.addEventListener('popstate', () => {
-    const params = populateFormFromURL();
-    const action = params.get('action');
-    const page = params.get('page');
-    if (action) {
-        fetchResults(page ? parseInt(page) : 1, false);
-    }
-});
 
 // Populate form on initial load
 (function() {
@@ -94,11 +77,11 @@ window.addEventListener('popstate', () => {
     const action = params.get('action');
     const page = params.get('page');
     if (action) {
-        fetchResults(page ? parseInt(page) : 1, false);
+        fetchResults(page ? parseInt(page) : 1);
     }
 })();
 
-async function fetchResults(page = 1, updateHistory = true) {
+async function fetchResults(page = 1) {
     submitBtn.disabled = true;
     submitBtn.textContent = 'Loading...';
 
@@ -126,7 +109,6 @@ async function fetchResults(page = 1, updateHistory = true) {
         const data = await response.json();
 
         if (response.ok) {
-            currentData = data;
             displayResults(data);
         } else {
             displayError(data);
@@ -183,13 +165,8 @@ function displayResults(data) {
     if (data.previous_url || data.next_url) {
         if (data.previous_url) {
             const prevLink = document.createElement('a');
-            prevLink.href = '#';
+            prevLink.href = data.previous_url;
             prevLink.textContent = '← Previous';
-            prevLink.addEventListener('click', (e) => {
-                e.preventDefault();
-                updateURL('rules-form', data.page - 1);
-                fetchResults(data.page - 1, false);
-            });
             pagination.appendChild(prevLink);
         }
 
@@ -199,22 +176,14 @@ function displayResults(data) {
 
         if (data.next_url) {
             const nextLink = document.createElement('a');
-            nextLink.href = '#';
+            nextLink.href = data.next_url;
             nextLink.textContent = 'Next →';
-            nextLink.addEventListener('click', (e) => {
-                e.preventDefault();
-                updateURL('rules-form', data.page + 1);
-                fetchResults(data.page + 1, false);
-            });
             pagination.appendChild(nextLink);
         }
     }
 
     // Update raw JSON
     document.getElementById('raw-json').innerHTML = jsonFormatHighlight(data);
-
-    // Scroll to results
-    resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function displayError(data) {
@@ -225,8 +194,6 @@ function displayError(data) {
     resultsContent.innerHTML = `<div class="error-message">Error: ${escapeHtml(data.error || 'Unknown error')}</div>`;
 
     document.getElementById('raw-json').innerHTML = jsonFormatHighlight(data);
-
-    resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 </script>

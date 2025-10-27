@@ -180,35 +180,13 @@ class PermissionsDebugView(BaseView):
         vars = await request.post_vars()
         actor = json.loads(vars["actor"])
         permission = vars["permission"]
-        resource_1 = vars["resource_1"]
-        resource_2 = vars["resource_2"]
+        parent = vars.get("resource_1") or None
+        child = vars.get("resource_2") or None
 
-        # Use the action's properties to create the appropriate resource object
-        action = self.ds.actions.get(permission)
-        if not action:
-            return Response.json({"error": f"Unknown action: {permission}"}, status=400)
-
-        if action.takes_parent and action.takes_child:
-            resource_obj = action.resource_class(database=resource_1, table=resource_2)
-            resource_for_response = (resource_1, resource_2)
-        elif action.takes_parent:
-            resource_obj = action.resource_class(database=resource_1)
-            resource_for_response = resource_1
-        else:
-            resource_obj = action.resource_class()
-            resource_for_response = None
-
-        result = await self.ds.allowed(
-            action=permission, resource=resource_obj, actor=actor
+        response, status = await _check_permission_for_actor(
+            self.ds, permission, parent, child, actor
         )
-        return Response.json(
-            {
-                "actor": actor,
-                "permission": permission,
-                "resource": resource_for_response,
-                "result": result,
-            }
-        )
+        return Response.json(response, status=status)
 
 
 class AllowedResourcesView(BaseView):
@@ -255,34 +233,35 @@ class AllowedResourcesView(BaseView):
                 },
             )
 
-        # JSON API - action parameter is required
+        payload, status = await self._allowed_payload(request, has_debug_permission)
+        headers = {}
+        if self.ds.cors:
+            add_cors_headers(headers)
+        return Response.json(payload, status=status, headers=headers)
+
+    async def _allowed_payload(self, request, has_debug_permission):
         action = request.args.get("action")
         if not action:
-            return Response.json({"error": "action parameter is required"}, status=400)
+            return {"error": "action parameter is required"}, 400
         if action not in self.ds.actions:
-            return Response.json({"error": f"Unknown action: {action}"}, status=404)
+            return {"error": f"Unknown action: {action}"}, 404
 
         actor = request.actor if isinstance(request.actor, dict) else None
         actor_id = actor.get("id") if actor else None
         parent_filter = request.args.get("parent")
         child_filter = request.args.get("child")
         if child_filter and not parent_filter:
-            return Response.json(
-                {"error": "parent must be provided when child is specified"},
-                status=400,
-            )
+            return {"error": "parent must be provided when child is specified"}, 400
 
         try:
             page = int(request.args.get("page", "1"))
             page_size = int(request.args.get("page_size", "50"))
         except ValueError:
-            return Response.json(
-                {"error": "page and page_size must be integers"}, status=400
-            )
+            return {"error": "page and page_size must be integers"}, 400
         if page < 1:
-            return Response.json({"error": "page must be >= 1"}, status=400)
+            return {"error": "page must be >= 1"}, 400
         if page_size < 1:
-            return Response.json({"error": "page_size must be >= 1"}, status=400)
+            return {"error": "page_size must be >= 1"}, 400
         max_page_size = 200
         if page_size > max_page_size:
             page_size = max_page_size
@@ -304,10 +283,7 @@ class AllowedResourcesView(BaseView):
                 )
         except Exception:
             # If catalog tables don't exist yet, return empty results
-            headers = {}
-            if self.ds.cors:
-                add_cors_headers(headers)
-            return Response.json(
+            return (
                 {
                     "action": action,
                     "actor_id": actor_id,
@@ -316,7 +292,7 @@ class AllowedResourcesView(BaseView):
                     "total": 0,
                     "items": [],
                 },
-                headers=headers,
+                200,
             )
 
         # Convert to list of dicts with resource path
@@ -396,10 +372,7 @@ class AllowedResourcesView(BaseView):
         if page > 1:
             response["previous_url"] = build_page_url(page - 1)
 
-        headers = {}
-        if self.ds.cors:
-            add_cors_headers(headers)
-        return Response.json(response, headers=headers)
+        return response, 200
 
 
 class PermissionRulesView(BaseView):

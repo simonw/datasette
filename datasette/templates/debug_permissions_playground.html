@@ -134,31 +134,33 @@ debugPost.addEventListener('submit', function(ev) {
     {% if filter != "only-yours" %}<a href="?filter=only-yours">Only yours</a>{% else %}<strong>Only yours</strong>{% endif %}
 </p>
 
-{% for check in permission_checks %}
-    <div class="check">
-        <h2>
-            <span class="check-action">{{ check.action }}</span>
-            checked at
-            <span class="check-when">{{ check.when }}</span>
-            {% if check.result %}
-                <span class="check-result check-result-true">✓</span>
-            {% elif check.result is none %}
-                <span class="check-result check-result-no-opinion">none</span>
-            {% else %}
-                <span class="check-result check-result-false">✗</span>
-            {% endif %}
-        </h2>
-        <p><strong>Actor:</strong> {{ check.actor|tojson }}</p>
-        {% if check.parent %}
-            <p><strong>Resource:</strong>
-            {% if check.child %}
-                {{ check.parent }} / {{ check.child }}
-            {% else %}
-                {{ check.parent }}
-            {% endif %}
-            </p>
-        {% endif %}
-    </div>
-{% endfor %}
+{% if permission_checks %}
+<table class="rows-and-columns permission-checks-table" id="permission-checks-table">
+    <thead>
+        <tr>
+            <th>When</th>
+            <th>Action</th>
+            <th>Parent</th>
+            <th>Child</th>
+            <th>Actor</th>
+            <th>Result</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for check in permission_checks %}
+            <tr>
+                <td><span style="font-size: 0.8em">{{ check.when.split('T', 1)[0] }}</span><br>{{ check.when.split('T', 1)[1].split('+', 1)[0].split('-', 1)[0].split('Z', 1)[0] }}</td>
+                <td><code>{{ check.action }}</code></td>
+                <td>{{ check.parent or '—' }}</td>
+                <td>{{ check.child or '—' }}</td>
+                <td>{% if check.actor %}<code>{{ check.actor|tojson }}</code>{% else %}<span class="check-actor-anon">anonymous</span>{% endif %}</td>
+                <td>{% if check.result %}<span class="check-result check-result-true">Allowed</span>{% elif check.result is none %}<span class="check-result check-result-no-opinion">No opinion</span>{% else %}<span class="check-result check-result-false">Denied</span>{% endif %}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+</table>
+{% else %}
+<p class="no-results">No permission checks have been recorded yet.</p>
+{% endif %}
 
 {% endblock %}

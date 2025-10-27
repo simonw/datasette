@@ -66,7 +66,7 @@
 {% endif %}
 
 <div class="permission-form">
-    <form id="check-form">
+    <form id="check-form" method="get" action="{{ urls.path("-/check") }}">
         <div class="form-section">
             <label for="action">Action (permission name):</label>
             <select id="action" name="action" required>
@@ -158,21 +158,6 @@ async function performCheck() {
         submitBtn.textContent = 'Check Permission';
     }
 }
-
-form.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    updateURL('check-form');
-    await performCheck();
-});
-
-// Handle browser back/forward
-window.addEventListener('popstate', () => {
-    const params = populateFormFromURL();
-    const action = params.get('action');
-    if (action) {
-        performCheck();
-    }
-});
 
 // Populate form on initial load
 (function() {

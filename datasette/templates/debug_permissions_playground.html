@@ -90,19 +90,13 @@ var permissions = Object.fromEntries(rawPerms.map(p => [p.name, p]));
 var permissionSelect = document.getElementById('permission');
 var resource1 = document.getElementById('resource_1');
 var resource2 = document.getElementById('resource_2');
+var resource1Section = resource1.closest('.form-section');
+var resource2Section = resource2.closest('.form-section');
 function updateResourceVisibility() {
     var permission = permissionSelect.value;
     var {takes_parent, takes_child} = permissions[permission];
-    if (takes_parent) {
-        resource1.closest('p').style.display = 'block';
-    } else {
-        resource1.closest('p').style.display = 'none';
-    }
-    if (takes_child) {
-        resource2.closest('p').style.display = 'block';
-    } else {
-        resource2.closest('p').style.display = 'none';
-    }
+    resource1Section.style.display = takes_parent ? 'block' : 'none';
+    resource2Section.style.display = takes_child ? 'block' : 'none';
 }
 permissionSelect.addEventListener('change', updateResourceVisibility);
 updateResourceVisibility();
@@ -113,14 +107,21 @@ var debugResult = document.getElementById('debugResult');
 debugPost.addEventListener('submit', function(ev) {
     ev.preventDefault();
     var formData = new FormData(debugPost);
-    console.log(formData);
     fetch(debugPost.action, {
         method: 'POST',
         body: new URLSearchParams(formData),
+        headers: {
+            'Accept': 'application/json'
+        }
     }).then(function(response) {
+        if (!response.ok) {
+            throw new Error('Request failed with status ' + response.status);
+        }
         return response.json();
     }).then(function(data) {
         debugResult.innerText = JSON.stringify(data, null, 4);
+    }).catch(function(error) {
+        debugResult.innerText = JSON.stringify({ error: error.message }, null, 4);
     });
 });
 </script>

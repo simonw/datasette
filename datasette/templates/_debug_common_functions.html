@@ -40,26 +40,6 @@ function populateFormFromURL() {
     return params;
 }
 
-// Update URL with current form values
-function updateURL(formId, page = 1) {
-    const form = document.getElementById(formId);
-    const formData = new FormData(form);
-    const params = new URLSearchParams();
-
-    for (const [key, value] of formData.entries()) {
-        if (value) {
-            params.append(key, value);
-        }
-    }
-
-    if (page > 1) {
-        params.set('page', page.toString());
-    }
-
-    const newURL = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
-    window.history.pushState({}, '', newURL);
-}
-
 // HTML escape function
 function escapeHtml(text) {
     if (text === null || text === undefined) return '';

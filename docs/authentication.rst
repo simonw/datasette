@@ -37,6 +37,11 @@ The ``--root`` flag is designed for local development and testing. When you star
 * Debug permissions (permissions-debug, debug-menu)
 * Any custom permissions defined by plugins
 
+If you add explicit deny rules in ``datasette.yaml`` those can still block the
+root actor from specific databases or tables. The ``--root`` flag sets an
+internal ``root_enabled`` switch—without it, a signed-in user with ``{"id":
+"root"}`` is treated like any other actor.
+
 .. warning::
     The ``--root`` flag should only be used for local development. Never use it in production or on publicly accessible servers.
 
@@ -86,17 +91,26 @@ Permissions with potentially harmful effects should default to *deny*. Plugin au
 How permissions are resolved
 ----------------------------
 
-The :ref:`datasette.permission_allowed(actor, action, resource=None, default=...)<datasette_permission_allowed>` method is called to check if an actor is allowed to perform a specific action.
+Datasette now performs permission checks using :ref:`datasette_allowed`, which
+accepts keyword arguments for ``action``, ``resource`` and an optional
+``actor``. ``resource`` should be an instance of the appropriate
+``Resource`` subclass from :mod:`datasette.resources`—for example
+``InstanceResource()``, ``DatabaseResource(database="...``)`` or
+``TableResource(database="...", table="...")``.
 
-This method asks every plugin that implements the :ref:`plugin_hook_permission_allowed` hook if the actor is allowed to perform the action.
+When a check runs Datasette gathers allow/deny rules from multiple sources and
+compiles them into a SQL query. The resulting query describes all of the
+resources an actor may access for that action, together with the reasons those
+resources were allowed or denied. The combined sources are:
 
-Each plugin can return ``True`` to indicate that the actor is allowed to perform the action, ``False`` if they are not allowed and ``None`` if the plugin has no opinion on the matter.
+* :ref:`Actor restrictions <authentication_permissions_tokens>` encoded into the actor dictionary or API token.
+* The "root" user shortcut when ``--root`` (or :attr:`Datasette.root_enabled <datasette.app.Datasette.root_enabled>`) is active, granting instance-wide access unless configuration rules deny it at a more specific level.
+* ``allow``/``deny`` rules configured in :ref:`datasette.yaml <authentication_permissions_config>`.
+* Any additional SQL provided by plugins implementing :ref:`plugin_hook_permission_resources_sql`.
 
-``False`` acts as a veto - if any plugin returns ``False`` then the permission check is denied. Otherwise, if any plugin returns ``True`` then the permission check is allowed.
-
-The ``resource`` argument can be used to specify a specific resource that the action is being performed against. Some permissions, such as ``view-instance``, do not involve a resource. Others such as ``view-database`` have a resource that is a string naming the database. Permissions that take both a database name and the name of a table, view or canned query within that database use a resource that is a tuple of two strings, ``(database_name, resource_name)``.
-
-Plugins that implement the ``permission_allowed()`` hook can decide if they are going to consider the provided resource or not.
+Datasette evaluates the SQL to determine if the requested ``resource`` is
+included. Explicit deny rules returned by configuration or plugins will block
+access even if other rules allowed it.
 
 .. _authentication_permissions_allow:
 
@@ -104,6 +118,10 @@ Defining permissions with "allow" blocks
 ----------------------------------------
 
 The standard way to define permissions in Datasette is to use an ``"allow"`` block :ref:`in the datasette.yaml file <authentication_permissions_config>`. This is a JSON document describing which actors are allowed to perform a permission.
+
+Each ``allow`` block is compiled into SQL and combined with any
+:ref:`plugin-provided rules <plugin_hook_permission_resources_sql>` to produce
+the cascading allow/deny decisions that power :ref:`datasette_allowed`.
 
 The most basic form of allow block is this (`allow demo <https://latest.datasette.io/-/allow-debug?actor=%7B%22id%22%3A+%22root%22%7D&allow=%7B%0D%0A++++++++%22id%22%3A+%22root%22%0D%0A++++%7D>`__, `deny demo <https://latest.datasette.io/-/allow-debug?actor=%7B%22id%22%3A+%22trevor%22%7D&allow=%7B%0D%0A++++++++%22id%22%3A+%22root%22%0D%0A++++%7D>`__):
 
@@ -952,6 +970,7 @@ To create a token that never expires using a specific secret::
 
     datasette create-token root --secret my-secret-goes-here
 
+.. _authentication_permissions_tokens:
 .. _authentication_cli_create_token_restrict:
 
 Restricting the actions that a token can perform
@@ -1027,9 +1046,25 @@ This example outputs the following::
 Checking permissions in plugins
 ===============================
 
-Datasette plugins can check if an actor has permission to perform an action using the :ref:`datasette.permission_allowed(...)<datasette_permission_allowed>` method.
+Datasette plugins can check if an actor has permission to perform an action using :ref:`datasette_allowed`—for example::
 
-Datasette core performs a number of permission checks, :ref:`documented below <permissions>`. Plugins can implement the :ref:`plugin_hook_permission_allowed` plugin hook to participate in decisions about whether an actor should be able to perform a specified action.
+    from datasette.resources import TableResource
+
+    can_edit = await datasette.allowed(
+        action="update-row",
+        resource=TableResource(database="fixtures", table="facetable"),
+        actor=request.actor,
+    )
+
+Use :ref:`datasette_ensure_permission` when you need to enforce a permission and
+raise a ``Forbidden`` error automatically.
+
+Plugins that define new operations should return :class:`~datasette.permissions.Action`
+objects from :ref:`plugin_register_actions` and can supply additional allow/deny
+rules by yielding :class:`~datasette.permissions.PermissionSQL` objects from the
+:ref:`plugin_hook_permission_resources_sql` hook. Those rules are merged with
+configuration ``allow`` blocks and actor restrictions to determine the final
+result for each check.
 
 .. _authentication_actor_matches_allow:
 
@@ -1074,6 +1109,9 @@ Pass ``?action=view-table`` (or another action) to select the action. Optional `
 This endpoint is publicly accessible to help users understand their own permissions. However, potentially sensitive fields (``reason`` and ``source_plugin``) are only included in responses for users with the ``permissions-debug`` permission.
 
 Datasette includes helper endpoints for exploring the action-based permission resolver:
+
+``/-/actions``
+    Lists every registered action, including abbreviations, descriptions and resource requirements.
 
 ``/-/allowed``
     Returns a paginated list of resources that the current actor is allowed to access for a given action. Pass ``?action=view-table`` (or another action) to select the action, and optional ``parent=``/``child=`` query parameters to narrow the results to a specific database/table pair.

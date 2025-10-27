@@ -398,24 +398,27 @@ async def test_permissions_debug(ds_client, filter_):
         assert fragment in response.text
     # Should show one failure and one success
     soup = Soup(response.text, "html.parser")
-    check_divs = soup.find_all("div", {"class": "check"})
-    checks = [
-        {
-            "action": div.select_one(".check-action").text,
-            # True = green tick, False = red cross, None = gray None
-            "result": (
-                None
-                if div.select(".check-result-no-opinion")
-                else bool(div.select(".check-result-true"))
-            ),
-            "actor": json.loads(
-                div.find(
-                    "strong", string=lambda text: text and "Actor" in text
-                ).parent.text.split(": ", 1)[1]
-            ),
-        }
-        for div in check_divs
-    ]
+    table = soup.find("table", {"id": "permission-checks-table"})
+    rows = table.find("tbody").find_all("tr")
+    checks = []
+    for row in rows:
+        cells = row.find_all("td")
+        result_cell = cells[5]
+        if result_cell.select_one(".check-result-true"):
+            result = True
+        elif result_cell.select_one(".check-result-false"):
+            result = False
+        else:
+            result = None
+        actor_code = cells[4].find("code")
+        actor = json.loads(actor_code.text) if actor_code else None
+        checks.append(
+            {
+                "action": cells[1].text.strip(),
+                "result": result,
+                "actor": actor,
+            }
+        )
     expected_checks = [
         {
             "action": "permissions-debug",
@@ -723,22 +726,26 @@ async def test_actor_restricted_permissions(
         },
         cookies=cookies,
     )
-    # Build expected_resource to match API behavior:
-    # - None when no resources
-    # - Single string when only resource_1
-    # - List when both resource_1 and resource_2 (JSON serializes tuples as lists)
-    if resource_1 and resource_2:
-        expected_resource = [resource_1, resource_2]
-    elif resource_1:
-        expected_resource = resource_1
+    # Response mirrors /-/check JSON structure
+    if resource_1 is None:
+        expected_path = "/"
+    elif resource_2 is None:
+        expected_path = f"/{resource_1}"
     else:
-        expected_resource = None
-    expected = {
-        "actor": actor,
-        "permission": permission,
-        "resource": expected_resource,
-        "result": expected_result,
+        expected_path = f"/{resource_1}/{resource_2}"
+
+    expected_resource = {
+        "parent": resource_1,
+        "child": resource_2,
+        "path": expected_path,
     }
+    expected = {
+        "action": permission,
+        "allowed": expected_result,
+        "resource": expected_resource,
+    }
+    if actor.get("id"):
+        expected["actor_id"] = actor["id"]
     assert response.json() == expected
 
 

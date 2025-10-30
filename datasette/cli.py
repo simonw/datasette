@@ -490,6 +490,16 @@ def uninstall(packages, yes):
     type=click.Path(),
     help="Path to a persistent Datasette internal SQLite database",
 )
+@click.option(
+    "--private",
+    is_flag=True,
+    help="Default deny mode - all access blocked unless explicitly allowed",
+)
+@click.option(
+    "--require-auth",
+    is_flag=True,
+    help="Require authentication - only actors with an id can access",
+)
 def serve(
     files,
     immutable,
@@ -522,6 +532,8 @@ def serve(
     ssl_keyfile,
     ssl_certfile,
     internal,
+    private,
+    require_auth,
     return_instance=False,
 ):
     """Serve up specified SQLite database files with a web UI"""
@@ -536,6 +548,8 @@ def serve(
             )
         click.echo(formatter.getvalue())
         sys.exit(0)
+    if private and require_auth:
+        raise click.UsageError("Cannot use both --private and --require-auth")
     if reload:
         import hupper
 
@@ -588,6 +602,8 @@ def serve(
         crossdb=crossdb,
         nolock=nolock,
         internal=internal,
+        private=private,
+        require_auth=require_auth,
     )
 
     # if files is a single directory, use that as config_dir=

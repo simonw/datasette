@@ -296,6 +296,8 @@ class Datasette:
         crossdb=False,
         nolock=False,
         internal=None,
+        private=False,
+        require_auth=False,
     ):
         self._startup_invoked = False
         assert config_dir is None or isinstance(
@@ -340,6 +342,8 @@ class Datasette:
                 raise
         self.crossdb = crossdb
         self.nolock = nolock
+        self.private = private
+        self.require_auth = require_auth
         if memory or crossdb or not self.files:
             self.add_database(
                 Database(self, is_mutable=False, is_memory=True), name="_memory"

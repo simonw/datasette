@@ -60,30 +60,55 @@ async def permission_resources_sql(datasette, actor, action):
         return rules
 
     # 5. Default allow actions (ONLY if no restrictions)
+    default_allow_actions = {
+        "view-instance",
+        "view-database",
+        "view-database-download",
+        "view-table",
+        "view-query",
+        "execute-sql",
+    }
     # If actor has restrictions, they've already added their own deny/allow rules
     has_restrictions = actor and "_r" in actor
     if not has_restrictions:
-        default_allow_actions = {
-            "view-instance",
-            "view-database",
-            "view-database-download",
-            "view-table",
-            "view-query",
-            "execute-sql",
-        }
-        if action in default_allow_actions:
-            reason = f"default allow for {action}".replace("'", "''")
-            sql = (
-                "SELECT NULL AS parent, NULL AS child, 1 AS allow, "
-                f"'{reason}' AS reason"
-            )
-            rules.append(
-                PermissionSQL(
-                    source="default_permissions",
-                    sql=sql,
-                    params={},
+        # Check for --private flag (complete default-deny mode)
+        if datasette.private:
+            # In private mode, don't grant any default allow permissions
+            pass
+        # Check for --require-auth flag (authenticated-only mode)
+        elif datasette.require_auth:
+            # Only grant default allow if actor has an id (is authenticated)
+            if actor and actor.get("id"):
+                if action in default_allow_actions:
+                    reason = f"default allow for {action} (authenticated)".replace(
+                        "'", "''"
+                    )
+                    sql = (
+                        "SELECT NULL AS parent, NULL AS child, 1 AS allow, "
+                        f"'{reason}' AS reason"
+                    )
+                    rules.append(
+                        PermissionSQL(
+                            source="default_permissions",
+                            sql=sql,
+                            params={},
+                        )
+                    )
+        else:
+            # Normal mode - grant default allow to everyone
+            if action in default_allow_actions:
+                reason = f"default allow for {action}".replace("'", "''")
+                sql = (
+                    "SELECT NULL AS parent, NULL AS child, 1 AS allow, "
+                    f"'{reason}' AS reason"
                 )
-            )
+                rules.append(
+                    PermissionSQL(
+                        source="default_permissions",
+                        sql=sql,
+                        params={},
+                    )
+                )
 
     if not rules:
         return None

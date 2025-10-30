@@ -687,8 +687,15 @@ async def test_hidden_tables(app_client):
     ds = app_client.ds
     db = ds.add_database(Database(ds, is_memory=True, is_mutable=True))
     assert await db.hidden_table_names() == []
+
+    await db.execute("create table t (id integer primary key autoincrement)")
+    assert await db.hidden_table_names() == [
+        "sqlite_sequence",
+    ]
+
     await db.execute("create virtual table f using fts5(a)")
     assert await db.hidden_table_names() == [
+        "sqlite_sequence",
         "f_config",
         "f_content",
         "f_data",
@@ -698,6 +705,7 @@ async def test_hidden_tables(app_client):
 
     await db.execute("create virtual table r using rtree(id, amin, amax)")
     assert await db.hidden_table_names() == [
+        "sqlite_sequence",
         "f_config",
         "f_content",
         "f_data",
@@ -710,6 +718,7 @@ async def test_hidden_tables(app_client):
 
     await db.execute("create table _hideme(_)")
     assert await db.hidden_table_names() == [
+        "sqlite_sequence",
         "_hideme",
         "f_config",
         "f_content",
@@ -724,6 +733,7 @@ async def test_hidden_tables(app_client):
     # A fts virtual table with a content table should be hidden too
     await db.execute("create virtual table f2_fts using fts5(a, content='f')")
     assert await db.hidden_table_names() == [
+        "sqlite_sequence",
         "_hideme",
         "f2_fts_config",
         "f2_fts_data",

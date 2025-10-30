@@ -5,6 +5,9 @@ scratchpad
 
 .vscode
 
+uv.lock
+data.db
+
 # We don't use Pipfile, so ignore them
 Pipfile
 Pipfile.lock

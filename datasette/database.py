@@ -410,7 +410,12 @@ class Database:
         # But SQLite prior to 3.16.0 doesn't support pragma functions
         results = await self.execute("PRAGMA database_list;")
         # {'seq': 0, 'name': 'main', 'file': ''}
-        return [AttachedDatabase(*row) for row in results.rows if row["seq"] > 0]
+        return [
+            AttachedDatabase(*row)
+            for row in results.rows
+            # Filter out the SQLite internal "temp" database, refs #2557
+            if row["seq"] > 0 and row["name"] != "temp"
+        ]
 
     async def table_exists(self, table):
         results = await self.execute(

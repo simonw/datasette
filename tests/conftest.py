@@ -42,7 +42,9 @@ def wait_until_responds(url, timeout=5.0, client=httpx, **kwargs):
 @pytest_asyncio.fixture
 async def ds_client():
     from datasette.app import Datasette
+    from datasette.database import Database
     from .fixtures import CONFIG, METADATA, PLUGINS_DIR
+    import secrets
 
     global _ds_client
     if _ds_client is not None:
@@ -63,7 +65,10 @@ async def ds_client():
     )
     from .fixtures import TABLES, TABLE_PARAMETERIZED_SQL
 
-    db = ds.add_memory_database("fixtures")
+    # Use a unique memory_name to avoid collisions between different
+    # Datasette instances in the same process, but use "fixtures" for routing
+    unique_memory_name = f"fixtures_{secrets.token_hex(8)}"
+    db = ds.add_database(Database(ds, memory_name=unique_memory_name), name="fixtures")
     ds.remove_database("_memory")
 
     def prepare(conn):

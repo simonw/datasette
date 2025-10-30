@@ -33,16 +33,16 @@ You can install these packages like so::
 
     pip install pytest pytest-asyncio
 
-If you are building an installable package you can add them as test dependencies to your ``setup.py`` module like this:
+If you are building an installable package you can add them as test dependencies to your ``pyproject.toml`` file like this:
 
-.. code-block:: python
+.. code-block:: toml
 
-    setup(
-        name="datasette-my-plugin",
-        # ...
-        extras_require={"test": ["pytest", "pytest-asyncio"]},
-        tests_require=["datasette-my-plugin[test]"],
-    )
+    [project]
+    name = "datasette-my-plugin"
+    # ...
+
+    [project.optional-dependencies]
+    test = ["pytest", "pytest-asyncio"]
 
 You can then install the test dependencies like so::
 

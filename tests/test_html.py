@@ -1180,9 +1180,54 @@ async def test_custom_csrf_error(ds_client):
 
 @pytest.mark.asyncio
 async def test_actions_page(ds_client):
-    response = await ds_client.get("/-/actions")
-    assert response.status_code == 200
-    assert "Registered Actions" in response.text
-    assert "<th>Name</th>" in response.text
-    assert "view-instance" in response.text
-    assert "view-database" in response.text
+    original_root_enabled = ds_client.ds.root_enabled
+    try:
+        ds_client.ds.root_enabled = True
+        cookies = {"ds_actor": ds_client.actor_cookie({"id": "root"})}
+        response = await ds_client.get("/-/actions", cookies=cookies)
+        assert response.status_code == 200
+        assert "Registered actions" in response.text
+        assert "<th>Name</th>" in response.text
+        assert "view-instance" in response.text
+        assert "view-database" in response.text
+    finally:
+        ds_client.ds.root_enabled = original_root_enabled
+
+
+@pytest.mark.asyncio
+async def test_permission_debug_tabs_with_query_string(ds_client):
+    """Test that navigation tabs persist query strings across Check, Allowed, and Rules pages"""
+    original_root_enabled = ds_client.ds.root_enabled
+    try:
+        ds_client.ds.root_enabled = True
+        cookies = {"ds_actor": ds_client.actor_cookie({"id": "root"})}
+
+        # Test /-/allowed with query string
+        response = await ds_client.get(
+            "/-/allowed?action=view-table&page_size=50", cookies=cookies
+        )
+        assert response.status_code == 200
+        # Check that Rules and Check tabs have the query string
+        assert 'href="/-/rules?action=view-table&amp;page_size=50"' in response.text
+        assert 'href="/-/check?action=view-table&amp;page_size=50"' in response.text
+        # Playground and Actions should not have query string
+        assert 'href="/-/permissions"' in response.text
+        assert 'href="/-/actions"' in response.text
+
+        # Test /-/rules with query string
+        response = await ds_client.get(
+            "/-/rules?action=view-database&parent=test", cookies=cookies
+        )
+        assert response.status_code == 200
+        # Check that Allowed and Check tabs have the query string
+        assert 'href="/-/allowed?action=view-database&amp;parent=test"' in response.text
+        assert 'href="/-/check?action=view-database&amp;parent=test"' in response.text
+
+        # Test /-/check with query string
+        response = await ds_client.get("/-/check?action=execute-sql", cookies=cookies)
+        assert response.status_code == 200
+        # Check that Allowed and Rules tabs have the query string
+        assert 'href="/-/allowed?action=execute-sql"' in response.text
+        assert 'href="/-/rules?action=execute-sql"' in response.text
+    finally:
+        ds_client.ds.root_enabled = original_root_enabled

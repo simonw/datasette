@@ -3,7 +3,10 @@
 {% block title %}Registered Actions{% endblock %}
 
 {% block content %}
-<h1>Registered Actions</h1>
+<h1>Registered actions</h1>
+
+{% set current_tab = "actions" %}
+{% include "_permissions_debug_tabs.html" %}
 
 <p style="margin-bottom: 2em;">
   This Datasette instance has registered {{ data|length }} action{{ data|length != 1 and "s" or "" }}.

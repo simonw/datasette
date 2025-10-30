@@ -79,6 +79,9 @@ class Action:
     also_requires: str | None = None  # Optional action name that must also be allowed
 
 
+_reason_id = 1
+
+
 @dataclass
 class PermissionSQL:
     """
@@ -94,6 +97,20 @@ class PermissionSQL:
         None  # bound params for the SQL (values only; no ':' prefix)
     )
     source: str | None = None  # System will set this to the plugin name
+
+    @classmethod
+    def allow(cls, reason: str, _allow: bool = True) -> "PermissionSQL":
+        global _reason_id
+        i = _reason_id
+        _reason_id += 1
+        return cls(
+            sql=f"SELECT NULL AS parent, NULL AS child, {1 if _allow else 0} AS allow, :reason_{i} AS reason",
+            params={f"reason_{i}": reason},
+        )
+
+    @classmethod
+    def deny(cls, reason: str) -> "PermissionSQL":
+        return cls.allow(reason=reason, _allow=False)
 
 
 # This is obsolete, replaced by Action and ResourceType

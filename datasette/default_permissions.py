@@ -28,8 +28,7 @@ async def permission_resources_sql(datasette, actor, action):
         # Add a single global-level allow rule (NULL, NULL) for root
         # This allows root to access everything by default, but database-level
         # and table-level deny rules in config can still block specific resources
-        sql = "SELECT NULL AS parent, NULL AS child, 1 AS allow, 'root user' AS reason"
-        rules.append(PermissionSQL(sql=sql))
+        rules.append(PermissionSQL.allow(reason="root user"))
 
     # 3. Config-based permission rules
     config_rules = await _config_permission_rules(datasette, actor, action)
@@ -38,8 +37,7 @@ async def permission_resources_sql(datasette, actor, action):
     # 4. Check default_allow_sql setting for execute-sql action
     if action == "execute-sql" and not datasette.setting("default_allow_sql"):
         # Return a deny rule for all databases
-        sql = "SELECT NULL AS parent, NULL AS child, 0 AS allow, 'default_allow_sql is false' AS reason"
-        rules.append(PermissionSQL(sql=sql))
+        rules.append(PermissionSQL.deny(reason="default_allow_sql is false"))
         # Early return - don't add default allow rule
         if not rules:
             return None
@@ -61,11 +59,7 @@ async def permission_resources_sql(datasette, actor, action):
         }
         if action in default_allow_actions:
             reason = f"default allow for {action}".replace("'", "''")
-            sql = (
-                "SELECT NULL AS parent, NULL AS child, 1 AS allow, "
-                f"'{reason}' AS reason"
-            )
-            rules.append(PermissionSQL(sql=sql))
+            rules.append(PermissionSQL.allow(reason=reason))
 
     if not rules:
         return None

@@ -13,7 +13,6 @@ def db():
 
     path = tempfile.mktemp(suffix="demo.db")
     db = ds.add_database(Database(ds, path=path))
-    print(path)
     return db
 
 

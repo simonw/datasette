@@ -1468,6 +1468,17 @@ to avoid conflicts with other plugins. The recommended convention is to prefix p
 plugin's source name (e.g., ``myplugin_user_id``). The system reserves these parameter names:
 ``:actor``, ``:actor_id``, ``:action``, and ``:filter_parent``.
 
+You can also use return ``PermissionSQL.allow(reason="reason goes here")`` or ``PermissionSQL.deny(reason="reason goes here")`` as shortcuts for simple root-level allow or deny rules. These will create SQL snippets that look like this:
+
+.. code-block:: sql
+
+    SELECT
+        NULL AS parent,
+        NULL AS child,
+        1 AS allow,
+        'reason goes here' AS reason
+
+Or ``0 AS allow`` for denies.
 
 Permission plugin examples
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

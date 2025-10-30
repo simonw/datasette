@@ -325,7 +325,11 @@ async def test_plugin_config_file(ds_client):
 )
 def test_hook_extra_body_script(app_client, path, expected_extra_body_script):
     r = re.compile(r"<script type=\"module\">var extra_body_script = (.*?);</script>")
-    json_data = r.search(app_client.get(path).text).group(1)
+    response = app_client.get(path)
+    assert response.status_code == 200, response.text
+    match = r.search(response.text)
+    assert match is not None, "No extra_body_script found in HTML"
+    json_data = match.group(1)
     actual_data = json.loads(json_data)
     assert expected_extra_body_script == actual_data
 
@@ -673,39 +677,11 @@ async def test_existing_scope_actor_respected(ds_client):
     ],
 )
 async def test_hook_permission_allowed(action, expected):
-    from datasette.permissions import Action
-    from datasette.resources import InstanceResource
-
-    class TestPlugin:
-        __name__ = "TestPlugin"
-
-        @hookimpl
-        def register_actions(self):
-            return [
-                Action(
-                    name=name,
-                    abbr=None,
-                    description=None,
-                    takes_parent=False,
-                    takes_child=False,
-                    resource_class=InstanceResource,
-                )
-                for name in (
-                    "this_is_allowed",
-                    "this_is_denied",
-                    "this_is_allowed_async",
-                    "this_is_denied_async",
-                )
-            ]
-
-    pm.register(TestPlugin(), name="undo_register_extras")
-    try:
-        ds = Datasette(plugins_dir=PLUGINS_DIR)
-        await ds.invoke_startup()
-        actual = await ds.allowed(action=action, actor={"id": "actor"})
-        assert expected == actual
-    finally:
-        pm.unregister(name="undo_register_extras")
+    # Test actions and permission logic are defined in tests/plugins/my_plugin.py
+    ds = Datasette(plugins_dir=PLUGINS_DIR)
+    await ds.invoke_startup()
+    actual = await ds.allowed(action=action, actor={"id": "actor"})
+    assert expected == actual
 
 
 @pytest.mark.asyncio

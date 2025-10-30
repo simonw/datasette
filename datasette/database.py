@@ -143,7 +143,9 @@ class Database:
             return conn.executescript(sql)
 
         with trace("sql", database=self.name, sql=sql.strip(), executescript=True):
-            results = await self.execute_write_fn(_inner, block=block)
+            results = await self.execute_write_fn(
+                _inner, block=block, transaction=False
+            )
         return results
 
     async def execute_write_many(self, sql, params_seq, block=True):

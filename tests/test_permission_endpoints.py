@@ -453,16 +453,12 @@ async def test_execute_sql_requires_view_database():
             if action == "execute-sql":
                 # Grant execute-sql on the "secret" database
                 return PermissionSQL(
-                    source="test_plugin",
                     sql="SELECT 'secret' AS parent, NULL AS child, 1 AS allow, 'can execute sql' AS reason",
-                    params={},
                 )
             elif action == "view-database":
                 # Deny view-database on the "secret" database
                 return PermissionSQL(
-                    source="test_plugin",
                     sql="SELECT 'secret' AS parent, NULL AS child, 0 AS allow, 'cannot view db' AS reason",
-                    params={},
                 )
 
             return []

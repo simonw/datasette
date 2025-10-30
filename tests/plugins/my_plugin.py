@@ -527,28 +527,28 @@ def permission_resources_sql(datasette, actor, action):
     # Handle test actions used in test_hook_permission_allowed
     if action == "this_is_allowed":
         sql = "SELECT NULL AS parent, NULL AS child, 1 AS allow, 'test plugin allows this_is_allowed' AS reason"
-        return PermissionSQL(source="my_plugin", sql=sql, params={})
+        return PermissionSQL(sql=sql)
     elif action == "this_is_denied":
         sql = "SELECT NULL AS parent, NULL AS child, 0 AS allow, 'test plugin denies this_is_denied' AS reason"
-        return PermissionSQL(source="my_plugin", sql=sql, params={})
+        return PermissionSQL(sql=sql)
     elif action == "this_is_allowed_async":
         sql = "SELECT NULL AS parent, NULL AS child, 1 AS allow, 'test plugin allows this_is_allowed_async' AS reason"
-        return PermissionSQL(source="my_plugin", sql=sql, params={})
+        return PermissionSQL(sql=sql)
     elif action == "this_is_denied_async":
         sql = "SELECT NULL AS parent, NULL AS child, 0 AS allow, 'test plugin denies this_is_denied_async' AS reason"
-        return PermissionSQL(source="my_plugin", sql=sql, params={})
+        return PermissionSQL(sql=sql)
     elif action == "view-database-download":
         # Return rule based on actor's can_download permission
         if actor and actor.get("can_download"):
             sql = "SELECT NULL AS parent, NULL AS child, 1 AS allow, 'actor has can_download' AS reason"
         else:
             return None  # No opinion
-        return PermissionSQL(source="my_plugin", sql=sql, params={})
+        return PermissionSQL(sql=sql)
     elif action == "view-database":
         # Also grant view-database if actor has can_download (needed for download to work)
         if actor and actor.get("can_download"):
             sql = "SELECT NULL AS parent, NULL AS child, 1 AS allow, 'actor has can_download, grants view-database' AS reason"
-            return PermissionSQL(source="my_plugin", sql=sql, params={})
+            return PermissionSQL(sql=sql)
         return None
     elif action in (
         "insert-row",
@@ -561,6 +561,6 @@ def permission_resources_sql(datasette, actor, action):
         actor_id = actor.get("id") if actor else None
         if actor_id == "todomvc":
             sql = f"SELECT NULL AS parent, NULL AS child, 1 AS allow, 'todomvc actor allowed for {action}' AS reason"
-            return PermissionSQL(source="my_plugin", sql=sql, params={})
+            return PermissionSQL(sql=sql)
 
     return None

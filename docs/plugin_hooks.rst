@@ -1457,13 +1457,13 @@ permission_resources_sql(datasette, actor, action)
     The permission action being evaluated. Examples include ``"view-table"`` or ``"insert-row"``.
 
 Return value
-    A :class:`datasette.utils.permissions.PluginSQL` object, ``None`` or an iterable of ``PluginSQL`` objects.
+    A :class:`datasette.permissions.PermissionSQL` object, ``None`` or an iterable of ``PermissionSQL`` objects.
 
 Datasette's action-based permission resolver calls this hook to gather SQL rows describing which
 resources an actor may access (``allow = 1``) or should be denied (``allow = 0``) for a specific action.
 Each SQL snippet should return ``parent``, ``child``, ``allow`` and ``reason`` columns.
 
-**Parameter naming convention:** Plugin parameters in ``PluginSQL.params`` should use unique names
+**Parameter naming convention:** Plugin parameters in ``PermissionSQL.params`` should use unique names
 to avoid conflicts with other plugins. The recommended convention is to prefix parameters with your
 plugin's source name (e.g., ``myplugin_user_id``). The system reserves these parameter names:
 ``:actor``, ``:actor_id``, ``:action``, and ``:filter_parent``.
@@ -1475,7 +1475,7 @@ Permission plugin examples
 These snippets show how to use the new ``permission_resources_sql`` hook to
 contribute rows to the action-based permission resolver. Each hook receives the
 current actor dictionary (or ``None``) and must return ``None`` or an instance or list of
-``datasette.utils.permissions.PluginSQL`` (or a coroutine that resolves to that).
+``datasette.permissions.PermissionSQL`` (or a coroutine that resolves to that).
 
 Allow Alice to view a specific table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1486,7 +1486,7 @@ This plugin grants the actor with ``id == "alice"`` permission to perform the
 .. code-block:: python
 
     from datasette import hookimpl
-    from datasette.utils.permissions import PluginSQL
+    from datasette.permissions import PermissionSQL
 
 
     @hookimpl
@@ -1496,8 +1496,7 @@ This plugin grants the actor with ``id == "alice"`` permission to perform the
         if not actor or actor.get("id") != "alice":
             return None
 
-        return PluginSQL(
-            source="alice_sales_allow",
+        return PermissionSQL(
             sql="""
                 SELECT
                     'accounting' AS parent,
@@ -1505,7 +1504,6 @@ This plugin grants the actor with ``id == "alice"`` permission to perform the
                     1 AS allow,
                     'alice can view accounting/sales' AS reason
             """,
-            params={},
         )
 
 Restrict execute-sql to a database prefix
@@ -1518,7 +1516,7 @@ will pass through to the SQL snippet.
 .. code-block:: python
 
     from datasette import hookimpl
-    from datasette.utils.permissions import PluginSQL
+    from datasette.permissions import PermissionSQL
 
 
     @hookimpl
@@ -1526,8 +1524,7 @@ will pass through to the SQL snippet.
         if action != "execute-sql":
             return None
 
-        return PluginSQL(
-            source="analytics_execute_sql",
+        return PermissionSQL(
             sql="""
                 SELECT
                     parent,
@@ -1551,7 +1548,7 @@ with columns ``(actor_id, action, parent, child, allow, reason)``.
 .. code-block:: python
 
     from datasette import hookimpl
-    from datasette.utils.permissions import PluginSQL
+    from datasette.permissions import PermissionSQL
 
 
     @hookimpl
@@ -1559,8 +1556,7 @@ with columns ``(actor_id, action, parent, child, allow, reason)``.
         if not actor:
             return None
 
-        return PluginSQL(
-            source="permission_grants_table",
+        return PermissionSQL(
             sql="""
                 SELECT
                     parent,
@@ -1586,7 +1582,7 @@ The resolver will automatically apply the most specific rule.
 .. code-block:: python
 
     from datasette import hookimpl
-    from datasette.utils.permissions import PluginSQL
+    from datasette.permissions import PermissionSQL
 
 
     TRUSTED = {"alice", "bob"}
@@ -1600,17 +1596,14 @@ The resolver will automatically apply the most specific rule.
         actor_id = (actor or {}).get("id")
 
         if actor_id not in TRUSTED:
-            return PluginSQL(
-                source="view_table_root_deny",
+            return PermissionSQL(
                 sql="""
                     SELECT NULL AS parent, NULL AS child, 0 AS allow,
                            'default deny view-table' AS reason
                 """,
-                params={},
             )
 
-        return PluginSQL(
-            source="trusted_allow",
+        return PermissionSQL(
             sql="""
                 SELECT NULL AS parent, NULL AS child, 0 AS allow,
                        'default deny view-table' AS reason

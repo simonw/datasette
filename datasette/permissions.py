@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, NamedTuple
+from typing import Any, NamedTuple
 
 
 class Resource(ABC):
@@ -89,9 +89,11 @@ class PermissionSQL:
       reason TEXT
     """
 
-    source: str  # identifier used for auditing (e.g., plugin name)
     sql: str  # SQL that SELECTs the 4 columns above
-    params: Dict[str, Any]  # bound params for the SQL (values only; no ':' prefix)
+    params: dict[str, Any] | None = (
+        None  # bound params for the SQL (values only; no ':' prefix)
+    )
+    source: str | None = None  # System will set this to the plugin name
 
 
 # This is obsolete, replaced by Action and ResourceType

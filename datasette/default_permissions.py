@@ -29,13 +29,7 @@ async def permission_resources_sql(datasette, actor, action):
         # This allows root to access everything by default, but database-level
         # and table-level deny rules in config can still block specific resources
         sql = "SELECT NULL AS parent, NULL AS child, 1 AS allow, 'root user' AS reason"
-        rules.append(
-            PermissionSQL(
-                source="root_permissions",
-                sql=sql,
-                params={},
-            )
-        )
+        rules.append(PermissionSQL(sql=sql))
 
     # 3. Config-based permission rules
     config_rules = await _config_permission_rules(datasette, actor, action)
@@ -45,13 +39,7 @@ async def permission_resources_sql(datasette, actor, action):
     if action == "execute-sql" and not datasette.setting("default_allow_sql"):
         # Return a deny rule for all databases
         sql = "SELECT NULL AS parent, NULL AS child, 0 AS allow, 'default_allow_sql is false' AS reason"
-        rules.append(
-            PermissionSQL(
-                source="default_allow_sql_setting",
-                sql=sql,
-                params={},
-            )
-        )
+        rules.append(PermissionSQL(sql=sql))
         # Early return - don't add default allow rule
         if not rules:
             return None
@@ -77,13 +65,7 @@ async def permission_resources_sql(datasette, actor, action):
                 "SELECT NULL AS parent, NULL AS child, 1 AS allow, "
                 f"'{reason}' AS reason"
             )
-            rules.append(
-                PermissionSQL(
-                    source="default_permissions",
-                    sql=sql,
-                    params={},
-                )
-            )
+            rules.append(PermissionSQL(sql=sql))
 
     if not rules:
         return None
@@ -286,7 +268,7 @@ async def _config_permission_rules(datasette, actor, action) -> list[PermissionS
         params[f"{key}_reason"] = reason
 
     sql = "\nUNION ALL\n".join(parts)
-    return [PermissionSQL(source="config_permissions", sql=sql, params=params)]
+    return [PermissionSQL(sql=sql, params=params)]
 
 
 async def _restriction_permission_rules(
@@ -343,7 +325,6 @@ async def _restriction_permission_rules(
         sql = "SELECT NULL AS parent, NULL AS child, 0 AS allow, :deny_reason AS reason"
         return [
             PermissionSQL(
-                source="actor_restrictions",
                 sql=sql,
                 params={
                     "deny_reason": f"actor restrictions: {action} not in allowlist"
@@ -402,7 +383,7 @@ async def _restriction_permission_rules(
 
     sql = "\nUNION ALL\n".join(selects)
 
-    return [PermissionSQL(source="actor_restrictions", sql=sql, params=params)]
+    return [PermissionSQL(sql=sql, params=params)]
 
 
 def restrictions_allow_action(

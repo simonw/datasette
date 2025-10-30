@@ -36,6 +36,8 @@ jobs:
     - name: Install docs dependencies
       run: |
         pip install -e '.[docs]'
+    - name: Black
+      run: black --check .
     - name: Check if cog needs to be run
       run: |
         cog --check docs/*.rst

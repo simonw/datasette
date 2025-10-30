@@ -63,7 +63,7 @@ async def test_allowed_resources_global_allow(test_ds):
     def rules_callback(datasette, actor, action):
         if actor and actor.get("id") == "alice":
             sql = "SELECT NULL AS parent, NULL AS child, 1 AS allow, 'global: alice has access' AS reason"
-            return PermissionSQL(source="test", sql=sql, params={})
+            return PermissionSQL(sql=sql)
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
@@ -101,7 +101,7 @@ async def test_allowed_specific_resource(test_ds):
                 UNION ALL
                 SELECT 'analytics' AS parent, NULL AS child, 1 AS allow, 'analyst access' AS reason
             """
-            return PermissionSQL(source="test", sql=sql, params={})
+            return PermissionSQL(sql=sql)
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
@@ -145,7 +145,7 @@ async def test_allowed_resources_with_reasons(test_ds):
                 SELECT 'analytics' AS parent, 'sensitive' AS child, 0 AS allow,
                        'child: sensitive data denied' AS reason
             """
-            return PermissionSQL(source="test", sql=sql, params={})
+            return PermissionSQL(sql=sql)
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
@@ -186,7 +186,7 @@ async def test_child_deny_overrides_parent_allow(test_ds):
                 SELECT 'analytics' AS parent, 'sensitive' AS child, 0 AS allow,
                        'child: deny sensitive' AS reason
             """
-            return PermissionSQL(source="test", sql=sql, params={})
+            return PermissionSQL(sql=sql)
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
@@ -234,7 +234,7 @@ async def test_child_allow_overrides_parent_deny(test_ds):
                 SELECT 'production' AS parent, 'orders' AS child, 1 AS allow,
                        'child: carol can see orders' AS reason
             """
-            return PermissionSQL(source="test", sql=sql, params={})
+            return PermissionSQL(sql=sql)
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
@@ -283,7 +283,7 @@ async def test_sql_does_filtering_not_python(test_ds):
             SELECT 'analytics' AS parent, 'users' AS child, 1 AS allow,
                    'specific allow' AS reason
         """
-        return PermissionSQL(source="test", sql=sql, params={})
+        return PermissionSQL(sql=sql)
 
     plugin = PermissionRulesPlugin(rules_callback)
     pm.register(plugin, name="test_plugin")
@@ -338,13 +338,15 @@ async def test_no_permission_rules_returns_correct_schema():
     )
     await ds._refresh_schemas()
 
-    # Temporarily block all permission_resources_sql hooks to simulate no rules
-    original_hook = pm.hook.permission_resources_sql
+    # Temporarily unregister all permission_resources_sql providers to simulate no rules
+    hook_caller = pm.hook.permission_resources_sql
+    hookimpls = hook_caller.get_hookimpls()
+    removed_plugins = [
+        (impl.plugin_name, impl.plugin) for impl in hookimpls if impl.plugin is not None
+    ]
 
-    def empty_hook(*args, **kwargs):
-        return []
-
-    pm.hook.permission_resources_sql = empty_hook
+    for plugin_name, _ in removed_plugins:
+        pm.unregister(name=plugin_name)
 
     try:
         # Call build_allowed_resources_sql directly which will hit the no-rules code path
@@ -366,5 +368,6 @@ async def test_no_permission_rules_returns_correct_schema():
         assert len(result.rows) == 0
 
     finally:
-        # Restore original hook
-        pm.hook.permission_resources_sql = original_hook
+        # Restore original plugins in the order they were removed
+        for plugin_name, plugin in removed_plugins:
+            pm.register(plugin, name=plugin_name)

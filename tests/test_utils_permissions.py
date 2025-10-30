@@ -13,7 +13,6 @@ def db():
 
     path = tempfile.mktemp(suffix="demo.db")
     db = ds.add_database(Database(ds, path=path))
-    print(path)
     return db
 
 
@@ -25,7 +24,6 @@ NO_RULES_SQL = (
 def plugin_allow_all_for_user(user: str) -> Callable[[str], PermissionSQL]:
     def provider(action: str) -> PermissionSQL:
         return PermissionSQL(
-            "allow_all",
             """
             SELECT NULL AS parent, NULL AS child, 1 AS allow,
                    'global allow for ' || :allow_all_user || ' on ' || :allow_all_action AS reason
@@ -42,7 +40,6 @@ def plugin_deny_specific_table(
 ) -> Callable[[str], PermissionSQL]:
     def provider(action: str) -> PermissionSQL:
         return PermissionSQL(
-            "deny_specific_table",
             """
             SELECT :deny_specific_table_parent AS parent, :deny_specific_table_child AS child, 0 AS allow,
                    'deny ' || :deny_specific_table_parent || '/' || :deny_specific_table_child || ' for ' || :deny_specific_table_user || ' on ' || :deny_specific_table_action AS reason
@@ -62,7 +59,6 @@ def plugin_deny_specific_table(
 def plugin_org_policy_deny_parent(parent: str) -> Callable[[str], PermissionSQL]:
     def provider(action: str) -> PermissionSQL:
         return PermissionSQL(
-            "org_policy_parent_deny",
             """
             SELECT :org_policy_parent_deny_parent AS parent, NULL AS child, 0 AS allow,
                    'org policy: parent ' || :org_policy_parent_deny_parent || ' denied on ' || :org_policy_parent_deny_action AS reason
@@ -81,7 +77,6 @@ def plugin_allow_parent_for_user(
 ) -> Callable[[str], PermissionSQL]:
     def provider(action: str) -> PermissionSQL:
         return PermissionSQL(
-            "allow_parent",
             """
             SELECT :allow_parent_parent AS parent, NULL AS child, 1 AS allow,
                    'allow full parent for ' || :allow_parent_user || ' on ' || :allow_parent_action AS reason
@@ -102,7 +97,6 @@ def plugin_child_allow_for_user(
 ) -> Callable[[str], PermissionSQL]:
     def provider(action: str) -> PermissionSQL:
         return PermissionSQL(
-            "allow_child",
             """
             SELECT :allow_child_parent AS parent, :allow_child_child AS child, 1 AS allow,
                    'allow child for ' || :allow_child_user || ' on ' || :allow_child_action AS reason
@@ -122,7 +116,6 @@ def plugin_child_allow_for_user(
 def plugin_root_deny_for_all() -> Callable[[str], PermissionSQL]:
     def provider(action: str) -> PermissionSQL:
         return PermissionSQL(
-            "root_deny",
             """
             SELECT NULL AS parent, NULL AS child, 0 AS allow, 'root deny for all on ' || :root_deny_action AS reason
             """,
@@ -137,7 +130,6 @@ def plugin_conflicting_same_child_rules(
 ) -> List[Callable[[str], PermissionSQL]]:
     def allow_provider(action: str) -> PermissionSQL:
         return PermissionSQL(
-            "conflict_child_allow",
             """
             SELECT :conflict_child_allow_parent AS parent, :conflict_child_allow_child AS child, 1 AS allow,
                    'team grant at child for ' || :conflict_child_allow_user || ' on ' || :conflict_child_allow_action AS reason
@@ -153,7 +145,6 @@ def plugin_conflicting_same_child_rules(
 
     def deny_provider(action: str) -> PermissionSQL:
         return PermissionSQL(
-            "conflict_child_deny",
             """
             SELECT :conflict_child_deny_parent AS parent, :conflict_child_deny_child AS child, 0 AS allow,
                    'exception deny at child for ' || :conflict_child_deny_user || ' on ' || :conflict_child_deny_action AS reason
@@ -175,16 +166,10 @@ def plugin_allow_all_for_action(
 ) -> Callable[[str], PermissionSQL]:
     def provider(action: str) -> PermissionSQL:
         if action != allowed_action:
-            return PermissionSQL(
-                f"allow_all_{allowed_action}_noop",
-                NO_RULES_SQL,
-                {},
-            )
-        source_name = f"allow_all_{allowed_action}"
+            return PermissionSQL(NO_RULES_SQL)
         # Sanitize parameter names by replacing hyphens with underscores
-        param_prefix = source_name.replace("-", "_")
+        param_prefix = action.replace("-", "_")
         return PermissionSQL(
-            source_name,
             f"""
             SELECT NULL AS parent, NULL AS child, 1 AS allow,
                    'global allow for ' || :{param_prefix}_user || ' on ' || :{param_prefix}_action AS reason
@@ -513,7 +498,6 @@ async def test_actor_actor_id_action_parameters_available(db):
     def plugin_using_all_parameters() -> Callable[[str], PermissionSQL]:
         def provider(action: str) -> PermissionSQL:
             return PermissionSQL(
-                "test_all_params",
                 """
                 SELECT NULL AS parent, NULL AS child, 1 AS allow,
                        'Actor ID: ' || COALESCE(:actor_id, 'null') ||
@@ -521,8 +505,7 @@ async def test_actor_actor_id_action_parameters_available(db):
                        ', Action: ' || :action AS reason
                 WHERE :actor_id = 'test_user' AND :action = 'view-table'
                 AND json_extract(:actor, '$.role') = 'admin'
-                """,
-                {},
+                """
             )
 
         return provider
@@ -567,7 +550,6 @@ async def test_multiple_plugins_with_own_parameters(db):
             if action != "view-table":
                 return PermissionSQL("plugin_one", "SELECT NULL WHERE 0", {})
             return PermissionSQL(
-                "plugin_one",
                 """
                 SELECT database_name AS parent, table_name AS child,
                        1 AS allow, 'Plugin one used param: ' || :plugin1_param AS reason
@@ -586,7 +568,6 @@ async def test_multiple_plugins_with_own_parameters(db):
             if action != "view-table":
                 return PermissionSQL("plugin_two", "SELECT NULL WHERE 0", {})
             return PermissionSQL(
-                "plugin_two",
                 """
                 SELECT database_name AS parent, table_name AS child,
                        1 AS allow, 'Plugin two used param: ' || :plugin2_param AS reason

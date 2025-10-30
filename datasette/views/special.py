@@ -444,7 +444,7 @@ class PermissionRulesView(BaseView):
         WITH rules AS (
             {union_sql}
         )
-        SELECT parent, child, allow, reason
+        SELECT parent, child, allow, reason, source_plugin
         FROM rules
         ORDER BY allow DESC, (parent IS NOT NULL), parent, child
         LIMIT :limit OFFSET :offset
@@ -463,6 +463,7 @@ class PermissionRulesView(BaseView):
                     "resource": _resource_path(parent, child),
                     "allow": row["allow"],
                     "reason": row["reason"],
+                    "source_plugin": row["source_plugin"],
                 }
             )
 

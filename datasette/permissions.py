@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, NamedTuple
+from typing import Any, NamedTuple
 
 
 class Resource(ABC):
@@ -79,6 +79,9 @@ class Action:
     also_requires: str | None = None  # Optional action name that must also be allowed
 
 
+_reason_id = 1
+
+
 @dataclass
 class PermissionSQL:
     """
@@ -89,9 +92,25 @@ class PermissionSQL:
       reason TEXT
     """
 
-    source: str  # identifier used for auditing (e.g., plugin name)
     sql: str  # SQL that SELECTs the 4 columns above
-    params: Dict[str, Any]  # bound params for the SQL (values only; no ':' prefix)
+    params: dict[str, Any] | None = (
+        None  # bound params for the SQL (values only; no ':' prefix)
+    )
+    source: str | None = None  # System will set this to the plugin name
+
+    @classmethod
+    def allow(cls, reason: str, _allow: bool = True) -> "PermissionSQL":
+        global _reason_id
+        i = _reason_id
+        _reason_id += 1
+        return cls(
+            sql=f"SELECT NULL AS parent, NULL AS child, {1 if _allow else 0} AS allow, :reason_{i} AS reason",
+            params={f"reason_{i}": reason},
+        )
+
+    @classmethod
+    def deny(cls, reason: str) -> "PermissionSQL":
+        return cls.allow(reason=reason, _allow=False)
 
 
 # This is obsolete, replaced by Action and ResourceType

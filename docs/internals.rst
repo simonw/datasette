@@ -342,17 +342,6 @@ If no plugins that implement that hook are installed, the default return value l
         "2": {"id": "2"}
     }
 
-.. _datasette_permission_allowed:
-
-permission_allowed(actor, action, resource=None, default=...) (legacy)
----------------------------------------------------------------------
-
-The historic ``datasette.permission_allowed()`` method was removed in Datasette's
-resource-based permission refactor. References to it remain here to avoid broken
-links in the documentation. New code should use :ref:`datasette_allowed` and the
-Resource objects from :mod:`datasette.resources`. See :ref:`authentication_permissions`
-for details of the modern system.
-
 .. _datasette_allowed:
 
 await .allowed(\*, action, resource, actor=None)
@@ -368,8 +357,6 @@ await .allowed(\*, action, resource, actor=None)
     The authenticated actor. This is usually ``request.actor``. Defaults to ``None`` for unauthenticated requests.
 
 This method checks if the given actor has permission to perform the given action on the given resource. All parameters must be passed as keyword arguments.
-
-This is the modern resource-based permission checking method. It works with Resource objects that provide structured information about what is being accessed.
 
 Example usage:
 
@@ -398,57 +385,10 @@ Example usage:
 
 The method returns ``True`` if the permission is granted, ``False`` if denied.
 
-For legacy string/tuple based permission checking, use :ref:`datasette_permission_allowed` instead.
-
-.. _datasette_resource_for_action:
-
-.resource_for_action(action, parent, child)
-------------------------------------------
-
-``action`` - string
-    The name of the action the resource should be associated with.
-
-``parent`` - string or ``None``
-    The parent identifier for that resource, such as the database name.
-
-``child`` - string or ``None``
-    The child identifier for that resource, such as the table or query name.
-
-Creates an instance of the appropriate ``Resource`` subclass for the provided
-action. ``Resource`` classes describe the instance, database, table and query
-objects that permissions can apply to. This helper looks up the action's
-``resource_class`` and instantiates it with the supplied identifiers, raising a
-``ValueError`` if the action name is not recognized.
-
-This is particularly useful when constructing resources based on incoming data
-such as query string parameters. For example::
-
-    resource = datasette.resource_for_action(
-        "view-table", parent="fixtures", child="facetable"
-    )
-    allowed = await datasette.allowed(
-        action="view-table", resource=resource, actor=request.actor
-    )
-
-.. _datasette_allowed_resources_sql:
-
-await .allowed_resources_sql(\*, action, actor=None, parent=None, include_is_private=False)
--------------------------------------------------------------------------------------------
-
-Builds the SQL query that Datasette uses to determine which resources an actor
-may access for a specific action. Returns a ``(sql, params)`` tuple that can be
-executed against the internal ``catalog`` database. ``parent`` can be used to
-limit results to a specific database, and ``include_is_private`` adds a column
-indicating whether anonymous users would be denied access to that resource.
-
-Plugins that need to execute custom analysis over the raw allow/deny rules can
-use this helper to run the same query that powers the ``/-/allowed`` debugging
-interface.
-
 .. _datasette_allowed_resources:
 
 await .allowed_resources(action, actor=None, \*, parent=None, include_is_private=False)
---------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------
 
 Returns a list of ``Resource`` objects that the actor can access for the
 specified action. Each returned object is an instance of the action's
@@ -470,13 +410,28 @@ efficient way to list the databases, tables or queries visible to a user.
 .. _datasette_allowed_resources_with_reasons:
 
 await .allowed_resources_with_reasons(action, actor=None)
---------------------------------------------------------
+---------------------------------------------------------
 
 Returns a list of :class:`datasette.permissions.AllowedResource` tuples. Each
 tuple contains a ``Resource`` plus a list of strings describing the rules that
 granted access. This powers the debugging data shown by the ``/-/allowed``
 endpoint and is helpful when building administrative tooling that needs to show
 why access was granted.
+
+.. _datasette_allowed_resources_sql:
+
+await .allowed_resources_sql(\*, action, actor=None, parent=None, include_is_private=False)
+-------------------------------------------------------------------------------------------
+
+Builds the SQL query that Datasette uses to determine which resources an actor
+may access for a specific action. Returns a ``(sql, params)`` tuple that can be
+executed against the internal ``catalog`` database. ``parent`` can be used to
+limit results to a specific database, and ``include_is_private`` adds a column
+indicating whether anonymous users would be denied access to that resource.
+
+Plugins that need to execute custom analysis over the raw allow/deny rules can
+use this helper to run the same query that powers the ``/-/allowed`` debugging
+interface.
 
 .. _datasette_ensure_permission:
 

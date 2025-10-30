@@ -6,18 +6,18 @@
 
 Datasette doesn't require authentication by default. Any visitor to a Datasette instance can explore the full data and execute read-only SQL queries.
 
-Datasette's plugin system can be used to add many different styles of authentication, such as user accounts, single sign-on or API keys.
+Datasette can be configured to only allow authenticated users. Datasette's plugin system can be used to add many different styles of authentication, such as user accounts, single sign-on or API keys.
 
 .. _authentication_actor:
 
 Actors
 ======
 
-Through plugins, Datasette can support both authenticated users (with cookies) and authenticated API agents (via authentication tokens). The word "actor" is used to cover both of these cases.
+Through plugins, Datasette can support both authenticated users (with cookies) and authenticated API clients (via authentication tokens). The word "actor" is used to cover both of these cases.
 
-Every request to Datasette has an associated actor value, available in the code as ``request.actor``. This can be ``None`` for unauthenticated requests, or a JSON compatible Python dictionary for authenticated users or API agents.
+Every request to Datasette has an associated actor value, available in the code as ``request.actor``. This can be ``None`` for unauthenticated requests, or a JSON compatible Python dictionary for authenticated users or API clients.
 
-The actor dictionary can be any shape - the design of that data structure is left up to the plugins. A useful convention is to include an ``"id"`` string, as demonstrated by the "root" actor below.
+The actor dictionary can be any shape - the design of that data structure is left up to the plugins. Actors should always include a unique ``"id"`` string, as demonstrated by the "root" actor below.
 
 Plugins can use the :ref:`plugin_hook_actor_from_request` hook to implement custom logic for authenticating an actor based on the incoming HTTP request.
 
@@ -32,24 +32,21 @@ The one exception is the "root" account, which you can sign into while using Dat
 
 The ``--root`` flag is designed for local development and testing. When you start Datasette with ``--root``, the root user automatically receives every permission, including:
 
-* All view permissions (view-instance, view-database, view-table, etc.)
-* All write permissions (insert-row, update-row, delete-row, create-table, alter-table, drop-table)
-* Debug permissions (permissions-debug, debug-menu)
+* All view permissions (``view-instance``, ``view-database``, ``view-table``, etc.)
+* All write permissions (``insert-row``, ``update-row``, ``delete-row``, ``create-table``, ``alter-table``, ``drop-table``)
+* Debug permissions (``permissions-debug``, ``debug-menu``)
 * Any custom permissions defined by plugins
 
 If you add explicit deny rules in ``datasette.yaml`` those can still block the
-root actor from specific databases or tables. The ``--root`` flag sets an
-internal ``root_enabled`` switch—without it, a signed-in user with ``{"id":
-"root"}`` is treated like any other actor.
+root actor from specific databases or tables.
 
-.. warning::
-    The ``--root`` flag should only be used for local development. Never use it in production or on publicly accessible servers.
+The ``--root`` flag sets an internal ``root_enabled`` switch—without it, a signed-in user with ``{"id": "root"}`` is treated like any other actor.
 
 To sign in as root, start Datasette using the ``--root`` command-line option, like this::
 
     datasette --root
 
-::
+Datasette will output a single-use-only login URL on startup::
 
     http://127.0.0.1:8001/-/auth-token?token=786fc524e0199d70dc9a581d851f466244e114ca92f33aa3b42a139e9388daa7
     INFO:     Started server process [25801]
@@ -57,7 +54,7 @@ To sign in as root, start Datasette using the ``--root`` command-line option, li
     INFO:     Application startup complete.
     INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
 
-The URL on the first line includes a one-use token which can be used to sign in as the "root" actor in your browser. Click on that link and then visit ``http://127.0.0.1:8001/-/actor`` to confirm that you are authenticated as an actor that looks like this:
+Click on that link and then visit ``http://127.0.0.1:8001/-/actor`` to confirm that you are authenticated as an actor that looks like this:
 
 .. code-block:: json
 
@@ -82,21 +79,16 @@ An **action** is a string describing the action the actor would like to perform.
 
 A **resource** is the item the actor wishes to interact with - for example a specific database or table. Some actions, such as ``permissions-debug``, are not associated with a particular resource.
 
-Datasette's built-in view permissions (``view-database``, ``view-table`` etc) default to *allow* - unless you :ref:`configure additional permission rules <authentication_permissions_config>` unauthenticated users will be allowed to access content.
+Datasette's built-in view actions (``view-database``, ``view-table`` etc) are allowed by Datasette's default configuration: unless you :ref:`configure additional permission rules <authentication_permissions_config>` unauthenticated users will be allowed to access content.
 
-Permissions with potentially harmful effects should default to *deny*. Plugin authors should account for this when designing new plugins - for example, the `datasette-upload-csvs <https://github.com/simonw/datasette-upload-csvs>`__ plugin defaults to deny so that installations don't accidentally allow unauthenticated users to create new tables by uploading a CSV file.
+Other actions, including those introduced by plugins, will default to *deny*.
 
 .. _authentication_permissions_explained:
 
 How permissions are resolved
 ----------------------------
 
-Datasette now performs permission checks using :ref:`datasette_allowed`, which
-accepts keyword arguments for ``action``, ``resource`` and an optional
-``actor``. ``resource`` should be an instance of the appropriate
-``Resource`` subclass from :mod:`datasette.resources`—for example
-``InstanceResource()``, ``DatabaseResource(database="...``)`` or
-``TableResource(database="...", table="...")``.
+Datasette performs permission checks using the internal :ref:`datasette_allowed`, method which accepts keyword arguments for ``action``, ``resource`` and an optiona ``actor``. ``resource`` should be an instance of the appropriate ``Resource`` subclass from :mod:`datasette.resources`—for example ``InstanceResource()``, ``DatabaseResource(database="...``)`` or ``TableResource(database="...", table="...")``. This defaults to ``InstanceResource()`` if not specified.
 
 When a check runs Datasette gathers allow/deny rules from multiple sources and
 compiles them into a SQL query. The resulting query describes all of the
@@ -1219,14 +1211,14 @@ The /-/logout page
 
 The page at ``/-/logout`` provides the ability to log out of a ``ds_actor`` cookie authentication session.
 
-.. _permissions:
+.. _actions:
 
-Built-in permissions
-====================
+Built-in actions
+================
 
 This section lists all of the permission checks that are carried out by Datasette core, along with the ``resource`` if it was passed.
 
-.. _permissions_view_instance:
+.. _actions_view_instance:
 
 view-instance
 -------------
@@ -1235,7 +1227,7 @@ Top level permission - Actor is allowed to view any pages within this instance, 
 
 Default *allow*.
 
-.. _permissions_view_database:
+.. _actions_view_database:
 
 view-database
 -------------
@@ -1247,7 +1239,7 @@ Actor is allowed to view a database page, e.g. https://latest.datasette.io/fixtu
 
 Default *allow*.
 
-.. _permissions_view_database_download:
+.. _actions_view_database_download:
 
 view-database-download
 ----------------------
@@ -1259,7 +1251,7 @@ Actor is allowed to download a database, e.g. https://latest.datasette.io/fixtur
 
 Default *allow*.
 
-.. _permissions_view_table:
+.. _actions_view_table:
 
 view-table
 ----------
@@ -1271,7 +1263,7 @@ Actor is allowed to view a table (or view) page, e.g. https://latest.datasette.i
 
 Default *allow*.
 
-.. _permissions_view_query:
+.. _actions_view_query:
 
 view-query
 ----------
@@ -1283,7 +1275,7 @@ Actor is allowed to view (and execute) a :ref:`canned query <canned_queries>` pa
 
 Default *allow*.
 
-.. _permissions_insert_row:
+.. _actions_insert_row:
 
 insert-row
 ----------
@@ -1295,7 +1287,7 @@ Actor is allowed to insert rows into a table.
 
 Default *deny*.
 
-.. _permissions_delete_row:
+.. _actions_delete_row:
 
 delete-row
 ----------
@@ -1307,7 +1299,7 @@ Actor is allowed to delete rows from a table.
 
 Default *deny*.
 
-.. _permissions_update_row:
+.. _actions_update_row:
 
 update-row
 ----------
@@ -1319,7 +1311,7 @@ Actor is allowed to update rows in a table.
 
 Default *deny*.
 
-.. _permissions_create_table:
+.. _actions_create_table:
 
 create-table
 ------------
@@ -1331,7 +1323,7 @@ Actor is allowed to create a database table.
 
 Default *deny*.
 
-.. _permissions_alter_table:
+.. _actions_alter_table:
 
 alter-table
 -----------
@@ -1343,7 +1335,7 @@ Actor is allowed to alter a database table.
 
 Default *deny*.
 
-.. _permissions_drop_table:
+.. _actions_drop_table:
 
 drop-table
 ----------
@@ -1355,7 +1347,7 @@ Actor is allowed to drop a database table.
 
 Default *deny*.
 
-.. _permissions_execute_sql:
+.. _actions_execute_sql:
 
 execute-sql
 -----------
@@ -1367,7 +1359,7 @@ Actor is allowed to run arbitrary SQL queries against a specific database, e.g. 
 
 Default *allow*. See also :ref:`the default_allow_sql setting <setting_default_allow_sql>`.
 
-.. _permissions_permissions_debug:
+.. _actions_permissions_debug:
 
 permissions-debug
 -----------------
@@ -1376,7 +1368,7 @@ Actor is allowed to view the ``/-/permissions`` debug page.
 
 Default *deny*.
 
-.. _permissions_debug_menu:
+.. _actions_debug_menu:
 
 debug-menu
 ----------

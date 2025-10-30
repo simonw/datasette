@@ -23,40 +23,10 @@ The core pattern is:
 
 from typing import TYPE_CHECKING
 
-from datasette.plugins import pm
-from datasette.utils import await_me_maybe
-from datasette.permissions import PermissionSQL
+from datasette.utils.permissions import gather_permission_sql_from_hooks
 
 if TYPE_CHECKING:
     from datasette.app import Datasette
-
-
-def _process_permission_results(results) -> tuple[list[str], dict]:
-    """
-    Process plugin permission results into SQL fragments and parameters.
-
-    Args:
-        results: Results from permission_resources_sql hook (may be list or single PermissionSQL)
-
-    Returns:
-        A tuple of (list of SQL strings, dict of parameters)
-    """
-    rule_sqls = []
-    all_params = {}
-
-    if results is None:
-        return rule_sqls, all_params
-
-    if isinstance(results, list):
-        for plugin_sql in results:
-            if isinstance(plugin_sql, PermissionSQL):
-                rule_sqls.append(plugin_sql.sql)
-                all_params.update(plugin_sql.params)
-    elif isinstance(results, PermissionSQL):
-        rule_sqls.append(results.sql)
-        all_params.update(results.params)
-
-    return rule_sqls, all_params
 
 
 async def build_allowed_resources_sql(
@@ -179,22 +149,24 @@ async def _build_single_action_sql(
     # Get base resources SQL from the resource class
     base_resources_sql = await action_obj.resource_class.resources_sql(datasette)
 
-    # Get all permission rule fragments from plugins via the hook
-    rule_results = pm.hook.permission_resources_sql(
+    permission_sqls = await gather_permission_sql_from_hooks(
         datasette=datasette,
         actor=actor,
         action=action,
     )
 
-    # Combine rule fragments and collect parameters
     all_params = {}
     rule_sqls = []
 
-    for result in rule_results:
-        result = await await_me_maybe(result)
-        sqls, params = _process_permission_results(result)
-        rule_sqls.extend(sqls)
-        all_params.update(params)
+    for permission_sql in permission_sqls:
+        rule_sqls.append(
+            f"""
+            SELECT parent, child, allow, reason, '{permission_sql.source}' AS source_plugin FROM (
+                {permission_sql.sql}
+            )
+            """.strip()
+        )
+        all_params.update(permission_sql.params or {})
 
     # If no rules, return empty result (deny all)
     if not rule_sqls:
@@ -219,28 +191,21 @@ async def _build_single_action_sql(
 
     # If include_is_private, we need to build anonymous permissions too
     if include_is_private:
-        # Get anonymous permission rules
-        anon_rule_results = pm.hook.permission_resources_sql(
+        anon_permission_sqls = await gather_permission_sql_from_hooks(
             datasette=datasette,
             actor=None,
             action=action,
         )
-        anon_rule_sqls = []
-        anon_params = {}
-        for result in anon_rule_results:
-            result = await await_me_maybe(result)
-            sqls, params = _process_permission_results(result)
-            anon_rule_sqls.extend(sqls)
-            # Namespace anonymous params to avoid conflicts
-            for key, value in params.items():
-                anon_params[f"anon_{key}"] = value
-
-        # Rewrite anonymous SQL to use namespaced params
         anon_sqls_rewritten = []
-        for sql in anon_rule_sqls:
-            for key in params.keys():
-                sql = sql.replace(f":{key}", f":anon_{key}")
-            anon_sqls_rewritten.append(sql)
+        anon_params = {}
+
+        for permission_sql in anon_permission_sqls:
+            rewritten_sql = permission_sql.sql
+            for key, value in (permission_sql.params or {}).items():
+                anon_key = f"anon_{key}"
+                anon_params[anon_key] = value
+                rewritten_sql = rewritten_sql.replace(f":{key}", f":{anon_key}")
+            anon_sqls_rewritten.append(rewritten_sql)
 
         all_params.update(anon_params)
 
@@ -261,8 +226,8 @@ async def _build_single_action_sql(
             "  SELECT b.parent, b.child,",
             "         MAX(CASE WHEN ar.allow = 0 THEN 1 ELSE 0 END) AS any_deny,",
             "         MAX(CASE WHEN ar.allow = 1 THEN 1 ELSE 0 END) AS any_allow,",
-            "         json_group_array(CASE WHEN ar.allow = 0 THEN ar.reason END) AS deny_reasons,",
-            "         json_group_array(CASE WHEN ar.allow = 1 THEN ar.reason END) AS allow_reasons",
+            "         json_group_array(CASE WHEN ar.allow = 0 THEN ar.source_plugin || ': ' || ar.reason END) AS deny_reasons,",
+            "         json_group_array(CASE WHEN ar.allow = 1 THEN ar.source_plugin || ': ' || ar.reason END) AS allow_reasons",
             "  FROM base b",
             "  LEFT JOIN all_rules ar ON ar.parent = b.parent AND ar.child = b.child",
             "  GROUP BY b.parent, b.child",
@@ -271,8 +236,8 @@ async def _build_single_action_sql(
             "  SELECT b.parent, b.child,",
             "         MAX(CASE WHEN ar.allow = 0 THEN 1 ELSE 0 END) AS any_deny,",
             "         MAX(CASE WHEN ar.allow = 1 THEN 1 ELSE 0 END) AS any_allow,",
-            "         json_group_array(CASE WHEN ar.allow = 0 THEN ar.reason END) AS deny_reasons,",
-            "         json_group_array(CASE WHEN ar.allow = 1 THEN ar.reason END) AS allow_reasons",
+            "         json_group_array(CASE WHEN ar.allow = 0 THEN ar.source_plugin || ': ' || ar.reason END) AS deny_reasons,",
+            "         json_group_array(CASE WHEN ar.allow = 1 THEN ar.source_plugin || ': ' || ar.reason END) AS allow_reasons",
             "  FROM base b",
             "  LEFT JOIN all_rules ar ON ar.parent = b.parent AND ar.child IS NULL",
             "  GROUP BY b.parent, b.child",
@@ -281,8 +246,8 @@ async def _build_single_action_sql(
             "  SELECT b.parent, b.child,",
             "         MAX(CASE WHEN ar.allow = 0 THEN 1 ELSE 0 END) AS any_deny,",
             "         MAX(CASE WHEN ar.allow = 1 THEN 1 ELSE 0 END) AS any_allow,",
-            "         json_group_array(CASE WHEN ar.allow = 0 THEN ar.reason END) AS deny_reasons,",
-            "         json_group_array(CASE WHEN ar.allow = 1 THEN ar.reason END) AS allow_reasons",
+            "         json_group_array(CASE WHEN ar.allow = 0 THEN ar.source_plugin || ': ' || ar.reason END) AS deny_reasons,",
+            "         json_group_array(CASE WHEN ar.allow = 1 THEN ar.source_plugin || ': ' || ar.reason END) AS allow_reasons",
             "  FROM base b",
             "  LEFT JOIN all_rules ar ON ar.parent IS NULL AND ar.child IS NULL",
             "  GROUP BY b.parent, b.child",
@@ -430,32 +395,31 @@ async def build_permission_rules_sql(
     if not action_obj:
         raise ValueError(f"Unknown action: {action}")
 
-    # Get all permission rule fragments from plugins via the hook
-    rule_results = pm.hook.permission_resources_sql(
+    permission_sqls = await gather_permission_sql_from_hooks(
         datasette=datasette,
         actor=actor,
         action=action,
     )
 
-    # Combine rule fragments and collect parameters
-    all_params = {}
-    rule_sqls = []
-
-    for result in rule_results:
-        result = await await_me_maybe(result)
-        sqls, params = _process_permission_results(result)
-        rule_sqls.extend(sqls)
-        all_params.update(params)
-
-    # Build the UNION query
-    if not rule_sqls:
-        # Return empty result set
+    if not permission_sqls:
         return (
             "SELECT NULL AS parent, NULL AS child, 0 AS allow, NULL AS reason, NULL AS source_plugin WHERE 0",
             {},
         )
 
-    rules_union = " UNION ALL ".join(rule_sqls)
+    union_parts = []
+    all_params = {}
+    for permission_sql in permission_sqls:
+        union_parts.append(
+            f"""
+            SELECT parent, child, allow, reason, '{permission_sql.source}' AS source_plugin FROM (
+                {permission_sql.sql}
+            )
+            """.strip()
+        )
+        all_params.update(permission_sql.params or {})
+
+    rules_union = " UNION ALL ".join(union_parts)
     return rules_union, all_params
 
 

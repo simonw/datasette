@@ -21,7 +21,7 @@ jobs:
       with:
         python-version: '3.12'
         cache: 'pip'
-        cache-dependency-path: '**/setup.py'
+        cache-dependency-path: '**/pyproject.toml'
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip

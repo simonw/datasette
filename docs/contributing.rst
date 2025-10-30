@@ -42,7 +42,7 @@ The next step is to create a virtual environment for your project and use it to 
     # Install Datasette and its testing dependencies
     python3 -m pip install -e '.[test]'
 
-That last line does most of the work: ``pip install -e`` means "install this package in a way that allows me to edit the source code in place". The ``.[test]`` option means "use the setup.py in this directory and install the optional testing dependencies as well".
+That last line does most of the work: ``pip install -e`` means "install this package in a way that allows me to edit the source code in place". The ``.[test]`` option means "install the optional testing dependencies as well".
 
 .. _contributing_running_tests:
 
@@ -160,7 +160,7 @@ If any of your code does not conform to Black you can run this to automatically 
 
 ::
 
-    reformatted ../datasette/setup.py
+    reformatted ../datasette/app.py
     All done! ✨ 🍰 ✨
     1 file reformatted, 94 files left unchanged.
 

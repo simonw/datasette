@@ -600,6 +600,9 @@ class AllowDebugView(BaseView):
                 "error": "\n\n".join(errors) if errors else "",
                 "actor_input": actor_input,
                 "allow_input": allow_input,
+                "has_debug_permission": await self.ds.allowed(
+                    action="permissions-debug", actor=request.actor
+                ),
             },
         )
 

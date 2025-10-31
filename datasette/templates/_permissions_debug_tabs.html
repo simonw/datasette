@@ -49,5 +49,6 @@
     <a href="{{ urls.path('-/allowed') }}{{ query_string }}" {% if current_tab == "allowed" %}class="active"{% endif %}>Allowed</a>
     <a href="{{ urls.path('-/rules') }}{{ query_string }}" {% if current_tab == "rules" %}class="active"{% endif %}>Rules</a>
     <a href="{{ urls.path('-/actions') }}" {% if current_tab == "actions" %}class="active"{% endif %}>Actions</a>
+    <a href="{{ urls.path('-/allow-debug') }}" {% if current_tab == "allow_debug" %}class="active"{% endif %}>Allow debug</a>
 </nav>
 {% endif %}

@@ -6,8 +6,8 @@ Changelog
 
 .. _v1_0_a20:
 
-1.0a20 (2025-10-31)
--------------------
+UNRELEASED 1.0a20 (2025-??-??)
+------------------------------
 
 This alpha introduces a major breaking change prior to the 1.0 release of Datasette concerning Datasette's permission system.
 

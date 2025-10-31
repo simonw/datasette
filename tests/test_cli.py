@@ -447,17 +447,6 @@ def test_serve_duplicate_database_names(tmpdir):
     assert {db["name"] for db in databases} == {"db", "db_2"}
 
 
-def test_serve_deduplicate_same_database_path(tmpdir):
-    "'datasette db.db db.db' should only attach one database, /db"
-    runner = CliRunner()
-    db_path = str(tmpdir / "db.db")
-    sqlite3.connect(db_path).execute("vacuum")
-    result = runner.invoke(cli, [db_path, db_path, "--get", "/-/databases.json"])
-    assert result.exit_code == 0, result.output
-    databases = json.loads(result.output)
-    assert {db["name"] for db in databases} == {"db"}
-
-
 @pytest.mark.parametrize(
     "filename", ["test-database (1).sqlite", "database (1).sqlite"]
 )
@@ -496,3 +485,57 @@ def test_internal_db(tmpdir):
     )
     assert result.exit_code == 0
     assert internal_path.exists()
+
+
+def test_duplicate_database_files_error(tmpdir):
+    """Test that passing the same database file multiple times raises an error"""
+    runner = CliRunner()
+    db_path = str(tmpdir / "test.db")
+    sqlite3.connect(db_path).execute("vacuum")
+
+    # Test with exact duplicate
+    result = runner.invoke(cli, ["serve", db_path, db_path, "--get", "/"])
+    assert result.exit_code == 1
+    assert "Duplicate database file" in result.output
+    assert "both refer to" in result.output
+
+    # Test with different paths to same file (relative vs absolute)
+    result2 = runner.invoke(
+        cli, ["serve", db_path, str(pathlib.Path(db_path).resolve()), "--get", "/"]
+    )
+    assert result2.exit_code == 1
+    assert "Duplicate database file" in result2.output
+
+    # Test that a file in the config_dir can't also be passed explicitly
+    config_dir = tmpdir / "config"
+    config_dir.mkdir()
+    config_db_path = str(config_dir / "data.db")
+    sqlite3.connect(config_db_path).execute("vacuum")
+
+    result3 = runner.invoke(
+        cli, ["serve", config_db_path, str(config_dir), "--get", "/"]
+    )
+    assert result3.exit_code == 1
+    assert "Duplicate database file" in result3.output
+    assert "both refer to" in result3.output
+
+    # Test that mixing a file NOT in the directory with a directory works fine
+    other_db_path = str(tmpdir / "other.db")
+    sqlite3.connect(other_db_path).execute("vacuum")
+
+    result4 = runner.invoke(
+        cli, ["serve", other_db_path, str(config_dir), "--get", "/-/databases.json"]
+    )
+    assert result4.exit_code == 0
+    databases = json.loads(result4.output)
+    assert {db["name"] for db in databases} == {"other", "data"}
+
+    # Test that multiple directories raise an error
+    config_dir2 = tmpdir / "config2"
+    config_dir2.mkdir()
+
+    result5 = runner.invoke(
+        cli, ["serve", str(config_dir), str(config_dir2), "--get", "/"]
+    )
+    assert result5.exit_code == 1
+    assert "Cannot pass multiple directories" in result5.output

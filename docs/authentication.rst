@@ -75,7 +75,7 @@ The key question the permissions system answers is this:
 
 **Actors** are :ref:`described above <authentication_actor>`.
 
-An **action** is a string describing the action the actor would like to perform. A full list is :ref:`provided below <permissions>` - examples include ``view-table`` and ``execute-sql``.
+An **action** is a string describing the action the actor would like to perform. A full list is :ref:`provided below <actions>` - examples include ``view-table`` and ``execute-sql``.
 
 A **resource** is the item the actor wishes to interact with - for example a specific database or table. Some actions, such as ``permissions-debug``, are not associated with a particular resource.
 
@@ -98,7 +98,7 @@ resources an actor may access for that action, together with the reasons those
 resources were allowed or denied. The combined sources are:
 
 * ``allow`` blocks configured in :ref:`datasette.yaml <authentication_permissions_config>`.
-* :ref:`Actor restrictions <authentication_permissions_tokens>` encoded into the actor dictionary or API token.
+* :ref:`Actor restrictions <authentication_cli_create_token_restrict>` encoded into the actor dictionary or API token.
 * The "root" user shortcut when ``--root`` (or :attr:`Datasette.root_enabled <datasette.app.Datasette.root_enabled>`) is active, replying ``True`` to all permission chucks unless configuration rules deny them at a more specific level.
 * Any additional SQL provided by plugins implementing :ref:`plugin_hook_permission_resources_sql`.
 
@@ -437,7 +437,7 @@ You can control the following:
 * Access to specific tables and views
 * Access to specific :ref:`canned_queries`
 
-If a user cannot access a specific database, they will not be able to access tables, views or queries within that database. If a user cannot access the instance they will not be able to access any of the databases, tables, views or queries.
+If a user has permission to view a table they will be able to view that table, independent of if they have permission to view the database or instance that the table exists within.
 
 .. _authentication_permissions_instance:
 
@@ -675,7 +675,7 @@ Controlling the ability to execute arbitrary SQL
 
 Datasette defaults to allowing any site visitor to execute their own custom SQL queries, for example using the form on `the database page <https://latest.datasette.io/fixtures>`__ or by appending a ``?_where=`` parameter to the table page `like this <https://latest.datasette.io/fixtures/facetable?_where=_city_id=1>`__.
 
-Access to this ability is controlled by the :ref:`permissions_execute_sql` permission.
+Access to this ability is controlled by the :ref:`actions_execute_sql` permission.
 
 The easiest way to disable arbitrary SQL queries is using the :ref:`default_allow_sql setting <setting_default_allow_sql>` when you first start Datasette running.
 
@@ -964,7 +964,6 @@ To create a token that never expires using a specific secret::
 
     datasette create-token root --secret my-secret-goes-here
 
-.. _authentication_permissions_tokens:
 .. _authentication_cli_create_token_restrict:
 
 Restricting the actions that a token can perform
@@ -1055,7 +1054,7 @@ raise a ``Forbidden`` error automatically.
 
 Plugins that define new operations should return :class:`~datasette.permissions.Action`
 objects from :ref:`plugin_register_actions` and can supply additional allow/deny
-rules by yielding :class:`~datasette.permissions.PermissionSQL` objects from the
+rules by returning :class:`~datasette.permissions.PermissionSQL` objects from the
 :ref:`plugin_hook_permission_resources_sql` hook. Those rules are merged with
 configuration ``allow`` blocks and actor restrictions to determine the final
 result for each check.
@@ -1078,12 +1077,14 @@ The currently authenticated actor is made available to plugins as ``request.acto
 
 .. _PermissionsDebugView:
 
-The permissions debug tool
-==========================
+Permissions debug tools
+=======================
 
-The debug tool at ``/-/permissions`` is only available to the :ref:`authenticated root user <authentication_root>` (or any actor granted the ``permissions-debug`` action).
+The debug tool at ``/-/permissions`` is available to any actor with the ``permissions-debug`` permission. By default this is just the :ref:`authenticated root user <authentication_root>` but you can open it up to all users by starting Datasette like this::
 
-It shows the thirty most recent permission checks that have been carried out by the Datasette instance.
+    datasette -s permissions.permissions-debug true data.db
+
+The page shows the permission checks that have been carried out by the Datasette instance.
 
 It also provides an interface for running hypothetical permission checks against a hypothetical actor. This is a useful way of confirming that your configured permissions work in the way you expect.
 
@@ -1092,40 +1093,20 @@ This is designed to help administrators and plugin authors understand exactly ho
 .. _AllowedResourcesView:
 
 Allowed resources view
-======================
+----------------------
 
-The ``/-/allowed`` endpoint displays resources that the current actor can access for a supplied ``action`` query string argument.
+The ``/-/allowed`` endpoint displays resources that the current actor can access for a specified ``action``.
 
 This endpoint provides an interactive HTML form interface. Add ``.json`` to the URL path (e.g. ``/-/allowed.json``) to get the raw JSON response instead.
 
 Pass ``?action=view-table`` (or another action) to select the action. Optional ``parent=`` and ``child=`` query parameters can narrow the results to a specific database/table pair.
 
-This endpoint is publicly accessible to help users understand their own permissions. However, potentially sensitive fields (``reason`` and ``source_plugin``) are only included in responses for users with the ``permissions-debug`` permission.
-
-Datasette includes helper endpoints for exploring the action-based permission resolver:
-
-``/-/actions``
-    Lists every registered action, including abbreviations, descriptions and resource requirements.
-
-``/-/allowed``
-    Returns a paginated list of resources that the current actor is allowed to access for a given action. Pass ``?action=view-table`` (or another action) to select the action, and optional ``parent=``/``child=`` query parameters to narrow the results to a specific database/table pair.
-
-``/-/rules``
-    Lists the raw permission rules (both allow and deny) contributing to each resource for the supplied action. This includes configuration-derived and plugin-provided rules. **Requires the permissions-debug permission** (only available to the root user by default).
-
-``/-/check``
-    Evaluates whether the current actor can perform ``action`` against an optional ``parent``/``child`` resource tuple, returning the winning rule and reason.
-
-These endpoints work in conjunction with :ref:`plugin_hook_permission_resources_sql` and make it easier to verify that configuration allow blocks and plugins are behaving as intended.
-
-All three endpoints support both HTML and JSON responses. Visit the endpoint directly for an interactive HTML form interface, or add ``.json`` to the URL for a raw JSON response.
-
-**Security note:** The ``/-/check`` and ``/-/allowed`` endpoints are publicly accessible to help users understand their own permissions. However, potentially sensitive fields (``reason`` and ``source_plugin``) are only included in responses for users with the ``permissions-debug`` permission. The ``/-/rules`` endpoint requires the ``permissions-debug`` permission for all access.
+This endpoint is publicly accessible to help users understand their own permissions. The potentially sensitive ``reason`` field is only shown to users with the ``permissions-debug`` permission - it shows the plugins and explanatory reasons that were responsible for each decision.
 
 .. _PermissionRulesView:
 
 Permission rules view
-=====================
+---------------------
 
 The ``/-/rules`` endpoint displays all permission rules (both allow and deny) for each candidate resource for the requested action.
 
@@ -1133,20 +1114,18 @@ This endpoint provides an interactive HTML form interface. Add ``.json`` to the 
 
 Pass ``?action=`` as a query parameter to specify which action to check.
 
-**Requires the permissions-debug permission** - this endpoint returns a 403 Forbidden error for users without this permission.
+This endpoint requires the ``permissions-debug`` permission.
 
 .. _PermissionCheckView:
 
 Permission check view
-=====================
+---------------------
 
 The ``/-/check`` endpoint evaluates a single action/resource pair and returns information indicating whether the access was allowed along with diagnostic information.
 
 This endpoint provides an interactive HTML form interface. Add ``.json`` to the URL path (e.g. ``/-/check.json?action=view-instance``) to get the raw JSON response instead.
 
 Pass ``?action=`` to specify the action to check, and optional ``?parent=`` and ``?child=`` parameters to specify the resource.
-
-This endpoint is publicly accessible to help users understand their own permissions. However, potentially sensitive fields (``reason`` and ``source_plugin``) are only included in responses for users with the ``permissions-debug`` permission.
 
 .. _authentication_ds_actor:
 
@@ -1227,8 +1206,6 @@ view-instance
 
 Top level permission - Actor is allowed to view any pages within this instance, starting at https://latest.datasette.io/
 
-Default *allow*.
-
 .. _actions_view_database:
 
 view-database
@@ -1236,10 +1213,8 @@ view-database
 
 Actor is allowed to view a database page, e.g. https://latest.datasette.io/fixtures
 
-``resource`` - string
-    The name of the database
-
-Default *allow*.
+``resource`` - ``datasette.permissions.DatabaseResource(database)``
+    ``database`` is the name of the database (string)
 
 .. _actions_view_database_download:
 
@@ -1248,10 +1223,8 @@ view-database-download
 
 Actor is allowed to download a database, e.g. https://latest.datasette.io/fixtures.db
 
-``resource`` - string
-    The name of the database
-
-Default *allow*.
+``resource`` - ``datasette.resources.DatabaseResource(database)``
+    ``database`` is the name of the database (string)
 
 .. _actions_view_table:
 
@@ -1260,10 +1233,10 @@ view-table
 
 Actor is allowed to view a table (or view) page, e.g. https://latest.datasette.io/fixtures/complex_foreign_keys
 
-``resource`` - tuple: (string, string)
-    The name of the database, then the name of the table
+``resource`` - ``datasette.resources.TableResource(database, table)``
+    ``database`` is the name of the database (string)
 
-Default *allow*.
+    ``table`` is the name of the table (string)
 
 .. _actions_view_query:
 
@@ -1272,10 +1245,10 @@ view-query
 
 Actor is allowed to view (and execute) a :ref:`canned query <canned_queries>` page, e.g. https://latest.datasette.io/fixtures/pragma_cache_size - this includes executing :ref:`canned_queries_writable`.
 
-``resource`` - tuple: (string, string)
-    The name of the database, then the name of the canned query
-
-Default *allow*.
+``resource`` - ``datasette.resources.QueryResource(database, query)``
+    ``database`` is the name of the database (string)
+    
+    ``query`` is the name of the canned query (string)
 
 .. _actions_insert_row:
 
@@ -1284,10 +1257,10 @@ insert-row
 
 Actor is allowed to insert rows into a table.
 
-``resource`` - tuple: (string, string)
-    The name of the database, then the name of the table
+``resource`` - ``datasette.resources.TableResource(database, table)``
+    ``database`` is the name of the database (string)
 
-Default *deny*.
+    ``table`` is the name of the table (string)
 
 .. _actions_delete_row:
 
@@ -1296,10 +1269,10 @@ delete-row
 
 Actor is allowed to delete rows from a table.
 
-``resource`` - tuple: (string, string)
-    The name of the database, then the name of the table
+``resource`` - ``datasette.resources.TableResource(database, table)``
+    ``database`` is the name of the database (string)
 
-Default *deny*.
+    ``table`` is the name of the table (string)
 
 .. _actions_update_row:
 
@@ -1308,10 +1281,10 @@ update-row
 
 Actor is allowed to update rows in a table.
 
-``resource`` - tuple: (string, string)
-    The name of the database, then the name of the table
+``resource`` - ``datasette.resources.TableResource(database, table)``
+    ``database`` is the name of the database (string)
 
-Default *deny*.
+    ``table`` is the name of the table (string)
 
 .. _actions_create_table:
 
@@ -1320,10 +1293,8 @@ create-table
 
 Actor is allowed to create a database table.
 
-``resource`` - string
-    The name of the database
-
-Default *deny*.
+``resource`` - ``datasette.resources.DatabaseResource(database)``
+    ``database`` is the name of the database (string)
 
 .. _actions_alter_table:
 
@@ -1332,10 +1303,10 @@ alter-table
 
 Actor is allowed to alter a database table.
 
-``resource`` - tuple: (string, string)
-    The name of the database, then the name of the table
+``resource`` - ``datasette.resources.TableResource(database, table)``
+    ``database`` is the name of the database (string)
 
-Default *deny*.
+    ``table`` is the name of the table (string)
 
 .. _actions_drop_table:
 
@@ -1344,31 +1315,29 @@ drop-table
 
 Actor is allowed to drop a database table.
 
-``resource`` - tuple: (string, string)
-    The name of the database, then the name of the table
+``resource`` - ``datasette.resources.TableResource(database, table)``
+    ``database`` is the name of the database (string)
 
-Default *deny*.
+    ``table`` is the name of the table (string)
 
 .. _actions_execute_sql:
 
 execute-sql
 -----------
 
-Actor is allowed to run arbitrary SQL queries against a specific database, e.g. https://latest.datasette.io/fixtures?sql=select+100
+Actor is allowed to run arbitrary SQL queries against a specific database, e.g. https://latest.datasette.io/fixtures/-/query?sql=select+100
 
-``resource`` - string
-    The name of the database
+``resource`` - ``datasette.resources.DatabaseResource(database)``
+    ``database`` is the name of the database (string)
 
-Default *allow*. See also :ref:`the default_allow_sql setting <setting_default_allow_sql>`.
+See also :ref:`the default_allow_sql setting <setting_default_allow_sql>`.
 
 .. _actions_permissions_debug:
 
 permissions-debug
 -----------------
 
-Actor is allowed to view the ``/-/permissions`` debug page.
-
-Default *deny*.
+Actor is allowed to view the ``/-/permissions`` debug tools.
 
 .. _actions_debug_menu:
 
@@ -1376,5 +1345,3 @@ debug-menu
 ----------
 
 Controls if the various debug pages are displayed in the navigation menu.
-
-Default *deny*.

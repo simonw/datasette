@@ -4,6 +4,7 @@ import aiofiles
 import click
 from collections import OrderedDict, namedtuple, Counter
 import copy
+import dataclasses
 import base64
 import hashlib
 import inspect
@@ -27,6 +28,58 @@ from .sqlite import sqlite3, supports_table_xinfo
 
 if typing.TYPE_CHECKING:
     from datasette.database import Database
+    from datasette.permissions import Resource
+
+
+@dataclasses.dataclass
+class PaginatedResources:
+    """Paginated results from allowed_resources query."""
+
+    resources: List["Resource"]
+    next: str | None  # Keyset token for next page (None if no more results)
+    _datasette: typing.Any = dataclasses.field(default=None, repr=False)
+    _action: str = dataclasses.field(default=None, repr=False)
+    _actor: typing.Any = dataclasses.field(default=None, repr=False)
+    _parent: str | None = dataclasses.field(default=None, repr=False)
+    _include_is_private: bool = dataclasses.field(default=False, repr=False)
+    _include_reasons: bool = dataclasses.field(default=False, repr=False)
+    _limit: int = dataclasses.field(default=100, repr=False)
+
+    async def all(self):
+        """
+        Async generator that yields all resources across all pages.
+
+        Automatically handles pagination under the hood. This is useful when you need
+        to iterate through all results without manually managing pagination tokens.
+
+        Yields:
+            Resource objects one at a time
+
+        Example:
+            page = await datasette.allowed_resources("view-table", actor)
+            async for table in page.all():
+                print(f"{table.parent}/{table.child}")
+        """
+        # Yield all resources from current page
+        for resource in self.resources:
+            yield resource
+
+        # Continue fetching subsequent pages if there are more
+        next_token = self.next
+        while next_token:
+            page = await self._datasette.allowed_resources(
+                self._action,
+                self._actor,
+                parent=self._parent,
+                include_is_private=self._include_is_private,
+                include_reasons=self._include_reasons,
+                limit=self._limit,
+                next=next_token,
+            )
+            for resource in page.resources:
+                yield resource
+            next_token = page.next
+
 
 # From https://www.sqlite.org/lang_keywords.html
 reserved_words = set(

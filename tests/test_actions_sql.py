@@ -2,9 +2,9 @@
 Tests for the new Resource-based permission system.
 
 These tests verify:
-1. The new Datasette.allowed_resources() method
+1. The new Datasette.allowed_resources() method (with pagination)
 2. The new Datasette.allowed() method
-3. The new Datasette.allowed_resources_with_reasons() method
+3. The include_reasons parameter for debugging
 4. That SQL does the heavy lifting (no Python filtering)
 """
 
@@ -71,7 +71,8 @@ async def test_allowed_resources_global_allow(test_ds):
 
     try:
         # Use the new allowed_resources() method
-        tables = await test_ds.allowed_resources("view-table", {"id": "alice"})
+        result = await test_ds.allowed_resources("view-table", {"id": "alice"})
+        tables = result.resources
 
         # Alice should see all tables
         assert len(tables) == 5
@@ -133,9 +134,7 @@ async def test_allowed_specific_resource(test_ds):
 
 
 @pytest.mark.asyncio
-async def test_allowed_resources_with_reasons(test_ds):
-    """Test allowed_resources_with_reasons() exposes debugging info"""
-
+async def test_allowed_resources_include_reasons(test_ds):
     def rules_callback(datasette, actor, action):
         if actor and actor.get("role") == "analyst":
             sql = """
@@ -152,21 +151,22 @@ async def test_allowed_resources_with_reasons(test_ds):
     pm.register(plugin, name="test_plugin")
 
     try:
-        # Use allowed_resources_with_reasons to get debugging info
-        allowed = await test_ds.allowed_resources_with_reasons(
-            "view-table", {"id": "bob", "role": "analyst"}
+        # Use allowed_resources with include_reasons to get debugging info
+        result = await test_ds.allowed_resources(
+            "view-table", {"id": "bob", "role": "analyst"}, include_reasons=True
         )
+        allowed = result.resources
 
         # Should get analytics tables except sensitive
         assert len(allowed) >= 2  # At least users and events
 
         # Check we can access both resource and reason
-        for item in allowed:
-            assert isinstance(item.resource, TableResource)
-            assert isinstance(item.reason, list)
-            if item.resource.parent == "analytics":
+        for resource in allowed:
+            assert isinstance(resource, TableResource)
+            assert isinstance(resource.reasons, list)
+            if resource.parent == "analytics":
                 # Should mention parent-level reason in at least one of the reasons
-                reasons_text = " ".join(item.reason).lower()
+                reasons_text = " ".join(resource.reasons).lower()
                 assert "analyst access" in reasons_text
 
     finally:
@@ -194,7 +194,8 @@ async def test_child_deny_overrides_parent_allow(test_ds):
 
     try:
         actor = {"id": "bob", "role": "analyst"}
-        tables = await test_ds.allowed_resources("view-table", actor)
+        result = await test_ds.allowed_resources("view-table", actor)
+        tables = result.resources
 
         # Should see analytics tables except sensitive
         analytics_tables = [t for t in tables if t.parent == "analytics"]
@@ -242,7 +243,8 @@ async def test_child_allow_overrides_parent_deny(test_ds):
 
     try:
         actor = {"id": "carol"}
-        tables = await test_ds.allowed_resources("view-table", actor)
+        result = await test_ds.allowed_resources("view-table", actor)
+        tables = result.resources
 
         # Should only see production.orders
         production_tables = [t for t in tables if t.parent == "production"]
@@ -305,7 +307,8 @@ async def test_sql_does_filtering_not_python(test_ds):
         )
 
         # allowed_resources() should also use SQL filtering
-        tables = await test_ds.allowed_resources("view-table", actor)
+        result = await test_ds.allowed_resources("view-table", actor)
+        tables = result.resources
         assert len(tables) == 1
         assert tables[0].parent == "analytics"
         assert tables[0].child == "users"

@@ -70,12 +70,15 @@ class DatabaseView(View):
         metadata = await datasette.get_database_metadata(database)
 
         # Get all tables/views this actor can see in bulk with private flag
-
-        allowed_tables = await datasette.allowed_resources(
-            "view-table", request.actor, parent=database, include_is_private=True
+        allowed_tables_page = await datasette.allowed_resources(
+            "view-table",
+            request.actor,
+            parent=database,
+            include_is_private=True,
+            limit=1000,
         )
         # Create lookup dict for quick access
-        allowed_dict = {r.child: r for r in allowed_tables}
+        allowed_dict = {r.child: r for r in allowed_tables_page.resources}
 
         # Filter to just views
         view_names_set = set(await db.view_names())
@@ -88,14 +91,18 @@ class DatabaseView(View):
         tables = await get_tables(datasette, request, db, allowed_dict)
 
         # Get allowed queries using the new permission system
-        allowed_query_resources = await datasette.allowed_resources(
-            "view-query", request.actor, parent=database, include_is_private=True
+        allowed_query_page = await datasette.allowed_resources(
+            "view-query",
+            request.actor,
+            parent=database,
+            include_is_private=True,
+            limit=1000,
         )
 
         # Build canned_queries list by looking up each allowed query
         all_queries = await datasette.get_canned_queries(database, request.actor)
         canned_queries = []
-        for query_resource in allowed_query_resources:
+        for query_resource in allowed_query_page.resources:
             query_name = query_resource.child
             if query_name in all_queries:
                 canned_queries.append(
@@ -509,12 +516,15 @@ class QueryView(View):
         database = db.name
 
         # Get all tables/views this actor can see in bulk with private flag
-
-        allowed_tables = await datasette.allowed_resources(
-            "view-table", request.actor, parent=database, include_is_private=True
+        allowed_tables_page = await datasette.allowed_resources(
+            "view-table",
+            request.actor,
+            parent=database,
+            include_is_private=True,
+            limit=1000,
         )
         # Create lookup dict for quick access
-        allowed_dict = {r.child: r for r in allowed_tables}
+        allowed_dict = {r.child: r for r in allowed_tables_page.resources}
 
         # Are we a canned query?
         canned_query = None

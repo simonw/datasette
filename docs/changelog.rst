@@ -4,6 +4,60 @@
 Changelog
 =========
 
+.. _v1_0_a20:
+
+1.0a20 (2025-10-31)
+-------------------
+
+This alpha introduces a major breaking change prior to the 1.0 release of Datasette concerning Datasette's permission system. See also `the annotated release notes <https://simonwillison.net/2025/Oct/31/datasette-1a20/>`__.
+
+Permission system redesign
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Previously the permission system worked using ``datasette.permission_allowed()`` checks which consulted all available plugins in turn to determine whether a given actor was allowed to perform a given action on a given resource.
+
+This approach could become prohibitively expensive for large lists of items - for example to determine the list of tables that a user could view in a large Datasette instance, where the plugin hooks would be called N times for N tables.
+
+The new system instead uses SQL queries against Datasette's internal :ref:`catalog tables <internals_internal>` to derive the list of resources for which an actor has permission for a given action.
+
+Plugins can use the new :ref:`plugin_hook_permission_resources_sql` hook to return SQL fragments which will influence the construction of that query.
+
+Affected plugins should make the following changes:
+
+- Replace calls to ``datasette.permission_allowed()`` with calls to the new :ref:`datasette.allowed() <datasette_allowed>` method. The new method takes a ``resource=`` parameter which should be an instance of a ``Resource`` subclass, as described in the method documentation.
+- The ``permission_allowed()`` plugin hook has been removed in favor of the new :ref:`permission_resources_sql() <plugin_hook_permission_resources_sql>` hook.
+- The ``register_permissions()`` plugni hook has been removed in favor of :ref:`register_actions() <plugin_register_actions>`.
+
+Plugins can now make use of two new internal methods to help resolve permission checks:
+
+- :ref:`datasette.allowed_resources() <datasette_allowed_resources>` returns a ``PaginatedResources`` object with a ``.resources`` list of ``Resource`` instances that an actor is allowed to access for a given action (and a ``.next`` token for pagination).
+- :ref:`datasette.allowed_resources_sql() <datasette_allowed_resources_sql>` returns the SQL and parameters that can be executed against the internal catalog tables to determine which resources an actor is allowed to access for a given action. This can be combined with further SQL to perform advanced custom filtering.
+
+Related changes:
+
+- The way ``datasette --root`` works has changed. Running Datasette with this flag now causes the root actor to pass *all* permission checks. (:issue:`2521`)
+
+- Permission debugging improvements:
+
+  - The ``/-/allowed`` endpoint shows resources the user is allowed to interact with for different actions.
+
+  - ``/-/rules`` shows the raw allow/deny rules that apply to different permission checks.
+
+  - ``/-/actions`` lists every available action.
+
+  - ``/-/check`` can be used to try out different permission checks for the current actor.
+
+Other changes
+~~~~~~~~~~~~~
+
+- The internal ``catalog_views`` table now tracks SQLite views alongside tables in the introspection database. (:issue:`2495`)
+
+- Hitting the ``/`` brings up a search interface for navigating to tables that the current user can view. A new ``/-/tables`` endpoint supports this functionality. (:issue:`2523`)
+
+- Datasette attempts to detect some configuration errors on startup.
+
+- Datasette now supports Python 3.14 and no longer tests against Python 3.9.
+
 .. _v1_0_a19:
 
 1.0a19 (2025-04-21)

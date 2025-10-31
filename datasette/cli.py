@@ -590,13 +590,20 @@ def serve(
         internal=internal,
     )
 
-    # if files is a single directory, use that as config_dir=
-    if 1 == len(files) and os.path.isdir(files[0]):
-        kwargs["config_dir"] = pathlib.Path(files[0])
-        files = []
+    # Separate directories from files
+    directories = [f for f in files if os.path.isdir(f)]
+    file_paths = [f for f in files if not os.path.isdir(f)]
+
+    # Handle config_dir - only one directory allowed
+    if len(directories) > 1:
+        raise click.ClickException(
+            "Cannot pass multiple directories. Pass a single directory as config_dir."
+        )
+    elif len(directories) == 1:
+        kwargs["config_dir"] = pathlib.Path(directories[0])
 
     # Verify list of files, create if needed (and --create)
-    for file in files:
+    for file in file_paths:
         if not pathlib.Path(file).exists():
             if create:
                 sqlite3.connect(file).execute("vacuum")
@@ -607,8 +614,32 @@ def serve(
                     )
                 )
 
-    # De-duplicate files so 'datasette db.db db.db' only attaches one /db
-    files = list(dict.fromkeys(files))
+    # Check for duplicate files by resolving all paths to their absolute forms
+    # Collect all database files that will be loaded (explicit files + config_dir files)
+    all_db_files = []
+
+    # Add explicit files
+    for file in file_paths:
+        all_db_files.append((file, pathlib.Path(file).resolve()))
+
+    # Add config_dir databases if config_dir is set
+    if "config_dir" in kwargs:
+        config_dir = kwargs["config_dir"]
+        for ext in ("db", "sqlite", "sqlite3"):
+            for db_file in config_dir.glob(f"*.{ext}"):
+                all_db_files.append((str(db_file), db_file.resolve()))
+
+    # Check for duplicates
+    seen = {}
+    for original_path, resolved_path in all_db_files:
+        if resolved_path in seen:
+            raise click.ClickException(
+                f"Duplicate database file: '{original_path}' and '{seen[resolved_path]}' "
+                f"both refer to {resolved_path}"
+            )
+        seen[resolved_path] = original_path
+
+    files = file_paths
 
     try:
         ds = Datasette(files, **kwargs)

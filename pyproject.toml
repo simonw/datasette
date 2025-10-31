@@ -64,6 +64,8 @@ docs = [
     "blacken-docs",
     "sphinx-copybutton",
     "sphinx-inline-tabs",
+    "myst-parser",
+    "sphinx-markdown-builder",
     "ruamel.yaml",
 ]
 test = [

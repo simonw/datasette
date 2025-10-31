@@ -28,17 +28,18 @@ class IndexView(BaseView):
         await self.ds.ensure_permission(action="view-instance", actor=request.actor)
 
         # Get all allowed databases and tables in bulk
-        allowed_databases = await self.ds.allowed_resources(
+        db_page = await self.ds.allowed_resources(
             "view-database", request.actor, include_is_private=True
         )
+        allowed_databases = [r async for r in db_page.all()]
         allowed_db_dict = {r.parent: r for r in allowed_databases}
 
-        allowed_tables = await self.ds.allowed_resources(
+        # Group tables by database
+        tables_by_db = {}
+        table_page = await self.ds.allowed_resources(
             "view-table", request.actor, include_is_private=True
         )
-        # Group by database
-        tables_by_db = {}
-        for t in allowed_tables:
+        async for t in table_page.all():
             if t.parent not in tables_by_db:
                 tables_by_db[t.parent] = {}
             tables_by_db[t.parent][t.child] = t

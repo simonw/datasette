@@ -412,26 +412,23 @@ efficient way to list the databases, tables or queries visible to a user.
 await .allowed_resources_with_reasons(action, actor=None)
 ---------------------------------------------------------
 
-Returns a list of :class:`datasette.permissions.AllowedResource` tuples. Each
-tuple contains a ``Resource`` plus a list of strings describing the rules that
-granted access. This powers the debugging data shown by the ``/-/allowed``
-endpoint and is helpful when building administrative tooling that needs to show
-why access was granted.
+Returns a list of :class:`datasette.permissions.AllowedResource` tuples. Each tuple contains a ``Resource`` plus a list of strings describing the rules that granted access. This powers the debugging data shown by the ``/-/allowed`` endpoint and is helpful when building administrative tooling that needs to show why access was granted.
 
 .. _datasette_allowed_resources_sql:
 
 await .allowed_resources_sql(\*, action, actor=None, parent=None, include_is_private=False)
 -------------------------------------------------------------------------------------------
 
-Builds the SQL query that Datasette uses to determine which resources an actor
-may access for a specific action. Returns a ``(sql, params)`` tuple that can be
-executed against the internal ``catalog`` database. ``parent`` can be used to
-limit results to a specific database, and ``include_is_private`` adds a column
-indicating whether anonymous users would be denied access to that resource.
+Builds the SQL query that Datasette uses to determine which resources an actor may access for a specific action. Returns a ``(sql: str, params: dict)`` tuple that can be executed against the internal ``catalog_*`` database tables. ``parent`` can be used to limit results to a specific database, and ``include_is_private`` adds a column indicating whether anonymous users would be denied access to that resource.
 
-Plugins that need to execute custom analysis over the raw allow/deny rules can
-use this helper to run the same query that powers the ``/-/allowed`` debugging
-interface.
+Plugins that need to execute custom analysis over the raw allow/deny rules can use this helper to run the same query that powers the ``/-/allowed`` debugging interface.
+
+The SQL query built by this method will return the following columns:
+
+- ``parent``: The parent resource identifier (or NULL)
+- ``child``: The child resource identifier (or NULL)
+- ``reason``: The reason from the rule that granted access
+- ``is_private``: (if ``include_is_private``) 1 if anonymous users cannot access, 0 otherwise
 
 .. _datasette_ensure_permission:
 
@@ -439,7 +436,7 @@ await .ensure_permission(action, resource=None, actor=None)
 -----------------------------------------------------------
 
 ``action`` - string
-    The action to check. See :ref:`permissions` for a list of available actions.
+    The action to check. See :ref:`actions` for a list of available actions.
 
 ``resource`` - Resource object (optional)
     The resource to check the permission against. Must be an instance of ``InstanceResource``, ``DatabaseResource``, or ``TableResource`` from the ``datasette.resources`` module. If omitted, defaults to ``InstanceResource()`` for instance-level permissions.

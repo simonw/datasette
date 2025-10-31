@@ -248,6 +248,9 @@ FAVICON_PATH = app_root / "datasette" / "static" / "favicon.png"
 DEFAULT_NOT_SET = object()
 
 
+ResourcesSQL = collections.namedtuple("ResourcesSQL", ("sql", "params"))
+
+
 async def favicon(request, send):
     await asgi_send_file(
         send,
@@ -1110,7 +1113,7 @@ class Datasette:
         actor: dict | None = None,
         parent: str | None = None,
         include_is_private: bool = False,
-    ) -> tuple[str, dict]:
+    ) -> ResourcesSQL:
         """
         Build SQL query to get all resources the actor can access for the given action.
 
@@ -1120,7 +1123,7 @@ class Datasette:
             parent: Optional parent filter (e.g., database name) to limit results
             include_is_private: If True, include is_private column showing if anonymous cannot access
 
-        Returns a tuple of (query: str, params: dict) that can be executed against the internal database.
+        Returns a namedtuple of (query: str, params: dict) that can be executed against the internal database.
         The query returns rows with (parent, child, reason) columns, plus is_private if requested.
 
         Example:
@@ -1138,9 +1141,10 @@ class Datasette:
         if not action_obj:
             raise ValueError(f"Unknown action: {action}")
 
-        return await build_allowed_resources_sql(
+        sql, params = await build_allowed_resources_sql(
             self, actor, action, parent=parent, include_is_private=include_is_private
         )
+        return ResourcesSQL(sql, params)
 
     async def allowed_resources(
         self,

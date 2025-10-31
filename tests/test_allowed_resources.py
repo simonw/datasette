@@ -66,7 +66,7 @@ async def test_tables_endpoint_global_access(test_ds):
 
     try:
         # Use the allowed_resources API directly
-        tables = await test_ds.allowed_resources("view-table", {"id": "alice"})
+        page = await test_ds.allowed_resources("view-table", {"id": "alice"})
 
         # Convert to the format the endpoint returns
         result = [
@@ -74,7 +74,7 @@ async def test_tables_endpoint_global_access(test_ds):
                 "name": f"{t.parent}/{t.child}",
                 "url": test_ds.urls.table(t.parent, t.child),
             }
-            for t in tables
+            for t in page.resources
         ]
 
         # Alice should see all tables
@@ -105,7 +105,7 @@ async def test_tables_endpoint_database_restriction(test_ds):
     pm.register(plugin, name="test_plugin")
 
     try:
-        tables = await test_ds.allowed_resources(
+        page = await test_ds.allowed_resources(
             "view-table", {"id": "bob", "role": "analyst"}
         )
         result = [
@@ -113,7 +113,7 @@ async def test_tables_endpoint_database_restriction(test_ds):
                 "name": f"{t.parent}/{t.child}",
                 "url": test_ds.urls.table(t.parent, t.child),
             }
-            for t in tables
+            for t in page.resources
         ]
 
         # Bob should only see analytics tables
@@ -152,13 +152,13 @@ async def test_tables_endpoint_table_exception(test_ds):
     pm.register(plugin, name="test_plugin")
 
     try:
-        tables = await test_ds.allowed_resources("view-table", {"id": "carol"})
+        page = await test_ds.allowed_resources("view-table", {"id": "carol"})
         result = [
             {
                 "name": f"{t.parent}/{t.child}",
                 "url": test_ds.urls.table(t.parent, t.child),
             }
-            for t in tables
+            for t in page.resources
         ]
 
         # Carol should see analytics.users but not other analytics tables
@@ -194,7 +194,7 @@ async def test_tables_endpoint_deny_overrides_allow(test_ds):
     pm.register(plugin, name="test_plugin")
 
     try:
-        tables = await test_ds.allowed_resources(
+        page = await test_ds.allowed_resources(
             "view-table", {"id": "bob", "role": "analyst"}
         )
         result = [
@@ -202,7 +202,7 @@ async def test_tables_endpoint_deny_overrides_allow(test_ds):
                 "name": f"{t.parent}/{t.child}",
                 "url": test_ds.urls.table(t.parent, t.child),
             }
-            for t in tables
+            for t in page.resources
         ]
 
         analytics_tables = [m for m in result if m["name"].startswith("analytics/")]
@@ -230,10 +230,10 @@ async def test_tables_endpoint_no_permissions():
     await ds._refresh_schemas()
 
     # Unknown actor with no custom permissions
-    tables = await ds.allowed_resources("view-table", {"id": "unknown"})
+    page = await ds.allowed_resources("view-table", {"id": "unknown"})
     result = [
         {"name": f"{t.parent}/{t.child}", "url": ds.urls.table(t.parent, t.child)}
-        for t in tables
+        for t in page.resources
     ]
 
     # Should see tables (due to default_permissions.py providing default allow)
@@ -260,13 +260,13 @@ async def test_tables_endpoint_specific_table_only(test_ds):
     pm.register(plugin, name="test_plugin")
 
     try:
-        tables = await test_ds.allowed_resources("view-table", {"id": "dave"})
+        page = await test_ds.allowed_resources("view-table", {"id": "dave"})
         result = [
             {
                 "name": f"{t.parent}/{t.child}",
                 "url": test_ds.urls.table(t.parent, t.child),
             }
-            for t in tables
+            for t in page.resources
         ]
 
         # Should see only the two specifically allowed tables
@@ -298,13 +298,13 @@ async def test_tables_endpoint_empty_result(test_ds):
     pm.register(plugin, name="test_plugin")
 
     try:
-        tables = await test_ds.allowed_resources("view-table", {"id": "blocked"})
+        page = await test_ds.allowed_resources("view-table", {"id": "blocked"})
         result = [
             {
                 "name": f"{t.parent}/{t.child}",
                 "url": test_ds.urls.table(t.parent, t.child),
             }
-            for t in tables
+            for t in page.resources
         ]
 
         # Global deny should block access to all tables
@@ -328,11 +328,11 @@ async def test_tables_endpoint_no_query_returns_all():
     await ds._refresh_schemas()
 
     # Get all tables without query
-    all_tables = await ds.allowed_resources("view-table", None)
+    page = await ds.allowed_resources("view-table", None)
 
     # Should return all tables with truncated: false
-    assert len(all_tables) >= 3
-    table_names = {f"{t.parent}/{t.child}" for t in all_tables}
+    assert len(page.resources) >= 3
+    table_names = {f"{t.parent}/{t.child}" for t in page.resources}
     assert "test_db/users" in table_names
     assert "test_db/posts" in table_names
     assert "test_db/comments" in table_names
@@ -350,12 +350,13 @@ async def test_tables_endpoint_truncation():
         await db.execute_write(f"CREATE TABLE table_{i:03d} (id INTEGER)")
     await ds._refresh_schemas()
 
-    # Get all tables - should be truncated
-    all_tables = await ds.allowed_resources("view-table", None)
-    big_db_tables = [t for t in all_tables if t.parent == "big_db"]
+    # Get all tables - should be paginated with limit=100 by default
+    page = await ds.allowed_resources("view-table", None)
+    big_db_tables = [t for t in page.resources if t.parent == "big_db"]
 
-    # Should have exactly 105 tables in the database
-    assert len(big_db_tables) == 105
+    # Should have exactly 100 tables in first page (default limit)
+    assert len(big_db_tables) == 100
+    assert page.next is not None  # More results available
 
 
 @pytest.mark.asyncio
@@ -374,10 +375,10 @@ async def test_tables_endpoint_search_single_term():
     await ds._refresh_schemas()
 
     # Get all tables in the new format
-    all_tables = await ds.allowed_resources("view-table", None)
+    page = await ds.allowed_resources("view-table", None)
     matches = [
         {"name": f"{t.parent}/{t.child}", "url": ds.urls.table(t.parent, t.child)}
-        for t in all_tables
+        for t in page.resources
     ]
 
     # Filter for "user" (extract table name from "db/table")
@@ -411,10 +412,10 @@ async def test_tables_endpoint_search_multiple_terms():
     await ds._refresh_schemas()
 
     # Get all tables in the new format
-    all_tables = await ds.allowed_resources("view-table", None)
+    page = await ds.allowed_resources("view-table", None)
     matches = [
         {"name": f"{t.parent}/{t.child}", "url": ds.urls.table(t.parent, t.child)}
-        for t in all_tables
+        for t in page.resources
     ]
 
     # Filter for "user profile" (two terms, extract table name from "db/table")
@@ -453,10 +454,10 @@ async def test_tables_endpoint_search_ordering():
     await ds._refresh_schemas()
 
     # Get all tables in the new format
-    all_tables = await ds.allowed_resources("view-table", None)
+    page = await ds.allowed_resources("view-table", None)
     matches = [
         {"name": f"{t.parent}/{t.child}", "url": ds.urls.table(t.parent, t.child)}
-        for t in all_tables
+        for t in page.resources
     ]
 
     # Filter for "user" and sort by table name length
@@ -490,10 +491,10 @@ async def test_tables_endpoint_search_case_insensitive():
     await ds._refresh_schemas()
 
     # Get all tables in the new format
-    all_tables = await ds.allowed_resources("view-table", None)
+    page = await ds.allowed_resources("view-table", None)
     matches = [
         {"name": f"{t.parent}/{t.child}", "url": ds.urls.table(t.parent, t.child)}
-        for t in all_tables
+        for t in page.resources
     ]
 
     # Filter for "user" (lowercase) should match all case variants
@@ -525,10 +526,10 @@ async def test_tables_endpoint_search_no_matches():
     await ds._refresh_schemas()
 
     # Get all tables in the new format
-    all_tables = await ds.allowed_resources("view-table", None)
+    page = await ds.allowed_resources("view-table", None)
     matches = [
         {"name": f"{t.parent}/{t.child}", "url": ds.urls.table(t.parent, t.child)}
-        for t in all_tables
+        for t in page.resources
     ]
 
     # Filter for "zzz" which doesn't exist
@@ -563,10 +564,10 @@ async def test_tables_endpoint_config_database_allow():
     await ds._refresh_schemas()
 
     # Root user should see restricted_db tables
-    root_tables = await ds.allowed_resources("view-table", {"id": "root"})
+    root_page = await ds.allowed_resources("view-table", {"id": "root"})
     root_list = [
         {"name": f"{t.parent}/{t.child}", "url": ds.urls.table(t.parent, t.child)}
-        for t in root_tables
+        for t in root_page.resources
     ]
     restricted_tables_root = [
         m for m in root_list if m["name"].startswith("restricted_db/")
@@ -577,10 +578,10 @@ async def test_tables_endpoint_config_database_allow():
     assert "restricted_db/posts" in table_names
 
     # Alice should NOT see restricted_db tables
-    alice_tables = await ds.allowed_resources("view-table", {"id": "alice"})
+    alice_page = await ds.allowed_resources("view-table", {"id": "alice"})
     alice_list = [
         {"name": f"{t.parent}/{t.child}", "url": ds.urls.table(t.parent, t.child)}
-        for t in alice_tables
+        for t in alice_page.resources
     ]
     restricted_tables_alice = [
         m for m in alice_list if m["name"].startswith("restricted_db/")

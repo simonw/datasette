@@ -16,6 +16,10 @@ class Resource(ABC):
     name: str = None  # e.g., "table", "database", "model"
     parent_name: str | None = None  # e.g., "database" for tables
 
+    # Instance-level optional extra attributes
+    reasons: list[str] | None = None
+    include_reasons: bool | None = None
+
     def __init__(self, parent: str | None = None, child: str | None = None):
         """
         Create a resource instance.

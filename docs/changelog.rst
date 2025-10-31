@@ -9,7 +9,7 @@ Changelog
 1.0a20 (2025-10-31)
 -------------------
 
-This alpha introduces a major breaking change prior to the 1.0 release of Datasette concerning Datasette's permission system. See also `the annotated release notes <https://simonwillison.net/2025/Oct/31/datasette-1a20/>`__.
+This alpha introduces a major breaking change prior to the 1.0 release of Datasette concerning Datasette's permission system.
 
 Permission system redesign
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

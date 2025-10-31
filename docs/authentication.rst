@@ -6,7 +6,7 @@
 
 Datasette doesn't require authentication by default. Any visitor to a Datasette instance can explore the full data and execute read-only SQL queries.
 
-Datasette can be configured to only allow authenticated users. Datasette's plugin system can be used to add many different styles of authentication, such as user accounts, single sign-on or API keys.
+Datasette can be configured to only allow authenticated users, or to control which databases, tables, and queries can be accessed by the public or by specific users. Datasette's plugin system can be used to add many different styles of authentication, such as user accounts, single sign-on or API keys.
 
 .. _authentication_actor:
 
@@ -67,7 +67,7 @@ Click on that link and then visit ``http://127.0.0.1:8001/-/actor`` to confirm t
 Permissions
 ===========
 
-Datasette has an extensive permissions system built-in, which can be further extended and customized by plugins.
+Datasette's permissions system is built around SQL queries. Datasette and its plugins construct SQL queries to resolve the list of resources that an actor cas access.
 
 The key question the permissions system answers is this:
 
@@ -88,16 +88,18 @@ Other actions, including those introduced by plugins, will default to *deny*.
 How permissions are resolved
 ----------------------------
 
-Datasette performs permission checks using the internal :ref:`datasette_allowed`, method which accepts keyword arguments for ``action``, ``resource`` and an optiona ``actor``. ``resource`` should be an instance of the appropriate ``Resource`` subclass from :mod:`datasette.resources`—for example ``InstanceResource()``, ``DatabaseResource(database="...``)`` or ``TableResource(database="...", table="...")``. This defaults to ``InstanceResource()`` if not specified.
+Datasette performs permission checks using the internal :ref:`datasette_allowed`, method which accepts keyword arguments for ``action``, ``resource`` and an optional ``actor``. 
+
+``resource`` should be an instance of the appropriate ``Resource`` subclass from :mod:`datasette.resources`—for example ``InstanceResource()``, ``DatabaseResource(database="...``)`` or ``TableResource(database="...", table="...")``. This defaults to ``InstanceResource()`` if not specified.
 
 When a check runs Datasette gathers allow/deny rules from multiple sources and
 compiles them into a SQL query. The resulting query describes all of the
 resources an actor may access for that action, together with the reasons those
 resources were allowed or denied. The combined sources are:
 
+* ``allow`` blocks configured in :ref:`datasette.yaml <authentication_permissions_config>`.
 * :ref:`Actor restrictions <authentication_permissions_tokens>` encoded into the actor dictionary or API token.
-* The "root" user shortcut when ``--root`` (or :attr:`Datasette.root_enabled <datasette.app.Datasette.root_enabled>`) is active, granting instance-wide access unless configuration rules deny it at a more specific level.
-* ``allow``/``deny`` rules configured in :ref:`datasette.yaml <authentication_permissions_config>`.
+* The "root" user shortcut when ``--root`` (or :attr:`Datasette.root_enabled <datasette.app.Datasette.root_enabled>`) is active, replying ``True`` to all permission chucks unless configuration rules deny them at a more specific level.
 * Any additional SQL provided by plugins implementing :ref:`plugin_hook_permission_resources_sql`.
 
 Datasette evaluates the SQL to determine if the requested ``resource`` is
@@ -109,7 +111,7 @@ access even if other rules allowed it.
 Defining permissions with "allow" blocks
 ----------------------------------------
 
-The standard way to define permissions in Datasette is to use an ``"allow"`` block :ref:`in the datasette.yaml file <authentication_permissions_config>`. This is a JSON document describing which actors are allowed to perform a permission.
+One way to define permissions in Datasette is to use an ``"allow"`` block :ref:`in the datasette.yaml file <authentication_permissions_config>`. This is a JSON document describing which actors are allowed to perform an action against a specific resource.
 
 Each ``allow`` block is compiled into SQL and combined with any
 :ref:`plugin-provided rules <plugin_hook_permission_resources_sql>` to produce

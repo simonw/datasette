@@ -1068,7 +1068,7 @@ Smaller changes
 ~~~~~~~~~~~~~~~
 
 - Wide tables shown within Datasette now scroll horizontally (:issue:`998`). This is achieved using a new ``<div class="table-wrapper">`` element which may impact the implementation of some plugins (for example `this change to datasette-cluster-map <https://github.com/simonw/datasette-cluster-map/commit/fcb4abbe7df9071c5ab57defd39147de7145b34e>`__).
-- New :ref:`permissions_debug_menu` permission. (:issue:`1068`)
+- New :ref:`actions_debug_menu` permission. (:issue:`1068`)
 - Removed ``--debug`` option, which didn't do anything. (:issue:`814`)
 - ``Link:`` HTTP header pagination. (:issue:`1014`)
 - ``x`` button for clearing filters. (:issue:`1016`)

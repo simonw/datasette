@@ -347,7 +347,7 @@ Special table arguments
     though this could potentially result in errors if the wrong syntax is used.
 
 ``?_where=SQL-fragment``
-    If the :ref:`permissions_execute_sql` permission is enabled, this parameter
+    If the :ref:`actions_execute_sql` permission is enabled, this parameter
     can be used to pass one or more additional SQL fragments to be used in the
     `WHERE` clause of the SQL used to query the table.
 
@@ -510,7 +510,7 @@ Datasette provides a write API for JSON data. This is a POST-only API that requi
 Inserting rows
 ~~~~~~~~~~~~~~
 
-This requires the :ref:`permissions_insert_row` permission.
+This requires the :ref:`actions_insert_row` permission.
 
 A single row can be inserted using the ``"row"`` key:
 
@@ -621,7 +621,7 @@ Pass ``"ignore": true`` to ignore these errors and insert the other rows:
         "ignore": true
     }
 
-Or you can pass ``"replace": true`` to replace any rows with conflicting primary keys with the new values. This requires the :ref:`permissions_update_row` permission.
+Or you can pass ``"replace": true`` to replace any rows with conflicting primary keys with the new values. This requires the :ref:`actions_update_row` permission.
 
 Pass ``"alter: true`` to automatically add any missing columns to the table. This requires the :ref:`actions_alter_table` permission.
 
@@ -632,7 +632,7 @@ Upserting rows
 
 An upsert is an insert or update operation. If a row with a matching primary key already exists it will be updated - otherwise a new row will be inserted.
 
-The upsert API is mostly the same shape as the :ref:`insert API <TableInsertView>`. It requires both the :ref:`permissions_insert_row` and :ref:`permissions_update_row` permissions.
+The upsert API is mostly the same shape as the :ref:`insert API <TableInsertView>`. It requires both the :ref:`actions_insert_row` and :ref:`actions_update_row` permissions.
 
 ::
 
@@ -742,7 +742,7 @@ Pass ``"alter: true`` to automatically add any missing columns to the table. Thi
 Updating a row
 ~~~~~~~~~~~~~~
 
-To update a row, make a ``POST`` to ``/<database>/<table>/<row-pks>/-/update``. This requires the :ref:`permissions_update_row` permission.
+To update a row, make a ``POST`` to ``/<database>/<table>/<row-pks>/-/update``. This requires the :ref:`actions_update_row` permission.
 
 ::
 
@@ -799,7 +799,7 @@ Pass ``"alter: true`` to automatically add any missing columns to the table. Thi
 Deleting a row
 ~~~~~~~~~~~~~~
 
-To delete a row, make a ``POST`` to ``/<database>/<table>/<row-pks>/-/delete``. This requires the :ref:`permissions_delete_row` permission.
+To delete a row, make a ``POST`` to ``/<database>/<table>/<row-pks>/-/delete``. This requires the :ref:`actions_delete_row` permission.
 
 ::
 
@@ -818,7 +818,7 @@ Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false
 Creating a table
 ~~~~~~~~~~~~~~~~
 
-To create a table, make a ``POST`` to ``/<database>/-/create``. This requires the :ref:`permissions_create_table` permission.
+To create a table, make a ``POST`` to ``/<database>/-/create``. This requires the :ref:`actions_create_table` permission.
 
 ::
 
@@ -859,7 +859,7 @@ The JSON here describes the table that will be created:
 
 * ``pks`` can be used instead of ``pk`` to create a compound primary key. It should be a JSON list of column names to use in that primary key.
 * ``ignore`` can be set to ``true`` to ignore existing rows by primary key if the table already exists.
-* ``replace`` can be set to ``true`` to replace existing rows by primary key if the table already exists. This requires the :ref:`permissions_update_row` permission.
+* ``replace`` can be set to ``true`` to replace existing rows by primary key if the table already exists. This requires the :ref:`actions_update_row` permission.
 * ``alter`` can be set to ``true`` if you want to automatically add any missing columns to the table. This requires the :ref:`actions_alter_table` permission.
 
 If the table is successfully created this will return a ``201`` status code and the following response:
@@ -906,7 +906,7 @@ Datasette will create a table with a schema that matches those rows and insert t
         "pk": "id"
     }
 
-Doing this requires both the :ref:`permissions_create_table` and :ref:`permissions_insert_row` permissions.
+Doing this requires both the :ref:`actions_create_table` and :ref:`actions_insert_row` permissions.
 
 The ``201`` response here will be similar to the ``columns`` form, but will also include the number of rows that were inserted as ``row_count``:
 
@@ -937,7 +937,7 @@ If you pass a row to the create endpoint with a primary key that already exists 
 
 You can avoid this error by passing the same ``"ignore": true`` or ``"replace": true`` options to the create endpoint as you can to the :ref:`insert endpoint <TableInsertView>`.
 
-To use the ``"replace": true`` option you will also need the :ref:`permissions_update_row` permission.
+To use the ``"replace": true`` option you will also need the :ref:`actions_update_row` permission.
 
 Pass ``"alter": true`` to automatically add any missing columns to the existing table that are present in the rows you are submitting. This requires the :ref:`actions_alter_table` permission.
 
@@ -946,7 +946,7 @@ Pass ``"alter": true`` to automatically add any missing columns to the existing 
 Dropping tables
 ~~~~~~~~~~~~~~~
 
-To drop a table, make a ``POST`` to ``/<database>/<table>/-/drop``. This requires the :ref:`permissions_drop_table` permission.
+To drop a table, make a ``POST`` to ``/<database>/<table>/-/drop``. This requires the :ref:`actions_drop_table` permission.
 
 ::
 

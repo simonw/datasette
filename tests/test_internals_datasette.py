@@ -4,7 +4,7 @@ Tests for the datasette.app.Datasette class
 
 import dataclasses
 from datasette import Context
-from datasette.app import Datasette, Database
+from datasette.app import Datasette, Database, ResourcesSQL
 from datasette.resources import DatabaseResource
 from itsdangerous import BadSignature
 import pytest
@@ -195,3 +195,14 @@ async def test_apply_metadata_json():
     assert (await ds.client.get("/")).status_code == 200
     value = (await ds.get_instance_metadata()).get("weird_instance_value")
     assert value == '{"nested": [1, 2, 3]}'
+
+
+@pytest.mark.asyncio
+async def test_allowed_resources_sql(datasette):
+    result = await datasette.allowed_resources_sql(
+        action="view-table",
+        actor=None,
+    )
+    assert isinstance(result, ResourcesSQL)
+    assert "all_rules AS" in result.sql
+    assert result.params["action"] == "view-table"

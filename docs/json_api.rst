@@ -623,7 +623,7 @@ Pass ``"ignore": true`` to ignore these errors and insert the other rows:
 
 Or you can pass ``"replace": true`` to replace any rows with conflicting primary keys with the new values. This requires the :ref:`permissions_update_row` permission.
 
-Pass ``"alter: true`` to automatically add any missing columns to the table. This requires the :ref:`permissions_alter_table` permission.
+Pass ``"alter: true`` to automatically add any missing columns to the table. This requires the :ref:`actions_alter_table` permission.
 
 .. _TableUpsertView:
 
@@ -735,7 +735,7 @@ When using upsert you must provide the primary key column (or columns if the tab
 
 If your table does not have an explicit primary key you should pass the SQLite ``rowid`` key instead.
 
-Pass ``"alter: true`` to automatically add any missing columns to the table. This requires the :ref:`permissions_alter_table` permission.
+Pass ``"alter: true`` to automatically add any missing columns to the table. This requires the :ref:`actions_alter_table` permission.
 
 .. _RowUpdateView:
 
@@ -792,7 +792,7 @@ The returned JSON will look like this:
 
 Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
 
-Pass ``"alter: true`` to automatically add any missing columns to the table. This requires the :ref:`permissions_alter_table` permission.
+Pass ``"alter: true`` to automatically add any missing columns to the table. This requires the :ref:`actions_alter_table` permission.
 
 .. _RowDeleteView:
 
@@ -860,7 +860,7 @@ The JSON here describes the table that will be created:
 * ``pks`` can be used instead of ``pk`` to create a compound primary key. It should be a JSON list of column names to use in that primary key.
 * ``ignore`` can be set to ``true`` to ignore existing rows by primary key if the table already exists.
 * ``replace`` can be set to ``true`` to replace existing rows by primary key if the table already exists. This requires the :ref:`permissions_update_row` permission.
-* ``alter`` can be set to ``true`` if you want to automatically add any missing columns to the table. This requires the :ref:`permissions_alter_table` permission.
+* ``alter`` can be set to ``true`` if you want to automatically add any missing columns to the table. This requires the :ref:`actions_alter_table` permission.
 
 If the table is successfully created this will return a ``201`` status code and the following response:
 
@@ -939,7 +939,7 @@ You can avoid this error by passing the same ``"ignore": true`` or ``"replace": 
 
 To use the ``"replace": true`` option you will also need the :ref:`permissions_update_row` permission.
 
-Pass ``"alter": true`` to automatically add any missing columns to the existing table that are present in the rows you are submitting. This requires the :ref:`permissions_alter_table` permission.
+Pass ``"alter": true`` to automatically add any missing columns to the existing table that are present in the rows you are submitting. This requires the :ref:`actions_alter_table` permission.
 
 .. _TableDropView:
 

@@ -138,14 +138,14 @@ def restore_working_directory(tmpdir, request):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def check_permission_actions_are_documented():
+def check_actions_are_documented():
     from datasette.plugins import pm
 
     content = (
         pathlib.Path(__file__).parent.parent / "docs" / "authentication.rst"
     ).read_text()
-    permissions_re = re.compile(r"\.\. _permissions_([^\s:]+):")
-    documented_permission_actions = set(permissions_re.findall(content)).union(
+    permissions_re = re.compile(r"\.\. _actions_([^\s:]+):")
+    documented_actions = set(permissions_re.findall(content)).union(
         UNDOCUMENTED_PERMISSIONS
     )
 
@@ -160,7 +160,7 @@ def check_permission_actions_are_documented():
             )
             action = kwargs.get("action").replace("-", "_")
             assert (
-                action in documented_permission_actions
+                action in documented_actions
             ), "Undocumented permission action: {}".format(action)
 
     pm.add_hookcall_monitoring(

@@ -1087,11 +1087,7 @@ class Datasette:
 
         # Validate that resource is a Resource object or None
         if resource is not None and not isinstance(resource, Resource):
-            raise TypeError(
-                f"resource must be a Resource object or None, not {type(resource).__name__}. "
-                f"Use DatabaseResource(database=...), TableResource(database=..., table=...), "
-                f"or QueryResource(database=..., query=...) instead."
-            )
+            raise TypeError(f"resource must be a Resource subclass instance or None.")
 
         # Check if actor can see it
         if not await self.allowed(action=action, resource=resource, actor=actor):
@@ -1122,7 +1118,7 @@ class Datasette:
             parent: Optional parent filter (e.g., database name) to limit results
             include_is_private: If True, include is_private column showing if anonymous cannot access
 
-        Returns a tuple of (query, params) that can be executed against the internal database.
+        Returns a tuple of (query: str, params: dict) that can be executed against the internal database.
         The query returns rows with (parent, child, reason) columns, plus is_private if requested.
 
         Example:

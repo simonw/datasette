@@ -458,9 +458,9 @@ Example usage:
     for table in page.resources:
         print(f"{table.child}: {table.reasons}")
 
-The ``page.all()`` async generator automatically handles pagination under the hood, fetching additional pages as needed and yielding all resources one at a time.
+The ``page.all()`` async generator automatically handles pagination, fetching additional pages and yielding all resources one at a time.
 
-This method uses :ref:`datasette_allowed_resources_sql` under the hood and is an efficient way to list the databases, tables or queries visible to a user.
+This method uses :ref:`datasette_allowed_resources_sql` under the hood and is an efficient way to list the databases, tables or other resources that an actor can access for a specific action.
 
 .. _datasette_allowed_resources_sql:
 

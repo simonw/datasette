@@ -54,7 +54,6 @@ class Resource(ABC):
     def private(self, value: bool):
         self._private = value
 
-
     @classmethod
     def __init_subclass__(cls):
         """

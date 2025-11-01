@@ -1613,6 +1613,24 @@ async def test_hook_register_actions_with_custom_resources():
                 ),
             ]
 
+        @hookimpl
+        def permission_resources_sql(self, datasette, actor, action):
+            from datasette.permissions import PermissionSQL
+
+            # Grant user2 access to manage-documents globally
+            if actor and actor.get("id") == "user2" and action == "manage-documents":
+                return PermissionSQL.allow(reason="user2 granted manage-documents")
+
+            # Grant user2 access to view-document-collection globally
+            if (
+                actor
+                and actor.get("id") == "user2"
+                and action == "view-document-collection"
+            ):
+                return PermissionSQL.allow(
+                    reason="user2 granted view-document-collection"
+                )
+
     # Register the plugin temporarily
     plugin = TestPlugin()
     pm.register(plugin, name="test_custom_resources_plugin")
@@ -1658,6 +1676,95 @@ async def test_hook_register_actions_with_custom_resources():
         doc_resource = DocumentResource(collection="collection1", document="doc1")
         assert doc_resource.parent == "collection1"
         assert doc_resource.child == "doc1"
+
+        # Test permission checks with restricted actors
+
+        # Test 1: Global action - no restrictions (custom actions default to deny)
+        unrestricted_actor = {"id": "user1"}
+        allowed = await datasette.allowed(
+            action="manage-documents",
+            actor=unrestricted_actor,
+        )
+        assert allowed is False  # Custom actions have no default allow
+
+        # Test 2: Global action - user2 has explicit permission via plugin hook
+        restricted_global = {"id": "user2", "_r": {"a": ["md"]}}
+        allowed = await datasette.allowed(
+            action="manage-documents",
+            actor=restricted_global,
+        )
+        assert allowed is True  # Granted by plugin hook for user2
+
+        # Test 3: Global action - restricted but not in allowlist
+        restricted_no_access = {"id": "user3", "_r": {"a": ["vdc"]}}
+        allowed = await datasette.allowed(
+            action="manage-documents",
+            actor=restricted_no_access,
+        )
+        assert allowed is False  # Not in allowlist
+
+        # Test 4: Collection-level action - allowed for specific collection
+        collection_resource = DocumentCollectionResource(collection="collection1")
+        restricted_collection = {"id": "user4", "_r": {"d": {"collection1": ["vdc"]}}}
+        allowed = await datasette.allowed(
+            action="view-document-collection",
+            resource=collection_resource,
+            actor=restricted_collection,
+        )
+        assert allowed is True  # Allowed for collection1
+
+        # Test 5: Collection-level action - denied for different collection
+        collection2_resource = DocumentCollectionResource(collection="collection2")
+        allowed = await datasette.allowed(
+            action="view-document-collection",
+            resource=collection2_resource,
+            actor=restricted_collection,
+        )
+        assert allowed is False  # Not allowed for collection2
+
+        # Test 6: Document-level action - allowed for specific document
+        doc1_resource = DocumentResource(collection="collection1", document="doc1")
+        restricted_document = {
+            "id": "user5",
+            "_r": {"r": {"collection1": {"doc1": ["vdoc"]}}},
+        }
+        allowed = await datasette.allowed(
+            action="view-document",
+            resource=doc1_resource,
+            actor=restricted_document,
+        )
+        assert allowed is True  # Allowed for collection1/doc1
+
+        # Test 7: Document-level action - denied for different document
+        doc2_resource = DocumentResource(collection="collection1", document="doc2")
+        allowed = await datasette.allowed(
+            action="view-document",
+            resource=doc2_resource,
+            actor=restricted_document,
+        )
+        assert allowed is False  # Not allowed for collection1/doc2
+
+        # Test 8: Document-level action - globally allowed
+        doc_resource = DocumentResource(collection="collection2", document="doc3")
+        restricted_all_docs = {"id": "user6", "_r": {"a": ["vdoc"]}}
+        allowed = await datasette.allowed(
+            action="view-document",
+            resource=doc_resource,
+            actor=restricted_all_docs,
+        )
+        assert allowed is True  # Globally allowed for all documents
+
+        # Test 9: Verify hierarchy - collection access doesn't grant document access
+        collection_only_actor = {"id": "user7", "_r": {"d": {"collection1": ["vdc"]}}}
+        doc_resource = DocumentResource(collection="collection1", document="doc1")
+        allowed = await datasette.allowed(
+            action="view-document",
+            resource=doc_resource,
+            actor=collection_only_actor,
+        )
+        assert (
+            allowed is False
+        )  # Collection permission doesn't grant document permission
 
     finally:
         # Unregister the plugin

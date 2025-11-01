@@ -23,6 +23,10 @@ UNDOCUMENTED_PERMISSIONS = {
     "this_is_allowed_async",
     "this_is_denied_async",
     "no_match",
+    # Test actions from test_hook_register_actions_with_custom_resources
+    "manage_documents",
+    "view_document_collection",
+    "view_document",
 }
 
 _ds_client = None

@@ -3,7 +3,7 @@ from datasette import hookimpl
 from datasette.facets import Facet
 from datasette import tracer
 from datasette.permissions import Action
-from datasette.resources import DatabaseResource, InstanceResource
+from datasette.resources import DatabaseResource
 from datasette.utils import path_with_added_args
 from datasette.utils.asgi import asgi_send_json, Response
 import base64
@@ -461,94 +461,90 @@ def register_actions(datasette):
             name="action-from-plugin",
             abbr="ap",
             description="New action added by a plugin",
-            takes_parent=True,
-            takes_child=False,
             resource_class=DatabaseResource,
         ),
         Action(
             name="view-collection",
             abbr="vc",
             description="View a collection",
-            takes_parent=True,
-            takes_child=False,
             resource_class=DatabaseResource,
         ),
-        # Test actions for test_hook_permission_allowed
+        # Test actions for test_hook_permission_allowed (global actions - no resource_class)
         Action(
             name="this_is_allowed",
             abbr=None,
             description=None,
-            takes_parent=False,
-            takes_child=False,
-            resource_class=InstanceResource,
         ),
         Action(
             name="this_is_denied",
             abbr=None,
             description=None,
-            takes_parent=False,
-            takes_child=False,
-            resource_class=InstanceResource,
         ),
         Action(
             name="this_is_allowed_async",
             abbr=None,
             description=None,
-            takes_parent=False,
-            takes_child=False,
-            resource_class=InstanceResource,
         ),
         Action(
             name="this_is_denied_async",
             abbr=None,
             description=None,
-            takes_parent=False,
-            takes_child=False,
-            resource_class=InstanceResource,
         ),
     ]
 
     # Support old-style config for backwards compatibility
     if extras_old:
         for p in extras_old["permissions"]:
-            # Map old takes_database/takes_resource to new takes_parent/takes_child
-            actions.append(
-                Action(
-                    name=p["name"],
-                    abbr=p["abbr"],
-                    description=p["description"],
-                    takes_parent=p.get("takes_database", False),
-                    takes_child=p.get("takes_resource", False),
-                    resource_class=(
-                        DatabaseResource
-                        if p.get("takes_database")
-                        else InstanceResource
-                    ),
+            # Map old takes_database/takes_resource to new global/resource_class
+            if p.get("takes_database"):
+                # Has database -> DatabaseResource
+                actions.append(
+                    Action(
+                        name=p["name"],
+                        abbr=p["abbr"],
+                        description=p["description"],
+                        resource_class=DatabaseResource,
+                    )
                 )
-            )
+            else:
+                # No database -> global action (no resource_class)
+                actions.append(
+                    Action(
+                        name=p["name"],
+                        abbr=p["abbr"],
+                        description=p["description"],
+                    )
+                )
 
     # Support new-style config
     if extras_new:
         for a in extras_new["actions"]:
-            # Map string resource_class to actual class
-            resource_class_map = {
-                "InstanceResource": InstanceResource,
-                "DatabaseResource": DatabaseResource,
-            }
-            resource_class = resource_class_map.get(
-                a.get("resource_class", "InstanceResource"), InstanceResource
-            )
-
-            actions.append(
-                Action(
-                    name=a["name"],
-                    abbr=a["abbr"],
-                    description=a["description"],
-                    takes_parent=a.get("takes_parent", False),
-                    takes_child=a.get("takes_child", False),
-                    resource_class=resource_class,
+            # Check if this is a global action (no resource_class specified)
+            if not a.get("resource_class"):
+                actions.append(
+                    Action(
+                        name=a["name"],
+                        abbr=a["abbr"],
+                        description=a["description"],
+                    )
                 )
-            )
+            else:
+                # Map string resource_class to actual class
+                resource_class_map = {
+                    "DatabaseResource": DatabaseResource,
+                }
+                resource_class = resource_class_map.get(
+                    a.get("resource_class", "DatabaseResource"), DatabaseResource
+                )
+
+                actions.append(
+                    Action(
+                        name=a["name"],
+                        abbr=a["abbr"],
+                        description=a["description"],
+                        resource_class=resource_class,
+                    )
+                )
 
     return actions
 

@@ -883,24 +883,18 @@ Actions define what operations can be performed on resources (like viewing a tab
                 name="list-documents",
                 abbr="ld",
                 description="List documents in a collection",
-                takes_parent=True,
-                takes_child=False,
                 resource_class=DocumentCollectionResource,
             ),
             Action(
                 name="view-document",
                 abbr="vdoc",
                 description="View document",
-                takes_parent=True,
-                takes_child=True,
                 resource_class=DocumentResource,
             ),
             Action(
                 name="edit-document",
                 abbr="edoc",
                 description="Edit document",
-                takes_parent=True,
-                takes_child=True,
                 resource_class=DocumentResource,
             ),
         ]
@@ -916,26 +910,20 @@ The fields of the ``Action`` dataclass are as follows:
 ``description`` - string or None
     A human-readable description of what the action allows you to do.
 
-``takes_parent`` - boolean
-    ``True`` if this action requires a parent identifier (like a database name).
-
-``takes_child`` - boolean
-    ``True`` if this action requires a child identifier (like a table or document name).
-
-``resource_class`` - type[Resource]
-    The Resource subclass that defines what kind of resource this action applies to. Your Resource subclass must:
+``resource_class`` - type[Resource] or None
+    The Resource subclass that defines what kind of resource this action applies to. Omit this (or set to ``None``) for global actions that apply only at the instance level with no associated resources (like ``debug-menu`` or ``permissions-debug``). Your Resource subclass must:
 
     - Define a ``name`` class attribute (e.g., ``"document"``)
-    - Optionally define a ``parent_name`` class attribute (e.g., ``"collection"``)
+    - Define a ``parent_class`` class attribute (``None`` for top-level resources like databases, or the parent ``Resource`` subclass for child resources)
     - Implement a ``resources_sql()`` classmethod that returns SQL returning all resources as ``(parent, child)`` columns
     - Have an ``__init__`` method that accepts appropriate parameters and calls ``super().__init__(parent=..., child=...)``
 
 The ``resources_sql()`` method
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``resources_sql()`` classmethod is crucial to Datasette's permission system. It returns a SQL query that lists all resources of that type that exist in the system.
+The ``resources_sql()`` classmethod returns a SQL query that lists all resources of that type that exist in the system.
 
-This SQL query is used by Datasette to efficiently check permissions across multiple resources at once. When a user requests a list of resources (like tables, documents, or other entities), Datasette uses this SQL to:
+This query is used by Datasette to efficiently check permissions across multiple resources at once. When a user requests a list of resources (like tables, documents, or other entities), Datasette uses this SQL to:
 
 1. Get all resources of this type from your data catalog
 2. Combine it with permission rules from the ``permission_resources_sql`` hook

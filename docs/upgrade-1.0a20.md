@@ -41,7 +41,7 @@ def register_permissions(datasette):
         ),
     ]
 ```
-The new `Action` does not have a `default=` parameter, and `takes_database` and `takes_resource` have been renamed to `takes_parent` and `takes_child. The new code would look like this:
+The new `Action` does not have a `default=` parameter. For global actions (those that don't apply to specific resources), omit `resource_class`:
 
 ```python
 from datasette.permissions import Action
@@ -53,20 +53,40 @@ def register_actions(datasette):
             name="datasette-pins-write",
             abbr=None,
             description="Can pin, unpin, and re-order pins for datasette-pins",
-            takes_parent=False,
-            takes_child=False,
-            default=False,
         ),
         Action(
             name="datasette-pins-read",
             abbr=None,
             description="Can read pinned items.",
-            takes_parent=False,
-            takes_child=False,
-            default=False,
         ),
     ]
 ```
+
+For actions that apply to specific resources (like databases or tables), specify the `resource_class` instead of `takes_parent` and `takes_child`:
+
+```python
+from datasette.permissions import Action
+from datasette.resources import DatabaseResource, TableResource
+
+@hookimpl
+def register_actions(datasette):
+    return [
+        Action(
+            name="execute-sql",
+            abbr="es",
+            description="Execute SQL queries",
+            resource_class=DatabaseResource,  # Parent-level resource
+        ),
+        Action(
+            name="insert-row",
+            abbr="ir",
+            description="Insert rows",
+            resource_class=TableResource,  # Child-level resource
+        ),
+    ]
+```
+
+The hierarchy information (whether an action takes parent/child parameters) is now derived from the `Resource` class hierarchy. `Action` has `takes_parent` and `takes_child` properties that are computed based on the `resource_class` and its `parent_class` attribute.
 
 ## permission_allowed() hook is replaced by permission_resources_sql()
 

@@ -1,7 +1,7 @@
 import json
 import logging
 from datasette.events import LogoutEvent, LoginEvent, CreateTokenEvent
-from datasette.resources import DatabaseResource, TableResource, InstanceResource
+from datasette.resources import DatabaseResource, TableResource
 from datasette.utils.asgi import Response, Forbidden
 from datasette.utils import (
     actor_matches_allow,
@@ -491,12 +491,18 @@ async def _check_permission_for_actor(ds, action, parent, child, actor):
     if not action_obj:
         return {"error": f"Unknown action: {action}"}, 400
 
-    if action_obj.takes_parent and action_obj.takes_child:
+    # Global actions (no resource_class) don't have a resource
+    if action_obj.resource_class is None:
+        resource_obj = None
+    elif action_obj.takes_parent and action_obj.takes_child:
+        # Child-level resource (e.g., TableResource, QueryResource)
         resource_obj = action_obj.resource_class(database=parent, table=child)
     elif action_obj.takes_parent:
+        # Parent-level resource (e.g., DatabaseResource)
         resource_obj = action_obj.resource_class(database=parent)
     else:
-        resource_obj = action_obj.resource_class()
+        # This shouldn't happen given validation in Action.__post_init__
+        return {"error": f"Invalid action configuration: {action}"}, 500
 
     allowed = await ds.allowed(action=action, resource=resource_obj, actor=actor)
 

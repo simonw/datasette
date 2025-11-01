@@ -1308,7 +1308,7 @@ class Datasette:
         Uses SQL to check permission for a single resource without fetching all resources.
         This is efficient - it does NOT call allowed_resources() and check membership.
 
-        If resource is not provided, defaults to InstanceResource() for instance-level actions.
+        For global actions, resource should be None (or omitted).
 
         Example:
             from datasette.resources import TableResource
@@ -1318,14 +1318,12 @@ class Datasette:
                 actor=actor
             )
 
-            # For instance-level actions, resource can be omitted:
+            # For global actions, resource can be omitted:
             can_debug = await datasette.allowed(action="permissions-debug", actor=actor)
         """
         from datasette.utils.actions_sql import check_permission_for_resource
-        from datasette.resources import InstanceResource
 
-        if resource is None:
-            resource = InstanceResource()
+        # For global actions, resource remains None
 
         # Check if this action has also_requires - if so, check that action first
         action_obj = self.actions.get(action)
@@ -1338,12 +1336,16 @@ class Datasette:
             ):
                 return False
 
+        # For global actions, resource is None
+        parent = resource.parent if resource else None
+        child = resource.child if resource else None
+
         result = await check_permission_for_resource(
             datasette=self,
             actor=actor,
             action=action,
-            parent=resource.parent,
-            child=resource.child,
+            parent=parent,
+            child=child,
         )
 
         # Log the permission check for debugging
@@ -1352,8 +1354,8 @@ class Datasette:
                 when=datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 actor=actor,
                 action=action,
-                parent=resource.parent,
-                child=resource.child,
+                parent=parent,
+                child=child,
                 result=result,
             )
         )
@@ -1607,7 +1609,9 @@ class Datasette:
                 "description": action.description,
                 "takes_parent": action.takes_parent,
                 "takes_child": action.takes_child,
-                "resource_class": action.resource_class.__name__,
+                "resource_class": (
+                    action.resource_class.__name__ if action.resource_class else None
+                ),
                 "also_requires": action.also_requires,
             }
             for action in sorted(self.actions.values(), key=lambda a: a.name)

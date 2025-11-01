@@ -1119,13 +1119,12 @@ async def test_api_explorer_visibility(
 @pytest.mark.asyncio
 async def test_view_table_token_cannot_gain_access_without_base_permission(perms_ds):
     # Only allow a different actor to view this table
-    previous_config = perms_ds._config
-    perms_ds._config = {
+    previous_config = perms_ds.config
+    perms_ds.config = {
         "databases": {
             "perms_ds_two": {
-                "tables": {
-                    "t1": {"allow": {"id": "someone-else"}},
-                }
+                # Only someone-else can see anything in this database
+                "allow": {"id": "someone-else"},
             }
         }
     }
@@ -1140,7 +1139,7 @@ async def test_view_table_token_cannot_gain_access_without_base_permission(perms
         response = await perms_ds.client.get("/perms_ds_two/t1.json", cookies=cookies)
         assert response.status_code == 403
     finally:
-        perms_ds._config = previous_config
+        perms_ds.config = previous_config
 
 
 @pytest.mark.asyncio
@@ -1355,13 +1354,11 @@ async def test_actor_restrictions_filters_allowed_resources(perms_ds):
 async def test_actor_restrictions_do_not_expand_allowed_resources(perms_ds):
     """Restrictions cannot grant access not already allowed to the actor."""
 
-    previous_config = perms_ds._config
-    perms_ds._config = {
+    previous_config = perms_ds.config
+    perms_ds.config = {
         "databases": {
             "perms_ds_one": {
-                "tables": {
-                    "t1": {"allow": {"id": "someone-else"}},
-                }
+                "allow": {"id": "someone-else"},
             }
         }
     }
@@ -1379,7 +1376,7 @@ async def test_actor_restrictions_do_not_expand_allowed_resources(perms_ds):
         )
         assert response.status_code == 403
     finally:
-        perms_ds._config = previous_config
+        perms_ds.config = previous_config
 
 
 @pytest.mark.asyncio

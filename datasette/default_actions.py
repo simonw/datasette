@@ -11,24 +11,21 @@ from datasette.resources import (
 def register_actions():
     """Register the core Datasette actions."""
     return (
-        # Global actions
+        # Global actions (no resource_class)
         Action(
             name="view-instance",
             abbr="vi",
             description="View Datasette instance",
-            global_=True,
         ),
         Action(
             name="permissions-debug",
             abbr="pd",
             description="Access permission debug tool",
-            global_=True,
         ),
         Action(
             name="debug-menu",
             abbr="dm",
             description="View debug menu items",
-            global_=True,
         ),
         # Database-level actions (parent-level)
         Action(

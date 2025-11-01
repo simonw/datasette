@@ -7,8 +7,7 @@ class DatabaseResource(Resource):
     """A database in Datasette."""
 
     name = "database"
-    parent_name = None  # Top of the resource hierarchy
-    takes_child = False  # Parent-level resource
+    parent_class = None  # Top of the resource hierarchy
 
     def __init__(self, database: str):
         super().__init__(parent=database, child=None)
@@ -25,8 +24,7 @@ class TableResource(Resource):
     """A table in a database."""
 
     name = "table"
-    parent_name = "database"
-    takes_child = True  # Child-level resource
+    parent_class = DatabaseResource
 
     def __init__(self, database: str, table: str):
         super().__init__(parent=database, child=table)
@@ -46,8 +44,7 @@ class QueryResource(Resource):
     """A canned query in a database."""
 
     name = "query"
-    parent_name = "database"
-    takes_child = True  # Child-level resource
+    parent_class = DatabaseResource
 
     def __init__(self, database: str, query: str):
         super().__init__(parent=database, child=query)

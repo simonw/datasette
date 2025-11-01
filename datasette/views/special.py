@@ -491,8 +491,8 @@ async def _check_permission_for_actor(ds, action, parent, child, actor):
     if not action_obj:
         return {"error": f"Unknown action: {action}"}, 400
 
-    # Global actions don't have a resource
-    if action_obj.global_:
+    # Global actions (no resource_class) don't have a resource
+    if action_obj.resource_class is None:
         resource_obj = None
     elif action_obj.takes_parent and action_obj.takes_child:
         # Child-level resource (e.g., TableResource, QueryResource)

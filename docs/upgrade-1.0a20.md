@@ -41,7 +41,7 @@ def register_permissions(datasette):
         ),
     ]
 ```
-The new `Action` does not have a `default=` parameter. For global actions (those that don't apply to specific resources), use `global_=True` instead of `takes_parent` and `takes_child`:
+The new `Action` does not have a `default=` parameter. For global actions (those that don't apply to specific resources), omit `resource_class`:
 
 ```python
 from datasette.permissions import Action
@@ -53,13 +53,11 @@ def register_actions(datasette):
             name="datasette-pins-write",
             abbr=None,
             description="Can pin, unpin, and re-order pins for datasette-pins",
-            global_=True,
         ),
         Action(
             name="datasette-pins-read",
             abbr=None,
             description="Can read pinned items.",
-            global_=True,
         ),
     ]
 ```

@@ -1609,7 +1609,6 @@ class Datasette:
                 "description": action.description,
                 "takes_parent": action.takes_parent,
                 "takes_child": action.takes_child,
-                "global": action.global_,
                 "resource_class": action.resource_class.__name__ if action.resource_class else None,
                 "also_requires": action.also_requires,
             }

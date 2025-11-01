@@ -469,30 +469,26 @@ def register_actions(datasette):
             description="View a collection",
             resource_class=DatabaseResource,
         ),
-        # Test actions for test_hook_permission_allowed (global actions)
+        # Test actions for test_hook_permission_allowed (global actions - no resource_class)
         Action(
             name="this_is_allowed",
             abbr=None,
             description=None,
-            global_=True,
         ),
         Action(
             name="this_is_denied",
             abbr=None,
             description=None,
-            global_=True,
         ),
         Action(
             name="this_is_allowed_async",
             abbr=None,
             description=None,
-            global_=True,
         ),
         Action(
             name="this_is_denied_async",
             abbr=None,
             description=None,
-            global_=True,
         ),
     ]
 
@@ -511,27 +507,25 @@ def register_actions(datasette):
                     )
                 )
             else:
-                # No database -> global action
+                # No database -> global action (no resource_class)
                 actions.append(
                     Action(
                         name=p["name"],
                         abbr=p["abbr"],
                         description=p["description"],
-                        global_=True,
                     )
                 )
 
     # Support new-style config
     if extras_new:
         for a in extras_new["actions"]:
-            # Check if this is a global action
-            if a.get("global", False):
+            # Check if this is a global action (no resource_class specified)
+            if not a.get("resource_class"):
                 actions.append(
                     Action(
                         name=a["name"],
                         abbr=a["abbr"],
                         description=a["description"],
-                        global_=True,
                     )
                 )
             else:

@@ -1185,7 +1185,6 @@ async def test_hook_register_actions(extra_metadata):
                                 "name": "extra-from-metadata",
                                 "abbr": "efm",
                                 "description": "Extra from metadata",
-                                "global": True,
                             }
                         ]
                     }
@@ -1208,7 +1207,6 @@ async def test_hook_register_actions(extra_metadata):
             name="extra-from-metadata",
             abbr="efm",
             description="Extra from metadata",
-            global_=True,
         )
     else:
         assert "extra-from-metadata" not in ds.actions
@@ -1232,13 +1230,11 @@ async def test_hook_register_actions_no_duplicates(duplicate):
                             "name": name1,
                             "abbr": abbr1,
                             "description": None,
-                            "global": True,
                         },
                         {
                             "name": name2,
                             "abbr": abbr2,
                             "description": None,
-                            "global": True,
                         },
                     ]
                 }
@@ -1263,13 +1259,11 @@ async def test_hook_register_actions_allows_identical_duplicates():
                             "name": "name1",
                             "abbr": "abbr1",
                             "description": None,
-                            "global": True,
                         },
                         {
                             "name": "name1",
                             "abbr": "abbr1",
                             "description": None,
-                            "global": True,
                         },
                     ]
                 }

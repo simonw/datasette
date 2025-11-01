@@ -911,16 +911,12 @@ The fields of the ``Action`` dataclass are as follows:
     A human-readable description of what the action allows you to do.
 
 ``resource_class`` - type[Resource] or None
-    The Resource subclass that defines what kind of resource this action applies to. Set to ``None`` for global actions (use ``global_=True`` instead). Your Resource subclass must:
+    The Resource subclass that defines what kind of resource this action applies to. Omit this (or set to ``None``) for global actions that apply only at the instance level with no associated resources (like ``debug-menu`` or ``permissions-debug``). Your Resource subclass must:
 
     - Define a ``name`` class attribute (e.g., ``"document"``)
-    - Define a ``parent_name`` class attribute (``None`` for top-level resources like databases, or the parent resource name for child resources)
-    - Define a ``takes_child`` class attribute (``True`` for child-level resources, ``False`` for parent-level)
+    - Define a ``parent_class`` class attribute (``None`` for top-level resources like databases, or the parent ``Resource`` class for child resources)
     - Implement a ``resources_sql()`` classmethod that returns SQL returning all resources as ``(parent, child)`` columns
     - Have an ``__init__`` method that accepts appropriate parameters and calls ``super().__init__(parent=..., child=...)``
-
-``global_`` - boolean (default: False)
-    Set to ``True`` for actions that apply only at the top level, with no associated resources. Global actions cannot have a ``resource_class``. Use this for instance-wide actions like ``debug-menu`` or ``permissions-debug``.
 
 The ``resources_sql()`` method
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -853,7 +853,6 @@ async def test_actions_json(ds_client):
         "description",
         "takes_parent",
         "takes_child",
-        "global",
         "resource_class",
         "also_requires",
     ):

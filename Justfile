@@ -31,6 +31,10 @@ export DATASETTE_SECRET := "not_a_secret"
 @docs: cog blacken-docs
   uv sync --extra docs && cd docs && uv run make livehtml
 
+# Build docs as static HTML
+@docs-build: cog blacken-docs
+  rm -rf docs/_build && cd docs && uv run make html
+
 # Apply Black
 @black:
   uv run black .

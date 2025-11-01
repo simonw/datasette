@@ -54,25 +54,6 @@ class Resource(ABC):
     def private(self, value: bool):
         self._private = value
 
-    @classmethod
-    def takes_parent(cls) -> bool:
-        """
-        Whether actions on this resource can work with a parent.
-
-        Returns True for parent-level and child-level resources.
-        Returns False for top-level resources (where parent_class is None).
-        """
-        return cls.parent_class is not None
-
-    @classmethod
-    def takes_child(cls) -> bool:
-        """
-        Whether actions on this resource can work with a child.
-
-        - Top-level resources (no parent): False
-        - Child-level resources (has parent): True
-        """
-        return cls.parent_class is not None
 
     @classmethod
     def __init_subclass__(cls):
@@ -126,24 +107,25 @@ class Action:
     @property
     def takes_parent(self) -> bool:
         """
-        Whether this action requires a parent identifier.
+        Whether this action requires a parent identifier when instantiating its resource.
 
-        Returns False for global-only actions (no resource_class), otherwise delegates to resource_class.
+        Returns False for global-only actions (no resource_class).
+        Returns True for all actions with a resource_class (all resources require a parent identifier).
         """
-        if self.resource_class is None:
-            return False
-        return self.resource_class.takes_parent()
+        return self.resource_class is not None
 
     @property
     def takes_child(self) -> bool:
         """
-        Whether this action requires a child identifier.
+        Whether this action requires a child identifier when instantiating its resource.
 
-        Returns False for global-only actions (no resource_class), otherwise delegates to resource_class.
+        Returns False for global actions (no resource_class).
+        Returns False for parent-level resources (DatabaseResource - parent_class is None).
+        Returns True for child-level resources (TableResource, QueryResource - have a parent_class).
         """
         if self.resource_class is None:
             return False
-        return self.resource_class.takes_child()
+        return self.resource_class.parent_class is not None
 
 
 _reason_id = 1

@@ -86,7 +86,7 @@ def register_actions(datasette):
     ]
 ```
 
-The hierarchy information (whether an action takes parent/child parameters) is now determined by the `Resource` class, not the `Action`. For backward compatibility, `Action` still has `takes_parent` and `takes_child` properties that delegate to the resource class.
+The hierarchy information (whether an action takes parent/child parameters) is now derived from the `Resource` class hierarchy. `Action` has `takes_parent` and `takes_child` properties that are computed based on the `resource_class` and its `parent_class` attribute.
 
 ## permission_allowed() hook is replaced by permission_resources_sql()
 

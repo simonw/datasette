@@ -1609,7 +1609,9 @@ class Datasette:
                 "description": action.description,
                 "takes_parent": action.takes_parent,
                 "takes_child": action.takes_child,
-                "resource_class": action.resource_class.__name__ if action.resource_class else None,
+                "resource_class": (
+                    action.resource_class.__name__ if action.resource_class else None
+                ),
                 "also_requires": action.also_requires,
             }
             for action in sorted(self.actions.values(), key=lambda a: a.name)

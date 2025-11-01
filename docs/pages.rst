@@ -28,7 +28,7 @@ The index page can also be accessed at ``/-/``, useful for if the default index 
 Database
 ========
 
-Each database has a page listing the tables, views and canned queries available for that database. If the :ref:`permissions_execute_sql` permission is enabled (it's on by default) there will also be an interface for executing arbitrary SQL select queries against the data.
+Each database has a page listing the tables, views and canned queries available for that database. If the :ref:`actions_execute_sql` permission is enabled (it's on by default) there will also be an interface for executing arbitrary SQL select queries against the data.
 
 Examples:
 
@@ -60,7 +60,7 @@ The following tables are hidden by default:
 Queries
 =======
 
-The ``/database-name/-/query`` page can be used to execute an arbitrary SQL query against that database, if the :ref:`permissions_execute_sql` permission is enabled. This query is passed as the ``?sql=`` query string parameter.
+The ``/database-name/-/query`` page can be used to execute an arbitrary SQL query against that database, if the :ref:`actions_execute_sql` permission is enabled. This query is passed as the ``?sql=`` query string parameter.
 
 This means you can link directly to a query by constructing the following URL:
 

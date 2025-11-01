@@ -1426,7 +1426,7 @@ Here's an example that allows users to view the ``admin_log`` table only if thei
 
         return inner
 
-See :ref:`built-in permissions <permissions>` for a full list of permissions that are included in Datasette core.
+See :ref:`built-in permissions <authentication_permissions>` for a full list of permissions that are included in Datasette core.
 
 Example: `datasette-permissions-sql <https://datasette.io/plugins/datasette-permissions-sql>`_
 

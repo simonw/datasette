@@ -69,7 +69,7 @@ default_allow_sql
 
 Should users be able to execute arbitrary SQL queries by default?
 
-Setting this to ``off`` causes permission checks for :ref:`permissions_execute_sql` to fail by default.
+Setting this to ``off`` causes permission checks for :ref:`actions_execute_sql` to fail by default.
 
 ::
 

@@ -914,16 +914,16 @@ The fields of the ``Action`` dataclass are as follows:
     The Resource subclass that defines what kind of resource this action applies to. Omit this (or set to ``None``) for global actions that apply only at the instance level with no associated resources (like ``debug-menu`` or ``permissions-debug``). Your Resource subclass must:
 
     - Define a ``name`` class attribute (e.g., ``"document"``)
-    - Define a ``parent_class`` class attribute (``None`` for top-level resources like databases, or the parent ``Resource`` class for child resources)
+    - Define a ``parent_class`` class attribute (``None`` for top-level resources like databases, or the parent ``Resource`` subclass for child resources)
     - Implement a ``resources_sql()`` classmethod that returns SQL returning all resources as ``(parent, child)`` columns
     - Have an ``__init__`` method that accepts appropriate parameters and calls ``super().__init__(parent=..., child=...)``
 
 The ``resources_sql()`` method
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``resources_sql()`` classmethod is crucial to Datasette's permission system. It returns a SQL query that lists all resources of that type that exist in the system.
+The ``resources_sql()`` classmethod returns a SQL query that lists all resources of that type that exist in the system.
 
-This SQL query is used by Datasette to efficiently check permissions across multiple resources at once. When a user requests a list of resources (like tables, documents, or other entities), Datasette uses this SQL to:
+This query is used by Datasette to efficiently check permissions across multiple resources at once. When a user requests a list of resources (like tables, documents, or other entities), Datasette uses this SQL to:
 
 1. Get all resources of this type from your data catalog
 2. Combine it with permission rules from the ``permission_resources_sql`` hook

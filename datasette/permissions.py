@@ -57,7 +57,7 @@ class Resource(ABC):
     @classmethod
     def takes_parent(cls) -> bool:
         """
-        Whether actions on this resource require a parent identifier.
+        Whether actions on this resource can work with a parent.
 
         Returns True for parent-level and child-level resources.
         Returns False for top-level resources (where parent_class is None).
@@ -67,9 +67,8 @@ class Resource(ABC):
     @classmethod
     def takes_child(cls) -> bool:
         """
-        Whether actions on this resource require a child identifier.
+        Whether actions on this resource can work with a child.
 
-        With the 2-level hierarchy constraint:
         - Top-level resources (no parent): False
         - Child-level resources (has parent): True
         """
@@ -78,7 +77,7 @@ class Resource(ABC):
     @classmethod
     def __init_subclass__(cls):
         """
-        Validate that resource hierarchy doesn't exceed 2 levels.
+        Validate resource hierarchy doesn't exceed 2 levels.
 
         Raises:
             ValueError: If this resource would create a 3-level hierarchy

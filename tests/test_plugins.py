@@ -1537,6 +1537,133 @@ async def test_hook_register_actions():
     assert action.description == "View a collection"
 
 
+@pytest.mark.asyncio
+async def test_hook_register_actions_with_custom_resources():
+    """
+    Test registering actions with custom Resource classes:
+    - A global action (no resource)
+    - A parent-level action (DocumentCollectionResource)
+    - A child-level action (DocumentResource)
+    """
+    from datasette.permissions import Resource, Action
+
+    # Define custom Resource classes
+    class DocumentCollectionResource(Resource):
+        """A collection of documents."""
+
+        name = "document_collection"
+        parent_class = None  # Top-level resource
+
+        def __init__(self, collection: str):
+            super().__init__(parent=collection, child=None)
+
+        @classmethod
+        async def resources_sql(cls, datasette) -> str:
+            return """
+                SELECT 'collection1' AS parent, NULL AS child
+                UNION ALL
+                SELECT 'collection2' AS parent, NULL AS child
+            """
+
+    class DocumentResource(Resource):
+        """A document in a collection."""
+
+        name = "document"
+        parent_class = DocumentCollectionResource  # Child of DocumentCollectionResource
+
+        def __init__(self, collection: str, document: str):
+            super().__init__(parent=collection, child=document)
+
+        @classmethod
+        async def resources_sql(cls, datasette) -> str:
+            return """
+                SELECT 'collection1' AS parent, 'doc1' AS child
+                UNION ALL
+                SELECT 'collection1' AS parent, 'doc2' AS child
+                UNION ALL
+                SELECT 'collection2' AS parent, 'doc3' AS child
+            """
+
+    # Define a test plugin that registers these actions
+    class TestPlugin:
+        __name__ = "test_custom_resources_plugin"
+
+        @hookimpl
+        def register_actions(self, datasette):
+            return [
+                # Global action - no resource_class
+                Action(
+                    name="manage-documents",
+                    abbr="md",
+                    description="Manage the document system",
+                ),
+                # Parent-level action - collection only
+                Action(
+                    name="view-document-collection",
+                    abbr="vdc",
+                    description="View a document collection",
+                    resource_class=DocumentCollectionResource,
+                ),
+                # Child-level action - collection + document
+                Action(
+                    name="view-document",
+                    abbr="vdoc",
+                    description="View a document",
+                    resource_class=DocumentResource,
+                ),
+            ]
+
+    # Register the plugin temporarily
+    plugin = TestPlugin()
+    pm.register(plugin, name="test_custom_resources_plugin")
+
+    try:
+        # Create datasette instance and invoke startup
+        datasette = Datasette(memory=True)
+        await datasette.invoke_startup()
+
+        # Test global action
+        manage_docs = datasette.actions["manage-documents"]
+        assert manage_docs.name == "manage-documents"
+        assert manage_docs.abbr == "md"
+        assert manage_docs.resource_class is None
+        assert manage_docs.takes_parent is False
+        assert manage_docs.takes_child is False
+
+        # Test parent-level action
+        view_collection = datasette.actions["view-document-collection"]
+        assert view_collection.name == "view-document-collection"
+        assert view_collection.abbr == "vdc"
+        assert view_collection.resource_class is DocumentCollectionResource
+        assert view_collection.takes_parent is True
+        assert view_collection.takes_child is False
+
+        # Test child-level action
+        view_doc = datasette.actions["view-document"]
+        assert view_doc.name == "view-document"
+        assert view_doc.abbr == "vdoc"
+        assert view_doc.resource_class is DocumentResource
+        assert view_doc.takes_parent is True
+        assert view_doc.takes_child is True
+
+        # Verify the resource classes have correct hierarchy
+        assert DocumentCollectionResource.parent_class is None
+        assert DocumentResource.parent_class is DocumentCollectionResource
+
+        # Test that resources can be instantiated correctly
+        collection_resource = DocumentCollectionResource(collection="collection1")
+        assert collection_resource.parent == "collection1"
+        assert collection_resource.child is None
+
+        doc_resource = DocumentResource(collection="collection1", document="doc1")
+        assert doc_resource.parent == "collection1"
+        assert doc_resource.child == "doc1"
+
+    finally:
+        # Unregister the plugin
+        pm.unregister(plugin)
+
+
 @pytest.mark.skip(reason="TODO")
 @pytest.mark.parametrize(
     "metadata,config,expected_metadata,expected_config",

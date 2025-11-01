@@ -11,7 +11,8 @@ from datasette.app import Datasette
 from datasette import cli, hookimpl
 from datasette.filters import FilterArguments
 from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
-from datasette.permissions import PermissionSQL
+from datasette.permissions import PermissionSQL, Action
+from datasette.resources import DatabaseResource
 from datasette.utils.sqlite import sqlite3
 from datasette.utils import StartupError, await_me_maybe
 from jinja2 import ChoiceLoader, FileSystemLoader
@@ -1184,9 +1185,7 @@ async def test_hook_register_actions(extra_metadata):
                                 "name": "extra-from-metadata",
                                 "abbr": "efm",
                                 "description": "Extra from metadata",
-                                "takes_parent": False,
-                                "takes_child": False,
-                                "resource_class": "InstanceResource",
+                                "global": True,
                             }
                         ]
                     }
@@ -1202,8 +1201,6 @@ async def test_hook_register_actions(extra_metadata):
         name="action-from-plugin",
         abbr="ap",
         description="New action added by a plugin",
-        takes_parent=True,
-        takes_child=False,
         resource_class=DatabaseResource,
     )
     if extra_metadata:
@@ -1211,9 +1208,7 @@ async def test_hook_register_actions(extra_metadata):
             name="extra-from-metadata",
             abbr="efm",
             description="Extra from metadata",
-            takes_parent=False,
-            takes_child=False,
-            resource_class=InstanceResource,
+            global_=True,
         )
     else:
         assert "extra-from-metadata" not in ds.actions
@@ -1237,17 +1232,13 @@ async def test_hook_register_actions_no_duplicates(duplicate):
                             "name": name1,
                             "abbr": abbr1,
                             "description": None,
-                            "takes_parent": False,
-                            "takes_child": False,
-                            "resource_class": "InstanceResource",
+                            "global": True,
                         },
                         {
                             "name": name2,
                             "abbr": abbr2,
                             "description": None,
-                            "takes_parent": False,
-                            "takes_child": False,
-                            "resource_class": "InstanceResource",
+                            "global": True,
                         },
                     ]
                 }
@@ -1272,17 +1263,13 @@ async def test_hook_register_actions_allows_identical_duplicates():
                             "name": "name1",
                             "abbr": "abbr1",
                             "description": None,
-                            "takes_parent": False,
-                            "takes_child": False,
-                            "resource_class": "InstanceResource",
+                            "global": True,
                         },
                         {
                             "name": "name1",
                             "abbr": "abbr1",
                             "description": None,
-                            "takes_parent": False,
-                            "takes_child": False,
-                            "resource_class": "InstanceResource",
+                            "global": True,
                         },
                     ]
                 }

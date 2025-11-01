@@ -883,24 +883,18 @@ Actions define what operations can be performed on resources (like viewing a tab
                 name="list-documents",
                 abbr="ld",
                 description="List documents in a collection",
-                takes_parent=True,
-                takes_child=False,
                 resource_class=DocumentCollectionResource,
             ),
             Action(
                 name="view-document",
                 abbr="vdoc",
                 description="View document",
-                takes_parent=True,
-                takes_child=True,
                 resource_class=DocumentResource,
             ),
             Action(
                 name="edit-document",
                 abbr="edoc",
                 description="Edit document",
-                takes_parent=True,
-                takes_child=True,
                 resource_class=DocumentResource,
             ),
         ]
@@ -916,19 +910,17 @@ The fields of the ``Action`` dataclass are as follows:
 ``description`` - string or None
     A human-readable description of what the action allows you to do.
 
-``takes_parent`` - boolean
-    ``True`` if this action requires a parent identifier (like a database name).
-
-``takes_child`` - boolean
-    ``True`` if this action requires a child identifier (like a table or document name).
-
-``resource_class`` - type[Resource]
-    The Resource subclass that defines what kind of resource this action applies to. Your Resource subclass must:
+``resource_class`` - type[Resource] or None
+    The Resource subclass that defines what kind of resource this action applies to. Set to ``None`` for global actions (use ``global_=True`` instead). Your Resource subclass must:
 
     - Define a ``name`` class attribute (e.g., ``"document"``)
-    - Optionally define a ``parent_name`` class attribute (e.g., ``"collection"``)
+    - Define a ``parent_name`` class attribute (``None`` for top-level resources like databases, or the parent resource name for child resources)
+    - Define a ``takes_child`` class attribute (``True`` for child-level resources, ``False`` for parent-level)
     - Implement a ``resources_sql()`` classmethod that returns SQL returning all resources as ``(parent, child)`` columns
     - Have an ``__init__`` method that accepts appropriate parameters and calls ``super().__init__(parent=..., child=...)``
+
+``global_`` - boolean (default: False)
+    Set to ``True`` for actions that apply only at the top level, with no associated resources. Global actions cannot have a ``resource_class``. Use this for instance-wide actions like ``debug-menu`` or ``permissions-debug``.
 
 The ``resources_sql()`` method
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

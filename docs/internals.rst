@@ -272,14 +272,14 @@ The dictionary keys are the name of the database that is used in the URL - e.g. 
 
 All databases are listed, irrespective of user permissions.
 
-.. _datasette_permissions:
+.. _datasette_actions:
 
-.permissions
-------------
+.actions
+--------
 
-Property exposing a dictionary of permissions that have been registered using the :ref:`plugin_register_permissions` plugin hook.
+Property exposing a dictionary of actions that have been registered using the :ref:`plugin_register_actions` plugin hook.
 
-The dictionary keys are the permission names - e.g. ``view-instance`` - and the values are ``Permission()`` objects describing the permission. Here is a :ref:`description of that object <plugin_register_permissions>`.
+The dictionary keys are the action names - e.g. ``view-instance`` - and the values are ``Action()`` objects describing the permission.
 
 .. _datasette_plugin_config:
 
@@ -593,16 +593,6 @@ The following example creates a token that can access ``view-instance`` and ``vi
             }
         },
     )
-
-.. _datasette_get_permission:
-
-.get_permission(name_or_abbr)
------------------------------
-
-``name_or_abbr`` - string
-    The name or abbreviation of the permission to look up, e.g. ``view-table`` or ``vt``.
-
-Returns a :ref:`Permission object <plugin_register_permissions>` representing the permission, or raises a ``KeyError`` if one is not found.
 
 .. _datasette_get_database:
 

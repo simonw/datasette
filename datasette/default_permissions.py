@@ -12,60 +12,61 @@ import itsdangerous
 import time
 
 
-@hookimpl
-async def permission_resources_sql(datasette, actor, action):
-    rules: list[PermissionSQL] = []
+@hookimpl(specname="permission_resources_sql")
+async def actor_restrictions_sql(datasette, actor, action):
+    """Handle actor restriction-based permission rules (_r key)."""
+    if not actor:
+        return None
+    return await _restriction_permission_rules(datasette, actor, action)
 
-    # 1. FIRST: Actor restrictions (if present)
-    # These act as a gating filter - must pass through before other checks
-    restriction_rules = await _restriction_permission_rules(datasette, actor, action)
-    rules.extend(restriction_rules)
 
-    # 2. Root user permissions
-    # Root user with root_enabled gets all permissions at global level
-    # Config rules at more specific levels (database/table) can still override
+@hookimpl(specname="permission_resources_sql")
+async def root_user_permissions_sql(datasette, actor, action):
+    """Grant root user full permissions when enabled."""
     if datasette.root_enabled and actor and actor.get("id") == "root":
         # Add a single global-level allow rule (NULL, NULL) for root
         # This allows root to access everything by default, but database-level
         # and table-level deny rules in config can still block specific resources
-        rules.append(PermissionSQL.allow(reason="root user"))
+        return PermissionSQL.allow(reason="root user")
+    return None
 
-    # 3. Config-based permission rules
-    config_rules = await _config_permission_rules(datasette, actor, action)
-    rules.extend(config_rules)
 
-    # 4. Check default_allow_sql setting for execute-sql action
+@hookimpl(specname="permission_resources_sql")
+async def config_permissions_sql(datasette, actor, action):
+    """Apply config-based permission rules from datasette.yaml."""
+    return await _config_permission_rules(datasette, actor, action)
+
+
+@hookimpl(specname="permission_resources_sql")
+async def default_allow_sql_check(datasette, actor, action):
+    """Enforce default_allow_sql setting for execute-sql action."""
     if action == "execute-sql" and not datasette.setting("default_allow_sql"):
-        # Return a deny rule for all databases
-        rules.append(PermissionSQL.deny(reason="default_allow_sql is false"))
-        # Early return - don't add default allow rule
-        if not rules:
-            return None
-        if len(rules) == 1:
-            return rules[0]
-        return rules
+        return PermissionSQL.deny(reason="default_allow_sql is false")
+    return None
 
-    # 5. Default allow actions (ONLY if no restrictions)
+
+@hookimpl(specname="permission_resources_sql")
+async def default_action_permissions_sql(datasette, actor, action):
+    """Apply default allow rules for standard view/execute actions."""
+    # Only apply defaults if actor has no restrictions
     # If actor has restrictions, they've already added their own deny/allow rules
     has_restrictions = actor and "_r" in actor
-    if not has_restrictions:
-        default_allow_actions = {
-            "view-instance",
-            "view-database",
-            "view-database-download",
-            "view-table",
-            "view-query",
-            "execute-sql",
-        }
-        if action in default_allow_actions:
-            reason = f"default allow for {action}".replace("'", "''")
-            rules.append(PermissionSQL.allow(reason=reason))
-
-    if not rules:
+    if has_restrictions:
         return None
-    if len(rules) == 1:
-        return rules[0]
-    return rules
+
+    default_allow_actions = {
+        "view-instance",
+        "view-database",
+        "view-database-download",
+        "view-table",
+        "view-query",
+        "execute-sql",
+    }
+    if action in default_allow_actions:
+        reason = f"default allow for {action}".replace("'", "''")
+        return PermissionSQL.allow(reason=reason)
+
+    return None
 
 
 async def _config_permission_rules(datasette, actor, action) -> list[PermissionSQL]:

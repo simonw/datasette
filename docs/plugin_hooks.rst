@@ -777,56 +777,6 @@ The plugin hook can then be used to register the new facet class like this:
     def register_facet_classes():
         return [SpecialFacet]
 
-.. _plugin_register_permissions:
-
-register_permissions(datasette)
--------------------------------
-
-.. note::
-    This hook is deprecated. Use :ref:`plugin_register_actions` instead, which provides a more flexible resource-based permission system.
-
-If your plugin needs to register additional permissions unique to that plugin - ``upload-csvs`` for example - you can return a list of those permissions from this hook.
-
-.. code-block:: python
-
-    from datasette import hookimpl, Permission
-
-
-    @hookimpl
-    def register_permissions(datasette):
-        return [
-            Permission(
-                name="upload-csvs",
-                abbr=None,
-                description="Upload CSV files",
-                takes_database=True,
-                takes_resource=False,
-                default=False,
-            )
-        ]
-
-The fields of the ``Permission`` class are as follows:
-
-``name`` - string
-    The name of the permission, e.g. ``upload-csvs``. This should be unique across all plugins that the user might have installed, so choose carefully.
-
-``abbr`` - string or None
-    An abbreviation of the permission, e.g. ``uc``. This is optional - you can set it to ``None`` if you do not want to pick an abbreviation. Since this needs to be unique across all installed plugins it's best not to specify an abbreviation at all. If an abbreviation is provided it will be used when creating restricted signed API tokens.
-
-``description`` - string or None
-    A human-readable description of what the permission lets you do. Should make sense as the second part of a sentence that starts "A user with this permission can ...".
-
-``takes_database`` - boolean
-    ``True`` if this permission can be granted on a per-database basis, ``False`` if it is only valid at the overall Datasette instance level.
-
-``takes_resource`` - boolean
-    ``True`` if this permission can be granted on a per-resource basis. A resource is a database table, SQL view or :ref:`canned query <canned_queries>`.
-
-``default`` - boolean
-    The default value for this permission if it is not explicitly granted to a user. ``True`` means the permission is granted by default, ``False`` means it is not.
-
-    This should only be ``True`` if you want anonymous users to be able to take this action.
-
 .. _plugin_register_actions:
 
 register_actions(datasette)

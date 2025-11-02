@@ -26,7 +26,7 @@ Affected plugins should make the following changes:
 
 - Replace calls to ``datasette.permission_allowed()`` with calls to the new :ref:`datasette.allowed() <datasette_allowed>` method. The new method takes a ``resource=`` parameter which should be an instance of a ``Resource`` subclass, as described in the method documentation.
 - The ``permission_allowed()`` plugin hook has been removed in favor of the new :ref:`permission_resources_sql() <plugin_hook_permission_resources_sql>` hook.
-- The ``register_permissions()`` plugni hook has been removed in favor of :ref:`register_actions() <plugin_register_actions>`.
+- The ``register_permissions()`` plugin hook has been removed in favor of :ref:`register_actions() <plugin_register_actions>`.
 
 Plugins can now make use of two new internal methods to help resolve permission checks:
 
@@ -522,7 +522,7 @@ The third Datasette 1.0 alpha release adds upsert support to the JSON API, plus 
 See `Datasette 1.0a2: Upserts and finely grained permissions <https://simonwillison.net/2022/Dec/15/datasette-1a2/>`__ for an extended, annotated version of these release notes.
 
 - New ``/db/table/-/upsert`` API, :ref:`documented here <TableUpsertView>`. upsert is an update-or-insert: existing rows will have specified keys updated, but if no row matches the incoming primary key a brand new row will be inserted instead. (:issue:`1878`)
-- New :ref:`plugin_register_permissions` plugin hook. Plugins can now register named permissions, which will then be listed in various interfaces that show available permissions. (:issue:`1940`)
+- New ``register_permissions()`` plugin hook. Plugins can now register named permissions, which will then be listed in various interfaces that show available permissions. (:issue:`1940`)
 - The ``/db/-/create`` API for :ref:`creating a table <TableCreateView>` now accepts ``"ignore": true`` and ``"replace": true`` options when called with the ``"rows"`` property that creates a new table based on an example set of rows. This means the API can be called multiple times with different rows, setting rules for what should happen if a primary key collides with an existing row. (:issue:`1927`)
 - Arbitrary permissions can now be configured at the instance, database and resource (table, SQL view or canned query) level in Datasette's :ref:`metadata` JSON and YAML files. The new ``"permissions"`` key can be used to specify which actors should have which permissions. See :ref:`authentication_permissions_other` for details. (:issue:`1636`)
 - The ``/-/create-token`` page can now be used to create API tokens which are restricted to just a subset of actions, including against specific databases or resources. See :ref:`CreateTokenView` for details. (:issue:`1947`)

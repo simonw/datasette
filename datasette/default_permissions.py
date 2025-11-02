@@ -131,21 +131,13 @@ async def config_permissions_sql(datasette, actor, action):
     """Apply config-based permission rules from datasette.yaml."""
     config = datasette.config or {}
 
-    if actor is None:
-        actor_dict: dict | None = None
-    elif isinstance(actor, dict):
-        actor_dict = actor
-    else:
-        actor_lookup = await datasette.actors_from_ids([actor])
-        actor_dict = actor_lookup.get(actor) or {"id": actor}
-
     def evaluate(allow_block):
         if allow_block is None:
             return None
-        return actor_matches_allow(actor_dict, allow_block)
+        return actor_matches_allow(actor, allow_block)
 
-    has_restrictions = actor_dict and "_r" in actor_dict if actor_dict else False
-    restrictions = actor_dict.get("_r", {}) if actor_dict else {}
+    has_restrictions = actor and "_r" in actor if actor else False
+    restrictions = actor.get("_r", {}) if actor else {}
 
     action_obj = datasette.actions.get(action)
     action_checks = {action}

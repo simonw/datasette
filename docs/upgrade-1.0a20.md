@@ -194,3 +194,97 @@ The new pattern is to use `ds.client` like this:
 ds = Datasette([], memory=True)
 response = await ds.client.get("/path")
 ```
+
+## Migrating from metadata= to config=
+
+Datasette 1.0 separates metadata (titles, descriptions, licenses) from configuration (settings, plugins, queries, permissions). Plugin tests and code need to be updated accordingly.
+
+### Update test constructors
+
+Old code:
+```python
+ds = Datasette(
+    memory=True,
+    metadata={
+        "databases": {
+            "_memory": {"queries": {"my_query": {"sql": "select 1", "title": "My Query"}}}
+        },
+        "plugins": {
+            "my-plugin": {"setting": "value"}
+        }
+    }
+)
+```
+
+New code:
+```python
+ds = Datasette(
+    memory=True,
+    config={
+        "databases": {
+            "_memory": {"queries": {"my_query": {"sql": "select 1", "title": "My Query"}}}
+        },
+        "plugins": {
+            "my-plugin": {"setting": "value"}
+        }
+    }
+)
+```
+
+### Update datasette.metadata() calls
+
+The `datasette.metadata()` method has been removed. Use these methods instead:
+
+Old code:
+```python
+try:
+    title = datasette.metadata(database=database)["queries"][query_name]["title"]
+except (KeyError, TypeError):
+    pass
+```
+
+New code:
+```python
+try:
+    query_info = await datasette.get_canned_query(database, query_name, request.actor)
+    if query_info and "title" in query_info:
+        title = query_info["title"]
+except (KeyError, TypeError):
+    pass
+```
+
+### Update render functions to async
+
+If your plugin's render function needs to call `datasette.get_canned_query()` or other async Datasette methods, it must be declared as async:
+
+Old code:
+```python
+def render_atom(datasette, request, sql, columns, rows, database, table, query_name, view_name, data):
+    # ...
+    if query_name:
+        title = datasette.metadata(database=database)["queries"][query_name]["title"]
+```
+
+New code:
+```python
+async def render_atom(datasette, request, sql, columns, rows, database, table, query_name, view_name, data):
+    # ...
+    if query_name:
+        query_info = await datasette.get_canned_query(database, query_name, request.actor)
+        if query_info and "title" in query_info:
+            title = query_info["title"]
+```
+
+### Update query URLs in tests
+
+Datasette now redirects `?sql=` parameters from database pages to the query view:
+
+Old code:
+```python
+response = await ds.client.get("/_memory.atom?sql=select+1")
+```
+
+New code:
+```python
+response = await ds.client.get("/_memory/-/query.atom?sql=select+1")
+```

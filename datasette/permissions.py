@@ -95,11 +95,11 @@ class AllowedResource(NamedTuple):
     reason: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Action:
     name: str
-    abbr: str | None
     description: str | None
+    abbr: str | None = None
     resource_class: type[Resource] | None = None
     also_requires: str | None = None  # Optional action name that must also be allowed
 

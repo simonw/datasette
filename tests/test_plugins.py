@@ -1600,7 +1600,6 @@ async def test_hook_register_actions_with_custom_resources():
                 # Parent-level action - collection only
                 Action(
                     name="view-document-collection",
-                    abbr="vdc",
                     description="View a document collection",
                     resource_class=DocumentCollectionResource,
                 ),
@@ -1651,7 +1650,7 @@ async def test_hook_register_actions_with_custom_resources():
         # Test parent-level action
         view_collection = datasette.actions["view-document-collection"]
         assert view_collection.name == "view-document-collection"
-        assert view_collection.abbr == "vdc"
+        assert view_collection.abbr is None
         assert view_collection.resource_class is DocumentCollectionResource
         assert view_collection.takes_parent is True
         assert view_collection.takes_child is False
@@ -1705,7 +1704,11 @@ async def test_hook_register_actions_with_custom_resources():
 
         # Test 4: Collection-level action - allowed for specific collection
         collection_resource = DocumentCollectionResource(collection="collection1")
-        restricted_collection = {"id": "user4", "_r": {"d": {"collection1": ["vdc"]}}}
+        # This one does not have an abbreviation:
+        restricted_collection = {
+            "id": "user4",
+            "_r": {"d": {"collection1": ["view-document-collection"]}},
+        }
         allowed = await datasette.allowed(
             action="view-document-collection",
             resource=collection_resource,

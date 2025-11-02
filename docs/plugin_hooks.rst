@@ -905,7 +905,7 @@ The fields of the ``Action`` dataclass are as follows:
     The name of the action, e.g. ``view-document``. This should be unique across all plugins.
 
 ``abbr`` - string or None
-    An abbreviation of the action, e.g. ``vdoc``. This is optional. Since this needs to be unique across all installed plugins it's best to choose carefully or use ``None``.
+    An abbreviation of the action, e.g. ``vdoc``. This is optional. Since this needs to be unique across all installed plugins it's best to choose carefully or omit it entirely (same as setting it to ``None``.)
 
 ``description`` - string or None
     A human-readable description of what the action allows you to do.

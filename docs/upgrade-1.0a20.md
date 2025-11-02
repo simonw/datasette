@@ -173,6 +173,14 @@ This is no longer necessary in Datasette 1.0a20 - the `"root"` actor automatical
 
 The `permission_allowed()` hook in this example can be entirely removed.
 
+### Root-enabled instances during testing
+
+When writing tests that exercise root-only functionality, make sure to set `datasette.root_enabled = True` on the `Datasette` instance. Root permissions are only granted automatically when Datasette is started with `datasette --root` or when the flag is enabled directly in tests.
+
+## Target the new APIs exclusively
+
+Datasette 1.0a20’s permission system is substantially different from previous releases. Attempting to keep plugin code compatible with both the old `permission_allowed()` and the new `allowed()` interfaces leads to brittle workarounds. Prefer to adopt the 1.0a20 APIs (`register_actions`, `permission_resources_sql()`, and `datasette.allowed()`) outright and drop legacy fallbacks.
+
 ## Fixing async with httpx.AsyncClient(app=app)
 
 Some older plugins may use the following pattern in their tests, which is no longer supported:

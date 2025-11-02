@@ -63,23 +63,21 @@ def register_actions(datasette):
     return [
         Action(
             name="explain-sql",
-            abbr=None,
             description="Explain SQL queries",
             resource_class=DatabaseResource,
         ),
         Action(
             name="annotate-rows",
-            abbr=None,
             description="Annotate rows",
             resource_class=TableResource,
         ),
         Action(
             name="view-debug-info",
-            abbr=None,
             description="View debug information",
         ),
     ]
 ```
+The `abbr=` is now optional and defaults to `None`.
 
 For actions that apply to specific resources (like databases or tables), specify the `resource_class` instead of `takes_parent` and `takes_child`. Note that `view-debug-info` does not specify a `resource_class` because it applies globally.
 

@@ -1033,6 +1033,12 @@ This example outputs the following::
       }
     }
 
+Restrictions act as an allowlist layered on top of the actor's existing
+permissions. They can only remove access the actor would otherwise have—they
+cannot grant new access. If the underlying actor is denied by ``allow`` rules in
+``datasette.yaml`` or by a plugin, a token that lists that resource in its
+``"_r"`` section will still be denied.
+
 
 .. _permissions_plugins:
 

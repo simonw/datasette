@@ -88,16 +88,32 @@ async def _config_permission_rules(datasette, actor, action) -> list[PermissionS
     has_restrictions = actor_dict and "_r" in actor_dict if actor_dict else False
     restrictions = actor_dict.get("_r", {}) if actor_dict else {}
 
+    action_obj = datasette.actions.get(action)
+    action_checks = {action}
+    if action_obj and action_obj.abbr:
+        action_checks.add(action_obj.abbr)
+
+    restricted_databases: set[str] = set()
+    restricted_tables: set[tuple[str, str]] = set()
+    if has_restrictions:
+        restricted_databases = {
+            db_name
+            for db_name, db_actions in (restrictions.get("d") or {}).items()
+            if action_checks.intersection(db_actions)
+        }
+        restricted_tables = {
+            (db_name, table_name)
+            for db_name, tables in (restrictions.get("r") or {}).items()
+            for table_name, table_actions in tables.items()
+            if action_checks.intersection(table_actions)
+        }
+        # Tables implicitly reference their parent databases
+        restricted_databases.update(db for db, _ in restricted_tables)
+
     def is_in_restriction_allowlist(parent, child, action):
         """Check if a resource is in the actor's restriction allowlist for this action"""
         if not has_restrictions:
             return True  # No restrictions, all resources allowed
-
-        # Check action with abbreviations
-        action_obj = datasette.actions.get(action)
-        action_checks = {action}
-        if action_obj and action_obj.abbr:
-            action_checks.add(action_obj.abbr)
 
         # Check global allowlist
         if action_checks.intersection(restrictions.get("a", [])):
@@ -110,9 +126,25 @@ async def _config_permission_rules(datasette, actor, action) -> list[PermissionS
             return True
 
         # Check table-level allowlist
-        if parent and child:
-            table_actions = restrictions.get("r", {}).get(parent, {}).get(child, [])
-            if action_checks.intersection(table_actions):
+        if parent:
+            table_restrictions = (restrictions.get("r", {}) or {}).get(parent, {})
+            if child:
+                table_actions = table_restrictions.get(child, [])
+                if action_checks.intersection(table_actions):
+                    return True
+            else:
+                # Parent query should proceed if any child in this database is allowlisted
+                for table_actions in table_restrictions.values():
+                    if action_checks.intersection(table_actions):
+                        return True
+
+        # Parent/child both None: include if any restrictions exist for this action
+        if parent is None and child is None:
+            if action_checks.intersection(restrictions.get("a", [])):
+                return True
+            if restricted_databases:
+                return True
+            if restricted_tables:
                 return True
 
         return False
@@ -142,15 +174,32 @@ async def _config_permission_rules(datasette, actor, action) -> list[PermissionS
             return
 
         result = evaluate(allow_block)
+        bool_result = bool(result)
         # If result is None (no match) or False, treat as deny
         rows.append(
             (
                 parent,
                 child,
-                bool(result),  # None becomes False, False stays False, True stays True
+                bool_result,  # None becomes False, False stays False, True stays True
                 f"config {'allow' if result else 'deny'} {scope}",
             )
         )
+        if has_restrictions and not bool_result and child is None:
+            reason = f"config deny {scope} (restriction gate)"
+            if parent is None:
+                # Root-level deny: add more specific denies for restricted resources
+                if action_obj and action_obj.takes_parent:
+                    for db_name in restricted_databases:
+                        rows.append((db_name, None, 0, reason))
+                if action_obj and action_obj.takes_child:
+                    for db_name, table_name in restricted_tables:
+                        rows.append((db_name, table_name, 0, reason))
+            else:
+                # Database-level deny: add child-level denies for restricted tables
+                if action_obj and action_obj.takes_child:
+                    for db_name, table_name in restricted_tables:
+                        if db_name == parent:
+                            rows.append((db_name, table_name, 0, reason))
 
     root_perm = (config.get("permissions") or {}).get(action)
     add_row(None, None, evaluate(root_perm), f"permissions for {action}")

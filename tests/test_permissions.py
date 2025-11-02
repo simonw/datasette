@@ -1117,16 +1117,29 @@ async def test_api_explorer_visibility(
 
 
 @pytest.mark.asyncio
-async def test_view_table_token_can_access_table(perms_ds):
-    actor = {
-        "id": "restricted-token",
-        "token": "dstok",
-        # Restricted to just view-table on perms_ds_two/t1
-        "_r": {"r": {"perms_ds_two": {"t1": ["vt"]}}},
+async def test_view_table_token_cannot_gain_access_without_base_permission(perms_ds):
+    # Only allow a different actor to view this table
+    previous_config = perms_ds.config
+    perms_ds.config = {
+        "databases": {
+            "perms_ds_two": {
+                # Only someone-else can see anything in this database
+                "allow": {"id": "someone-else"},
+            }
+        }
     }
-    cookies = {"ds_actor": perms_ds.client.actor_cookie(actor)}
-    response = await perms_ds.client.get("/perms_ds_two/t1.json", cookies=cookies)
-    assert response.status_code == 200
+    try:
+        actor = {
+            "id": "restricted-token",
+            "token": "dstok",
+            # Restricted token claims access to perms_ds_two/t1 only
+            "_r": {"r": {"perms_ds_two": {"t1": ["vt"]}}},
+        }
+        cookies = {"ds_actor": perms_ds.client.actor_cookie(actor)}
+        response = await perms_ds.client.get("/perms_ds_two/t1.json", cookies=cookies)
+        assert response.status_code == 403
+    finally:
+        perms_ds.config = previous_config
 
 
 @pytest.mark.asyncio
@@ -1335,6 +1348,35 @@ async def test_actor_restrictions_filters_allowed_resources(perms_ds):
     # Database listing should be empty (no view-database permission)
     db_page = await perms_ds.allowed_resources("view-database", actor)
     assert len(db_page.resources) == 0
+
+
+@pytest.mark.asyncio
+async def test_actor_restrictions_do_not_expand_allowed_resources(perms_ds):
+    """Restrictions cannot grant access not already allowed to the actor."""
+
+    previous_config = perms_ds.config
+    perms_ds.config = {
+        "databases": {
+            "perms_ds_one": {
+                "allow": {"id": "someone-else"},
+            }
+        }
+    }
+    try:
+        actor = {"id": "user", "_r": {"r": {"perms_ds_one": {"t1": ["vt"]}}}}
+
+        # Base actor is not allowed to see t1, so restrictions should not change that
+        page = await perms_ds.allowed_resources("view-table", actor)
+        assert len(page.resources) == 0
+
+        # And explicit permission checks should still deny
+        response = await perms_ds.client.get(
+            "/perms_ds_one/t1.json",
+            cookies={"ds_actor": perms_ds.client.actor_cookie(actor)},
+        )
+        assert response.status_code == 403
+    finally:
+        perms_ds.config = previous_config
 
 
 @pytest.mark.asyncio

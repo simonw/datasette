@@ -1630,6 +1630,16 @@ async def test_hook_register_actions_with_custom_resources():
                     reason="user2 granted view-document-collection"
                 )
 
+            # Default allow for view-document-collection (like other view-* actions)
+            if action == "view-document-collection":
+                return PermissionSQL.allow(
+                    reason="default allow for view-document-collection"
+                )
+
+            # Default allow for view-document (like other view-* actions)
+            if action == "view-document":
+                return PermissionSQL.allow(reason="default allow for view-document")
+
     # Register the plugin temporarily
     plugin = TestPlugin()
     pm.register(plugin, name="test_custom_resources_plugin")

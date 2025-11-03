@@ -403,7 +403,7 @@ class PermissionRulesView(BaseView):
 
         from datasette.utils.actions_sql import build_permission_rules_sql
 
-        union_sql, union_params = await build_permission_rules_sql(
+        union_sql, union_params, restriction_sqls = await build_permission_rules_sql(
             self.ds, actor, action
         )
         await self.ds.refresh_schemas()

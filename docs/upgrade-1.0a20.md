@@ -2,11 +2,8 @@
 orphan: true
 ---
 
-# Datasette 1.0a20 plugin upgrade guide
-
 (upgrade_guide_v1_a20)=
-
-<!-- START UPGRADE 1.0a20 -->
+# Datasette 1.0a20 plugin upgrade guide
 
 Datasette 1.0a20 makes some breaking changes to Datasette's permission system. Plugins need to be updated if they use **any of the following**:
 

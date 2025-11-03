@@ -157,8 +157,19 @@ async def _build_single_action_sql(
 
     all_params = {}
     rule_sqls = []
+    restriction_sqls = []
 
     for permission_sql in permission_sqls:
+        # Always collect params (even from restriction-only plugins)
+        all_params.update(permission_sql.params or {})
+
+        # Collect restriction SQL filters
+        if permission_sql.restriction_sql:
+            restriction_sqls.append(permission_sql.restriction_sql)
+
+        # Skip plugins that only provide restriction_sql (no permission rules)
+        if permission_sql.sql is None:
+            continue
         rule_sqls.append(
             f"""
             SELECT parent, child, allow, reason, '{permission_sql.source}' AS source_plugin FROM (
@@ -166,7 +177,6 @@ async def _build_single_action_sql(
             )
             """.strip()
         )
-        all_params.update(permission_sql.params or {})
 
     # If no rules, return empty result (deny all)
     if not rule_sqls:
@@ -200,6 +210,9 @@ async def _build_single_action_sql(
         anon_params = {}
 
         for permission_sql in anon_permission_sqls:
+            # Skip plugins that only provide restriction_sql (no permission rules)
+            if permission_sql.sql is None:
+                continue
             rewritten_sql = permission_sql.sql
             for key, value in (permission_sql.params or {}).items():
                 anon_key = f"anon_{key}"
@@ -360,6 +373,17 @@ async def _build_single_action_sql(
 
     query_parts.append(")")
 
+    # Add restriction list CTE if there are restrictions
+    if restriction_sqls:
+        # Wrap each restriction_sql in a subquery to avoid operator precedence issues
+        # with UNION ALL inside the restriction SQL statements
+        restriction_intersect = "\nINTERSECT\n".join(
+            f"SELECT * FROM ({sql})" for sql in restriction_sqls
+        )
+        query_parts.extend(
+            [",", "restriction_list AS (", f"  {restriction_intersect}", ")"]
+        )
+
     # Final SELECT
     select_cols = "parent, child, reason"
     if include_is_private:
@@ -368,6 +392,17 @@ async def _build_single_action_sql(
     query_parts.append(f"SELECT {select_cols}")
     query_parts.append("FROM decisions")
     query_parts.append("WHERE is_allowed = 1")
+
+    # Add restriction filter if there are restrictions
+    if restriction_sqls:
+        query_parts.append(
+            """
+  AND EXISTS (
+    SELECT 1 FROM restriction_list r
+    WHERE (r.parent = decisions.parent OR r.parent IS NULL)
+      AND (r.child = decisions.child OR r.child IS NULL)
+  )"""
+        )
 
     # Add parent filter if specified
     if parent is not None:
@@ -405,11 +440,24 @@ async def build_permission_rules_sql(
         return (
             "SELECT NULL AS parent, NULL AS child, 0 AS allow, NULL AS reason, NULL AS source_plugin WHERE 0",
             {},
+            [],
         )
 
     union_parts = []
     all_params = {}
+    restriction_sqls = []
+
     for permission_sql in permission_sqls:
+        all_params.update(permission_sql.params or {})
+
+        # Collect restriction SQL filters
+        if permission_sql.restriction_sql:
+            restriction_sqls.append(permission_sql.restriction_sql)
+
+        # Skip plugins that only provide restriction_sql (no permission rules)
+        if permission_sql.sql is None:
+            continue
+
         union_parts.append(
             f"""
             SELECT parent, child, allow, reason, '{permission_sql.source}' AS source_plugin FROM (
@@ -417,10 +465,9 @@ async def build_permission_rules_sql(
             )
             """.strip()
         )
-        all_params.update(permission_sql.params or {})
 
     rules_union = " UNION ALL ".join(union_parts)
-    return rules_union, all_params
+    return rules_union, all_params, restriction_sqls
 
 
 async def check_permission_for_resource(
@@ -447,7 +494,9 @@ async def check_permission_for_resource(
     This builds the cascading permission query and checks if the specific
     resource is in the allowed set.
     """
-    rules_union, all_params = await build_permission_rules_sql(datasette, actor, action)
+    rules_union, all_params, restriction_sqls = await build_permission_rules_sql(
+        datasette, actor, action
+    )
 
     # If no rules (empty SQL), default deny
     if not rules_union:
@@ -457,43 +506,57 @@ async def check_permission_for_resource(
     all_params["_check_parent"] = parent
     all_params["_check_child"] = child
 
+    # If there are restriction filters, check if the resource passes them first
+    if restriction_sqls:
+        # Check if resource is in restriction allowlist
+        # Database-level restrictions (parent, NULL) should match all children (parent, *)
+        # Wrap each restriction_sql in a subquery to avoid operator precedence issues
+        restriction_check = "\nINTERSECT\n".join(
+            f"SELECT * FROM ({sql})" for sql in restriction_sqls
+        )
+        restriction_query = f"""
+WITH restriction_list AS (
+    {restriction_check}
+)
+SELECT EXISTS (
+    SELECT 1 FROM restriction_list
+    WHERE (parent = :_check_parent OR parent IS NULL)
+      AND (child = :_check_child OR child IS NULL)
+) AS in_allowlist
+"""
+        result = await datasette.get_internal_database().execute(
+            restriction_query, all_params
+        )
+        if result.rows and not result.rows[0][0]:
+            # Resource not in restriction allowlist - deny
+            return False
+
     query = f"""
 WITH
 all_rules AS (
   {rules_union}
 ),
-child_lvl AS (
-  SELECT
-         MAX(CASE WHEN ar.allow = 0 THEN 1 ELSE 0 END) AS any_deny,
-         MAX(CASE WHEN ar.allow = 1 THEN 1 ELSE 0 END) AS any_allow
+matched_rules AS (
+  SELECT ar.*,
+    CASE
+      WHEN ar.child IS NOT NULL THEN 2  -- child-level (most specific)
+      WHEN ar.parent IS NOT NULL THEN 1  -- parent-level
+      ELSE 0                             -- root/global
+    END AS depth
   FROM all_rules ar
-  WHERE ar.parent = :_check_parent AND ar.child = :_check_child
+  WHERE (ar.parent IS NULL OR ar.parent = :_check_parent)
+    AND (ar.child IS NULL OR ar.child = :_check_child)
 ),
-parent_lvl AS (
-  SELECT
-         MAX(CASE WHEN ar.allow = 0 THEN 1 ELSE 0 END) AS any_deny,
-         MAX(CASE WHEN ar.allow = 1 THEN 1 ELSE 0 END) AS any_allow
-  FROM all_rules ar
-  WHERE ar.parent = :_check_parent AND ar.child IS NULL
-),
-global_lvl AS (
-  SELECT
-         MAX(CASE WHEN ar.allow = 0 THEN 1 ELSE 0 END) AS any_deny,
-         MAX(CASE WHEN ar.allow = 1 THEN 1 ELSE 0 END) AS any_allow
-  FROM all_rules ar
-  WHERE ar.parent IS NULL AND ar.child IS NULL
+winner AS (
+  SELECT *
+  FROM matched_rules
+  ORDER BY
+    depth DESC,                          -- specificity first (higher depth wins)
+    CASE WHEN allow=0 THEN 0 ELSE 1 END, -- then deny over allow
+    source_plugin                        -- stable tie-break
+  LIMIT 1
 )
-SELECT
-  CASE
-    WHEN cl.any_deny = 1 THEN 0
-    WHEN cl.any_allow = 1 THEN 1
-    WHEN pl.any_deny = 1 THEN 0
-    WHEN pl.any_allow = 1 THEN 1
-    WHEN gl.any_deny = 1 THEN 0
-    WHEN gl.any_allow = 1 THEN 1
-    ELSE 0
-  END AS is_allowed
-FROM child_lvl cl, parent_lvl pl, global_lvl gl
+SELECT COALESCE((SELECT allow FROM winner), 0) AS is_allowed
 """
 
     # Execute the query against the internal database

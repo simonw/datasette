@@ -138,13 +138,20 @@ class PermissionSQL:
       child  TEXT NULL,
       allow  INTEGER,    -- 1 allow, 0 deny
       reason TEXT
+
+    For restriction-only plugins, sql can be None and only restriction_sql is provided.
     """
 
-    sql: str  # SQL that SELECTs the 4 columns above
+    sql: str | None = (
+        None  # SQL that SELECTs the 4 columns above (can be None for restriction-only)
+    )
     params: dict[str, Any] | None = (
         None  # bound params for the SQL (values only; no ':' prefix)
     )
     source: str | None = None  # System will set this to the plugin name
+    restriction_sql: str | None = (
+        None  # Optional SQL that returns (parent, child) for restriction filtering
+    )
 
     @classmethod
     def allow(cls, reason: str, _allow: bool = True) -> "PermissionSQL":

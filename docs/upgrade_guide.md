@@ -4,7 +4,7 @@
 (upgrade_guide_v1)=
 ## Datasette 0.X -> 1.0
 
-This section reviews breaking changes Datasette ``1.0`` has when upgrading from a ``0.XX`` version. For new features that ``1.0`` offers, see the :ref:`changelog`.
+This section reviews breaking changes Datasette ``1.0`` has when upgrading from a ``0.XX`` version. For new features that ``1.0`` offers, see the {ref}`changelog`.
 
 (upgrade_guide_v1_sql_queries)=
 ### New URL for SQL queries
@@ -37,7 +37,7 @@ Metadata was completely revamped for Datasette 1.0. There are a number of relate
 (upgrade_guide_v1_metadata_split)=
 #### ``metadata.yaml`` split into ``datasette.yaml``
 
-Before Datasette 1.0, the ``metadata.yaml`` file became a kitchen sink if a mix of metadata, configuration, and settings. Now ``metadata.yaml`` is strictly for metadata (ex title and descriptions of database and tables, licensing info, etc). Other settings have been moved to a ``datasette.yml`` configuration file, described in :ref:`configuration`.
+Before Datasette 1.0, the ``metadata.yaml`` file became a kitchen sink if a mix of metadata, configuration, and settings. Now ``metadata.yaml`` is strictly for metadata (ex title and descriptions of database and tables, licensing info, etc). Other settings have been moved to a ``datasette.yml`` configuration file, described in {ref}`configuration`.
 
 To start Datasette with both metadata and configuration files, run it like this:
 
@@ -85,14 +85,14 @@ def get_metadata(datasette, key, database, table):
     pass
 ```
 
-Instead, plugins are encouraged to interact directly with Datasette's in-memory metadata tables in SQLite using the following methods on the :ref:`internals_datasette`:
+Instead, plugins are encouraged to interact directly with Datasette's in-memory metadata tables in SQLite using the following methods on the {ref}`internals_datasette`:
 
-- :ref:`get_instance_metadata() <datasette_get_instance_metadata>` and :ref:`set_instance_metadata() <datasette_set_instance_metadata>`
-- :ref:`get_database_metadata() <datasette_get_database_metadata>` and :ref:`set_database_metadata() <datasette_set_database_metadata>`
-- :ref:`get_resource_metadata() <datasette_get_resource_metadata>` and :ref:`set_resource_metadata() <datasette_set_resource_metadata>`
-- :ref:`get_column_metadata() <datasette_get_column_metadata>` and :ref:`set_column_metadata() <datasette_set_column_metadata>`
+- {ref}`get_instance_metadata() <datasette_get_instance_metadata>` and {ref}`set_instance_metadata() <datasette_set_instance_metadata>`
+- {ref}`get_database_metadata() <datasette_get_database_metadata>` and {ref}`set_database_metadata() <datasette_set_database_metadata>`
+- {ref}`get_resource_metadata() <datasette_get_resource_metadata>` and {ref}`set_resource_metadata() <datasette_set_resource_metadata>`
+- {ref}`get_column_metadata() <datasette_get_column_metadata>` and {ref}`set_column_metadata() <datasette_set_column_metadata>`
 
-A plugin that stores or calculates its own metadata can implement the :ref:`plugin_hook_startup` hook to populate those items on startup, and then call those methods while it is running to persist any new metadata changes.
+A plugin that stores or calculates its own metadata can implement the {ref}`plugin_hook_startup` hook to populate those items on startup, and then call those methods while it is running to persist any new metadata changes.
 
 (upgrade_guide_v1_metadata_json_removed)=
 #### The ``/metadata.json`` endpoint has been removed
@@ -106,10 +106,10 @@ As of Datasette ``1.0a14``, the ``.metadata()`` method on the Datasette Python A
 
 Instead, one should use the following methods on a Datasette class:
 
-- :ref:`get_instance_metadata() <datasette_get_instance_metadata>`
-- :ref:`get_database_metadata() <datasette_get_database_metadata>`
-- :ref:`get_resource_metadata() <datasette_get_resource_metadata>`
-- :ref:`get_column_metadata() <datasette_get_column_metadata>`
+- {ref}`get_instance_metadata() <datasette_get_instance_metadata>`
+- {ref}`get_database_metadata() <datasette_get_database_metadata>`
+- {ref}`get_resource_metadata() <datasette_get_resource_metadata>`
+- {ref}`get_column_metadata() <datasette_get_column_metadata>`
 
 ```{include} upgrade-1.0a20.md
 :heading-offset: 1

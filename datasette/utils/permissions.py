@@ -99,6 +99,10 @@ def build_rules_union(
         # No namespacing - just use plugin params as-is
         params.update(p.params or {})
 
+        # Skip plugins that only provide restriction_sql (no permission rules)
+        if p.sql is None:
+            continue
+
         parts.append(
             f"""
             SELECT parent, child, allow, reason, '{p.source}' AS source_plugin FROM (
@@ -155,6 +159,8 @@ async def resolve_permissions_from_catalog(
       - resource (rendered "/parent/child" or "/parent" or "/")
     """
     resolved_plugins: List[PermissionSQL] = []
+    restriction_sqls: List[str] = []
+
     for plugin in plugins:
         if callable(plugin) and not isinstance(plugin, PermissionSQL):
             resolved = plugin(action)  # type: ignore[arg-type]
@@ -163,6 +169,10 @@ async def resolve_permissions_from_catalog(
         if not isinstance(resolved, PermissionSQL):
             raise TypeError("Plugin providers must return PermissionSQL instances")
         resolved_plugins.append(resolved)
+
+        # Collect restriction SQL filters
+        if resolved.restriction_sql:
+            restriction_sqls.append(resolved.restriction_sql)
 
     union_sql, rule_params = build_rules_union(actor, resolved_plugins)
     all_params = {
@@ -199,8 +209,8 @@ async def resolve_permissions_from_catalog(
                  PARTITION BY parent, child
                  ORDER BY
                    depth DESC,                          -- specificity first
-                   CASE WHEN allow=0 THEN 0 ELSE 1 END, -- deny over allow at same depth
-                   source_plugin                         -- stable tie-break
+                   CASE WHEN allow=0 THEN 0 ELSE 1 END, -- then deny over allow at same depth
+                   source_plugin                        -- stable tie-break
                ) AS rn
         FROM matched
     ),
@@ -227,6 +237,145 @@ async def resolve_permissions_from_catalog(
      AND ((w.child  = c.child ) OR (w.child  IS NULL AND c.child  IS NULL))
     ORDER BY c.parent, c.child
     """
+
+    # If there are restriction filters, wrap the query with INTERSECT
+    # This ensures only resources in the restriction allowlist are returned
+    if restriction_sqls:
+        # Start with the main query, but select only parent/child for the INTERSECT
+        main_query_for_intersect = f"""
+        WITH
+        cands AS (
+            {candidate_sql}
+        ),
+        rules AS (
+            {union_sql}
+        ),
+        matched AS (
+            SELECT
+                c.parent, c.child,
+                r.allow, r.reason, r.source_plugin,
+                CASE
+                  WHEN r.child  IS NOT NULL THEN 2  -- child-level (most specific)
+                  WHEN r.parent IS NOT NULL THEN 1  -- parent-level
+                  ELSE 0                            -- root/global
+                END AS depth
+            FROM cands c
+            JOIN rules r
+              ON (r.parent IS NULL OR r.parent = c.parent)
+             AND (r.child  IS NULL OR r.child  = c.child)
+        ),
+        ranked AS (
+            SELECT *,
+                   ROW_NUMBER() OVER (
+                     PARTITION BY parent, child
+                     ORDER BY
+                       depth DESC,                          -- specificity first
+                       CASE WHEN allow=0 THEN 0 ELSE 1 END, -- then deny over allow at same depth
+                       source_plugin                        -- stable tie-break
+                   ) AS rn
+            FROM matched
+        ),
+        winner AS (
+            SELECT parent, child,
+                   allow, reason, source_plugin, depth
+            FROM ranked WHERE rn = 1
+        ),
+        permitted_resources AS (
+            SELECT c.parent, c.child
+            FROM cands c
+            LEFT JOIN winner w
+              ON ((w.parent = c.parent) OR (w.parent IS NULL AND c.parent IS NULL))
+             AND ((w.child  = c.child ) OR (w.child  IS NULL AND c.child  IS NULL))
+            WHERE COALESCE(w.allow, CASE WHEN :implicit_deny THEN 0 ELSE NULL END) = 1
+        )
+        SELECT parent, child FROM permitted_resources
+        """
+
+        # Build restriction list with INTERSECT (all must match)
+        # Then filter to resources that match hierarchically
+        # Wrap each restriction_sql in a subquery to avoid operator precedence issues
+        # with UNION ALL inside the restriction SQL statements
+        restriction_intersect = "\nINTERSECT\n".join(
+            f"SELECT * FROM ({sql})" for sql in restriction_sqls
+        )
+
+        # Combine: resources allowed by permissions AND in restriction allowlist
+        # Database-level restrictions (parent, NULL) should match all children (parent, *)
+        filtered_resources = f"""
+        WITH restriction_list AS (
+            {restriction_intersect}
+        ),
+        permitted AS (
+            {main_query_for_intersect}
+        ),
+        filtered AS (
+            SELECT p.parent, p.child
+            FROM permitted p
+            WHERE EXISTS (
+                SELECT 1 FROM restriction_list r
+                WHERE (r.parent = p.parent OR r.parent IS NULL)
+                  AND (r.child = p.child OR r.child IS NULL)
+            )
+        )
+        """
+
+        # Now join back to get full results for only the filtered resources
+        sql = f"""
+        {filtered_resources}
+        , cands AS (
+            {candidate_sql}
+        ),
+        rules AS (
+            {union_sql}
+        ),
+        matched AS (
+            SELECT
+                c.parent, c.child,
+                r.allow, r.reason, r.source_plugin,
+                CASE
+                  WHEN r.child  IS NOT NULL THEN 2  -- child-level (most specific)
+                  WHEN r.parent IS NOT NULL THEN 1  -- parent-level
+                  ELSE 0                            -- root/global
+                END AS depth
+            FROM cands c
+            JOIN rules r
+              ON (r.parent IS NULL OR r.parent = c.parent)
+             AND (r.child  IS NULL OR r.child  = c.child)
+        ),
+        ranked AS (
+            SELECT *,
+                   ROW_NUMBER() OVER (
+                     PARTITION BY parent, child
+                     ORDER BY
+                       depth DESC,                          -- specificity first
+                       CASE WHEN allow=0 THEN 0 ELSE 1 END, -- then deny over allow at same depth
+                       source_plugin                        -- stable tie-break
+                   ) AS rn
+            FROM matched
+        ),
+        winner AS (
+            SELECT parent, child,
+                   allow, reason, source_plugin, depth
+            FROM ranked WHERE rn = 1
+        )
+        SELECT
+          c.parent, c.child,
+          COALESCE(w.allow, CASE WHEN :implicit_deny THEN 0 ELSE NULL END) AS allow,
+          COALESCE(w.reason, CASE WHEN :implicit_deny THEN 'implicit deny' ELSE NULL END) AS reason,
+          w.source_plugin,
+          COALESCE(w.depth, -1) AS depth,
+          :action AS action,
+          CASE
+            WHEN c.parent IS NULL THEN '/'
+            WHEN c.child  IS NULL THEN '/' || c.parent
+            ELSE '/' || c.parent || '/' || c.child
+          END AS resource
+        FROM filtered c
+        LEFT JOIN winner w
+          ON ((w.parent = c.parent) OR (w.parent IS NULL AND c.parent IS NULL))
+         AND ((w.child  = c.child ) OR (w.child  IS NULL AND c.child  IS NULL))
+        ORDER BY c.parent, c.child
+        """
 
     rows_iter: Iterable[sqlite3.Row] = await db.execute(
         sql,

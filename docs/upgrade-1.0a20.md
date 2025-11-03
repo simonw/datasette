@@ -2,6 +2,8 @@
 orphan: true
 ---
 
+(upgrade_guide_v1_a20)=
+
 # Datasette 1.0a20 plugin upgrade guide
 
 <!-- START UPGRADE 1.0a20 -->

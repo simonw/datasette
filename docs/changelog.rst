@@ -6,27 +6,29 @@ Changelog
 
 .. _v1_0_a20:
 
-UNRELEASED 1.0a20 (2025-??-??)
-------------------------------
+1.0a20 (2025-11-03)
+-------------------
 
-This alpha introduces a major breaking change prior to the 1.0 release of Datasette concerning Datasette's permission system.
+This alpha introduces a major breaking change prior to the 1.0 release of Datasette concerning how Datasette's permission system works.
 
 Permission system redesign
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Previously the permission system worked using ``datasette.permission_allowed()`` checks which consulted all available plugins in turn to determine whether a given actor was allowed to perform a given action on a given resource.
 
-This approach could become prohibitively expensive for large lists of items - for example to determine the list of tables that a user could view in a large Datasette instance, where the plugin hooks would be called N times for N tables.
+This approach could become prohibitively expensive for large lists of items - for example to determine the list of tables that a user could view in a large Datasette instance each plugin implementation of that hook would be fired for every table.
 
-The new system instead uses SQL queries against Datasette's internal :ref:`catalog tables <internals_internal>` to derive the list of resources for which an actor has permission for a given action.
+The new design uses SQL queries against Datasette's internal :ref:`catalog tables <internals_internal>` to derive the list of resources for which an actor has permission for a given action. This turns an N x M problem (N resources, M plugins) into a single SQL query.
 
-Plugins can use the new :ref:`plugin_hook_permission_resources_sql` hook to return SQL fragments which will influence the construction of that query.
+Plugins can use the new :ref:`plugin_hook_permission_resources_sql` hook to return SQL fragments which will be used as part of that query.
 
-Affected plugins should make the following changes:
+Plugins that use any of the following features will need to be updated to work with this and following alphas (and Datasette 1.0 stable itself):
 
-- Replace calls to ``datasette.permission_allowed()`` with calls to the new :ref:`datasette.allowed() <datasette_allowed>` method. The new method takes a ``resource=`` parameter which should be an instance of a ``Resource`` subclass, as described in the method documentation.
-- The ``permission_allowed()`` plugin hook has been removed in favor of the new :ref:`permission_resources_sql() <plugin_hook_permission_resources_sql>` hook.
-- The ``register_permissions()`` plugin hook has been removed in favor of :ref:`register_actions() <plugin_register_actions>`.
+- Checking permissions with ``datasette.permission_allowed()`` - this method has been replaced with :ref:`datasette.allowed() <datasette_allowed>`.
+- Implementing the ``permission_allowed()`` plugin hook - this hook has been removed in favor of :ref:`permission_resources_sql() <plugin_hook_permission_resources_sql>`.
+- Using ``register_permissions()`` to register permissions - this hook has been removed in favor of :ref:`register_actions() <plugin_register_actions>`.
+
+Consult the :ref:`v1.0a20 upgrade guide <upgrade_guide_v1_a20>` for further details on how to upgrade affected plugins.
 
 Plugins can now make use of two new internal methods to help resolve permission checks:
 

@@ -20,7 +20,7 @@ General guidelines
 Setting up a development environment
 ------------------------------------
 
-If you have Python 3.8 or higher installed on your computer (on OS X the quickest way to do this `is using homebrew <https://docs.python-guide.org/starting/install3/osx/>`__) you can install an editable copy of Datasette using the following steps.
+If you have Python 3.10 or higher installed on your computer (on OS X the quickest way to do this `is using homebrew <https://docs.python-guide.org/starting/install3/osx/>`__) you can install an editable copy of Datasette using the following steps.
 
 If you want to use GitHub to publish your changes, first `create a fork of datasette <https://github.com/simonw/datasette/fork>`__ under your own GitHub account.
 

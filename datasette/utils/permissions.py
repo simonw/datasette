@@ -293,7 +293,11 @@ async def resolve_permissions_from_catalog(
 
         # Build restriction list with INTERSECT (all must match)
         # Then filter to resources that match hierarchically
-        restriction_intersect = "\nINTERSECT\n".join(restriction_sqls)
+        # Wrap each restriction_sql in a subquery to avoid operator precedence issues
+        # with UNION ALL inside the restriction SQL statements
+        restriction_intersect = "\nINTERSECT\n".join(
+            f"SELECT * FROM ({sql})" for sql in restriction_sqls
+        )
 
         # Combine: resources allowed by permissions AND in restriction allowlist
         # Database-level restrictions (parent, NULL) should match all children (parent, *)

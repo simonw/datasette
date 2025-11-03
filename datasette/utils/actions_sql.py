@@ -375,7 +375,11 @@ async def _build_single_action_sql(
 
     # Add restriction list CTE if there are restrictions
     if restriction_sqls:
-        restriction_intersect = "\nINTERSECT\n".join(restriction_sqls)
+        # Wrap each restriction_sql in a subquery to avoid operator precedence issues
+        # with UNION ALL inside the restriction SQL statements
+        restriction_intersect = "\nINTERSECT\n".join(
+            f"SELECT * FROM ({sql})" for sql in restriction_sqls
+        )
         query_parts.extend(
             [",", "restriction_list AS (", f"  {restriction_intersect}", ")"]
         )
@@ -506,7 +510,10 @@ async def check_permission_for_resource(
     if restriction_sqls:
         # Check if resource is in restriction allowlist
         # Database-level restrictions (parent, NULL) should match all children (parent, *)
-        restriction_check = "\nINTERSECT\n".join(restriction_sqls)
+        # Wrap each restriction_sql in a subquery to avoid operator precedence issues
+        restriction_check = "\nINTERSECT\n".join(
+            f"SELECT * FROM ({sql})" for sql in restriction_sqls
+        )
         restriction_query = f"""
 WITH restriction_list AS (
     {restriction_check}

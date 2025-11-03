@@ -62,6 +62,7 @@ async def ds_client():
             "default_page_size": 50,
             "max_returned_rows": 100,
             "sql_time_limit_ms": 200,
+            "facet_suggest_time_limit_ms": 200,  # Up from 50 default
             # Default is 3 but this results in "too many open files"
             # errors when running the full test suite:
             "num_sql_threads": 1,

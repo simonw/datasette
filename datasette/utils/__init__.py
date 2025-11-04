@@ -218,7 +218,31 @@ def compound_keys_after_sql(pks, start_index=0):
     return "({})".format("\n  or\n".join(or_clauses))
 
 
+@documented
 class CustomJSONEncoder(json.JSONEncoder):
+    """
+    The CustomJSONEncoder class handles serialization for objects commonly used by Datasette,
+    including SQLite cursors and binary blobs. Datasette uses it internally to serve .json endpoints,
+    and plugins that return JSON can use it to match Datasette's own handling.
+
+    Built-in types (text, numbers, lists, etc) are encoded the same as Python's built-in ``json`` module.
+
+    - ``sqlite3.Row`` becomes a tuple
+    - ``sqlite3.Cursor`` becomes a list
+
+    If a binary blob can be decoded as UTF-8, the encoder returns it as text.
+
+    If it can't (for example, images), it is encoded as an object, with the actual
+    data base64-encoded, like so: ::
+
+        {
+            "$base64": True,
+            "encoded": ...,
+        }
+
+    Example: https://latest.datasette.io/fixtures/binary_data.json
+    """
+
     def default(self, obj):
         if isinstance(obj, sqlite3.Row):
             return tuple(obj)

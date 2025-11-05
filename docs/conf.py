@@ -17,8 +17,7 @@
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
-import os
-
+# import os
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
 
@@ -32,22 +31,7 @@ import os
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-extensions = [
-    "sphinx.ext.extlinks",
-    "sphinx.ext.autodoc",
-    "sphinx_copybutton",
-    "myst_parser",
-    "sphinx_markdown_builder",
-]
-if not os.environ.get("DISABLE_SPHINX_INLINE_TABS"):
-    extensions += ["sphinx_inline_tabs"]
-
-autodoc_member_order = "bysource"
-
-myst_enable_extensions = ["colon_fence"]
-
-markdown_http_base = "https://docs.datasette.io/en/stable"
-markdown_uri_doc_suffix = ".html"
+extensions = ["sphinx.ext.extlinks", "sphinx.ext.autodoc", "sphinx_copybutton"]
 
 extlinks = {
     "issue": ("https://github.com/simonw/datasette/issues/%s", "#%s"),
@@ -60,10 +44,7 @@ templates_path = ["_templates"]
 # You can specify multiple suffix as a list of string:
 #
 # source_suffix = ['.rst', '.md']
-source_suffix = {
-    ".rst": "restructuredtext",
-    ".md": "markdown",
-}
+source_suffix = ".rst"
 
 # The master toctree document.
 master_doc = "index"
@@ -124,7 +105,6 @@ html_theme_options = {
 html_static_path = ["_static"]
 
 html_logo = "datasette-logo.svg"
-html_favicon = "_static/datasette-favicon.png"
 
 html_css_files = [
     "css/custom.css",

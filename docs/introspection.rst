@@ -87,7 +87,7 @@ Shows a list of currently installed plugins and their versions. `Plugins example
 
 Add ``?all=1`` to include details of the default plugins baked into Datasette.
 
-.. _JsonDataView_settings:
+.. _JsonDataView_config:
 
 /-/settings
 -----------
@@ -104,25 +104,6 @@ Shows the :ref:`settings` for this instance of Datasette. `Settings example <htt
         "max_returned_rows": 1000,
         "sql_time_limit_ms": 1000
     }
-
-.. _JsonDataView_config:
-
-/-/config
----------
-
-Shows the :ref:`configuration <configuration>` for this instance of Datasette. This is generally the contents of the :ref:`datasette.yaml or datasette.json <configuration_reference>` file, which can include plugin configuration as well. `Config example <https://latest.datasette.io/-/config>`_:
-
-.. code-block:: json
-
-    {
-        "settings": {
-            "template_debug": true,
-            "trace_debug": true,
-            "force_https_urls": true
-        }
-    }
-
-Any keys that include the one of the following substrings in their names will be returned as redacted ``***`` output, to help avoid accidentally leaking private configuration information: ``secret``, ``key``, ``password``, ``token``, ``hash``, ``dsn``.
 
 .. _JsonDataView_databases:
 
@@ -143,47 +124,6 @@ Shows currently attached databases. `Databases example <https://latest.datasette
             "size": 225280
         }
     ]
-
-.. _TablesView:
-
-/-/tables
----------
-
-Returns a JSON list of all tables that the current actor has permission to view. This endpoint uses the resource-based permission system and respects database and table-level access controls.
-
-The endpoint supports a ``?q=`` query parameter for filtering tables by name using case-insensitive regex matching.
-
-`Tables example <https://latest.datasette.io/-/tables>`_:
-
-.. code-block:: json
-
-    {
-        "matches": [
-            {
-                "name": "fixtures/facetable",
-                "url": "/fixtures/facetable"
-            },
-            {
-                "name": "fixtures/searchable",
-                "url": "/fixtures/searchable"
-            }
-        ]
-    }
-
-Search example with ``?q=facet`` returns only tables matching ``.*facet.*``:
-
-.. code-block:: json
-
-    {
-        "matches": [
-            {
-                "name": "fixtures/facetable",
-                "url": "/fixtures/facetable"
-            }
-        ]
-    }
-
-When multiple search terms are provided (e.g., ``?q=user+profile``), tables must match the pattern ``.*user.*profile.*``. Results are ordered by shortest table name first.
 
 .. _JsonDataView_threads:
 

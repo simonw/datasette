@@ -56,7 +56,7 @@ Create a file at ``/etc/systemd/system/datasette.service`` with the following co
 
 Add a random value for the ``DATASETTE_SECRET`` - this will be used to sign Datasette cookies such as the CSRF token cookie. You can generate a suitable value like so::
 
-    python3 -c 'import secrets; print(secrets.token_hex(32))'
+    $ python3 -c 'import secrets; print(secrets.token_hex(32))'
 
 This configuration will run Datasette against all database files contained in the ``/home/ubuntu/datasette-root`` directory. If that directory contains a ``metadata.yml`` (or ``.json``) file or a ``templates/`` or ``plugins/`` sub-directory those will automatically be loaded by Datasette - see :ref:`config_dir` for details.
 
@@ -79,7 +79,7 @@ Datasette will not be accessible from outside the server because it is listening
 .. _deploying_openrc:
 
 Running Datasette using OpenRC
-==============================
+===============================
 OpenRC is the service manager on non-systemd Linux distributions like `Alpine Linux <https://www.alpinelinux.org/>`__ and `Gentoo <https://www.gentoo.org/>`__.
 
 Create an init script at ``/etc/init.d/datasette`` with the following contents:

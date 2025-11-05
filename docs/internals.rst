@@ -270,16 +270,7 @@ Property exposing a ``collections.OrderedDict`` of databases currently connected
 
 The dictionary keys are the name of the database that is used in the URL - e.g. ``/fixtures`` would have a key of ``"fixtures"``. The values are :ref:`internals_database` instances.
 
-All databases are listed, irrespective of user permissions.
-
-.. _datasette_actions:
-
-.actions
---------
-
-Property exposing a dictionary of actions that have been registered using the :ref:`plugin_register_actions` plugin hook.
-
-The dictionary keys are the action names - e.g. ``view-instance`` - and the values are ``Action()`` objects describing the permission.
+All databases are listed, irrespective of user permissions. This means that the ``_internal`` database will always be listed here.
 
 .. _datasette_plugin_config:
 
@@ -295,7 +286,7 @@ The dictionary keys are the action names - e.g. ``view-instance`` - and the valu
 ``table`` - None or string
     The table the user is interacting with.
 
-This method lets you read plugin configuration values that were set in  ``datasette.yaml``. See :ref:`writing_plugins_configuration` for full details of how this method should be used.
+This method lets you read plugin configuration values that were set in ``metadata.json``. See :ref:`writing_plugins_configuration` for full details of how this method should be used.
 
 The return value will be the value from the configuration file - usually a dictionary.
 
@@ -321,203 +312,10 @@ await .render_template(template, context=None, request=None)
 
 Renders a `Jinja template <https://jinja.palletsprojects.com/en/2.11.x/>`__ using Datasette's preconfigured instance of Jinja and returns the resulting string. The template will have access to Datasette's default template functions and any functions that have been made available by other plugins.
 
-.. _datasette_actors_from_ids:
+.. _datasette_permission_allowed:
 
-await .actors_from_ids(actor_ids)
----------------------------------
-
-``actor_ids`` - list of strings or integers
-    A list of actor IDs to look up.
-
-Returns a dictionary, where the keys are the IDs passed to it and the values are the corresponding actor dictionaries.
-
-This method is mainly designed to be used with plugins. See the :ref:`plugin_hook_actors_from_ids` documentation for details.
-
-If no plugins that implement that hook are installed, the default return value looks like this:
-
-.. code-block:: json
-
-    {
-        "1": {"id": "1"},
-        "2": {"id": "2"}
-    }
-
-.. _datasette_allowed:
-
-await .allowed(\*, action, resource, actor=None)
-------------------------------------------------
-
-``action`` - string
-    The name of the action that is being permission checked.
-
-``resource`` - Resource object
-    A Resource object representing the database, table, or other resource. Must be an instance of a Resource class such as ``TableResource``, ``DatabaseResource``, ``QueryResource``, or ``InstanceResource``.
-
-``actor`` - dictionary, optional
-    The authenticated actor. This is usually ``request.actor``. Defaults to ``None`` for unauthenticated requests.
-
-This method checks if the given actor has permission to perform the given action on the given resource. All parameters must be passed as keyword arguments.
-
-Example usage:
-
-.. code-block:: python
-
-    from datasette.resources import (
-        TableResource,
-        DatabaseResource,
-    )
-
-    # Check if actor can view a specific table
-    can_view = await datasette.allowed(
-        action="view-table",
-        resource=TableResource(
-            database="fixtures", table="facetable"
-        ),
-        actor=request.actor,
-    )
-
-    # Check if actor can execute SQL on a database
-    can_execute = await datasette.allowed(
-        action="execute-sql",
-        resource=DatabaseResource(database="fixtures"),
-        actor=request.actor,
-    )
-
-The method returns ``True`` if the permission is granted, ``False`` if denied.
-
-.. _datasette_allowed_resources:
-
-await .allowed_resources(action, actor=None, \*, parent=None, include_is_private=False, include_reasons=False, limit=100, next=None)
-------------------------------------------------------------------------------------------------------------------------------------
-
-Returns a ``PaginatedResources`` object containing resources that the actor can access for the specified action, with support for keyset pagination.
-
-``action`` - string
-    The action name (e.g., "view-table", "view-database")
-
-``actor`` - dictionary, optional
-    The authenticated actor. Defaults to ``None`` for unauthenticated requests.
-
-``parent`` - string, optional
-    Optional parent filter (e.g., database name) to limit results
-
-``include_is_private`` - boolean, optional
-    If True, adds a ``.private`` attribute to each Resource indicating whether anonymous users can access it
-
-``include_reasons`` - boolean, optional
-    If True, adds a ``.reasons`` attribute with a list of strings describing why access was granted (useful for debugging)
-
-``limit`` - integer, optional
-    Maximum number of results to return per page (1-1000, default 100)
-
-``next`` - string, optional
-    Keyset token from a previous page for pagination
-
-The method returns a ``PaginatedResources`` object (from ``datasette.utils``) with the following attributes:
-
-``resources`` - list
-    List of ``Resource`` objects for the current page
-
-``next`` - string or None
-    Token for the next page, or ``None`` if no more results exist
-
-Example usage:
-
-.. code-block:: python
-
-    # Get first page of tables
-    page = await datasette.allowed_resources(
-        "view-table",
-        actor=request.actor,
-        parent="fixtures",
-        limit=50,
-    )
-
-    for table in page.resources:
-        print(table.parent, table.child)
-        if hasattr(table, "private"):
-            print(f"  Private: {table.private}")
-
-    # Get next page if available
-    if page.next:
-        next_page = await datasette.allowed_resources(
-            "view-table", actor=request.actor, next=page.next
-        )
-
-    # Iterate through all results automatically
-    page = await datasette.allowed_resources(
-        "view-table", actor=request.actor
-    )
-    async for table in page.all():
-        print(table.parent, table.child)
-
-    # With reasons for debugging
-    page = await datasette.allowed_resources(
-        "view-table", actor=request.actor, include_reasons=True
-    )
-    for table in page.resources:
-        print(f"{table.child}: {table.reasons}")
-
-The ``page.all()`` async generator automatically handles pagination, fetching additional pages and yielding all resources one at a time.
-
-This method uses :ref:`datasette_allowed_resources_sql` under the hood and is an efficient way to list the databases, tables or other resources that an actor can access for a specific action.
-
-.. _datasette_allowed_resources_sql:
-
-await .allowed_resources_sql(\*, action, actor=None, parent=None, include_is_private=False)
--------------------------------------------------------------------------------------------
-
-Builds the SQL query that Datasette uses to determine which resources an actor may access for a specific action. Returns a ``(sql: str, params: dict)`` namedtuple that can be executed against the internal ``catalog_*`` database tables. ``parent`` can be used to limit results to a specific database, and ``include_is_private`` adds a column indicating whether anonymous users would be denied access to that resource.
-
-Plugins that need to execute custom analysis over the raw allow/deny rules can use this helper to run the same query that powers the ``/-/allowed`` debugging interface.
-
-The SQL query built by this method will return the following columns:
-
-- ``parent``: The parent resource identifier (or NULL)
-- ``child``: The child resource identifier (or NULL)
-- ``reason``: The reason from the rule that granted access
-- ``is_private``: (if ``include_is_private``) 1 if anonymous users cannot access, 0 otherwise
-
-.. _datasette_ensure_permission:
-
-await .ensure_permission(action, resource=None, actor=None)
------------------------------------------------------------
-
-``action`` - string
-    The action to check. See :ref:`actions` for a list of available actions.
-
-``resource`` - Resource object (optional)
-    The resource to check the permission against. Must be an instance of ``InstanceResource``, ``DatabaseResource``, or ``TableResource`` from the ``datasette.resources`` module. If omitted, defaults to ``InstanceResource()`` for instance-level permissions.
-
-``actor`` - dictionary (optional)
-    The authenticated actor. This is usually ``request.actor``.
-
-This is a convenience wrapper around :ref:`datasette_allowed` that raises a ``datasette.Forbidden`` exception if the permission check fails. Use this when you want to enforce a permission check and halt execution if the actor is not authorized.
-
-Example:
-
-.. code-block:: python
-
-    from datasette.resources import TableResource
-
-    # Will raise Forbidden if actor cannot view the table
-    await datasette.ensure_permission(
-        action="view-table",
-        resource=TableResource(
-            database="fixtures", table="cities"
-        ),
-        actor=request.actor,
-    )
-
-    # For instance-level actions, resource can be omitted:
-    await datasette.ensure_permission(
-        action="permissions-debug", actor=request.actor
-    )
-
-.. _datasette_check_visibility:
-
-await .check_visibility(actor, action, resource=None)
------------------------------------------------------
+await .permission_allowed(actor, action, resource=None, default=False)
+----------------------------------------------------------------------
 
 ``actor`` - dictionary
     The authenticated actor. This is usually ``request.actor``.
@@ -525,8 +323,62 @@ await .check_visibility(actor, action, resource=None)
 ``action`` - string
     The name of the action that is being permission checked.
 
-``resource`` - Resource object, optional
-    The resource being checked, as a Resource object such as ``DatabaseResource(database=...)``, ``TableResource(database=..., table=...)``, or ``QueryResource(database=..., query=...)``. Only some permissions apply to a resource.
+``resource`` - string or tuple, optional
+    The resource, e.g. the name of the database, or a tuple of two strings containing the name of the database and the name of the table. Only some permissions apply to a resource.
+
+``default`` - optional, True or False
+    Should this permission check be default allow or default deny.
+
+Check if the given actor has :ref:`permission <authentication_permissions>` to perform the given action on the given resource.
+
+Some permission checks are carried out against :ref:`rules defined in metadata.json <authentication_permissions_metadata>`, while other custom permissions may be decided by plugins that implement the :ref:`plugin_hook_permission_allowed` plugin hook.
+
+If neither ``metadata.json`` nor any of the plugins provide an answer to the permission query the ``default`` argument will be returned.
+
+See :ref:`permissions` for a full list of permission actions included in Datasette core.
+
+.. _datasette_ensure_permissions:
+
+await .ensure_permissions(actor, permissions)
+---------------------------------------------
+
+``actor`` - dictionary
+    The authenticated actor. This is usually ``request.actor``.
+
+``permissions`` - list
+    A list of permissions to check. Each permission in that list can be a string ``action`` name or a 2-tuple of ``(action, resource)``.
+
+This method allows multiple permissions to be checked at once. It raises a ``datasette.Forbidden`` exception if any of the checks are denied before one of them is explicitly granted.
+
+This is useful when you need to check multiple permissions at once. For example, an actor should be able to view a table if either one of the following checks returns ``True`` or not a single one of them returns ``False``:
+
+.. code-block:: python
+
+    await self.ds.ensure_permissions(
+        request.actor,
+        [
+            ("view-table", (database, table)),
+            ("view-database", database),
+            "view-instance",
+        ],
+    )
+
+.. _datasette_check_visibility:
+
+await .check_visibility(actor, action=None, resource=None, permissions=None)
+----------------------------------------------------------------------------
+
+``actor`` - dictionary
+    The authenticated actor. This is usually ``request.actor``.
+
+``action`` - string, optional
+    The name of the action that is being permission checked.
+
+``resource`` - string or tuple, optional
+    The resource, e.g. the name of the database, or a tuple of two strings containing the name of the database and the name of the table. Only some permissions apply to a resource.
+
+``permissions`` - list of ``action`` strings or ``(action, resource)`` tuples, optional
+    Provide this instead of ``action`` and ``resource`` to check multiple permissions at once.
 
 This convenience method can be used to answer the question "should this item be considered private, in that it is visible to me but it is not visible to anonymous users?"
 
@@ -536,62 +388,23 @@ This example checks if the user can access a specific table, and sets ``private`
 
 .. code-block:: python
 
-    from datasette.resources import TableResource
-
-    visible, private = await datasette.check_visibility(
+    visible, private = await self.ds.check_visibility(
         request.actor,
         action="view-table",
-        resource=TableResource(database=database, table=table),
+        resource=(database, table),
     )
 
-.. _datasette_create_token:
-
-.create_token(actor_id, expires_after=None, restrict_all=None, restrict_database=None, restrict_resource=None)
---------------------------------------------------------------------------------------------------------------
-
-``actor_id`` - string
-    The ID of the actor to create a token for.
-
-``expires_after`` - int, optional
-    The number of seconds after which the token should expire.
-
-``restrict_all`` - iterable, optional
-    A list of actions that this token should be restricted to across all databases and resources.
-
-``restrict_database`` - dict, optional
-    For restricting actions within specific databases, e.g. ``{"mydb": ["view-table", "view-query"]}``.
-
-``restrict_resource`` - dict, optional
-    For restricting actions to specific resources (tables, SQL views and :ref:`canned_queries`) within a database. For example: ``{"mydb": {"mytable": ["insert-row", "update-row"]}}``.
-
-This method returns a signed :ref:`API token <CreateTokenView>` of the format ``dstok_...`` which can be used to authenticate requests to the Datasette API.
-
-All tokens must have an ``actor_id`` string indicating the ID of the actor which the token will act on behalf of.
-
-Tokens default to lasting forever, but can be set to expire after a given number of seconds using the ``expires_after`` argument. The following code creates a token for ``user1`` that will expire after an hour:
+The following example runs three checks in a row, similar to :ref:`datasette_ensure_permissions`. If any of the checks are denied before one of them is explicitly granted then ``visible`` will be ``False``. ``private`` will be ``True`` if an anonymous user would not be able to view the resource.
 
 .. code-block:: python
 
-    token = datasette.create_token(
-        actor_id="user1",
-        expires_after=3600,
-    )
-
-The three ``restrict_*`` arguments can be used to create a token that has additional restrictions beyond what the associated actor is allowed to do.
-
-The following example creates a token that can access ``view-instance`` and ``view-table`` across everything, can additionally use ``view-query`` for anything in the ``docs`` database and is allowed to execute ``insert-row`` and ``update-row`` in the ``attachments`` table in that database:
-
-.. code-block:: python
-
-    token = datasette.create_token(
-        actor_id="user1",
-        restrict_all=("view-instance", "view-table"),
-        restrict_database={"docs": ("view-query",)},
-        restrict_resource={
-            "docs": {
-                "attachments": ("insert-row", "update-row")
-            }
-        },
+    visible, private = await self.ds.check_visibility(
+        request.actor,
+        permissions=[
+            ("view-table", (database, table)),
+            ("view-database", database),
+            "view-instance",
+        ],
     )
 
 .. _datasette_get_database:
@@ -603,137 +416,6 @@ The following example creates a token that can access ``view-instance`` and ``vi
     The name of the database - optional.
 
 Returns the specified database object. Raises a ``KeyError`` if the database does not exist. Call this method without an argument to return the first connected database.
-
-.. _get_internal_database:
-
-.get_internal_database()
-------------------------
-
-Returns a database object for reading and writing to the private :ref:`internal database <internals_internal>`.
-
-.. _datasette_get_set_metadata:
-
-Getting and setting metadata
-----------------------------
-
-Metadata about the instance, databases, tables and columns is stored in tables in :ref:`internals_internal`. The following methods are the supported API for plugins to read and update that stored metadata.
-
-.. _datasette_get_instance_metadata:
-
-await .get_instance_metadata(self)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Returns metadata keys and values for the entire Datasette instance as a dictionary.
-Internally queries the ``metadata_instance`` table inside the :ref:`internal database <internals_internal>`.
-
-.. _datasette_get_database_metadata:
-
-await .get_database_metadata(self, database_name)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-``database_name`` - string
-    The name of the database to query.
-
-Returns metadata keys and values for the specified database as a dictionary.
-Internally queries the ``metadata_databases`` table inside the :ref:`internal database <internals_internal>`.
-
-.. _datasette_get_resource_metadata:
-
-await .get_resource_metadata(self, database_name, resource_name)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-``database_name`` - string
-    The name of the database to query.
-``resource_name`` - string
-    The name of the resource (table, view, or canned query) inside ``database_name`` to query.
-
-Returns metadata keys and values for the specified "resource" as a dictionary.
-A "resource" in this context can be a table, view, or canned query.
-Internally queries the ``metadata_resources`` table inside the :ref:`internal database <internals_internal>`.
-
-.. _datasette_get_column_metadata:
-
-await .get_column_metadata(self, database_name, resource_name, column_name)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-``database_name`` - string
-    The name of the database to query.
-``resource_name`` - string
-    The name of the resource (table, view, or canned query) inside ``database_name`` to query.
-``column_name`` - string
-    The name of the column inside ``resource_name`` to query.
-
-
-Returns metadata keys and values for the specified column, resource, and table as a dictionary.
-Internally queries the ``metadata_columns`` table inside the :ref:`internal database <internals_internal>`.
-
-.. _datasette_set_instance_metadata:
-
-await .set_instance_metadata(self, key, value)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-``key`` - string
-    The metadata entry key to insert (ex ``title``, ``description``, etc.)
-``value`` - string
-    The value of the metadata entry to insert.
-
-Adds a new metadata entry for the entire Datasette instance.
-Any previous instance-level metadata entry with the same ``key`` will be overwritten.
-Internally upserts the value into the  the ``metadata_instance`` table inside the :ref:`internal database <internals_internal>`.
-
-.. _datasette_set_database_metadata:
-
-await .set_database_metadata(self, database_name, key, value)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-``database_name`` - string
-    The database the metadata entry belongs to.
-``key`` - string
-    The metadata entry key to insert (ex ``title``, ``description``, etc.)
-``value`` - string
-    The value of the metadata entry to insert.
-
-Adds a new metadata entry for the specified database.
-Any previous database-level metadata entry with the same ``key`` will be overwritten.
-Internally upserts the value into the  the ``metadata_databases`` table inside the :ref:`internal database <internals_internal>`.
-
-.. _datasette_set_resource_metadata:
-
-await .set_resource_metadata(self, database_name, resource_name, key, value)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-``database_name`` - string
-    The database the metadata entry belongs to.
-``resource_name`` - string
-    The resource (table, view, or canned query) the metadata entry belongs to.
-``key`` - string
-    The metadata entry key to insert (ex ``title``, ``description``, etc.)
-``value`` - string
-    The value of the metadata entry to insert.
-
-Adds a new metadata entry for the specified "resource".
-Any previous resource-level metadata entry with the same ``key`` will be overwritten.
-Internally upserts the value into the  the ``metadata_resources`` table inside the :ref:`internal database <internals_internal>`.
-
-.. _datasette_set_column_metadata:
-
-await .set_column_metadata(self, database_name, resource_name, column_name, key, value)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-``database_name`` - string
-    The database the metadata entry belongs to.
-``resource_name`` - string
-    The resource (table, view, or canned query) the metadata entry belongs to.
-``column-name`` - string
-    The column the metadata entry belongs to.
-``key`` - string
-    The metadata entry key to insert (ex ``title``, ``description``, etc.)
-``value`` - string
-    The value of the metadata entry to insert.
-
-Adds a new metadata entry for the specified column.
-Any previous column-level metadata entry with the same ``key`` will be overwritten.
-Internally upserts the value into the  the ``metadata_columns`` table inside the :ref:`internal database <internals_internal>`.
 
 .. _datasette_add_database:
 
@@ -811,26 +493,6 @@ Using either of these pattern will result in the in-memory database being served
     The name of the database to be removed.
 
 This removes a database that has been previously added. ``name=`` is the unique name of that database.
-
-.. _datasette_track_event:
-
-await .track_event(event)
--------------------------
-
-``event`` - ``Event``
-    An instance of a subclass of ``datasette.events.Event``.
-
-Plugins can call this to track events, using classes they have previously registered. See :ref:`plugin_event_tracking` for details.
-
-The event will then be passed to all plugins that have registered to receive events using the :ref:`plugin_hook_track_event` hook.
-
-Example usage, assuming the plugin has previously registered the ``BanUserEvent`` class:
-
-.. code-block:: python
-
-    await datasette.track_event(
-        BanUserEvent(user={"id": 1, "username": "cleverbot"})
-    )
 
 .. _datasette_sign:
 
@@ -915,84 +577,6 @@ For example:
 .. code-block:: python
 
     downloads_are_allowed = datasette.setting("allow_download")
-
-.. _datasette_resolve_database:
-
-.resolve_database(request)
---------------------------
-
-``request`` - :ref:`internals_request`
-    A request object
-
-If you are implementing your own custom views, you may need to resolve the database that the user is requesting based on a URL path. If the regular expression for your route declares a ``database`` named group, you can use this method to resolve the database object.
-
-This returns a :ref:`Database <internals_database>` instance.
-
-If the database cannot be found, it raises a ``datasette.utils.asgi.DatabaseNotFound`` exception - which is a subclass of ``datasette.utils.asgi.NotFound`` with a ``.database_name`` attribute set to the name of the database that was requested.
-
-.. _datasette_resolve_table:
-
-.resolve_table(request)
------------------------
-
-``request`` - :ref:`internals_request`
-    A request object
-
-This assumes that the regular expression for your route declares both a ``database`` and a ``table`` named group.
-
-It returns a ``ResolvedTable`` named tuple instance with the following fields:
-
-``db`` - :ref:`Database <internals_database>`
-    The database object
-
-``table`` - string
-    The name of the table (or view)
-
-``is_view`` - boolean
-    ``True`` if this is a view, ``False`` if it is a table
-
-If the database or table cannot be found it raises a ``datasette.utils.asgi.DatabaseNotFound`` exception.
-
-If the table does not exist it raises a ``datasette.utils.asgi.TableNotFound`` exception - a subclass of ``datasette.utils.asgi.NotFound`` with ``.database_name`` and ``.table`` attributes.
-
-.. _datasette_resolve_row:
-
-.resolve_row(request)
----------------------
-
-``request`` - :ref:`internals_request`
-    A request object
-
-This method assumes your route declares named groups for ``database``, ``table`` and ``pks``.
-
-It returns a ``ResolvedRow`` named tuple instance with the following fields:
-
-``db`` - :ref:`Database <internals_database>`
-    The database object
-
-``table`` - string
-    The name of the table
-
-``sql`` - string
-    SQL snippet that can be used in a ``WHERE`` clause to select the row
-
-``params`` - dict
-    Parameters that should be passed to the SQL query
-
-``pks`` - list
-    List of primary key column names
-
-``pk_values`` - list
-    List of primary key values decoded from the URL
-
-``row`` - ``sqlite3.Row``
-    The row itself
-
-If the database or table cannot be found it raises a ``datasette.utils.asgi.DatabaseNotFound`` exception.
-
-If the table does not exist it raises a ``datasette.utils.asgi.TableNotFound`` exception.
-
-If the row cannot be found it raises a ``datasette.utils.asgi.RowNotFound`` exception. This has ``.database_name``, ``.table`` and ``.pk_values`` attributes, extracted from the request path.
 
 .. _internals_datasette_client:
 
@@ -1096,132 +680,6 @@ Use the ``format="json"`` (or ``"csv"`` or other formats supported by plugins) a
 
 These methods each return a ``datasette.utils.PrefixedUrlString`` object, which is a subclass of the Python ``str`` type. This allows the logic that considers the ``base_url`` setting to detect if that prefix has already been applied to the path.
 
-.. _internals_permission_classes:
-
-Permission classes and utilities
-================================
-
-.. _internals_permission_sql:
-
-PermissionSQL class
--------------------
-
-The ``PermissionSQL`` class is used by plugins to contribute SQL-based permission rules through the :ref:`plugin_hook_permission_resources_sql` hook. This enables efficient permission checking across multiple resources by leveraging SQLite's query engine.
-
-.. code-block:: python
-
-    from datasette.permissions import PermissionSQL
-
-
-    @dataclass
-    class PermissionSQL:
-        source: str  # Plugin name for auditing
-        sql: str  # SQL query returning permission rules
-        params: Dict[str, Any]  # Parameters for the SQL query
-
-**Attributes:**
-
-``source`` - string
-    An identifier for the source of these permission rules, typically the plugin name. This is used for debugging and auditing.
-
-``sql`` - string
-    A SQL query that returns permission rules. The query must return rows with the following columns:
-
-    - ``parent`` (TEXT or NULL) - The parent resource identifier (e.g., database name)
-    - ``child`` (TEXT or NULL) - The child resource identifier (e.g., table name)
-    - ``allow`` (INTEGER) - 1 for allow, 0 for deny
-    - ``reason`` (TEXT) - A human-readable explanation of why this permission was granted or denied
-
-``params`` - dictionary
-    A dictionary of parameters to bind into the SQL query. Parameter names should not include the ``:`` prefix.
-
-.. _permission_sql_parameters:
-
-Available SQL parameters
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-When writing SQL for ``PermissionSQL``, the following parameters are automatically available:
-
-``:actor`` - JSON string or NULL
-    The full actor dictionary serialized as JSON. Use SQLite's ``json_extract()`` function to access fields:
-
-    .. code-block:: sql
-
-        json_extract(:actor, '$.role') = 'admin'
-        json_extract(:actor, '$.team') = 'engineering'
-
-``:actor_id`` - string or NULL
-    The actor's ``id`` field, for simple equality comparisons:
-
-    .. code-block:: sql
-
-        :actor_id = 'alice'
-
-``:action`` - string
-    The action being checked (e.g., ``"view-table"``, ``"insert-row"``, ``"execute-sql"``).
-
-**Example usage:**
-
-Here's an example plugin that grants view-table permissions to users with an "analyst" role for tables in the "analytics" database:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-    from datasette.permissions import PermissionSQL
-
-
-    @hookimpl
-    def permission_resources_sql(datasette, actor, action):
-        if action != "view-table":
-            return None
-
-        return PermissionSQL(
-            source="my_analytics_plugin",
-            sql="""
-                SELECT 'analytics' AS parent,
-                       NULL AS child,
-                       1 AS allow,
-                       'Analysts can view analytics database' AS reason
-                WHERE json_extract(:actor, '$.role') = 'analyst'
-                  AND :action = 'view-table'
-            """,
-            params={},
-        )
-
-A more complex example that uses custom parameters:
-
-.. code-block:: python
-
-    @hookimpl
-    def permission_resources_sql(datasette, actor, action):
-        if not actor:
-            return None
-
-        user_teams = actor.get("teams", [])
-
-        return PermissionSQL(
-            source="team_permissions_plugin",
-            sql="""
-                SELECT
-                    team_database AS parent,
-                    team_table AS child,
-                    1 AS allow,
-                    'User is member of team: ' || team_name AS reason
-                FROM team_permissions
-                WHERE user_id = :user_id
-                  AND :action IN ('view-table', 'insert-row', 'update-row')
-            """,
-            params={"user_id": actor.get("id")},
-        )
-
-**Permission resolution rules:**
-
-When multiple ``PermissionSQL`` objects return conflicting rules for the same resource, Datasette applies the following precedence:
-
-1. **Specificity**: Child-level rules (with both ``parent`` and ``child``) override parent-level rules (with only ``parent``), which override root-level rules (with neither ``parent`` nor ``child``)
-2. **Deny over allow**: At the same specificity level, deny (``allow=0``) takes precedence over allow (``allow=1``)
-3. **Implicit deny**: If no rules match a resource, access is denied by default
-
 .. _internals_database:
 
 Database class
@@ -1311,11 +769,8 @@ The ``Results`` object also has the following properties and methods:
 ``.columns`` - list of strings
     A list of column names returned by the query.
 
-``.rows`` - list of ``sqlite3.Row``
+``.rows`` - list of sqlite3.Row
     This property provides direct access to the list of rows returned by the database. You can access specific rows by index using ``results.rows[0]``.
-
-``.dicts()`` - list of ``dict``
-    This method returns a list of Python dictionaries, one for each row.
 
 ``.first()`` - row or None
     Returns the first row in the results, or ``None`` if no rows were returned.
@@ -1348,7 +803,7 @@ Example usage:
 .. _database_execute_write:
 
 await db.execute_write(sql, params=None, block=True)
-----------------------------------------------------
+-----------------------------------------------------
 
 SQLite only allows one database connection to write at a time. Datasette handles this for you by maintaining a queue of writes to be executed against a given database. Plugins can submit write operations to this queue and they will be executed in the order in which they are received.
 
@@ -1358,23 +813,19 @@ You can pass additional SQL parameters as a tuple or dictionary.
 
 The method will block until the operation is completed, and the return value will be the return from calling ``conn.execute(...)`` using the underlying ``sqlite3`` Python library.
 
-If you pass ``block=False`` this behavior changes to "fire and forget" - queries will be added to the write queue and executed in a separate thread while your code can continue to do other things. The method will return a UUID representing the queued task.
-
-Each call to ``execute_write()`` will be executed inside a transaction.
+If you pass ``block=False`` this behaviour changes to "fire and forget" - queries will be added to the write queue and executed in a separate thread while your code can continue to do other things. The method will return a UUID representing the queued task.
 
 .. _database_execute_write_script:
 
 await db.execute_write_script(sql, block=True)
-----------------------------------------------
+-----------------------------------------------
 
 Like ``execute_write()`` but can be used to send multiple SQL statements in a single string separated by semicolons, using the ``sqlite3`` `conn.executescript() <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.executescript>`__ method.
-
-Each call to ``execute_write_script()`` will be executed inside a transaction.
 
 .. _database_execute_write_many:
 
 await db.execute_write_many(sql, params_seq, block=True)
---------------------------------------------------------
+---------------------------------------------------------
 
 Like ``execute_write()`` but uses the ``sqlite3`` `conn.executemany() <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.executemany>`__ method. This will efficiently execute the same SQL statement against each of the parameters in the ``params_seq`` iterator, for example:
 
@@ -1385,12 +836,10 @@ Like ``execute_write()`` but uses the ``sqlite3`` `conn.executemany() <https://d
         [(1, "Melanie"), (2, "Selma"), (2, "Viktor")],
     )
 
-Each call to ``execute_write_many()`` will be executed inside a transaction.
-
 .. _database_execute_write_fn:
 
-await db.execute_write_fn(fn, block=True, transaction=True)
------------------------------------------------------------
+await db.execute_write_fn(fn, block=True)
+------------------------------------------
 
 This method works like ``.execute_write()``, but instead of a SQL statement you give it a callable Python function. Your function will be queued up and then called when the write connection is available, passing that connection as the argument to the function.
 
@@ -1422,26 +871,7 @@ The value returned from ``await database.execute_write_fn(...)`` will be the ret
 
 If your function raises an exception that exception will be propagated up to the ``await`` line.
 
-By default your function will be executed inside a transaction. You can pass ``transaction=False`` to disable this behavior, though if you do that you should be careful to manually apply transactions - ideally using the ``with conn:`` pattern, or you may see ``OperationalError: database table is locked`` errors.
-
 If you specify ``block=False`` the method becomes fire-and-forget, queueing your function to be executed and then allowing your code after the call to ``.execute_write_fn()`` to continue running while the underlying thread waits for an opportunity to run your function. A UUID representing the queued task will be returned. Any exceptions in your code will be silently swallowed.
-
-.. _database_execute_isolated_fn:
-
-await db.execute_isolated_fn(fn)
---------------------------------
-
-This method works is similar to :ref:`execute_write_fn() <database_execute_write_fn>` but executes the provided function in an entirely isolated SQLite connection, which is opened, used and then closed again in a single call to this method.
-
-The :ref:`prepare_connection() <plugin_hook_prepare_connection>` plugin hook is not executed against this connection.
-
-This allows plugins to execute database operations that might conflict with how database connections are usually configured. For example, running a ``VACUUM`` operation while bypassing any restrictions placed by the `datasette-sqlite-authorizer <https://github.com/datasette/datasette-sqlite-authorizer>`__ plugin.
-
-Plugins can also use this method to load potentially dangerous SQLite extensions, use them to perform an operation and then have them safely unloaded at the end of the call, without risk of exposing them to other connections.
-
-Functions run using ``execute_isolated_fn()`` share the same queue as ``execute_write_fn()``, which guarantees that no writes can be executed at the same time as the isolated function is executing.
-
-The return value of the function will be returned by this method. Any exceptions raised by the function will be raised out of the ``await`` line as well.
 
 .. _database_close:
 
@@ -1478,9 +908,6 @@ The ``Database`` class also provides properties and methods for introspecting th
 ``await db.table_exists(table)`` - boolean
     Check if a table called ``table`` exists.
 
-``await db.view_exists(view)`` - boolean
-    Check if a view called ``view`` exists.
-
 ``await db.table_names()`` - list of strings
     List of names of tables in the database.
 
@@ -1515,63 +942,26 @@ The ``Database`` class also provides properties and methods for introspecting th
     Returns the SQL definition of the named view.
 
 ``await db.get_all_foreign_keys()`` - dictionary
-    Dictionary representing both incoming and outgoing foreign keys for every table in this database. Each key is a table name that points to a dictionary with two keys, ``"incoming"`` and ``"outgoing"``, each of which is a list of dictionaries with keys ``"column"``, ``"other_table"`` and ``"other_column"``. For example:
+    Dictionary representing both incoming and outgoing foreign keys for this table. It has two keys, ``"incoming"`` and ``"outgoing"``, each of which is a list of dictionaries with keys ``"column"``, ``"other_table"`` and ``"other_column"``. For example:
 
     .. code-block:: json
 
         {
-          "documents": {
-            "incoming": [
-              {
-                "other_table": "pages",
-                "column": "id",
-                "other_column": "document_id"
-              }
-            ],
-            "outgoing": []
-          },
-          "pages": {
-            "incoming": [
-              {
-                "other_table": "organization_pages",
-                "column": "id",
-                "other_column": "page_id"
-              }
-            ],
-            "outgoing": [
-              {
-                "other_table": "documents",
-                "column": "document_id",
-                "other_column": "id"
-              }
-            ]
-          },
-          "organization": {
-            "incoming": [
-              {
-                "other_table": "organization_pages",
-                "column": "id",
-                "other_column": "organization_id"
-              }
-            ],
-            "outgoing": []
-          },
-          "organization_pages": {
             "incoming": [],
             "outgoing": [
-              {
-                "other_table": "pages",
-                "column": "page_id",
-                "other_column": "id"
-              },
-              {
-                "other_table": "organization",
-                "column": "organization_id",
-                "other_column": "id"
-              }
+                {
+                    "other_table": "attraction_characteristic",
+                    "column": "characteristic_id",
+                    "other_column": "pk",
+                },
+                {
+                    "other_table": "roadside_attractions",
+                    "column": "attraction_id",
+                    "other_column": "pk",
+                }
             ]
-          }
         }
+
 
 .. _internals_csrf:
 
@@ -1594,131 +984,19 @@ You can selectively disable CSRF protection using the :ref:`plugin_hook_skip_csr
 
 .. _internals_internal:
 
-Datasette's internal database
-=============================
+The _internal database
+======================
 
-Datasette maintains an "internal" SQLite database used for configuration, caching, and storage. Plugins can store configuration, settings, and other data inside this database. By default, Datasette will use a temporary in-memory SQLite database as the internal database, which is created at startup and destroyed at shutdown. Users of Datasette can optionally pass in a ``--internal`` flag to specify the path to a SQLite database to use as the internal database, which will persist internal data across Datasette instances.
+.. warning::
+    This API should be considered unstable - the structure of these tables may change prior to the release of Datasette 1.0.
 
-Datasette maintains tables called ``catalog_databases``, ``catalog_tables``, ``catalog_views``, ``catalog_columns``, ``catalog_indexes``, ``catalog_foreign_keys`` with details of the attached databases and their schemas. These tables should not be considered a stable API - they may change between Datasette releases.
+Datasette maintains an in-memory SQLite database with details of the the databases, tables and columns for all of the attached databases.
 
-Metadata is stored in tables ``metadata_instance``, ``metadata_databases``, ``metadata_resources`` and ``metadata_columns``. Plugins can interact with these tables via the :ref:`get_*_metadata() and set_*_metadata() methods <datasette_get_set_metadata>`.
+By default all actors are denied access to the ``view-database`` permission for the ``_internal`` database, so the database is not visible to anyone unless they :ref:`sign in as root <authentication_root>`.
 
-The internal database is not exposed in the Datasette application by default, which means private data can safely be stored without worry of accidentally leaking information through the default Datasette interface and API. However, other plugins do have full read and write access to the internal database.
+Plugins can access this database by calling ``db = datasette.get_database("_internal")`` and then executing queries using the :ref:`Database API <internals_database>`.
 
-Plugins can access this database by calling ``internal_db = datasette.get_internal_database()`` and then executing queries using the :ref:`Database API <internals_database>`.
-
-Plugin authors are asked to practice good etiquette when using the internal database, as all plugins use the same database to store data. For example:
-
-1. Use a unique prefix when creating tables, indices, and triggers in the internal database. If your plugin is called ``datasette-xyz``, then prefix names with ``datasette_xyz_*``.
-2. Avoid long-running write statements that may stall or block other plugins that are trying to write at the same time.
-3. Use temporary tables or shared in-memory attached databases when possible.
-4. Avoid implementing features that could expose private data stored in the internal database by other plugins.
-
-.. _internals_internal_schema:
-
-Internal database schema
-------------------------
-
-The internal database schema is as follows:
-
-.. [[[cog
-    from metadata_doc import internal_schema
-    internal_schema(cog)
-.. ]]]
-
-.. code-block:: sql
-
-    CREATE TABLE catalog_databases (
-        database_name TEXT PRIMARY KEY,
-        path TEXT,
-        is_memory INTEGER,
-        schema_version INTEGER
-    );
-    CREATE TABLE catalog_tables (
-        database_name TEXT,
-        table_name TEXT,
-        rootpage INTEGER,
-        sql TEXT,
-        PRIMARY KEY (database_name, table_name),
-        FOREIGN KEY (database_name) REFERENCES catalog_databases(database_name)
-    );
-    CREATE TABLE catalog_views (
-        database_name TEXT,
-        view_name TEXT,
-        rootpage INTEGER,
-        sql TEXT,
-        PRIMARY KEY (database_name, view_name),
-        FOREIGN KEY (database_name) REFERENCES catalog_databases(database_name)
-    );
-    CREATE TABLE catalog_columns (
-        database_name TEXT,
-        table_name TEXT,
-        cid INTEGER,
-        name TEXT,
-        type TEXT,
-        "notnull" INTEGER,
-        default_value TEXT, -- renamed from dflt_value
-        is_pk INTEGER, -- renamed from pk
-        hidden INTEGER,
-        PRIMARY KEY (database_name, table_name, name),
-        FOREIGN KEY (database_name) REFERENCES catalog_databases(database_name),
-        FOREIGN KEY (database_name, table_name) REFERENCES catalog_tables(database_name, table_name)
-    );
-    CREATE TABLE catalog_indexes (
-        database_name TEXT,
-        table_name TEXT,
-        seq INTEGER,
-        name TEXT,
-        "unique" INTEGER,
-        origin TEXT,
-        partial INTEGER,
-        PRIMARY KEY (database_name, table_name, name),
-        FOREIGN KEY (database_name) REFERENCES catalog_databases(database_name),
-        FOREIGN KEY (database_name, table_name) REFERENCES catalog_tables(database_name, table_name)
-    );
-    CREATE TABLE catalog_foreign_keys (
-        database_name TEXT,
-        table_name TEXT,
-        id INTEGER,
-        seq INTEGER,
-        "table" TEXT,
-        "from" TEXT,
-        "to" TEXT,
-        on_update TEXT,
-        on_delete TEXT,
-        match TEXT,
-        PRIMARY KEY (database_name, table_name, id, seq),
-        FOREIGN KEY (database_name) REFERENCES catalog_databases(database_name),
-        FOREIGN KEY (database_name, table_name) REFERENCES catalog_tables(database_name, table_name)
-    );
-    CREATE TABLE metadata_instance (
-        key text,
-        value text,
-        unique(key)
-    );
-    CREATE TABLE metadata_databases (
-        database_name text,
-        key text,
-        value text,
-        unique(database_name, key)
-    );
-    CREATE TABLE metadata_resources (
-        database_name text,
-        resource_name text,
-        key text,
-        value text,
-        unique(database_name, resource_name, key)
-    );
-    CREATE TABLE metadata_columns (
-        database_name text,
-        resource_name text,
-        column_name text,
-        key text,
-        value text,
-        unique(database_name, resource_name, column_name, key)
-    );
-
-.. [[[end]]]
+You can explore an example of this database by `signing in as root <https://latest.datasette.io/login-as-root>`__ to the ``latest.datasette.io`` demo instance and then navigating to `latest.datasette.io/_internal <https://latest.datasette.io/_internal>`__.
 
 .. _internals_utils:
 
@@ -1727,7 +1005,7 @@ The datasette.utils module
 
 The ``datasette.utils`` module contains various utility functions used by Datasette. As a general rule you should consider anything in this module to be unstable - functions and classes here could change without warning or be removed entirely between Datasette releases, without being mentioned in the release notes.
 
-The exception to this rule is anything that is documented here. If you find a need for an undocumented utility function in your own work, consider `opening an issue <https://github.com/simonw/datasette/issues/new>`__ requesting that the function you are using be upgraded to documented and supported status.
+The exception to this rule is anythang that is documented here. If you find a need for an undocumented utility function in your own work, consider `opening an issue <https://github.com/simonw/datasette/issues/new>`__ requesting that the function you are using be upgraded to documented and supported status.
 
 .. _internals_utils_parse_metadata:
 
@@ -1748,15 +1026,6 @@ await_me_maybe(value)
 Utility function for calling ``await`` on a return value if it is awaitable, otherwise returning the value. This is used by Datasette to support plugin hooks that can optionally return awaitable functions. Read more about this function in `The “await me maybe” pattern for Python asyncio <https://simonwillison.net/2020/Sep/2/await-me-maybe/>`__.
 
 .. autofunction:: datasette.utils.await_me_maybe
-
-.. _internals_utils_named_parameters:
-
-named_parameters(sql)
----------------------
-
-Derive the list of ``:named`` parameters referenced in a SQL query.
-
-.. autofunction:: datasette.utils.named_parameters
 
 .. _internals_tilde_encoding:
 
@@ -1860,7 +1129,6 @@ This example uses the :ref:`register_routes() <plugin_register_routes>` plugin h
             (r"/parallel-queries$", parallel_queries),
         ]
 
-Note that running parallel SQL queries in this way has `been known to cause problems in the past <https://github.com/simonw/datasette/issues/2189>`__, so treat this example with caution.
 
 Adding ``?_trace=1`` will show that the trace covers both of those child tasks.
 

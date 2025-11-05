@@ -11,11 +11,9 @@ Datasette supports a number of settings. These can be set using the ``--setting 
 You can set multiple settings at once like this::
 
     datasette mydatabase.db \
-      --setting default_page_size 50 \
-      --setting sql_time_limit_ms 3500 \
-      --setting max_returned_rows 2000
-
-Settings can also be specified :ref:`in the database.yaml configuration file <configuration_reference_settings>`.
+        --setting default_page_size 50 \
+        --setting sql_time_limit_ms 3500 \
+        --setting max_returned_rows 2000
 
 .. _config_dir:
 
@@ -24,18 +22,17 @@ Configuration directory mode
 
 Normally you configure Datasette using command-line options. For a Datasette instance with custom templates, custom plugins, a static directory and several databases this can get quite verbose::
 
-    datasette one.db two.db \
-      --metadata=metadata.json \
-      --template-dir=templates/ \
-      --plugins-dir=plugins \
-      --static css:css
+    $ datasette one.db two.db \
+        --metadata=metadata.json \
+        --template-dir=templates/ \
+        --plugins-dir=plugins \
+        --static css:css
 
 As an alternative to this, you can run Datasette in *configuration directory* mode. Create a directory with the following structure::
 
     # In a directory called my-app:
     my-app/one.db
     my-app/two.db
-    my-app/datasette.yaml
     my-app/metadata.json
     my-app/templates/index.html
     my-app/plugins/my_plugin.py
@@ -43,16 +40,16 @@ As an alternative to this, you can run Datasette in *configuration directory* mo
 
 Now start Datasette by providing the path to that directory::
 
-    datasette my-app/
+    $ datasette my-app/
 
 Datasette will detect the files in that directory and automatically configure itself using them. It will serve all ``*.db`` files that it finds, will load ``metadata.json`` if it exists, and will load the ``templates``, ``plugins`` and ``static`` folders if they are present.
 
 The files that can be included in this directory are as follows. All are optional.
 
 * ``*.db`` (or ``*.sqlite3`` or ``*.sqlite``) - SQLite database files that will be served by Datasette
-* ``datasette.yaml`` - :ref:`configuration` for the Datasette instance
 * ``metadata.json`` - :ref:`metadata` for those databases - ``metadata.yaml`` or ``metadata.yml`` can be used as well
 * ``inspect-data.json`` - the result of running ``datasette inspect *.db --inspect-file=inspect-data.json`` from the configuration directory - any database files listed here will be treated as immutable, so they should not be changed while Datasette is running
+* ``settings.json`` - settings that would normally be passed using ``--setting`` - here they should be stored as a JSON object of key/value pairs
 * ``templates/`` - a directory containing :ref:`customization_custom_templates`
 * ``plugins/`` - a directory containing plugins, see :ref:`writing_plugins_one_off`
 * ``static/`` - a directory containing static files - these will be served from ``/static/filename.txt``, see :ref:`customization_static_files`
@@ -69,13 +66,13 @@ default_allow_sql
 
 Should users be able to execute arbitrary SQL queries by default?
 
-Setting this to ``off`` causes permission checks for :ref:`actions_execute_sql` to fail by default.
+Setting this to ``off`` causes permission checks for :ref:`permissions_execute_sql` to fail by default.
 
 ::
 
     datasette mydatabase.db --setting default_allow_sql off
 
-Another way to achieve this is to add ``"allow_sql": false`` to your ``datasette.yaml`` file, as described in :ref:`authentication_permissions_execute_sql`. This setting offers a more convenient way to do this.
+There are two ways to achieve this: the other is to add ``"allow_sql": false`` to your ``metadata.json`` file, as described in :ref:`authentication_permissions_execute_sql`. This setting offers a more convenient way to do this.
 
 .. _setting_default_page_size:
 
@@ -113,17 +110,6 @@ Datasette returns a maximum of 1,000 rows of data at a time. If you execute a qu
 You can increase or decrease this limit like so::
 
     datasette mydatabase.db --setting max_returned_rows 2000
-
-.. _setting_max_insert_rows:
-
-max_insert_rows
-~~~~~~~~~~~~~~~
-
-Maximum rows that can be inserted at a time using the bulk insert API, see :ref:`TableInsertView`. Defaults to 100.
-
-You can increase or decrease this limit like so::
-
-    datasette mydatabase.db --setting max_insert_rows 1000
 
 .. _setting_num_sql_threads:
 
@@ -197,34 +183,6 @@ allow_download
 Should users be able to download the original SQLite database using a link on the database index page? This is turned on by default. However, databases can only be downloaded if they are served in immutable mode and not in-memory. If downloading is unavailable for either of these reasons, the download link is hidden even if ``allow_download`` is on. To disable database downloads, use the following::
 
     datasette mydatabase.db --setting allow_download off
-
-.. _setting_allow_signed_tokens:
-
-allow_signed_tokens
-~~~~~~~~~~~~~~~~~~~
-
-Should users be able to create signed API tokens to access Datasette?
-
-This is turned on by default. Use the following to turn it off::
-
-    datasette mydatabase.db --setting allow_signed_tokens off
-
-Turning this setting off will disable the ``/-/create-token`` page, :ref:`described here <CreateTokenView>`. It will also cause any incoming ``Authorization: Bearer dstok_...`` API tokens to be ignored.
-
-.. _setting_max_signed_tokens_ttl:
-
-max_signed_tokens_ttl
-~~~~~~~~~~~~~~~~~~~~~
-
-Maximum allowed expiry time for signed API tokens created by users.
-
-Defaults to ``0`` which means no limit - tokens can be created that will never expire.
-
-Set this to a value in seconds to limit the maximum expiry time. For example, to set that limit to 24 hours you would use::
-
-    datasette mydatabase.db --setting max_signed_tokens_ttl 86400
-
-This setting is enforced when incoming tokens are processed.
 
 .. _setting_default_cache_ttl:
 
@@ -356,25 +314,25 @@ Configuring the secret
 
 Datasette uses a secret string to sign secure values such as cookies.
 
-If you do not provide a secret, Datasette will create one when it starts up. This secret will reset every time the Datasette server restarts though, so things like authentication cookies and :ref:`API tokens <CreateTokenView>` will not stay valid between restarts.
+If you do not provide a secret, Datasette will create one when it starts up. This secret will reset every time the Datasette server restarts though, so things like authentication cookies will not stay valid between restarts.
 
 You can pass a secret to Datasette in two ways: with the ``--secret`` command-line option or by setting a ``DATASETTE_SECRET`` environment variable.
 
 ::
 
-    datasette mydb.db --secret=SECRET_VALUE_HERE
+    $ datasette mydb.db --secret=SECRET_VALUE_HERE
 
 Or::
 
-    export DATASETTE_SECRET=SECRET_VALUE_HERE
-    datasette mydb.db
+    $ export DATASETTE_SECRET=SECRET_VALUE_HERE
+    $ datasette mydb.db
 
 One way to generate a secure random secret is to use Python like this::
 
-    python3 -c 'import secrets; print(secrets.token_hex(32))'
+    $ python3 -c 'import secrets; print(secrets.token_hex(32))'
     cdb19e94283a20f9d42cca50c5a4871c0aa07392db308755d60a1a5b9bb0fa52
 
-Plugin authors can make use of this signing mechanism in their plugins using the :ref:`datasette.sign() <datasette_sign>` and :ref:`datasette.unsign() <datasette_unsign>` methods.
+Plugin authors make use of this signing mechanism in their plugins using :ref:`datasette_sign` and :ref:`datasette_unsign`.
 
 .. _setting_publish_secrets:
 

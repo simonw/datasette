@@ -47,14 +47,13 @@ Running ``datasette --help`` shows a list of all of the available commands.
       --help     Show this message and exit.
 
     Commands:
-      serve*        Serve up specified SQLite database files with a web UI
-      create-token  Create a signed API token for the specified actor ID
-      inspect       Generate JSON summary of provided database files
-      install       Install plugins and packages from PyPI into the same...
-      package       Package SQLite files into a Datasette Docker container
-      plugins       List currently installed plugins
-      publish       Publish specified SQLite database files to the internet...
-      uninstall     Uninstall plugins and Python packages from the Datasette...
+      serve*     Serve up specified SQLite database files with a web UI
+      inspect    Generate JSON summary of provided database files
+      install    Install plugins and packages from PyPI into the same...
+      package    Package SQLite files into a Datasette Docker container
+      plugins    List currently installed plugins
+      publish    Publish specified SQLite database files to the internet along...
+      uninstall  Uninstall plugins and Python packages from the Datasette...
 
 
 .. [[[end]]]
@@ -112,18 +111,16 @@ Once started you can access it at ``http://localhost:8001``
       --static MOUNT:DIRECTORY        Serve static files from this directory at
                                       /MOUNT/...
       --memory                        Make /_memory database available
-      -c, --config FILENAME           Path to JSON/YAML Datasette configuration file
-      -s, --setting SETTING...        nested.key, value setting to use in Datasette
-                                      configuration
+      --config CONFIG                 Deprecated: set config option using
+                                      configname:value. Use --setting instead.
+      --setting SETTING...            Setting, see
+                                      docs.datasette.io/en/stable/settings.html
       --secret TEXT                   Secret used for signing secure values, such as
                                       signed cookies
       --root                          Output URL that sets a cookie authenticating
                                       the root user
       --get TEXT                      Run an HTTP GET request against this path,
                                       print results and exit
-      --headers                       Include HTTP headers in --get output
-      --token TEXT                    API token to send with --get requests
-      --actor TEXT                    Actor to use for --get requests (JSON string)
       --version-note TEXT             Additional note to show on /-/versions
       --help-settings                 Show available settings
       --pdb                           Launch debugger on any errors
@@ -135,24 +132,11 @@ Once started you can access it at ``http://localhost:8001``
                                       mode
       --ssl-keyfile TEXT              SSL key file
       --ssl-certfile TEXT             SSL certificate file
-      --internal PATH                 Path to a persistent Datasette internal SQLite
-                                      database
       --help                          Show this message and exit.
 
 
 .. [[[end]]]
 
-.. _cli_datasette_serve_env:
-
-Environment variables
----------------------
-
-Some of the ``datasette serve`` options can be provided by environment variables:
-
-- ``DATASETTE_SECRET``: Equivalent to the ``--secret`` option.
-- ``DATASETTE_SSL_KEYFILE``: Equivalent to the ``--ssl-keyfile`` option.
-- ``DATASETTE_SSL_CERTFILE``: Equivalent to the ``--ssl-certfile`` option.
-- ``DATASETTE_LOAD_EXTENSION``: Equivalent to the ``--load-extension`` option.
 
 .. _cli_datasette_get:
 
@@ -163,14 +147,9 @@ The ``--get`` option to ``datasette serve`` (or just ``datasette``) specifies th
 
 This means that all of Datasette's functionality can be accessed directly from the command-line.
 
-For example:
+For example::
 
-.. code-block:: bash
-
-    datasette --get '/-/versions.json' | jq .
-
-.. code-block:: json
-
+    $ datasette --get '/-/versions.json' | jq .
     {
       "python": {
         "version": "3.8.5",
@@ -209,15 +188,7 @@ For example:
       }
     }
 
-You can use the ``--token TOKEN`` option to send an :ref:`API token <CreateTokenView>` with the simulated request.
-
-Or you can make a request as a specific actor by passing a JSON representation of that actor to ``--actor``:
-
-.. code-block:: bash
-
-    datasette --memory --actor '{"id": "root"}' --get '/-/actor.json'
-
-The exit code of ``datasette --get`` will be 0 if the request succeeds and 1 if the request produced an HTTP status code other than 200 - e.g. a 404 or 500 error.
+The exit code will be 0 if the request succeeds and 1 if the request produced an HTTP status code other than 200 - e.g. a 404 or 500 error.
 
 This lets you use ``datasette --get /`` to run tests against a Datasette application in a continuous integration environment such as GitHub Actions.
 
@@ -241,8 +212,6 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
                                    (default=100)
       max_returned_rows            Maximum rows that can be returned from a table or
                                    custom query (default=1000)
-      max_insert_rows              Maximum rows that can be inserted at a time using
-                                   the bulk insert API (default=100)
       num_sql_threads              Number of threads in the thread pool for
                                    executing SQLite queries (default=3)
       sql_time_limit_ms            Time limit for a SQL query in milliseconds
@@ -255,14 +224,10 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
                                    (default=50)
       allow_facet                  Allow users to specify columns to facet using
                                    ?_facet= parameter (default=True)
-      allow_download               Allow users to download the original SQLite
-                                   database files (default=True)
-      allow_signed_tokens          Allow users to create and use signed API tokens
-                                   (default=True)
       default_allow_sql            Allow anyone to run arbitrary SQL queries
                                    (default=True)
-      max_signed_tokens_ttl        Maximum allowed expiry time for signed API tokens
-                                   (default=0)
+      allow_download               Allow users to download the original SQLite
+                                   database files (default=True)
       suggest_facets               Calculate and display suggested facets
                                    (default=True)
       default_cache_ttl            Default HTTP cache TTL (used in Cache-Control:
@@ -307,7 +272,6 @@ Output JSON showing all currently installed plugins, their versions, whether the
 
     Options:
       --all                    Include built-in default plugins
-      --requirements           Output requirements.txt of installed plugins
       --plugins-dir DIRECTORY  Path to directory containing custom plugins
       --help                   Show this message and exit.
 
@@ -371,15 +335,13 @@ Would install the `datasette-cluster-map <https://datasette.io/plugins/datasette
 
 ::
 
-    Usage: datasette install [OPTIONS] [PACKAGES]...
+    Usage: datasette install [OPTIONS] PACKAGES...
 
       Install plugins and packages from PyPI into the same environment as Datasette
 
     Options:
-      -U, --upgrade           Upgrade packages to latest version
-      -r, --requirement PATH  Install from requirements file
-      -e, --editable TEXT     Install a project in editable mode from this path
-      --help                  Show this message and exit.
+      -U, --upgrade  Upgrade packages to latest version
+      --help         Show this message and exit.
 
 
 .. [[[end]]]
@@ -634,64 +596,6 @@ This performance optimization is used automatically by some of the ``datasette p
       --load-extension PATH:ENTRYPOINT?
                                       Path to a SQLite extension to load, and
                                       optional entrypoint
-      --help                          Show this message and exit.
-
-
-.. [[[end]]]
-
-
-.. _cli_help_create_token___help:
-
-datasette create-token
-======================
-
-Create a signed API token, see :ref:`authentication_cli_create_token`.
-
-.. [[[cog
-    help(["create-token", "--help"])
-.. ]]]
-
-::
-
-    Usage: datasette create-token [OPTIONS] ID
-
-      Create a signed API token for the specified actor ID
-
-      Example:
-
-          datasette create-token root --secret mysecret
-
-      To allow only "view-database-download" for all databases:
-
-          datasette create-token root --secret mysecret \
-              --all view-database-download
-
-      To allow "create-table" against a specific database:
-
-          datasette create-token root --secret mysecret \
-              --database mydb create-table
-
-      To allow "insert-row" against a specific table:
-
-          datasette create-token root --secret myscret \
-              --resource mydb mytable insert-row
-
-      Restricted actions can be specified multiple times using multiple --all,
-      --database, and --resource options.
-
-      Add --debug to see a decoded version of the token.
-
-    Options:
-      --secret TEXT                   Secret used for signing the API tokens
-                                      [required]
-      -e, --expires-after INTEGER     Token should expire after this many seconds
-      -a, --all ACTION                Restrict token to this action
-      -d, --database DB ACTION        Restrict token to this action on this database
-      -r, --resource DB RESOURCE ACTION
-                                      Restrict token to this action on this database
-                                      resource (a table, SQL view or named query)
-      --debug                         Show decoded token
-      --plugins-dir DIRECTORY         Path to directory containing custom plugins
       --help                          Show this message and exit.
 
 

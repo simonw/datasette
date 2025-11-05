@@ -64,9 +64,9 @@ The ``"searchmode": "raw"`` property can be used to default the table to accepti
 
 Here is an example which enables full-text search (with SQLite advanced search operators) for a ``display_ads`` view which is defined against the ``ads`` table and hence needs to run FTS against the ``ads_fts`` table, using the ``id`` as the primary key:
 
-.. [[[cog
-    from metadata_doc import metadata_example
-    metadata_example(cog, {
+.. code-block:: json
+
+    {
         "databases": {
             "russian-ads": {
                 "tables": {
@@ -78,40 +78,7 @@ Here is an example which enables full-text search (with SQLite advanced search o
                 }
             }
         }
-    })
-.. ]]]
-
-.. tab:: metadata.yaml
-
-    .. code-block:: yaml
-
-        databases:
-          russian-ads:
-            tables:
-              display_ads:
-                fts_table: ads_fts
-                fts_pk: id
-                searchmode: raw
-
-
-.. tab:: metadata.json
-
-    .. code-block:: json
-
-        {
-          "databases": {
-            "russian-ads": {
-              "tables": {
-                "display_ads": {
-                  "fts_table": "ads_fts",
-                  "fts_pk": "id",
-                  "searchmode": "raw"
-                }
-              }
-            }
-          }
-        }
-.. [[[end]]]
+    }
 
 .. _full_text_search_custom_sql:
 
@@ -177,14 +144,14 @@ Configuring FTS using sqlite-utils
 
 Here's how to use ``sqlite-utils`` to enable full-text search for an ``items`` table across the ``name`` and ``description`` columns::
 
-    sqlite-utils enable-fts mydatabase.db items name description
+    $ sqlite-utils enable-fts mydatabase.db items name description
 
 Configuring FTS using csvs-to-sqlite
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If your data starts out in CSV files, you can use Datasette's companion tool `csvs-to-sqlite <https://github.com/simonw/csvs-to-sqlite>`__ to convert that file into a SQLite database and enable full-text search on specific columns. For a file called ``items.csv`` where you want full-text search to operate against the ``name`` and ``description`` columns you would run the following::
 
-    csvs-to-sqlite items.csv items.db -f name -f description
+    $ csvs-to-sqlite items.csv items.db -f name -f description
 
 Configuring FTS by hand
 ~~~~~~~~~~~~~~~~~~~~~~~

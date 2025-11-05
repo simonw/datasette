@@ -13,14 +13,13 @@ General guidelines
 * **main should always be releasable**. Incomplete features should live in branches. This ensures that any small bug fixes can be quickly released.
 * **The ideal commit** should bundle together the implementation, unit tests and associated documentation updates. The commit message should link to an associated issue.
 * **New plugin hooks** should only be shipped if accompanied by a separate release of a non-demo plugin that uses them.
-* **New user-facing views and documentation** should be added or updated alongside their implementation. The `/docs` folder includes pages for plugin hooks and built-in views—please ensure any new hooks or views are reflected there so the documentation tests continue to pass.
 
 .. _devenvironment:
 
 Setting up a development environment
 ------------------------------------
 
-If you have Python 3.10 or higher installed on your computer (on OS X the quickest way to do this `is using homebrew <https://docs.python-guide.org/starting/install3/osx/>`__) you can install an editable copy of Datasette using the following steps.
+If you have Python 3.7 or higher installed on your computer (on OS X the quickest way to do this `is using homebrew <https://docs.python-guide.org/starting/install3/osx/>`__) you can install an editable copy of Datasette using the following steps.
 
 If you want to use GitHub to publish your changes, first `create a fork of datasette <https://github.com/simonw/datasette/fork>`__ under your own GitHub account.
 
@@ -42,7 +41,7 @@ The next step is to create a virtual environment for your project and use it to 
     # Install Datasette and its testing dependencies
     python3 -m pip install -e '.[test]'
 
-That last line does most of the work: ``pip install -e`` means "install this package in a way that allows me to edit the source code in place". The ``.[test]`` option means "install the optional testing dependencies as well".
+That last line does most of the work: ``pip install -e`` means "install this package in a way that allows me to edit the source code in place". The ``.[test]`` option means "use the setup.py in this directory and install the optional testing dependencies as well".
 
 .. _contributing_running_tests:
 
@@ -112,13 +111,9 @@ Debugging
 
 Any errors that occur while Datasette is running while display a stack trace on the console.
 
-You can tell Datasette to open an interactive ``pdb`` (or ``ipdb``, if present) debugger session if an error occurs using the ``--pdb`` option::
+You can tell Datasette to open an interactive ``pdb`` debugger session if an error occurs using the ``--pdb`` option::
 
     datasette --pdb fixtures.db
-
-For `ipdb <https://pypi.org/project/ipdb/>`__, first run this::
-
-    datasette install ipdb
 
 .. _contributing_formatting:
 
@@ -131,15 +126,6 @@ These formatters are enforced by Datasette's continuous integration: if a commit
 
 When developing locally, you can verify and correct the formatting of your code using these tools.
 
-If you are using `Just <https://github.com/casey/just>`__ the quickest way to run these is like so::
-
-    just black
-    just prettier
-
-Or run both at the same time::
-
-    just format
-
 .. _contributing_formatting_black:
 
 Running Black
@@ -147,20 +133,14 @@ Running Black
 
 Black will be installed when you run ``pip install -e '.[test]'``. To test that your code complies with Black, run the following in your root ``datasette`` repository checkout::
 
-    black . --check
-
-::
-
+    $ black . --check
     All done! ✨ 🍰 ✨
     95 files would be left unchanged.
 
 If any of your code does not conform to Black you can run this to automatically fix those problems::
 
-    black .
-
-::
-
-    reformatted ../datasette/app.py
+    $ black .
+    reformatted ../datasette/setup.py
     All done! ✨ 🍰 ✨
     1 file reformatted, 94 files left unchanged.
 
@@ -180,14 +160,11 @@ Prettier
 
 To install Prettier, `install Node.js <https://nodejs.org/en/download/package-manager/>`__ and then run the following in the root of your ``datasette`` repository checkout::
 
-    npm install
+    $ npm install
 
 This will install Prettier in a ``node_modules`` directory. You can then check that your code matches the coding style like so::
 
-    npm run prettier -- --check
-
-::
-
+    $ npm run prettier -- --check
     > prettier
     > prettier 'datasette/static/*[!.min].js' "--check"
 
@@ -197,7 +174,7 @@ This will install Prettier in a ``node_modules`` directory. You can then check t
 
 You can fix any problems by running::
 
-    npm run fix
+    $ npm run fix
 
 .. _contributing_documentation:
 
@@ -268,7 +245,6 @@ Datasette releases are performed using tags. When a new release is published on 
 * Re-point the "latest" tag on Docker Hub to the new image
 * Build a wheel bundle of the underlying Python source code
 * Push that new wheel up to PyPI: https://pypi.org/project/datasette/
-* If the release is an alpha, navigate to https://readthedocs.org/projects/datasette/versions/ and search for the tag name in the "Activate a version" filter, then mark that version as "active" to ensure it will appear on the public ReadTheDocs documentation site.
 
 To deploy new releases you will need to have push access to the main Datasette GitHub repository.
 
@@ -297,10 +273,6 @@ Referencing the issues that are part of the release in the commit message ensure
 You can generate the list of issue references for a specific release by copying and pasting text from the release notes or GitHub changes-since-last-release view into this `Extract issue numbers from pasted text <https://observablehq.com/@simonw/extract-issue-numbers-from-pasted-text>`__ tool.
 
 To create the tag for the release, create `a new release <https://github.com/simonw/datasette/releases/new>`__ on GitHub matching the new version number. You can convert the release notes to Markdown by copying and pasting the rendered HTML into this `Paste to Markdown tool <https://euangoddard.github.io/clipboard2markdown/>`__.
-
-Don't forget to create the release from the correct branch - usually ``main``, but sometimes ``0.64.x`` or similar for a bugfix release.
-
-While the release is running you can confirm that the correct commits made it into the release using the https://github.com/simonw/datasette/compare/0.64.6...0.64.7 URL.
 
 Finally, post a news item about the release on `datasette.io <https://datasette.io/>`__ by editing the `news.yaml <https://github.com/simonw/datasette.io/blob/main/news.yaml>`__ file in that site's repository.
 
@@ -350,17 +322,20 @@ Upgrading CodeMirror
 
 Datasette bundles `CodeMirror <https://codemirror.net/>`__ for the SQL editing interface, e.g. on `this page <https://latest.datasette.io/fixtures>`__. Here are the steps for upgrading to a new version of CodeMirror:
 
-* Install the packages with::
+* Download and extract latest CodeMirror zip file from https://codemirror.net/codemirror.zip
+* Rename ``lib/codemirror.js`` to ``codemirror-5.57.0.js`` (using latest version number)
+* Rename ``lib/codemirror.css`` to ``codemirror-5.57.0.css``
+* Rename ``mode/sql/sql.js`` to ``codemirror-5.57.0-sql.js``
+* Edit both JavaScript files to make the top license comment a ``/* */`` block instead of multiple ``//`` lines
+* Minify the JavaScript files like this::
 
-    npm i codemirror @codemirror/lang-sql
+       npx uglify-js codemirror-5.57.0.js -o codemirror-5.57.0.min.js --comments '/LICENSE/'
+       npx uglify-js codemirror-5.57.0-sql.js -o codemirror-5.57.0-sql.min.js --comments '/LICENSE/'
 
-* Build the bundle using the version number from package.json with::
+* Check that the LICENSE comment did indeed survive minification
+* Minify the CSS file like this::
 
-    node_modules/.bin/rollup datasette/static/cm-editor-6.0.1.js \
-      -f iife \
-      -n cm \
-      -o datasette/static/cm-editor-6.0.1.bundle.js \
-      -p @rollup/plugin-node-resolve \
-      -p @rollup/plugin-terser
+       npx clean-css-cli codemirror-5.57.0.css -o codemirror-5.57.0.min.css
 
-* Update the version reference in the ``codemirror.html`` template.
+* Edit the ``_codemirror.html`` template to reference the new files
+* ``git rm`` the old files, ``git add`` the new files

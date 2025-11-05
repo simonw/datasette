@@ -5,6 +5,87 @@ Custom pages and templates
 
 Datasette provides a number of ways of customizing the way data is displayed.
 
+.. _customization_css_and_javascript:
+
+Custom CSS and JavaScript
+-------------------------
+
+When you launch Datasette, you can specify a custom metadata file like this::
+
+    datasette mydb.db --metadata metadata.json
+
+Your ``metadata.json`` file can include links that look like this:
+
+.. code-block:: json
+
+    {
+        "extra_css_urls": [
+            "https://simonwillison.net/static/css/all.bf8cd891642c.css"
+        ],
+        "extra_js_urls": [
+            "https://code.jquery.com/jquery-3.2.1.slim.min.js"
+        ]
+    }
+
+The extra CSS and JavaScript files will be linked in the ``<head>`` of every page:
+
+.. code-block:: html
+
+    <link rel="stylesheet" href="https://simonwillison.net/static/css/all.bf8cd891642c.css">
+    <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js"></script>
+
+You can also specify a SRI (subresource integrity hash) for these assets:
+
+.. code-block:: json
+
+    {
+        "extra_css_urls": [
+            {
+                "url": "https://simonwillison.net/static/css/all.bf8cd891642c.css",
+                "sri": "sha384-9qIZekWUyjCyDIf2YK1FRoKiPJq4PHt6tp/ulnuuyRBvazd0hG7pWbE99zvwSznI"
+            }
+        ],
+        "extra_js_urls": [
+            {
+                "url": "https://code.jquery.com/jquery-3.2.1.slim.min.js",
+                "sri": "sha256-k2WSCIexGzOj3Euiig+TlR8gA0EmPjuc79OEeY5L45g="
+            }
+        ]
+    }
+
+This will produce:
+
+.. code-block:: html
+
+    <link rel="stylesheet" href="https://simonwillison.net/static/css/all.bf8cd891642c.css"
+        integrity="sha384-9qIZekWUyjCyDIf2YK1FRoKiPJq4PHt6tp/ulnuuyRBvazd0hG7pWbE99zvwSznI" 
+        crossorigin="anonymous">
+    <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js"
+        integrity="sha256-k2WSCIexGzOj3Euiig+TlR8gA0EmPjuc79OEeY5L45g="
+        crossorigin="anonymous"></script>
+
+Modern browsers will only execute the stylesheet or JavaScript if the SRI hash
+matches the content served. You can generate hashes using `www.srihash.org <https://www.srihash.org/>`_
+
+Items in ``"extra_js_urls"`` can specify ``"module": true`` if they reference JavaScript that uses `JavaScript modules <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules>`__. This configuration:
+
+.. code-block:: json
+
+    {
+        "extra_js_urls": [
+            {
+                "url": "https://example.datasette.io/module.js",
+                "module": true
+            }
+        ]
+    }
+
+Will produce this HTML:
+
+.. code-block:: html
+
+    <script type="module" src="https://example.datasette.io/module.js"></script>
+
 CSS classes on the <body>
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -83,15 +164,6 @@ database column they are representing, for example:
         </tbody>
     </table>
 
-.. _customization_css:
-
-Writing custom CSS
-~~~~~~~~~~~~~~~~~~
-
-Custom templates need to take Datasette's default CSS into account. The pattern portfolio at ``/-/patterns`` (`example here <https://latest.datasette.io/-/patterns>`__) is a useful reference for understanding the available CSS classes.
-
-The ``core`` class is particularly useful - you can apply this directly to a ``<input>`` or ``<button>`` element to get Datasette's default form styles, or you can apply it to a containing element (such as ``<form>``) to apply those styles to all of the form elements within it.
-
 .. _customization_static_files:
 
 Serving static files
@@ -107,49 +179,25 @@ Consider the following directory structure::
 You can start Datasette using ``--static assets:static-files/`` to serve those
 files from the ``/assets/`` mount point::
 
-    datasette --config datasette.yaml --static assets:static-files/ --memory
+    $ datasette -m metadata.json --static assets:static-files/ --memory
 
 The following URLs will now serve the content from those CSS and JS files::
 
     http://localhost:8001/assets/styles.css
     http://localhost:8001/assets/app.js
 
-You can reference those files from ``datasette.yaml`` like this, see :ref:`custom CSS and JavaScript <configuration_reference_css_js>` for more details:
+You can reference those files from ``metadata.json`` like so:
 
-.. [[[cog
-    from metadata_doc import config_example
-    config_example(cog, """
-        extra_css_urls:
-        - /assets/styles.css
-        extra_js_urls:
-        - /assets/app.js
-    """)
-.. ]]]
+.. code-block:: json
 
-.. tab:: datasette.yaml
-
-    .. code-block:: yaml
-
-
-            extra_css_urls:
-            - /assets/styles.css
-            extra_js_urls:
-            - /assets/app.js
-
-
-.. tab:: datasette.json
-
-    .. code-block:: json
-
-        {
-          "extra_css_urls": [
+    {
+        "extra_css_urls": [
             "/assets/styles.css"
-          ],
-          "extra_js_urls": [
+        ],
+        "extra_js_urls": [
             "/assets/app.js"
-          ]
-        }
-.. [[[end]]]
+        ]
+    }
 
 Publishing static assets
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -157,7 +205,7 @@ Publishing static assets
 The :ref:`cli_publish` command can be used to publish your static assets,
 using the same syntax as above::
 
-    datasette publish cloudrun mydb.db --static assets:static-files/
+    $ datasette publish cloudrun mydb.db --static assets:static-files/
 
 This will upload the contents of the ``static-files/`` directory as part of the
 deployment, and configure Datasette to correctly serve the assets from ``/assets/``.
@@ -290,7 +338,7 @@ You can add templated pages to your Datasette instance by creating HTML files in
 
 For example, to add a custom page that is served at ``http://localhost/about`` you would create a file in ``templates/pages/about.html``, then start Datasette like this::
 
-    datasette mydb.db --template-dir=templates/
+    $ datasette mydb.db --template-dir=templates/
 
 You can nest directories within pages to create a nested structure. To create a ``http://localhost:8001/about/map`` page you would create ``templates/pages/about/map.html``.
 
@@ -345,7 +393,7 @@ To serve a custom HTTP header, add a ``custom_header(name, value)`` function cal
 
 You can verify this is working using ``curl`` like this::
 
-    curl -I 'http://127.0.0.1:8001/teapot'
+    $ curl -I 'http://127.0.0.1:8001/teapot'
     HTTP/1.1 418
     date: Sun, 26 Apr 2020 18:38:30 GMT
     server: uvicorn

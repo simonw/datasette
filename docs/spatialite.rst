@@ -156,10 +156,7 @@ The `shapefile format <https://en.wikipedia.org/wiki/Shapefile>`_ is a common fo
 
 Try it now with the North America shapefile available from the University of North Carolina `Global River Database <http://gaia.geosci.unc.edu/rivers/>`_ project. Download the file and unzip it (this will create files called ``narivs.dbf``, ``narivs.prj``, ``narivs.shp`` and ``narivs.shx`` in the current directory), then run the following::
 
-    spatialite rivers-database.db
-
-::
-
+    $ spatialite rivers-database.db
     SpatiaLite version ..: 4.3.0a	Supported Extensions:
     ...
     spatialite> .loadshp narivs rivers CP1252 23032

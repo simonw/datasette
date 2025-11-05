@@ -131,7 +131,7 @@ You can also specify plugins you would like to install. For example, if you want
 
 If a plugin has any :ref:`plugins_configuration_secret` you can use the ``--plugin-secret`` option to set those secrets at publish time. For example, using Heroku with `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__ you might run the following command::
 
-    datasette publish heroku my_database.db \
+    $ datasette publish heroku my_database.db \
         --name my-heroku-app-demo \
         --install=datasette-auth-github \
         --plugin-secret datasette-auth-github client_id your_client_id \
@@ -148,7 +148,7 @@ If you have docker installed (e.g. using `Docker for Mac <https://www.docker.com
 
 Here's example output for the package command::
 
-    datasette package parlgov.db --extra-options="--setting sql_time_limit_ms 2500"
+    $ datasette package parlgov.db --extra-options="--setting sql_time_limit_ms 2500"
     Sending build context to Docker daemon  4.459MB
     Step 1/7 : FROM python:3.11.0-slim-bullseye
      ---> 79e1dc9af1c1

@@ -4,34 +4,3 @@
 {{ super() }}
 <script defer data-domain="docs.datasette.io" src="https://plausible.io/js/plausible.js"></script>
 {% endblock %}
-
-{% block scripts %}
-{{ super() }}
-<script>
-document.addEventListener("DOMContentLoaded", function() {
-  // Show banner linking to /stable/ if this is a /latest/ page
-  if (!/\/latest\//.test(location.pathname)) {
-    return;
-  }
-  var stableUrl = location.pathname.replace("/latest/", "/stable/");
-  // Check it's not a 404
-  fetch(stableUrl, { method: "HEAD" }).then((response) => {
-    if (response.status === 200) {
-      var warning = document.createElement("div");
-      warning.className = "admonition warning";
-      warning.innerHTML = `
-        <p class="first admonition-title">Note</p>
-        <p class="last">
-          This documentation covers the <strong>development version</strong> of Datasette.
-        </p>
-        <p>
-          See <a href="${stableUrl}">this page</a> for the current stable release.
-        </p>
-      `;
-      var mainArticle = document.querySelector("article[role=main]");
-      mainArticle.insertBefore(warning, mainArticle.firstChild);
-    }
-  });
-});
-</script>
-{% endblock %}

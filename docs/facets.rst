@@ -98,16 +98,16 @@ You can increase this on an individual page by adding ``?_facet_size=100`` to th
 
 .. _facets_metadata:
 
-Facets in metadata
-------------------
+Facets in metadata.json
+-----------------------
 
 You can turn facets on by default for specific tables by adding them to a ``"facets"`` key in a Datasette :ref:`metadata` file.
 
 Here's an example that turns on faceting by default for the ``qLegalStatus`` column in the ``Street_Tree_List`` table in the ``sf-trees`` database:
 
-.. [[[cog
-    from metadata_doc import metadata_example
-    metadata_example(cog, {
+.. code-block:: json
+
+    {
       "databases": {
         "sf-trees": {
           "tables": {
@@ -117,82 +117,26 @@ Here's an example that turns on faceting by default for the ``qLegalStatus`` col
           }
         }
       }
-    })
-.. ]]]
-
-.. tab:: metadata.yaml
-
-    .. code-block:: yaml
-
-        databases:
-          sf-trees:
-            tables:
-              Street_Tree_List:
-                facets:
-                - qLegalStatus
-
-
-.. tab:: metadata.json
-
-    .. code-block:: json
-
-        {
-          "databases": {
-            "sf-trees": {
-              "tables": {
-                "Street_Tree_List": {
-                  "facets": [
-                    "qLegalStatus"
-                  ]
-                }
-              }
-            }
-          }
-        }
-.. [[[end]]]
+    }
 
 Facets defined in this way will always be shown in the interface and returned in the API, regardless of the ``_facet`` arguments passed to the view.
 
 You can specify :ref:`array <facet_by_json_array>` or :ref:`date <facet_by_date>` facets in metadata using JSON objects with a single key of ``array`` or ``date`` and a value specifying the column, like this:
 
-.. [[[cog
-    metadata_example(cog, {
-      "facets": [
-        {"array": "tags"},
-        {"date": "created"}
-      ]
-    })
-.. ]]]
+.. code-block:: json
 
-.. tab:: metadata.yaml
-
-    .. code-block:: yaml
-
-        facets:
-        - array: tags
-        - date: created
-
-
-.. tab:: metadata.json
-
-    .. code-block:: json
-
-        {
-          "facets": [
-            {
-              "array": "tags"
-            },
-            {
-              "date": "created"
-            }
-          ]
-        }
-.. [[[end]]]
+  {
+    "facets": [
+      {"array": "tags"},
+      {"date": "created"}
+    ]
+  }
 
 You can change the default facet size (the number of results shown for each facet) for a table using ``facet_size``:
 
-.. [[[cog
-    metadata_example(cog, {
+.. code-block:: json
+
+    {
       "databases": {
         "sf-trees": {
           "tables": {
@@ -203,41 +147,7 @@ You can change the default facet size (the number of results shown for each face
           }
         }
       }
-    })
-.. ]]]
-
-.. tab:: metadata.yaml
-
-    .. code-block:: yaml
-
-        databases:
-          sf-trees:
-            tables:
-              Street_Tree_List:
-                facets:
-                - qLegalStatus
-                facet_size: 10
-
-
-.. tab:: metadata.json
-
-    .. code-block:: json
-
-        {
-          "databases": {
-            "sf-trees": {
-              "tables": {
-                "Street_Tree_List": {
-                  "facets": [
-                    "qLegalStatus"
-                  ],
-                  "facet_size": 10
-                }
-              }
-            }
-          }
-        }
-.. [[[end]]]
+    }
 
 Suggested facets
 ----------------
@@ -260,17 +170,14 @@ Speeding up facets with indexes
 The performance of facets can be greatly improved by adding indexes on the columns you wish to facet by.
 Adding indexes can be performed using the ``sqlite3`` command-line utility. Here's how to add an index on the ``state`` column in a table called ``Food_Trucks``::
 
-    sqlite3 mydatabase.db
-
-::
-
+    $ sqlite3 mydatabase.db
     SQLite version 3.19.3 2017-06-27 16:48:08
     Enter ".help" for usage hints.
     sqlite> CREATE INDEX Food_Trucks_state ON Food_Trucks("state");
 
 Or using the `sqlite-utils <https://sqlite-utils.datasette.io/en/stable/cli.html#creating-indexes>`__ command-line utility::
 
-    sqlite-utils create-index mydatabase.db Food_Trucks state
+    $ sqlite-utils create-index mydatabase.db Food_Trucks state
 
 .. _facet_by_json_array:
 

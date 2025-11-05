@@ -6,6 +6,7 @@ from pathlib import Path
 from http.cookies import SimpleCookie, Morsel
 import aiofiles
 import aiofiles.os
+import re
 
 # Workaround for adding samesite support to pre 3.8 python
 Morsel._reserved["samesite"] = "SameSite"
@@ -227,6 +228,9 @@ async def asgi_send_html(send, html, status=200, headers=None):
 
 
 async def asgi_send_redirect(send, location, status=302):
+    # Prevent open redirect vulnerability: strip multiple leading slashes
+    # //example.com would be interpreted as a protocol-relative URL (e.g., https://example.com/)
+    location = re.sub(r"^/+", "/", location)
     await asgi_send(
         send,
         "",

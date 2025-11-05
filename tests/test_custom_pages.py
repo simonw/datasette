@@ -100,6 +100,7 @@ def test_custom_route_pattern_404(custom_pages_client):
 
 
 def test_custom_route_pattern_with_slash_slash_302(custom_pages_client):
-    response = custom_pages_client.get("//nastyOpenRedirect/")
+    # https://github.com/simonw/datasette/issues/2429
+    response = custom_pages_client.get("//example.com/")
     assert response.status == 302
-    assert response.headers["location"] == "/nastyOpenRedirect"
+    assert response.headers["location"] == "/example.com"

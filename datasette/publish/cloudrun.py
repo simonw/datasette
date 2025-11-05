@@ -23,7 +23,9 @@ def publish_subcommand(publish):
         help="Application name to use when building",
     )
     @click.option(
-        "--service", default="", help="Cloud Run service to deploy (or over-write)",
+        "--service",
+        default="",
+        help="Cloud Run service to deploy (or over-write)",
     )
     @click.option("--spatialite", is_flag=True, help="Enable SpatialLite extension")
     @click.option(
@@ -300,7 +302,8 @@ def get_existing_services():
             "created": service["metadata"]["creationTimestamp"],
             "url": service["status"]["address"]["url"],
         }
-        for service in services if "url" in service["status"]
+        for service in services
+        if "url" in service["status"]
     ]
 
 

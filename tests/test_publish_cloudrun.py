@@ -60,8 +60,14 @@ def test_publish_cloudrun_prompts_for_service(
     tag = "us-docker.pkg.dev/myproject/datasette/datasette-input-service"
     mock_call.assert_has_calls(
         [
-            mock.call("gcloud services enable artifactregistry.googleapis.com --project myproject --quiet", shell=True),
-            mock.call("gcloud artifacts repositories describe datasette --project myproject --location us --quiet", shell=True),
+            mock.call(
+                "gcloud services enable artifactregistry.googleapis.com --project myproject --quiet",
+                shell=True,
+            ),
+            mock.call(
+                "gcloud artifacts repositories describe datasette --project myproject --location us --quiet",
+                shell=True,
+            ),
             mock.call(f"gcloud builds submit --tag {tag}", shell=True),
             mock.call(
                 "gcloud run deploy --allow-unauthenticated --platform=managed --image {} input-service --max-instances 1".format(
@@ -91,8 +97,14 @@ def test_publish_cloudrun(mock_call, mock_output, mock_which, tmp_path_factory):
     tag = f"us-docker.pkg.dev/{mock_output.return_value}/datasette/datasette-test"
     mock_call.assert_has_calls(
         [
-            mock.call(f"gcloud services enable artifactregistry.googleapis.com --project {mock_output.return_value} --quiet", shell=True),
-            mock.call(f"gcloud artifacts repositories describe datasette --project {mock_output.return_value} --location us --quiet", shell=True),
+            mock.call(
+                f"gcloud services enable artifactregistry.googleapis.com --project {mock_output.return_value} --quiet",
+                shell=True,
+            ),
+            mock.call(
+                f"gcloud artifacts repositories describe datasette --project {mock_output.return_value} --location us --quiet",
+                shell=True,
+            ),
             mock.call(f"gcloud builds submit --tag {tag}", shell=True),
             mock.call(
                 "gcloud run deploy --allow-unauthenticated --platform=managed --image {} test --max-instances 1".format(
@@ -187,8 +199,14 @@ def test_publish_cloudrun_memory_cpu(
     expected_call += " --max-instances 1"
     mock_call.assert_has_calls(
         [
-            mock.call(f"gcloud services enable artifactregistry.googleapis.com --project {mock_output.return_value} --quiet", shell=True),
-            mock.call(f"gcloud artifacts repositories describe datasette --project {mock_output.return_value} --location us --quiet", shell=True),
+            mock.call(
+                f"gcloud services enable artifactregistry.googleapis.com --project {mock_output.return_value} --quiet",
+                shell=True,
+            ),
+            mock.call(
+                f"gcloud artifacts repositories describe datasette --project {mock_output.return_value} --location us --quiet",
+                shell=True,
+            ),
             mock.call(expected_build_call, shell=True),
             mock.call(
                 expected_call,

@@ -3,7 +3,7 @@ import click
 import json
 import os
 import re
-from subprocess import check_call, check_output
+from subprocess import CalledProcessError, check_call, check_output
 
 from .common import (
     add_common_publish_arguments_and_options,
@@ -23,7 +23,9 @@ def publish_subcommand(publish):
         help="Application name to use when building",
     )
     @click.option(
-        "--service", default="", help="Cloud Run service to deploy (or over-write)"
+        "--service",
+        default="",
+        help="Cloud Run service to deploy (or over-write)",
     )
     @click.option("--spatialite", is_flag=True, help="Enable SpatialLite extension")
     @click.option(
@@ -55,12 +57,31 @@ def publish_subcommand(publish):
     @click.option(
         "--max-instances",
         type=int,
-        help="Maximum Cloud Run instances",
+        default=1,
+        show_default=True,
+        help="Maximum Cloud Run instances (use 0 to remove the limit)",
     )
     @click.option(
         "--min-instances",
         type=int,
         help="Minimum Cloud Run instances",
+    )
+    @click.option(
+        "--artifact-repository",
+        default="datasette",
+        show_default=True,
+        help="Artifact Registry repository to store the image",
+    )
+    @click.option(
+        "--artifact-region",
+        default="us",
+        show_default=True,
+        help="Artifact Registry location (region or multi-region)",
+    )
+    @click.option(
+        "--artifact-project",
+        default=None,
+        help="Project ID for Artifact Registry (defaults to the active project)",
     )
     def cloudrun(
         files,
@@ -91,6 +112,9 @@ def publish_subcommand(publish):
         apt_get_extras,
         max_instances,
         min_instances,
+        artifact_repository,
+        artifact_region,
+        artifact_project,
     ):
         "Publish databases to Datasette running on Cloud Run"
         fail_if_publish_binary_not_installed(
@@ -99,6 +123,21 @@ def publish_subcommand(publish):
         project = check_output(
             "gcloud config get-value project", shell=True, universal_newlines=True
         ).strip()
+
+        artifact_project = artifact_project or project
+
+        # Ensure Artifact Registry exists for the target image
+        _ensure_artifact_registry(
+            artifact_project=artifact_project,
+            artifact_region=artifact_region,
+            artifact_repository=artifact_repository,
+        )
+
+        artifact_host = (
+            artifact_region
+            if artifact_region.endswith("-docker.pkg.dev")
+            else f"{artifact_region}-docker.pkg.dev"
+        )
 
         if not service:
             # Show the user their current services, then prompt for one
@@ -116,6 +155,11 @@ def publish_subcommand(publish):
                     )
                 click.echo("")
             service = click.prompt("Service name", type=str)
+
+        image_id = (
+            f"{artifact_host}/{artifact_project}/"
+            f"{artifact_repository}/datasette-{service}"
+        )
 
         extra_metadata = {
             "title": title,
@@ -173,7 +217,6 @@ def publish_subcommand(publish):
                     print(fp.read())
                 print("\n====================\n")
 
-            image_id = f"gcr.io/{project}/datasette-{service}"
             check_call(
                 "gcloud builds submit --tag {}{}".format(
                     image_id, " --timeout {}".format(timeout) if timeout else ""
@@ -187,7 +230,7 @@ def publish_subcommand(publish):
             ("--max-instances", max_instances),
             ("--min-instances", min_instances),
         ):
-            if value:
+            if value is not None:
                 extra_deploy_options.append("{} {}".format(option, value))
         check_call(
             "gcloud run deploy --allow-unauthenticated --platform=managed --image {} {}{}".format(
@@ -197,6 +240,52 @@ def publish_subcommand(publish):
             ),
             shell=True,
         )
+
+
+def _ensure_artifact_registry(artifact_project, artifact_region, artifact_repository):
+    """Ensure Artifact Registry API is enabled and the repository exists."""
+
+    enable_cmd = (
+        "gcloud services enable artifactregistry.googleapis.com "
+        f"--project {artifact_project} --quiet"
+    )
+    try:
+        check_call(enable_cmd, shell=True)
+    except CalledProcessError as exc:
+        raise click.ClickException(
+            "Failed to enable artifactregistry.googleapis.com. "
+            "Please ensure you have permissions to manage services."
+        ) from exc
+
+    describe_cmd = (
+        "gcloud artifacts repositories describe {repo} --project {project} "
+        "--location {location} --quiet"
+    ).format(
+        repo=artifact_repository,
+        project=artifact_project,
+        location=artifact_region,
+    )
+    try:
+        check_call(describe_cmd, shell=True)
+        return
+    except CalledProcessError:
+        create_cmd = (
+            "gcloud artifacts repositories create {repo} --repository-format=docker "
+            '--location {location} --project {project} --description "Datasette Cloud Run images" --quiet'
+        ).format(
+            repo=artifact_repository,
+            location=artifact_region,
+            project=artifact_project,
+        )
+        try:
+            check_call(create_cmd, shell=True)
+            click.echo(f"Created Artifact Registry repository '{artifact_repository}'")
+        except CalledProcessError as exc:
+            raise click.ClickException(
+                "Failed to create Artifact Registry repository. "
+                "Use --artifact-repository/--artifact-region to point to an existing repo "
+                "or create one manually."
+            ) from exc
 
 
 def get_existing_services():
@@ -214,6 +303,7 @@ def get_existing_services():
             "url": service["status"]["address"]["url"],
         }
         for service in services
+        if "url" in service["status"]
     ]
 
 

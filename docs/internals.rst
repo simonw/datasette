@@ -1057,13 +1057,15 @@ Example usage:
 .. code-block:: python
 
     # Regular request - respects permissions
-    response = await datasette.client.get("/private-db/secret-table.json")
+    response = await datasette.client.get(
+        "/private-db/secret-table.json"
+    )
     # May return 403 Forbidden if access is denied
 
     # With skip_permission_checks - bypasses all permission checks
     response = await datasette.client.get(
         "/private-db/secret-table.json",
-        skip_permission_checks=True
+        skip_permission_checks=True,
     )
     # Will return 200 OK and the data, regardless of permissions
 

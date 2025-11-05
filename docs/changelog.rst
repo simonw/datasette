@@ -4,15 +4,25 @@
 Changelog
 =========
 
+.. _v1_0_a21:
+
+1.0a21 (2025-11-05)
+-------------------
+
+- Fixes an **open redirect** security issue: Datasette instances would redirect to ``example.com/foo/bar`` if you accessed the path ``//example.com/foo/bar``. Thanks to `James Jefferies <https://github.com/jamesjefferies>`__ for the fix. (:issue:`2429`)
+- Fixed ``datasette publish cloudrun`` to work with changes to the underlying Cloud Run architecture. (:issue:`2511`)
+- New ``datasette --get /path --headers`` option for inspecting the headers returned by a path. (:issue:`2578`)
+- New ``datasette.client.get(..., skip_permission_checks=True)`` parameter to bypass permission checks when making requests using the internal client. (:issue:`2583`)
+
 .. _v0_65_2:
 
 0.65.2 (2025-11-05)
 -------------------
 
-* Fixes an **open redirect** security issue: Datasette instances would redirect to ``example.com/foo/bar`` if you accessed the path ``//example.com/foo/bar``. Thanks to `James Jefferies <https://github.com/jamesjefferies>`__ for the fix. (:issue:`2429`)
-* Upgraded for compatibility with Python 3.14.
-* Fixed ``datasette publish cloudrun`` to work with changes to the underlying Cloud Run architecture. (:issue:`2511`)
-* Minor upgrades to fix warnings, including ``pkg_resources`` deprecation.
+- Fixes an **open redirect** security issue: Datasette instances would redirect to ``example.com/foo/bar`` if you accessed the path ``//example.com/foo/bar``. Thanks to `James Jefferies <https://github.com/jamesjefferies>`__ for the fix. (:issue:`2429`)
+- Upgraded for compatibility with Python 3.14.
+- Fixed ``datasette publish cloudrun`` to work with changes to the underlying Cloud Run architecture. (:issue:`2511`)
+- Minor upgrades to fix warnings, including ``pkg_resources`` deprecation.
 
 .. _v1_0_a20:
 
@@ -52,22 +62,16 @@ Related changes:
 - Permission debugging improvements:
 
   - The ``/-/allowed`` endpoint shows resources the user is allowed to interact with for different actions.
-
   - ``/-/rules`` shows the raw allow/deny rules that apply to different permission checks.
-
   - ``/-/actions`` lists every available action.
-
   - ``/-/check`` can be used to try out different permission checks for the current actor.
 
 Other changes
 ~~~~~~~~~~~~~
 
 - The internal ``catalog_views`` table now tracks SQLite views alongside tables in the introspection database. (:issue:`2495`)
-
 - Hitting the ``/`` brings up a search interface for navigating to tables that the current user can view. A new ``/-/tables`` endpoint supports this functionality. (:issue:`2523`)
-
 - Datasette attempts to detect some configuration errors on startup.
-
 - Datasette now supports Python 3.14 and no longer tests against Python 3.9.
 
 .. _v1_0_a19:

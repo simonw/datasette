@@ -9,10 +9,10 @@ import os
 import re
 import sqlite_utils
 import textwrap
-from typing import List
 
 from datasette.events import AlterTableEvent, CreateTableEvent, InsertRowsEvent
 from datasette.database import QueryInterrupted
+from datasette.resources import DatabaseResource, QueryResource
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
@@ -35,6 +35,7 @@ from datasette.utils.asgi import AsgiFileDownload, NotFound, Response, Forbidden
 from datasette.plugins import pm
 
 from .base import BaseView, DatasetteError, View, _error, stream_csv
+from . import Context
 
 
 class DatabaseView(View):
@@ -48,10 +49,8 @@ class DatabaseView(View):
 
         visible, private = await datasette.check_visibility(
             request.actor,
-            permissions=[
-                ("view-database", database),
-                "view-instance",
-            ],
+            action="view-database",
+            resource=DatabaseResource(database=database),
         )
         if not visible:
             raise Forbidden("You do not have permission to view this database")
@@ -70,39 +69,45 @@ class DatabaseView(View):
 
         metadata = await datasette.get_database_metadata(database)
 
-        sql_views = []
-        for view_name in await db.view_names():
-            view_visible, view_private = await datasette.check_visibility(
-                request.actor,
-                permissions=[
-                    ("view-table", (database, view_name)),
-                    ("view-database", database),
-                    "view-instance",
-                ],
-            )
-            if view_visible:
-                sql_views.append(
-                    {
-                        "name": view_name,
-                        "private": view_private,
-                    }
-                )
+        # Get all tables/views this actor can see in bulk with private flag
+        allowed_tables_page = await datasette.allowed_resources(
+            "view-table",
+            request.actor,
+            parent=database,
+            include_is_private=True,
+            limit=1000,
+        )
+        # Create lookup dict for quick access
+        allowed_dict = {r.child: r for r in allowed_tables_page.resources}
 
-        tables = await get_tables(datasette, request, db)
+        # Filter to just views
+        view_names_set = set(await db.view_names())
+        sql_views = [
+            {"name": name, "private": allowed_dict[name].private}
+            for name in allowed_dict
+            if name in view_names_set
+        ]
+
+        tables = await get_tables(datasette, request, db, allowed_dict)
+
+        # Get allowed queries using the new permission system
+        allowed_query_page = await datasette.allowed_resources(
+            "view-query",
+            request.actor,
+            parent=database,
+            include_is_private=True,
+            limit=1000,
+        )
+
+        # Build canned_queries list by looking up each allowed query
+        all_queries = await datasette.get_canned_queries(database, request.actor)
         canned_queries = []
-        for query in (
-            await datasette.get_canned_queries(database, request.actor)
-        ).values():
-            query_visible, query_private = await datasette.check_visibility(
-                request.actor,
-                permissions=[
-                    ("view-query", (database, query["name"])),
-                    ("view-database", database),
-                    "view-instance",
-                ],
-            )
-            if query_visible:
-                canned_queries.append(dict(query, private=query_private))
+        for query_resource in allowed_query_page.resources:
+            query_name = query_resource.child
+            if query_name in all_queries:
+                canned_queries.append(
+                    dict(all_queries[query_name], private=query_resource.private)
+                )
 
         async def database_actions():
             links = []
@@ -119,8 +124,10 @@ class DatabaseView(View):
 
         attached_databases = [d.name for d in await db.attached_databases()]
 
-        allow_execute_sql = await datasette.permission_allowed(
-            request.actor, "execute-sql", database
+        allow_execute_sql = await datasette.allowed(
+            action="execute-sql",
+            resource=DatabaseResource(database=database),
+            actor=request.actor,
         )
         json_data = {
             "database": database,
@@ -152,31 +159,43 @@ class DatabaseView(View):
         templates = (f"database-{to_css_class(database)}.html", "database.html")
         environment = datasette.get_jinja_environment(request)
         template = environment.select_template(templates)
-        context = {
-            **json_data,
-            "database_color": db.color,
-            "database_actions": database_actions,
-            "show_hidden": request.args.get("_show_hidden"),
-            "editable": True,
-            "metadata": metadata,
-            "count_limit": db.count_limit,
-            "allow_download": datasette.setting("allow_download")
-            and not db.is_mutable
-            and not db.is_memory,
-            "attached_databases": attached_databases,
-            "alternate_url_json": alternate_url_json,
-            "select_templates": [
-                f"{'*' if template_name == template.name else ''}{template_name}"
-                for template_name in templates
-            ],
-            "top_database": make_slot_function(
-                "top_database", datasette, request, database=database
-            ),
-        }
         return Response.html(
             await datasette.render_template(
                 templates,
-                context,
+                DatabaseContext(
+                    database=database,
+                    private=private,
+                    path=datasette.urls.database(database),
+                    size=db.size,
+                    tables=tables,
+                    hidden_count=len([t for t in tables if t["hidden"]]),
+                    views=sql_views,
+                    queries=canned_queries,
+                    allow_execute_sql=allow_execute_sql,
+                    table_columns=(
+                        await _table_columns(datasette, database)
+                        if allow_execute_sql
+                        else {}
+                    ),
+                    metadata=metadata,
+                    database_color=db.color,
+                    database_actions=database_actions,
+                    show_hidden=request.args.get("_show_hidden"),
+                    editable=True,
+                    count_limit=db.count_limit,
+                    allow_download=datasette.setting("allow_download")
+                    and not db.is_mutable
+                    and not db.is_memory,
+                    attached_databases=attached_databases,
+                    alternate_url_json=alternate_url_json,
+                    select_templates=[
+                        f"{'*' if template_name == template.name else ''}{template_name}"
+                        for template_name in templates
+                    ],
+                    top_database=make_slot_function(
+                        "top_database", datasette, request, database=database
+                    ),
+                ),
                 request=request,
                 view_name="database",
             ),
@@ -189,7 +208,56 @@ class DatabaseView(View):
 
 
 @dataclass
-class QueryContext:
+class DatabaseContext(Context):
+    database: str = field(metadata={"help": "The name of the database"})
+    private: bool = field(
+        metadata={"help": "Boolean indicating if this is a private database"}
+    )
+    path: str = field(metadata={"help": "The URL path to this database"})
+    size: int = field(metadata={"help": "The size of the database in bytes"})
+    tables: list = field(metadata={"help": "List of table objects in the database"})
+    hidden_count: int = field(metadata={"help": "Count of hidden tables"})
+    views: list = field(metadata={"help": "List of view objects in the database"})
+    queries: list = field(metadata={"help": "List of canned query objects"})
+    allow_execute_sql: bool = field(
+        metadata={"help": "Boolean indicating if custom SQL can be executed"}
+    )
+    table_columns: dict = field(
+        metadata={"help": "Dictionary mapping table names to their column lists"}
+    )
+    metadata: dict = field(metadata={"help": "Metadata for the database"})
+    database_color: str = field(metadata={"help": "The color assigned to the database"})
+    database_actions: callable = field(
+        metadata={
+            "help": "Callable returning list of action links for the database menu"
+        }
+    )
+    show_hidden: str = field(metadata={"help": "Value of _show_hidden query parameter"})
+    editable: bool = field(
+        metadata={"help": "Boolean indicating if the database is editable"}
+    )
+    count_limit: int = field(metadata={"help": "The maximum number of rows to count"})
+    allow_download: bool = field(
+        metadata={"help": "Boolean indicating if database download is allowed"}
+    )
+    attached_databases: list = field(
+        metadata={"help": "List of names of attached databases"}
+    )
+    alternate_url_json: str = field(
+        metadata={"help": "URL for the alternate JSON version of this page"}
+    )
+    select_templates: list = field(
+        metadata={
+            "help": "List of templates that were considered for rendering this page"
+        }
+    )
+    top_database: callable = field(
+        metadata={"help": "Callable to render the top_database slot"}
+    )
+
+
+@dataclass
+class QueryContext(Context):
     database: str = field(metadata={"help": "The name of the database being queried"})
     database_color: str = field(metadata={"help": "The color of the database"})
     query: dict = field(
@@ -270,24 +338,25 @@ class QueryContext:
     )
 
 
-async def get_tables(datasette, request, db):
+async def get_tables(datasette, request, db, allowed_dict):
+    """
+    Get list of tables with metadata for the database view.
+
+    Args:
+        datasette: The Datasette instance
+        request: The current request
+        db: The database
+        allowed_dict: Dict mapping table name -> Resource object with .private attribute
+    """
     tables = []
-    database = db.name
     table_counts = await db.table_counts(100)
     hidden_table_names = set(await db.hidden_table_names())
     all_foreign_keys = await db.get_all_foreign_keys()
 
     for table in table_counts:
-        table_visible, table_private = await datasette.check_visibility(
-            request.actor,
-            permissions=[
-                ("view-table", (database, table)),
-                ("view-database", database),
-                "view-instance",
-            ],
-        )
-        if not table_visible:
+        if table not in allowed_dict:
             continue
+
         table_columns = await db.table_columns(table)
         tables.append(
             {
@@ -298,7 +367,7 @@ async def get_tables(datasette, request, db):
                 "hidden": table in hidden_table_names,
                 "fts_table": await db.fts_table(table),
                 "foreign_keys": all_foreign_keys[table],
-                "private": table_private,
+                "private": allowed_dict[table].private,
             }
         )
     tables.sort(key=lambda t: (t["hidden"], t["name"]))
@@ -306,14 +375,13 @@ async def get_tables(datasette, request, db):
 
 
 async def database_download(request, datasette):
+    from datasette.resources import DatabaseResource
+
     database = tilde_decode(request.url_vars["database"])
-    await datasette.ensure_permissions(
-        request.actor,
-        [
-            ("view-database-download", database),
-            ("view-database", database),
-            "view-instance",
-        ],
+    await datasette.ensure_permission(
+        action="view-database-download",
+        resource=DatabaseResource(database=database),
+        actor=request.actor,
     )
     try:
         db = datasette.get_database(route=database)
@@ -447,6 +515,17 @@ class QueryView(View):
         db = await datasette.resolve_database(request)
         database = db.name
 
+        # Get all tables/views this actor can see in bulk with private flag
+        allowed_tables_page = await datasette.allowed_resources(
+            "view-table",
+            request.actor,
+            parent=database,
+            include_is_private=True,
+            limit=1000,
+        )
+        # Create lookup dict for quick access
+        allowed_dict = {r.child: r for r in allowed_tables_page.resources}
+
         # Are we a canned query?
         canned_query = None
         canned_query_write = False
@@ -467,18 +546,17 @@ class QueryView(View):
             # Respect canned query permissions
             visible, private = await datasette.check_visibility(
                 request.actor,
-                permissions=[
-                    ("view-query", (database, canned_query["name"])),
-                    ("view-database", database),
-                    "view-instance",
-                ],
+                action="view-query",
+                resource=QueryResource(database=database, query=canned_query["name"]),
             )
             if not visible:
                 raise Forbidden("You do not have permission to view this query")
 
         else:
-            await datasette.ensure_permissions(
-                request.actor, [("execute-sql", database)]
+            await datasette.ensure_permission(
+                action="execute-sql",
+                resource=DatabaseResource(database=database),
+                actor=request.actor,
             )
 
         # Flattened because of ?sql=&name1=value1&name2=value2 feature
@@ -657,8 +735,10 @@ class QueryView(View):
                         path_with_format(request=request, format=key)
                     )
 
-            allow_execute_sql = await datasette.permission_allowed(
-                request.actor, "execute-sql", database
+            allow_execute_sql = await datasette.allowed(
+                action="execute-sql",
+                resource=DatabaseResource(database=database),
+                actor=request.actor,
             )
 
             show_hide_hidden = ""
@@ -746,7 +826,7 @@ class QueryView(View):
                         show_hide_text=show_hide_text,
                         editable=not canned_query,
                         allow_execute_sql=allow_execute_sql,
-                        tables=await get_tables(datasette, request, db),
+                        tables=await get_tables(datasette, request, db, allowed_dict),
                         named_parameter_values=named_parameter_values,
                         edit_sql_url=edit_sql_url,
                         display_rows=await display_rows(
@@ -868,8 +948,10 @@ class TableCreateView(BaseView):
         database_name = db.name
 
         # Must have create-table permission
-        if not await self.ds.permission_allowed(
-            request.actor, "create-table", resource=database_name
+        if not await self.ds.allowed(
+            action="create-table",
+            resource=DatabaseResource(database=database_name),
+            actor=request.actor,
         ):
             return _error(["Permission denied"], 403)
 
@@ -905,8 +987,10 @@ class TableCreateView(BaseView):
 
         if replace:
             # Must have update-row permission
-            if not await self.ds.permission_allowed(
-                request.actor, "update-row", resource=database_name
+            if not await self.ds.allowed(
+                action="update-row",
+                resource=DatabaseResource(database=database_name),
+                actor=request.actor,
             ):
                 return _error(["Permission denied: need update-row"], 403)
 
@@ -929,8 +1013,10 @@ class TableCreateView(BaseView):
 
         if rows or row:
             # Must have insert-row permission
-            if not await self.ds.permission_allowed(
-                request.actor, "insert-row", resource=database_name
+            if not await self.ds.allowed(
+                action="insert-row",
+                resource=DatabaseResource(database=database_name),
+                actor=request.actor,
             ):
                 return _error(["Permission denied: need insert-row"], 403)
 
@@ -942,8 +1028,10 @@ class TableCreateView(BaseView):
             else:
                 # alter=True only if they request it AND they have permission
                 if data.get("alter"):
-                    if not await self.ds.permission_allowed(
-                        request.actor, "alter-table", resource=database_name
+                    if not await self.ds.allowed(
+                        action="alter-table",
+                        resource=DatabaseResource(database=database_name),
+                        actor=request.actor,
                     ):
                         return _error(["Permission denied: need alter-table"], 403)
                     alter = True

@@ -5,38 +5,52 @@ export DATASETTE_SECRET := "not_a_secret"
 
 # Setup project
 @init:
-  pipenv run pip install -e '.[test,docs]'
+  uv sync --extra test --extra docs
 
 # Run pytest with supplied options
-@test *options:
-  pipenv run pytest {{options}}
+@test *options: init
+  uv run pytest -n auto {{options}}
 
 @codespell:
-  pipenv run codespell README.md --ignore-words docs/codespell-ignore-words.txt
-  pipenv run codespell docs/*.rst --ignore-words docs/codespell-ignore-words.txt
-  pipenv run codespell datasette -S datasette/static --ignore-words docs/codespell-ignore-words.txt
-  pipenv run codespell tests --ignore-words docs/codespell-ignore-words.txt
+  uv run codespell README.md --ignore-words docs/codespell-ignore-words.txt
+  uv run codespell docs/*.rst --ignore-words docs/codespell-ignore-words.txt
+  uv run codespell datasette -S datasette/static --ignore-words docs/codespell-ignore-words.txt
+  uv run codespell tests --ignore-words docs/codespell-ignore-words.txt
 
 # Run linters: black, flake8, mypy, cog
 @lint: codespell
-  pipenv run black . --check
-  pipenv run flake8
-  pipenv run cog --check README.md docs/*.rst
+  uv run black . --check
+  uv run flake8
+  uv run --extra test cog --check README.md docs/*.rst
 
 # Rebuild docs with cog
 @cog:
-  pipenv run cog -r README.md docs/*.rst
+  uv run --extra test cog -r README.md docs/*.rst
 
 # Serve live docs on localhost:8000
-@docs: cog
-  pipenv run blacken-docs -l 60 docs/*.rst
-  cd docs && pipenv run make livehtml
+@docs: cog blacken-docs
+  uv sync --extra docs && cd docs && uv run make livehtml
+
+# Build docs as static HTML
+@docs-build: cog blacken-docs
+  rm -rf docs/_build && cd docs && uv run make html
 
 # Apply Black
 @black:
-  pipenv run black .
+  uv run black .
 
-@serve:
-  pipenv run sqlite-utils create-database data.db
-  pipenv run sqlite-utils create-table data.db docs id integer title text --pk id --ignore
-  pipenv run python -m datasette data.db --root --reload
+# Apply blacken-docs
+@blacken-docs:
+  uv run blacken-docs -l 60 docs/*.rst
+
+# Apply prettier
+@prettier:
+  npm run fix
+
+# Format code with both black and prettier
+@format: black prettier blacken-docs
+
+@serve *options:
+  uv run sqlite-utils create-database data.db
+  uv run sqlite-utils create-table data.db docs id integer title text --pk id --ignore
+  uv run python -m datasette data.db --root --reload {{options}}

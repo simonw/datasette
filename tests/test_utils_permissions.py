@@ -1,11 +1,8 @@
 import pytest
 from datasette.app import Datasette
-from datasette.utils.permissions import (
-    PluginSQL,
-    PluginProvider,
-    resolve_permissions_from_catalog,
-)
-from typing import List
+from datasette.permissions import PermissionSQL
+from datasette.utils.permissions import resolve_permissions_from_catalog
+from typing import Callable, List
 
 
 @pytest.fixture
@@ -16,7 +13,6 @@ def db():
 
     path = tempfile.mktemp(suffix="demo.db")
     db = ds.add_database(Database(ds, path=path))
-    print(path)
     return db
 
 
@@ -25,88 +21,105 @@ NO_RULES_SQL = (
 )
 
 
-def plugin_allow_all_for_user(user: str) -> PluginProvider:
-    def provider(action: str) -> PluginSQL:
-        return PluginSQL(
-            "allow_all",
+def plugin_allow_all_for_user(user: str) -> Callable[[str], PermissionSQL]:
+    def provider(action: str) -> PermissionSQL:
+        return PermissionSQL(
             """
             SELECT NULL AS parent, NULL AS child, 1 AS allow,
-                   'global allow for ' || :user || ' on ' || :action AS reason
-            WHERE :actor = :user
+                   'global allow for ' || :allow_all_user || ' on ' || :allow_all_action AS reason
+            WHERE :actor_id = :allow_all_user
             """,
-            {"user": user, "action": action},
+            {"allow_all_user": user, "allow_all_action": action},
         )
 
     return provider
 
 
-def plugin_deny_specific_table(user: str, parent: str, child: str) -> PluginProvider:
-    def provider(action: str) -> PluginSQL:
-        return PluginSQL(
-            "deny_specific_table",
+def plugin_deny_specific_table(
+    user: str, parent: str, child: str
+) -> Callable[[str], PermissionSQL]:
+    def provider(action: str) -> PermissionSQL:
+        return PermissionSQL(
             """
-            SELECT :parent AS parent, :child AS child, 0 AS allow,
-                   'deny ' || :parent || '/' || :child || ' for ' || :user || ' on ' || :action AS reason
-            WHERE :actor = :user
+            SELECT :deny_specific_table_parent AS parent, :deny_specific_table_child AS child, 0 AS allow,
+                   'deny ' || :deny_specific_table_parent || '/' || :deny_specific_table_child || ' for ' || :deny_specific_table_user || ' on ' || :deny_specific_table_action AS reason
+            WHERE :actor_id = :deny_specific_table_user
             """,
-            {"parent": parent, "child": child, "user": user, "action": action},
+            {
+                "deny_specific_table_parent": parent,
+                "deny_specific_table_child": child,
+                "deny_specific_table_user": user,
+                "deny_specific_table_action": action,
+            },
         )
 
     return provider
 
 
-def plugin_org_policy_deny_parent(parent: str) -> PluginProvider:
-    def provider(action: str) -> PluginSQL:
-        return PluginSQL(
-            "org_policy_parent_deny",
+def plugin_org_policy_deny_parent(parent: str) -> Callable[[str], PermissionSQL]:
+    def provider(action: str) -> PermissionSQL:
+        return PermissionSQL(
             """
-            SELECT :parent AS parent, NULL AS child, 0 AS allow,
-                   'org policy: parent ' || :parent || ' denied on ' || :action AS reason
+            SELECT :org_policy_parent_deny_parent AS parent, NULL AS child, 0 AS allow,
+                   'org policy: parent ' || :org_policy_parent_deny_parent || ' denied on ' || :org_policy_parent_deny_action AS reason
             """,
-            {"parent": parent, "action": action},
+            {
+                "org_policy_parent_deny_parent": parent,
+                "org_policy_parent_deny_action": action,
+            },
         )
 
     return provider
 
 
-def plugin_allow_parent_for_user(user: str, parent: str) -> PluginProvider:
-    def provider(action: str) -> PluginSQL:
-        return PluginSQL(
-            "allow_parent",
+def plugin_allow_parent_for_user(
+    user: str, parent: str
+) -> Callable[[str], PermissionSQL]:
+    def provider(action: str) -> PermissionSQL:
+        return PermissionSQL(
             """
-            SELECT :parent AS parent, NULL AS child, 1 AS allow,
-                   'allow full parent for ' || :user || ' on ' || :action AS reason
-            WHERE :actor = :user
+            SELECT :allow_parent_parent AS parent, NULL AS child, 1 AS allow,
+                   'allow full parent for ' || :allow_parent_user || ' on ' || :allow_parent_action AS reason
+            WHERE :actor_id = :allow_parent_user
             """,
-            {"parent": parent, "user": user, "action": action},
+            {
+                "allow_parent_parent": parent,
+                "allow_parent_user": user,
+                "allow_parent_action": action,
+            },
         )
 
     return provider
 
 
-def plugin_child_allow_for_user(user: str, parent: str, child: str) -> PluginProvider:
-    def provider(action: str) -> PluginSQL:
-        return PluginSQL(
-            "allow_child",
+def plugin_child_allow_for_user(
+    user: str, parent: str, child: str
+) -> Callable[[str], PermissionSQL]:
+    def provider(action: str) -> PermissionSQL:
+        return PermissionSQL(
             """
-            SELECT :parent AS parent, :child AS child, 1 AS allow,
-                   'allow child for ' || :user || ' on ' || :action AS reason
-            WHERE :actor = :user
+            SELECT :allow_child_parent AS parent, :allow_child_child AS child, 1 AS allow,
+                   'allow child for ' || :allow_child_user || ' on ' || :allow_child_action AS reason
+            WHERE :actor_id = :allow_child_user
             """,
-            {"parent": parent, "child": child, "user": user, "action": action},
+            {
+                "allow_child_parent": parent,
+                "allow_child_child": child,
+                "allow_child_user": user,
+                "allow_child_action": action,
+            },
         )
 
     return provider
 
 
-def plugin_root_deny_for_all() -> PluginProvider:
-    def provider(action: str) -> PluginSQL:
-        return PluginSQL(
-            "root_deny",
+def plugin_root_deny_for_all() -> Callable[[str], PermissionSQL]:
+    def provider(action: str) -> PermissionSQL:
+        return PermissionSQL(
             """
-            SELECT NULL AS parent, NULL AS child, 0 AS allow, 'root deny for all on ' || :action AS reason
+            SELECT NULL AS parent, NULL AS child, 0 AS allow, 'root deny for all on ' || :root_deny_action AS reason
             """,
-            {"action": action},
+            {"root_deny_action": action},
         )
 
     return provider
@@ -114,48 +127,55 @@ def plugin_root_deny_for_all() -> PluginProvider:
 
 def plugin_conflicting_same_child_rules(
     user: str, parent: str, child: str
-) -> List[PluginProvider]:
-    def allow_provider(action: str) -> PluginSQL:
-        return PluginSQL(
-            "conflict_child_allow",
+) -> List[Callable[[str], PermissionSQL]]:
+    def allow_provider(action: str) -> PermissionSQL:
+        return PermissionSQL(
             """
-            SELECT :parent AS parent, :child AS child, 1 AS allow,
-                   'team grant at child for ' || :user || ' on ' || :action AS reason
-            WHERE :actor = :user
+            SELECT :conflict_child_allow_parent AS parent, :conflict_child_allow_child AS child, 1 AS allow,
+                   'team grant at child for ' || :conflict_child_allow_user || ' on ' || :conflict_child_allow_action AS reason
+            WHERE :actor_id = :conflict_child_allow_user
             """,
-            {"parent": parent, "child": child, "user": user, "action": action},
+            {
+                "conflict_child_allow_parent": parent,
+                "conflict_child_allow_child": child,
+                "conflict_child_allow_user": user,
+                "conflict_child_allow_action": action,
+            },
         )
 
-    def deny_provider(action: str) -> PluginSQL:
-        return PluginSQL(
-            "conflict_child_deny",
+    def deny_provider(action: str) -> PermissionSQL:
+        return PermissionSQL(
             """
-            SELECT :parent AS parent, :child AS child, 0 AS allow,
-                   'exception deny at child for ' || :user || ' on ' || :action AS reason
-            WHERE :actor = :user
+            SELECT :conflict_child_deny_parent AS parent, :conflict_child_deny_child AS child, 0 AS allow,
+                   'exception deny at child for ' || :conflict_child_deny_user || ' on ' || :conflict_child_deny_action AS reason
+            WHERE :actor_id = :conflict_child_deny_user
             """,
-            {"parent": parent, "child": child, "user": user, "action": action},
+            {
+                "conflict_child_deny_parent": parent,
+                "conflict_child_deny_child": child,
+                "conflict_child_deny_user": user,
+                "conflict_child_deny_action": action,
+            },
         )
 
     return [allow_provider, deny_provider]
 
 
-def plugin_allow_all_for_action(user: str, allowed_action: str) -> PluginProvider:
-    def provider(action: str) -> PluginSQL:
+def plugin_allow_all_for_action(
+    user: str, allowed_action: str
+) -> Callable[[str], PermissionSQL]:
+    def provider(action: str) -> PermissionSQL:
         if action != allowed_action:
-            return PluginSQL(
-                f"allow_all_{allowed_action}_noop",
-                NO_RULES_SQL,
-                {},
-            )
-        return PluginSQL(
-            f"allow_all_{allowed_action}",
-            """
+            return PermissionSQL(NO_RULES_SQL)
+        # Sanitize parameter names by replacing hyphens with underscores
+        param_prefix = action.replace("-", "_")
+        return PermissionSQL(
+            f"""
             SELECT NULL AS parent, NULL AS child, 1 AS allow,
-                   'global allow for ' || :user || ' on ' || :action AS reason
-            WHERE :actor = :user
+                   'global allow for ' || :{param_prefix}_user || ' on ' || :{param_prefix}_action AS reason
+            WHERE :actor_id = :{param_prefix}_user
             """,
-            {"user": user, "action": action},
+            {f"{param_prefix}_user": user, f"{param_prefix}_action": action},
         )
 
     return provider
@@ -247,7 +267,12 @@ async def test_alice_global_allow_with_specific_denies_catalog(db):
         plugin_org_policy_deny_parent("hr"),
     ]
     rows = await resolve_permissions_from_catalog(
-        db, "alice", plugins, VIEW_TABLE, TABLE_CANDIDATES_SQL, implicit_deny=True
+        db,
+        {"id": "alice"},
+        plugins,
+        VIEW_TABLE,
+        TABLE_CANDIDATES_SQL,
+        implicit_deny=True,
     )
     # Alice can see everything except accounting/sales and hr/*
     assert "/accounting/sales" in res_denied(rows)
@@ -269,7 +294,12 @@ async def test_carol_parent_allow_but_child_conflict_deny_wins_catalog(db):
         *plugin_conflicting_same_child_rules("carol", "analytics", "secret"),
     ]
     rows = await resolve_permissions_from_catalog(
-        db, "carol", plugins, VIEW_TABLE, TABLE_CANDIDATES_SQL, implicit_deny=True
+        db,
+        {"id": "carol"},
+        plugins,
+        VIEW_TABLE,
+        TABLE_CANDIDATES_SQL,
+        implicit_deny=True,
     )
     allowed_analytics = res_allowed(rows, parent="analytics")
     denied_analytics = res_denied(rows, parent="analytics")
@@ -290,7 +320,12 @@ async def test_specificity_child_allow_overrides_parent_deny_catalog(db):
         ),  # child allow beats parent deny
     ]
     rows = await resolve_permissions_from_catalog(
-        db, "alice", plugins, VIEW_TABLE, TABLE_CANDIDATES_SQL, implicit_deny=True
+        db,
+        {"id": "alice"},
+        plugins,
+        VIEW_TABLE,
+        TABLE_CANDIDATES_SQL,
+        implicit_deny=True,
     )
 
     # table02 allowed, other analytics tables denied
@@ -311,7 +346,7 @@ async def test_root_deny_all_but_parent_allow_rescues_specific_parent_catalog(db
         ),  # parent allow (more specific)
     ]
     rows = await resolve_permissions_from_catalog(
-        db, "bob", plugins, VIEW_TABLE, TABLE_CANDIDATES_SQL, implicit_deny=True
+        db, {"id": "bob"}, plugins, VIEW_TABLE, TABLE_CANDIDATES_SQL, implicit_deny=True
     )
     for r in rows:
         if r["parent"] == "accounting":
@@ -328,7 +363,12 @@ async def test_parent_scoped_candidates(db):
         plugin_allow_parent_for_user("carol", "analytics"),
     ]
     rows = await resolve_permissions_from_catalog(
-        db, "carol", plugins, VIEW_TABLE, PARENT_CANDIDATES_SQL, implicit_deny=True
+        db,
+        {"id": "carol"},
+        plugins,
+        VIEW_TABLE,
+        PARENT_CANDIDATES_SQL,
+        implicit_deny=True,
     )
     d = {r["resource"]: r["allow"] for r in rows}
     assert d["/analytics"] == 1
@@ -342,13 +382,23 @@ async def test_implicit_deny_behavior(db):
 
     # implicit_deny=True -> everything denied with reason 'implicit deny'
     rows = await resolve_permissions_from_catalog(
-        db, "erin", plugins, VIEW_TABLE, TABLE_CANDIDATES_SQL, implicit_deny=True
+        db,
+        {"id": "erin"},
+        plugins,
+        VIEW_TABLE,
+        TABLE_CANDIDATES_SQL,
+        implicit_deny=True,
     )
     assert all(r["allow"] == 0 and r["reason"] == "implicit deny" for r in rows)
 
     # implicit_deny=False -> no winner => allow is None, reason is None
     rows2 = await resolve_permissions_from_catalog(
-        db, "erin", plugins, VIEW_TABLE, TABLE_CANDIDATES_SQL, implicit_deny=False
+        db,
+        {"id": "erin"},
+        plugins,
+        VIEW_TABLE,
+        TABLE_CANDIDATES_SQL,
+        implicit_deny=False,
     )
     assert all(r["allow"] is None and r["reason"] is None for r in rows2)
 
@@ -384,7 +434,7 @@ async def test_candidate_filters_via_params(db):
     # Case 1: exclude memory dbs, require schema_version >= 2 -> only analytics appear, and thus are allowed
     rows = await resolve_permissions_from_catalog(
         db,
-        "dev",
+        {"id": "dev"},
         plugins,
         VIEW_TABLE,
         candidate_sql,
@@ -398,7 +448,7 @@ async def test_candidate_filters_via_params(db):
     # but root deny wins except where specifically allowed (none except analytics parent allow doesn’t apply to table depth if candidate includes children; still fine—policy is explicit).
     rows2 = await resolve_permissions_from_catalog(
         db,
-        "dev",
+        {"id": "dev"},
         plugins,
         VIEW_TABLE,
         candidate_sql,
@@ -418,7 +468,7 @@ async def test_action_specific_rules(db):
 
     view_rows = await resolve_permissions_from_catalog(
         db,
-        "dana",
+        {"id": "dana"},
         plugins,
         VIEW_TABLE,
         TABLE_CANDIDATES_SQL,
@@ -429,7 +479,7 @@ async def test_action_specific_rules(db):
 
     insert_rows = await resolve_permissions_from_catalog(
         db,
-        "dana",
+        {"id": "dana"},
         plugins,
         "insert-row",
         TABLE_CANDIDATES_SQL,
@@ -438,3 +488,125 @@ async def test_action_specific_rules(db):
     assert insert_rows and all(r["allow"] == 0 for r in insert_rows)
     assert all(r["reason"] == "implicit deny" for r in insert_rows)
     assert all(r["action"] == "insert-row" for r in insert_rows)
+
+
+@pytest.mark.asyncio
+async def test_actor_actor_id_action_parameters_available(db):
+    """Test that :actor (JSON), :actor_id, and :action are all available in SQL"""
+    await seed_catalog(db)
+
+    def plugin_using_all_parameters() -> Callable[[str], PermissionSQL]:
+        def provider(action: str) -> PermissionSQL:
+            return PermissionSQL(
+                """
+                SELECT NULL AS parent, NULL AS child, 1 AS allow,
+                       'Actor ID: ' || COALESCE(:actor_id, 'null') ||
+                       ', Actor JSON: ' || COALESCE(:actor, 'null') ||
+                       ', Action: ' || :action AS reason
+                WHERE :actor_id = 'test_user' AND :action = 'view-table'
+                AND json_extract(:actor, '$.role') = 'admin'
+                """
+            )
+
+        return provider
+
+    plugins = [plugin_using_all_parameters()]
+
+    # Test with full actor dict
+    rows = await resolve_permissions_from_catalog(
+        db,
+        {"id": "test_user", "role": "admin"},
+        plugins,
+        "view-table",
+        TABLE_CANDIDATES_SQL,
+        implicit_deny=True,
+    )
+
+    # Should have allowed rows with reason containing all the info
+    allowed = [r for r in rows if r["allow"] == 1]
+    assert len(allowed) > 0
+
+    # Check that the reason string contains evidence of all parameters
+    reason = allowed[0]["reason"]
+    assert "test_user" in reason
+    assert "view-table" in reason
+    # The :actor parameter should be the JSON string
+    assert "Actor JSON:" in reason
+
+
+@pytest.mark.asyncio
+async def test_multiple_plugins_with_own_parameters(db):
+    """
+    Test that multiple plugins can use their own parameter names without conflict.
+
+    This verifies that the parameter naming convention works: plugins prefix their
+    parameters (e.g., :plugin1_pattern, :plugin2_message) and both sets of parameters
+    are successfully bound in the SQL queries.
+    """
+    await seed_catalog(db)
+
+    def plugin_one() -> Callable[[str], PermissionSQL]:
+        def provider(action: str) -> PermissionSQL:
+            if action != "view-table":
+                return PermissionSQL("plugin_one", "SELECT NULL WHERE 0", {})
+            return PermissionSQL(
+                """
+                SELECT database_name AS parent, table_name AS child,
+                       1 AS allow, 'Plugin one used param: ' || :plugin1_param AS reason
+                FROM catalog_tables
+                WHERE database_name = 'accounting'
+                """,
+                {
+                    "plugin1_param": "value1",
+                },
+            )
+
+        return provider
+
+    def plugin_two() -> Callable[[str], PermissionSQL]:
+        def provider(action: str) -> PermissionSQL:
+            if action != "view-table":
+                return PermissionSQL("plugin_two", "SELECT NULL WHERE 0", {})
+            return PermissionSQL(
+                """
+                SELECT database_name AS parent, table_name AS child,
+                       1 AS allow, 'Plugin two used param: ' || :plugin2_param AS reason
+                FROM catalog_tables
+                WHERE database_name = 'hr'
+                """,
+                {
+                    "plugin2_param": "value2",
+                },
+            )
+
+        return provider
+
+    plugins = [plugin_one(), plugin_two()]
+
+    rows = await resolve_permissions_from_catalog(
+        db,
+        {"id": "test_user"},
+        plugins,
+        "view-table",
+        TABLE_CANDIDATES_SQL,
+        implicit_deny=False,
+    )
+
+    # Both plugins should contribute results with their parameters successfully bound
+    plugin_one_rows = [
+        r for r in rows if r.get("reason") and "Plugin one" in r["reason"]
+    ]
+    plugin_two_rows = [
+        r for r in rows if r.get("reason") and "Plugin two" in r["reason"]
+    ]
+
+    assert len(plugin_one_rows) > 0, "Plugin one should contribute rules"
+    assert len(plugin_two_rows) > 0, "Plugin two should contribute rules"
+
+    # Verify each plugin's parameters were successfully bound in the SQL
+    assert any(
+        "value1" in r.get("reason", "") for r in plugin_one_rows
+    ), "Plugin one's :plugin1_param should be bound"
+    assert any(
+        "value2" in r.get("reason", "") for r in plugin_two_rows
+    ), "Plugin two's :plugin2_param should be bound"

@@ -36,11 +36,18 @@ extensions = [
     "sphinx.ext.extlinks",
     "sphinx.ext.autodoc",
     "sphinx_copybutton",
+    "myst_parser",
+    "sphinx_markdown_builder",
 ]
 if not os.environ.get("DISABLE_SPHINX_INLINE_TABS"):
     extensions += ["sphinx_inline_tabs"]
 
 autodoc_member_order = "bysource"
+
+myst_enable_extensions = ["colon_fence"]
+
+markdown_http_base = "https://docs.datasette.io/en/stable"
+markdown_uri_doc_suffix = ".html"
 
 extlinks = {
     "issue": ("https://github.com/simonw/datasette/issues/%s", "#%s"),
@@ -53,7 +60,10 @@ templates_path = ["_templates"]
 # You can specify multiple suffix as a list of string:
 #
 # source_suffix = ['.rst', '.md']
-source_suffix = ".rst"
+source_suffix = {
+    ".rst": "restructuredtext",
+    ".md": "markdown",
+}
 
 # The master toctree document.
 master_doc = "index"

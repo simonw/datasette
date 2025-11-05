@@ -1,4 +1,3 @@
-from asgi_csrf import Errors
 from bs4 import BeautifulSoup as Soup
 from datasette.app import Datasette
 from datasette.utils import allowed_pragmas
@@ -935,7 +934,15 @@ async def test_edit_sql_link_on_canned_queries(ds_client, path, expected):
         assert "Edit SQL" not in response.text
 
 
-@pytest.mark.parametrize("permission_allowed", [True, False])
+@pytest.mark.parametrize(
+    "permission_allowed",
+    [
+        pytest.param(
+            True,
+        ),
+        False,
+    ],
+)
 def test_edit_sql_link_not_shown_if_user_lacks_permission(permission_allowed):
     with make_app_client(
         config={
@@ -962,6 +969,9 @@ def test_edit_sql_link_not_shown_if_user_lacks_permission(permission_allowed):
 async def test_navigation_menu_links(
     ds_client, actor_id, should_have_links, should_not_have_links
 ):
+    # Enable root user if testing with root actor
+    if actor_id == "root":
+        ds_client.ds.root_enabled = True
     cookies = {}
     if actor_id:
         cookies = {"ds_actor": ds_client.actor_cookie({"id": actor_id})}
@@ -1149,12 +1159,9 @@ async def test_database_color(ds_client):
         "/fixtures/pragma_cache_size",
     ):
         response = await ds_client.get(path)
-        result = any(fragment in response.text for fragment in expected_fragments)
-        if not result:
-            import pdb
-
-            pdb.set_trace()
-        assert any(fragment in response.text for fragment in expected_fragments)
+        assert any(
+            fragment in response.text for fragment in expected_fragments
+        ), f"Color fragments not found in {path}. Expected: {expected_fragments}"
 
 
 @pytest.mark.asyncio
@@ -1169,3 +1176,58 @@ async def test_custom_csrf_error(ds_client):
     assert response.status_code == 403
     assert response.headers["content-type"] == "text/html; charset=utf-8"
     assert "Error code is FORM_URLENCODED_MISMATCH." in response.text
+
+
+@pytest.mark.asyncio
+async def test_actions_page(ds_client):
+    original_root_enabled = ds_client.ds.root_enabled
+    try:
+        ds_client.ds.root_enabled = True
+        cookies = {"ds_actor": ds_client.actor_cookie({"id": "root"})}
+        response = await ds_client.get("/-/actions", cookies=cookies)
+        assert response.status_code == 200
+        assert "Registered actions" in response.text
+        assert "<th>Name</th>" in response.text
+        assert "view-instance" in response.text
+        assert "view-database" in response.text
+    finally:
+        ds_client.ds.root_enabled = original_root_enabled
+
+
+@pytest.mark.asyncio
+async def test_permission_debug_tabs_with_query_string(ds_client):
+    """Test that navigation tabs persist query strings across Check, Allowed, and Rules pages"""
+    original_root_enabled = ds_client.ds.root_enabled
+    try:
+        ds_client.ds.root_enabled = True
+        cookies = {"ds_actor": ds_client.actor_cookie({"id": "root"})}
+
+        # Test /-/allowed with query string
+        response = await ds_client.get(
+            "/-/allowed?action=view-table&page_size=50", cookies=cookies
+        )
+        assert response.status_code == 200
+        # Check that Rules and Check tabs have the query string
+        assert 'href="/-/rules?action=view-table&amp;page_size=50"' in response.text
+        assert 'href="/-/check?action=view-table&amp;page_size=50"' in response.text
+        # Playground and Actions should not have query string
+        assert 'href="/-/permissions"' in response.text
+        assert 'href="/-/actions"' in response.text
+
+        # Test /-/rules with query string
+        response = await ds_client.get(
+            "/-/rules?action=view-database&parent=test", cookies=cookies
+        )
+        assert response.status_code == 200
+        # Check that Allowed and Check tabs have the query string
+        assert 'href="/-/allowed?action=view-database&amp;parent=test"' in response.text
+        assert 'href="/-/check?action=view-database&amp;parent=test"' in response.text
+
+        # Test /-/check with query string
+        response = await ds_client.get("/-/check?action=execute-sql", cookies=cookies)
+        assert response.status_code == 200
+        # Check that Allowed and Rules tabs have the query string
+        assert 'href="/-/allowed?action=execute-sql"' in response.text
+        assert 'href="/-/rules?action=execute-sql"' in response.text
+    finally:
+        ds_client.ds.root_enabled = original_root_enabled

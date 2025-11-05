@@ -5,11 +5,14 @@
 {% block extra_head %}
 <script src="{{ base_url }}-/static/json-format-highlight-1.0.1.js"></script>
 {% include "_permission_ui_styles.html" %}
+{% include "_debug_common_functions.html" %}
 {% endblock %}
 
 {% block content %}
+<h1>Allowed resources</h1>
 
-<h1>Allowed Resources</h1>
+{% set current_tab = "allowed" %}
+{% include "_permissions_debug_tabs.html" %}
 
 <p>Use this tool to check which resources the current actor is allowed to access for a given permission action. It queries the <code>/-/allowed.json</code> API endpoint.</p>
 
@@ -20,13 +23,13 @@
 {% endif %}
 
 <div class="permission-form">
-    <form id="allowed-form">
+    <form id="allowed-form" method="get" action="{{ urls.path("-/allowed") }}">
         <div class="form-section">
             <label for="action">Action (permission name):</label>
             <select id="action" name="action" required>
                 <option value="">Select an action...</option>
-                {% for permission_name in supported_actions %}
-                <option value="{{ permission_name }}">{{ permission_name }}</option>
+                {% for action_name in supported_actions %}
+                <option value="{{ action_name }}">{{ action_name }}</option>
                 {% endfor %}
             </select>
             <small>Only certain actions are supported by this endpoint</small>
@@ -41,7 +44,7 @@
         <div class="form-section">
             <label for="child">Filter by child (optional):</label>
             <input type="text" id="child" name="child" placeholder="e.g., table name">
-            <small>Filter results to a specific child resource (requires parent)</small>
+            <small>Filter results to a specific child resource (requires parent to be set)</small>
         </div>
 
         <div class="form-section">
@@ -79,74 +82,19 @@ const resultsContent = document.getElementById('results-content');
 const resultsCount = document.getElementById('results-count');
 const pagination = document.getElementById('pagination');
 const submitBtn = document.getElementById('submit-btn');
-let currentData = null;
-
-// Populate form from URL parameters on page load
-function populateFormFromURL() {
-    const params = new URLSearchParams(window.location.search);
-
-    const action = params.get('action');
-    if (action) {
-        document.getElementById('action').value = action;
-    }
-
-    const parent = params.get('parent');
-    if (parent) {
-        document.getElementById('parent').value = parent;
-    }
-
-    const child = params.get('child');
-    if (child) {
-        document.getElementById('child').value = child;
-    }
-
-    const pageSize = params.get('page_size');
-    if (pageSize) {
-        document.getElementById('page_size').value = pageSize;
-    }
-
-    const page = params.get('page');
-
-    // If parameters are present, automatically fetch results
-    if (action) {
-        fetchResults(page ? parseInt(page) : 1, false);
-    }
-}
-
-// Update URL with current form values and page
-function updateURL(page = 1) {
-    const formData = new FormData(form);
-    const params = new URLSearchParams();
-
-    for (const [key, value] of formData.entries()) {
-        if (value) {
-            params.append(key, value);
-        }
-    }
-
-    if (page > 1) {
-        params.set('page', page.toString());
-    }
-
-    const newURL = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
-    window.history.pushState({}, '', newURL);
-}
-
-form.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    updateURL(1);
-    await fetchResults(1, false);
-});
-
-// Handle browser back/forward
-window.addEventListener('popstate', () => {
-    populateFormFromURL();
-});
+const hasDebugPermission = {{ 'true' if has_debug_permission else 'false' }};
 
 // Populate form on initial load
-populateFormFromURL();
+(function() {
+    const params = populateFormFromURL();
+    const action = params.get('action');
+    const page = params.get('page');
+    if (action) {
+        fetchResults(page ? parseInt(page) : 1);
+    }
+})();
 
-async function fetchResults(page = 1, updateHistory = true) {
+async function fetchResults(page = 1) {
     submitBtn.disabled = true;
     submitBtn.textContent = 'Loading...';
 
@@ -174,7 +122,6 @@ async function fetchResults(page = 1, updateHistory = true) {
         const data = await response.json();
 
         if (response.ok) {
-            currentData = data;
             displayResults(data);
         } else {
             displayError(data);
@@ -202,8 +149,9 @@ function displayResults(data) {
         html += '<th>Resource Path</th>';
         html += '<th>Parent</th>';
         html += '<th>Child</th>';
-        html += '<th>Reason</th>';
-        html += '<th>Source Plugin</th>';
+        if (hasDebugPermission) {
+            html += '<th>Reason</th>';
+        }
         html += '</tr></thead>';
         html += '<tbody>';
 
@@ -212,8 +160,14 @@ function displayResults(data) {
             html += `<td><span class="resource-path">${escapeHtml(item.resource || '/')}</span></td>`;
             html += `<td>${escapeHtml(item.parent || '—')}</td>`;
             html += `<td>${escapeHtml(item.child || '—')}</td>`;
-            html += `<td>${escapeHtml(item.reason || '—')}</td>`;
-            html += `<td>${escapeHtml(item.source_plugin || '—')}</td>`;
+            if (hasDebugPermission) {
+                // Display reason as JSON array
+                let reasonHtml = '—';
+                if (item.reason && Array.isArray(item.reason)) {
+                    reasonHtml = `<code>${escapeHtml(JSON.stringify(item.reason))}</code>`;
+                }
+                html += `<td>${reasonHtml}</td>`;
+            }
             html += '</tr>';
         }
 
@@ -226,13 +180,8 @@ function displayResults(data) {
     if (data.previous_url || data.next_url) {
         if (data.previous_url) {
             const prevLink = document.createElement('a');
-            prevLink.href = '#';
+            prevLink.href = data.previous_url;
             prevLink.textContent = '← Previous';
-            prevLink.addEventListener('click', (e) => {
-                e.preventDefault();
-                updateURL(data.page - 1);
-                fetchResults(data.page - 1, false);
-            });
             pagination.appendChild(prevLink);
         }
 
@@ -242,22 +191,14 @@ function displayResults(data) {
 
         if (data.next_url) {
             const nextLink = document.createElement('a');
-            nextLink.href = '#';
+            nextLink.href = data.next_url;
             nextLink.textContent = 'Next →';
-            nextLink.addEventListener('click', (e) => {
-                e.preventDefault();
-                updateURL(data.page + 1);
-                fetchResults(data.page + 1, false);
-            });
             pagination.appendChild(nextLink);
         }
     }
 
     // Update raw JSON
     document.getElementById('raw-json').innerHTML = jsonFormatHighlight(data);
-
-    // Scroll to results
-    resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function displayError(data) {
@@ -268,27 +209,21 @@ function displayError(data) {
     resultsContent.innerHTML = `<div class="error-message">Error: ${escapeHtml(data.error || 'Unknown error')}</div>`;
 
     document.getElementById('raw-json').innerHTML = jsonFormatHighlight(data);
-
-    resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-}
-
-function escapeHtml(text) {
-    if (text === null || text === undefined) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
 }
 
 // Disable child input if parent is empty
 const parentInput = document.getElementById('parent');
 const childInput = document.getElementById('child');
 
-childInput.addEventListener('focus', () => {
+parentInput.addEventListener('input', () => {
+    childInput.disabled = !parentInput.value;
     if (!parentInput.value) {
-        alert('Please specify a parent resource first before filtering by child resource.');
-        parentInput.focus();
+        childInput.value = '';
     }
 });
+
+// Initialize disabled state
+childInput.disabled = !parentInput.value;
 </script>
 
 {% endblock %}

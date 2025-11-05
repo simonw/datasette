@@ -33,6 +33,9 @@ p.message-warning {
 
 <h1>Debug allow rules</h1>
 
+{% set current_tab = "allow_debug" %}
+{% include "_permissions_debug_tabs.html" %}
+
 <p>Use this tool to try out different actor and allow combinations. See <a href="https://docs.datasette.io/en/stable/authentication.html#defining-permissions-with-allow-blocks">Defining permissions with "allow" blocks</a> for documentation.</p>
 
 <form class="core" action="{{ urls.path('-/allow-debug') }}" method="get" style="margin-bottom: 1em">

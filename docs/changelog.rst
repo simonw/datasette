@@ -4,6 +4,62 @@
 Changelog
 =========
 
+.. _v1_0_a20:
+
+1.0a20 (2025-11-03)
+-------------------
+
+This alpha introduces a major breaking change prior to the 1.0 release of Datasette concerning how Datasette's permission system works.
+
+Permission system redesign
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Previously the permission system worked using ``datasette.permission_allowed()`` checks which consulted all available plugins in turn to determine whether a given actor was allowed to perform a given action on a given resource.
+
+This approach could become prohibitively expensive for large lists of items - for example to determine the list of tables that a user could view in a large Datasette instance each plugin implementation of that hook would be fired for every table.
+
+The new design uses SQL queries against Datasette's internal :ref:`catalog tables <internals_internal>` to derive the list of resources for which an actor has permission for a given action. This turns an N x M problem (N resources, M plugins) into a single SQL query.
+
+Plugins can use the new :ref:`plugin_hook_permission_resources_sql` hook to return SQL fragments which will be used as part of that query.
+
+Plugins that use any of the following features will need to be updated to work with this and following alphas (and Datasette 1.0 stable itself):
+
+- Checking permissions with ``datasette.permission_allowed()`` - this method has been replaced with :ref:`datasette.allowed() <datasette_allowed>`.
+- Implementing the ``permission_allowed()`` plugin hook - this hook has been removed in favor of :ref:`permission_resources_sql() <plugin_hook_permission_resources_sql>`.
+- Using ``register_permissions()`` to register permissions - this hook has been removed in favor of :ref:`register_actions() <plugin_register_actions>`.
+
+Consult the :ref:`v1.0a20 upgrade guide <upgrade_guide_v1_a20>` for further details on how to upgrade affected plugins.
+
+Plugins can now make use of two new internal methods to help resolve permission checks:
+
+- :ref:`datasette.allowed_resources() <datasette_allowed_resources>` returns a ``PaginatedResources`` object with a ``.resources`` list of ``Resource`` instances that an actor is allowed to access for a given action (and a ``.next`` token for pagination).
+- :ref:`datasette.allowed_resources_sql() <datasette_allowed_resources_sql>` returns the SQL and parameters that can be executed against the internal catalog tables to determine which resources an actor is allowed to access for a given action. This can be combined with further SQL to perform advanced custom filtering.
+
+Related changes:
+
+- The way ``datasette --root`` works has changed. Running Datasette with this flag now causes the root actor to pass *all* permission checks. (:issue:`2521`)
+
+- Permission debugging improvements:
+
+  - The ``/-/allowed`` endpoint shows resources the user is allowed to interact with for different actions.
+
+  - ``/-/rules`` shows the raw allow/deny rules that apply to different permission checks.
+
+  - ``/-/actions`` lists every available action.
+
+  - ``/-/check`` can be used to try out different permission checks for the current actor.
+
+Other changes
+~~~~~~~~~~~~~
+
+- The internal ``catalog_views`` table now tracks SQLite views alongside tables in the introspection database. (:issue:`2495`)
+
+- Hitting the ``/`` brings up a search interface for navigating to tables that the current user can view. A new ``/-/tables`` endpoint supports this functionality. (:issue:`2523`)
+
+- Datasette attempts to detect some configuration errors on startup.
+
+- Datasette now supports Python 3.14 and no longer tests against Python 3.9.
+
 .. _v1_0_a19:
 
 1.0a19 (2025-04-21)
@@ -188,7 +244,7 @@ This alpha release adds basic alter table support to the Datasette Write API and
 Alter table support for create, insert, upsert and update
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The :ref:`JSON write API <json_api_write>` can now be used to apply simple alter table schema changes, provided the acting actor has the new :ref:`permissions_alter_table` permission. (:issue:`2101`)
+The :ref:`JSON write API <json_api_write>` can now be used to apply simple alter table schema changes, provided the acting actor has the new :ref:`actions_alter_table` permission. (:issue:`2101`)
 
 The only alter operation supported so far is adding new columns to an existing table.
 
@@ -203,12 +259,12 @@ Permissions fix for the upsert API
 
 The :ref:`/database/table/-/upsert API <TableUpsertView>` had a minor permissions bug, only affecting Datasette instances that had configured the ``insert-row`` and ``update-row`` permissions to apply to a specific table rather than the database or instance as a whole. Full details in issue :issue:`2262`.
 
-To avoid similar mistakes in the future the :ref:`datasette.permission_allowed() <datasette_permission_allowed>` method now specifies ``default=`` as a keyword-only argument.
+To avoid similar mistakes in the future the ``datasette.permission_allowed()`` method now specifies ``default=`` as a keyword-only argument.
 
 Permission checks now consider opinions from every plugin
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The :ref:`datasette.permission_allowed() <datasette_permission_allowed>` method previously consulted every plugin that implemented the :ref:`permission_allowed() <plugin_hook_permission_allowed>` plugin hook and obeyed the opinion of the last plugin to return a value. (:issue:`2275`)
+The ``datasette.permission_allowed()`` method previously consulted every plugin that implemented the :ref:`permission_allowed() <plugin_hook_permission_allowed>` plugin hook and obeyed the opinion of the last plugin to return a value. (:issue:`2275`)
 
 Datasette now consults every plugin and checks to see if any of them returned ``False`` (the veto rule), and if none of them did, it then checks to see if any of them returned ``True``.
 
@@ -468,7 +524,7 @@ The third Datasette 1.0 alpha release adds upsert support to the JSON API, plus 
 See `Datasette 1.0a2: Upserts and finely grained permissions <https://simonwillison.net/2022/Dec/15/datasette-1a2/>`__ for an extended, annotated version of these release notes.
 
 - New ``/db/table/-/upsert`` API, :ref:`documented here <TableUpsertView>`. upsert is an update-or-insert: existing rows will have specified keys updated, but if no row matches the incoming primary key a brand new row will be inserted instead. (:issue:`1878`)
-- New :ref:`plugin_register_permissions` plugin hook. Plugins can now register named permissions, which will then be listed in various interfaces that show available permissions. (:issue:`1940`)
+- New ``register_permissions()`` plugin hook. Plugins can now register named permissions, which will then be listed in various interfaces that show available permissions. (:issue:`1940`)
 - The ``/db/-/create`` API for :ref:`creating a table <TableCreateView>` now accepts ``"ignore": true`` and ``"replace": true`` options when called with the ``"rows"`` property that creates a new table based on an example set of rows. This means the API can be called multiple times with different rows, setting rules for what should happen if a primary key collides with an existing row. (:issue:`1927`)
 - Arbitrary permissions can now be configured at the instance, database and resource (table, SQL view or canned query) level in Datasette's :ref:`metadata` JSON and YAML files. The new ``"permissions"`` key can be used to specify which actors should have which permissions. See :ref:`authentication_permissions_other` for details. (:issue:`1636`)
 - The ``/-/create-token`` page can now be used to create API tokens which are restricted to just a subset of actions, including against specific databases or resources. See :ref:`CreateTokenView` for details. (:issue:`1947`)
@@ -577,7 +633,7 @@ Documentation
 .. _v0_62:
 
 0.62 (2022-08-14)
--------------------
+-----------------
 
 Datasette can now run entirely in your browser using WebAssembly. Try out `Datasette Lite <https://lite.datasette.io/>`__, take a look `at the code <https://github.com/simonw/datasette-lite>`__ or read more about it in `Datasette Lite: a server-side Python web application running in a browser <https://simonwillison.net/2022/May/4/datasette-lite/>`__.
 
@@ -643,7 +699,7 @@ Datasette also now requires Python 3.7 or higher.
 - Datasette is now covered by a `Code of Conduct <https://github.com/simonw/datasette/blob/main/CODE_OF_CONDUCT.md>`__. (:issue:`1654`)
 - Python 3.6 is no longer supported. (:issue:`1577`)
 - Tests now run against Python 3.11-dev. (:issue:`1621`)
-- New :ref:`datasette.ensure_permissions(actor, permissions) <datasette_ensure_permissions>` internal method for checking multiple permissions at once. (:issue:`1675`)
+- New ``datasette.ensure_permissions(actor, permissions)`` internal method for checking multiple permissions at once. (:issue:`1675`)
 - New :ref:`datasette.check_visibility(actor, action, resource=None) <datasette_check_visibility>` internal method for checking if a user can see a resource that would otherwise be invisible to unauthenticated users. (:issue:`1678`)
 - Table and row HTML pages now include a ``<link rel="alternate" type="application/json+datasette" href="...">`` element and return a ``Link: URL; rel="alternate"; type="application/json+datasette"`` HTTP header pointing to the JSON version of those pages. (:issue:`1533`)
 - ``Access-Control-Expose-Headers: Link`` is now added to the CORS headers, allowing remote JavaScript to access that header.
@@ -1068,7 +1124,7 @@ Smaller changes
 ~~~~~~~~~~~~~~~
 
 - Wide tables shown within Datasette now scroll horizontally (:issue:`998`). This is achieved using a new ``<div class="table-wrapper">`` element which may impact the implementation of some plugins (for example `this change to datasette-cluster-map <https://github.com/simonw/datasette-cluster-map/commit/fcb4abbe7df9071c5ab57defd39147de7145b34e>`__).
-- New :ref:`permissions_debug_menu` permission. (:issue:`1068`)
+- New :ref:`actions_debug_menu` permission. (:issue:`1068`)
 - Removed ``--debug`` option, which didn't do anything. (:issue:`814`)
 - ``Link:`` HTTP header pagination. (:issue:`1014`)
 - ``x`` button for clearing filters. (:issue:`1016`)
@@ -1403,7 +1459,7 @@ Smaller changes
 - New :ref:`datasette.get_database() <datasette_get_database>` method.
 - Added ``_`` prefix to many private, undocumented methods of the Datasette class. (:issue:`576`)
 - Removed the ``db.get_outbound_foreign_keys()`` method which duplicated the behaviour of ``db.foreign_keys_for_table()``.
-- New :ref:`await datasette.permission_allowed() <datasette_permission_allowed>` method.
+- New ``await datasette.permission_allowed()`` method.
 - ``/-/actor`` debugging endpoint for viewing the currently authenticated actor.
 - New ``request.cookies`` property.
 - ``/-/plugins`` endpoint now shows a list of hooks implemented by each plugin, e.g. https://latest.datasette.io/-/plugins?all=1

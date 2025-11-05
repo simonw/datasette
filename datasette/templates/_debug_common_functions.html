@@ -1,0 +1,50 @@
+<script>
+// Common utility functions for debug pages
+
+// Populate form from URL parameters on page load
+function populateFormFromURL() {
+    const params = new URLSearchParams(window.location.search);
+
+    const action = params.get('action');
+    if (action) {
+        const actionField = document.getElementById('action');
+        if (actionField) {
+            actionField.value = action;
+        }
+    }
+
+    const parent = params.get('parent');
+    if (parent) {
+        const parentField = document.getElementById('parent');
+        if (parentField) {
+            parentField.value = parent;
+        }
+    }
+
+    const child = params.get('child');
+    if (child) {
+        const childField = document.getElementById('child');
+        if (childField) {
+            childField.value = child;
+        }
+    }
+
+    const pageSize = params.get('page_size');
+    if (pageSize) {
+        const pageSizeField = document.getElementById('page_size');
+        if (pageSizeField) {
+            pageSizeField.value = pageSize;
+        }
+    }
+
+    return params;
+}
+
+// HTML escape function
+function escapeHtml(text) {
+    if (text === null || text === undefined) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>

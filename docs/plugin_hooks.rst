@@ -691,7 +691,7 @@ Help text (from the docstring for the function plus any defined Click arguments 
 
 Plugins can register multiple commands by making multiple calls to the ``@cli.command()`` decorator. Consult the `Click documentation <https://click.palletsprojects.com/>`__ for full details on how to build a CLI command, including how to define arguments and options.
 
-Note that ``register_commands()`` plugins cannot used with the :ref:`--plugins-dir mechanism <writing_plugins_one_off>` - they need to be installed into the same virtual environment as Datasette using ``pip install``. Provided it has a ``setup.py`` file (see :ref:`writing_plugins_packaging`) you can run ``pip install`` directly against the directory in which you are developing your plugin like so::
+Note that ``register_commands()`` plugins cannot used with the :ref:`--plugins-dir mechanism <writing_plugins_one_off>` - they need to be installed into the same virtual environment as Datasette using ``pip install``. Provided it has a ``pyproject.toml`` file (see :ref:`writing_plugins_packaging`) you can run ``pip install`` directly against the directory in which you are developing your plugin like so::
 
     pip install -e path/to/my/datasette-plugin
 
@@ -777,52 +777,128 @@ The plugin hook can then be used to register the new facet class like this:
     def register_facet_classes():
         return [SpecialFacet]
 
-.. _plugin_register_permissions:
+.. _plugin_register_actions:
 
-register_permissions(datasette)
---------------------------------
+register_actions(datasette)
+---------------------------
 
-If your plugin needs to register additional permissions unique to that plugin - ``upload-csvs`` for example - you can return a list of those permissions from this hook.
+If your plugin needs to register actions that can be checked with Datasette's new resource-based permission system, return a list of those actions from this hook.
+
+Actions define what operations can be performed on resources (like viewing a table, executing SQL, or custom plugin actions).
 
 .. code-block:: python
 
-    from datasette import hookimpl, Permission
+    from datasette import hookimpl
+    from datasette.permissions import Action, Resource
+
+
+    class DocumentCollectionResource(Resource):
+        """A collection of documents."""
+
+        name = "document-collection"
+        parent_name = None
+
+        def __init__(self, collection: str):
+            super().__init__(parent=collection, child=None)
+
+        @classmethod
+        def resources_sql(cls) -> str:
+            return """
+                SELECT collection_name AS parent, NULL AS child
+                FROM document_collections
+            """
+
+
+    class DocumentResource(Resource):
+        """A document in a collection."""
+
+        name = "document"
+        parent_name = "document-collection"
+
+        def __init__(self, collection: str, document: str):
+            super().__init__(parent=collection, child=document)
+
+        @classmethod
+        def resources_sql(cls) -> str:
+            return """
+                SELECT collection_name AS parent, document_id AS child
+                FROM documents
+            """
 
 
     @hookimpl
-    def register_permissions(datasette):
+    def register_actions(datasette):
         return [
-            Permission(
-                name="upload-csvs",
-                abbr=None,
-                description="Upload CSV files",
-                takes_database=True,
-                takes_resource=False,
-                default=False,
-            )
+            Action(
+                name="list-documents",
+                abbr="ld",
+                description="List documents in a collection",
+                resource_class=DocumentCollectionResource,
+            ),
+            Action(
+                name="view-document",
+                abbr="vdoc",
+                description="View document",
+                resource_class=DocumentResource,
+            ),
+            Action(
+                name="edit-document",
+                abbr="edoc",
+                description="Edit document",
+                resource_class=DocumentResource,
+            ),
         ]
 
-The fields of the ``Permission`` class are as follows:
+The fields of the ``Action`` dataclass are as follows:
 
 ``name`` - string
-    The name of the permission, e.g. ``upload-csvs``. This should be unique across all plugins that the user might have installed, so choose carefully.
+    The name of the action, e.g. ``view-document``. This should be unique across all plugins.
 
 ``abbr`` - string or None
-    An abbreviation of the permission, e.g. ``uc``. This is optional - you can set it to ``None`` if you do not want to pick an abbreviation. Since this needs to be unique across all installed plugins it's best not to specify an abbreviation at all. If an abbreviation is provided it will be used when creating restricted signed API tokens.
+    An abbreviation of the action, e.g. ``vdoc``. This is optional. Since this needs to be unique across all installed plugins it's best to choose carefully or omit it entirely (same as setting it to ``None``.)
 
 ``description`` - string or None
-    A human-readable description of what the permission lets you do. Should make sense as the second part of a sentence that starts "A user with this permission can ...".
+    A human-readable description of what the action allows you to do.
 
-``takes_database`` - boolean
-    ``True`` if this permission can be granted on a per-database basis, ``False`` if it is only valid at the overall Datasette instance level.
+``resource_class`` - type[Resource] or None
+    The Resource subclass that defines what kind of resource this action applies to. Omit this (or set to ``None``) for global actions that apply only at the instance level with no associated resources (like ``debug-menu`` or ``permissions-debug``). Your Resource subclass must:
 
-``takes_resource`` - boolean
-    ``True`` if this permission can be granted on a per-resource basis. A resource is a database table, SQL view or :ref:`canned query <canned_queries>`.
+    - Define a ``name`` class attribute (e.g., ``"document"``)
+    - Define a ``parent_class`` class attribute (``None`` for top-level resources like databases, or the parent ``Resource`` subclass for child resources)
+    - Implement a ``resources_sql()`` classmethod that returns SQL returning all resources as ``(parent, child)`` columns
+    - Have an ``__init__`` method that accepts appropriate parameters and calls ``super().__init__(parent=..., child=...)``
 
-``default`` - boolean
-    The default value for this permission if it is not explicitly granted to a user. ``True`` means the permission is granted by default, ``False`` means it is not.
+The ``resources_sql()`` method
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    This should only be ``True`` if you want anonymous users to be able to take this action.
+The ``resources_sql()`` classmethod returns a SQL query that lists all resources of that type that exist in the system.
+
+This query is used by Datasette to efficiently check permissions across multiple resources at once. When a user requests a list of resources (like tables, documents, or other entities), Datasette uses this SQL to:
+
+1. Get all resources of this type from your data catalog
+2. Combine it with permission rules from the ``permission_resources_sql`` hook
+3. Use SQL joins and filtering to determine which resources the actor can access
+4. Return only the permitted resources
+
+The SQL query **must** return exactly two columns:
+
+- ``parent`` - The parent identifier (e.g., database name, collection name), or ``NULL`` for top-level resources
+- ``child`` - The child identifier (e.g., table name, document ID), or ``NULL`` for parent-only resources
+
+For example, if you're building a document management plugin with collections and documents stored in a ``documents`` table, your ``resources_sql()`` might look like:
+
+.. code-block:: python
+
+    @classmethod
+    def resources_sql(cls) -> str:
+        return """
+            SELECT collection_name AS parent, document_id AS child
+            FROM documents
+        """
+
+This tells Datasette "here's how to find all documents in the system - look in the documents table and get the collection name and document ID for each one."
+
+The permission system then uses this query along with rules from plugins to determine which documents each user can access, all efficiently in SQL rather than loading everything into Python.
 
 .. _plugin_asgi_wrapper:
 
@@ -1300,14 +1376,14 @@ Here's an example that allows users to view the ``admin_log`` table only if thei
 
         return inner
 
-See :ref:`built-in permissions <permissions>` for a full list of permissions that are included in Datasette core.
+See :ref:`built-in permissions <authentication_permissions>` for a full list of permissions that are included in Datasette core.
 
 Example: `datasette-permissions-sql <https://datasette.io/plugins/datasette-permissions-sql>`_
 
 .. _plugin_hook_permission_resources_sql:
 
 permission_resources_sql(datasette, actor, action)
--------------------------------------------------
+--------------------------------------------------
 
 ``datasette`` - :ref:`internals_datasette`
     Access to the Datasette instance.
@@ -1319,13 +1395,28 @@ permission_resources_sql(datasette, actor, action)
     The permission action being evaluated. Examples include ``"view-table"`` or ``"insert-row"``.
 
 Return value
-    A :class:`datasette.utils.permissions.PluginSQL` object, ``None`` or an iterable of ``PluginSQL`` objects.
+    A :class:`datasette.permissions.PermissionSQL` object, ``None`` or an iterable of ``PermissionSQL`` objects.
 
 Datasette's action-based permission resolver calls this hook to gather SQL rows describing which
 resources an actor may access (``allow = 1``) or should be denied (``allow = 0``) for a specific action.
-Each SQL snippet should return ``parent``, ``child``, ``allow`` and ``reason`` columns. Any bound parameters
-supplied via ``PluginSQL.params`` are automatically namespaced per plugin.
+Each SQL snippet should return ``parent``, ``child``, ``allow`` and ``reason`` columns.
 
+**Parameter naming convention:** Plugin parameters in ``PermissionSQL.params`` should use unique names
+to avoid conflicts with other plugins. The recommended convention is to prefix parameters with your
+plugin's source name (e.g., ``myplugin_user_id``). The system reserves these parameter names:
+``:actor``, ``:actor_id``, ``:action``, and ``:filter_parent``.
+
+You can also use return ``PermissionSQL.allow(reason="reason goes here")`` or ``PermissionSQL.deny(reason="reason goes here")`` as shortcuts for simple root-level allow or deny rules. These will create SQL snippets that look like this:
+
+.. code-block:: sql
+
+    SELECT
+        NULL AS parent,
+        NULL AS child,
+        1 AS allow,
+        'reason goes here' AS reason
+
+Or ``0 AS allow`` for denies.
 
 Permission plugin examples
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1333,7 +1424,7 @@ Permission plugin examples
 These snippets show how to use the new ``permission_resources_sql`` hook to
 contribute rows to the action-based permission resolver. Each hook receives the
 current actor dictionary (or ``None``) and must return ``None`` or an instance or list of
-``datasette.utils.permissions.PluginSQL`` (or a coroutine that resolves to that).
+``datasette.permissions.PermissionSQL`` (or a coroutine that resolves to that).
 
 Allow Alice to view a specific table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1344,7 +1435,7 @@ This plugin grants the actor with ``id == "alice"`` permission to perform the
 .. code-block:: python
 
     from datasette import hookimpl
-    from datasette.utils.permissions import PluginSQL
+    from datasette.permissions import PermissionSQL
 
 
     @hookimpl
@@ -1354,8 +1445,7 @@ This plugin grants the actor with ``id == "alice"`` permission to perform the
         if not actor or actor.get("id") != "alice":
             return None
 
-        return PluginSQL(
-            source="alice_sales_allow",
+        return PermissionSQL(
             sql="""
                 SELECT
                     'accounting' AS parent,
@@ -1363,7 +1453,6 @@ This plugin grants the actor with ``id == "alice"`` permission to perform the
                     1 AS allow,
                     'alice can view accounting/sales' AS reason
             """,
-            params={},
         )
 
 Restrict execute-sql to a database prefix
@@ -1376,7 +1465,7 @@ will pass through to the SQL snippet.
 .. code-block:: python
 
     from datasette import hookimpl
-    from datasette.utils.permissions import PluginSQL
+    from datasette.permissions import PermissionSQL
 
 
     @hookimpl
@@ -1384,8 +1473,7 @@ will pass through to the SQL snippet.
         if action != "execute-sql":
             return None
 
-        return PluginSQL(
-            source="analytics_execute_sql",
+        return PermissionSQL(
             sql="""
                 SELECT
                     parent,
@@ -1393,10 +1481,10 @@ will pass through to the SQL snippet.
                     1 AS allow,
                     'execute-sql allowed for analytics_*' AS reason
                 FROM catalog_databases
-                WHERE database_name LIKE :prefix
+                WHERE database_name LIKE :analytics_prefix
             """,
             params={
-                "prefix": "analytics_%",
+                "analytics_prefix": "analytics_%",
             },
         )
 
@@ -1409,7 +1497,7 @@ with columns ``(actor_id, action, parent, child, allow, reason)``.
 .. code-block:: python
 
     from datasette import hookimpl
-    from datasette.utils.permissions import PluginSQL
+    from datasette.permissions import PermissionSQL
 
 
     @hookimpl
@@ -1417,8 +1505,7 @@ with columns ``(actor_id, action, parent, child, allow, reason)``.
         if not actor:
             return None
 
-        return PluginSQL(
-            source="permission_grants_table",
+        return PermissionSQL(
             sql="""
                 SELECT
                     parent,
@@ -1426,12 +1513,12 @@ with columns ``(actor_id, action, parent, child, allow, reason)``.
                     allow,
                     COALESCE(reason, 'permission_grants table') AS reason
                 FROM permission_grants
-                WHERE actor_id = :actor_id
-                  AND action = :action
+                WHERE actor_id = :grants_actor_id
+                  AND action = :grants_action
             """,
             params={
-                "actor_id": actor.get("id"),
-                "action": action,
+                "grants_actor_id": actor.get("id"),
+                "grants_action": action,
             },
         )
 
@@ -1444,7 +1531,7 @@ The resolver will automatically apply the most specific rule.
 .. code-block:: python
 
     from datasette import hookimpl
-    from datasette.utils.permissions import PluginSQL
+    from datasette.permissions import PermissionSQL
 
 
     TRUSTED = {"alice", "bob"}
@@ -1458,17 +1545,14 @@ The resolver will automatically apply the most specific rule.
         actor_id = (actor or {}).get("id")
 
         if actor_id not in TRUSTED:
-            return PluginSQL(
-                source="view_table_root_deny",
+            return PermissionSQL(
                 sql="""
                     SELECT NULL AS parent, NULL AS child, 0 AS allow,
                            'default deny view-table' AS reason
                 """,
-                params={},
             )
 
-        return PluginSQL(
-            source="trusted_allow",
+        return PermissionSQL(
             sql="""
                 SELECT NULL AS parent, NULL AS child, 0 AS allow,
                        'default deny view-table' AS reason

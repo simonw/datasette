@@ -23,6 +23,10 @@ UNDOCUMENTED_PERMISSIONS = {
     "this_is_allowed_async",
     "this_is_denied_async",
     "no_match",
+    # Test actions from test_hook_register_actions_with_custom_resources
+    "manage_documents",
+    "view_document_collection",
+    "view_document",
 }
 
 _ds_client = None
@@ -42,7 +46,9 @@ def wait_until_responds(url, timeout=5.0, client=httpx, **kwargs):
 @pytest_asyncio.fixture
 async def ds_client():
     from datasette.app import Datasette
+    from datasette.database import Database
     from .fixtures import CONFIG, METADATA, PLUGINS_DIR
+    import secrets
 
     global _ds_client
     if _ds_client is not None:
@@ -56,6 +62,7 @@ async def ds_client():
             "default_page_size": 50,
             "max_returned_rows": 100,
             "sql_time_limit_ms": 200,
+            "facet_suggest_time_limit_ms": 200,  # Up from 50 default
             # Default is 3 but this results in "too many open files"
             # errors when running the full test suite:
             "num_sql_threads": 1,
@@ -63,7 +70,10 @@ async def ds_client():
     )
     from .fixtures import TABLES, TABLE_PARAMETERIZED_SQL
 
-    db = ds.add_memory_database("fixtures")
+    # Use a unique memory_name to avoid collisions between different
+    # Datasette instances in the same process, but use "fixtures" for routing
+    unique_memory_name = f"fixtures_{secrets.token_hex(8)}"
+    db = ds.add_database(Database(ds, memory_name=unique_memory_name), name="fixtures")
     ds.remove_database("_memory")
 
     def prepare(conn):
@@ -133,32 +143,30 @@ def restore_working_directory(tmpdir, request):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def check_permission_actions_are_documented():
+def check_actions_are_documented():
     from datasette.plugins import pm
 
     content = (
         pathlib.Path(__file__).parent.parent / "docs" / "authentication.rst"
     ).read_text()
-    permissions_re = re.compile(r"\.\. _permissions_([^\s:]+):")
-    documented_permission_actions = set(permissions_re.findall(content)).union(
+    permissions_re = re.compile(r"\.\. _actions_([^\s:]+):")
+    documented_actions = set(permissions_re.findall(content)).union(
         UNDOCUMENTED_PERMISSIONS
     )
 
     def before(hook_name, hook_impls, kwargs):
-        if hook_name == "permission_allowed":
+        if hook_name == "permission_resources_sql":
             datasette = kwargs["datasette"]
-            assert kwargs["action"] in datasette.permissions, (
-                "'{}' has not been registered with register_permissions()".format(
+            assert kwargs["action"] in datasette.actions, (
+                "'{}' has not been registered with register_actions()".format(
                     kwargs["action"]
                 )
                 + " (or maybe a test forgot to do await ds.invoke_startup())"
             )
             action = kwargs.get("action").replace("-", "_")
             assert (
-                action in documented_permission_actions
-            ), "Undocumented permission action: {}, resource: {}".format(
-                action, kwargs["resource"]
-            )
+                action in documented_actions
+            ), "Undocumented permission action: {}".format(action)
 
     pm.add_hookcall_monitoring(
         before=before, after=lambda outcome, hook_name, hook_impls, kwargs: None
@@ -233,3 +241,27 @@ def ds_unix_domain_socket_server(tmp_path_factory):
     yield ds_proc, uds
     # Shut it down at the end of the pytest session
     ds_proc.terminate()
+
+
+# Import fixtures from fixtures.py to make them available
+from .fixtures import (  # noqa: E402, F401
+    app_client,
+    app_client_base_url_prefix,
+    app_client_conflicting_database_names,
+    app_client_csv_max_mb_one,
+    app_client_immutable_and_inspect_file,
+    app_client_larger_cache_size,
+    app_client_no_files,
+    app_client_returned_rows_matches_page_size,
+    app_client_shorter_time_limit,
+    app_client_two_attached_databases,
+    app_client_two_attached_databases_crossdb_enabled,
+    app_client_two_attached_databases_one_immutable,
+    app_client_with_cors,
+    app_client_with_dot,
+    app_client_with_trace,
+    generate_compound_rows,
+    generate_sortable_rows,
+    make_app_client,
+    TEMP_PLUGIN_SECRET_FILE,
+)

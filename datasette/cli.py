@@ -146,7 +146,6 @@ def inspect(files, inspect_file, sqlite_extensions):
     This can then be passed to "datasette --inspect-file" to speed up count
     operations against immutable database files.
     """
-    app = Datasette([], immutables=files, sqlite_extensions=sqlite_extensions)
     inspect_data = run_sync(lambda: inspect_(files, sqlite_extensions))
     if inspect_file == "-":
         sys.stdout.write(json.dumps(inspect_data, indent=2))
@@ -444,6 +443,11 @@ def uninstall(packages, yes):
     help="Run an HTTP GET request against this path, print results and exit",
 )
 @click.option(
+    "--headers",
+    is_flag=True,
+    help="Include HTTP headers in --get output",
+)
+@click.option(
     "--token",
     help="API token to send with --get requests",
 )
@@ -511,6 +515,7 @@ def serve(
     secret,
     root,
     get,
+    headers,
     token,
     actor,
     version_note,
@@ -591,13 +596,20 @@ def serve(
         internal=internal,
     )
 
-    # if files is a single directory, use that as config_dir=
-    if 1 == len(files) and os.path.isdir(files[0]):
-        kwargs["config_dir"] = pathlib.Path(files[0])
-        files = []
+    # Separate directories from files
+    directories = [f for f in files if os.path.isdir(f)]
+    file_paths = [f for f in files if not os.path.isdir(f)]
+
+    # Handle config_dir - only one directory allowed
+    if len(directories) > 1:
+        raise click.ClickException(
+            "Cannot pass multiple directories. Pass a single directory as config_dir."
+        )
+    elif len(directories) == 1:
+        kwargs["config_dir"] = pathlib.Path(directories[0])
 
     # Verify list of files, create if needed (and --create)
-    for file in files:
+    for file in file_paths:
         if not pathlib.Path(file).exists():
             if create:
                 sqlite3.connect(file).execute("vacuum")
@@ -608,8 +620,32 @@ def serve(
                     )
                 )
 
-    # De-duplicate files so 'datasette db.db db.db' only attaches one /db
-    files = list(dict.fromkeys(files))
+    # Check for duplicate files by resolving all paths to their absolute forms
+    # Collect all database files that will be loaded (explicit files + config_dir files)
+    all_db_files = []
+
+    # Add explicit files
+    for file in file_paths:
+        all_db_files.append((file, pathlib.Path(file).resolve()))
+
+    # Add config_dir databases if config_dir is set
+    if "config_dir" in kwargs:
+        config_dir = kwargs["config_dir"]
+        for ext in ("db", "sqlite", "sqlite3"):
+            for db_file in config_dir.glob(f"*.{ext}"):
+                all_db_files.append((str(db_file), db_file.resolve()))
+
+    # Check for duplicates
+    seen = {}
+    for original_path, resolved_path in all_db_files:
+        if resolved_path in seen:
+            raise click.ClickException(
+                f"Duplicate database file: '{original_path}' and '{seen[resolved_path]}' "
+                f"both refer to {resolved_path}"
+            )
+        seen[resolved_path] = original_path
+
+    files = file_paths
 
     try:
         ds = Datasette(files, **kwargs)
@@ -628,19 +664,33 @@ def serve(
     # Run async soundness checks - but only if we're not under pytest
     run_sync(lambda: check_databases(ds))
 
+    if headers and not get:
+        raise click.ClickException("--headers can only be used with --get")
+
     if token and not get:
         raise click.ClickException("--token can only be used with --get")
 
     if get:
         client = TestClient(ds)
-        headers = {}
+        request_headers = {}
         if token:
-            headers["Authorization"] = "Bearer {}".format(token)
+            request_headers["Authorization"] = "Bearer {}".format(token)
         cookies = {}
         if actor:
             cookies["ds_actor"] = client.actor_cookie(json.loads(actor))
-        response = client.get(get, headers=headers, cookies=cookies)
-        click.echo(response.text)
+        response = client.get(get, headers=request_headers, cookies=cookies)
+
+        if headers:
+            # Output HTTP status code, headers, two newlines, then the response body
+            click.echo(f"HTTP/1.1 {response.status}")
+            for key, value in response.headers.items():
+                click.echo(f"{key}: {value}")
+            if response.text:
+                click.echo()
+                click.echo(response.text)
+        else:
+            click.echo(response.text)
+
         exit_code = 0 if response.status == 200 else 1
         sys.exit(exit_code)
         return
@@ -648,6 +698,7 @@ def serve(
     # Start the server
     url = None
     if root:
+        ds.root_enabled = True
         url = "http://{}:{}{}?token={}".format(
             host, port, ds.urls.path("-/auth-token"), ds._root_token
         )
@@ -765,7 +816,7 @@ def create_token(
     actions.extend([p[1] for p in databases])
     actions.extend([p[2] for p in resources])
     for action in actions:
-        if not ds.permissions.get(action):
+        if not ds.actions.get(action):
             click.secho(
                 f"  Unknown permission: {action} ",
                 fg="red",

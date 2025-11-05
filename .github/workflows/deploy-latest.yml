@@ -1,10 +1,11 @@
 name: Deploy latest.datasette.io
 
 on:
-  push:
-    branches:
-    - main
-    - cloudrun-fix
+  workflow_dispatch:
+  # push:
+  #   branches:
+  #   - main
+  #   - 1.0-dev
 
 permissions:
   contents: read
@@ -24,7 +25,7 @@ jobs:
       name: Configure pip caching
       with:
         path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/setup.py') }}
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-pip-
     - name: Install Python dependencies

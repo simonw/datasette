@@ -52,6 +52,26 @@ def test_serve_with_get(tmp_path_factory):
     pm.unregister(to_unregister)
 
 
+def test_serve_with_get_headers():
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "serve",
+            "--memory",
+            "--get",
+            "/_memory/",
+            "--headers",
+        ],
+    )
+    # exit_code is 1 because it wasn't a 200 response
+    assert result.exit_code == 1, result.output
+    lines = result.output.splitlines()
+    assert lines and lines[0] == "HTTP/1.1 302"
+    assert "location: /_memory" in lines
+    assert "content-type: text/html; charset=utf-8" in lines
+
+
 def test_serve_with_get_and_token():
     runner = CliRunner()
     result1 = runner.invoke(

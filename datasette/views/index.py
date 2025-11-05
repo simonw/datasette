@@ -25,28 +25,49 @@ class IndexView(BaseView):
 
     async def get(self, request):
         as_format = request.url_vars["format"]
-        await self.ds.ensure_permissions(request.actor, ["view-instance"])
+        await self.ds.ensure_permission(action="view-instance", actor=request.actor)
+
+        # Get all allowed databases and tables in bulk
+        db_page = await self.ds.allowed_resources(
+            "view-database", request.actor, include_is_private=True
+        )
+        allowed_databases = [r async for r in db_page.all()]
+        allowed_db_dict = {r.parent: r for r in allowed_databases}
+
+        # Group tables by database
+        tables_by_db = {}
+        table_page = await self.ds.allowed_resources(
+            "view-table", request.actor, include_is_private=True
+        )
+        async for t in table_page.all():
+            if t.parent not in tables_by_db:
+                tables_by_db[t.parent] = {}
+            tables_by_db[t.parent][t.child] = t
+
         databases = []
-        for name, db in self.ds.databases.items():
-            database_visible, database_private = await self.ds.check_visibility(
-                request.actor,
-                "view-database",
-                name,
-            )
-            if not database_visible:
-                continue
-            table_names = await db.table_names()
+        # Iterate over allowed databases instead of all databases
+        for name in allowed_db_dict.keys():
+            db = self.ds.databases[name]
+            database_private = allowed_db_dict[name].private
+
+            # Get allowed tables/views for this database
+            allowed_for_db = tables_by_db.get(name, {})
+
+            # Get table names from allowed set instead of db.table_names()
+            table_names = [child_name for child_name in allowed_for_db.keys()]
+
             hidden_table_names = set(await db.hidden_table_names())
 
-            views = []
-            for view_name in await db.view_names():
-                view_visible, view_private = await self.ds.check_visibility(
-                    request.actor,
-                    "view-table",
-                    (name, view_name),
-                )
-                if view_visible:
-                    views.append({"name": view_name, "private": view_private})
+            # Determine which allowed items are views
+            view_names_set = set(await db.view_names())
+            views = [
+                {"name": child_name, "private": resource.private}
+                for child_name, resource in allowed_for_db.items()
+                if child_name in view_names_set
+            ]
+
+            # Filter to just tables (not views) for table processing
+            table_names = [name for name in table_names if name not in view_names_set]
 
             # Perform counts only for immutable or DBS with <= COUNT_TABLE_LIMIT tables
             table_counts = {}
@@ -58,13 +79,10 @@ class IndexView(BaseView):
 
             tables = {}
             for table in table_names:
-                visible, private = await self.ds.check_visibility(
-                    request.actor,
-                    "view-table",
-                    (name, table),
-                )
-                if not visible:
+                # Check if table is in allowed set
+                if table not in allowed_for_db:
                     continue
+
                 table_columns = await db.table_columns(table)
                 tables[table] = {
                     "name": table,
@@ -74,7 +92,7 @@ class IndexView(BaseView):
                     "hidden": table in hidden_table_names,
                     "fts_table": await db.fts_table(table),
                     "num_relationships_for_sorting": 0,
-                    "private": private,
+                    "private": allowed_for_db[table].private,
                 }
 
             if request.args.get("_sort") == "relationships" or not table_counts:
@@ -160,8 +178,8 @@ class IndexView(BaseView):
                     "databases": databases,
                     "metadata": await self.ds.get_instance_metadata(),
                     "datasette_version": __version__,
-                    "private": not await self.ds.permission_allowed(
-                        None, "view-instance"
+                    "private": not await self.ds.allowed(
+                        action="view-instance", actor=None
                     ),
                     "top_homepage": make_slot_function(
                         "top_homepage", self.ds, request

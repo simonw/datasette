@@ -272,14 +272,14 @@ The dictionary keys are the name of the database that is used in the URL - e.g. 
 
 All databases are listed, irrespective of user permissions.
 
-.. _datasette_permissions:
+.. _datasette_actions:
 
-.permissions
-------------
+.actions
+--------
 
-Property exposing a dictionary of permissions that have been registered using the :ref:`plugin_register_permissions` plugin hook.
+Property exposing a dictionary of actions that have been registered using the :ref:`plugin_register_actions` plugin hook.
 
-The dictionary keys are the permission names - e.g. ``view-instance`` - and the values are ``Permission()`` objects describing the permission. Here is a :ref:`description of that object <plugin_register_permissions>`.
+The dictionary keys are the action names - e.g. ``view-instance`` - and the values are ``Action()`` objects describing the permission.
 
 .. _datasette_plugin_config:
 
@@ -342,10 +342,182 @@ If no plugins that implement that hook are installed, the default return value l
         "2": {"id": "2"}
     }
 
-.. _datasette_permission_allowed:
+.. _datasette_allowed:
 
-await .permission_allowed(actor, action, resource=None, default=...)
---------------------------------------------------------------------
+await .allowed(\*, action, resource, actor=None)
+------------------------------------------------
+
+``action`` - string
+    The name of the action that is being permission checked.
+
+``resource`` - Resource object
+    A Resource object representing the database, table, or other resource. Must be an instance of a Resource class such as ``TableResource``, ``DatabaseResource``, ``QueryResource``, or ``InstanceResource``.
+
+``actor`` - dictionary, optional
+    The authenticated actor. This is usually ``request.actor``. Defaults to ``None`` for unauthenticated requests.
+
+This method checks if the given actor has permission to perform the given action on the given resource. All parameters must be passed as keyword arguments.
+
+Example usage:
+
+.. code-block:: python
+
+    from datasette.resources import (
+        TableResource,
+        DatabaseResource,
+    )
+
+    # Check if actor can view a specific table
+    can_view = await datasette.allowed(
+        action="view-table",
+        resource=TableResource(
+            database="fixtures", table="facetable"
+        ),
+        actor=request.actor,
+    )
+
+    # Check if actor can execute SQL on a database
+    can_execute = await datasette.allowed(
+        action="execute-sql",
+        resource=DatabaseResource(database="fixtures"),
+        actor=request.actor,
+    )
+
+The method returns ``True`` if the permission is granted, ``False`` if denied.
+
+.. _datasette_allowed_resources:
+
+await .allowed_resources(action, actor=None, \*, parent=None, include_is_private=False, include_reasons=False, limit=100, next=None)
+------------------------------------------------------------------------------------------------------------------------------------
+
+Returns a ``PaginatedResources`` object containing resources that the actor can access for the specified action, with support for keyset pagination.
+
+``action`` - string
+    The action name (e.g., "view-table", "view-database")
+
+``actor`` - dictionary, optional
+    The authenticated actor. Defaults to ``None`` for unauthenticated requests.
+
+``parent`` - string, optional
+    Optional parent filter (e.g., database name) to limit results
+
+``include_is_private`` - boolean, optional
+    If True, adds a ``.private`` attribute to each Resource indicating whether anonymous users can access it
+
+``include_reasons`` - boolean, optional
+    If True, adds a ``.reasons`` attribute with a list of strings describing why access was granted (useful for debugging)
+
+``limit`` - integer, optional
+    Maximum number of results to return per page (1-1000, default 100)
+
+``next`` - string, optional
+    Keyset token from a previous page for pagination
+
+The method returns a ``PaginatedResources`` object (from ``datasette.utils``) with the following attributes:
+
+``resources`` - list
+    List of ``Resource`` objects for the current page
+
+``next`` - string or None
+    Token for the next page, or ``None`` if no more results exist
+
+Example usage:
+
+.. code-block:: python
+
+    # Get first page of tables
+    page = await datasette.allowed_resources(
+        "view-table",
+        actor=request.actor,
+        parent="fixtures",
+        limit=50,
+    )
+
+    for table in page.resources:
+        print(table.parent, table.child)
+        if hasattr(table, "private"):
+            print(f"  Private: {table.private}")
+
+    # Get next page if available
+    if page.next:
+        next_page = await datasette.allowed_resources(
+            "view-table", actor=request.actor, next=page.next
+        )
+
+    # Iterate through all results automatically
+    page = await datasette.allowed_resources(
+        "view-table", actor=request.actor
+    )
+    async for table in page.all():
+        print(table.parent, table.child)
+
+    # With reasons for debugging
+    page = await datasette.allowed_resources(
+        "view-table", actor=request.actor, include_reasons=True
+    )
+    for table in page.resources:
+        print(f"{table.child}: {table.reasons}")
+
+The ``page.all()`` async generator automatically handles pagination, fetching additional pages and yielding all resources one at a time.
+
+This method uses :ref:`datasette_allowed_resources_sql` under the hood and is an efficient way to list the databases, tables or other resources that an actor can access for a specific action.
+
+.. _datasette_allowed_resources_sql:
+
+await .allowed_resources_sql(\*, action, actor=None, parent=None, include_is_private=False)
+-------------------------------------------------------------------------------------------
+
+Builds the SQL query that Datasette uses to determine which resources an actor may access for a specific action. Returns a ``(sql: str, params: dict)`` namedtuple that can be executed against the internal ``catalog_*`` database tables. ``parent`` can be used to limit results to a specific database, and ``include_is_private`` adds a column indicating whether anonymous users would be denied access to that resource.
+
+Plugins that need to execute custom analysis over the raw allow/deny rules can use this helper to run the same query that powers the ``/-/allowed`` debugging interface.
+
+The SQL query built by this method will return the following columns:
+
+- ``parent``: The parent resource identifier (or NULL)
+- ``child``: The child resource identifier (or NULL)
+- ``reason``: The reason from the rule that granted access
+- ``is_private``: (if ``include_is_private``) 1 if anonymous users cannot access, 0 otherwise
+
+.. _datasette_ensure_permission:
+
+await .ensure_permission(action, resource=None, actor=None)
+-----------------------------------------------------------
+
+``action`` - string
+    The action to check. See :ref:`actions` for a list of available actions.
+
+``resource`` - Resource object (optional)
+    The resource to check the permission against. Must be an instance of ``InstanceResource``, ``DatabaseResource``, or ``TableResource`` from the ``datasette.resources`` module. If omitted, defaults to ``InstanceResource()`` for instance-level permissions.
+
+``actor`` - dictionary (optional)
+    The authenticated actor. This is usually ``request.actor``.
+
+This is a convenience wrapper around :ref:`datasette_allowed` that raises a ``datasette.Forbidden`` exception if the permission check fails. Use this when you want to enforce a permission check and halt execution if the actor is not authorized.
+
+Example:
+
+.. code-block:: python
+
+    from datasette.resources import TableResource
+
+    # Will raise Forbidden if actor cannot view the table
+    await datasette.ensure_permission(
+        action="view-table",
+        resource=TableResource(
+            database="fixtures", table="cities"
+        ),
+        actor=request.actor,
+    )
+
+    # For instance-level actions, resource can be omitted:
+    await datasette.ensure_permission(
+        action="permissions-debug", actor=request.actor
+    )
+
+.. _datasette_check_visibility:
+
+await .check_visibility(actor, action, resource=None)
+-----------------------------------------------------
 
 ``actor`` - dictionary
     The authenticated actor. This is usually ``request.actor``.
@@ -353,64 +525,8 @@ await .permission_allowed(actor, action, resource=None, default=...)
 ``action`` - string
     The name of the action that is being permission checked.
 
-``resource`` - string or tuple, optional
-    The resource, e.g. the name of the database, or a tuple of two strings containing the name of the database and the name of the table. Only some permissions apply to a resource.
-
-``default`` - optional: True, False or None
-    What value should be returned by default if nothing provides an opinion on this permission check.
-    Set to ``True`` for default allow or ``False`` for default deny.
-    If not specified the ``default`` from the ``Permission()`` tuple that was registered using :ref:`plugin_register_permissions` will be used.
-
-Check if the given actor has :ref:`permission <authentication_permissions>` to perform the given action on the given resource.
-
-Some permission checks are carried out against :ref:`rules defined in datasette.yaml <authentication_permissions_config>`, while other custom permissions may be decided by plugins that implement the :ref:`plugin_hook_permission_allowed` plugin hook.
-
-If neither ``metadata.json`` nor any of the plugins provide an answer to the permission query the ``default`` argument will be returned.
-
-See :ref:`permissions` for a full list of permission actions included in Datasette core.
-
-.. _datasette_ensure_permissions:
-
-await .ensure_permissions(actor, permissions)
----------------------------------------------
-
-``actor`` - dictionary
-    The authenticated actor. This is usually ``request.actor``.
-
-``permissions`` - list
-    A list of permissions to check. Each permission in that list can be a string ``action`` name or a 2-tuple of ``(action, resource)``.
-
-This method allows multiple permissions to be checked at once. It raises a ``datasette.Forbidden`` exception if any of the checks are denied before one of them is explicitly granted.
-
-This is useful when you need to check multiple permissions at once. For example, an actor should be able to view a table if either one of the following checks returns ``True`` or not a single one of them returns ``False``:
-
-.. code-block:: python
-
-    await datasette.ensure_permissions(
-        request.actor,
-        [
-            ("view-table", (database, table)),
-            ("view-database", database),
-            "view-instance",
-        ],
-    )
-
-.. _datasette_check_visibility:
-
-await .check_visibility(actor, action=None, resource=None, permissions=None)
-----------------------------------------------------------------------------
-
-``actor`` - dictionary
-    The authenticated actor. This is usually ``request.actor``.
-
-``action`` - string, optional
-    The name of the action that is being permission checked.
-
-``resource`` - string or tuple, optional
-    The resource, e.g. the name of the database, or a tuple of two strings containing the name of the database and the name of the table. Only some permissions apply to a resource.
-
-``permissions`` - list of ``action`` strings or ``(action, resource)`` tuples, optional
-    Provide this instead of ``action`` and ``resource`` to check multiple permissions at once.
+``resource`` - Resource object, optional
+    The resource being checked, as a Resource object such as ``DatabaseResource(database=...)``, ``TableResource(database=..., table=...)``, or ``QueryResource(database=..., query=...)``. Only some permissions apply to a resource.
 
 This convenience method can be used to answer the question "should this item be considered private, in that it is visible to me but it is not visible to anonymous users?"
 
@@ -420,23 +536,12 @@ This example checks if the user can access a specific table, and sets ``private`
 
 .. code-block:: python
 
+    from datasette.resources import TableResource
+
     visible, private = await datasette.check_visibility(
         request.actor,
         action="view-table",
-        resource=(database, table),
-    )
-
-The following example runs three checks in a row, similar to :ref:`datasette_ensure_permissions`. If any of the checks are denied before one of them is explicitly granted then ``visible`` will be ``False``. ``private`` will be ``True`` if an anonymous user would not be able to view the resource.
-
-.. code-block:: python
-
-    visible, private = await datasette.check_visibility(
-        request.actor,
-        permissions=[
-            ("view-table", (database, table)),
-            ("view-database", database),
-            "view-instance",
-        ],
+        resource=TableResource(database=database, table=table),
     )
 
 .. _datasette_create_token:
@@ -488,16 +593,6 @@ The following example creates a token that can access ``view-instance`` and ``vi
             }
         },
     )
-
-.. _datasette_get_permission:
-
-.get_permission(name_or_abbr)
------------------------------
-
-``name_or_abbr`` - string
-    The name or abbreviation of the permission to look up, e.g. ``view-table`` or ``vt``.
-
-Returns a :ref:`Permission object <plugin_register_permissions>` representing the permission, or raises a ``KeyError`` if one is not found.
 
 .. _datasette_get_database:
 
@@ -1001,6 +1096,132 @@ Use the ``format="json"`` (or ``"csv"`` or other formats supported by plugins) a
 
 These methods each return a ``datasette.utils.PrefixedUrlString`` object, which is a subclass of the Python ``str`` type. This allows the logic that considers the ``base_url`` setting to detect if that prefix has already been applied to the path.
 
+.. _internals_permission_classes:
+
+Permission classes and utilities
+================================
+
+.. _internals_permission_sql:
+
+PermissionSQL class
+-------------------
+
+The ``PermissionSQL`` class is used by plugins to contribute SQL-based permission rules through the :ref:`plugin_hook_permission_resources_sql` hook. This enables efficient permission checking across multiple resources by leveraging SQLite's query engine.
+
+.. code-block:: python
+
+    from datasette.permissions import PermissionSQL
+
+
+    @dataclass
+    class PermissionSQL:
+        source: str  # Plugin name for auditing
+        sql: str  # SQL query returning permission rules
+        params: Dict[str, Any]  # Parameters for the SQL query
+
+**Attributes:**
+
+``source`` - string
+    An identifier for the source of these permission rules, typically the plugin name. This is used for debugging and auditing.
+
+``sql`` - string
+    A SQL query that returns permission rules. The query must return rows with the following columns:
+
+    - ``parent`` (TEXT or NULL) - The parent resource identifier (e.g., database name)
+    - ``child`` (TEXT or NULL) - The child resource identifier (e.g., table name)
+    - ``allow`` (INTEGER) - 1 for allow, 0 for deny
+    - ``reason`` (TEXT) - A human-readable explanation of why this permission was granted or denied
+
+``params`` - dictionary
+    A dictionary of parameters to bind into the SQL query. Parameter names should not include the ``:`` prefix.
+
+.. _permission_sql_parameters:
+
+Available SQL parameters
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+When writing SQL for ``PermissionSQL``, the following parameters are automatically available:
+
+``:actor`` - JSON string or NULL
+    The full actor dictionary serialized as JSON. Use SQLite's ``json_extract()`` function to access fields:
+
+    .. code-block:: sql
+
+        json_extract(:actor, '$.role') = 'admin'
+        json_extract(:actor, '$.team') = 'engineering'
+
+``:actor_id`` - string or NULL
+    The actor's ``id`` field, for simple equality comparisons:
+
+    .. code-block:: sql
+
+        :actor_id = 'alice'
+
+``:action`` - string
+    The action being checked (e.g., ``"view-table"``, ``"insert-row"``, ``"execute-sql"``).
+
+**Example usage:**
+
+Here's an example plugin that grants view-table permissions to users with an "analyst" role for tables in the "analytics" database:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.permissions import PermissionSQL
+
+
+    @hookimpl
+    def permission_resources_sql(datasette, actor, action):
+        if action != "view-table":
+            return None
+
+        return PermissionSQL(
+            source="my_analytics_plugin",
+            sql="""
+                SELECT 'analytics' AS parent,
+                       NULL AS child,
+                       1 AS allow,
+                       'Analysts can view analytics database' AS reason
+                WHERE json_extract(:actor, '$.role') = 'analyst'
+                  AND :action = 'view-table'
+            """,
+            params={},
+        )
+
+A more complex example that uses custom parameters:
+
+.. code-block:: python
+
+    @hookimpl
+    def permission_resources_sql(datasette, actor, action):
+        if not actor:
+            return None
+
+        user_teams = actor.get("teams", [])
+
+        return PermissionSQL(
+            source="team_permissions_plugin",
+            sql="""
+                SELECT
+                    team_database AS parent,
+                    team_table AS child,
+                    1 AS allow,
+                    'User is member of team: ' || team_name AS reason
+                FROM team_permissions
+                WHERE user_id = :user_id
+                  AND :action IN ('view-table', 'insert-row', 'update-row')
+            """,
+            params={"user_id": actor.get("id")},
+        )
+
+**Permission resolution rules:**
+
+When multiple ``PermissionSQL`` objects return conflicting rules for the same resource, Datasette applies the following precedence:
+
+1. **Specificity**: Child-level rules (with both ``parent`` and ``child``) override parent-level rules (with only ``parent``), which override root-level rules (with neither ``parent`` nor ``child``)
+2. **Deny over allow**: At the same specificity level, deny (``allow=0``) takes precedence over allow (``allow=1``)
+3. **Implicit deny**: If no rules match a resource, access is denied by default
+
 .. _internals_database:
 
 Database class
@@ -1127,7 +1348,7 @@ Example usage:
 .. _database_execute_write:
 
 await db.execute_write(sql, params=None, block=True)
------------------------------------------------------
+----------------------------------------------------
 
 SQLite only allows one database connection to write at a time. Datasette handles this for you by maintaining a queue of writes to be executed against a given database. Plugins can submit write operations to this queue and they will be executed in the order in which they are received.
 
@@ -1144,7 +1365,7 @@ Each call to ``execute_write()`` will be executed inside a transaction.
 .. _database_execute_write_script:
 
 await db.execute_write_script(sql, block=True)
------------------------------------------------
+----------------------------------------------
 
 Like ``execute_write()`` but can be used to send multiple SQL statements in a single string separated by semicolons, using the ``sqlite3`` `conn.executescript() <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.executescript>`__ method.
 
@@ -1153,7 +1374,7 @@ Each call to ``execute_write_script()`` will be executed inside a transaction.
 .. _database_execute_write_many:
 
 await db.execute_write_many(sql, params_seq, block=True)
----------------------------------------------------------
+--------------------------------------------------------
 
 Like ``execute_write()`` but uses the ``sqlite3`` `conn.executemany() <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.executemany>`__ method. This will efficiently execute the same SQL statement against each of the parameters in the ``params_seq`` iterator, for example:
 

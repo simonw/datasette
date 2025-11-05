@@ -1,6 +1,5 @@
 from datasette.app import Datasette
 from datasette.plugins import DEFAULT_PLUGINS
-from datasette.utils.sqlite import supports_table_xinfo
 from datasette.version import __version__
 from .fixtures import (  # noqa
     app_client,
@@ -835,13 +834,48 @@ async def test_versions_json(ds_client):
 
 
 @pytest.mark.asyncio
+async def test_actions_json(ds_client):
+    original_root_enabled = ds_client.ds.root_enabled
+    try:
+        ds_client.ds.root_enabled = True
+        cookies = {"ds_actor": ds_client.actor_cookie({"id": "root"})}
+        response = await ds_client.get("/-/actions.json", cookies=cookies)
+        data = response.json()
+    finally:
+        ds_client.ds.root_enabled = original_root_enabled
+    assert isinstance(data, list)
+    assert len(data) > 0
+    # Check structure of first action
+    action = data[0]
+    for key in (
+        "name",
+        "abbr",
+        "description",
+        "takes_parent",
+        "takes_child",
+        "resource_class",
+        "also_requires",
+    ):
+        assert key in action
+    # Check that some expected actions exist
+    action_names = {a["name"] for a in data}
+    for expected_action in (
+        "view-instance",
+        "view-database",
+        "view-table",
+        "execute-sql",
+    ):
+        assert expected_action in action_names
+
+
+@pytest.mark.asyncio
 async def test_settings_json(ds_client):
     response = await ds_client.get("/-/settings.json")
     assert response.json() == {
         "default_page_size": 50,
         "default_facet_size": 30,
         "default_allow_sql": True,
-        "facet_suggest_time_limit_ms": 50,
+        "facet_suggest_time_limit_ms": 200,
         "facet_time_limit_ms": 200,
         "max_returned_rows": 100,
         "max_insert_rows": 100,

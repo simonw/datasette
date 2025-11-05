@@ -1,8 +1,8 @@
 from datasette import hookimpl
+from datasette.resources import DatabaseResource
 from datasette.views.base import DatasetteError
 from datasette.utils.asgi import BadRequest
 import json
-import numbers
 from .utils import detect_json1, escape_sqlite, path_with_removed_args
 
 
@@ -13,11 +13,10 @@ def where_filters(request, database, datasette):
         where_clauses = []
         extra_wheres_for_ui = []
         if "_where" in request.args:
-            if not await datasette.permission_allowed(
-                request.actor,
-                "execute-sql",
-                resource=database,
-                default=True,
+            if not await datasette.allowed(
+                action="execute-sql",
+                resource=DatabaseResource(database=database),
+                actor=request.actor,
             ):
                 raise DatasetteError("_where= is not allowed", status=403)
             else:

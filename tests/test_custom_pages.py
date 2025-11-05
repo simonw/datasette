@@ -97,3 +97,10 @@ def test_custom_route_pattern_404(custom_pages_client):
     assert response.status == 404
     assert "<h1>Error 404</h1>" in response.text
     assert ">Oh no</" in response.text
+
+
+def test_custom_route_pattern_with_slash_slash_302(custom_pages_client):
+    # https://github.com/simonw/datasette/issues/2429
+    response = custom_pages_client.get("//example.com/")
+    assert response.status == 302
+    assert response.headers["location"] == "/example.com"

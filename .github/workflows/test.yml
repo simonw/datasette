@@ -19,7 +19,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
         allow-prereleases: true
         cache: pip
-        cache-dependency-path: setup.py
+        cache-dependency-path: pyproject.toml
     - name: Build extension for --load-extension test
       run: |-
         (cd tests && gcc ext.c -fPIC -shared -o ext.so)
@@ -36,6 +36,8 @@ jobs:
     - name: Install docs dependencies
       run: |
         pip install -e '.[docs]'
+    - name: Black
+      run: black --check .
     - name: Check if cog needs to be run
       run: |
         cog --check docs/*.rst

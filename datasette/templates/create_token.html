@@ -57,7 +57,7 @@
     <summary style="cursor: pointer;">Restrict actions that can be performed using this token</summary>
     <h2>All databases and tables</h2>
     <ul>
-      {% for permission in all_permissions %}
+      {% for permission in all_actions %}
         <li><label><input type="checkbox" name="all:{{ permission }}"> {{ permission }}</label></li>
       {% endfor %}
     </ul>
@@ -65,7 +65,7 @@
     {% for database in database_with_tables %}
       <h2>All tables in "{{ database.name }}"</h2>
       <ul>
-        {% for permission in database_permissions %}
+        {% for permission in database_actions %}
           <li><label><input type="checkbox" name="database:{{ database.encoded }}:{{ permission }}"> {{ permission }}</label></li>
         {% endfor %}
       </ul>
@@ -75,7 +75,7 @@
       {% for table in database.tables %}
         <h3>{{ database.name }}: {{ table.name }}</h3>
         <ul>
-          {% for permission in resource_permissions %}
+          {% for permission in child_actions %}
             <li><label><input type="checkbox" name="resource:{{ database.encoded }}:{{ table.encoded }}:{{ permission }}"> {{ permission }}</label></li>
           {% endfor %}
         </ul>

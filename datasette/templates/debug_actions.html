@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Registered Actions{% endblock %}
+
+{% block content %}
+<h1>Registered actions</h1>
+
+{% set current_tab = "actions" %}
+{% include "_permissions_debug_tabs.html" %}
+
+<p style="margin-bottom: 2em;">
+  This Datasette instance has registered {{ data|length }} action{{ data|length != 1 and "s" or "" }}.
+  Actions are used by the permission system to control access to different features.
+</p>
+
+<table class="rows-and-columns">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Abbr</th>
+      <th>Description</th>
+      <th>Resource</th>
+      <th>Takes Parent</th>
+      <th>Takes Child</th>
+      <th>Also Requires</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for action in data %}
+    <tr>
+      <td><strong>{{ action.name }}</strong></td>
+      <td>{% if action.abbr %}<code>{{ action.abbr }}</code>{% endif %}</td>
+      <td>{{ action.description or "" }}</td>
+      <td><code>{{ action.resource_class }}</code></td>
+      <td>{% if action.takes_parent %}✓{% endif %}</td>
+      <td>{% if action.takes_child %}✓{% endif %}</td>
+      <td>{% if action.also_requires %}<code>{{ action.also_requires }}</code>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% endblock %}

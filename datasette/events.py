@@ -2,7 +2,6 @@ from abc import ABC, abstractproperty
 from dataclasses import asdict, dataclass, field
 from datasette.hookspecs import hookimpl
 from datetime import datetime, timezone
-from typing import Optional
 
 
 @dataclass
@@ -14,7 +13,7 @@ class Event(ABC):
     created: datetime = field(
         init=False, default_factory=lambda: datetime.now(timezone.utc)
     )
-    actor: Optional[dict]
+    actor: dict | None
 
     def properties(self):
         properties = asdict(self)
@@ -63,7 +62,7 @@ class CreateTokenEvent(Event):
     """
 
     name = "create-token"
-    expires_after: Optional[int]
+    expires_after: int | None
     restrict_all: list
     restrict_database: dict
     restrict_resource: dict

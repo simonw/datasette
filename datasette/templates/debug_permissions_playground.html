@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block title %}Debug permissions{% endblock %}
+
+{% block extra_head %}
+{% include "_permission_ui_styles.html" %}
+<style type="text/css">
+.check-result-true {
+    color: green;
+}
+.check-result-false {
+    color: red;
+}
+.check-result-no-opinion {
+    color: #aaa;
+}
+.check h2 {
+    font-size: 1em
+}
+.check-action, .check-when, .check-result {
+    font-size: 1.3em;
+}
+textarea {
+    height: 10em;
+    width: 95%;
+    box-sizing: border-box;
+    padding: 0.5em;
+    border: 2px dotted black;
+}
+.two-col {
+    display: inline-block;
+    width: 48%;
+}
+.two-col label {
+    width: 48%;
+}
+@media only screen and (max-width: 576px) {
+    .two-col {
+        width: 100%;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Permission playground</h1>
+
+{% set current_tab = "permissions" %}
+{% include "_permissions_debug_tabs.html" %}
+
+<p>This tool lets you simulate an actor and a permission check for that actor.</p>
+
+<div class="permission-form">
+    <form action="{{ urls.path('-/permissions') }}" id="debug-post" method="post">
+        <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
+        <div class="two-col">
+            <div class="form-section">
+                <label>Actor</label>
+                <textarea name="actor">{% if actor_input %}{{ actor_input }}{% else %}{"id": "root"}{% endif %}</textarea>
+            </div>
+        </div>
+        <div class="two-col" style="vertical-align: top">
+            <div class="form-section">
+                <label for="permission">Action</label>
+                <select name="permission" id="permission">
+                    {% for permission in permissions %}
+                        <option value="{{ permission.name }}">{{ permission.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-section">
+                <label for="resource_1">Parent</label>
+                <input type="text" id="resource_1" name="resource_1" placeholder="e.g., database name">
+            </div>
+            <div class="form-section">
+                <label for="resource_2">Child</label>
+                <input type="text" id="resource_2" name="resource_2" placeholder="e.g., table name">
+            </div>
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="submit-btn">Simulate permission check</button>
+        </div>
+        <pre style="margin-top: 1em" id="debugResult"></pre>
+    </form>
+</div>
+
+<script>
+var rawPerms = {{ permissions|tojson }};
+var permissions = Object.fromEntries(rawPerms.map(p => [p.name, p]));
+var permissionSelect = document.getElementById('permission');
+var resource1 = document.getElementById('resource_1');
+var resource2 = document.getElementById('resource_2');
+var resource1Section = resource1.closest('.form-section');
+var resource2Section = resource2.closest('.form-section');
+function updateResourceVisibility() {
+    var permission = permissionSelect.value;
+    var {takes_parent, takes_child} = permissions[permission];
+    resource1Section.style.display = takes_parent ? 'block' : 'none';
+    resource2Section.style.display = takes_child ? 'block' : 'none';
+}
+permissionSelect.addEventListener('change', updateResourceVisibility);
+updateResourceVisibility();
+
+// When #debug-post form is submitted, use fetch() to POST data
+var debugPost = document.getElementById('debug-post');
+var debugResult = document.getElementById('debugResult');
+debugPost.addEventListener('submit', function(ev) {
+    ev.preventDefault();
+    var formData = new FormData(debugPost);
+    fetch(debugPost.action, {
+        method: 'POST',
+        body: new URLSearchParams(formData),
+        headers: {
+            'Accept': 'application/json'
+        }
+    }).then(function(response) {
+        if (!response.ok) {
+            throw new Error('Request failed with status ' + response.status);
+        }
+        return response.json();
+    }).then(function(data) {
+        debugResult.innerText = JSON.stringify(data, null, 4);
+    }).catch(function(error) {
+        debugResult.innerText = JSON.stringify({ error: error.message }, null, 4);
+    });
+});
+</script>
+
+<h1>Recent permissions checks</h1>
+
+<p>
+    {% if filter != "all" %}<a href="?filter=all">All</a>{% else %}<strong>All</strong>{% endif %},
+    {% if filter != "exclude-yours" %}<a href="?filter=exclude-yours">Exclude yours</a>{% else %}<strong>Exclude yours</strong>{% endif %},
+    {% if filter != "only-yours" %}<a href="?filter=only-yours">Only yours</a>{% else %}<strong>Only yours</strong>{% endif %}
+</p>
+
+{% if permission_checks %}
+<table class="rows-and-columns permission-checks-table" id="permission-checks-table">
+    <thead>
+        <tr>
+            <th>When</th>
+            <th>Action</th>
+            <th>Parent</th>
+            <th>Child</th>
+            <th>Actor</th>
+            <th>Result</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for check in permission_checks %}
+            <tr>
+                <td><span style="font-size: 0.8em">{{ check.when.split('T', 1)[0] }}</span><br>{{ check.when.split('T', 1)[1].split('+', 1)[0].split('-', 1)[0].split('Z', 1)[0] }}</td>
+                <td><code>{{ check.action }}</code></td>
+                <td>{{ check.parent or '—' }}</td>
+                <td>{{ check.child or '—' }}</td>
+                <td>{% if check.actor %}<code>{{ check.actor|tojson }}</code>{% else %}<span class="check-actor-anon">anonymous</span>{% endif %}</td>
+                <td>{% if check.result %}<span class="check-result check-result-true">Allowed</span>{% elif check.result is none %}<span class="check-result check-result-no-opinion">No opinion</span>{% else %}<span class="check-result check-result-false">Denied</span>{% endif %}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+</table>
+{% else %}
+<p class="no-results">No permission checks have been recorded yet.</p>
+{% endif %}
+
+{% endblock %}

@@ -72,5 +72,7 @@
 {% endfor %}
 
 {% if select_templates %}<!-- Templates considered: {{ select_templates|join(", ") }} -->{% endif %}
+<script src="{{ urls.static('navigation-search.js') }}" defer></script>
+<navigation-search url="/-/tables"></navigation-search>
 </body>
 </html>

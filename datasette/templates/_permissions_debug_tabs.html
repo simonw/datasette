@@ -1,0 +1,54 @@
+{% if has_debug_permission %}
+{% set query_string = '?' + request.query_string if request.query_string else '' %}
+
+<style>
+.permissions-debug-tabs {
+    border-bottom: 2px solid #e0e0e0;
+    margin-bottom: 2em;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+}
+.permissions-debug-tabs a {
+    padding: 0.75em 1.25em;
+    text-decoration: none;
+    color: #333;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.2s;
+    font-weight: 500;
+}
+.permissions-debug-tabs a:hover {
+    background-color: #f5f5f5;
+    border-bottom-color: #999;
+}
+.permissions-debug-tabs a.active {
+    color: #0066cc;
+    border-bottom-color: #0066cc;
+    background-color: #f0f7ff;
+}
+@media only screen and (max-width: 576px) {
+    .permissions-debug-tabs {
+        flex-direction: column;
+        gap: 0;
+    }
+    .permissions-debug-tabs a {
+        border-bottom: 1px solid #e0e0e0;
+        margin-bottom: 0;
+    }
+    .permissions-debug-tabs a.active {
+        border-left: 3px solid #0066cc;
+        border-bottom: 1px solid #e0e0e0;
+    }
+}
+</style>
+
+<nav class="permissions-debug-tabs">
+    <a href="{{ urls.path('-/permissions') }}" {% if current_tab == "permissions" %}class="active"{% endif %}>Playground</a>
+    <a href="{{ urls.path('-/check') }}{{ query_string }}" {% if current_tab == "check" %}class="active"{% endif %}>Check</a>
+    <a href="{{ urls.path('-/allowed') }}{{ query_string }}" {% if current_tab == "allowed" %}class="active"{% endif %}>Allowed</a>
+    <a href="{{ urls.path('-/rules') }}{{ query_string }}" {% if current_tab == "rules" %}class="active"{% endif %}>Rules</a>
+    <a href="{{ urls.path('-/actions') }}" {% if current_tab == "actions" %}class="active"{% endif %}>Actions</a>
+    <a href="{{ urls.path('-/allow-debug') }}" {% if current_tab == "allow_debug" %}class="active"{% endif %}>Allow debug</a>
+</nav>
+{% endif %}

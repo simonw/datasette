@@ -20,7 +20,7 @@ General guidelines
 Setting up a development environment
 ------------------------------------
 
-If you have Python 3.8 or higher installed on your computer (on OS X the quickest way to do this `is using homebrew <https://docs.python-guide.org/starting/install3/osx/>`__) you can install an editable copy of Datasette using the following steps.
+If you have Python 3.10 or higher installed on your computer (on OS X the quickest way to do this `is using homebrew <https://docs.python-guide.org/starting/install3/osx/>`__) you can install an editable copy of Datasette using the following steps.
 
 If you want to use GitHub to publish your changes, first `create a fork of datasette <https://github.com/simonw/datasette/fork>`__ under your own GitHub account.
 
@@ -42,7 +42,7 @@ The next step is to create a virtual environment for your project and use it to 
     # Install Datasette and its testing dependencies
     python3 -m pip install -e '.[test]'
 
-That last line does most of the work: ``pip install -e`` means "install this package in a way that allows me to edit the source code in place". The ``.[test]`` option means "use the setup.py in this directory and install the optional testing dependencies as well".
+That last line does most of the work: ``pip install -e`` means "install this package in a way that allows me to edit the source code in place". The ``.[test]`` option means "install the optional testing dependencies as well".
 
 .. _contributing_running_tests:
 
@@ -131,6 +131,15 @@ These formatters are enforced by Datasette's continuous integration: if a commit
 
 When developing locally, you can verify and correct the formatting of your code using these tools.
 
+If you are using `Just <https://github.com/casey/just>`__ the quickest way to run these is like so::
+
+    just black
+    just prettier
+
+Or run both at the same time::
+
+    just format
+
 .. _contributing_formatting_black:
 
 Running Black
@@ -151,7 +160,7 @@ If any of your code does not conform to Black you can run this to automatically 
 
 ::
 
-    reformatted ../datasette/setup.py
+    reformatted ../datasette/app.py
     All done! ✨ 🍰 ✨
     1 file reformatted, 94 files left unchanged.
 

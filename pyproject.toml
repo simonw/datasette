@@ -1,0 +1,95 @@
+[project]
+name = "datasette"
+dynamic = ["version"]
+description = "An open source multi-tool for exploring and publishing data"
+readme = { file = "README.md", content-type = "text/markdown" }
+authors = [
+    { name = "Simon Willison" },
+]
+license = "Apache-2.0"
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: Datasette",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: End Users/Desktop",
+    "Topic :: Database",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+
+dependencies = [
+    "asgiref>=3.2.10",
+    "click>=7.1.1",
+    "click-default-group>=1.2.3",
+    "Jinja2>=2.10.3",
+    "hupper>=1.9",
+    "httpx>=0.20,<1.0",
+    "pluggy>=1.0",
+    "uvicorn>=0.11",
+    "aiofiles>=0.4",
+    "janus>=0.6.2",
+    "asgi-csrf>=0.10",
+    "PyYAML>=5.3",
+    "mergedeep>=1.1.1",
+    "itsdangerous>=1.1",
+    "sqlite-utils>=3.30",
+    "asyncinject>=0.6.1",
+    "setuptools",
+    "pip",
+]
+
+[project.urls]
+Homepage = "https://datasette.io/"
+Documentation = "https://docs.datasette.io/en/stable/"
+Changelog = "https://docs.datasette.io/en/stable/changelog.html"
+"Live demo" = "https://latest.datasette.io/"
+"Source code" = "https://github.com/simonw/datasette"
+Issues = "https://github.com/simonw/datasette/issues"
+CI = "https://github.com/simonw/datasette/actions?query=workflow%3ATest"
+
+[project.scripts]
+datasette = "datasette.cli:cli"
+
+[project.optional-dependencies]
+docs = [
+    "Sphinx==7.4.7",
+    "furo==2025.9.25",
+    "sphinx-autobuild",
+    "codespell>=2.2.5",
+    "blacken-docs",
+    "sphinx-copybutton",
+    "sphinx-inline-tabs",
+    "myst-parser",
+    "sphinx-markdown-builder",
+    "ruamel.yaml",
+]
+test = [
+    "pytest>=5.2.2",
+    "pytest-xdist>=2.2.1",
+    "pytest-asyncio>=1.2.0",
+    "beautifulsoup4>=4.8.1",
+    "black==25.9.0",
+    "blacken-docs==1.20.0",
+    "pytest-timeout>=1.4.2",
+    "trustme>=0.7",
+    "cogapp>=3.3.0",
+]
+rich = ["rich"]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["datasette*"]
+
+[tool.setuptools.package-data]
+datasette = ["templates/*.html"]
+
+[tool.setuptools.dynamic]
+version = {attr = "datasette.version.__version__"}

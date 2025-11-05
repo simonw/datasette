@@ -1,9 +1,12 @@
 from bs4 import BeautifulSoup as Soup
-from .fixtures import app_client
 from .utils import cookie_was_deleted, last_event
 from click.testing import CliRunner
 from datasette.utils import baseconv
 from datasette.cli import cli
+from datasette.resources import (
+    DatabaseResource,
+    TableResource,
+)
 import pytest
 import time
 
@@ -337,3 +340,154 @@ def test_cli_create_token(app_client, expires):
     else:
         expected_actor = None
     assert response.json == {"actor": expected_actor}
+
+
+@pytest.mark.asyncio
+async def test_root_with_root_enabled_gets_all_permissions(ds_client):
+    """Root user with root_enabled=True gets all permissions"""
+    # Ensure catalog tables are populated
+    await ds_client.ds.invoke_startup()
+    await ds_client.ds._refresh_schemas()
+
+    # Set root_enabled to simulate --root flag
+    ds_client.ds.root_enabled = True
+
+    root_actor = {"id": "root"}
+
+    # Test instance-level permissions (no resource)
+    assert (
+        await ds_client.ds.allowed(action="permissions-debug", actor=root_actor) is True
+    )
+    assert await ds_client.ds.allowed(action="debug-menu", actor=root_actor) is True
+
+    # Test view permissions using the new ds.allowed() method
+    assert await ds_client.ds.allowed(action="view-instance", actor=root_actor) is True
+
+    assert (
+        await ds_client.ds.allowed(
+            action="view-database",
+            resource=DatabaseResource("fixtures"),
+            actor=root_actor,
+        )
+        is True
+    )
+
+    assert (
+        await ds_client.ds.allowed(
+            action="view-table",
+            resource=TableResource("fixtures", "facetable"),
+            actor=root_actor,
+        )
+        is True
+    )
+
+    # Test write permissions using ds.allowed()
+    assert (
+        await ds_client.ds.allowed(
+            action="insert-row",
+            resource=TableResource("fixtures", "facetable"),
+            actor=root_actor,
+        )
+        is True
+    )
+
+    assert (
+        await ds_client.ds.allowed(
+            action="delete-row",
+            resource=TableResource("fixtures", "facetable"),
+            actor=root_actor,
+        )
+        is True
+    )
+
+    assert (
+        await ds_client.ds.allowed(
+            action="update-row",
+            resource=TableResource("fixtures", "facetable"),
+            actor=root_actor,
+        )
+        is True
+    )
+
+    assert (
+        await ds_client.ds.allowed(
+            action="create-table",
+            resource=DatabaseResource("fixtures"),
+            actor=root_actor,
+        )
+        is True
+    )
+
+    assert (
+        await ds_client.ds.allowed(
+            action="alter-table",
+            resource=TableResource("fixtures", "facetable"),
+            actor=root_actor,
+        )
+        is True
+    )
+
+    assert (
+        await ds_client.ds.allowed(
+            action="drop-table",
+            resource=TableResource("fixtures", "facetable"),
+            actor=root_actor,
+        )
+        is True
+    )
+
+
+@pytest.mark.asyncio
+async def test_root_without_root_enabled_no_special_permissions(ds_client):
+    """Root user without root_enabled doesn't get automatic permissions"""
+    # Ensure catalog tables are populated
+    await ds_client.ds.invoke_startup()
+    await ds_client.ds._refresh_schemas()
+
+    # Ensure root_enabled is NOT set (or is False)
+    ds_client.ds.root_enabled = False
+
+    root_actor = {"id": "root"}
+
+    # Test permissions that normally require special access
+    # Without root_enabled, root should follow normal permission rules
+
+    # View permissions should still work (default=True)
+    assert (
+        await ds_client.ds.allowed(action="view-instance", actor=root_actor) is True
+    )  # Default permission
+
+    assert (
+        await ds_client.ds.allowed(
+            action="view-database",
+            resource=DatabaseResource("fixtures"),
+            actor=root_actor,
+        )
+        is True
+    )  # Default permission
+
+    # But restricted permissions should NOT automatically be granted
+    # Test with instance-level permission (no resource class)
+    result = await ds_client.ds.allowed(action="permissions-debug", actor=root_actor)
+    assert (
+        result is not True
+    ), "Root without root_enabled should not automatically get permissions-debug"
+
+    # Test with resource-based permissions using ds.allowed()
+    assert (
+        await ds_client.ds.allowed(
+            action="create-table",
+            resource=DatabaseResource("fixtures"),
+            actor=root_actor,
+        )
+        is not True
+    ), "Root without root_enabled should not automatically get create-table"
+
+    assert (
+        await ds_client.ds.allowed(
+            action="drop-table",
+            resource=TableResource("fixtures", "facetable"),
+            actor=root_actor,
+        )
+        is not True
+    ), "Root without root_enabled should not automatically get drop-table"

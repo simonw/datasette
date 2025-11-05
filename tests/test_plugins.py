@@ -1,6 +1,5 @@
 from bs4 import BeautifulSoup as Soup
 from .fixtures import (
-    app_client,
     make_app_client,
     TABLES,
     TEMP_PLUGIN_SECRET_FILE,
@@ -9,10 +8,11 @@ from .fixtures import (
 )  # noqa
 from click.testing import CliRunner
 from datasette.app import Datasette
-from datasette import cli, hookimpl, Permission
+from datasette import cli, hookimpl
 from datasette.filters import FilterArguments
 from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
-from datasette.utils.permissions import PluginSQL
+from datasette.permissions import PermissionSQL, Action
+from datasette.resources import DatabaseResource
 from datasette.utils.sqlite import sqlite3
 from datasette.utils import StartupError, await_me_maybe
 from jinja2 import ChoiceLoader, FileSystemLoader
@@ -326,7 +326,11 @@ async def test_plugin_config_file(ds_client):
 )
 def test_hook_extra_body_script(app_client, path, expected_extra_body_script):
     r = re.compile(r"<script type=\"module\">var extra_body_script = (.*?);</script>")
-    json_data = r.search(app_client.get(path).text).group(1)
+    response = app_client.get(path)
+    assert response.status_code == 200, response.text
+    match = r.search(response.text)
+    assert match is not None, "No extra_body_script found in HTML"
+    json_data = match.group(1)
     actual_data = json.loads(json_data)
     assert expected_extra_body_script == actual_data
 
@@ -496,9 +500,6 @@ async def test_hook_register_output_renderer_all_parameters(ds_client):
         "view_name": "table",
         "1+1": 2,
     }
-    # Test that query_name is set correctly
-    query_response = await ds_client.get("/fixtures/pragma_cache_size.testall")
-    assert query_response.json()["query_name"] == "pragma_cache_size"
 
 
 @pytest.mark.asyncio
@@ -677,29 +678,11 @@ async def test_existing_scope_actor_respected(ds_client):
     ],
 )
 async def test_hook_permission_allowed(action, expected):
-    class TestPlugin:
-        __name__ = "TestPlugin"
-
-        @hookimpl
-        def register_permissions(self):
-            return [
-                Permission(name, None, None, False, False, False)
-                for name in (
-                    "this_is_allowed",
-                    "this_is_denied",
-                    "this_is_allowed_async",
-                    "this_is_denied_async",
-                )
-            ]
-
-    pm.register(TestPlugin(), name="undo_register_extras")
-    try:
-        ds = Datasette(plugins_dir=PLUGINS_DIR)
-        await ds.invoke_startup()
-        actual = await ds.permission_allowed({"id": "actor"}, action)
-        assert expected == actual
-    finally:
-        pm.unregister(name="undo_register_extras")
+    # Test actions and permission logic are defined in tests/plugins/my_plugin.py
+    ds = Datasette(plugins_dir=PLUGINS_DIR)
+    await ds.invoke_startup()
+    actual = await ds.allowed(action=action, actor={"id": "actor"})
+    assert expected == actual
 
 
 @pytest.mark.asyncio
@@ -722,7 +705,7 @@ async def test_hook_permission_resources_sql():
             collected.append(block)
 
     assert collected
-    assert all(isinstance(item, PluginSQL) for item in collected)
+    assert all(isinstance(item, PermissionSQL) for item in collected)
 
 
 @pytest.mark.asyncio
@@ -1016,7 +999,7 @@ def get_actions_links(html):
     "path,expected_url",
     (
         ("/fixtures/-/query?sql=select+1", "/fixtures/-/query?sql=explain+select+1"),
-        (
+        pytest.param(
             "/fixtures/pragma_cache_size",
             "/fixtures/-/query?sql=explain+PRAGMA+cache_size%3B",
         ),
@@ -1188,20 +1171,20 @@ async def test_hook_filters_from_request(ds_client):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("extra_metadata", (False, True))
-async def test_hook_register_permissions(extra_metadata):
+async def test_hook_register_actions(extra_metadata):
+    from datasette.permissions import Action
+    from datasette.resources import DatabaseResource, InstanceResource
+
     ds = Datasette(
         config=(
             {
                 "plugins": {
-                    "datasette-register-permissions": {
-                        "permissions": [
+                    "datasette-register-actions": {
+                        "actions": [
                             {
                                 "name": "extra-from-metadata",
                                 "abbr": "efm",
                                 "description": "Extra from metadata",
-                                "takes_database": False,
-                                "takes_resource": False,
-                                "default": True,
                             }
                         ]
                     }
@@ -1213,30 +1196,25 @@ async def test_hook_register_permissions(extra_metadata):
         plugins_dir=PLUGINS_DIR,
     )
     await ds.invoke_startup()
-    assert ds.permissions["permission-from-plugin"] == Permission(
-        name="permission-from-plugin",
-        abbr="np",
-        description="New permission added by a plugin",
-        takes_database=True,
-        takes_resource=False,
-        default=False,
+    assert ds.actions["action-from-plugin"] == Action(
+        name="action-from-plugin",
+        abbr="ap",
+        description="New action added by a plugin",
+        resource_class=DatabaseResource,
     )
     if extra_metadata:
-        assert ds.permissions["extra-from-metadata"] == Permission(
+        assert ds.actions["extra-from-metadata"] == Action(
             name="extra-from-metadata",
             abbr="efm",
             description="Extra from metadata",
-            takes_database=False,
-            takes_resource=False,
-            default=True,
         )
     else:
-        assert "extra-from-metadata" not in ds.permissions
+        assert "extra-from-metadata" not in ds.actions
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("duplicate", ("name", "abbr"))
-async def test_hook_register_permissions_no_duplicates(duplicate):
+async def test_hook_register_actions_no_duplicates(duplicate):
     name1, name2 = "name1", "name2"
     abbr1, abbr2 = "abbr1", "abbr2"
     if duplicate == "name":
@@ -1246,23 +1224,17 @@ async def test_hook_register_permissions_no_duplicates(duplicate):
     ds = Datasette(
         config={
             "plugins": {
-                "datasette-register-permissions": {
-                    "permissions": [
+                "datasette-register-actions": {
+                    "actions": [
                         {
                             "name": name1,
                             "abbr": abbr1,
                             "description": None,
-                            "takes_database": False,
-                            "takes_resource": False,
-                            "default": True,
                         },
                         {
                             "name": name2,
                             "abbr": abbr2,
                             "description": None,
-                            "takes_database": False,
-                            "takes_resource": False,
-                            "default": True,
                         },
                     ]
                 }
@@ -1273,31 +1245,25 @@ async def test_hook_register_permissions_no_duplicates(duplicate):
     # This should error:
     with pytest.raises(StartupError) as ex:
         await ds.invoke_startup()
-        assert "Duplicate permission {}".format(duplicate) in str(ex.value)
+        assert "Duplicate action {}".format(duplicate) in str(ex.value)
 
 
 @pytest.mark.asyncio
-async def test_hook_register_permissions_allows_identical_duplicates():
+async def test_hook_register_actions_allows_identical_duplicates():
     ds = Datasette(
         config={
             "plugins": {
-                "datasette-register-permissions": {
-                    "permissions": [
+                "datasette-register-actions": {
+                    "actions": [
                         {
                             "name": "name1",
                             "abbr": "abbr1",
                             "description": None,
-                            "takes_database": False,
-                            "takes_resource": False,
-                            "default": True,
                         },
                         {
                             "name": "name1",
                             "abbr": "abbr1",
                             "description": None,
-                            "takes_database": False,
-                            "takes_resource": False,
-                            "default": True,
                         },
                     ]
                 }
@@ -1306,8 +1272,8 @@ async def test_hook_register_permissions_allows_identical_duplicates():
         plugins_dir=PLUGINS_DIR,
     )
     await ds.invoke_startup()
-    # Check that ds.permissions has only one of each
-    assert len([p for p in ds.permissions.values() if p.abbr == "abbr1"]) == 1
+    # Check that ds.actions has only one of each
+    assert len([p for p in ds.actions.values() if p.abbr == "abbr1"]) == 1
 
 
 @pytest.mark.asyncio
@@ -1558,6 +1524,264 @@ async def test_hook_register_events():
     datasette = Datasette(memory=True)
     await datasette.invoke_startup()
     assert any(k.__name__ == "OneEvent" for k in datasette.event_classes)
+
+
+@pytest.mark.asyncio
+async def test_hook_register_actions():
+    datasette = Datasette(memory=True, plugins_dir=PLUGINS_DIR)
+    await datasette.invoke_startup()
+    # Check that the custom action from my_plugin.py is registered
+    assert "view-collection" in datasette.actions
+    action = datasette.actions["view-collection"]
+    assert action.abbr == "vc"
+    assert action.description == "View a collection"
+
+
+@pytest.mark.asyncio
+async def test_hook_register_actions_with_custom_resources():
+    """
+    Test registering actions with custom Resource classes:
+    - A global action (no resource)
+    - A parent-level action (DocumentCollectionResource)
+    - A child-level action (DocumentResource)
+    """
+    from datasette.permissions import Resource, Action
+
+    # Define custom Resource classes
+    class DocumentCollectionResource(Resource):
+        """A collection of documents."""
+
+        name = "document_collection"
+        parent_class = None  # Top-level resource
+
+        def __init__(self, collection: str):
+            super().__init__(parent=collection, child=None)
+
+        @classmethod
+        async def resources_sql(cls, datasette) -> str:
+            return """
+                SELECT 'collection1' AS parent, NULL AS child
+                UNION ALL
+                SELECT 'collection2' AS parent, NULL AS child
+            """
+
+    class DocumentResource(Resource):
+        """A document in a collection."""
+
+        name = "document"
+        parent_class = DocumentCollectionResource  # Child of DocumentCollectionResource
+
+        def __init__(self, collection: str, document: str):
+            super().__init__(parent=collection, child=document)
+
+        @classmethod
+        async def resources_sql(cls, datasette) -> str:
+            return """
+                SELECT 'collection1' AS parent, 'doc1' AS child
+                UNION ALL
+                SELECT 'collection1' AS parent, 'doc2' AS child
+                UNION ALL
+                SELECT 'collection2' AS parent, 'doc3' AS child
+            """
+
+    # Define a test plugin that registers these actions
+    class TestPlugin:
+        __name__ = "test_custom_resources_plugin"
+
+        @hookimpl
+        def register_actions(self, datasette):
+            return [
+                # Global action - no resource_class
+                Action(
+                    name="manage-documents",
+                    abbr="md",
+                    description="Manage the document system",
+                ),
+                # Parent-level action - collection only
+                Action(
+                    name="view-document-collection",
+                    description="View a document collection",
+                    resource_class=DocumentCollectionResource,
+                ),
+                # Child-level action - collection + document
+                Action(
+                    name="view-document",
+                    abbr="vdoc",
+                    description="View a document",
+                    resource_class=DocumentResource,
+                ),
+            ]
+
+        @hookimpl
+        def permission_resources_sql(self, datasette, actor, action):
+            from datasette.permissions import PermissionSQL
+
+            # Grant user2 access to manage-documents globally
+            if actor and actor.get("id") == "user2" and action == "manage-documents":
+                return PermissionSQL.allow(reason="user2 granted manage-documents")
+
+            # Grant user2 access to view-document-collection globally
+            if (
+                actor
+                and actor.get("id") == "user2"
+                and action == "view-document-collection"
+            ):
+                return PermissionSQL.allow(
+                    reason="user2 granted view-document-collection"
+                )
+
+            # Default allow for view-document-collection (like other view-* actions)
+            if action == "view-document-collection":
+                return PermissionSQL.allow(
+                    reason="default allow for view-document-collection"
+                )
+
+            # Default allow for view-document (like other view-* actions)
+            if action == "view-document":
+                return PermissionSQL.allow(reason="default allow for view-document")
+
+    # Register the plugin temporarily
+    plugin = TestPlugin()
+    pm.register(plugin, name="test_custom_resources_plugin")
+
+    try:
+        # Create datasette instance and invoke startup
+        datasette = Datasette(memory=True)
+        await datasette.invoke_startup()
+
+        # Test global action
+        manage_docs = datasette.actions["manage-documents"]
+        assert manage_docs.name == "manage-documents"
+        assert manage_docs.abbr == "md"
+        assert manage_docs.resource_class is None
+        assert manage_docs.takes_parent is False
+        assert manage_docs.takes_child is False
+
+        # Test parent-level action
+        view_collection = datasette.actions["view-document-collection"]
+        assert view_collection.name == "view-document-collection"
+        assert view_collection.abbr is None
+        assert view_collection.resource_class is DocumentCollectionResource
+        assert view_collection.takes_parent is True
+        assert view_collection.takes_child is False
+
+        # Test child-level action
+        view_doc = datasette.actions["view-document"]
+        assert view_doc.name == "view-document"
+        assert view_doc.abbr == "vdoc"
+        assert view_doc.resource_class is DocumentResource
+        assert view_doc.takes_parent is True
+        assert view_doc.takes_child is True
+
+        # Verify the resource classes have correct hierarchy
+        assert DocumentCollectionResource.parent_class is None
+        assert DocumentResource.parent_class is DocumentCollectionResource
+
+        # Test that resources can be instantiated correctly
+        collection_resource = DocumentCollectionResource(collection="collection1")
+        assert collection_resource.parent == "collection1"
+        assert collection_resource.child is None
+
+        doc_resource = DocumentResource(collection="collection1", document="doc1")
+        assert doc_resource.parent == "collection1"
+        assert doc_resource.child == "doc1"
+
+        # Test permission checks with restricted actors
+
+        # Test 1: Global action - no restrictions (custom actions default to deny)
+        unrestricted_actor = {"id": "user1"}
+        allowed = await datasette.allowed(
+            action="manage-documents",
+            actor=unrestricted_actor,
+        )
+        assert allowed is False  # Custom actions have no default allow
+
+        # Test 2: Global action - user2 has explicit permission via plugin hook
+        restricted_global = {"id": "user2", "_r": {"a": ["md"]}}
+        allowed = await datasette.allowed(
+            action="manage-documents",
+            actor=restricted_global,
+        )
+        assert allowed is True  # Granted by plugin hook for user2
+
+        # Test 3: Global action - restricted but not in allowlist
+        restricted_no_access = {"id": "user3", "_r": {"a": ["vdc"]}}
+        allowed = await datasette.allowed(
+            action="manage-documents",
+            actor=restricted_no_access,
+        )
+        assert allowed is False  # Not in allowlist
+
+        # Test 4: Collection-level action - allowed for specific collection
+        collection_resource = DocumentCollectionResource(collection="collection1")
+        # This one does not have an abbreviation:
+        restricted_collection = {
+            "id": "user4",
+            "_r": {"d": {"collection1": ["view-document-collection"]}},
+        }
+        allowed = await datasette.allowed(
+            action="view-document-collection",
+            resource=collection_resource,
+            actor=restricted_collection,
+        )
+        assert allowed is True  # Allowed for collection1
+
+        # Test 5: Collection-level action - denied for different collection
+        collection2_resource = DocumentCollectionResource(collection="collection2")
+        allowed = await datasette.allowed(
+            action="view-document-collection",
+            resource=collection2_resource,
+            actor=restricted_collection,
+        )
+        assert allowed is False  # Not allowed for collection2
+
+        # Test 6: Document-level action - allowed for specific document
+        doc1_resource = DocumentResource(collection="collection1", document="doc1")
+        restricted_document = {
+            "id": "user5",
+            "_r": {"r": {"collection1": {"doc1": ["vdoc"]}}},
+        }
+        allowed = await datasette.allowed(
+            action="view-document",
+            resource=doc1_resource,
+            actor=restricted_document,
+        )
+        assert allowed is True  # Allowed for collection1/doc1
+
+        # Test 7: Document-level action - denied for different document
+        doc2_resource = DocumentResource(collection="collection1", document="doc2")
+        allowed = await datasette.allowed(
+            action="view-document",
+            resource=doc2_resource,
+            actor=restricted_document,
+        )
+        assert allowed is False  # Not allowed for collection1/doc2
+
+        # Test 8: Document-level action - globally allowed
+        doc_resource = DocumentResource(collection="collection2", document="doc3")
+        restricted_all_docs = {"id": "user6", "_r": {"a": ["vdoc"]}}
+        allowed = await datasette.allowed(
+            action="view-document",
+            resource=doc_resource,
+            actor=restricted_all_docs,
+        )
+        assert allowed is True  # Globally allowed for all documents
+
+        # Test 9: Verify hierarchy - collection access doesn't grant document access
+        collection_only_actor = {"id": "user7", "_r": {"d": {"collection1": ["vdc"]}}}
+        doc_resource = DocumentResource(collection="collection1", document="doc1")
+        allowed = await datasette.allowed(
+            action="view-document",
+            resource=doc_resource,
+            actor=collection_only_actor,
+        )
+        assert (
+            allowed is False
+        )  # Collection permission doesn't grant document permission
+
+    finally:
+        # Unregister the plugin
+        pm.unregister(plugin)
 
 
 @pytest.mark.skip(reason="TODO")

@@ -15,6 +15,7 @@ from datasette.events import (
     UpsertRowsEvent,
 )
 from datasette import tracer
+from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
@@ -165,7 +166,6 @@ async def display_columns_and_rows(
     column_details = {
         col.name: col for col in await db.table_column_details(table_name)
     }
-    table_config = await datasette.table_config(database_name, table_name)
     pks = await db.primary_keys(table_name)
     pks_for_display = pks
     if not pks_for_display:
@@ -449,11 +449,15 @@ class TableInsertView(BaseView):
         if upsert:
             # Must have insert-row AND upsert-row permissions
             if not (
-                await self.ds.permission_allowed(
-                    request.actor, "insert-row", resource=(database_name, table_name)
+                await self.ds.allowed(
+                    action="insert-row",
+                    resource=TableResource(database=database_name, table=table_name),
+                    actor=request.actor,
                 )
-                and await self.ds.permission_allowed(
-                    request.actor, "update-row", resource=(database_name, table_name)
+                and await self.ds.allowed(
+                    action="update-row",
+                    resource=TableResource(database=database_name, table=table_name),
+                    actor=request.actor,
                 )
             ):
                 return _error(
@@ -461,8 +465,10 @@ class TableInsertView(BaseView):
                 )
         else:
             # Must have insert-row permission
-            if not await self.ds.permission_allowed(
-                request.actor, "insert-row", resource=(database_name, table_name)
+            if not await self.ds.allowed(
+                action="insert-row",
+                resource=TableResource(database=database_name, table=table_name),
+                actor=request.actor,
             ):
                 return _error(["Permission denied"], 403)
 
@@ -491,16 +497,20 @@ class TableInsertView(BaseView):
         if upsert and (ignore or replace):
             return _error(["Upsert does not support ignore or replace"], 400)
 
-        if replace and not await self.ds.permission_allowed(
-            request.actor, "update-row", resource=(database_name, table_name)
+        if replace and not await self.ds.allowed(
+            action="update-row",
+            resource=TableResource(database=database_name, table=table_name),
+            actor=request.actor,
         ):
             return _error(['Permission denied: need update-row to use "replace"'], 403)
 
         initial_schema = None
         if alter:
             # Must have alter-table permission
-            if not await self.ds.permission_allowed(
-                request.actor, "alter-table", resource=(database_name, table_name)
+            if not await self.ds.allowed(
+                action="alter-table",
+                resource=TableResource(database=database_name, table=table_name),
+                actor=request.actor,
             ):
                 return _error(["Permission denied for alter-table"], 403)
             # Track initial schema to check if it changed later
@@ -627,8 +637,10 @@ class TableDropView(BaseView):
         db = self.ds.get_database(database_name)
         if not await db.table_exists(table_name):
             return _error(["Table not found: {}".format(table_name)], 404)
-        if not await self.ds.permission_allowed(
-            request.actor, "drop-table", resource=(database_name, table_name)
+        if not await self.ds.allowed(
+            action="drop-table",
+            resource=TableResource(database=database_name, table=table_name),
+            actor=request.actor,
         ):
             return _error(["Permission denied"], 403)
         if not db.is_mutable:
@@ -914,8 +926,10 @@ async def table_view_traced(datasette, request):
                         "true" if datasette.setting("allow_facet") else "false"
                     ),
                     is_sortable=any(c["sortable"] for c in data["display_columns"]),
-                    allow_execute_sql=await datasette.permission_allowed(
-                        request.actor, "execute-sql", resolved.db.name
+                    allow_execute_sql=await datasette.allowed(
+                        action="execute-sql",
+                        resource=DatabaseResource(database=resolved.db.name),
+                        actor=request.actor,
                     ),
                     query_ms=1.2,
                     select_templates=[
@@ -962,11 +976,8 @@ async def table_view_data(
     # Can this user view it?
     visible, private = await datasette.check_visibility(
         request.actor,
-        permissions=[
-            ("view-table", (database_name, table_name)),
-            ("view-database", database_name),
-            "view-instance",
-        ],
+        action="view-table",
+        resource=TableResource(database=database_name, table=table_name),
     )
     if not visible:
         raise Forbidden("You do not have permission to view this table")

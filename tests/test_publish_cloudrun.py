@@ -57,12 +57,14 @@ def test_publish_cloudrun_prompts_for_service(
         "Service name: input-service"
     ) == result.output.strip()
     assert 0 == result.exit_code
-    tag = "gcr.io/myproject/datasette-input-service"
+    tag = "us-docker.pkg.dev/myproject/datasette/datasette-input-service"
     mock_call.assert_has_calls(
         [
+            mock.call("gcloud services enable artifactregistry.googleapis.com --project myproject --quiet", shell=True),
+            mock.call("gcloud artifacts repositories describe datasette --project myproject --location us --quiet", shell=True),
             mock.call(f"gcloud builds submit --tag {tag}", shell=True),
             mock.call(
-                "gcloud run deploy --allow-unauthenticated --platform=managed --image {} input-service".format(
+                "gcloud run deploy --allow-unauthenticated --platform=managed --image {} input-service --max-instances 1".format(
                     tag
                 ),
                 shell=True,
@@ -86,12 +88,14 @@ def test_publish_cloudrun(mock_call, mock_output, mock_which, tmp_path_factory):
         cli.cli, ["publish", "cloudrun", "test.db", "--service", "test"]
     )
     assert 0 == result.exit_code
-    tag = f"gcr.io/{mock_output.return_value}/datasette-test"
+    tag = f"us-docker.pkg.dev/{mock_output.return_value}/datasette/datasette-test"
     mock_call.assert_has_calls(
         [
+            mock.call(f"gcloud services enable artifactregistry.googleapis.com --project {mock_output.return_value} --quiet", shell=True),
+            mock.call(f"gcloud artifacts repositories describe datasette --project {mock_output.return_value} --location us --quiet", shell=True),
             mock.call(f"gcloud builds submit --tag {tag}", shell=True),
             mock.call(
-                "gcloud run deploy --allow-unauthenticated --platform=managed --image {} test".format(
+                "gcloud run deploy --allow-unauthenticated --platform=managed --image {} test --max-instances 1".format(
                     tag
                 ),
                 shell=True,
@@ -167,7 +171,7 @@ def test_publish_cloudrun_memory_cpu(
         assert 2 == result.exit_code
         return
     assert 0 == result.exit_code
-    tag = f"gcr.io/{mock_output.return_value}/datasette-test"
+    tag = f"us-docker.pkg.dev/{mock_output.return_value}/datasette/datasette-test"
     expected_call = (
         "gcloud run deploy --allow-unauthenticated --platform=managed"
         " --image {} test".format(tag)
@@ -179,8 +183,12 @@ def test_publish_cloudrun_memory_cpu(
         expected_call += " --cpu {}".format(cpu)
     if timeout:
         expected_build_call += f" --timeout {timeout}"
+    # max_instances defaults to 1
+    expected_call += " --max-instances 1"
     mock_call.assert_has_calls(
         [
+            mock.call(f"gcloud services enable artifactregistry.googleapis.com --project {mock_output.return_value} --quiet", shell=True),
+            mock.call(f"gcloud artifacts repositories describe datasette --project {mock_output.return_value} --location us --quiet", shell=True),
             mock.call(expected_build_call, shell=True),
             mock.call(
                 expected_call,

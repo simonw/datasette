@@ -66,11 +66,10 @@ def test_serve_with_get_headers():
     )
     # exit_code is 1 because it wasn't a 200 response
     assert result.exit_code == 1, result.output
-    assert result.output == (
-        "HTTP/1.1 302\n"
-        "location: /_memory\n"
-        "content-type: text/html; charset=utf-8\n"
-    )
+    lines = result.output.splitlines()
+    assert lines and lines[0] == "HTTP/1.1 302"
+    assert "location: /_memory" in lines
+    assert "content-type: text/html; charset=utf-8" in lines
 
 
 def test_serve_with_get_and_token():

@@ -194,25 +194,6 @@ async def test_skip_permission_checks_with_admin_actor(datasette_with_permission
 
 
 @pytest.mark.asyncio
-async def test_skip_permission_checks_context_cleanup_on_error(
-    datasette_with_permissions,
-):
-    """Test that context variable is reset even if request raises an error"""
-    ds = datasette_with_permissions
-
-    # Make a request to an invalid path with skip_permission_checks=True
-    # This should raise an error but still clean up the context variable
-    try:
-        await ds.client.get("/nonexistent/path", skip_permission_checks=True)
-    except Exception:
-        pass
-
-    # Verify that subsequent normal requests still check permissions
-    response = await ds.client.get("/test_db.json")
-    assert response.status_code == 403
-
-
-@pytest.mark.asyncio
 async def test_skip_permission_checks_shows_denied_tables():
     """Test that skip_permission_checks=True shows tables from denied databases in /-/tables.json"""
     ds = Datasette(

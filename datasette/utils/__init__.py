@@ -465,7 +465,7 @@ def make_dockerfile(
             "/usr/lib/x86_64-linux-gnu/mod_spatialite.so"
         )
     return """
-FROM python:3.14-slim-trixie
+FROM python:3.11.0-slim-bullseye
 COPY . /app
 WORKDIR /app
 {apt_get_extras}

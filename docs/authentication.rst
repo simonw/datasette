@@ -153,7 +153,7 @@ If you want to provide access to any actor with a value for a specific key, use 
         }
     }
 
-You can specify that only unauthenticated actors (from anynomous HTTP requests) should be allowed access using the special ``"unauthenticated": true`` key in an allow block (`allow demo <https://latest.datasette.io/-/allow-debug?actor=null&allow=%7B%0D%0A++++%22unauthenticated%22%3A+true%0D%0A%7D>`__, `deny demo <https://latest.datasette.io/-/allow-debug?actor=%7B%0D%0A++++%22id%22%3A+%22hello%22%0D%0A%7D&allow=%7B%0D%0A++++%22unauthenticated%22%3A+true%0D%0A%7D>`__):
+You can specify that only unauthenticated actors (from anonymous HTTP requests) should be allowed access using the special ``"unauthenticated": true`` key in an allow block (`allow demo <https://latest.datasette.io/-/allow-debug?actor=null&allow=%7B%0D%0A++++%22unauthenticated%22%3A+true%0D%0A%7D>`__, `deny demo <https://latest.datasette.io/-/allow-debug?actor=%7B%0D%0A++++%22id%22%3A+%22hello%22%0D%0A%7D&allow=%7B%0D%0A++++%22unauthenticated%22%3A+true%0D%0A%7D>`__):
 
 .. code-block:: json
 

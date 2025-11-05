@@ -42,7 +42,7 @@ setup(
         "datasette": ["templates/*.html", "vendored/**/*.txt"],
     },
     include_package_data=True,
-    python_requires=">=3.7",
+    python_requires=">=3.9",
     install_requires=[
         "asgiref>=3.2.10",
         "click>=7.1.1",

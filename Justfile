@@ -21,11 +21,11 @@ export DATASETTE_SECRET := "not_a_secret"
 @lint: codespell
   uv run black . --check
   uv run flake8
-  uv run cog --check README.md docs/*.rst
+  uv run --extra test cog --check README.md docs/*.rst
 
 # Rebuild docs with cog
 @cog:
-  uv run cog -r README.md docs/*.rst
+  uv run --extra test cog -r README.md docs/*.rst
 
 # Serve live docs on localhost:8000
 @docs: cog blacken-docs

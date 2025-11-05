@@ -443,6 +443,11 @@ def uninstall(packages, yes):
     help="Run an HTTP GET request against this path, print results and exit",
 )
 @click.option(
+    "--headers",
+    is_flag=True,
+    help="Include HTTP headers in --get output (requires --get)",
+)
+@click.option(
     "--token",
     help="API token to send with --get requests",
 )
@@ -510,6 +515,7 @@ def serve(
     secret,
     root,
     get,
+    headers,
     token,
     actor,
     version_note,
@@ -658,19 +664,33 @@ def serve(
     # Run async soundness checks - but only if we're not under pytest
     run_sync(lambda: check_databases(ds))
 
+    if headers and not get:
+        raise click.ClickException("--headers can only be used with --get")
+
     if token and not get:
         raise click.ClickException("--token can only be used with --get")
 
     if get:
         client = TestClient(ds)
-        headers = {}
+        request_headers = {}
         if token:
-            headers["Authorization"] = "Bearer {}".format(token)
+            request_headers["Authorization"] = "Bearer {}".format(token)
         cookies = {}
         if actor:
             cookies["ds_actor"] = client.actor_cookie(json.loads(actor))
-        response = client.get(get, headers=headers, cookies=cookies)
-        click.echo(response.text)
+        response = client.get(get, headers=request_headers, cookies=cookies)
+
+        if headers:
+            # Output HTTP status code, headers, two newlines, then the response body
+            click.echo(f"HTTP/1.1 {response.status}")
+            for key, value in response.headers.items():
+                click.echo(f"{key}: {value}")
+            if response.text:
+                click.echo()
+                click.echo(response.text)
+        else:
+            click.echo(response.text)
+
         exit_code = 0 if response.status == 200 else 1
         sys.exit(exit_code)
         return

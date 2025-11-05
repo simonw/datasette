@@ -15,12 +15,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Check out datasette
-      uses: actions/checkout@v2
+      uses: actions/checkout@v5
     - name: Set up Python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v6
       with:
         python-version: 3.9
-    - uses: actions/cache@v2
+    - uses: actions/cache@v4
       name: Configure pip caching
       with:
         path: ~/.cache/pip

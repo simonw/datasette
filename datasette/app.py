@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from asgi_csrf import Errors
 import asyncio
-import contextvars
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List
 
 if TYPE_CHECKING:
@@ -144,11 +143,6 @@ class PermissionCheck:
 SQLITE_LIMIT_ATTACHED = 10
 
 INTERNAL_DB_NAME = "__INTERNAL__"
-
-# Context variable to track when permission checks should be skipped
-_skip_permission_checks = contextvars.ContextVar(
-    "skip_permission_checks", default=False
-)
 
 Setting = collections.namedtuple("Setting", ("name", "default", "help"))
 SETTINGS = (
@@ -1327,10 +1321,6 @@ class Datasette:
             # For global actions, resource can be omitted:
             can_debug = await datasette.allowed(action="permissions-debug", actor=actor)
         """
-        # If permission checks are being skipped (e.g., for internal client calls), allow everything
-        if _skip_permission_checks.get():
-            return True
-
         from datasette.utils.actions_sql import check_permission_for_resource
 
         # For global actions, resource remains None
@@ -2373,6 +2363,12 @@ class NotFoundExplicit(NotFound):
 
 
 class DatasetteClient:
+    """Internal HTTP client for making requests to a Datasette instance.
+
+    Used for testing and for internal operations that need to make HTTP requests
+    to the Datasette app without going through an actual HTTP server.
+    """
+
     def __init__(self, ds):
         self.ds = ds
         self.app = ds.app()
@@ -2389,18 +2385,15 @@ class DatasetteClient:
         return path
 
     async def _request(self, method, path, skip_permission_checks=False, **kwargs):
+        from datasette.permissions import SkipPermissions
+
         if skip_permission_checks:
-            # Set the context variable to skip permission checks for this request
-            token = _skip_permission_checks.set(True)
-            try:
+            with SkipPermissions():
                 async with httpx.AsyncClient(
                     transport=httpx.ASGITransport(app=self.app),
                     cookies=kwargs.pop("cookies", None),
                 ) as client:
                     return await getattr(client, method)(self._fix(path), **kwargs)
-            finally:
-                # Always reset the context variable
-                _skip_permission_checks.reset(token)
         else:
             async with httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=self.app),
@@ -2409,6 +2402,24 @@ class DatasetteClient:
                 return await getattr(client, method)(self._fix(path), **kwargs)
 
     async def get(self, path, skip_permission_checks=False, **kwargs):
+        """Make a GET request to the Datasette instance.
+
+        Args:
+            path: The path to request (e.g., "/db/table.json")
+            skip_permission_checks: If True, bypass all permission checks for this request.
+                Useful for internal operations that need access to all resources.
+            **kwargs: Additional arguments to pass to httpx (e.g., cookies, headers)
+
+        Returns:
+            httpx.Response: The response from the request
+
+        Example:
+            response = await datasette.client.get("/db/table.json")
+            data = response.json()
+
+            # With permission checks skipped:
+            response = await datasette.client.get("/protected/table.json", skip_permission_checks=True)
+        """
         return await self._request(
             "get", path, skip_permission_checks=skip_permission_checks, **kwargs
         )
@@ -2444,11 +2455,22 @@ class DatasetteClient:
         )
 
     async def request(self, method, path, skip_permission_checks=False, **kwargs):
+        """Make an HTTP request with the specified method.
+
+        Args:
+            method: HTTP method (e.g., "GET", "POST", "PUT")
+            path: The path to request
+            skip_permission_checks: If True, bypass all permission checks for this request
+            **kwargs: Additional arguments to pass to httpx
+
+        Returns:
+            httpx.Response: The response from the request
+        """
+        from datasette.permissions import SkipPermissions
+
         avoid_path_rewrites = kwargs.pop("avoid_path_rewrites", None)
         if skip_permission_checks:
-            # Set the context variable to skip permission checks for this request
-            token = _skip_permission_checks.set(True)
-            try:
+            with SkipPermissions():
                 async with httpx.AsyncClient(
                     transport=httpx.ASGITransport(app=self.app),
                     cookies=kwargs.pop("cookies", None),
@@ -2456,9 +2478,6 @@ class DatasetteClient:
                     return await client.request(
                         method, self._fix(path, avoid_path_rewrites), **kwargs
                     )
-            finally:
-                # Always reset the context variable
-                _skip_permission_checks.reset(token)
         else:
             async with httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=self.app),

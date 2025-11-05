@@ -1,6 +1,31 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, NamedTuple
+import contextvars
+
+
+# Context variable to track when permission checks should be skipped
+_skip_permission_checks = contextvars.ContextVar(
+    "skip_permission_checks", default=False
+)
+
+
+class SkipPermissions:
+    """Context manager to temporarily skip permission checks.
+
+    Usage:
+        with SkipPermissions():
+            # Permission checks are skipped within this block
+            response = await datasette.client.get("/protected")
+    """
+
+    def __enter__(self):
+        self.token = _skip_permission_checks.set(True)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        _skip_permission_checks.reset(self.token)
+        return False
 
 
 class Resource(ABC):

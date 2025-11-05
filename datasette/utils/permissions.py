@@ -10,13 +10,29 @@ from datasette.plugins import pm
 from datasette.utils import await_me_maybe
 
 
+# Sentinel object to indicate permission checks should be skipped
+# NOTE: This is an internal implementation detail and not part of the public API.
+# It should not be considered stable and may change in future versions.
+# External code should use the SkipPermissions context manager instead.
+SKIP_PERMISSION_CHECKS = object()
+
+
 async def gather_permission_sql_from_hooks(
     *, datasette, actor: dict | None, action: str
-) -> List[PermissionSQL]:
+) -> List[PermissionSQL] | object:
     """Collect PermissionSQL objects from the permission_resources_sql hook.
 
     Ensures that each returned PermissionSQL has a populated ``source``.
+
+    Returns SKIP_PERMISSION_CHECKS sentinel if skip_permission_checks context variable
+    is set, signaling that all permission checks should be bypassed.
     """
+    from datasette.permissions import _skip_permission_checks
+
+    # Check if we should skip permission checks BEFORE calling hooks
+    # This avoids creating unawaited coroutines
+    if _skip_permission_checks.get():
+        return SKIP_PERMISSION_CHECKS
 
     hook_caller = pm.hook.permission_resources_sql
     hookimpls = hook_caller.get_hookimpls()

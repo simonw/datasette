@@ -4,6 +4,16 @@
 Changelog
 =========
 
+.. _v0_65_2:
+
+0.65.2 (2025-11-05)
+-------------------
+
+* Fixes an **open redirect** security issue: Datasette instances would redirect to ``example.com/foo/bar`` if you accessed the path ``//example.com/foo/bar``. Thanks to `James Jefferies <https://github.com/jamesjefferies>`__ for the fix. (:issue:`2429`)
+* Upgraded for compatibility with Python 3.14.
+* Fixed ``datasette publish cloudrun`` to work with changes to the underlying Cloud Run architecture. (:issue:`2511`)
+* Minor upgrades to fix warnings, including ``pkg_resources`` deprecation.
+
 .. _v1_0_a20:
 
 1.0a20 (2025-11-03)

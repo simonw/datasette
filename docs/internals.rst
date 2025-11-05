@@ -1045,6 +1045,36 @@ These methods can be used with :ref:`internals_datasette_urls` - for example:
 
 For documentation on available ``**kwargs`` options and the shape of the HTTPX Response object refer to the `HTTPX Async documentation <https://www.python-httpx.org/async/>`__.
 
+Bypassing permission checks
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+All ``datasette.client`` methods accept an optional ``skip_permission_checks=True`` parameter. When set, all permission checks will be bypassed for that request, allowing access to any resource regardless of the configured permissions.
+
+This is useful for plugins and internal operations that need to access all resources without being subject to permission restrictions.
+
+Example usage:
+
+.. code-block:: python
+
+    # Regular request - respects permissions
+    response = await datasette.client.get(
+        "/private-db/secret-table.json"
+    )
+    # May return 403 Forbidden if access is denied
+
+    # With skip_permission_checks - bypasses all permission checks
+    response = await datasette.client.get(
+        "/private-db/secret-table.json",
+        skip_permission_checks=True,
+    )
+    # Will return 200 OK and the data, regardless of permissions
+
+This parameter works with all HTTP methods (``get``, ``post``, ``put``, ``patch``, ``delete``, ``options``, ``head``) and the generic ``request`` method.
+
+.. warning::
+
+    Use ``skip_permission_checks=True`` with caution. It completely bypasses Datasette's permission system and should only be used in trusted plugin code or internal operations where you need guaranteed access to resources.
+
 .. _internals_datasette_urls:
 
 datasette.urls

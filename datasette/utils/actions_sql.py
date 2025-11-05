@@ -155,6 +155,16 @@ async def _build_single_action_sql(
         action=action,
     )
 
+    # If permission_sqls is the sentinel, skip all permission checks
+    # Return SQL that allows all resources
+    from datasette.utils.permissions import SKIP_PERMISSION_CHECKS
+
+    if permission_sqls is SKIP_PERMISSION_CHECKS:
+        cols = "parent, child, 'skip_permission_checks' AS reason"
+        if include_is_private:
+            cols += ", 0 AS is_private"
+        return f"SELECT {cols} FROM ({base_resources_sql})", {}
+
     all_params = {}
     rule_sqls = []
     restriction_sqls = []
@@ -435,6 +445,17 @@ async def build_permission_rules_sql(
         actor=actor,
         action=action,
     )
+
+    # If permission_sqls is the sentinel, skip all permission checks
+    # Return SQL that allows everything
+    from datasette.utils.permissions import SKIP_PERMISSION_CHECKS
+
+    if permission_sqls is SKIP_PERMISSION_CHECKS:
+        return (
+            "SELECT NULL AS parent, NULL AS child, 1 AS allow, 'skip_permission_checks' AS reason, 'skip' AS source_plugin",
+            {},
+            [],
+        )
 
     if not permission_sqls:
         return (

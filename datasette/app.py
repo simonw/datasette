@@ -2363,6 +2363,12 @@ class NotFoundExplicit(NotFound):
 
 
 class DatasetteClient:
+    """Internal HTTP client for making requests to a Datasette instance.
+
+    Used for testing and for internal operations that need to make HTTP requests
+    to the Datasette app without going through an actual HTTP server.
+    """
+
     def __init__(self, ds):
         self.ds = ds
         self.app = ds.app()
@@ -2378,40 +2384,87 @@ class DatasetteClient:
             path = f"http://localhost{path}"
         return path
 
-    async def _request(self, method, path, **kwargs):
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=self.app),
-            cookies=kwargs.pop("cookies", None),
-        ) as client:
-            return await getattr(client, method)(self._fix(path), **kwargs)
+    async def _request(self, method, path, skip_permission_checks=False, **kwargs):
+        from datasette.permissions import SkipPermissions
 
-    async def get(self, path, **kwargs):
-        return await self._request("get", path, **kwargs)
+        if skip_permission_checks:
+            with SkipPermissions():
+                async with httpx.AsyncClient(
+                    transport=httpx.ASGITransport(app=self.app),
+                    cookies=kwargs.pop("cookies", None),
+                ) as client:
+                    return await getattr(client, method)(self._fix(path), **kwargs)
+        else:
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=self.app),
+                cookies=kwargs.pop("cookies", None),
+            ) as client:
+                return await getattr(client, method)(self._fix(path), **kwargs)
 
-    async def options(self, path, **kwargs):
-        return await self._request("options", path, **kwargs)
+    async def get(self, path, skip_permission_checks=False, **kwargs):
+        return await self._request(
+            "get", path, skip_permission_checks=skip_permission_checks, **kwargs
+        )
 
-    async def head(self, path, **kwargs):
-        return await self._request("head", path, **kwargs)
+    async def options(self, path, skip_permission_checks=False, **kwargs):
+        return await self._request(
+            "options", path, skip_permission_checks=skip_permission_checks, **kwargs
+        )
 
-    async def post(self, path, **kwargs):
-        return await self._request("post", path, **kwargs)
+    async def head(self, path, skip_permission_checks=False, **kwargs):
+        return await self._request(
+            "head", path, skip_permission_checks=skip_permission_checks, **kwargs
+        )
 
-    async def put(self, path, **kwargs):
-        return await self._request("put", path, **kwargs)
+    async def post(self, path, skip_permission_checks=False, **kwargs):
+        return await self._request(
+            "post", path, skip_permission_checks=skip_permission_checks, **kwargs
+        )
 
-    async def patch(self, path, **kwargs):
-        return await self._request("patch", path, **kwargs)
+    async def put(self, path, skip_permission_checks=False, **kwargs):
+        return await self._request(
+            "put", path, skip_permission_checks=skip_permission_checks, **kwargs
+        )
 
-    async def delete(self, path, **kwargs):
-        return await self._request("delete", path, **kwargs)
+    async def patch(self, path, skip_permission_checks=False, **kwargs):
+        return await self._request(
+            "patch", path, skip_permission_checks=skip_permission_checks, **kwargs
+        )
 
-    async def request(self, method, path, **kwargs):
+    async def delete(self, path, skip_permission_checks=False, **kwargs):
+        return await self._request(
+            "delete", path, skip_permission_checks=skip_permission_checks, **kwargs
+        )
+
+    async def request(self, method, path, skip_permission_checks=False, **kwargs):
+        """Make an HTTP request with the specified method.
+
+        Args:
+            method: HTTP method (e.g., "GET", "POST", "PUT")
+            path: The path to request
+            skip_permission_checks: If True, bypass all permission checks for this request
+            **kwargs: Additional arguments to pass to httpx
+
+        Returns:
+            httpx.Response: The response from the request
+        """
+        from datasette.permissions import SkipPermissions
+
         avoid_path_rewrites = kwargs.pop("avoid_path_rewrites", None)
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=self.app),
-            cookies=kwargs.pop("cookies", None),
-        ) as client:
-            return await client.request(
-                method, self._fix(path, avoid_path_rewrites), **kwargs
-            )
+        if skip_permission_checks:
+            with SkipPermissions():
+                async with httpx.AsyncClient(
+                    transport=httpx.ASGITransport(app=self.app),
+                    cookies=kwargs.pop("cookies", None),
+                ) as client:
+                    return await client.request(
+                        method, self._fix(path, avoid_path_rewrites), **kwargs
+                    )
+        else:
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=self.app),
+                cookies=kwargs.pop("cookies", None),
+            ) as client:
+                return await client.request(
+                    method, self._fix(path, avoid_path_rewrites), **kwargs
+                )

@@ -781,8 +781,8 @@ Use ``is_mutable=False`` to add an immutable database.
 
 .. _datasette_add_memory_database:
 
-.add_memory_database(name)
---------------------------
+.add_memory_database(memory_name, name=None, route=None)
+--------------------------------------------------------
 
 Adds a shared in-memory database with the specified name:
 
@@ -800,7 +800,9 @@ This is a shortcut for the following:
         Database(datasette, memory_name="statistics")
     )
 
-Using either of these pattern will result in the in-memory database being served at ``/statistics``.
+Using either of these patterns will result in the in-memory database being served at ``/statistics``.
+
+The ``name`` and ``route`` parameters are optional and work the same way as they do for :ref:`datasette_add_database`.
 
 .. _datasette_remove_database:
 

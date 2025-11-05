@@ -15,7 +15,7 @@ async def datasette_with_permissions():
     """A datasette instance with permission restrictions for testing"""
     ds = Datasette(config={"databases": {"test_db": {"allow": {"id": "admin"}}}})
     await ds.invoke_startup()
-    db = ds.add_memory_database("test_db")
+    db = ds.add_memory_database("test_datasette_with_permissions", name="test_db")
     await db.execute_write(
         "create table if not exists test_table (id integer primary key, name text)"
     )

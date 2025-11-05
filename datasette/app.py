@@ -2402,24 +2402,6 @@ class DatasetteClient:
                 return await getattr(client, method)(self._fix(path), **kwargs)
 
     async def get(self, path, skip_permission_checks=False, **kwargs):
-        """Make a GET request to the Datasette instance.
-
-        Args:
-            path: The path to request (e.g., "/db/table.json")
-            skip_permission_checks: If True, bypass all permission checks for this request.
-                Useful for internal operations that need access to all resources.
-            **kwargs: Additional arguments to pass to httpx (e.g., cookies, headers)
-
-        Returns:
-            httpx.Response: The response from the request
-
-        Example:
-            response = await datasette.client.get("/db/table.json")
-            data = response.json()
-
-            # With permission checks skipped:
-            response = await datasette.client.get("/protected/table.json", skip_permission_checks=True)
-        """
         return await self._request(
             "get", path, skip_permission_checks=skip_permission_checks, **kwargs
         )

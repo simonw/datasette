@@ -13,6 +13,8 @@ _skip_permission_checks = contextvars.ContextVar(
 class SkipPermissions:
     """Context manager to temporarily skip permission checks.
 
+    This is not a stable API and may change in future releases.
+
     Usage:
         with SkipPermissions():
             # Permission checks are skipped within this block

@@ -11,9 +11,6 @@ from datasette.utils import await_me_maybe
 
 
 # Sentinel object to indicate permission checks should be skipped
-# NOTE: This is an internal implementation detail and not part of the public API.
-# It should not be considered stable and may change in future versions.
-# External code should use the SkipPermissions context manager instead.
 SKIP_PERMISSION_CHECKS = object()
 
 

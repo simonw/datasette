@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from asgi_csrf import Errors
 import asyncio
+import contextvars
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List
 
 if TYPE_CHECKING:
@@ -143,6 +144,11 @@ class PermissionCheck:
 SQLITE_LIMIT_ATTACHED = 10
 
 INTERNAL_DB_NAME = "__INTERNAL__"
+
+# Context variable to track when permission checks should be skipped
+_skip_permission_checks = contextvars.ContextVar(
+    "skip_permission_checks", default=False
+)
 
 Setting = collections.namedtuple("Setting", ("name", "default", "help"))
 SETTINGS = (
@@ -1321,6 +1327,10 @@ class Datasette:
             # For global actions, resource can be omitted:
             can_debug = await datasette.allowed(action="permissions-debug", actor=actor)
         """
+        # If permission checks are being skipped (e.g., for internal client calls), allow everything
+        if _skip_permission_checks.get():
+            return True
+
         from datasette.utils.actions_sql import check_permission_for_resource
 
         # For global actions, resource remains None
@@ -2378,40 +2388,82 @@ class DatasetteClient:
             path = f"http://localhost{path}"
         return path
 
-    async def _request(self, method, path, **kwargs):
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=self.app),
-            cookies=kwargs.pop("cookies", None),
-        ) as client:
-            return await getattr(client, method)(self._fix(path), **kwargs)
+    async def _request(self, method, path, skip_permission_checks=False, **kwargs):
+        if skip_permission_checks:
+            # Set the context variable to skip permission checks for this request
+            token = _skip_permission_checks.set(True)
+            try:
+                async with httpx.AsyncClient(
+                    transport=httpx.ASGITransport(app=self.app),
+                    cookies=kwargs.pop("cookies", None),
+                ) as client:
+                    return await getattr(client, method)(self._fix(path), **kwargs)
+            finally:
+                # Always reset the context variable
+                _skip_permission_checks.reset(token)
+        else:
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=self.app),
+                cookies=kwargs.pop("cookies", None),
+            ) as client:
+                return await getattr(client, method)(self._fix(path), **kwargs)
 
-    async def get(self, path, **kwargs):
-        return await self._request("get", path, **kwargs)
+    async def get(self, path, skip_permission_checks=False, **kwargs):
+        return await self._request(
+            "get", path, skip_permission_checks=skip_permission_checks, **kwargs
+        )
 
-    async def options(self, path, **kwargs):
-        return await self._request("options", path, **kwargs)
+    async def options(self, path, skip_permission_checks=False, **kwargs):
+        return await self._request(
+            "options", path, skip_permission_checks=skip_permission_checks, **kwargs
+        )
 
-    async def head(self, path, **kwargs):
-        return await self._request("head", path, **kwargs)
+    async def head(self, path, skip_permission_checks=False, **kwargs):
+        return await self._request(
+            "head", path, skip_permission_checks=skip_permission_checks, **kwargs
+        )
 
-    async def post(self, path, **kwargs):
-        return await self._request("post", path, **kwargs)
+    async def post(self, path, skip_permission_checks=False, **kwargs):
+        return await self._request(
+            "post", path, skip_permission_checks=skip_permission_checks, **kwargs
+        )
 
-    async def put(self, path, **kwargs):
-        return await self._request("put", path, **kwargs)
+    async def put(self, path, skip_permission_checks=False, **kwargs):
+        return await self._request(
+            "put", path, skip_permission_checks=skip_permission_checks, **kwargs
+        )
 
-    async def patch(self, path, **kwargs):
-        return await self._request("patch", path, **kwargs)
+    async def patch(self, path, skip_permission_checks=False, **kwargs):
+        return await self._request(
+            "patch", path, skip_permission_checks=skip_permission_checks, **kwargs
+        )
 
-    async def delete(self, path, **kwargs):
-        return await self._request("delete", path, **kwargs)
+    async def delete(self, path, skip_permission_checks=False, **kwargs):
+        return await self._request(
+            "delete", path, skip_permission_checks=skip_permission_checks, **kwargs
+        )
 
-    async def request(self, method, path, **kwargs):
+    async def request(self, method, path, skip_permission_checks=False, **kwargs):
         avoid_path_rewrites = kwargs.pop("avoid_path_rewrites", None)
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=self.app),
-            cookies=kwargs.pop("cookies", None),
-        ) as client:
-            return await client.request(
-                method, self._fix(path, avoid_path_rewrites), **kwargs
-            )
+        if skip_permission_checks:
+            # Set the context variable to skip permission checks for this request
+            token = _skip_permission_checks.set(True)
+            try:
+                async with httpx.AsyncClient(
+                    transport=httpx.ASGITransport(app=self.app),
+                    cookies=kwargs.pop("cookies", None),
+                ) as client:
+                    return await client.request(
+                        method, self._fix(path, avoid_path_rewrites), **kwargs
+                    )
+            finally:
+                # Always reset the context variable
+                _skip_permission_checks.reset(token)
+        else:
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=self.app),
+                cookies=kwargs.pop("cookies", None),
+            ) as client:
+                return await client.request(
+                    method, self._fix(path, avoid_path_rewrites), **kwargs
+                )

@@ -451,8 +451,15 @@ See :ref:`publish_cloud_run`.
       --cpu [1|2|4]                   Number of vCPUs to allocate in Cloud Run
       --timeout INTEGER               Build timeout in seconds
       --apt-get-install TEXT          Additional packages to apt-get install
-      --max-instances INTEGER         Maximum Cloud Run instances
+      --max-instances INTEGER         Maximum Cloud Run instances (use 0 to remove
+                                      the limit)  [default: 1]
       --min-instances INTEGER         Minimum Cloud Run instances
+      --artifact-repository TEXT      Artifact Registry repository to store the
+                                      image  [default: datasette]
+      --artifact-region TEXT          Artifact Registry location (region or multi-
+                                      region)  [default: us]
+      --artifact-project TEXT         Project ID for Artifact Registry (defaults to
+                                      the active project)
       --help                          Show this message and exit.
 
 

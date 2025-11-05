@@ -91,12 +91,13 @@ jobs:
         sphinx-build -b xml . _build
         sphinx-to-sqlite ../docs.db _build
         cd ..
-    - name: Set up Cloud Run
-      uses: google-github-actions/setup-gcloud@v0
+    - id: auth
+      name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
       with:
-        version: '318.0.0'
-        service_account_email: ${{ secrets.GCP_SA_EMAIL }}
-        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v3
     - name: Deploy stable-docs.datasette.io to Cloud Run
       run: |-
         gcloud config set run/region us-central1

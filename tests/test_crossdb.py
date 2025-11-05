@@ -44,7 +44,7 @@ def test_crossdb_warning_if_too_many_databases(tmp_path_factory):
         conn = sqlite3.connect(path)
         conn.execute("vacuum")
         dbs.append(path)
-    runner = CliRunner(mix_stderr=False)
+    runner = CliRunner()
     result = runner.invoke(
         cli,
         [

@@ -114,7 +114,7 @@ def test_settings(config_dir_client):
 def test_error_on_config_json(tmp_path_factory):
     config_dir = tmp_path_factory.mktemp("config-dir")
     (config_dir / "config.json").write_text(json.dumps(SETTINGS), "utf-8")
-    runner = CliRunner(mix_stderr=False)
+    runner = CliRunner()
     result = runner.invoke(cli, [str(config_dir), "--get", "/-/settings.json"])
     assert result.exit_code == 1
     assert "config.json should be renamed to settings.json" in result.stderr

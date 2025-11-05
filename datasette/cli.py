@@ -445,7 +445,7 @@ def uninstall(packages, yes):
 @click.option(
     "--headers",
     is_flag=True,
-    help="Include HTTP headers in --get output (requires --get)",
+    help="Include HTTP headers in --get output",
 )
 @click.option(
     "--token",

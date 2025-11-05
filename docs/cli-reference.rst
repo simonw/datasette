@@ -121,6 +121,7 @@ Once started you can access it at ``http://localhost:8001``
                                       the root user
       --get TEXT                      Run an HTTP GET request against this path,
                                       print results and exit
+      --headers                       Include HTTP headers in --get output
       --token TEXT                    API token to send with --get requests
       --actor TEXT                    Actor to use for --get requests (JSON string)
       --version-note TEXT             Additional note to show on /-/versions

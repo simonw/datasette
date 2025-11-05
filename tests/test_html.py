@@ -333,7 +333,7 @@ def test_row_links_from_other_tables(app_client, path, expected_text, expected_l
     soup = Soup(response.body, "html.parser")
     h2 = soup.find("h2")
     assert h2.text == "Links from other tables"
-    li = h2.findNext("ul").find("li")
+    li = h2.find_next("ul").find("li")
     text = re.sub(r"\s+", " ", li.text.strip())
     assert text == expected_text
     link = li.find("a")["href"]

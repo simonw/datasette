@@ -1032,7 +1032,7 @@ def test_column_metadata(app_client):
     response = app_client.get("/fixtures/roadside_attractions")
     soup = Soup(response.body, "html.parser")
     dl = soup.find("dl")
-    assert [(dt.text, dt.nextSibling.text) for dt in dl.find_all("dt")] == [
+    assert [(dt.text, dt.next_sibling.text) for dt in dl.find_all("dt")] == [
         ("name", "The name of the attraction"),
         ("address", "The street address for the attraction"),
     ]

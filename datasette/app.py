@@ -2150,6 +2150,11 @@ class DatasetteRouter:
         context = {}
         if path.endswith(b"/"):
             path = path.rstrip(b"/")
+
+            # If you redirect with a // at the beginning, you end up with an open redirect, so
+            # https://my.site//foo/ - will redirect to https://foo
+            path = re.sub(rb"^/+", b"/", path)
+
             if request.scope["query_string"]:
                 path += b"?" + request.scope["query_string"]
             await asgi_send_redirect(send, path.decode("latin1"))

@@ -695,7 +695,7 @@ class Datasette:
             used_default = True
         self._permission_checks.append(
             {
-                "when": datetime.datetime.utcnow().isoformat(),
+                "when": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "actor": actor,
                 "action": action,
                 "resource": resource,

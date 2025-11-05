@@ -67,13 +67,13 @@ def test_table_cell_truncation():
             "Arcad…",
         ] == [
             td.string
-            for td in table.findAll("td", {"class": "col-neighborhood-b352a7"})
+            for td in table.find_all("td", {"class": "col-neighborhood-b352a7"})
         ]
         # URLs should be truncated too
         response2 = client.get("/fixtures/roadside_attractions")
         assert response2.status == 200
         table = Soup(response2.body, "html.parser").find("table")
-        tds = table.findAll("td", {"class": "col-url"})
+        tds = table.find_all("td", {"class": "col-url"})
         assert [str(td) for td in tds] == [
             '<td class="col-url type-str"><a href="https://www.mysteryspot.com/">http…</a></td>',
             '<td class="col-url type-str"><a href="https://winchestermysteryhouse.com/">http…</a></td>',
@@ -204,7 +204,7 @@ def test_searchable_view_persists_fts_table(app_client):
     response = app_client.get(
         "/fixtures/searchable_view?_fts_table=searchable_fts&_fts_pk=pk"
     )
-    inputs = Soup(response.body, "html.parser").find("form").findAll("input")
+    inputs = Soup(response.body, "html.parser").find("form").find_all("input")
     hiddens = [i for i in inputs if i["type"] == "hidden"]
     assert [("_fts_table", "searchable_fts"), ("_fts_pk", "pk")] == [
         (hidden["name"], hidden["value"]) for hidden in hiddens
@@ -226,7 +226,7 @@ def test_sort_by_desc_redirects(app_client):
 def test_sort_links(app_client):
     response = app_client.get("/fixtures/sortable?_sort=sortable")
     assert response.status == 200
-    ths = Soup(response.body, "html.parser").findAll("th")
+    ths = Soup(response.body, "html.parser").find_all("th")
     attrs_and_link_attrs = [
         {
             "attrs": th.attrs,
@@ -332,7 +332,7 @@ def test_facet_display(app_client):
     )
     assert response.status == 200
     soup = Soup(response.body, "html.parser")
-    divs = soup.find("div", {"class": "facet-results"}).findAll("div")
+    divs = soup.find("div", {"class": "facet-results"}).find_all("div")
     actual = []
     for div in divs:
         actual.append(
@@ -344,7 +344,7 @@ def test_facet_display(app_client):
                         "qs": a["href"].split("?")[-1],
                         "count": int(str(a.parent).split("</a>")[1].split("<")[0]),
                     }
-                    for a in div.find("ul").findAll("a")
+                    for a in div.find("ul").find_all("a")
                 ],
             }
         )
@@ -412,7 +412,7 @@ def test_facets_persist_through_filter_form(app_client):
         "/fixtures/facetable?_facet=planet_int&_facet=_city_id&_facet_array=tags"
     )
     assert response.status == 200
-    inputs = Soup(response.body, "html.parser").find("form").findAll("input")
+    inputs = Soup(response.body, "html.parser").find("form").find_all("input")
     hiddens = [i for i in inputs if i["type"] == "hidden"]
     assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == [
         ("_facet", "planet_int"),
@@ -424,7 +424,7 @@ def test_facets_persist_through_filter_form(app_client):
 def test_next_does_not_persist_in_hidden_field(app_client):
     response = app_client.get("/fixtures/searchable?_size=1&_next=1")
     assert response.status == 200
-    inputs = Soup(response.body, "html.parser").find("form").findAll("input")
+    inputs = Soup(response.body, "html.parser").find("form").find_all("input")
     hiddens = [i for i in inputs if i["type"] == "hidden"]
     assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == [
         ("_size", "1"),
@@ -436,7 +436,7 @@ def test_table_html_simple_primary_key(app_client):
     assert response.status == 200
     table = Soup(response.body, "html.parser").find("table")
     assert table["class"] == ["rows-and-columns"]
-    ths = table.findAll("th")
+    ths = table.find_all("th")
     assert "id\xa0▼" == ths[0].find("a").string.strip()
     for expected_col, th in zip(("content",), ths[1:]):
         a = th.find("a")
@@ -466,7 +466,7 @@ def test_table_csv_json_export_interface(app_client):
     links = (
         Soup(response.body, "html.parser")
         .find("p", {"class": "export-links"})
-        .findAll("a")
+        .find_all("a")
     )
     actual = [l["href"] for l in links]
     expected = [
@@ -480,7 +480,7 @@ def test_table_csv_json_export_interface(app_client):
     assert expected == actual
     # And the advaced export box at the bottom:
     div = Soup(response.body, "html.parser").find("div", {"class": "advanced-export"})
-    json_links = [a["href"] for a in div.find("p").findAll("a")]
+    json_links = [a["href"] for a in div.find("p").find_all("a")]
     assert [
         "/fixtures/simple_primary_key.json?id__gt=2",
         "/fixtures/simple_primary_key.json?id__gt=2&_shape=array",
@@ -490,7 +490,7 @@ def test_table_csv_json_export_interface(app_client):
     # And the CSV form
     form = div.find("form")
     assert form["action"].endswith("/simple_primary_key.csv")
-    inputs = [str(input) for input in form.findAll("input")]
+    inputs = [str(input) for input in form.find_all("input")]
     assert [
         '<input name="_dl" type="checkbox"/>',
         '<input type="submit" value="Export CSV"/>',
@@ -505,7 +505,7 @@ def test_csv_json_export_links_include_labels_if_foreign_keys(app_client):
     links = (
         Soup(response.body, "html.parser")
         .find("p", {"class": "export-links"})
-        .findAll("a")
+        .find_all("a")
     )
     actual = [l["href"] for l in links]
     expected = [
@@ -554,7 +554,7 @@ def test_rowid_sortable_no_primary_key(app_client):
     assert response.status == 200
     table = Soup(response.body, "html.parser").find("table")
     assert table["class"] == ["rows-and-columns"]
-    ths = table.findAll("th")
+    ths = table.find_all("th")
     assert "rowid\xa0▼" == ths[1].find("a").string.strip()
 
 
@@ -562,7 +562,7 @@ def test_table_html_compound_primary_key(app_client):
     response = app_client.get("/fixtures/compound_primary_key")
     assert response.status == 200
     table = Soup(response.body, "html.parser").find("table")
-    ths = table.findAll("th")
+    ths = table.find_all("th")
     assert "Link" == ths[0].string.strip()
     for expected_col, th in zip(("pk1", "pk2", "content"), ths[1:]):
         a = th.find("a")
@@ -783,7 +783,7 @@ def test_advanced_export_box(app_client, path, has_object, has_stream, has_expan
     if has_object:
         expected_json_shapes.append("object")
     div = soup.find("div", {"class": "advanced-export"})
-    assert expected_json_shapes == [a.text for a in div.find("p").findAll("a")]
+    assert expected_json_shapes == [a.text for a in div.find("p").find_all("a")]
     # "stream all rows" option
     if has_stream:
         assert "stream all rows" in str(div)
@@ -799,13 +799,13 @@ def test_extra_where_clauses(app_client):
     soup = Soup(response.body, "html.parser")
     div = soup.select(".extra-wheres")[0]
     assert "2 extra where clauses" == div.find("h3").text
-    hrefs = [a["href"] for a in div.findAll("a")]
+    hrefs = [a["href"] for a in div.find_all("a")]
     assert [
         "/fixtures/facetable?_where=_city_id%3D1",
         "/fixtures/facetable?_where=_neighborhood%3D%27Dogpatch%27",
     ] == hrefs
     # These should also be persisted as hidden fields
-    inputs = soup.find("form").findAll("input")
+    inputs = soup.find("form").find_all("input")
     hiddens = [i for i in inputs if i["type"] == "hidden"]
     assert [("_where", "_neighborhood='Dogpatch'"), ("_where", "_city_id=1")] == [
         (hidden["name"], hidden["value"]) for hidden in hiddens
@@ -829,7 +829,7 @@ def test_extra_where_clauses(app_client):
 def test_other_hidden_form_fields(app_client, path, expected_hidden):
     response = app_client.get(path)
     soup = Soup(response.body, "html.parser")
-    inputs = soup.find("form").findAll("input")
+    inputs = soup.find("form").find_all("input")
     hiddens = [i for i in inputs if i["type"] == "hidden"]
     assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == expected_hidden
 
@@ -847,7 +847,7 @@ def test_search_and_sort_fields_not_duplicated(app_client, path, expected_hidden
     # https://github.com/simonw/datasette/issues/1214
     response = app_client.get(path)
     soup = Soup(response.body, "html.parser")
-    inputs = soup.find("form").findAll("input")
+    inputs = soup.find("form").find_all("input")
     hiddens = [i for i in inputs if i["type"] == "hidden"]
     assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == expected_hidden
 
@@ -896,7 +896,7 @@ def test_metadata_sort(app_client):
     assert response.status == 200
     table = Soup(response.body, "html.parser").find("table")
     assert table["class"] == ["rows-and-columns"]
-    ths = table.findAll("th")
+    ths = table.find_all("th")
     assert ["id", "name\xa0▼"] == [th.find("a").string.strip() for th in ths]
     rows = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
     expected = [
@@ -931,7 +931,7 @@ def test_metadata_sort_desc(app_client):
     assert response.status == 200
     table = Soup(response.body, "html.parser").find("table")
     assert table["class"] == ["rows-and-columns"]
-    ths = table.findAll("th")
+    ths = table.find_all("th")
     assert ["pk\xa0▲", "name"] == [th.find("a").string.strip() for th in ths]
     rows = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
     expected = [
@@ -1032,7 +1032,7 @@ def test_column_metadata(app_client):
     response = app_client.get("/fixtures/roadside_attractions")
     soup = Soup(response.body, "html.parser")
     dl = soup.find("dl")
-    assert [(dt.text, dt.nextSibling.text) for dt in dl.findAll("dt")] == [
+    assert [(dt.text, dt.nextSibling.text) for dt in dl.find_all("dt")] == [
         ("name", "The name of the attraction"),
         ("address", "The street address for the attraction"),
     ]

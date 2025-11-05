@@ -40,7 +40,7 @@ def test_homepage(app_client_two_attached_databases):
     )
     # We should only show visible, not hidden tables here:
     table_links = [
-        {"href": a["href"], "text": a.text.strip()} for a in links_p.findAll("a")
+        {"href": a["href"], "text": a.text.strip()} for a in links_p.find_all("a")
     ]
     assert [
         {"href": r"/extra+database/searchable", "text": "searchable"},
@@ -186,7 +186,7 @@ def test_row_page_does_not_truncate():
         assert table["class"] == ["rows-and-columns"]
         assert ["Mission"] == [
             td.string
-            for td in table.findAll("td", {"class": "col-neighborhood-b352a7"})
+            for td in table.find_all("td", {"class": "col-neighborhood-b352a7"})
         ]
 
 
@@ -202,7 +202,7 @@ def test_query_page_truncates():
         )
         assert response.status == 200
         table = Soup(response.body, "html.parser").find("table")
-        tds = table.findAll("td")
+        tds = table.find_all("td")
         assert [str(td) for td in tds] == [
             '<td class="col-a">this …</td>',
             '<td class="col-b"><a href="https://example.com/">http…</a></td>',
@@ -421,7 +421,7 @@ def test_database_download_for_immutable():
         # Regular page should have a download link
         response = client.get("/fixtures")
         soup = Soup(response.body, "html.parser")
-        assert len(soup.findAll("a", {"href": re.compile(r"\.db$")}))
+        assert len(soup.find_all("a", {"href": re.compile(r"\.db$")}))
         # Check we can actually download it
         download_response = client.get("/fixtures.db")
         assert download_response.status == 200
@@ -449,7 +449,7 @@ def test_database_download_for_immutable():
 def test_database_download_disallowed_for_mutable(app_client):
     response = app_client.get("/fixtures")
     soup = Soup(response.body, "html.parser")
-    assert 0 == len(soup.findAll("a", {"href": re.compile(r"\.db$")}))
+    assert 0 == len(soup.find_all("a", {"href": re.compile(r"\.db$")}))
     assert 403 == app_client.get("/fixtures.db").status
 
 
@@ -458,7 +458,7 @@ def test_database_download_disallowed_for_memory():
         # Memory page should NOT have a download link
         response = client.get("/_memory")
         soup = Soup(response.body, "html.parser")
-        assert 0 == len(soup.findAll("a", {"href": re.compile(r"\.db$")}))
+        assert 0 == len(soup.find_all("a", {"href": re.compile(r"\.db$")}))
         assert 404 == client.get("/_memory.db").status
 
 
@@ -468,7 +468,7 @@ def test_allow_download_off():
     ) as client:
         response = client.get("/fixtures")
         soup = Soup(response.body, "html.parser")
-        assert not len(soup.findAll("a", {"href": re.compile(r"\.db$")}))
+        assert not len(soup.find_all("a", {"href": re.compile(r"\.db$")}))
         # Accessing URL directly should 403
         response = client.get("/fixtures.db")
         assert 403 == response.status
@@ -478,7 +478,7 @@ def test_allow_sql_off():
     with make_app_client(metadata={"allow_sql": {}}) as client:
         response = client.get("/fixtures")
         soup = Soup(response.body, "html.parser")
-        assert not len(soup.findAll("textarea", {"name": "sql"}))
+        assert not len(soup.find_all("textarea", {"name": "sql"}))
         # The table page should no longer show "View and edit SQL"
         response = client.get("/fixtures/sortable")
         assert b"View and edit SQL" not in response.body
@@ -767,7 +767,7 @@ def test_base_url_config(app_client_base_url_prefix, path, use_prefix):
     soup = Soup(response.body, "html.parser")
     for form in soup.select("form"):
         assert form["action"].startswith("/prefix")
-    for el in soup.findAll(["a", "link", "script"]):
+    for el in soup.find_all(["a", "link", "script"]):
         if "href" in el.attrs:
             href = el["href"]
         elif "src" in el.attrs:

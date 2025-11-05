@@ -337,7 +337,7 @@ def test_permissions_debug(app_client):
     assert response.status == 200
     # Should show one failure and one success
     soup = Soup(response.body, "html.parser")
-    check_divs = soup.findAll("div", {"class": "check"})
+    check_divs = soup.find_all("div", {"class": "check"})
     checks = [
         {
             "action": div.select_one(".check-action").text,

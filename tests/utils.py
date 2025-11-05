@@ -2,7 +2,7 @@ from datasette.utils.sqlite import sqlite3
 
 
 def assert_footer_links(soup):
-    footer_links = soup.find("footer").findAll("a")
+    footer_links = soup.find("footer").find_all("a")
     assert 4 == len(footer_links)
     datasette_link, license_link, source_link, about_link = footer_links
     assert "Datasette" == datasette_link.text.strip()

@@ -108,7 +108,7 @@ def test_hook_plugin_prepare_connection_arguments(app_client):
 def test_hook_extra_css_urls(app_client, path, expected_decoded_object):
     response = app_client.get(path)
     assert response.status == 200
-    links = Soup(response.body, "html.parser").findAll("link")
+    links = Soup(response.body, "html.parser").find_all("link")
     special_href = [
         l for l in links if l.attrs["href"].endswith("/extra-css-urls-demo.css")
     ][0]["href"]
@@ -121,7 +121,7 @@ def test_hook_extra_css_urls(app_client, path, expected_decoded_object):
 
 def test_hook_extra_js_urls(app_client):
     response = app_client.get("/")
-    scripts = Soup(response.body, "html.parser").findAll("script")
+    scripts = Soup(response.body, "html.parser").find_all("script")
     script_attrs = [s.attrs for s in scripts]
     for attrs in [
         {
@@ -145,7 +145,7 @@ def test_plugins_with_duplicate_js_urls(app_client):
     # What matters is that https://plugin-example.datasette.io/jquery.js is only there once
     # and it comes before plugin1.js and plugin2.js which could be in either
     # order
-    scripts = Soup(response.body, "html.parser").findAll("script")
+    scripts = Soup(response.body, "html.parser").find_all("script")
     srcs = [s["src"] for s in scripts if s.get("src")]
     # No duplicates allowed:
     assert len(srcs) == len(set(srcs))
@@ -513,7 +513,7 @@ def test_hook_register_output_renderer_can_render(app_client):
     links = (
         Soup(response.body, "html.parser")
         .find("p", {"class": "export-links"})
-        .findAll("a")
+        .find_all("a")
     )
     actual = [l["href"] for l in links]
     # Should not be present because we sent ?_no_can_render=1

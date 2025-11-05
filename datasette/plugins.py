@@ -1,6 +1,7 @@
 import importlib
+import importlib.metadata
+import importlib.resources
 import pluggy
-import pkg_resources
 import sys
 from . import hookspecs
 
@@ -40,16 +41,16 @@ def get_plugins():
         templates_path = None
         if plugin.__name__ not in DEFAULT_PLUGINS:
             try:
-                if pkg_resources.resource_isdir(plugin.__name__, "static"):
-                    static_path = pkg_resources.resource_filename(
-                        plugin.__name__, "static"
+                if (importlib.resources.files(plugin.__name__) / "static").is_dir():
+                    static_path = str(
+                        importlib.resources.files(plugin.__name__) / "static"
                     )
-                if pkg_resources.resource_isdir(plugin.__name__, "templates"):
-                    templates_path = pkg_resources.resource_filename(
-                        plugin.__name__, "templates"
+                if (importlib.resources.files(plugin.__name__) / "templates").is_dir():
+                    templates_path = str(
+                        importlib.resources.files(plugin.__name__) / "templates"
                     )
-            except (KeyError, ImportError):
-                # Caused by --plugins_dir= plugins - KeyError/ImportError thrown in Py3.5
+            except (TypeError, ModuleNotFoundError):
+                # Caused by --plugins_dir= plugins
                 pass
         plugin_info = {
             "name": plugin.__name__,

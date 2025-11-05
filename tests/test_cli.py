@@ -146,6 +146,7 @@ def test_metadata_yaml():
         actor=None,
         version_note=None,
         get=None,
+        headers=False,
         help_settings=False,
         pdb=False,
         crossdb=False,

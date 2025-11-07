@@ -142,7 +142,7 @@ async def test_database_page(ds_client):
 
     # And a list of tables
     for fragment in (
-        '<h2 id="tables">Tables</h2>',
+        '<h2 id="tables">Tables',
         '<h3><a href="/fixtures/sortable">sortable</a></h3>',
         "<p><em>pk, foreign_key_with_label, foreign_key_with_blank_label, ",
     ):

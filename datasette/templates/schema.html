@@ -1,12 +1,14 @@
 {% extends "base.html" %}
 
-{% block title %}{% if is_instance %}Schema for all databases{% else %}Schema for {{ schemas[0].database }}{% endif %}{% endblock %}
+{% block title %}{% if is_instance %}Schema for all databases{% elif table_name %}Schema for {{ schemas[0].database }}.{{ table_name }}{% else %}Schema for {{ schemas[0].database }}{% endif %}{% endblock %}
 
 {% block body_class %}schema{% endblock %}
 
 {% block crumbs %}
 {% if is_instance %}
 {{ crumbs.nav(request=request) }}
+{% elif table_name %}
+{{ crumbs.nav(request=request, database=schemas[0].database, table=table_name) }}
 {% else %}
 {{ crumbs.nav(request=request, database=schemas[0].database) }}
 {% endif %}
@@ -14,7 +16,7 @@
 
 {% block content %}
 <div class="page-header">
-    <h1>{% if is_instance %}Schema for all databases{% else %}Schema for {{ schemas[0].database }}{% endif %}</h1>
+    <h1>{% if is_instance %}Schema for all databases{% elif table_name %}Schema for {{ table_name }}{% else %}Schema for {{ schemas[0].database }}{% endif %}</h1>
 </div>
 
 {% for item in schemas %}

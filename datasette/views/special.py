@@ -1101,7 +1101,7 @@ class DatabaseSchemaView(BaseView):
 class TableSchemaView(BaseView):
     """
     Displays schema for a specific table.
-    Supports JSON and Markdown formats only.
+    Supports HTML, JSON, and Markdown formats.
     """
 
     name = "table_schema"
@@ -1110,7 +1110,7 @@ class TableSchemaView(BaseView):
     async def get(self, request):
         database_name = request.url_vars["database"]
         table_name = request.url_vars["table"]
-        format_ = request.url_vars.get("format") or "json"
+        format_ = request.url_vars.get("format") or "html"
 
         # Check view-table permission
         await self.ds.ensure_permission(
@@ -1144,11 +1144,13 @@ class TableSchemaView(BaseView):
                 md_output, headers={"content-type": "text/markdown; charset=utf-8"}
             )
         else:
-            # Default to JSON if format not recognized
-            headers = {}
-            if self.ds.cors:
-                add_cors_headers(headers)
-            return Response.json(
-                {"database": database_name, "table": table_name, "schema": schema},
-                headers=headers,
+            # HTML
+            return await self.render(
+                ["schema.html"],
+                request=request,
+                context={
+                    "schemas": [{"database": database_name, "schema": schema}],
+                    "is_instance": False,
+                    "table_name": table_name,
+                },
             )

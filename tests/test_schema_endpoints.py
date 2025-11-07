@@ -154,8 +154,8 @@ async def test_table_schema_md():
 
 
 @pytest.mark.asyncio
-async def test_table_schema_default_json():
-    """Test /database/table/-/schema endpoint defaults to JSON."""
+async def test_table_schema_default_html():
+    """Test /database/table/-/schema endpoint defaults to HTML."""
     ds = Datasette()
     db = ds.add_memory_database("test_db_tbl_default")
     await db.execute_write(
@@ -164,11 +164,11 @@ async def test_table_schema_default_json():
 
     response = await ds.client.get("/test_db_tbl_default/test_table/-/schema")
     assert response.status_code == 200
-    # Should default to JSON for table schema
-    data = response.json()
-    assert "database" in data
-    assert "table" in data
-    assert "schema" in data
+    # Should default to HTML for table schema
+    assert "text/html" in response.headers["content-type"]
+    content = response.text
+    assert "Schema for test_table" in content
+    assert "CREATE TABLE test_table" in content
 
 
 def test_database_schema_permission_denied():

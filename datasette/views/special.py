@@ -761,8 +761,6 @@ class ApiExplorerView(BaseView):
     async def example_links(self, request):
         databases = []
         for name, db in self.ds.databases.items():
-            if name == "_internal":
-                continue
             database_visible, _ = await self.ds.check_visibility(
                 request.actor,
                 action="view-database",
@@ -1005,19 +1003,13 @@ class InstanceSchemaView(BaseView):
         # Get schema for each database
         schemas = []
         for database_name in allowed_databases:
-            if database_name == "_internal":
-                continue
-            try:
-                db = self.ds.databases[database_name]
-                result = await db.execute(
-                    "select group_concat(sql, ';' || CHAR(10)) as schema from sqlite_master where sql is not null"
-                )
-                row = result.first()
-                schema = row["schema"] if row and row["schema"] else ""
-                schemas.append({"database": database_name, "schema": schema})
-            except Exception:
-                # Skip databases that can't be queried
-                continue
+            db = self.ds.databases[database_name]
+            result = await db.execute(
+                "select group_concat(sql, ';' || CHAR(10)) as schema from sqlite_master where sql is not null"
+            )
+            row = result.first()
+            schema = row["schema"] if row and row["schema"] else ""
+            schemas.append({"database": database_name, "schema": schema})
 
         if format_ == "json":
             headers = {}

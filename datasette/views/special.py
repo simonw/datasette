@@ -1027,8 +1027,13 @@ class InstanceSchemaView(BaseView):
         elif format_ == "md":
             md_output = []
             for item in schemas:
-                md_output.append(f"# Schema for {item['database']}\n\n```sql\n{item['schema']}\n```\n")
-            return Response.text("\n".join(md_output), headers={"content-type": "text/markdown; charset=utf-8"})
+                md_output.append(
+                    f"# Schema for {item['database']}\n\n```sql\n{item['schema']}\n```\n"
+                )
+            return Response.text(
+                "\n".join(md_output),
+                headers={"content-type": "text/markdown; charset=utf-8"},
+            )
         else:
             # HTML
             return await self.render(
@@ -1058,7 +1063,7 @@ class DatabaseSchemaView(BaseView):
         await self.ds.ensure_permission(
             action="view-database",
             resource=DatabaseResource(database=database_name),
-            actor=request.actor
+            actor=request.actor,
         )
 
         # Get schema for the database
@@ -1074,12 +1079,13 @@ class DatabaseSchemaView(BaseView):
             if self.ds.cors:
                 add_cors_headers(headers)
             return Response.json(
-                {"database": database_name, "schema": schema},
-                headers=headers
+                {"database": database_name, "schema": schema}, headers=headers
             )
         elif format_ == "md":
             md_output = f"# Schema for {database_name}\n\n```sql\n{schema}\n```\n"
-            return Response.text(md_output, headers={"content-type": "text/markdown; charset=utf-8"})
+            return Response.text(
+                md_output, headers={"content-type": "text/markdown; charset=utf-8"}
+            )
         else:
             # HTML
             return await self.render(
@@ -1110,14 +1116,14 @@ class TableSchemaView(BaseView):
         await self.ds.ensure_permission(
             action="view-table",
             resource=TableResource(database=database_name, table=table_name),
-            actor=request.actor
+            actor=request.actor,
         )
 
         # Get schema for the table
         db = self.ds.databases[database_name]
         result = await db.execute(
             "select sql from sqlite_master where name = ? and sql is not null",
-            [table_name]
+            [table_name],
         )
         row = result.first()
         schema = row["sql"] if row and row["sql"] else ""
@@ -1128,11 +1134,15 @@ class TableSchemaView(BaseView):
                 add_cors_headers(headers)
             return Response.json(
                 {"database": database_name, "table": table_name, "schema": schema},
-                headers=headers
+                headers=headers,
             )
         elif format_ == "md":
-            md_output = f"# Schema for {database_name}.{table_name}\n\n```sql\n{schema}\n```\n"
-            return Response.text(md_output, headers={"content-type": "text/markdown; charset=utf-8"})
+            md_output = (
+                f"# Schema for {database_name}.{table_name}\n\n```sql\n{schema}\n```\n"
+            )
+            return Response.text(
+                md_output, headers={"content-type": "text/markdown; charset=utf-8"}
+            )
         else:
             # Default to JSON if format not recognized
             headers = {}
@@ -1140,5 +1150,5 @@ class TableSchemaView(BaseView):
                 add_cors_headers(headers)
             return Response.json(
                 {"database": database_name, "table": table_name, "schema": schema},
-                headers=headers
+                headers=headers,
             )

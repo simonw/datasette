@@ -194,9 +194,7 @@ def test_table_schema_permission_denied():
         config={
             "databases": {
                 "fixtures": {
-                    "tables": {
-                        "simple_primary_key": {"allow": {"id": "root"}}
-                    }
+                    "tables": {"simple_primary_key": {"allow": {"id": "root"}}}
                 }
             }
         },

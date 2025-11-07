@@ -1002,6 +1002,18 @@ class SchemaBaseView(BaseView):
             add_cors_headers(headers)
         return Response.json(data, headers=headers)
 
+    def format_error_response(self, error_message, format_, status=404):
+        """Format error response based on requested format."""
+        if format_ == "json":
+            headers = {}
+            if self.ds.cors:
+                add_cors_headers(headers)
+            return Response.json(
+                {"ok": False, "error": error_message}, status=status, headers=headers
+            )
+        else:
+            return Response.text(error_message, status=status)
+
     def format_markdown_response(self, heading, schema):
         """Format schema as Markdown response."""
         md_output = f"# {heading}\n\n```sql\n{schema}\n```\n"
@@ -1073,6 +1085,10 @@ class DatabaseSchemaView(SchemaBaseView):
         database_name = request.url_vars["database"]
         format_ = request.url_vars.get("format") or "html"
 
+        # Check if database exists
+        if database_name not in self.ds.databases:
+            return self.format_error_response("Database not found", format_)
+
         # Check view-database permission
         await self.ds.ensure_permission(
             action="view-database",
@@ -1120,7 +1136,12 @@ class TableSchemaView(SchemaBaseView):
             [table_name],
         )
         row = result.first()
-        schema = row["sql"] if row and row["sql"] else ""
+
+        # Return 404 if table doesn't exist
+        if not row or not row["sql"]:
+            return self.format_error_response("Table not found", format_)
+
+        schema = row["sql"]
 
         if format_ == "json":
             return self.format_json_response(

@@ -207,9 +207,42 @@ async def test_empty_database_schema(schema_ds):
 
 
 @pytest.mark.asyncio
-async def test_table_not_exists(schema_ds):
-    """Test schema for a non-existent table."""
-    response = await schema_ds.client.get("/schema_public_db/nonexistent/-/schema.json")
-    assert response.status_code == 200
+async def test_database_not_exists(schema_ds):
+    """Test schema for a non-existent database returns 404."""
+    # Test JSON format
+    response = await schema_ds.client.get("/nonexistent_db/-/schema.json")
+    assert response.status_code == 404
     data = response.json()
-    assert data["schema"] == ""
+    assert data["ok"] is False
+    assert "not found" in data["error"].lower()
+
+    # Test HTML format (returns text)
+    response = await schema_ds.client.get("/nonexistent_db/-/schema")
+    assert response.status_code == 404
+    assert "not found" in response.text.lower()
+
+    # Test Markdown format (returns text)
+    response = await schema_ds.client.get("/nonexistent_db/-/schema.md")
+    assert response.status_code == 404
+    assert "not found" in response.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_table_not_exists(schema_ds):
+    """Test schema for a non-existent table returns 404."""
+    # Test JSON format
+    response = await schema_ds.client.get("/schema_public_db/nonexistent/-/schema.json")
+    assert response.status_code == 404
+    data = response.json()
+    assert data["ok"] is False
+    assert "not found" in data["error"].lower()
+
+    # Test HTML format (returns text)
+    response = await schema_ds.client.get("/schema_public_db/nonexistent/-/schema")
+    assert response.status_code == 404
+    assert "not found" in response.text.lower()
+
+    # Test Markdown format (returns text)
+    response = await schema_ds.client.get("/schema_public_db/nonexistent/-/schema.md")
+    assert response.status_code == 404
+    assert "not found" in response.text.lower()

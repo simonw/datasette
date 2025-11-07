@@ -107,3 +107,46 @@ Note that this URL includes the encoded primary key of the record.
 Here's that same page as JSON:
 
 `../people/uk~2Eorg~2Epublicwhip~2Fperson~2F10001.json <https://register-of-members-interests.datasettes.com/regmem/people/uk~2Eorg~2Epublicwhip~2Fperson~2F10001.json>`_
+
+
+.. _pages_schemas:
+
+Schemas
+=======
+
+Datasette offers ``/-/schema`` endpoints to expose the SQL schema for databases and tables.
+
+.. _InstanceSchemaView:
+
+Instance schema
+---------------
+
+Access ``/-/schema`` to see the complete schema for all attached databases in the Datasette instance.
+
+Use ``/-/schema.md`` to get the same information as Markdown.
+
+Use ``/-/schema.json`` to get the same information as JSON, which looks like this:
+
+.. code-block:: json
+
+    {
+      "schemas": [
+        {
+          "database": "content",
+          "schema": "create table posts ..."
+        }
+    }
+
+.. _DatabaseSchemaView:
+
+Database schema
+---------------
+
+Use ``/database-name/-/schema`` to see the complete schema for a specific database. The ``.md`` and ``.json`` extensions work here too. The JSON returns an object with ``"database"`` and ``"schema"`` keys.
+
+.. _TableSchemaView:
+
+Table schema
+------------
+
+Use ``/database-name/table-name/-/schema`` to see the schema for a specific table. The ``.md`` and ``.json`` extensions work here too. The JSON returns an object with ``"database"``, ``"table"``, and ``"schema"`` keys.

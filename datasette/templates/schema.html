@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}{% if is_instance %}Schema for all databases{% else %}Schema for {{ schemas[0].database }}{% endif %}{% endblock %}
+
+{% block body_class %}schema{% endblock %}
+
+{% block crumbs %}
+{% if is_instance %}
+{{ crumbs.nav(request=request) }}
+{% else %}
+{{ crumbs.nav(request=request, database=schemas[0].database) }}
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{% if is_instance %}Schema for all databases{% else %}Schema for {{ schemas[0].database }}{% endif %}</h1>
+</div>
+
+{% for item in schemas %}
+    {% if is_instance %}
+        <h2>{{ item.database }}</h2>
+    {% endif %}
+
+    {% if item.schema %}
+        <pre style="background-color: #f5f5f5; padding: 1em; overflow-x: auto; border: 1px solid #ddd; border-radius: 4px;"><code>{{ item.schema }}</code></pre>
+    {% else %}
+        <p><em>No schema available for this database.</em></p>
+    {% endif %}
+
+    {% if not loop.last %}
+        <hr style="margin: 2em 0;">
+    {% endif %}
+{% endfor %}
+
+{% if not schemas %}
+    <p><em>No databases with viewable schemas found.</em></p>
+{% endif %}
+{% endblock %}

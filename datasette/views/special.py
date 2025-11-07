@@ -981,3 +981,164 @@ class TablesView(BaseView):
         ]
 
         return Response.json({"matches": matches, "truncated": truncated})
+
+
+class InstanceSchemaView(BaseView):
+    """
+    Displays schema for all databases in the instance.
+    Supports HTML, JSON, and Markdown formats.
+    """
+
+    name = "instance_schema"
+    has_json_alternate = False
+
+    async def get(self, request):
+        format_ = request.url_vars.get("format") or "html"
+
+        # Get all databases the actor can view
+        allowed_databases_page = await self.ds.allowed_resources(
+            "view-database",
+            request.actor,
+        )
+        allowed_databases = [r.parent async for r in allowed_databases_page.all()]
+
+        # Get schema for each database
+        schemas = []
+        for database_name in allowed_databases:
+            if database_name == "_internal":
+                continue
+            try:
+                db = self.ds.databases[database_name]
+                result = await db.execute(
+                    "select group_concat(sql, ';' || CHAR(10)) as schema from sqlite_master where sql is not null"
+                )
+                row = result.first()
+                schema = row["schema"] if row and row["schema"] else ""
+                schemas.append({"database": database_name, "schema": schema})
+            except Exception:
+                # Skip databases that can't be queried
+                continue
+
+        if format_ == "json":
+            headers = {}
+            if self.ds.cors:
+                add_cors_headers(headers)
+            return Response.json({"schemas": schemas}, headers=headers)
+        elif format_ == "md":
+            md_output = []
+            for item in schemas:
+                md_output.append(f"# Schema for {item['database']}\n\n```sql\n{item['schema']}\n```\n")
+            return Response.text("\n".join(md_output), headers={"content-type": "text/markdown; charset=utf-8"})
+        else:
+            # HTML
+            return await self.render(
+                ["schema.html"],
+                request=request,
+                context={
+                    "schemas": schemas,
+                    "is_instance": True,
+                },
+            )
+
+
+class DatabaseSchemaView(BaseView):
+    """
+    Displays schema for a specific database.
+    Supports HTML, JSON, and Markdown formats.
+    """
+
+    name = "database_schema"
+    has_json_alternate = False
+
+    async def get(self, request):
+        database_name = request.url_vars["database"]
+        format_ = request.url_vars.get("format") or "html"
+
+        # Check view-database permission
+        await self.ds.ensure_permission(
+            action="view-database",
+            resource=DatabaseResource(database=database_name),
+            actor=request.actor
+        )
+
+        # Get schema for the database
+        db = self.ds.databases[database_name]
+        result = await db.execute(
+            "select group_concat(sql, ';' || CHAR(10)) as schema from sqlite_master where sql is not null"
+        )
+        row = result.first()
+        schema = row["schema"] if row and row["schema"] else ""
+
+        if format_ == "json":
+            headers = {}
+            if self.ds.cors:
+                add_cors_headers(headers)
+            return Response.json(
+                {"database": database_name, "schema": schema},
+                headers=headers
+            )
+        elif format_ == "md":
+            md_output = f"# Schema for {database_name}\n\n```sql\n{schema}\n```\n"
+            return Response.text(md_output, headers={"content-type": "text/markdown; charset=utf-8"})
+        else:
+            # HTML
+            return await self.render(
+                ["schema.html"],
+                request=request,
+                context={
+                    "schemas": [{"database": database_name, "schema": schema}],
+                    "is_instance": False,
+                },
+            )
+
+
+class TableSchemaView(BaseView):
+    """
+    Displays schema for a specific table.
+    Supports JSON and Markdown formats only.
+    """
+
+    name = "table_schema"
+    has_json_alternate = False
+
+    async def get(self, request):
+        database_name = request.url_vars["database"]
+        table_name = request.url_vars["table"]
+        format_ = request.url_vars.get("format") or "json"
+
+        # Check view-table permission
+        await self.ds.ensure_permission(
+            action="view-table",
+            resource=TableResource(database=database_name, table=table_name),
+            actor=request.actor
+        )
+
+        # Get schema for the table
+        db = self.ds.databases[database_name]
+        result = await db.execute(
+            "select sql from sqlite_master where name = ? and sql is not null",
+            [table_name]
+        )
+        row = result.first()
+        schema = row["sql"] if row and row["sql"] else ""
+
+        if format_ == "json":
+            headers = {}
+            if self.ds.cors:
+                add_cors_headers(headers)
+            return Response.json(
+                {"database": database_name, "table": table_name, "schema": schema},
+                headers=headers
+            )
+        elif format_ == "md":
+            md_output = f"# Schema for {database_name}.{table_name}\n\n```sql\n{schema}\n```\n"
+            return Response.text(md_output, headers={"content-type": "text/markdown; charset=utf-8"})
+        else:
+            # Default to JSON if format not recognized
+            headers = {}
+            if self.ds.cors:
+                add_cors_headers(headers)
+            return Response.json(
+                {"database": database_name, "table": table_name, "schema": schema},
+                headers=headers
+            )

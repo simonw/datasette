@@ -58,6 +58,9 @@ from .views.special import (
     PermissionRulesView,
     PermissionCheckView,
     TablesView,
+    InstanceSchemaView,
+    DatabaseSchemaView,
+    TableSchemaView,
 )
 from .views.table import (
     TableInsertView,
@@ -1911,6 +1914,10 @@ class Datasette:
             r"/-/tables(\.(?P<format>json))?$",
         )
         add_route(
+            InstanceSchemaView.as_view(self),
+            r"/-/schema(\.(?P<format>json|md))?$",
+        )
+        add_route(
             LogoutView.as_view(self),
             r"/-/logout$",
         )
@@ -1952,6 +1959,10 @@ class Datasette:
         )
         add_route(TableCreateView.as_view(self), r"/(?P<database>[^\/\.]+)/-/create$")
         add_route(
+            DatabaseSchemaView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/schema(\.(?P<format>json|md))?$",
+        )
+        add_route(
             wrap_view(QueryView, self),
             r"/(?P<database>[^\/\.]+)/-/query(\.(?P<format>\w+))?$",
         )
@@ -1974,6 +1985,10 @@ class Datasette:
         add_route(
             TableDropView.as_view(self),
             r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/drop$",
+        )
+        add_route(
+            TableSchemaView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/schema(\.(?P<format>json|md))?$",
         )
         add_route(
             RowDeleteView.as_view(self),

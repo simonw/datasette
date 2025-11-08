@@ -677,7 +677,7 @@ async def test_existing_scope_actor_respected(ds_client):
         ("this_is_denied_async", False),
     ],
 )
-async def test_hook_permission_allowed(action, expected):
+async def test_hook_custom_allowed(action, expected):
     # Test actions and permission logic are defined in tests/plugins/my_plugin.py
     ds = Datasette(plugins_dir=PLUGINS_DIR)
     await ds.invoke_startup()

@@ -935,7 +935,7 @@ async def test_edit_sql_link_on_canned_queries(ds_client, path, expected):
 
 
 @pytest.mark.parametrize(
-    "permission_allowed",
+    "has_permission",
     [
         pytest.param(
             True,
@@ -943,15 +943,15 @@ async def test_edit_sql_link_on_canned_queries(ds_client, path, expected):
         False,
     ],
 )
-def test_edit_sql_link_not_shown_if_user_lacks_permission(permission_allowed):
+def test_edit_sql_link_not_shown_if_user_lacks_permission(has_permission):
     with make_app_client(
         config={
-            "allow_sql": None if permission_allowed else {"id": "not-you"},
+            "allow_sql": None if has_permission else {"id": "not-you"},
             "databases": {"fixtures": {"queries": {"simple": "select 1 + 1"}}},
         }
     ) as client:
         response = client.get("/fixtures/simple")
-        if permission_allowed:
+        if has_permission:
             assert "Edit SQL" in response.text
         else:
             assert "Edit SQL" not in response.text

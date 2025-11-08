@@ -469,7 +469,7 @@ def register_actions(datasette):
             description="View a collection",
             resource_class=DatabaseResource,
         ),
-        # Test actions for test_hook_permission_allowed (global actions - no resource_class)
+        # Test actions for test_hook_custom_allowed (global actions - no resource_class)
         Action(
             name="this_is_allowed",
             abbr=None,
@@ -553,7 +553,7 @@ def register_actions(datasette):
 def permission_resources_sql(datasette, actor, action):
     from datasette.permissions import PermissionSQL
 
-    # Handle test actions used in test_hook_permission_allowed
+    # Handle test actions used in test_hook_custom_allowed
     if action == "this_is_allowed":
         return PermissionSQL.allow(reason="test plugin allows this_is_allowed")
     elif action == "this_is_denied":

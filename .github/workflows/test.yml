@@ -27,6 +27,14 @@ jobs:
       run: |
         pip install -e '.[test]'
         pip freeze
+    - name: Cache Playwright browsers
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright/
+        key: ${{ runner.os }}-browsers
+    - name: Install Playwright dependencies
+      run: |
+        playwright install
     - name: Run tests
       run: |
         pytest -n auto -m "not serial"

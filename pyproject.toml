@@ -78,6 +78,7 @@ test = [
     "pytest-timeout>=1.4.2",
     "trustme>=0.7",
     "cogapp>=3.3.0",
+    "pytest-playwright>=0.7.1"
 ]
 rich = ["rich"]
 

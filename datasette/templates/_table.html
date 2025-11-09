@@ -22,7 +22,7 @@
         </thead>
         <tbody>
         {% for row in display_rows %}
-            <tr>
+            <tr class="table-row-clickable" data-row-index="{{ loop.index0 }}">
                 {% for cell in row %}
                     <td class="col-{{ cell.column|to_css_class }} type-{{ cell.value_type }}">{{ cell.value }}</td>
                 {% endfor %}
@@ -34,3 +34,191 @@
 {% else %}
     <p class="zero-results">0 records</p>
 {% endif %}
+
+<!-- Row detail side panel dialog -->
+<dialog id="rowDetailPanel" class="row-detail-panel">
+    <div class="dialog-content">
+        <div class="dialog-header">
+            <h2>Row details</h2>
+            <button class="close-button" id="closeRowDetail" aria-label="Close">×</button>
+        </div>
+        <div class="dialog-navigation">
+            <button class="nav-button" id="prevRowButton" aria-label="Previous row">← Previous</button>
+            <span class="row-position" id="rowPosition"></span>
+            <button class="nav-button" id="nextRowButton" aria-label="Next row">Next →</button>
+        </div>
+        <div id="rowDetailContent" class="row-detail-content">
+            <p class="loading">Loading...</p>
+        </div>
+    </div>
+</dialog>
+
+<style>
+/* Row detail side panel styles */
+.table-row-clickable {
+    cursor: pointer;
+}
+
+.table-row-clickable:hover {
+    background-color: #f5f5f5;
+}
+
+.row-detail-panel {
+    position: fixed;
+    margin: 0;
+    padding: 0;
+    border: none;
+    width: 90%;
+    max-width: 600px;
+    height: 100vh;
+    top: 0;
+    right: 0;
+    left: auto;
+    background-color: white;
+    box-shadow: -5px 0 15px rgba(0, 0, 0, 0.1);
+    transform: translateX(100%);
+    transition: transform 0.1s cubic-bezier(0.2, 0, 0.38, 0.9);
+    max-height: none;
+}
+
+@media only screen and (min-width: 768px) {
+    .row-detail-panel {
+        width: 50%;
+        max-width: 800px;
+    }
+}
+
+.row-detail-panel::backdrop {
+    background-color: rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    transition: opacity 0.1s cubic-bezier(0.2, 0, 0.38, 0.9);
+}
+
+.row-detail-panel[open]::backdrop {
+    opacity: 1;
+}
+
+.dialog-content {
+    padding: 24px;
+    height: 100%;
+    overflow-y: auto;
+}
+
+.dialog-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.dialog-header h2 {
+    margin: 0;
+    font-size: 1.5em;
+}
+
+.close-button {
+    background: none;
+    border: none;
+    font-size: 32px;
+    cursor: pointer;
+    padding: 8px;
+    margin: -8px;
+    color: #555;
+    line-height: 1;
+}
+
+.close-button:hover {
+    color: #000;
+}
+
+.dialog-navigation {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #e0e0e0;
+    gap: 12px;
+}
+
+.nav-button {
+    background-color: #4a6cf7;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    white-space: nowrap;
+}
+
+.nav-button:hover:not(:disabled) {
+    background-color: #3a5ce6;
+}
+
+.nav-button:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.row-position {
+    font-size: 14px;
+    color: #666;
+    text-align: center;
+    flex: 1;
+}
+
+.row-detail-content {
+    font-size: 14px;
+}
+
+.row-detail-content .loading {
+    text-align: center;
+    color: #666;
+    padding: 40px;
+}
+
+.row-detail-content dl {
+    margin: 0;
+}
+
+.row-detail-content dt {
+    font-weight: bold;
+    margin-top: 16px;
+    margin-bottom: 4px;
+    color: #333;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.row-detail-content dt:first-child {
+    margin-top: 0;
+}
+
+.row-detail-content dd {
+    margin: 0;
+    margin-bottom: 12px;
+    padding: 12px;
+    background-color: #f9f9f9;
+    border-radius: 4px;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.row-detail-content dd.null-value {
+    color: #999;
+    font-style: italic;
+}
+
+.row-detail-content .error {
+    color: #c00;
+    padding: 20px;
+    background-color: #fee;
+    border-radius: 4px;
+}
+</style>

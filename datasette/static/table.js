@@ -330,6 +330,316 @@ function initAutocompleteForFilterValues(manager) {
   });
 }
 
+/** Initialize row detail side panel functionality */
+function initRowDetailPanel() {
+  const dialog = document.getElementById('rowDetailPanel');
+  const closeButton = document.getElementById('closeRowDetail');
+  const contentDiv = document.getElementById('rowDetailContent');
+  const prevButton = document.getElementById('prevRowButton');
+  const nextButton = document.getElementById('nextRowButton');
+  const positionSpan = document.getElementById('rowPosition');
+
+  if (!dialog || !closeButton || !contentDiv || !prevButton || !nextButton) {
+    // Not on a table page with the panel
+    return;
+  }
+
+  // State for navigation
+  let currentRowIndex = 0;
+  let allRows = [];  // Array of objects: { element: DOMElement, pkValues: [...] }
+  let nextPageUrl = null;
+  let isLoadingMore = false;
+  let hasMoreRows = true;
+
+  // Get primary key column names
+  function getPrimaryKeyNames() {
+    const headers = document.querySelectorAll('.rows-and-columns thead th[data-is-pk="1"]');
+    return Array.from(headers).map(th => th.getAttribute('data-column'));
+  }
+
+  const primaryKeyNames = getPrimaryKeyNames();
+
+  // Initialize the row list
+  function initializeRows() {
+    const domRows = document.querySelectorAll('.table-row-clickable');
+    allRows = Array.from(domRows).map(row => ({
+      element: row,
+      pkValues: extractPkValues(row)
+    }));
+
+    // Check if there's a next page link
+    const nextLink = document.querySelector('a[href*="_next="]');
+    nextPageUrl = nextLink ? nextLink.getAttribute('href') : null;
+    hasMoreRows = !!nextPageUrl;
+  }
+
+  // Extract primary key values from a DOM row
+  function extractPkValues(row) {
+    const pkColumns = getPrimaryKeyColumns();
+    const cells = row.querySelectorAll('td');
+    return pkColumns.map(pk => {
+      const cell = cells[pk.index];
+      if (!cell) return null;
+      return cell.getAttribute('data-value') || cell.textContent.trim();
+    });
+  }
+
+  initializeRows();
+
+  // Prevent default cancel behavior (ESC key) to handle animation
+  dialog.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    animateCloseDialog();
+  });
+
+  function animateCloseDialog() {
+    dialog.style.transform = 'translateX(100%)';
+    setTimeout(() => {
+      dialog.close();
+    }, 100);
+  }
+
+  closeButton.addEventListener('click', () => {
+    animateCloseDialog();
+  });
+
+  // Close on backdrop click
+  dialog.addEventListener('click', (event) => {
+    if (event.target === dialog) {
+      animateCloseDialog();
+    }
+  });
+
+  // Get primary key column indices
+  function getPrimaryKeyColumns() {
+    const headers = document.querySelectorAll('.rows-and-columns thead th[data-is-pk="1"]');
+    return Array.from(headers).map(th => {
+      const columnName = th.getAttribute('data-column');
+      const index = Array.from(th.parentElement.children).indexOf(th);
+      return { name: columnName, index: index };
+    });
+  }
+
+  // Construct row URL from row object (which has pkValues)
+  function getRowUrl(rowObj) {
+    if (!rowObj || !rowObj.pkValues || rowObj.pkValues.length === 0) {
+      return null;
+    }
+
+    const pkValues = rowObj.pkValues;
+
+    if (pkValues.some(v => v === null || v === '')) {
+      return null;
+    }
+
+    // Construct the row path by joining PK values
+    const rowPath = pkValues.map(v => encodeURIComponent(v)).join(',');
+
+    // Get current path and construct row URL
+    const currentPath = window.location.pathname;
+    return currentPath + '/' + rowPath + '.json';
+  }
+
+  // Fetch more rows from the next page using JSON API
+  async function fetchMoreRows() {
+    if (!nextPageUrl || isLoadingMore) {
+      return false;
+    }
+
+    isLoadingMore = true;
+    try {
+      // Convert URL to JSON by adding .json before query params
+      let jsonUrl = nextPageUrl;
+      const urlParts = nextPageUrl.split('?');
+      if (urlParts.length === 2) {
+        jsonUrl = urlParts[0] + '.json?' + urlParts[1];
+      } else {
+        jsonUrl = nextPageUrl + '.json';
+      }
+
+      const response = await fetch(jsonUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch next page: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Extract new rows from JSON
+      if (data.rows && data.rows.length > 0) {
+        const newRowObjects = data.rows.map(rowData => {
+          // Extract primary key values from the row data
+          const pkValues = primaryKeyNames.map(pkName => {
+            const value = rowData[pkName];
+            return value !== null && value !== undefined ? String(value) : null;
+          });
+
+          return {
+            element: null,  // No DOM element for paginated rows
+            pkValues: pkValues
+          };
+        });
+
+        allRows.push(...newRowObjects);
+      }
+
+      // Update next page URL from the response
+      nextPageUrl = data.next_url || null;
+      hasMoreRows = !!nextPageUrl;
+
+      isLoadingMore = false;
+      return data.rows && data.rows.length > 0;
+    } catch (error) {
+      console.error('Error fetching more rows:', error);
+      isLoadingMore = false;
+      hasMoreRows = false;
+      return false;
+    }
+  }
+
+  // Update navigation button states
+  function updateNavigationState() {
+    prevButton.disabled = currentRowIndex === 0;
+
+    // Disable next if we're at the end and there are no more pages
+    const isAtEnd = currentRowIndex >= allRows.length - 1;
+    nextButton.disabled = isAtEnd && !hasMoreRows;
+
+    // Update position display
+    if (allRows.length > 0) {
+      const displayIndex = currentRowIndex + 1;
+      positionSpan.textContent = `Row ${displayIndex}`;
+    } else {
+      positionSpan.textContent = '';
+    }
+  }
+
+  // Fetch and display row details
+  async function showRowDetails(rowIndex) {
+    if (rowIndex < 0 || rowIndex >= allRows.length) {
+      return;
+    }
+
+    currentRowIndex = rowIndex;
+    const rowObj = allRows[rowIndex];
+    const rowUrl = getRowUrl(rowObj);
+
+    if (!rowUrl) {
+      contentDiv.innerHTML = '<p class="error">Cannot display row: No primary key found</p>';
+      showDialog();
+      updateNavigationState();
+      return;
+    }
+
+    // Show loading state
+    contentDiv.innerHTML = '<p class="loading">Loading...</p>';
+    updateNavigationState();
+
+    try {
+      const response = await fetch(rowUrl);
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch row: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      // Display the row data
+      if (data.rows && data.rows.length > 0) {
+        const rowData = data.rows[0];
+        let html = '<dl>';
+
+        for (const [key, value] of Object.entries(rowData)) {
+          html += `<dt>${escapeHtml(key)}</dt>`;
+
+          if (value === null) {
+            html += '<dd class="null-value">null</dd>';
+          } else if (typeof value === 'object') {
+            html += `<dd><pre>${escapeHtml(JSON.stringify(value, null, 2))}</pre></dd>`;
+          } else {
+            html += `<dd>${escapeHtml(String(value))}</dd>`;
+          }
+        }
+
+        html += '</dl>';
+        contentDiv.innerHTML = html;
+      } else {
+        contentDiv.innerHTML = '<p class="error">No row data found</p>';
+      }
+    } catch (error) {
+      console.error('Error fetching row details:', error);
+      contentDiv.innerHTML = `<p class="error">Error loading row details: ${escapeHtml(error.message)}</p>`;
+    }
+
+    updateNavigationState();
+  }
+
+  // Handle previous button click
+  prevButton.addEventListener('click', () => {
+    if (currentRowIndex > 0) {
+      showRowDetails(currentRowIndex - 1);
+    }
+  });
+
+  // Handle next button click
+  nextButton.addEventListener('click', async () => {
+    const nextIndex = currentRowIndex + 1;
+
+    // If we're at the end of current rows, try to fetch more
+    if (nextIndex >= allRows.length && hasMoreRows && !isLoadingMore) {
+      nextButton.disabled = true;
+      nextButton.textContent = 'Loading...';
+
+      const fetched = await fetchMoreRows();
+
+      nextButton.textContent = 'Next →';
+
+      if (fetched && nextIndex < allRows.length) {
+        showRowDetails(nextIndex);
+      } else {
+        updateNavigationState();
+      }
+    } else if (nextIndex < allRows.length) {
+      showRowDetails(nextIndex);
+    }
+  });
+
+  function showDialog() {
+    // Reset transform before opening
+    dialog.style.transition = 'none';
+    dialog.style.transform = 'translateX(100%)';
+
+    // Open the dialog
+    dialog.showModal();
+
+    // Trigger animation
+    void dialog.offsetWidth;
+
+    dialog.style.transition = 'transform 0.1s cubic-bezier(0.2, 0, 0.38, 0.9)';
+    dialog.style.transform = 'translateX(0)';
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // Add click handlers to all table rows (only for rows with DOM elements)
+  allRows.forEach((rowObj, index) => {
+    if (rowObj.element) {
+      rowObj.element.addEventListener('click', (event) => {
+        // Don't trigger if clicking on a link or button within the row
+        if (event.target.tagName === 'A' || event.target.tagName === 'BUTTON') {
+          return;
+        }
+
+        showDialog();
+        showRowDetails(index);
+      });
+    }
+  });
+}
+
 // Ensures Table UI is initialized only after the Manager is ready.
 document.addEventListener("datasette_init", function (evt) {
   const { detail: manager } = evt;
@@ -340,4 +650,7 @@ document.addEventListener("datasette_init", function (evt) {
   // Other UI functions with interactive JS needs
   addButtonsToFilterRows(manager);
   initAutocompleteForFilterValues(manager);
+
+  // Row detail panel
+  initRowDetailPanel();
 });

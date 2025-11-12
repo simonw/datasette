@@ -278,7 +278,7 @@ To avoid similar mistakes in the future the ``datasette.permission_allowed()`` m
 Permission checks now consider opinions from every plugin
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``datasette.permission_allowed()`` method previously consulted every plugin that implemented the :ref:`permission_allowed() <plugin_hook_permission_allowed>` plugin hook and obeyed the opinion of the last plugin to return a value. (:issue:`2275`)
+The ``datasette.permission_allowed()`` method previously consulted every plugin that implemented the ``permission_allowed()`` plugin hook and obeyed the opinion of the last plugin to return a value. (:issue:`2275`)
 
 Datasette now consults every plugin and checks to see if any of them returned ``False`` (the veto rule), and if none of them did, it then checks to see if any of them returned ``True``.
 
@@ -1397,7 +1397,7 @@ You can use the new ``"allow"`` block syntax in ``metadata.json`` (or ``metadata
 
 See :ref:`authentication_permissions_allow` for more details.
 
-Plugins can implement their own custom permission checks using the new :ref:`plugin_hook_permission_allowed` hook.
+Plugins can implement their own custom permission checks using the new ``plugin_hook_permission_allowed()`` plugin hook.
 
 A new debug page at ``/-/permissions`` shows recent permission checks, to help administrators and plugin authors understand exactly what checks are being performed. This tool defaults to only being available to the root user, but can be exposed to other users by plugins that respond to the ``permissions-debug`` permission. (:issue:`788`)
 

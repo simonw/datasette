@@ -62,6 +62,43 @@ Click on that link and then visit ``http://127.0.0.1:8001/-/actor`` to confirm t
         "id": "root"
     }
 
+.. _authentication_default_deny:
+
+Denying all permissions by default
+----------------------------------
+
+By default, Datasette allows unauthenticated access to view databases, tables, and execute SQL queries. This makes it easy to explore data without needing to set up authentication.
+
+However, you may want to run Datasette in a mode where **all** access is denied by default, and you explicitly grant permissions only to authenticated users. This is useful for:
+
+* Running a locked-down Datasette instance that requires authentication for all access
+* Building applications where you control access through authentication plugins
+* Deploying Datasette in environments where data should never be publicly accessible
+
+To enable this mode, use the ``--default-deny`` command-line option::
+
+    datasette --default-deny data.db --root
+
+With ``--default-deny`` enabled:
+
+* Anonymous users are denied access to view the instance, databases, tables, and queries
+* Authenticated users are also denied access unless they're explicitly granted permissions
+* The root user (when using ``--root``) still has access to everything
+* You can grant permissions using :ref:`configuration file rules <authentication_permissions_config>` or plugins
+
+For example, to allow only a specific user to access your instance::
+
+    datasette --default-deny data.db --config datasette.yaml
+
+Where ``datasette.yaml`` contains:
+
+.. code-block:: yaml
+
+    allow:
+      id: alice
+
+This configuration will deny access to everyone except the user with ``id`` of ``alice``.
+
 .. _authentication_permissions:
 
 Permissions

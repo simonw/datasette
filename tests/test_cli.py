@@ -142,6 +142,7 @@ def test_metadata_yaml():
         settings=[],
         secret=None,
         root=False,
+        default_deny=False,
         token=None,
         actor=None,
         version_note=None,

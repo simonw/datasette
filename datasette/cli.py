@@ -440,7 +440,7 @@ def uninstall(packages, yes):
 )
 @click.option(
     "--default-deny",
-    help="Deny all permissions by default, requiring explicit grants",
+    help="Deny all permissions by default",
     is_flag=True,
 )
 @click.option(

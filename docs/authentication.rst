@@ -62,20 +62,37 @@ Click on that link and then visit ``http://127.0.0.1:8001/-/actor`` to confirm t
         "id": "root"
     }
 
+.. _authentication_permissions:
+
+Permissions
+===========
+
+Datasette's permissions system is built around SQL queries. Datasette and its plugins construct SQL queries to resolve the list of resources that an actor cas access.
+
+The key question the permissions system answers is this:
+
+    Is this **actor** allowed to perform this **action**, optionally against this particular **resource**?
+
+**Actors** are :ref:`described above <authentication_actor>`.
+
+An **action** is a string describing the action the actor would like to perform. A full list is :ref:`provided below <actions>` - examples include ``view-table`` and ``execute-sql``.
+
+A **resource** is the item the actor wishes to interact with - for example a specific database or table. Some actions, such as ``permissions-debug``, are not associated with a particular resource.
+
+Datasette's built-in view actions (``view-database``, ``view-table`` etc) are allowed by Datasette's default configuration: unless you :ref:`configure additional permission rules <authentication_permissions_config>` unauthenticated users will be allowed to access content.
+
+Other actions, including those introduced by plugins, will default to *deny*.
+
 .. _authentication_default_deny:
 
 Denying all permissions by default
 ----------------------------------
 
-By default, Datasette allows unauthenticated access to view databases, tables, and execute SQL queries. This makes it easy to explore data without needing to set up authentication.
+By default, Datasette allows unauthenticated access to view databases, tables, and execute SQL queries.
 
-However, you may want to run Datasette in a mode where **all** access is denied by default, and you explicitly grant permissions only to authenticated users. This is useful for:
+You may want to run Datasette in a mode where **all** access is denied by default, and you explicitly grant permissions only to authenticated users, either using the :ref:`--root mechanism <authentication_root>` or through :ref:`configuration file rules <authentication_permissions_config>` or plugins.
 
-* Running a locked-down Datasette instance that requires authentication for all access
-* Building applications where you control access through authentication plugins
-* Deploying Datasette in environments where data should never be publicly accessible
-
-To enable this mode, use the ``--default-deny`` command-line option::
+Use the ``--default-deny`` command-line option to run Datasette in this mode::
 
     datasette --default-deny data.db --root
 
@@ -98,27 +115,6 @@ Where ``datasette.yaml`` contains:
       id: alice
 
 This configuration will deny access to everyone except the user with ``id`` of ``alice``.
-
-.. _authentication_permissions:
-
-Permissions
-===========
-
-Datasette's permissions system is built around SQL queries. Datasette and its plugins construct SQL queries to resolve the list of resources that an actor cas access.
-
-The key question the permissions system answers is this:
-
-    Is this **actor** allowed to perform this **action**, optionally against this particular **resource**?
-
-**Actors** are :ref:`described above <authentication_actor>`.
-
-An **action** is a string describing the action the actor would like to perform. A full list is :ref:`provided below <actions>` - examples include ``view-table`` and ``execute-sql``.
-
-A **resource** is the item the actor wishes to interact with - for example a specific database or table. Some actions, such as ``permissions-debug``, are not associated with a particular resource.
-
-Datasette's built-in view actions (``view-database``, ``view-table`` etc) are allowed by Datasette's default configuration: unless you :ref:`configure additional permission rules <authentication_permissions_config>` unauthenticated users will be allowed to access content.
-
-Other actions, including those introduced by plugins, will default to *deny*.
 
 .. _authentication_permissions_explained:
 

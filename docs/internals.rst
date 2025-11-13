@@ -1077,6 +1077,8 @@ This parameter works with all HTTP methods (``get``, ``post``, ``put``, ``patch`
 
     Use ``skip_permission_checks=True`` with caution. It completely bypasses Datasette's permission system and should only be used in trusted plugin code or internal operations where you need guaranteed access to resources.
 
+.. _internals_datasette_is_client:
+
 Detecting internal client requests
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

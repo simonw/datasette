@@ -4,6 +4,15 @@
 Changelog
 =========
 
+.. _v1_0_a22:
+
+1.0a22 (2025-11-13)
+-------------------
+
+- ``datasette serve --default-deny`` option for running Datasette configured to  :ref:`deny all permissions by default <authentication_default_deny>`. (:issue:`2592`)
+- ``datasette.is_client()`` method for detecting if code is :ref:`executing inside a datasette.client request <internals_datasette_is_client>`. (:issue:`2594`)
+- ``datasette.pm`` property can now be used to :ref:`register and unregister plugins in tests <testing_plugins_register_in_test>`. (:issue:`2595`)
+
 .. _v1_0_a21:
 
 1.0a21 (2025-11-05)

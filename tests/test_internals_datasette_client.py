@@ -227,3 +227,89 @@ async def test_skip_permission_checks_shows_denied_tables():
     table_names = [match["name"] for match in data["matches"]]
     # Should see fixtures tables when permission checks are skipped
     assert "fixtures: test_table" in table_names
+
+
+@pytest.mark.asyncio
+async def test_in_client_returns_false_outside_request(datasette):
+    """Test that datasette.in_client() returns False outside of a client request"""
+    assert datasette.in_client() is False
+
+
+@pytest.mark.asyncio
+async def test_in_client_returns_true_inside_request():
+    """Test that datasette.in_client() returns True inside a client request"""
+    from datasette import hookimpl, Response
+    from datasette.plugins import pm
+
+    class TestPlugin:
+        __name__ = "test_in_client_plugin"
+
+        @hookimpl
+        def register_routes(self):
+            async def test_view(datasette):
+                # Assert in_client() returns True within the view
+                assert datasette.in_client() is True
+                return Response.json({"in_client": datasette.in_client()})
+
+            return [
+                (r"^/-/test-in-client$", test_view),
+            ]
+
+    pm.register(TestPlugin(), name="test_in_client_plugin")
+    try:
+        ds = Datasette()
+        await ds.invoke_startup()
+
+        # Outside of a client request, should be False
+        assert ds.in_client() is False
+
+        # Make a request via datasette.client
+        response = await ds.client.get("/-/test-in-client")
+        assert response.status_code == 200
+        assert response.json()["in_client"] is True
+
+        # After the request, should be False again
+        assert ds.in_client() is False
+    finally:
+        pm.unregister(name="test_in_client_plugin")
+
+
+@pytest.mark.asyncio
+async def test_in_client_with_skip_permission_checks():
+    """Test that in_client() works regardless of skip_permission_checks value"""
+    from datasette import hookimpl
+    from datasette.plugins import pm
+    from datasette.utils.asgi import Response
+
+    in_client_values = []
+
+    class TestPlugin:
+        __name__ = "test_in_client_skip_plugin"
+
+        @hookimpl
+        def register_routes(self):
+            async def test_view(datasette):
+                in_client_values.append(datasette.in_client())
+                return Response.json({"in_client": datasette.in_client()})
+
+            return [
+                (r"^/-/test-in-client$", test_view),
+            ]
+
+    pm.register(TestPlugin(), name="test_in_client_skip_plugin")
+    try:
+        ds = Datasette(config={"databases": {"test_db": {"allow": {"id": "admin"}}}})
+        await ds.invoke_startup()
+
+        # Request without skip_permission_checks
+        await ds.client.get("/-/test-in-client")
+        # Request with skip_permission_checks=True
+        await ds.client.get("/-/test-in-client", skip_permission_checks=True)
+
+        # Both should have detected in_client as True
+        assert (
+            len(in_client_values) == 2
+        ), f"Expected 2 values, got {len(in_client_values)}"
+        assert all(in_client_values), f"Expected all True, got {in_client_values}"
+    finally:
+        pm.unregister(name="test_in_client_skip_plugin")

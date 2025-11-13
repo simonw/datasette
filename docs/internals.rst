@@ -1077,6 +1077,28 @@ This parameter works with all HTTP methods (``get``, ``post``, ``put``, ``patch`
 
     Use ``skip_permission_checks=True`` with caution. It completely bypasses Datasette's permission system and should only be used in trusted plugin code or internal operations where you need guaranteed access to resources.
 
+Detecting internal client requests
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette.in_client()`` - returns bool
+    Returns ``True`` if the current code is executing within a ``datasette.client`` request, ``False`` otherwise.
+
+This method is useful for plugins that need to behave differently when called through ``datasette.client`` versus when handling external HTTP requests.
+
+Example usage:
+
+.. code-block:: python
+
+    async def fetch_documents(datasette):
+        if not datasette.in_client():
+            return Response.text(
+                "Only available via internal client requests",
+                status=403
+            )
+        ...
+
+Note that ``datasette.in_client()`` is independent of ``skip_permission_checks``. A request made through ``datasette.client`` will always have ``in_client()`` return ``True``, regardless of whether ``skip_permission_checks`` is set.
+
 .. _internals_datasette_urls:
 
 datasette.urls

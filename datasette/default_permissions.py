@@ -352,6 +352,10 @@ async def default_action_permissions_sql(datasette, actor, action):
     With the INTERSECT-based restriction approach, these defaults are always generated
     and then filtered by restriction_sql if the actor has restrictions.
     """
+    # Skip default allow rules if default_deny is enabled
+    if datasette.default_deny:
+        return None
+
     default_allow_actions = {
         "view-instance",
         "view-database",

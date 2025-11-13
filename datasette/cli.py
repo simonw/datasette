@@ -439,6 +439,11 @@ def uninstall(packages, yes):
     is_flag=True,
 )
 @click.option(
+    "--default-deny",
+    help="Deny all permissions by default",
+    is_flag=True,
+)
+@click.option(
     "--get",
     help="Run an HTTP GET request against this path, print results and exit",
 )
@@ -514,6 +519,7 @@ def serve(
     settings,
     secret,
     root,
+    default_deny,
     get,
     headers,
     token,
@@ -594,6 +600,7 @@ def serve(
         crossdb=crossdb,
         nolock=nolock,
         internal=internal,
+        default_deny=default_deny,
     )
 
     # Separate directories from files

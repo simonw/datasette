@@ -304,6 +304,7 @@ class Datasette:
         crossdb=False,
         nolock=False,
         internal=None,
+        default_deny=False,
     ):
         self._startup_invoked = False
         assert config_dir is None or isinstance(
@@ -512,6 +513,7 @@ class Datasette:
         self._permission_checks = collections.deque(maxlen=200)
         self._root_token = secrets.token_hex(32)
         self.root_enabled = False
+        self.default_deny = default_deny
         self.client = DatasetteClient(self)
 
     async def apply_metadata_json(self):

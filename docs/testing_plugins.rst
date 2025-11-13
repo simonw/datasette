@@ -283,13 +283,12 @@ Here's a test for that plugin that mocks the HTTPX outbound request:
 Registering a plugin for the duration of a test
 -----------------------------------------------
 
-When writing tests for plugins you may find it useful to register a test plugin just for the duration of a single test. You can do this using ``pm.register()`` and ``pm.unregister()`` like this:
+When writing tests for plugins you may find it useful to register a test plugin just for the duration of a single test. You can do this using ``datasette.pm.register()`` and ``datasette.pm.unregister()`` like this:
 
 .. code-block:: python
 
     from datasette import hookimpl
     from datasette.app import Datasette
-    from datasette.plugins import pm
     import pytest
 
 
@@ -305,14 +304,14 @@ When writing tests for plugins you may find it useful to register a test plugin 
                     (r"^/error$", lambda: 1 / 0),
                 ]
 
-        pm.register(TestPlugin(), name="undo")
+        datasette = Datasette()
         try:
             # The test implementation goes here
-            datasette = Datasette()
+            datasette.pm.register(TestPlugin(), name="undo")
             response = await datasette.client.get("/error")
             assert response.status_code == 500
         finally:
-            pm.unregister(name="undo")
+            datasette.pm.unregister(name="undo")
 
 To reuse the same temporary plugin in multiple tests, you can register it inside a fixture in your ``conftest.py`` file like this:
 

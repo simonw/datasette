@@ -94,21 +94,24 @@ def get_plugins():
     for plugin in pm.get_plugins():
         static_path = None
         templates_path = None
-        if plugin.__name__ not in DEFAULT_PLUGINS:
+        plugin_name = (
+            plugin.__name__
+            if hasattr(plugin, "__name__")
+            else plugin.__class__.__name__
+        )
+        if plugin_name not in DEFAULT_PLUGINS:
             try:
-                if (importlib_resources.files(plugin.__name__) / "static").is_dir():
-                    static_path = str(
-                        importlib_resources.files(plugin.__name__) / "static"
-                    )
-                if (importlib_resources.files(plugin.__name__) / "templates").is_dir():
+                if (importlib_resources.files(plugin_name) / "static").is_dir():
+                    static_path = str(importlib_resources.files(plugin_name) / "static")
+                if (importlib_resources.files(plugin_name) / "templates").is_dir():
                     templates_path = str(
-                        importlib_resources.files(plugin.__name__) / "templates"
+                        importlib_resources.files(plugin_name) / "templates"
                     )
             except (TypeError, ModuleNotFoundError):
                 # Caused by --plugins_dir= plugins
                 pass
         plugin_info = {
-            "name": plugin.__name__,
+            "name": plugin_name,
             "static_path": static_path,
             "templates_path": templates_path,
             "hooks": [h.name for h in pm.get_hookcallers(plugin)],

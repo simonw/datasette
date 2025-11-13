@@ -8,7 +8,6 @@ based on permission rules from plugins and configuration.
 import pytest
 import pytest_asyncio
 from datasette.app import Datasette
-from datasette.plugins import pm
 from datasette.permissions import PermissionSQL
 from datasette import hookimpl
 
@@ -62,7 +61,7 @@ async def test_tables_endpoint_global_access(test_ds):
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
-    pm.register(plugin, name="test_plugin")
+    test_ds.pm.register(plugin, name="test_plugin")
 
     try:
         # Use the allowed_resources API directly
@@ -87,7 +86,7 @@ async def test_tables_endpoint_global_access(test_ds):
         assert "production/orders" in table_names
 
     finally:
-        pm.unregister(plugin, name="test_plugin")
+        test_ds.pm.unregister(plugin, name="test_plugin")
 
 
 @pytest.mark.asyncio
@@ -102,7 +101,7 @@ async def test_tables_endpoint_database_restriction(test_ds):
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
-    pm.register(plugin, name="test_plugin")
+    test_ds.pm.register(plugin, name="test_plugin")
 
     try:
         page = await test_ds.allowed_resources(
@@ -130,7 +129,7 @@ async def test_tables_endpoint_database_restriction(test_ds):
         # Note: default_permissions.py provides default allows, so we just check analytics are present
 
     finally:
-        pm.unregister(plugin, name="test_plugin")
+        test_ds.pm.unregister(plugin, name="test_plugin")
 
 
 @pytest.mark.asyncio
@@ -149,7 +148,7 @@ async def test_tables_endpoint_table_exception(test_ds):
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
-    pm.register(plugin, name="test_plugin")
+    test_ds.pm.register(plugin, name="test_plugin")
 
     try:
         page = await test_ds.allowed_resources("view-table", {"id": "carol"})
@@ -172,7 +171,7 @@ async def test_tables_endpoint_table_exception(test_ds):
         assert "analytics/sensitive" not in table_names
 
     finally:
-        pm.unregister(plugin, name="test_plugin")
+        test_ds.pm.unregister(plugin, name="test_plugin")
 
 
 @pytest.mark.asyncio
@@ -191,7 +190,7 @@ async def test_tables_endpoint_deny_overrides_allow(test_ds):
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
-    pm.register(plugin, name="test_plugin")
+    test_ds.pm.register(plugin, name="test_plugin")
 
     try:
         page = await test_ds.allowed_resources(
@@ -214,7 +213,7 @@ async def test_tables_endpoint_deny_overrides_allow(test_ds):
         assert "analytics/sensitive" not in table_names
 
     finally:
-        pm.unregister(plugin, name="test_plugin")
+        test_ds.pm.unregister(plugin, name="test_plugin")
 
 
 @pytest.mark.asyncio
@@ -257,7 +256,7 @@ async def test_tables_endpoint_specific_table_only(test_ds):
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
-    pm.register(plugin, name="test_plugin")
+    test_ds.pm.register(plugin, name="test_plugin")
 
     try:
         page = await test_ds.allowed_resources("view-table", {"id": "dave"})
@@ -280,7 +279,7 @@ async def test_tables_endpoint_specific_table_only(test_ds):
         assert "production/orders" in table_names
 
     finally:
-        pm.unregister(plugin, name="test_plugin")
+        test_ds.pm.unregister(plugin, name="test_plugin")
 
 
 @pytest.mark.asyncio
@@ -295,7 +294,7 @@ async def test_tables_endpoint_empty_result(test_ds):
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
-    pm.register(plugin, name="test_plugin")
+    test_ds.pm.register(plugin, name="test_plugin")
 
     try:
         page = await test_ds.allowed_resources("view-table", {"id": "blocked"})
@@ -311,7 +310,7 @@ async def test_tables_endpoint_empty_result(test_ds):
         assert len(result) == 0
 
     finally:
-        pm.unregister(plugin, name="test_plugin")
+        test_ds.pm.unregister(plugin, name="test_plugin")
 
 
 @pytest.mark.asyncio

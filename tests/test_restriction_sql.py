@@ -13,7 +13,6 @@ async def test_multiple_restriction_sources_intersect():
     provide restriction_sql - both must pass for access to be granted.
     """
     from datasette import hookimpl
-    from datasette.plugins import pm
 
     class RestrictivePlugin:
         __name__ = "RestrictivePlugin"
@@ -29,11 +28,12 @@ async def test_multiple_restriction_sources_intersect():
             return None
 
     plugin = RestrictivePlugin()
-    pm.register(plugin, name="restrictive_plugin")
+
+    ds = Datasette()
+    await ds.invoke_startup()
+    ds.pm.register(plugin, name="restrictive_plugin")
 
     try:
-        ds = Datasette()
-        await ds.invoke_startup()
         db1 = ds.add_memory_database("db1_multi_intersect")
         db2 = ds.add_memory_database("db2_multi_intersect")
         await db1.execute_write("CREATE TABLE t1 (id INTEGER)")
@@ -55,7 +55,7 @@ async def test_multiple_restriction_sources_intersect():
         assert ("db1_multi_intersect", "t1") in resources
         assert ("db2_multi_intersect", "t1") not in resources
     finally:
-        pm.unregister(name="restrictive_plugin")
+        ds.pm.unregister(name="restrictive_plugin")
 
 
 @pytest.mark.asyncio
@@ -265,7 +265,6 @@ async def test_permission_resources_sql_multiple_restriction_sources_intersect()
     provide restriction_sql - both must pass for access to be granted.
     """
     from datasette import hookimpl
-    from datasette.plugins import pm
 
     class RestrictivePlugin:
         __name__ = "RestrictivePlugin"
@@ -281,11 +280,12 @@ async def test_permission_resources_sql_multiple_restriction_sources_intersect()
             return None
 
     plugin = RestrictivePlugin()
-    pm.register(plugin, name="restrictive_plugin")
+
+    ds = Datasette()
+    await ds.invoke_startup()
+    ds.pm.register(plugin, name="restrictive_plugin")
 
     try:
-        ds = Datasette()
-        await ds.invoke_startup()
         db1 = ds.add_memory_database("db1_multi_restrictions")
         db2 = ds.add_memory_database("db2_multi_restrictions")
         await db1.execute_write("CREATE TABLE t1 (id INTEGER)")
@@ -312,4 +312,4 @@ async def test_permission_resources_sql_multiple_restriction_sources_intersect()
         assert ("db1_multi_restrictions", "t1") in resources
         assert ("db2_multi_restrictions", "t1") not in resources
     finally:
-        pm.unregister(name="restrictive_plugin")
+        ds.pm.unregister(name="restrictive_plugin")

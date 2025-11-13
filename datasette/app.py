@@ -631,6 +631,17 @@ class Datasette:
     def urls(self):
         return Urls(self)
 
+    @property
+    def pm(self):
+        """
+        Return the global plugin manager instance.
+
+        This provides access to the pluggy PluginManager that manages all
+        Datasette plugins and hooks. Use datasette.pm.hook.hook_name() to
+        call plugin hooks.
+        """
+        return pm
+
     async def invoke_startup(self):
         # This must be called for Datasette to be in a usable state
         if self._startup_invoked:
@@ -2415,7 +2426,10 @@ class DatasetteClient:
 
     def __init__(self, ds):
         self.ds = ds
-        self.app = ds.app()
+
+    @property
+    def app(self):
+        return self.ds.app()
 
     def actor_cookie(self, actor):
         # Utility method, mainly for tests

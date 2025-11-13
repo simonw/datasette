@@ -239,7 +239,6 @@ async def test_in_client_returns_false_outside_request(datasette):
 async def test_in_client_returns_true_inside_request():
     """Test that datasette.in_client() returns True inside a client request"""
     from datasette import hookimpl, Response
-    from datasette.plugins import pm
 
     class TestPlugin:
         __name__ = "test_in_client_plugin"
@@ -255,10 +254,10 @@ async def test_in_client_returns_true_inside_request():
                 (r"^/-/test-in-client$", test_view),
             ]
 
-    pm.register(TestPlugin(), name="test_in_client_plugin")
+    ds = Datasette()
+    await ds.invoke_startup()
+    ds.pm.register(TestPlugin(), name="test_in_client_plugin")
     try:
-        ds = Datasette()
-        await ds.invoke_startup()
 
         # Outside of a client request, should be False
         assert ds.in_client() is False
@@ -271,14 +270,13 @@ async def test_in_client_returns_true_inside_request():
         # After the request, should be False again
         assert ds.in_client() is False
     finally:
-        pm.unregister(name="test_in_client_plugin")
+        ds.pm.unregister(name="test_in_client_plugin")
 
 
 @pytest.mark.asyncio
 async def test_in_client_with_skip_permission_checks():
     """Test that in_client() works regardless of skip_permission_checks value"""
     from datasette import hookimpl
-    from datasette.plugins import pm
     from datasette.utils.asgi import Response
 
     in_client_values = []
@@ -296,10 +294,10 @@ async def test_in_client_with_skip_permission_checks():
                 (r"^/-/test-in-client$", test_view),
             ]
 
-    pm.register(TestPlugin(), name="test_in_client_skip_plugin")
+    ds = Datasette(config={"databases": {"test_db": {"allow": {"id": "admin"}}}})
+    await ds.invoke_startup()
+    ds.pm.register(TestPlugin(), name="test_in_client_skip_plugin")
     try:
-        ds = Datasette(config={"databases": {"test_db": {"allow": {"id": "admin"}}}})
-        await ds.invoke_startup()
 
         # Request without skip_permission_checks
         await ds.client.get("/-/test-in-client")
@@ -312,4 +310,4 @@ async def test_in_client_with_skip_permission_checks():
         ), f"Expected 2 values, got {len(in_client_values)}"
         assert all(in_client_values), f"Expected all True, got {in_client_values}"
     finally:
-        pm.unregister(name="test_in_client_skip_plugin")
+        ds.pm.unregister(name="test_in_client_skip_plugin")

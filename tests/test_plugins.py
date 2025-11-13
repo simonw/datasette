@@ -691,7 +691,7 @@ async def test_hook_permission_resources_sql():
     await ds.invoke_startup()
 
     collected = []
-    for block in pm.hook.permission_resources_sql(
+    for block in ds.pm.hook.permission_resources_sql(
         datasette=ds,
         actor={"id": "alice"},
         action="view-table",
@@ -1161,12 +1161,12 @@ async def test_hook_filters_from_request(ds_client):
             if request.args.get("_nothing"):
                 return FilterArguments(["1 = 0"], human_descriptions=["NOTHING"])
 
-    pm.register(ReturnNothingPlugin(), name="ReturnNothingPlugin")
+    ds_client.ds.pm.register(ReturnNothingPlugin(), name="ReturnNothingPlugin")
     response = await ds_client.get("/fixtures/facetable?_nothing=1")
     assert "0 rows\n        where NOTHING" in response.text
     json_response = await ds_client.get("/fixtures/facetable.json?_nothing=1")
     assert json_response.json()["rows"] == []
-    pm.unregister(name="ReturnNothingPlugin")
+    ds_client.ds.pm.unregister(name="ReturnNothingPlugin")
 
 
 @pytest.mark.asyncio
@@ -1327,7 +1327,7 @@ async def test_hook_actors_from_ids():
             return inner
 
     try:
-        pm.register(ActorsFromIdsPlugin(), name="ActorsFromIdsPlugin")
+        ds.pm.register(ActorsFromIdsPlugin(), name="ActorsFromIdsPlugin")
         actors2 = await ds.actors_from_ids(["3", "5", "7"])
         assert actors2 == {
             "3": {"id": "3", "name": "Cate Blanchett"},
@@ -1335,7 +1335,7 @@ async def test_hook_actors_from_ids():
             "7": {"id": "7", "name": "Sarah Paulson"},
         }
     finally:
-        pm.unregister(name="ReturnNothingPlugin")
+        ds.pm.unregister(name="ReturnNothingPlugin")
 
 
 @pytest.mark.asyncio
@@ -1350,14 +1350,14 @@ async def test_plugin_is_installed():
             return {}
 
     try:
-        pm.register(DummyPlugin(), name="DummyPlugin")
+        datasette.pm.register(DummyPlugin(), name="DummyPlugin")
         response = await datasette.client.get("/-/plugins.json")
         assert response.status_code == 200
         installed_plugins = {p["name"] for p in response.json()}
         assert "DummyPlugin" in installed_plugins
 
     finally:
-        pm.unregister(name="DummyPlugin")
+        datasette.pm.unregister(name="DummyPlugin")
 
 
 @pytest.mark.asyncio
@@ -1384,7 +1384,7 @@ async def test_hook_jinja2_environment_from_request(tmpdir):
     datasette = Datasette(memory=True)
 
     try:
-        pm.register(EnvironmentPlugin(), name="EnvironmentPlugin")
+        datasette.pm.register(EnvironmentPlugin(), name="EnvironmentPlugin")
         response = await datasette.client.get("/")
         assert response.status_code == 200
         assert "Hello museums!" not in response.text
@@ -1395,7 +1395,7 @@ async def test_hook_jinja2_environment_from_request(tmpdir):
         assert response2.status_code == 200
         assert "Hello museums!" in response2.text
     finally:
-        pm.unregister(name="EnvironmentPlugin")
+        datasette.pm.unregister(name="EnvironmentPlugin")
 
 
 class SlotPlugin:
@@ -1433,48 +1433,48 @@ class SlotPlugin:
 
 @pytest.mark.asyncio
 async def test_hook_top_homepage():
+    datasette = Datasette(memory=True)
     try:
-        pm.register(SlotPlugin(), name="SlotPlugin")
-        datasette = Datasette(memory=True)
+        datasette.pm.register(SlotPlugin(), name="SlotPlugin")
         response = await datasette.client.get("/?z=foo")
         assert response.status_code == 200
         assert "Xtop_homepage:foo" in response.text
     finally:
-        pm.unregister(name="SlotPlugin")
+        datasette.pm.unregister(name="SlotPlugin")
 
 
 @pytest.mark.asyncio
 async def test_hook_top_database():
+    datasette = Datasette(memory=True)
     try:
-        pm.register(SlotPlugin(), name="SlotPlugin")
-        datasette = Datasette(memory=True)
+        datasette.pm.register(SlotPlugin(), name="SlotPlugin")
         response = await datasette.client.get("/_memory?z=bar")
         assert response.status_code == 200
         assert "Xtop_database:_memory:bar" in response.text
     finally:
-        pm.unregister(name="SlotPlugin")
+        datasette.pm.unregister(name="SlotPlugin")
 
 
 @pytest.mark.asyncio
 async def test_hook_top_table(ds_client):
     try:
-        pm.register(SlotPlugin(), name="SlotPlugin")
+        ds_client.ds.pm.register(SlotPlugin(), name="SlotPlugin")
         response = await ds_client.get("/fixtures/facetable?z=baz")
         assert response.status_code == 200
         assert "Xtop_table:fixtures:facetable:baz" in response.text
     finally:
-        pm.unregister(name="SlotPlugin")
+        ds_client.ds.pm.unregister(name="SlotPlugin")
 
 
 @pytest.mark.asyncio
 async def test_hook_top_row(ds_client):
     try:
-        pm.register(SlotPlugin(), name="SlotPlugin")
+        ds_client.ds.pm.register(SlotPlugin(), name="SlotPlugin")
         response = await ds_client.get("/fixtures/facet_cities/1?z=bax")
         assert response.status_code == 200
         assert "Xtop_row:fixtures:facet_cities:San Francisco:bax" in response.text
     finally:
-        pm.unregister(name="SlotPlugin")
+        ds_client.ds.pm.unregister(name="SlotPlugin")
 
 
 @pytest.mark.asyncio

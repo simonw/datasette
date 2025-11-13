@@ -1093,7 +1093,7 @@ Example usage:
         if not datasette.in_client():
             return Response.text(
                 "Only available via internal client requests",
-                status=403
+                status=403,
             )
         ...
 

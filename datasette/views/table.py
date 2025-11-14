@@ -204,6 +204,24 @@ async def display_columns_and_rows(
         if link_column:
             is_special_link_column = len(pks) != 1
             pk_path = path_from_row_pks(row, pks, not pks, False)
+
+            plugin_display_value = None
+            for candidate in pm.hook.render_cell(
+                row=row,
+                value=pk_path,
+                column='pk_path',
+                table=table_name,
+                database=database_name,
+                datasette=datasette,
+                request=request,
+            ):
+                candidate = await await_me_maybe(candidate)
+                if candidate is not None:
+                    plugin_display_value = candidate
+                    break
+            if plugin_display_value:
+                pk_path = plugin_display_value
+
             cells.append(
                 {
                     "column": pks[0] if len(pks) == 1 else "Link",

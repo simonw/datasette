@@ -1,4 +1,4 @@
-from datasette.utils import detect_json1
+from datasette.utils import detect_json1, encode_pk_component, decode_pk_component
 from datasette.utils.sqlite import sqlite_version
 from .fixtures import (  # noqa
     app_client,
@@ -11,6 +11,7 @@ from .fixtures import (  # noqa
 import json
 import pytest
 import urllib
+import base64
 
 
 @pytest.mark.asyncio
@@ -1383,3 +1384,104 @@ async def test_table_extras(ds_client, extra, expected_json):
     )
     assert response.status_code == 200
     assert response.json() == expected_json
+
+
+@pytest.mark.asyncio
+async def test_encode_decode_pk_component_binary(ds_client):
+    db = ds_client.ds.databases["fixtures"]
+    # Create a test table with a BLOB primary key
+    await db.execute_write(
+        """
+        CREATE TABLE IF NOT EXISTS binary_pk_table (
+            id BLOB PRIMARY KEY,
+            value TEXT
+        );
+        """
+    )
+    # Insert a binary PK and retrieve it back using the API
+    binary_pk = b"\x01\x02\x03test\n\xff"
+    encoded_pk = encode_pk_component(binary_pk)
+    decoded = decode_pk_component(encoded_pk)
+    assert decoded == binary_pk, "Decoded value must match original binary data"
+    # Insert into table
+    await db.execute_write(
+        "INSERT OR REPLACE INTO binary_pk_table (id, value) VALUES (?, ?)",
+        [binary_pk, "test value"],
+    )
+    # Queries it through the JSON API using the encoded PK
+    path = f"/fixtures/binary_pk_table/{encoded_pk}.json"
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    json_data = response.json()
+    print("RECEIVED JSON:", json_data) 
+    # Adjust based on actual response shape
+    try:
+        assert json_data["rows"][0]["value"] == "test value"
+    except (KeyError, IndexError, AssertionError):
+        if "value" in json_data:
+            assert json_data["value"] == "test value"
+        elif "row" in json_data and "value" in json_data["row"]:
+            assert json_data["row"]["value"] == "test value"
+        else:
+            raise AssertionError("Could not find 'value' in expected locations of JSON response")
+    # Checks that the encoded string is base64-safe
+    assert isinstance(encoded_pk, str)
+    b64_body = encoded_pk.replace("b64_", "")
+    padding_needed = 4 - (len(b64_body) % 4)
+    if padding_needed and padding_needed < 4:
+        b64_body += "=" * padding_needed
+    base64.urlsafe_b64decode(b64_body)
+
+@pytest.mark.asyncio
+async def test_encode_decode_pk_component_null_byte():
+    binary_pk = b"\x00\x10binary\0key"
+    encoded = encode_pk_component(binary_pk)
+    decoded = decode_pk_component(encoded)
+    assert decoded == binary_pk
+    assert isinstance(encoded, str)
+
+@pytest.mark.asyncio
+async def test_encode_decode_pk_component_long_key():
+    binary_pk = b"A" * 100
+    encoded = encode_pk_component(binary_pk)
+    decoded = decode_pk_component(encoded)
+    assert decoded == binary_pk
+
+
+@pytest.mark.asyncio
+async def test_extra_columns_and_request(ds_client):
+    await ds_client.ds.get_database("fixtures").execute_write(
+        "CREATE TABLE IF NOT EXISTS demo (id INTEGER PRIMARY KEY, name TEXT)"
+    )
+    await ds_client.ds.get_database("fixtures").execute_write(
+        "INSERT INTO demo (name) VALUES ('Alice')"
+    )
+    response = await ds_client.get("/fixtures/demo.json?_extra=columns,request")
+    assert response.status_code == 200
+    data = response.json()
+    assert "columns" in data
+    assert any(col["name"] == "id" for col in data["columns"])
+    assert "request" in data
+    assert "url" in data["request"]
+
+@pytest.mark.asyncio
+async def test_extra_metadata(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key.json?_extra=metadata")
+    assert response.status_code == 200
+    data = response.json()
+    assert "metadata" in data
+    assert "columns" in data["metadata"]
+
+@pytest.mark.asyncio
+async def test_extra_debug(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key.json?_extra=debug")
+    assert response.status_code == 200
+    data = response.json()
+    assert "debug" in data
+    assert "resolved" in data["debug"]
+
+@pytest.mark.asyncio
+async def test_extra_actions(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key.json?_extra=actions")
+    assert response.status_code == 200
+    assert "actions" in response.json()

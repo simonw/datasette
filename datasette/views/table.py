@@ -823,6 +823,31 @@ async def table_view_traced(datasette, request):
         context_for_html_hack=context_for_html_hack,
         default_labels=default_labels,
     )
+
+    if isinstance(view_data, Response):
+        return view_data
+    data, rows, columns, expanded_columns, sql, next_url = view_data
+
+    data.setdefault("_extras", {})
+    extras = request.args.getlist("_extra")
+    for extra in extras:
+        fn = datasette.registry.get(f"extra_{extra}")
+        if fn:
+            try:
+                data["_extras"][extra] = await fn(
+                    datasette=datasette,
+                    request=request,
+                    database=resolved.db.name,
+                    table=resolved.table,
+                    view_name="table",
+                    data=data,
+                    display_columns=data.get("display_columns", []),
+                )
+            except Exception as e:
+                data["_extras"][extra] = {"error": str(e)}
+
+
+
     if isinstance(view_data, Response):
         return view_data
     data, rows, columns, expanded_columns, sql, next_url = view_data
@@ -1627,6 +1652,46 @@ async def table_view_data(
     async def extra_facets_timed_out(extra_facet_results):
         return extra_facet_results["timed_out"]
 
+
+
+
+    async def extra_request():
+        "Full information about the request"
+        return {
+            "url": request.url,
+            "path": request.path,
+            "full_path": request.full_path,
+            "host": request.host,
+            "args": request.args._data,
+        }
+
+    async def extra_extras():
+        "Available ?_extra= blocks"
+        all_extras = [
+            (key[len("extra_"):], fn.__doc__)
+            for key, fn in registry._registry.items()
+            if key.startswith("extra_")
+        ]
+        return [
+            {
+                "name": name,
+                "description": doc,
+                "toggle_url": datasette.absolute_url(
+                    request,
+                    datasette.urls.path(
+                        path_with_added_args(request, {"_extra": name})
+                        if name not in extras
+                        else path_with_removed_args(request, {"_extra": name})
+                    ),
+                ),
+                "selected": name in extras,
+            }
+            for name, doc in all_extras
+        ]
+
+
+
+
     bundles = {
         "html": [
             "suggested_facets",
@@ -1664,40 +1729,54 @@ async def table_view_data(
             extras.update(values)
         extras.discard(f"_{key}")
 
-    registry = Registry(
-        extra_count,
-        extra_count_sql,
-        extra_facet_results,
-        extra_facets_timed_out,
-        extra_suggested_facets,
-        facet_instances,
-        extra_human_description_en,
-        extra_next_url,
-        extra_columns,
-        extra_primary_keys,
-        run_display_columns_and_rows,
-        extra_display_columns,
-        extra_display_rows,
-        extra_debug,
-        extra_request,
-        extra_query,
-        extra_metadata,
-        extra_extras,
-        extra_database,
-        extra_table,
-        extra_database_color,
-        extra_actions,
-        extra_filters,
-        extra_renderers,
-        extra_custom_table_templates,
-        extra_sorted_facet_results,
-        extra_table_definition,
-        extra_view_definition,
-        extra_is_view,
-        extra_private,
-        extra_expandable_columns,
-        extra_form_hidden_args,
-    )
+    print("Starting registry build")
+
+    # Add these one at a time if needed
+    print("extra_debug:", callable(extra_debug))
+    print("extra_metadata:", callable(extra_metadata))
+    print("extra_actions:", callable(extra_actions))
+
+    print("Attempting to initialize registry in table.py")
+
+    try:
+        registry = Registry(
+            extra_count,
+            extra_count_sql,
+            extra_facet_results,
+            extra_facets_timed_out,
+            extra_suggested_facets,
+            facet_instances,
+            extra_human_description_en,
+            extra_next_url,
+            extra_columns,
+            extra_primary_keys,
+            run_display_columns_and_rows,
+            extra_display_columns,
+            extra_display_rows,
+            extra_debug,
+            extra_request,
+            extra_query,
+            extra_metadata,
+            extra_extras,
+            extra_database,
+            extra_table,
+            extra_database_color,
+            extra_actions,
+            extra_filters,
+            extra_renderers,
+            extra_custom_table_templates,
+            extra_sorted_facet_results,
+            extra_table_definition,
+            extra_view_definition,
+            extra_is_view,
+            extra_private,
+            extra_expandable_columns,
+            extra_form_hidden_args,
+        )
+        print("✅ registry initialized successfully")
+    except Exception as e:
+        print("❌ registry failed to initialize:", e)
+        raise
 
     results = await registry.resolve_multi(
         ["extra_{}".format(extra) for extra in extras]
@@ -1821,3 +1900,4 @@ async def _next_value_and_url(
             request, datasette.urls.path(path_with_replaced_args(request, added_args))
         )
     return next_value, next_url
+

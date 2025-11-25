@@ -1,7 +1,7 @@
 import json
 from datasette.utils import MultiParams, calculate_etag
 from mimetypes import guess_type
-from urllib.parse import parse_qs, urlunparse, parse_qsl
+from urllib.parse import parse_qs, urlunparse, parse_qsl, unquote
 from pathlib import Path
 from http.cookies import SimpleCookie, Morsel
 import aiofiles
@@ -321,7 +321,7 @@ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
         path = request.scope["url_route"]["kwargs"]["path"]
         headers = static_headers.copy()
         try:
-            full_path = (root_path / path).resolve().absolute()
+            full_path = (root_path / unquote(path)).resolve().absolute()
         except FileNotFoundError:
             await asgi_send_html(send, "404: Directory not found", 404)
             return

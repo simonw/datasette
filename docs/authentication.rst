@@ -67,7 +67,7 @@ Click on that link and then visit ``http://127.0.0.1:8001/-/actor`` to confirm t
 Permissions
 ===========
 
-Datasette's permissions system is built around SQL queries. Datasette and its plugins construct SQL queries to resolve the list of resources that an actor cas access.
+Datasette's permissions system is built around SQL queries. Datasette and its plugins construct SQL queries to resolve the list of resources that an actor can access.
 
 The key question the permissions system answers is this:
 

@@ -30,8 +30,9 @@ class ActorRestrictions:
     @classmethod
     def from_actor(cls, actor: Optional[dict]) -> Optional["ActorRestrictions"]:
         """Parse restrictions from actor dict. Returns None if no restrictions."""
-        if not actor or not isinstance(actor, dict):
+        if not actor:
             return None
+        assert isinstance(actor, dict), "actor must be a dictionary"
 
         restrictions = actor.get("_r")
         if restrictions is None:
@@ -65,45 +66,6 @@ class ActorRestrictions:
                 if action_in_list(datasette, action, table_actions):
                     allowed.add((db_name, table_name))
         return allowed
-
-    def is_resource_allowed(
-        self,
-        datasette: "Datasette",
-        action: str,
-        parent: Optional[str],
-        child: Optional[str],
-    ) -> bool:
-        """Check if a specific resource is in the restriction allowlist."""
-        # Global actions are always allowed
-        if self.is_action_globally_allowed(datasette, action):
-            return True
-
-        # Check database-level allowlist
-        if parent:
-            allowed_dbs = self.get_allowed_databases(datasette, action)
-            if parent in allowed_dbs:
-                return True
-
-        # Check table-level allowlist
-        if parent and child:
-            allowed_tables = self.get_allowed_tables(datasette, action)
-            if (parent, child) in allowed_tables:
-                return True
-
-        # For parent-only queries, check if any table in that database is allowed
-        if parent and child is None:
-            allowed_tables = self.get_allowed_tables(datasette, action)
-            if any(db == parent for db, _ in allowed_tables):
-                return True
-
-        # For global queries (parent=None, child=None), check if anything is allowed
-        if parent is None and child is None:
-            if self.get_allowed_databases(datasette, action) or self.get_allowed_tables(
-                datasette, action
-            ):
-                return True
-
-        return False
 
 
 @hookimpl(specname="permission_resources_sql")

@@ -1195,6 +1195,21 @@ async def test_actions_page(ds_client):
 
 
 @pytest.mark.asyncio
+async def test_actions_page_does_not_display_none_string(ds_client):
+    """Ensure the Resource column doesn't display the string 'None' for null values."""
+    # https://github.com/simonw/datasette/issues/2599
+    original_root_enabled = ds_client.ds.root_enabled
+    try:
+        ds_client.ds.root_enabled = True
+        cookies = {"ds_actor": ds_client.actor_cookie({"id": "root"})}
+        response = await ds_client.get("/-/actions", cookies=cookies)
+        assert response.status_code == 200
+        assert "<code>None</code>" not in response.text
+    finally:
+        ds_client.ds.root_enabled = original_root_enabled
+
+
+@pytest.mark.asyncio
 async def test_permission_debug_tabs_with_query_string(ds_client):
     """Test that navigation tabs persist query strings across Check, Allowed, and Rules pages"""
     original_root_enabled = ds_client.ds.root_enabled

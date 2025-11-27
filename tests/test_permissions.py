@@ -1323,6 +1323,20 @@ async def test_actor_restrictions(
             ("dbname2", "tablename"),
             False,
         ),
+        # Table-level restriction allows access to that specific table
+        (
+            {"r": {"dbname": {"tablename": ["view-table"]}}},
+            "view-table",
+            ("dbname", "tablename"),
+            True,
+        ),
+        # But not to a different table in the same database
+        (
+            {"r": {"dbname": {"tablename": ["view-table"]}}},
+            "view-table",
+            ("dbname", "other_table"),
+            False,
+        ),
     ),
 )
 async def test_restrictions_allow_action(restrictions, action, resource, expected):

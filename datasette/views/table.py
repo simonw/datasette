@@ -1784,7 +1784,7 @@ async def _next_value_and_url(
         if (sort or sort_desc) and not is_view:
             try:
                 prefix = rows[-2][sort or sort_desc]
-            except IndexError:
+            except (IndexError, KeyError):
                 # sort/sort_desc column missing from SELECT - look up value by PK instead
                 prefix_where_clause = " and ".join(
                     "[{}] = :pk{}".format(pk, i) for i, pk in enumerate(pks)

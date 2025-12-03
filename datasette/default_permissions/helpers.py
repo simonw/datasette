@@ -53,22 +53,14 @@ class PermissionRowCollector:
         self,
         parent: Optional[str],
         child: Optional[str],
-        allow: bool,
+        allow: Optional[bool],
         reason: str,
+        if_not_none: bool = False,
     ) -> None:
-        """Add a permission row."""
+        """Add a permission row. If if_not_none=True, only add if allow is not None."""
+        if if_not_none and allow is None:
+            return
         self.rows.append(PermissionRow(parent, child, allow, reason))
-
-    def add_if_not_none(
-        self,
-        parent: Optional[str],
-        child: Optional[str],
-        result: Optional[bool],
-        reason: str,
-    ) -> None:
-        """Add a row only if result is not None."""
-        if result is not None:
-            self.add(parent, child, result, reason)
 
     def to_permission_sql(self) -> Optional[PermissionSQL]:
         """Convert collected rows to a PermissionSQL object."""

@@ -155,11 +155,12 @@ class ConfigPermissionProcessor:
         action_allow_block = permissions_block.get(self.action)
         result = self.evaluate_allow_block(action_allow_block)
 
-        self.collector.add_if_not_none(
+        self.collector.add(
             parent,
             child,
             result,
             f"config {'allow' if result else 'deny'} {scope_desc}",
+            if_not_none=True,
         )
 
     def add_allow_block_rule(

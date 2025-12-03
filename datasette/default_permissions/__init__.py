@@ -57,20 +57,3 @@ def canned_queries(datasette: "Datasette", database: str, actor) -> dict:
         ((datasette.config or {}).get("databases") or {}).get(database) or {}
     ).get("queries") or {}
     return queries
-
-
-__all__ = [
-    # Hooks
-    "actor_restrictions_sql",
-    "root_user_permissions_sql",
-    "config_permissions_sql",
-    "default_allow_sql_check",
-    "default_action_permissions_sql",
-    "actor_from_signed_api_token",
-    "skip_csrf",
-    "canned_queries",
-    # Utility functions and classes
-    "restrictions_allow_action",
-    "ActorRestrictions",
-    "DEFAULT_ALLOW_ACTIONS",
-]

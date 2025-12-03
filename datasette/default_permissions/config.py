@@ -156,10 +156,10 @@ class ConfigPermissionProcessor:
         result = self.evaluate_allow_block(action_allow_block)
 
         self.collector.add(
-            parent,
-            child,
-            result,
-            f"config {'allow' if result else 'deny'} {scope_desc}",
+            parent=parent,
+            child=child,
+            allow=result,
+            reason=f"config {'allow' if result else 'deny'} {scope_desc}",
             if_not_none=True,
         )
 

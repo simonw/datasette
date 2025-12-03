@@ -679,6 +679,103 @@ class TableDropView(BaseView):
         return Response.json({"ok": True}, status=200)
 
 
+class TableScriptView(BaseView):
+    name = "table-script"
+
+    def __init__(self, datasette):
+        self.ds = datasette
+
+    async def post(self, request):
+        # Resolve database and table
+        try:
+            resolved = await self.ds.resolve_table(request)
+        except NotFound as e:
+            return _error([e.args[0]], 404)
+
+        db = resolved.db
+        database_name = db.name
+        table_name = resolved.table
+
+        # Check if database is mutable
+        if not db.is_mutable:
+            return _error(["Database is immutable"], 403)
+
+        # Check execute-sql permission (database-level)
+        if not await self.ds.allowed(
+            action="execute-sql",
+            resource=DatabaseResource(database=database_name),
+            actor=request.actor,
+        ):
+            return _error(["Permission denied"], 403)
+
+        # Validate request body
+        if not request.headers.get("content-type", "").startswith("application/json"):
+            return _error(["Invalid content-type, must be application/json"], 400)
+
+        body = await request.post_body()
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError as e:
+            return _error(["Invalid JSON: {}".format(e)], 400)
+
+        if not isinstance(data, dict):
+            return _error(["JSON must be a dictionary"], 400)
+
+        if "sql" not in data:
+            return _error(['JSON must contain a "sql" key'], 400)
+
+        sql_script = data["sql"]
+        if not isinstance(sql_script, str):
+            return _error(['"sql" must be a string'], 400)
+
+        if not sql_script.strip():
+            return _error(["SQL script cannot be empty"], 400)
+
+        # Split script into statements (basic splitting by semicolon)
+        # This is a simple approach - SQLite handles parsing
+        statements = [s.strip() for s in sql_script.split(";") if s.strip()]
+        num_statements = len(statements)
+
+        # Execute script in a transaction
+        def execute_script(conn):
+            # Execute each statement individually within our transaction
+            cursor = conn.cursor()
+            for i, statement in enumerate(statements):
+                try:
+                    cursor.execute(statement)
+                except Exception as e:
+                    # Add statement number to error message
+                    raise Exception("{} at statement {}".format(str(e), i + 1))
+            return cursor.rowcount
+
+        try:
+            await db.execute_write_fn(execute_script)
+        except Exception as e:
+            return _error([str(e)], 400)
+
+        # Track event
+        from datasette.events import ExecuteScriptEvent
+
+        await self.ds.track_event(
+            ExecuteScriptEvent(
+                actor=request.actor,
+                database=database_name,
+                table=table_name,
+                num_statements=num_statements,
+            )
+        )
+
+        return Response.json(
+            {
+                "ok": True,
+                "database": database_name,
+                "table": table_name,
+                "statements_executed": num_statements,
+            },
+            status=200,
+        )
+
+
 def _get_extras(request):
     extra_bits = request.args.getlist("_extra")
     extras = set()

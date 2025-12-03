@@ -4,6 +4,14 @@
 Changelog
 =========
 
+.. _v1_0_a23:
+
+1.0a23 (2025-12-02)
+-------------------
+
+- Fix for bug where a stale database entry in ``internal.db`` could cause a 500 error on the homepage. (:issue:`2605`)
+- Cosmetic improvement to ``/-/actions`` page. (:issue:`2599`)
+
 .. _v1_0_a22:
 
 1.0a22 (2025-11-13)

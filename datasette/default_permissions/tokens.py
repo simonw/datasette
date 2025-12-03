@@ -1,7 +1,7 @@
 """
-Token authentication and other hooks for Datasette.
+Token authentication for Datasette.
 
-Handles signed API tokens (dstok_ prefix) and miscellaneous hooks.
+Handles signed API tokens (dstok_ prefix).
 """
 
 from __future__ import annotations
@@ -17,8 +17,8 @@ import itsdangerous
 from datasette import hookimpl
 
 
-@hookimpl
-def actor_from_request(datasette: "Datasette", request) -> Optional[dict]:
+@hookimpl(specname="actor_from_request")
+def actor_from_signed_api_token(datasette: "Datasette", request) -> Optional[dict]:
     """
     Authenticate requests using signed API tokens (dstok_ prefix).
 
@@ -93,22 +93,3 @@ def actor_from_request(datasette: "Datasette", request) -> Optional[dict]:
         actor["token_expires"] = created + duration
 
     return actor
-
-
-@hookimpl
-def skip_csrf(scope) -> Optional[bool]:
-    """Skip CSRF check for JSON content-type requests."""
-    if scope["type"] == "http":
-        headers = scope.get("headers") or {}
-        if dict(headers).get(b"content-type") == b"application/json":
-            return True
-    return None
-
-
-@hookimpl
-def canned_queries(datasette: "Datasette", database: str, actor) -> dict:
-    """Return canned queries defined in datasette.yaml configuration."""
-    queries = (
-        ((datasette.config or {}).get("databases") or {}).get(database) or {}
-    ).get("queries") or {}
-    return queries

@@ -19,18 +19,11 @@ from datasette.permissions import PermissionSQL
 async def root_user_permissions_sql(
     datasette: "Datasette",
     actor: Optional[dict],
-    action: str,
 ) -> Optional[PermissionSQL]:
     """
     Grant root user full permissions when --root flag is used.
-
-    This adds a global-level allow rule (NULL, NULL). Note that database or
-    table-level deny rules in config can still block access - the root user
-    is not completely immune to denies.
     """
-    is_root = datasette.root_enabled and actor is not None and actor.get("id") == "root"
-
-    if is_root:
+    if not datasette.root_enabled:
+        return None
+    if actor is not None and actor.get("id") == "root":
         return PermissionSQL.allow(reason="root user")
-
-    return None

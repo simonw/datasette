@@ -15,6 +15,15 @@ UNION/INTERSECT operations. The order of evaluation is:
   - Regular sql fields are UNIONed and evaluated with cascading priority
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from datasette.app import Datasette
+
+from datasette import hookimpl
+
 # Re-export all hooks and public utilities
 from .restrictions import (
     actor_restrictions_sql,
@@ -28,11 +37,27 @@ from .defaults import (
     default_action_permissions_sql,
     DEFAULT_ALLOW_ACTIONS,
 )
-from .tokens import (
-    actor_from_request,
-    skip_csrf,
-    canned_queries,
-)
+from .tokens import actor_from_signed_api_token
+
+
+@hookimpl
+def skip_csrf(scope) -> Optional[bool]:
+    """Skip CSRF check for JSON content-type requests."""
+    if scope["type"] == "http":
+        headers = scope.get("headers") or {}
+        if dict(headers).get(b"content-type") == b"application/json":
+            return True
+    return None
+
+
+@hookimpl
+def canned_queries(datasette: "Datasette", database: str, actor) -> dict:
+    """Return canned queries defined in datasette.yaml configuration."""
+    queries = (
+        ((datasette.config or {}).get("databases") or {}).get(database) or {}
+    ).get("queries") or {}
+    return queries
+
 
 __all__ = [
     # Hooks
@@ -41,7 +66,7 @@ __all__ = [
     "config_permissions_sql",
     "default_allow_sql_check",
     "default_action_permissions_sql",
-    "actor_from_request",
+    "actor_from_signed_api_token",
     "skip_csrf",
     "canned_queries",
     # Utility functions and classes

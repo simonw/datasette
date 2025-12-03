@@ -1323,6 +1323,20 @@ async def test_actor_restrictions(
             ("dbname2", "tablename"),
             False,
         ),
+        # Table-level restriction allows access to that specific table
+        (
+            {"r": {"dbname": {"tablename": ["view-table"]}}},
+            "view-table",
+            ("dbname", "tablename"),
+            True,
+        ),
+        # But not to a different table in the same database
+        (
+            {"r": {"dbname": {"tablename": ["view-table"]}}},
+            "view-table",
+            ("dbname", "other_table"),
+            False,
+        ),
     ),
 )
 async def test_restrictions_allow_action(restrictions, action, resource, expected):
@@ -1653,3 +1667,48 @@ async def test_permission_check_view_requires_debug_permission():
     data = response.json()
     assert data["action"] == "view-instance"
     assert data["allowed"] is True
+
+
+@pytest.mark.asyncio
+async def test_root_allow_block_with_table_restricted_actor():
+    """
+    Test that root-level allow: blocks are processed for actors with
+    table-level restrictions.
+
+    This covers the case in config.py is_in_restriction_allowlist() where
+    parent=None, child=None and actor has table restrictions but not global.
+    """
+    from datasette.resources import TableResource
+
+    # Config with root-level allow block that denies non-admin users
+    ds = Datasette(
+        config={
+            "allow": {"id": "admin"},  # Root-level allow block
+        }
+    )
+    await ds.invoke_startup()
+    db = ds.add_memory_database("mydb")
+    await db.execute_write("create table t1 (id integer primary key)")
+    await ds.client.get("/")  # Trigger catalog refresh
+
+    # Actor with table-level restrictions only (not global)
+    actor = {"id": "user", "_r": {"r": {"mydb": {"t1": ["view-table"]}}}}
+
+    # The root-level allow: {id: admin} should be processed and deny this user
+    # because they're not "admin", even though they have table restrictions
+    result = await ds.allowed(
+        action="view-table",
+        resource=TableResource("mydb", "t1"),
+        actor=actor,
+    )
+    # Should be False because root allow: {id: admin} denies non-admin users
+    assert result is False
+
+    # But admin with same restrictions should be allowed
+    admin_actor = {"id": "admin", "_r": {"r": {"mydb": {"t1": ["view-table"]}}}}
+    result = await ds.allowed(
+        action="view-table",
+        resource=TableResource("mydb", "t1"),
+        actor=admin_actor,
+    )
+    assert result is True

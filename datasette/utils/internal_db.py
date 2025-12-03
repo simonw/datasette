@@ -117,9 +117,6 @@ async def populate_schema_tables(internal_db, db):
 
     def delete_everything(conn):
         conn.execute(
-            "DELETE FROM catalog_databases WHERE database_name = ?", [database_name]
-        )
-        conn.execute(
             "DELETE FROM catalog_tables WHERE database_name = ?", [database_name]
         )
         conn.execute(

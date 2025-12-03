@@ -606,6 +606,15 @@ class Datasette:
                 "select database_name, schema_version from catalog_databases"
             )
         }
+        # Delete stale entries for databases that are no longer attached
+        stale_databases = set(current_schema_versions.keys()) - set(
+            self.databases.keys()
+        )
+        for stale_db_name in stale_databases:
+            await internal_db.execute_write(
+                "DELETE FROM catalog_databases WHERE database_name = ?",
+                [stale_db_name],
+            )
         for database_name, db in self.databases.items():
             schema_version = (await db.execute("PRAGMA schema_version")).first()[0]
             # Compare schema versions to see if we should skip it

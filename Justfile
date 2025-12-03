@@ -29,7 +29,7 @@ export DATASETTE_SECRET := "not_a_secret"
 
 # Serve live docs on localhost:8000
 @docs: cog blacken-docs
-  uv sync --extra docs && cd docs && uv run make livehtml
+  uv run --extra docs make -C docs livehtml
 
 # Build docs as static HTML
 @docs-build: cog blacken-docs

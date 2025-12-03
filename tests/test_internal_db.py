@@ -91,3 +91,51 @@ async def test_internal_foreign_key_references(ds_client):
                 )
 
     await internal_db.execute_fn(inner)
+
+
+@pytest.mark.asyncio
+async def test_stale_catalog_entry_database_fix(tmp_path):
+    """
+    Test for https://github.com/simonw/datasette/issues/2605
+
+    When the internal database persists across restarts and has entries in
+    catalog_databases for databases that no longer exist, accessing the
+    index page should not cause a 500 error (KeyError).
+    """
+    from datasette.app import Datasette
+
+    internal_db_path = str(tmp_path / "internal.db")
+    data_db_path = str(tmp_path / "data.db")
+
+    # Create a data database file
+    import sqlite3
+
+    conn = sqlite3.connect(data_db_path)
+    conn.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY)")
+    conn.close()
+
+    # First Datasette instance: with the data database and persistent internal db
+    ds1 = Datasette(files=[data_db_path], internal=internal_db_path)
+    await ds1.invoke_startup()
+
+    # Access the index page to populate the internal catalog
+    response = await ds1.client.get("/")
+    assert "data" in ds1.databases
+    assert response.status_code == 200
+
+    # Second Datasette instance: reusing internal.db but WITHOUT the data database
+    # This simulates restarting Datasette after removing a database
+    ds2 = Datasette(internal=internal_db_path)
+    await ds2.invoke_startup()
+
+    # The database is not in ds2.databases
+    assert "data" not in ds2.databases
+
+    # Accessing the index page should NOT cause a 500 error
+    # This is the bug: it currently raises KeyError when trying to
+    # access ds.databases["data"] for the stale catalog entry
+    response = await ds2.client.get("/")
+    assert response.status_code == 200, (
+        f"Index page should return 200, not {response.status_code}. "
+        "This fails due to stale catalog entries causing KeyError."
+    )

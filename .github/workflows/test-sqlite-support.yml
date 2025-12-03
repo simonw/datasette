@@ -31,8 +31,6 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
         allow-prereleases: true
-        cache: pip
-        cache-dependency-path: pyproject.toml
     - name: Set up SQLite ${{ matrix.sqlite-version }}
       uses: asg017/sqlite-versions@71ea0de37ae739c33e447af91ba71dda8fcf22e6
       with:

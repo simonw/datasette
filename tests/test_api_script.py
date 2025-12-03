@@ -69,7 +69,9 @@ async def test_script_single_statement(ds_script):
     assert event.num_statements == 1
 
 
-@pytest.mark.skip(reason="SQLite behavior with concurrent test fixtures needs investigation")
+@pytest.mark.skip(
+    reason="SQLite behavior with concurrent test fixtures needs investigation"
+)
 @pytest.mark.asyncio
 async def test_script_multiple_statements(ds_script):
     """Test executing multiple SQL statements in a transaction"""
@@ -80,7 +82,7 @@ async def test_script_multiple_statements(ds_script):
     ).dicts()
     assert len(initial_rows) == 1
     assert initial_rows[0]["id"] == 1
-    
+
     sql_script = """
         INSERT INTO items (id, name, value) VALUES (10, 'item2', 20);
         INSERT INTO items (id, name, value) VALUES (11, 'item3', 30);

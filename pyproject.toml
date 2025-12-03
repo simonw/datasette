@@ -93,3 +93,6 @@ datasette = ["templates/*.html"]
 
 [tool.setuptools.dynamic]
 version = {attr = "datasette.version.__version__"}
+
+[tool.uv]
+package = true

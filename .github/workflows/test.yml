@@ -30,16 +30,16 @@ jobs:
     - name: Debug hooks
       run: |
         python -c "
-        from datasette import plugins
-        import datasette.default_permissions as dp
-        print('Module file:', dp.__file__)
-        print('Hooks registered:')
-        for c in plugins.pm.get_hookcallers(dp):
-            print('  ' + c.name)
-        print('permission_resources_sql implementations:')
-        for impl in plugins.pm.hook.permission_resources_sql.get_hookimpls():
-            print('  ' + impl.function.__name__ + ' from ' + impl.plugin_name)
-        "
+from datasette import plugins
+import datasette.default_permissions as dp
+print('Module file:', dp.__file__)
+print('Hooks registered:')
+for c in plugins.pm.get_hookcallers(dp):
+    print(f'  {c.name}')
+print('permission_resources_sql implementations:')
+for impl in plugins.pm.hook.permission_resources_sql.get_hookimpls():
+    print(f'  {impl.function.__name__} from {impl.plugin_name}')
+"
     - name: Run tests
       run: |
         pytest -n auto -m "not serial"

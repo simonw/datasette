@@ -28,9 +28,10 @@ def settings_headings():
     return get_headings((docs_path / "settings.rst").read_text(), "~")
 
 
-@pytest.mark.parametrize("setting", app.SETTINGS)
-def test_settings_are_documented(settings_headings, setting):
-    assert setting.name in settings_headings
+def test_settings_are_documented(settings_headings, subtests):
+    for setting in app.SETTINGS:
+        with subtests.test(setting=setting.name):
+            assert setting.name in settings_headings
 
 
 @pytest.fixture(scope="session")
@@ -38,21 +39,21 @@ def plugin_hooks_content():
     return (docs_path / "plugin_hooks.rst").read_text()
 
 
-@pytest.mark.parametrize(
-    "plugin", [name for name in dir(app.pm.hook) if not name.startswith("_")]
-)
-def test_plugin_hooks_are_documented(plugin, plugin_hooks_content):
+def test_plugin_hooks_are_documented(plugin_hooks_content, subtests):
     headings = set()
     headings.update(get_headings(plugin_hooks_content, "-"))
     headings.update(get_headings(plugin_hooks_content, "~"))
-    assert plugin in headings
-    hook_caller = getattr(app.pm.hook, plugin)
-    arg_names = [a for a in hook_caller.spec.argnames if a != "__multicall__"]
-    # Check for plugin_name(arg1, arg2, arg3)
-    expected = f"{plugin}({', '.join(arg_names)})"
-    assert (
-        expected in plugin_hooks_content
-    ), f"Missing from plugin hook documentation: {expected}"
+    plugins = [name for name in dir(app.pm.hook) if not name.startswith("_")]
+    for plugin in plugins:
+        with subtests.test(plugin=plugin):
+            assert plugin in headings
+            hook_caller = getattr(app.pm.hook, plugin)
+            arg_names = [a for a in hook_caller.spec.argnames if a != "__multicall__"]
+            # Check for plugin_name(arg1, arg2, arg3)
+            expected = f"{plugin}({', '.join(arg_names)})"
+            assert (
+                expected in plugin_hooks_content
+            ), f"Missing from plugin hook documentation: {expected}"
 
 
 @pytest.fixture(scope="session")
@@ -68,9 +69,11 @@ def documented_views():
     return view_labels
 
 
-@pytest.mark.parametrize("view_class", [v for v in dir(app) if v.endswith("View")])
-def test_view_classes_are_documented(documented_views, view_class):
-    assert view_class in documented_views
+def test_view_classes_are_documented(documented_views, subtests):
+    view_classes = [v for v in dir(app) if v.endswith("View")]
+    for view_class in view_classes:
+        with subtests.test(view_class=view_class):
+            assert view_class in documented_views
 
 
 @pytest.fixture(scope="session")
@@ -85,9 +88,10 @@ def documented_table_filters():
     }
 
 
-@pytest.mark.parametrize("filter", [f.key for f in Filters._filters])
-def test_table_filters_are_documented(documented_table_filters, filter):
-    assert filter in documented_table_filters
+def test_table_filters_are_documented(documented_table_filters, subtests):
+    for f in Filters._filters:
+        with subtests.test(filter=f.key):
+            assert f.key in documented_table_filters
 
 
 @pytest.fixture(scope="session")
@@ -101,9 +105,10 @@ def documented_fns():
     }
 
 
-@pytest.mark.parametrize("fn", utils.functions_marked_as_documented)
-def test_functions_marked_with_documented_are_documented(documented_fns, fn):
-    assert fn.__name__ in documented_fns
+def test_functions_marked_with_documented_are_documented(documented_fns, subtests):
+    for fn in utils.functions_marked_as_documented:
+        with subtests.test(fn=fn.__name__):
+            assert fn.__name__ in documented_fns
 
 
 def test_rst_heading_underlines_match_title_length():

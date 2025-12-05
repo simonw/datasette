@@ -69,7 +69,7 @@ docs = [
     "ruamel.yaml",
 ]
 test = [
-    "pytest>=5.2.2",
+    "pytest>=9",
     "pytest-xdist>=2.2.1",
     "pytest-asyncio>=1.2.0",
     "beautifulsoup4>=4.8.1",

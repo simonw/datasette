@@ -977,3 +977,70 @@ If you pass the following POST body:
 Then the table will be dropped and a status ``200`` response of ``{"ok": true}`` will be returned.
 
 Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
+
+.. _TableScriptView:
+
+Executing SQL scripts
+~~~~~~~~~~~~~~~~~~~~~
+
+To execute a SQL script with multiple statements in a transaction, make a ``POST`` to ``/<database>/<table>/-/script``. This requires the :ref:`actions_execute_sql` permission.
+
+::
+
+    POST /<database>/<table>/-/script
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+
+.. code-block:: json
+
+    {
+        "sql": "INSERT INTO items (name, value) VALUES ('item1', 10); INSERT INTO items (name, value) VALUES ('item2', 20); UPDATE items SET value = value * 2 WHERE name = 'item1'"
+    }
+
+The SQL script can contain multiple statements separated by semicolons. All statements are executed within a single transaction, ensuring atomicity - either all statements succeed or all fail with the transaction rolled back.
+
+If successful, this will return a ``200`` status code and the following response:
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "database": "data",
+        "table": "items",
+        "statements_executed": 3
+    }
+
+If any statement fails, the entire transaction is rolled back and an error is returned:
+
+.. code-block:: json
+
+    {
+        "ok": false,
+        "errors": [
+            "UNIQUE constraint failed: items.id at statement 2"
+        ]
+    }
+
+The error message will indicate which statement number caused the failure (1-indexed).
+
+The ``table`` parameter in the URL provides context for the script execution but does not restrict which tables the script can operate on. The script can include statements that affect any table in the database.
+
+Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
+
+**Transaction semantics:**
+
+- All statements in the script execute within a single database transaction
+- If any statement fails, the entire transaction is rolled back
+- No partial execution occurs - it's all-or-nothing
+- This ensures data consistency when performing related operations
+
+**Use cases:**
+
+- Performing multiple related inserts/updates atomically
+- Creating tables and populating them with initial data
+- Complex data migrations that require multiple steps
+- Ensuring referential integrity across multiple operations
+
+**Security note:**
+
+This endpoint requires the ``execute-sql`` permission at the database level. Since it allows arbitrary SQL execution, it should only be granted to trusted users. Unlike the insert/update/delete endpoints which are more restricted, this endpoint provides full SQL flexibility.

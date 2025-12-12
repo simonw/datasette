@@ -45,7 +45,7 @@ jobs:
         (cd tests && gcc ext.c -fPIC -shared -o ext.so)
     - name: Install dependencies
       run: |
-        pip install -e '.[test]'
+        pip install . --group dev
         pip freeze
     - name: Run tests
       run: |

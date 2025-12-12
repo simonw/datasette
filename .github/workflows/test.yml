@@ -25,7 +25,7 @@ jobs:
         (cd tests && gcc ext.c -fPIC -shared -o ext.so)
     - name: Install dependencies
       run: |
-        pip install -e '.[test]'
+        pip install . --group dev
         pip freeze
     - name: Run tests
       run: |
@@ -33,9 +33,6 @@ jobs:
         pytest -m "serial"
         # And the test that exceeds a localhost HTTPS server
         tests/test_datasette_https_server.sh
-    - name: Install docs dependencies
-      run: |
-        pip install -e '.[docs]'
     - name: Black
       run: black --check .
     - name: Check if cog needs to be run

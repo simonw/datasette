@@ -55,20 +55,8 @@ CI = "https://github.com/simonw/datasette/actions?query=workflow%3ATest"
 [project.scripts]
 datasette = "datasette.cli:cli"
 
-[project.optional-dependencies]
-docs = [
-    "Sphinx==7.4.7",
-    "furo==2025.9.25",
-    "sphinx-autobuild",
-    "codespell>=2.2.5",
-    "blacken-docs",
-    "sphinx-copybutton",
-    "sphinx-inline-tabs",
-    "myst-parser",
-    "sphinx-markdown-builder",
-    "ruamel.yaml",
-]
-test = [
+[dependency-groups]
+dev = [
     "pytest>=9",
     "pytest-xdist>=2.2.1",
     "pytest-asyncio>=1.2.0",
@@ -78,7 +66,19 @@ test = [
     "pytest-timeout>=1.4.2",
     "trustme>=0.7",
     "cogapp>=3.3.0",
+    # docs
+    "Sphinx==7.4.7",
+    "furo==2025.9.25",
+    "sphinx-autobuild",
+    "codespell>=2.2.5",
+    "sphinx-copybutton",
+    "sphinx-inline-tabs",
+    "myst-parser",
+    "sphinx-markdown-builder",
+    "ruamel.yaml",
 ]
+
+[project.optional-dependencies]
 rich = ["rich"]
 
 [build-system]

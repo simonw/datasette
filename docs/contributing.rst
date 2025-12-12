@@ -32,17 +32,18 @@ If you want to get started without creating your own fork, you can do this inste
 
     git clone git@github.com:simonw/datasette
 
-The next step is to create a virtual environment for your project and use it to install Datasette's dependencies::
+The quickest way to set up a development environment is to use `uv <https://github.com/astral-sh/uv>`__. From the repository root you can run the tests directly::
 
     cd datasette
-    # Create a virtual environment in ./venv
-    python3 -m venv ./venv
-    # Now activate the virtual environment, so pip can install into it
-    source venv/bin/activate
-    # Install Datasette and its testing dependencies
-    python3 -m pip install -e '.[test]'
+    uv run pytest
 
-That last line does most of the work: ``pip install -e`` means "install this package in a way that allows me to edit the source code in place". The ``.[test]`` option means "install the optional testing dependencies as well".
+This will create a local ``.venv/`` and install Datasette plus its development dependencies.
+
+If you prefer to manage your own virtual environment with pip, create and activate one and then install the development dependency group::
+
+    python3 -m venv ./venv
+    source venv/bin/activate
+    python3 -m pip install -e . --group dev
 
 .. _contributing_running_tests:
 
@@ -51,15 +52,15 @@ Running the tests
 
 Once you have done this, you can run the Datasette unit tests from inside your ``datasette/`` directory using `pytest <https://docs.pytest.org/>`__ like so::
 
-    pytest
+    uv run pytest
 
 You can run the tests faster using multiple CPU cores with `pytest-xdist <https://pypi.org/project/pytest-xdist/>`__ like this::
 
-    pytest -n auto -m "not serial"
+    uv run pytest -n auto -m "not serial"
 
 ``-n auto`` detects the number of available cores automatically. The ``-m "not serial"`` skips tests that don't work well in a parallel test environment. You can run those tests separately like so::
 
-    pytest -m "serial"
+    uv run pytest -m "serial"
 
 .. _contributing_using_fixtures:
 
@@ -72,11 +73,11 @@ You're going to need at least one SQLite database. A quick way to get started is
 
 You can create a copy of that database by running this command::
 
-    python tests/fixtures.py fixtures.db
+    uv run python tests/fixtures.py fixtures.db
 
 Now you can run Datasette against the new fixtures database like so::
 
-    datasette fixtures.db
+    uv run datasette fixtures.db
 
 This will start a server at ``http://127.0.0.1:8001/``.
 
@@ -84,15 +85,14 @@ Any changes you make in the ``datasette/templates`` or ``datasette/static`` fold
 
 If you want to change Datasette's Python code you can use the ``--reload`` option to cause Datasette to automatically reload any time the underlying code changes::
 
-    datasette --reload fixtures.db
+    uv run datasette --reload fixtures.db
 
 You can also use the ``fixtures.py`` script to recreate the testing version of ``metadata.json`` used by the unit tests. To do that::
 
-    python tests/fixtures.py fixtures.db fixtures-metadata.json
-
+    uv run python tests/fixtures.py fixtures.db fixtures-metadata.json
 Or to output the plugins used by the tests, run this::
 
-    python tests/fixtures.py fixtures.db fixtures-metadata.json fixtures-plugins
+    uv run python tests/fixtures.py fixtures.db fixtures-metadata.json fixtures-plugins
     Test tables written to fixtures.db
     - metadata written to fixtures-metadata.json
     Wrote plugin: fixtures-plugins/register_output_renderer.py
@@ -103,7 +103,7 @@ Or to output the plugins used by the tests, run this::
 
 Then run Datasette like this::
 
-    datasette fixtures.db -m fixtures-metadata.json --plugins-dir=fixtures-plugins/
+    uv run datasette fixtures.db -m fixtures-metadata.json --plugins-dir=fixtures-plugins/
 
 .. _contributing_debugging:
 
@@ -114,11 +114,11 @@ Any errors that occur while Datasette is running while display a stack trace on 
 
 You can tell Datasette to open an interactive ``pdb`` (or ``ipdb``, if present) debugger session if an error occurs using the ``--pdb`` option::
 
-    datasette --pdb fixtures.db
+    uv run datasette --pdb fixtures.db
 
 For `ipdb <https://pypi.org/project/ipdb/>`__, first run this::
 
-    datasette install ipdb
+    uv run datasette install ipdb
 
 .. _contributing_formatting:
 
@@ -145,9 +145,9 @@ Or run both at the same time::
 Running Black
 ~~~~~~~~~~~~~
 
-Black will be installed when you run ``pip install -e '.[test]'``. To test that your code complies with Black, run the following in your root ``datasette`` repository checkout::
+Black is installed as part of the development dependency group. To test that your code complies with Black, run the following in your root ``datasette`` repository checkout::
 
-    black . --check
+   uv run black . --check
 
 ::
 
@@ -156,7 +156,7 @@ Black will be installed when you run ``pip install -e '.[test]'``. To test that 
 
 If any of your code does not conform to Black you can run this to automatically fix those problems::
 
-    black .
+    uv run black .
 
 ::
 
@@ -171,7 +171,7 @@ blacken-docs
 
 The `blacken-docs <https://pypi.org/project/blacken-docs/>`__ command applies Black formatting rules to code examples in the documentation. Run it like this::
 
-    blacken-docs -l 60 docs/*.rst
+    uv run blacken-docs -l 60 docs/*.rst
 
 .. _contributing_formatting_prettier:
 
@@ -208,17 +208,10 @@ Datasette's documentation lives in the ``docs/`` directory and is deployed autom
 
 The documentation is written using reStructuredText. You may find this article on `The subset of reStructuredText worth committing to memory <https://simonwillison.net/2018/Aug/25/restructuredtext/>`__ useful.
 
-You can build it locally by installing ``sphinx`` and ``sphinx_rtd_theme`` in your Datasette development environment and then running ``make html`` directly in the ``docs/`` directory::
+You can build it locally once you have installed the development dependency group (which includes Sphinx and related tools) and then running ``make html`` directly in the ``docs/`` directory::
 
-    # You may first need to activate your virtual environment:
-    source venv/bin/activate
-
-    # Install the dependencies needed to build the docs
-    pip install -e .[docs]
-
-    # Now build the docs
     cd docs/
-    make html
+    uv run make html
 
 This will create the HTML version of the documentation in ``docs/_build/html``. You can open it in your browser like so::
 
@@ -228,9 +221,9 @@ Any time you make changes to a ``.rst`` file you can re-run ``make html`` to upd
 
 For added productivity, you can use use `sphinx-autobuild <https://pypi.org/project/sphinx-autobuild/>`__ to run Sphinx in auto-build mode. This will run a local webserver serving the docs that automatically rebuilds them and refreshes the page any time you hit save in your editor.
 
-``sphinx-autobuild`` will have been installed when you ran ``pip install -e .[docs]``. In your ``docs/`` directory you can start the server by running the following::
+``sphinx-autobuild`` is included in the development dependency group. In your ``docs/`` directory you can start the server by running the following::
 
-    make livehtml
+    uv run make livehtml
 
 Now browse to ``http://localhost:8000/`` to view the documentation. Any edits you make should be instantly reflected in your browser.
 
@@ -243,7 +236,7 @@ Some pages of documentation (in particular the :ref:`cli_reference`) are automat
 
 To update these pages, run the following command::
 
-    cog -r docs/*.rst
+    uv run cog -r docs/*.rst
 
 .. _contributing_continuous_deployment:
 

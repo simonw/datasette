@@ -100,6 +100,8 @@ def config_dir_client(config_dir):
     yield _TestClient(ds)
     for db in ds.databases.values():
         db.close()
+    if hasattr(ds, "_internal_database"):
+        ds._internal_database.close()
 
 
 def test_settings(config_dir_client):

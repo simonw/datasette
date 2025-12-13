@@ -30,6 +30,7 @@ UNDOCUMENTED_PERMISSIONS = {
 }
 
 _ds_client = None
+_ds_instance = None
 
 
 def wait_until_responds(url, timeout=5.0, client=httpx, **kwargs):
@@ -50,7 +51,7 @@ async def ds_client():
     from .fixtures import CONFIG, METADATA, PLUGINS_DIR
     import secrets
 
-    global _ds_client
+    global _ds_client, _ds_instance
     if _ds_client is not None:
         return _ds_client
 
@@ -86,6 +87,7 @@ async def ds_client():
     await db.execute_write_fn(prepare)
     await ds.invoke_startup()
     _ds_client = ds.client
+    _ds_instance = ds
     return _ds_client
 
 
@@ -106,6 +108,19 @@ def pytest_unconfigure(config):
     import sys
 
     del sys._called_from_test
+
+    # Clean up the global ds_client fixture
+    global _ds_instance
+    if _ds_instance is not None:
+        # Close databases first (while executor is still running)
+        for db in _ds_instance.databases.values():
+            db.close()
+        if hasattr(_ds_instance, "_internal_database"):
+            _ds_instance._internal_database.close()
+        # Then shut down executor
+        if _ds_instance.executor is not None:
+            _ds_instance.executor.shutdown(wait=True)
+        _ds_instance = None
 
 
 def pytest_collection_modifyitems(items):
@@ -218,6 +233,27 @@ def ds_localhost_http_server():
     yield ds_proc
     # Shut it down at the end of the pytest session
     ds_proc.terminate()
+    ds_proc.wait()
+    if ds_proc.stdout:
+        ds_proc.stdout.close()
+
+
+def wait_until_uds_responds(uds_path, timeout=5.0):
+    """Wait for a Unix domain socket to accept connections."""
+    import socket as socket_module
+
+    start = time.time()
+    while time.time() - start < timeout:
+        sock = socket_module.socket(socket_module.AF_UNIX, socket_module.SOCK_STREAM)
+        try:
+            sock.connect(uds_path)
+            # Connection successful, now close and return
+            sock.close()
+            return
+        except (ConnectionRefusedError, FileNotFoundError):
+            sock.close()
+            time.sleep(0.1)
+    raise AssertionError("Timed out waiting for {} to respond".format(uds_path))
 
 
 @pytest.fixture(scope="session")
@@ -233,15 +269,16 @@ def ds_unix_domain_socket_server(tmp_path_factory):
         stderr=subprocess.STDOUT,
         cwd=tempfile.gettempdir(),
     )
-    # Poll until available
-    transport = httpx.HTTPTransport(uds=uds)
-    client = httpx.Client(transport=transport)
-    wait_until_responds("http://localhost/_memory.json", client=client)
+    # Poll until available using raw socket to avoid httpx connection pool leaks
+    wait_until_uds_responds(uds)
     # Check it started successfully
     assert not ds_proc.poll(), ds_proc.stdout.read().decode("utf-8")
     yield ds_proc, uds
     # Shut it down at the end of the pytest session
     ds_proc.terminate()
+    ds_proc.wait()
+    if ds_proc.stdout:
+        ds_proc.stdout.close()
 
 
 # Import fixtures from fixtures.py to make them available

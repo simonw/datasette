@@ -619,7 +619,9 @@ def serve(
     for file in file_paths:
         if not pathlib.Path(file).exists():
             if create:
-                sqlite3.connect(file).execute("vacuum")
+                conn = sqlite3.connect(file)
+                conn.execute("vacuum")
+                conn.close()
             else:
                 raise click.ClickException(
                     "Invalid value for '[FILES]...': Path '{}' does not exist.".format(

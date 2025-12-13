@@ -90,9 +90,10 @@ async def ds_client():
 
 
 def pytest_report_header(config):
-    return "SQLite: {}".format(
-        sqlite3.connect(":memory:").execute("select sqlite_version()").fetchone()[0]
-    )
+    conn = sqlite3.connect(":memory:")
+    version = conn.execute("select sqlite_version()").fetchone()[0]
+    conn.close()
+    return "SQLite: {}".format(version)
 
 
 def pytest_configure(config):

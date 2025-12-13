@@ -671,13 +671,18 @@ def detect_fts_sql(table):
 
 
 def detect_json1(conn=None):
+    close_conn = False
     if conn is None:
         conn = sqlite3.connect(":memory:")
+        close_conn = True
     try:
         conn.execute("SELECT json('{}')")
         return True
     except Exception:
         return False
+    finally:
+        if close_conn:
+            conn.close()
 
 
 def table_columns(conn, table):

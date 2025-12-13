@@ -710,6 +710,7 @@ async def test_invalid_custom_sql(ds_client):
 async def test_row(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key/1.json?_shape=objects")
     assert response.status_code == 200
+    assert response.json()["ok"] is True
     assert response.json()["rows"] == [{"id": 1, "content": "hello"}]
 
 

@@ -95,6 +95,7 @@ class RowView(DataView):
             }
 
         data = {
+            "ok": True,
             "database": database,
             "table": table,
             "rows": rows,

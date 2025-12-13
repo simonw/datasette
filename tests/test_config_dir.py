@@ -60,6 +60,7 @@ def config_dir(tmp_path_factory):
             (1, 'San Francisco')
         ;
         """)
+        db.close()
 
     # Mark "immutable.db" as immutable
     (config_dir / "inspect-data.json").write_text(
@@ -95,6 +96,8 @@ def test_invalid_settings(config_dir):
 def config_dir_client(config_dir):
     ds = Datasette([], config_dir=config_dir)
     yield _TestClient(ds)
+    for db in ds.databases.values():
+        db.close()
 
 
 def test_settings(config_dir_client):

@@ -187,6 +187,8 @@ def app_client():
 def app_client_no_files():
     ds = Datasette([])
     yield TestClient(ds)
+    for db in ds.databases.values():
+        db.close()
 
 
 @pytest.fixture(scope="session")
@@ -822,6 +824,7 @@ def cli(db_filename, config, metadata, plugins_path, recreate, extra_db_filename
     for sql, params in TABLE_PARAMETERIZED_SQL:
         with conn:
             conn.execute(sql, params)
+    conn.close()
     print(f"Test tables written to {db_filename}")
     if metadata:
         with open(metadata, "w") as fp:
@@ -850,6 +853,7 @@ def cli(db_filename, config, metadata, plugins_path, recreate, extra_db_filename
                 pathlib.Path(extra_db_filename).unlink()
         conn = sqlite3.connect(extra_db_filename)
         conn.executescript(EXTRA_DATABASE_SQL)
+        conn.close()
         print(f"Test tables written to {extra_db_filename}")
 
 

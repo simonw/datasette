@@ -639,7 +639,7 @@ def get_all_foreign_keys(conn):
 
 def detect_spatialite(conn):
     rows = conn.execute(
-        'select 1 from sqlite_master where tbl_name = "geometry_columns"'
+        "select 1 from sqlite_master where tbl_name = 'geometry_columns'"
     ).fetchall()
     return len(rows) > 0
 

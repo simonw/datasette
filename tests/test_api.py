@@ -859,7 +859,7 @@ test_json_columns_default_expected = [
 )
 def test_json_columns(app_client, extra_args, expected):
     sql = """
-        select 1 as intval, "s" as strval, 0.5 as floatval,
+        select 1 as intval, 's' as strval, 0.5 as floatval,
         '{"foo": "bar"}' as jsonval
     """
     path = "/fixtures.json?" + urllib.parse.urlencode({"sql": sql, "_shape": "array"})

@@ -1033,7 +1033,7 @@ async def table_view_data(
 
     # Build where clauses from query string arguments
     filters = Filters(sorted(filter_args))
-    where_clauses, params = filters.build_where_clauses(table_name)
+    where_clauses, params = filters.build_where_clauses(table_name, table_columns)
 
     # Execute filters_from_request plugin hooks - including the default
     # ones that live in datasette/filters.py

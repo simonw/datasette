@@ -65,6 +65,12 @@ em {
 
 
 body {
+    /* sticky footer */    
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh; 
+    /* /sticky footer */
+        
     margin: 0;
     padding: 0;
     font-family: "Helvetica Neue", sans-serif;
@@ -323,6 +329,7 @@ button.button-as-link:focus {
 
 /* Body */
 section.content {
+    flex-grow: 1; /* sticky footer */
     margin: 0 1rem;
 }
 

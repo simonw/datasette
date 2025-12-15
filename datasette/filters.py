@@ -352,14 +352,14 @@ class Filters:
             TemplatedFilter(
                 "isblank",
                 "is blank",
-                '("{c}" is null or "{c}" = "")',
+                """("{c}" is null or "{c}" = '')""",
                 "{c} is blank",
                 no_argument=True,
             ),
             TemplatedFilter(
                 "notblank",
                 "is not blank",
-                '("{c}" is not null and "{c}" != "")',
+                """("{c}" is not null and "{c}" != '')""",
                 "{c} is not blank",
                 no_argument=True,
             ),

@@ -29,7 +29,7 @@ def inspect_hash(path):
 def inspect_views(conn):
     """List views in a database."""
     return [
-        v[0] for v in conn.execute('select name from sqlite_master where type = "view"')
+        v[0] for v in conn.execute("select name from sqlite_master where type = 'view'")
     ]
 
 
@@ -38,7 +38,7 @@ def inspect_tables(conn, database_metadata):
     tables = {}
     table_names = [
         r["name"]
-        for r in conn.execute('select * from sqlite_master where type="table"')
+        for r in conn.execute("select * from sqlite_master where type='table'")
     ]
 
     for table in table_names:
@@ -90,8 +90,8 @@ def inspect_tables(conn, database_metadata):
         ] + [
             r["name"] for r in conn.execute("""
                     select name from sqlite_master
-                    where name like "idx_%"
-                    and type = "table"
+                    where name like 'idx_%'
+                    and type = 'table'
                 """)
         ]
 

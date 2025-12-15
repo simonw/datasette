@@ -467,7 +467,7 @@ class DateFacet(Facet):
             suggested_facet_sql = """
                 select date({column}) from (
                     {sql}
-                ) where {column} glob "????-??-*" limit 100;
+                ) where {column} glob '????-??-*' limit 100;
             """.format(
                 column=escape_sqlite(column), sql=self.sql
             )

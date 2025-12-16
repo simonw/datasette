@@ -527,12 +527,12 @@ CREATE TABLE searchable_tags (
 INSERT INTO searchable VALUES (1, 'barry cat', 'terry dog', 'panther');
 INSERT INTO searchable VALUES (2, 'terry dog', 'sara weasel', 'puma');
 
-INSERT INTO tags VALUES ("canine");
-INSERT INTO tags VALUES ("feline");
+INSERT INTO tags VALUES ('canine');
+INSERT INTO tags VALUES ('feline');
 
 INSERT INTO searchable_tags (searchable_id, tag) VALUES
-    (1, "feline"),
-    (2, "canine")
+    (1, 'feline'),
+    (2, 'canine')
 ;
 
 CREATE VIRTUAL TABLE "searchable_fts"
@@ -586,21 +586,21 @@ CREATE TABLE facetable (
 INSERT INTO facetable
     (created, planet_int, on_earth, state, _city_id, _neighborhood, tags, complex_array, distinct_some_null, n)
 VALUES
-    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Mission', '["tag1", "tag2"]', '[{"foo": "bar"}]', 'one', 'n1'),
-    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Dogpatch', '["tag1", "tag3"]', '[]', 'two', 'n2'),
-    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'SOMA', '[]', '[]', null, null),
-    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Tenderloin', '[]', '[]', null, null),
-    ("2019-01-15 08:00:00", 1, 1, 'CA', 1, 'Bernal Heights', '[]', '[]', null, null),
-    ("2019-01-15 08:00:00", 1, 1, 'CA', 1, 'Hayes Valley', '[]', '[]', null, null),
-    ("2019-01-15 08:00:00", 1, 1, 'CA', 2, 'Hollywood', '[]', '[]', null, null),
-    ("2019-01-15 08:00:00", 1, 1, 'CA', 2, 'Downtown', '[]', '[]', null, null),
-    ("2019-01-16 08:00:00", 1, 1, 'CA', 2, 'Los Feliz', '[]', '[]', null, null),
-    ("2019-01-16 08:00:00", 1, 1, 'CA', 2, 'Koreatown', '[]', '[]', null, null),
-    ("2019-01-16 08:00:00", 1, 1, 'MI', 3, 'Downtown', '[]', '[]', null, null),
-    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Greektown', '[]', '[]', null, null),
-    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Corktown', '[]', '[]', null, null),
-    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Mexicantown', '[]', '[]', null, null),
-    ("2019-01-17 08:00:00", 2, 0, 'MC', 4, 'Arcadia Planitia', '[]', '[]', null, null)
+    ('2019-01-14 08:00:00', 1, 1, 'CA', 1, 'Mission', '["tag1", "tag2"]', '[{"foo": "bar"}]', 'one', 'n1'),
+    ('2019-01-14 08:00:00', 1, 1, 'CA', 1, 'Dogpatch', '["tag1", "tag3"]', '[]', 'two', 'n2'),
+    ('2019-01-14 08:00:00', 1, 1, 'CA', 1, 'SOMA', '[]', '[]', null, null),
+    ('2019-01-14 08:00:00', 1, 1, 'CA', 1, 'Tenderloin', '[]', '[]', null, null),
+    ('2019-01-15 08:00:00', 1, 1, 'CA', 1, 'Bernal Heights', '[]', '[]', null, null),
+    ('2019-01-15 08:00:00', 1, 1, 'CA', 1, 'Hayes Valley', '[]', '[]', null, null),
+    ('2019-01-15 08:00:00', 1, 1, 'CA', 2, 'Hollywood', '[]', '[]', null, null),
+    ('2019-01-15 08:00:00', 1, 1, 'CA', 2, 'Downtown', '[]', '[]', null, null),
+    ('2019-01-16 08:00:00', 1, 1, 'CA', 2, 'Los Feliz', '[]', '[]', null, null),
+    ('2019-01-16 08:00:00', 1, 1, 'CA', 2, 'Koreatown', '[]', '[]', null, null),
+    ('2019-01-16 08:00:00', 1, 1, 'MI', 3, 'Downtown', '[]', '[]', null, null),
+    ('2019-01-17 08:00:00', 1, 1, 'MI', 3, 'Greektown', '[]', '[]', null, null),
+    ('2019-01-17 08:00:00', 1, 1, 'MI', 3, 'Corktown', '[]', '[]', null, null),
+    ('2019-01-17 08:00:00', 1, 1, 'MI', 3, 'Mexicantown', '[]', '[]', null, null),
+    ('2019-01-17 08:00:00', 2, 0, 'MC', 4, 'Arcadia Planitia', '[]', '[]', null, null)
 ;
 
 CREATE TABLE binary_data (
@@ -618,19 +618,19 @@ CREATE TABLE roadside_attractions (
     longitude real
 );
 INSERT INTO roadside_attractions VALUES (
-    1, "The Mystery Spot", "465 Mystery Spot Road, Santa Cruz, CA 95065", "https://www.mysteryspot.com/",
+    1, 'The Mystery Spot', '465 Mystery Spot Road, Santa Cruz, CA 95065', 'https://www.mysteryspot.com/',
     37.0167, -122.0024
 );
 INSERT INTO roadside_attractions VALUES (
-    2, "Winchester Mystery House", "525 South Winchester Boulevard, San Jose, CA 95128", "https://winchestermysteryhouse.com/",
+    2, 'Winchester Mystery House', '525 South Winchester Boulevard, San Jose, CA 95128', 'https://winchestermysteryhouse.com/',
     37.3184, -121.9511
 );
 INSERT INTO roadside_attractions VALUES (
-    3, "Burlingame Museum of PEZ Memorabilia", "214 California Drive, Burlingame, CA 94010", null,
+    3, 'Burlingame Museum of PEZ Memorabilia', '214 California Drive, Burlingame, CA 94010', null,
     37.5793, -122.3442
 );
 INSERT INTO roadside_attractions VALUES (
-    4, "Bigfoot Discovery Museum", "5497 Highway 9, Felton, CA 95018", "https://www.bigfootdiscoveryproject.com/",
+    4, 'Bigfoot Discovery Museum', '5497 Highway 9, Felton, CA 95018', 'https://www.bigfootdiscoveryproject.com/',
     37.0414, -122.0725
 );
 
@@ -639,10 +639,10 @@ CREATE TABLE attraction_characteristic (
     name text
 );
 INSERT INTO attraction_characteristic VALUES (
-    1, "Museum"
+    1, 'Museum'
 );
 INSERT INTO attraction_characteristic VALUES (
-    2, "Paranormal"
+    2, 'Paranormal'
 );
 
 CREATE TABLE roadside_attraction_characteristics (
@@ -694,7 +694,7 @@ CREATE VIEW searchable_view_configured_by_metadata AS
 """
     + "\n".join(
         [
-            'INSERT INTO no_primary_key VALUES ({i}, "a{i}", "b{i}", "c{i}");'.format(
+            "INSERT INTO no_primary_key VALUES ({i}, 'a{i}', 'b{i}', 'c{i}');".format(
                 i=i + 1
             )
             for i in range(201)
@@ -702,7 +702,7 @@ CREATE VIEW searchable_view_configured_by_metadata AS
     )
     + "\n".join(
         [
-            'INSERT INTO compound_three_primary_keys VALUES ("{a}", "{b}", "{c}", "{content}");'.format(
+            "INSERT INTO compound_three_primary_keys VALUES ('{a}', '{b}', '{c}', '{content}');".format(
                 a=a, b=b, c=c, content=content
             )
             for a, b, c, content in generate_compound_rows(1001)
@@ -711,8 +711,8 @@ CREATE VIEW searchable_view_configured_by_metadata AS
     + "\n".join(
         [
             """INSERT INTO sortable VALUES (
-        "{pk1}", "{pk2}", "{content}", {sortable},
-        {sortable_with_nulls}, {sortable_with_nulls_2}, "{text}");
+        '{pk1}', '{pk2}', '{content}', {sortable},
+        {sortable_with_nulls}, {sortable_with_nulls_2}, '{text}');
     """.format(
                 **row
             ).replace(

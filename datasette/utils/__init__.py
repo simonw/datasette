@@ -553,7 +553,7 @@ def get_outbound_foreign_keys(conn, table):
 
 def get_all_foreign_keys(conn):
     tables = [
-        r[0] for r in conn.execute('select name from sqlite_master where type="table"')
+        r[0] for r in conn.execute("select name from sqlite_master where type='table'")
     ]
     table_to_foreign_keys = {}
     for table in tables:
@@ -580,7 +580,7 @@ def get_all_foreign_keys(conn):
 
 def detect_spatialite(conn):
     rows = conn.execute(
-        'select 1 from sqlite_master where tbl_name = "geometry_columns"'
+        "select 1 from sqlite_master where tbl_name = 'geometry_columns'"
     ).fetchall()
     return len(rows) > 0
 
@@ -602,7 +602,7 @@ def detect_fts_sql(table):
                 sql like '%VIRTUAL TABLE%USING FTS%content="{table}"%'
                 or sql like '%VIRTUAL TABLE%USING FTS%content=[{table}]%'
                 or (
-                    tbl_name = "{table}"
+                    tbl_name = '{table}'
                     and sql like '%VIRTUAL TABLE%USING FTS%'
                 )
             )

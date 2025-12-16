@@ -346,14 +346,14 @@ class Filters:
             TemplatedFilter(
                 "isblank",
                 "is blank",
-                '("{c}" is null or "{c}" = "")',
+                """("{c}" is null or "{c}" = '')""",
                 "{c} is blank",
                 no_argument=True,
             ),
             TemplatedFilter(
                 "notblank",
                 "is not blank",
-                '("{c}" is not null and "{c}" != "")',
+                """("{c}" is not null and "{c}" != '')""",
                 "{c} is not blank",
                 no_argument=True,
             ),
@@ -420,11 +420,15 @@ class Filters:
         column_unit = self.ureg(self.units[column])
         return value.to(column_unit).magnitude
 
-    def build_where_clauses(self, table):
+    def build_where_clauses(self, table, table_columns=None):
         sql_bits = []
         params = {}
         i = 0
         for column, lookup, value in self.selections():
+            if column != "rowid" and table_columns and column not in table_columns:
+                # Ignore invalid column names, with SQLITE_DQS=0 they don't
+                # degrade to harmless string literal comparisons
+                continue
             filter = self._filters_by_key.get(lookup, None)
             if filter:
                 sql_bit, param = filter.where_clause(

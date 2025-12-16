@@ -21,6 +21,13 @@ PLUGINS_DIR = str(pathlib.Path(__file__).parent / "plugins")
 
 EXPECTED_PLUGINS = [
     {
+        "name": "disable_double_quoted_strings.py",
+        "static": False,
+        "templates": False,
+        "version": None,
+        "hooks": ["prepare_connection"],
+    },
+    {
         "name": "messages_output_renderer.py",
         "static": False,
         "templates": False,

@@ -405,8 +405,13 @@ async def _build_single_action_sql(
 
     # Add restriction filter if there are restrictions
     if restriction_sqls:
+        # Short-circuit optimization: if restriction_list is empty (e.g., due to
+        # INTERSECT of conflicting restrictions), the uncorrelated EXISTS check
+        # returns false once, avoiding per-row evaluation of the correlated subquery.
+        # See: https://emschwartz.me/short-circuiting-correlated-subqueries-in-sqlite/
         query_parts.append(
             """
+  AND EXISTS (SELECT 1 FROM restriction_list)
   AND EXISTS (
     SELECT 1 FROM restriction_list r
     WHERE (r.parent = decisions.parent OR r.parent IS NULL)

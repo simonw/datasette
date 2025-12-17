@@ -324,7 +324,12 @@ async def resolve_permissions_from_catalog(
         filtered AS (
             SELECT p.parent, p.child
             FROM permitted p
-            WHERE EXISTS (
+            -- Short-circuit optimization: if restriction_list is empty (e.g., due to
+            -- INTERSECT of conflicting restrictions), the uncorrelated EXISTS check
+            -- returns false once, avoiding per-row evaluation of the correlated subquery.
+            -- See: https://emschwartz.me/short-circuiting-correlated-subqueries-in-sqlite/
+            WHERE EXISTS (SELECT 1 FROM restriction_list)
+              AND EXISTS (
                 SELECT 1 FROM restriction_list r
                 WHERE (r.parent = p.parent OR r.parent IS NULL)
                   AND (r.child = p.child OR r.child IS NULL)

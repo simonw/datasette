@@ -1492,6 +1492,36 @@ async def table_view_data(
     async def extra_display_rows(run_display_columns_and_rows):
         return run_display_columns_and_rows["rows"]
 
+    async def extra_render_cells():
+        "Rendered HTML for each cell using the render_cell plugin hook"
+        columns = [col[0] for col in results.description]
+        rendered_rows = []
+        for row in rows:
+            rendered_row = {}
+            for value, column in zip(row, columns):
+                # Call render_cell plugin hook
+                plugin_display_value = None
+                for candidate in pm.hook.render_cell(
+                    row=row,
+                    value=value,
+                    column=column,
+                    table=table_name,
+                    database=database_name,
+                    datasette=datasette,
+                    request=request,
+                ):
+                    candidate = await await_me_maybe(candidate)
+                    if candidate is not None:
+                        plugin_display_value = candidate
+                        break
+                if plugin_display_value:
+                    rendered_row[column] = str(plugin_display_value)
+                else:
+                    # Default: convert value to string
+                    rendered_row[column] = "" if value is None else str(value)
+            rendered_rows.append(rendered_row)
+        return rendered_rows
+
     async def extra_query():
         "Details of the underlying SQL query"
         return {
@@ -1678,6 +1708,7 @@ async def table_view_data(
         run_display_columns_and_rows,
         extra_display_columns,
         extra_display_rows,
+        extra_render_cells,
         extra_debug,
         extra_request,
         extra_query,

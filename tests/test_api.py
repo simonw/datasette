@@ -792,14 +792,15 @@ async def test_row_extra_render_cell():
         assert "rows" in data
 
         # render_cell should be a list with one row (since this is a row page)
+        # Only columns modified by plugins are included (sparse output)
         render_cell = data["render_cell"]
         assert len(render_cell) == 1
 
         # The row: id=1, name='Alice'
         # The 'name' column should be rendered by our plugin as <strong>Alice</strong>
         assert render_cell[0]["name"] == "<strong>Alice</strong>"
-        # The 'id' column should use default rendering (just the value as string)
-        assert render_cell[0]["id"] == "1"
+        # The 'id' column is not included since no plugin modified it
+        assert "id" not in render_cell[0]
 
         # The regular rows should still contain raw values
         assert data["rows"] == [{"id": 1, "name": "Alice"}]

@@ -1426,18 +1426,19 @@ async def test_extra_render_cell():
         assert "rows" in data
 
         # render_cell should be a list of rows, each row being a dict of column -> rendered HTML
+        # Only columns modified by plugins are included (sparse output)
         render_cell = data["render_cell"]
         assert len(render_cell) == 2
 
         # First row: id=1, name='Alice'
         # The 'name' column should be rendered by our plugin as <strong>Alice</strong>
         assert render_cell[0]["name"] == "<strong>Alice</strong>"
-        # The 'id' column should use default rendering (just the value as string)
-        assert render_cell[0]["id"] == "1"
+        # The 'id' column is not included since no plugin modified it
+        assert "id" not in render_cell[0]
 
         # Second row: id=2, name='Bob'
         assert render_cell[1]["name"] == "<strong>Bob</strong>"
-        assert render_cell[1]["id"] == "2"
+        assert "id" not in render_cell[1]
 
         # The regular rows should still contain raw values
         assert data["rows"] == [

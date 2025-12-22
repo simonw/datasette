@@ -140,9 +140,6 @@ class RowView(DataView):
                             break
                     if plugin_display_value:
                         rendered_row[column] = str(plugin_display_value)
-                    else:
-                        # Default: convert value to string
-                        rendered_row[column] = "" if value is None else str(value)
                 rendered_rows.append(rendered_row)
             data["render_cell"] = rendered_rows
 

@@ -1516,9 +1516,6 @@ async def table_view_data(
                         break
                 if plugin_display_value:
                     rendered_row[column] = str(plugin_display_value)
-                else:
-                    # Default: convert value to string
-                    rendered_row[column] = "" if value is None else str(value)
             rendered_rows.append(rendered_row)
         return rendered_rows
 

@@ -1492,7 +1492,7 @@ async def table_view_data(
     async def extra_display_rows(run_display_columns_and_rows):
         return run_display_columns_and_rows["rows"]
 
-    async def extra_render_cells():
+    async def extra_render_cell():
         "Rendered HTML for each cell using the render_cell plugin hook"
         columns = [col[0] for col in results.description]
         rendered_rows = []
@@ -1708,7 +1708,7 @@ async def table_view_data(
         run_display_columns_and_rows,
         extra_display_columns,
         extra_display_rows,
-        extra_render_cells,
+        extra_render_cell,
         extra_debug,
         extra_request,
         extra_query,

@@ -1386,8 +1386,8 @@ async def test_table_extras(ds_client, extra, expected_json):
 
 
 @pytest.mark.asyncio
-async def test_extra_render_cells():
-    """Test that _extra=render_cells returns rendered HTML from render_cell plugin hook"""
+async def test_extra_render_cell():
+    """Test that _extra=render_cell returns rendered HTML from render_cell plugin hook"""
     from datasette import hookimpl
     from datasette.app import Datasette
 
@@ -1403,7 +1403,7 @@ async def test_extra_render_cells():
 
     ds = Datasette(memory=True)
     await ds.invoke_startup()
-    db = ds.add_memory_database("test")
+    db = ds.add_memory_database("test_table_render")
     await db.execute_write(
         "create table test_render (id integer primary key, name text)"
     )
@@ -1414,28 +1414,30 @@ async def test_extra_render_cells():
     ds.pm.register(TestRenderCellPlugin(), name="TestRenderCellPlugin")
 
     try:
-        # Request with _extra=render_cells
-        response = await ds.client.get("/test/test_render.json?_extra=render_cells")
+        # Request with _extra=render_cell
+        response = await ds.client.get(
+            "/test_table_render/test_render.json?_extra=render_cell"
+        )
         assert response.status_code == 200
         data = response.json()
 
         # Verify the response structure
-        assert "render_cells" in data
+        assert "render_cell" in data
         assert "rows" in data
 
-        # render_cells should be a list of rows, each row being a dict of column -> rendered HTML
-        render_cells = data["render_cells"]
-        assert len(render_cells) == 2
+        # render_cell should be a list of rows, each row being a dict of column -> rendered HTML
+        render_cell = data["render_cell"]
+        assert len(render_cell) == 2
 
         # First row: id=1, name='Alice'
         # The 'name' column should be rendered by our plugin as <strong>Alice</strong>
-        assert render_cells[0]["name"] == "<strong>Alice</strong>"
+        assert render_cell[0]["name"] == "<strong>Alice</strong>"
         # The 'id' column should use default rendering (just the value as string)
-        assert render_cells[0]["id"] == "1"
+        assert render_cell[0]["id"] == "1"
 
         # Second row: id=2, name='Bob'
-        assert render_cells[1]["name"] == "<strong>Bob</strong>"
-        assert render_cells[1]["id"] == "2"
+        assert render_cell[1]["name"] == "<strong>Bob</strong>"
+        assert render_cell[1]["id"] == "2"
 
         # The regular rows should still contain raw values
         assert data["rows"] == [

@@ -752,6 +752,62 @@ async def test_row_foreign_key_tables(ds_client):
     ]
 
 
+@pytest.mark.asyncio
+async def test_row_extra_render_cell():
+    """Test that _extra=render_cell returns rendered HTML from render_cell plugin hook on row pages"""
+    from datasette import hookimpl
+    from datasette.app import Datasette
+
+    class TestRenderCellPlugin:
+        __name__ = "TestRenderCellPlugin"
+
+        @hookimpl
+        def render_cell(self, value, column, table, database):
+            # Only modify cells in our test table
+            if table == "test_render" and column == "name":
+                return f"<strong>{value}</strong>"
+            return None
+
+    ds = Datasette(memory=True)
+    await ds.invoke_startup()
+    db = ds.add_memory_database("test_row_render")
+    await db.execute_write(
+        "create table test_render (id integer primary key, name text)"
+    )
+    await db.execute_write("insert into test_render values (1, 'Alice')")
+
+    # Register our test plugin
+    ds.pm.register(TestRenderCellPlugin(), name="TestRenderCellPlugin")
+
+    try:
+        # Request row with _extra=render_cell
+        response = await ds.client.get(
+            "/test_row_render/test_render/1.json?_extra=render_cell"
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify the response structure
+        assert "render_cell" in data
+        assert "rows" in data
+
+        # render_cell should be a list with one row (since this is a row page)
+        render_cell = data["render_cell"]
+        assert len(render_cell) == 1
+
+        # The row: id=1, name='Alice'
+        # The 'name' column should be rendered by our plugin as <strong>Alice</strong>
+        assert render_cell[0]["name"] == "<strong>Alice</strong>"
+        # The 'id' column should use default rendering (just the value as string)
+        assert render_cell[0]["id"] == "1"
+
+        # The regular rows should still contain raw values
+        assert data["rows"] == [{"id": 1, "name": "Alice"}]
+
+    finally:
+        ds.pm.unregister(name="TestRenderCellPlugin")
+
+
 def test_databases_json(app_client_two_attached_databases_one_immutable):
     response = app_client_two_attached_databases_one_immutable.get("/-/databases.json")
     databases = response.json

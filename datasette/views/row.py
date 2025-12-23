@@ -12,7 +12,8 @@ from datasette.utils import (
 from datasette.plugins import pm
 import json
 import sqlite_utils
-from .table import display_columns_and_rows, _get_extras
+from .table import display_columns_and_rows
+from .extras import _get_extras, SharedExtras
 
 
 class RowView(DataView):
@@ -111,37 +112,27 @@ class RowView(DataView):
         if "foreign_key_tables" in (request.args.get("_extras") or "").split(","):
             extras.add("foreign_key_tables")
 
-        # Process extras
+        # Process shared extras using SharedExtras class
+        shared_extras = SharedExtras(
+            datasette=self.ds,
+            db=db,
+            database_name=database,
+            table_name=table,
+            request=request,
+            rows=rows,
+            columns=columns,
+            pks=resolved.pks,
+            sql=resolved.sql,
+            params=resolved.params,
+        )
+        extra_results = await shared_extras.get_extras(extras)
+        data.update(extra_results)
+
+        # Handle row-specific extras
         if "foreign_key_tables" in extras:
             data["foreign_key_tables"] = await self.foreign_key_tables(
                 database, table, pk_values
             )
-
-        if "render_cell" in extras:
-            # Call render_cell plugin hook for each cell
-            rendered_rows = []
-            for row in rows:
-                rendered_row = {}
-                for value, column in zip(row, columns):
-                    # Call render_cell plugin hook
-                    plugin_display_value = None
-                    for candidate in pm.hook.render_cell(
-                        row=row,
-                        value=value,
-                        column=column,
-                        table=table,
-                        database=database,
-                        datasette=self.ds,
-                        request=request,
-                    ):
-                        candidate = await await_me_maybe(candidate)
-                        if candidate is not None:
-                            plugin_display_value = candidate
-                            break
-                    if plugin_display_value:
-                        rendered_row[column] = str(plugin_display_value)
-                rendered_rows.append(rendered_row)
-            data["render_cell"] = rendered_rows
 
         return (
             data,

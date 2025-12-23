@@ -46,6 +46,7 @@ from datasette.filters import Filters
 import sqlite_utils
 from .base import BaseView, DatasetteError, _error, stream_csv
 from .database import QueryView
+from .extras import _get_extras, render_cells_for_rows
 
 LINK_WITH_LABEL = (
     '<a href="{base_url}{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'
@@ -677,14 +678,6 @@ class TableDropView(BaseView):
             )
         )
         return Response.json({"ok": True}, status=200)
-
-
-def _get_extras(request):
-    extra_bits = request.args.getlist("_extra")
-    extras = set()
-    for bit in extra_bits:
-        extras.update(bit.split(","))
-    return extras
 
 
 async def _columns_to_select(table_columns, pks, request):
@@ -1495,29 +1488,9 @@ async def table_view_data(
     async def extra_render_cell():
         "Rendered HTML for each cell using the render_cell plugin hook"
         columns = [col[0] for col in results.description]
-        rendered_rows = []
-        for row in rows:
-            rendered_row = {}
-            for value, column in zip(row, columns):
-                # Call render_cell plugin hook
-                plugin_display_value = None
-                for candidate in pm.hook.render_cell(
-                    row=row,
-                    value=value,
-                    column=column,
-                    table=table_name,
-                    database=database_name,
-                    datasette=datasette,
-                    request=request,
-                ):
-                    candidate = await await_me_maybe(candidate)
-                    if candidate is not None:
-                        plugin_display_value = candidate
-                        break
-                if plugin_display_value:
-                    rendered_row[column] = str(plugin_display_value)
-            rendered_rows.append(rendered_row)
-        return rendered_rows
+        return await render_cells_for_rows(
+            datasette, database_name, table_name, rows, columns, request
+        )
 
     async def extra_query():
         "Details of the underlying SQL query"

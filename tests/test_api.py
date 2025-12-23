@@ -809,6 +809,48 @@ async def test_row_extra_render_cell():
         ds.pm.unregister(name="TestRenderCellPlugin")
 
 
+@pytest.mark.asyncio
+async def test_row_extras_shared():
+    """Test that shared extras (columns, query, metadata, etc.) work on row pages"""
+    from datasette.app import Datasette
+
+    ds = Datasette(memory=True)
+    await ds.invoke_startup()
+    db = ds.add_memory_database("test_row_extras")
+    await db.execute_write(
+        "create table test_extras (id integer primary key, name text, age integer)"
+    )
+    await db.execute_write("insert into test_extras values (1, 'Alice', 30)")
+
+    # Test multiple shared extras
+    response = await ds.client.get(
+        "/test_row_extras/test_extras/1.json"
+        "?_extra=columns,primary_keys,query,database,table,database_color"
+        ",table_definition,is_view,private,metadata"
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify shared extras are present and correct
+    assert data["columns"] == ["id", "name", "age"]
+    assert data["primary_keys"] == ["id"]
+    assert data["database"] == "test_row_extras"
+    assert data["table"] == "test_extras"
+    assert data["database_color"] is not None  # Has some color value
+    assert data["is_view"] is False
+    assert data["private"] is False
+    assert "columns" in data["metadata"]  # metadata has columns dict
+
+    # query extra should have sql and params
+    assert "sql" in data["query"]
+    assert "params" in data["query"]
+    assert "test_extras" in data["query"]["sql"]
+
+    # table_definition should be the CREATE TABLE statement
+    assert "CREATE TABLE" in data["table_definition"]
+    assert "test_extras" in data["table_definition"]
+
+
 def test_databases_json(app_client_two_attached_databases_one_immutable):
     response = app_client_two_attached_databases_one_immutable.get("/-/databases.json")
     databases = response.json

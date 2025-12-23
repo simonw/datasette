@@ -108,7 +108,11 @@ def json_renderer(request, args, data, error, truncated=None):
 
     # Don't include "columns" in output
     # https://github.com/simonw/datasette/issues/2136
-    if isinstance(data, dict) and "columns" not in request.args.getlist("_extra"):
+    # Parse comma-separated _extra values
+    extras = set()
+    for bit in request.args.getlist("_extra"):
+        extras.update(bit.split(","))
+    if isinstance(data, dict) and "columns" not in extras:
         data.pop("columns", None)
 
     # Handle _nl option for _shape=array

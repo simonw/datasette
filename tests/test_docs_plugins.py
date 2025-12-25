@@ -23,6 +23,14 @@ async def datasette_with_plugin():
         yield datasette
     finally:
         datasette.pm.unregister(name="undo")
+        # Close databases first (while executor is still running)
+        for db in datasette.databases.values():
+            db.close()
+        if hasattr(datasette, "_internal_database"):
+            datasette._internal_database.close()
+        # Then shut down executor
+        if datasette.executor is not None:
+            datasette.executor.shutdown(wait=True)
 # -- end datasette_with_plugin_fixture --
 
 

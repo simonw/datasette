@@ -28,6 +28,9 @@ connections = threading.local()
 
 AttachedDatabase = namedtuple("AttachedDatabase", ("seq", "name", "file"))
 
+# Sentinel object to signal write thread shutdown
+_SHUTDOWN_SENTINEL = object()
+
 
 class Database:
     # For table counts stop at this many rows:
@@ -62,9 +65,24 @@ class Database:
         # These are used when in non-threaded mode:
         self._read_connection = None
         self._write_connection = None
-        # This is used to track all file connections so they can be closed
-        self._all_file_connections = []
+        # This is used to track all connections so they can be closed
+        self._all_connections = []
+        self._closed = False
         self.mode = mode
+
+    def __del__(self):
+        # Ensure connections are closed when Database is garbage collected
+        # This prevents ResourceWarning about unclosed database connections
+        if not self._closed:
+            # Close all tracked connections without executor cleanup
+            # (executor might already be gone during garbage collection)
+            for connection in self._all_connections:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+            self._all_connections.clear()
+            self._closed = True
 
     @property
     def cached_table_counts(self):
@@ -103,9 +121,12 @@ class Database:
             )
             if not write:
                 conn.execute("PRAGMA query_only=1")
+            self._all_connections.append(conn)
             return conn
         if self.is_memory:
-            return sqlite3.connect(":memory:", uri=True)
+            conn = sqlite3.connect(":memory:", uri=True, check_same_thread=False)
+            self._all_connections.append(conn)
+            return conn
 
         # mode=ro or immutable=1?
         if self.is_mutable:
@@ -122,13 +143,69 @@ class Database:
         conn = sqlite3.connect(
             f"file:{self.path}{qs}", uri=True, check_same_thread=False, **extra_kwargs
         )
-        self._all_file_connections.append(conn)
+        self._all_connections.append(conn)
         return conn
 
     def close(self):
         # Close all connections - useful to avoid running out of file handles in tests
-        for connection in self._all_file_connections:
-            connection.close()
+        self._closed = True
+        # First, signal the write thread to shut down if it exists
+        if self._write_thread is not None and self._write_queue is not None:
+            self._write_queue.put(_SHUTDOWN_SENTINEL)
+            self._write_thread.join(timeout=1.0)
+        # Clear the instance variable references (connections will be closed below)
+        self._read_connection = None
+        self._write_connection = None
+        # Close and clear thread-local connection if it exists in the current thread
+        main_thread_conn = getattr(connections, self._thread_local_id, None)
+        if main_thread_conn is not None:
+            try:
+                main_thread_conn.close()
+            except Exception:
+                pass
+            delattr(connections, self._thread_local_id)
+        # If executor is available, use a barrier to ensure cleanup runs on ALL threads
+        thread_local_id = self._thread_local_id
+        if self.ds.executor is not None:
+            import concurrent.futures
+
+            max_workers = getattr(self.ds.executor, "_max_workers", None) or 1
+            barrier = threading.Barrier(max_workers, timeout=2.0)
+
+            def clear_thread_local():
+                # Close and clear this database's thread-local connection in this thread
+                conn = getattr(connections, thread_local_id, None)
+                if conn is not None:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass  # Connection might already be closed
+                    delattr(connections, thread_local_id)
+                # Wait for all threads to reach this point - this ensures
+                # all threads are processing cleanup simultaneously
+                try:
+                    barrier.wait()
+                except threading.BrokenBarrierError:
+                    pass
+
+            try:
+                # Submit exactly max_workers tasks - the barrier ensures all
+                # threads must be occupied with our cleanup tasks
+                futures = [
+                    self.ds.executor.submit(clear_thread_local)
+                    for _ in range(max_workers)
+                ]
+                # Wait for all cleanup tasks to complete
+                concurrent.futures.wait(futures, timeout=3.0)
+            except Exception:
+                pass  # Executor might be shutting down
+        # Close all tracked connections
+        for connection in self._all_connections:
+            try:
+                connection.close()
+            except Exception:
+                pass  # Connection might already be closed
+        self._all_connections.clear()
 
     async def execute_write(self, sql, params=None, block=True):
         def _inner(conn):
@@ -178,7 +255,7 @@ class Database:
             finally:
                 isolated_connection.close()
                 try:
-                    self._all_file_connections.remove(isolated_connection)
+                    self._all_connections.remove(isolated_connection)
                 except ValueError:
                     # Was probably a memory connection
                     pass
@@ -242,6 +319,15 @@ class Database:
             conn_exception = e
         while True:
             task = self._write_queue.get()
+            # Check for shutdown sentinel
+            if task is _SHUTDOWN_SENTINEL:
+                if conn is not None:
+                    conn.close()
+                    try:
+                        self._all_connections.remove(conn)
+                    except ValueError:
+                        pass
+                return
             if conn_exception is not None:
                 result = conn_exception
             else:
@@ -256,7 +342,7 @@ class Database:
                     finally:
                         isolated_connection.close()
                         try:
-                            self._all_file_connections.remove(isolated_connection)
+                            self._all_connections.remove(isolated_connection)
                         except ValueError:
                             # Was probably a memory connection
                             pass
@@ -284,6 +370,10 @@ class Database:
         # threaded mode
         def in_thread():
             conn = getattr(connections, self._thread_local_id, None)
+            # Check if database was closed - if so, clear the stale cached connection
+            if conn and self._closed:
+                delattr(connections, self._thread_local_id)
+                conn = None
             if not conn:
                 conn = self.connect()
                 self.ds._prepare_connection(conn, self.name)

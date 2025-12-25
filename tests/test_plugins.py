@@ -378,9 +378,9 @@ def test_plugins_async_template_function(restore_working_directory):
             .select("pre.extra_from_awaitable_function")[0]
             .text
         )
-        expected = (
-            sqlite3.connect(":memory:").execute("select sqlite_version()").fetchone()[0]
-        )
+        conn = sqlite3.connect(":memory:")
+        expected = conn.execute("select sqlite_version()").fetchone()[0]
+        conn.close()
         assert expected == extra_from_awaitable_function
 
 
@@ -424,6 +424,7 @@ def view_names_client(tmp_path_factory):
     db_path = str(tmpdir / "fixtures.db")
     conn = sqlite3.connect(db_path)
     conn.executescript(TABLES)
+    conn.close()
     return _TestClient(
         Datasette([db_path], template_dir=str(templates), plugins_dir=str(plugins))
     )

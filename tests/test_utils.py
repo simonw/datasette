@@ -210,6 +210,7 @@ def test_detect_fts(open_quote, close_quote):
     assert None is utils.detect_fts(conn, "Test_View")
     assert None is utils.detect_fts(conn, "r")
     assert "Street_Tree_List_fts" == utils.detect_fts(conn, "Street_Tree_List")
+    conn.close()
 
 
 @pytest.mark.parametrize("table", ("regular", "has'single quote"))
@@ -226,6 +227,7 @@ def test_detect_fts_different_table_names(table):
     conn = utils.sqlite3.connect(":memory:")
     conn.executescript(sql)
     assert "{table}_fts".format(table=table) == utils.detect_fts(conn, table)
+    conn.close()
 
 
 @pytest.mark.parametrize(
@@ -369,6 +371,7 @@ def test_table_columns():
     """
     )
     assert ["id", "name", "bob"] == utils.table_columns(conn, "places")
+    conn.close()
 
 
 @pytest.mark.parametrize(
@@ -443,11 +446,13 @@ def test_check_connection_spatialite_raises():
     conn = sqlite3.connect(path)
     with pytest.raises(utils.SpatialiteConnectionProblem):
         utils.check_connection(conn)
+    conn.close()
 
 
 def test_check_connection_passes():
     conn = sqlite3.connect(":memory:")
     utils.check_connection(conn)
+    conn.close()
 
 
 def test_call_with_supported_arguments():
@@ -574,10 +579,14 @@ def test_display_actor(actor, expected):
 async def test_initial_path_for_datasette(tmp_path_factory, dbs, expected_path):
     db_dir = tmp_path_factory.mktemp("dbs")
     one_table = str(db_dir / "one.db")
-    sqlite3.connect(one_table).execute("create table one (id integer primary key)")
+    conn1 = sqlite3.connect(one_table)
+    conn1.execute("create table one (id integer primary key)")
+    conn1.close()
     two_tables = str(db_dir / "two.db")
-    sqlite3.connect(two_tables).execute("create table two (id integer primary key)")
-    sqlite3.connect(two_tables).execute("create table three (id integer primary key)")
+    conn2 = sqlite3.connect(two_tables)
+    conn2.execute("create table two (id integer primary key)")
+    conn2.execute("create table three (id integer primary key)")
+    conn2.close()
     datasette = Datasette(
         [{"one_table": one_table, "two_tables": two_tables}[db] for db in dbs]
     )

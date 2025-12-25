@@ -407,55 +407,68 @@ async def test_array_facet_results(ds_client):
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
 async def test_array_facet_handle_duplicate_tags():
     ds = Datasette([], memory=True)
-    db = ds.add_database(Database(ds, memory_name="test_array_facet"))
-    await db.execute_write("create table otters(name text, tags text)")
-    for name, tags in (
-        ("Charles", ["friendly", "cunning", "friendly"]),
-        ("Shaun", ["cunning", "empathetic", "friendly"]),
-        ("Tracy", ["empathetic", "eager"]),
-    ):
-        await db.execute_write(
-            "insert into otters (name, tags) values (?, ?)", [name, json.dumps(tags)]
-        )
+    try:
+        db = ds.add_database(Database(ds, memory_name="test_array_facet"))
+        await db.execute_write("create table otters(name text, tags text)")
+        for name, tags in (
+            ("Charles", ["friendly", "cunning", "friendly"]),
+            ("Shaun", ["cunning", "empathetic", "friendly"]),
+            ("Tracy", ["empathetic", "eager"]),
+        ):
+            await db.execute_write(
+                "insert into otters (name, tags) values (?, ?)",
+                [name, json.dumps(tags)],
+            )
 
-    response = await ds.client.get("/test_array_facet/otters.json?_facet_array=tags")
-    assert response.json()["facet_results"]["results"]["tags"] == {
-        "name": "tags",
-        "type": "array",
-        "results": [
-            {
-                "value": "cunning",
-                "label": "cunning",
-                "count": 2,
-                "toggle_url": "http://localhost/test_array_facet/otters.json?_facet_array=tags&tags__arraycontains=cunning",
-                "selected": False,
-            },
-            {
-                "value": "empathetic",
-                "label": "empathetic",
-                "count": 2,
-                "toggle_url": "http://localhost/test_array_facet/otters.json?_facet_array=tags&tags__arraycontains=empathetic",
-                "selected": False,
-            },
-            {
-                "value": "friendly",
-                "label": "friendly",
-                "count": 2,
-                "toggle_url": "http://localhost/test_array_facet/otters.json?_facet_array=tags&tags__arraycontains=friendly",
-                "selected": False,
-            },
-            {
-                "value": "eager",
-                "label": "eager",
-                "count": 1,
-                "toggle_url": "http://localhost/test_array_facet/otters.json?_facet_array=tags&tags__arraycontains=eager",
-                "selected": False,
-            },
-        ],
-        "hideable": True,
-        "toggle_url": "/test_array_facet/otters.json",
-        "truncated": False,
-    }
+        response = await ds.client.get(
+            "/test_array_facet/otters.json?_facet_array=tags"
+        )
+        assert response.json()["facet_results"]["results"]["tags"] == {
+            "name": "tags",
+            "type": "array",
+            "results": [
+                {
+                    "value": "cunning",
+                    "label": "cunning",
+                    "count": 2,
+                    "toggle_url": "http://localhost/test_array_facet/otters.json?_facet_array=tags&tags__arraycontains=cunning",
+                    "selected": False,
+                },
+                {
+                    "value": "empathetic",
+                    "label": "empathetic",
+                    "count": 2,
+                    "toggle_url": "http://localhost/test_array_facet/otters.json?_facet_array=tags&tags__arraycontains=empathetic",
+                    "selected": False,
+                },
+                {
+                    "value": "friendly",
+                    "label": "friendly",
+                    "count": 2,
+                    "toggle_url": "http://localhost/test_array_facet/otters.json?_facet_array=tags&tags__arraycontains=friendly",
+                    "selected": False,
+                },
+                {
+                    "value": "eager",
+                    "label": "eager",
+                    "count": 1,
+                    "toggle_url": "http://localhost/test_array_facet/otters.json?_facet_array=tags&tags__arraycontains=eager",
+                    "selected": False,
+                },
+            ],
+            "hideable": True,
+            "toggle_url": "/test_array_facet/otters.json",
+            "truncated": False,
+        }
+    finally:
+        # Close databases first (while executor is still running)
+        for db_obj in ds.databases.values():
+            db_obj.close()
+        if hasattr(ds, "_internal_database"):
+            ds._internal_database.close()
+        # Then shut down executor
+        if ds.executor is not None:
+            ds.executor.shutdown(wait=True)
 
 
 @pytest.mark.asyncio
@@ -513,99 +526,124 @@ async def test_date_facet_results(ds_client):
 @pytest.mark.asyncio
 async def test_json_array_with_blanks_and_nulls():
     ds = Datasette([], memory=True)
-    db = ds.add_database(Database(ds, memory_name="test_json_array"))
-    await db.execute_write("create table foo(json_column text)")
-    for value in ('["a", "b", "c"]', '["a", "b"]', "", None):
-        await db.execute_write("insert into foo (json_column) values (?)", [value])
-    response = await ds.client.get("/test_json_array/foo.json?_extra=suggested_facets")
-    data = response.json()
-    assert data["suggested_facets"] == [
-        {
-            "name": "json_column",
-            "type": "array",
-            "toggle_url": "http://localhost/test_json_array/foo.json?_extra=suggested_facets&_facet_array=json_column",
-        }
-    ]
+    try:
+        db = ds.add_database(Database(ds, memory_name="test_json_array"))
+        await db.execute_write("create table foo(json_column text)")
+        for value in ('["a", "b", "c"]', '["a", "b"]', "", None):
+            await db.execute_write("insert into foo (json_column) values (?)", [value])
+        response = await ds.client.get(
+            "/test_json_array/foo.json?_extra=suggested_facets"
+        )
+        data = response.json()
+        assert data["suggested_facets"] == [
+            {
+                "name": "json_column",
+                "type": "array",
+                "toggle_url": "http://localhost/test_json_array/foo.json?_extra=suggested_facets&_facet_array=json_column",
+            }
+        ]
+    finally:
+        # Close databases first (while executor is still running)
+        for db_obj in ds.databases.values():
+            db_obj.close()
+        if hasattr(ds, "_internal_database"):
+            ds._internal_database.close()
+        # Then shut down executor
+        if ds.executor is not None:
+            ds.executor.shutdown(wait=True)
 
 
 @pytest.mark.asyncio
 async def test_facet_size():
     ds = Datasette([], memory=True, settings={"max_returned_rows": 50})
-    db = ds.add_database(Database(ds, memory_name="test_facet_size"))
-    await db.execute_write("create table neighbourhoods(city text, neighbourhood text)")
-    for i in range(1, 51):
-        for j in range(1, 4):
-            await db.execute_write(
-                "insert into neighbourhoods (city, neighbourhood) values (?, ?)",
-                ["City {}".format(i), "Neighbourhood {}".format(j)],
-            )
-    response = await ds.client.get(
-        "/test_facet_size/neighbourhoods.json?_extra=suggested_facets"
-    )
-    data = response.json()
-    assert data["suggested_facets"] == [
-        {
-            "name": "neighbourhood",
-            "toggle_url": "http://localhost/test_facet_size/neighbourhoods.json?_extra=suggested_facets&_facet=neighbourhood",
-        }
-    ]
-    # Bump up _facet_size= to suggest city too
-    response2 = await ds.client.get(
-        "/test_facet_size/neighbourhoods.json?_facet_size=50&_extra=suggested_facets"
-    )
-    data2 = response2.json()
-    assert sorted(data2["suggested_facets"], key=lambda f: f["name"]) == [
-        {
-            "name": "city",
-            "toggle_url": "http://localhost/test_facet_size/neighbourhoods.json?_facet_size=50&_extra=suggested_facets&_facet=city",
-        },
-        {
-            "name": "neighbourhood",
-            "toggle_url": "http://localhost/test_facet_size/neighbourhoods.json?_facet_size=50&_extra=suggested_facets&_facet=neighbourhood",
-        },
-    ]
-    # Facet by city should return expected number of results
-    response3 = await ds.client.get(
-        "/test_facet_size/neighbourhoods.json?_facet_size=50&_facet=city"
-    )
-    data3 = response3.json()
-    assert len(data3["facet_results"]["results"]["city"]["results"]) == 50
-    # Reduce max_returned_rows and check that it's respected
-    ds._settings["max_returned_rows"] = 20
-    response4 = await ds.client.get(
-        "/test_facet_size/neighbourhoods.json?_facet_size=50&_facet=city"
-    )
-    data4 = response4.json()
-    assert len(data4["facet_results"]["results"]["city"]["results"]) == 20
-    # Test _facet_size=max
-    response5 = await ds.client.get(
-        "/test_facet_size/neighbourhoods.json?_facet_size=max&_facet=city"
-    )
-    data5 = response5.json()
-    assert len(data5["facet_results"]["results"]["city"]["results"]) == 20
-    # Now try messing with facet_size in the table metadata
-    orig_config = ds.config
     try:
-        ds.config = {
-            "databases": {
-                "test_facet_size": {"tables": {"neighbourhoods": {"facet_size": 6}}}
-            }
-        }
-        response6 = await ds.client.get(
-            "/test_facet_size/neighbourhoods.json?_facet=city"
+        db = ds.add_database(Database(ds, memory_name="test_facet_size"))
+        await db.execute_write(
+            "create table neighbourhoods(city text, neighbourhood text)"
         )
-        data6 = response6.json()
-        assert len(data6["facet_results"]["results"]["city"]["results"]) == 6
-        # Setting it to max bumps it up to 50 again
-        ds.config["databases"]["test_facet_size"]["tables"]["neighbourhoods"][
-            "facet_size"
-        ] = "max"
-        data7 = (
-            await ds.client.get("/test_facet_size/neighbourhoods.json?_facet=city")
-        ).json()
-        assert len(data7["facet_results"]["results"]["city"]["results"]) == 20
+        for i in range(1, 51):
+            for j in range(1, 4):
+                await db.execute_write(
+                    "insert into neighbourhoods (city, neighbourhood) values (?, ?)",
+                    ["City {}".format(i), "Neighbourhood {}".format(j)],
+                )
+        response = await ds.client.get(
+            "/test_facet_size/neighbourhoods.json?_extra=suggested_facets"
+        )
+        data = response.json()
+        assert data["suggested_facets"] == [
+            {
+                "name": "neighbourhood",
+                "toggle_url": "http://localhost/test_facet_size/neighbourhoods.json?_extra=suggested_facets&_facet=neighbourhood",
+            }
+        ]
+        # Bump up _facet_size= to suggest city too
+        response2 = await ds.client.get(
+            "/test_facet_size/neighbourhoods.json?_facet_size=50&_extra=suggested_facets"
+        )
+        data2 = response2.json()
+        assert sorted(data2["suggested_facets"], key=lambda f: f["name"]) == [
+            {
+                "name": "city",
+                "toggle_url": "http://localhost/test_facet_size/neighbourhoods.json?_facet_size=50&_extra=suggested_facets&_facet=city",
+            },
+            {
+                "name": "neighbourhood",
+                "toggle_url": "http://localhost/test_facet_size/neighbourhoods.json?_facet_size=50&_extra=suggested_facets&_facet=neighbourhood",
+            },
+        ]
+        # Facet by city should return expected number of results
+        response3 = await ds.client.get(
+            "/test_facet_size/neighbourhoods.json?_facet_size=50&_facet=city"
+        )
+        data3 = response3.json()
+        assert len(data3["facet_results"]["results"]["city"]["results"]) == 50
+        # Reduce max_returned_rows and check that it's respected
+        ds._settings["max_returned_rows"] = 20
+        response4 = await ds.client.get(
+            "/test_facet_size/neighbourhoods.json?_facet_size=50&_facet=city"
+        )
+        data4 = response4.json()
+        assert len(data4["facet_results"]["results"]["city"]["results"]) == 20
+        # Test _facet_size=max
+        response5 = await ds.client.get(
+            "/test_facet_size/neighbourhoods.json?_facet_size=max&_facet=city"
+        )
+        data5 = response5.json()
+        assert len(data5["facet_results"]["results"]["city"]["results"]) == 20
+        # Now try messing with facet_size in the table metadata
+        orig_config = ds.config
+        try:
+            ds.config = {
+                "databases": {
+                    "test_facet_size": {"tables": {"neighbourhoods": {"facet_size": 6}}}
+                }
+            }
+            response6 = await ds.client.get(
+                "/test_facet_size/neighbourhoods.json?_facet=city"
+            )
+            data6 = response6.json()
+            assert len(data6["facet_results"]["results"]["city"]["results"]) == 6
+            # Setting it to max bumps it up to 50 again
+            ds.config["databases"]["test_facet_size"]["tables"]["neighbourhoods"][
+                "facet_size"
+            ] = "max"
+            data7 = (
+                await ds.client.get("/test_facet_size/neighbourhoods.json?_facet=city")
+            ).json()
+            assert len(data7["facet_results"]["results"]["city"]["results"]) == 20
+        finally:
+            ds.config = orig_config
     finally:
-        ds.config = orig_config
+        # Close databases first (while executor is still running)
+        # This allows db.close() to clear thread-local storage in executor threads
+        for db_obj in list(ds.databases.values()):
+            db_obj.close()
+        if hasattr(ds, "_internal_database"):
+            ds._internal_database.close()
+        # Then shut down executor
+        if ds.executor is not None:
+            ds.executor.shutdown(wait=True)
 
 
 def test_other_types_of_facet_in_metadata():
@@ -648,20 +686,30 @@ async def test_conflicting_facet_names_json(ds_client):
 @pytest.mark.asyncio
 async def test_facet_against_in_memory_database():
     ds = Datasette()
-    db = ds.add_memory_database("mem")
-    await db.execute_write(
-        "create table t (id integer primary key, name text, name2 text)"
-    )
-    to_insert = [{"name": "one", "name2": "1"} for _ in range(800)] + [
-        {"name": "two", "name2": "2"} for _ in range(300)
-    ]
-    await db.execute_write_many(
-        "insert into t (name, name2) values (:name, :name2)", to_insert
-    )
-    response1 = await ds.client.get("/mem/t")
-    assert response1.status_code == 200
-    response2 = await ds.client.get("/mem/t?_facet=name&_facet=name2")
-    assert response2.status_code == 200
+    try:
+        db = ds.add_memory_database("mem")
+        await db.execute_write(
+            "create table t (id integer primary key, name text, name2 text)"
+        )
+        to_insert = [{"name": "one", "name2": "1"} for _ in range(800)] + [
+            {"name": "two", "name2": "2"} for _ in range(300)
+        ]
+        await db.execute_write_many(
+            "insert into t (name, name2) values (:name, :name2)", to_insert
+        )
+        response1 = await ds.client.get("/mem/t")
+        assert response1.status_code == 200
+        response2 = await ds.client.get("/mem/t?_facet=name&_facet=name2")
+        assert response2.status_code == 200
+    finally:
+        # Close databases first (while executor is still running)
+        for db_obj in ds.databases.values():
+            db_obj.close()
+        if hasattr(ds, "_internal_database"):
+            ds._internal_database.close()
+        # Then shut down executor
+        if ds.executor is not None:
+            ds.executor.shutdown(wait=True)
 
 
 @pytest.mark.asyncio
@@ -698,3 +746,9 @@ async def test_facet_only_considers_first_x_rows():
         assert data2["suggested_facets"] == []
     finally:
         Facet.suggest_consider = original_suggest_consider
+        if ds.executor is not None:
+            ds.executor.shutdown(wait=True)
+        for db_obj in ds.databases.values():
+            db_obj.close()
+        if hasattr(ds, "_internal_database"):
+            ds._internal_database.close()

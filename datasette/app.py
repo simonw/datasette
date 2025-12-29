@@ -1014,12 +1014,12 @@ class Datasette:
             for db_name, db in self.databases.items():
                 if count >= SQLITE_LIMIT_ATTACHED or db.is_memory:
                     continue
-                sql = 'ATTACH DATABASE "file:{path}?{qs}" AS [{name}];'.format(
+                sql = "ATTACH DATABASE ? AS {};".format(escape_sqlite(db_name))
+                location = "file:{path}?{qs}".format(
                     path=db.path,
                     qs="mode=ro" if db.is_mutable else "immutable=1",
-                    name=db_name,
                 )
-                conn.execute(sql)
+                conn.execute(sql, [location])
                 count += 1
 
     def add_message(self, request, message, type=INFO):

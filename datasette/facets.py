@@ -481,7 +481,7 @@ class DateFacet(Facet):
             suggested_facet_sql = """
                 select date({column}) from (
                     select * from ({sql}) limit 100
-                ) where {column} glob "????-??-*"
+                ) where {column} glob '????-??-*'
             """.format(
                 column=escape_sqlite(column), sql=self.sql
             )

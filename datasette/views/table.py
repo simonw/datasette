@@ -2,6 +2,8 @@ import asyncio
 import itertools
 import json
 import urllib
+from dataclasses import dataclass
+from typing import Any
 
 from asyncinject import Registry
 import markupsafe
@@ -51,6 +53,29 @@ LINK_WITH_LABEL = (
     '<a href="{base_url}{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'
 )
 LINK_WITH_VALUE = '<a href="{base_url}{database}/{table}/{link_id}">{id}</a>'
+
+
+@dataclass
+class ExtraInfo:
+    """Metadata about a table extra."""
+
+    description: str
+    example: Any = None
+    return_type: str = None
+
+
+def extra(description: str, example: Any = None, return_type: str = None):
+    """Decorator to document an extra function with structured metadata."""
+
+    def decorator(fn):
+        fn._extra_info = ExtraInfo(
+            description=description,
+            example=example,
+            return_type=return_type,
+        )
+        return fn
+
+    return decorator
 
 
 class Row:
@@ -1292,11 +1317,20 @@ async def table_view_data(
     if extra_extras:
         extras.update(extra_extras)
 
+    @extra(
+        description="SQL query used to calculate the total count",
+        example="select count(*) from my_table where status = ?",
+        return_type="string",
+    )
     async def extra_count_sql():
         return count_sql
 
+    @extra(
+        description="Total count of rows matching these filters",
+        example=1234,
+        return_type="integer or null",
+    )
     async def extra_count():
-        "Total count of rows matching these filters"
         # Calculate the total count for this query
         count = None
         if (
@@ -1344,8 +1378,12 @@ async def table_view_data(
             )
         return facet_instances
 
+    @extra(
+        description="Results of facets calculated against this data",
+        example={"results": {"status": {"name": "status", "results": [{"value": "active", "count": 42}]}}, "timed_out": []},
+        return_type="object with results and timed_out keys",
+    )
     async def extra_facet_results(facet_instances):
-        "Results of facets calculated against this data"
         facet_results = {}
         facets_timed_out = []
 
@@ -1372,8 +1410,12 @@ async def table_view_data(
             "timed_out": facets_timed_out,
         }
 
+    @extra(
+        description="Suggestions for facets that might return interesting results",
+        example=[{"name": "status", "toggle_url": "?_facet=status"}],
+        return_type="array of objects",
+    )
     async def extra_suggested_facets(facet_instances):
-        "Suggestions for facets that might return interesting results"
         suggested_facets = []
         # Calculate suggested facets
         if (
@@ -1396,8 +1438,12 @@ async def table_view_data(
         raise BadRequest("_facet= is not allowed")
 
     # human_description_en combines filters AND search, if provided
+    @extra(
+        description="Human-readable English description of the current filters",
+        example="status = active sorted by created descending",
+        return_type="string",
+    )
     async def extra_human_description_en():
-        "Human-readable description of the filters"
         human_description_en = filters.human_description_en(
             extra=extra_human_descriptions
         )
@@ -1412,18 +1458,35 @@ async def table_view_data(
             (sort or sort_desc), " descending" if sort_desc else ""
         )
 
+    @extra(
+        description="Full URL for the next page of results",
+        example="/db/table.json?_next=eyJpZCI6IDQyfQ",
+        return_type="string or null",
+    )
     async def extra_next_url():
-        "Full URL for the next page of results"
         return next_url
 
+    @extra(
+        description="Column names returned by this query",
+        example=["id", "name", "status"],
+        return_type="array of strings",
+    )
     async def extra_columns():
-        "Column names returned by this query"
         return columns
 
+    @extra(
+        description="Primary key column names for this table",
+        example=["id"],
+        return_type="array of strings",
+    )
     async def extra_primary_keys():
-        "Primary keys for this table"
         return pks
 
+    @extra(
+        description="Action links from the table_actions plugin hook",
+        example=[{"href": "/db/-/edit", "label": "Edit"}],
+        return_type="array of objects",
+    )
     async def extra_actions():
         async def actions():
             links = []
@@ -1447,11 +1510,20 @@ async def table_view_data(
 
         return actions
 
+    @extra(
+        description="Boolean indicating if this is a SQL view rather than a table",
+        example=False,
+        return_type="boolean",
+    )
     async def extra_is_view():
         return is_view
 
+    @extra(
+        description="Extra debug information about the request",
+        example={"resolved": "...", "url_vars": {"database": "db", "table": "t"}, "nofacet": False, "nosuggest": False},
+        return_type="object",
+    )
     async def extra_debug():
-        "Extra debug information"
         return {
             "resolved": repr(resolved),
             "url_vars": request.url_vars,
@@ -1459,8 +1531,12 @@ async def table_view_data(
             "nosuggest": nosuggest,
         }
 
+    @extra(
+        description="Full information about the incoming HTTP request",
+        example={"url": "http://localhost/db/table.json", "path": "/db/table.json", "full_path": "/db/table.json?status=active", "host": "localhost", "args": {"status": ["active"]}},
+        return_type="object",
+    )
     async def extra_request():
-        "Full information about the request"
         return {
             "url": request.url,
             "path": request.path,
@@ -1486,14 +1562,28 @@ async def table_view_data(
             "rows": display_rows,
         }
 
+    @extra(
+        description="Column metadata for HTML display, including sortability",
+        example=[{"name": "id", "sortable": True, "is_pk": True}],
+        return_type="array of objects",
+    )
     async def extra_display_columns(run_display_columns_and_rows):
         return run_display_columns_and_rows["columns"]
 
+    @extra(
+        description="Row data formatted for HTML display",
+        example=[[{"column": "id", "value": "1", "raw": 1}]],
+        return_type="array of arrays of cell objects",
+    )
     async def extra_display_rows(run_display_columns_and_rows):
         return run_display_columns_and_rows["rows"]
 
+    @extra(
+        description="Rendered HTML for each cell using the render_cell plugin hook",
+        example=[{"name": "<strong>Example</strong>"}],
+        return_type="array of objects mapping column names to HTML strings",
+    )
     async def extra_render_cell():
-        "Rendered HTML for each cell using the render_cell plugin hook"
         columns = [col[0] for col in results.description]
         rendered_rows = []
         for row in rows:
@@ -1519,15 +1609,23 @@ async def table_view_data(
             rendered_rows.append(rendered_row)
         return rendered_rows
 
+    @extra(
+        description="Details of the underlying SQL query",
+        example={"sql": "select * from my_table where status = ?", "params": ["active"]},
+        return_type="object with sql and params keys",
+    )
     async def extra_query():
-        "Details of the underlying SQL query"
         return {
             "sql": sql,
             "params": params,
         }
 
+    @extra(
+        description="Metadata about the table and database from datasette.yaml",
+        example={"title": "My Table", "description": "A description", "columns": {"name": "Full name"}},
+        return_type="object",
+    )
     async def extra_metadata():
-        "Metadata about the table and database"
         tablemetadata = await datasette.get_resource_metadata(database_name, table_name)
 
         rows = await datasette.get_internal_database().execute(
@@ -1545,15 +1643,35 @@ async def table_view_data(
         tablemetadata["columns"] = dict(rows)
         return tablemetadata
 
+    @extra(
+        description="The name of the database",
+        example="my_database",
+        return_type="string",
+    )
     async def extra_database():
         return database_name
 
+    @extra(
+        description="The name of the table",
+        example="my_table",
+        return_type="string",
+    )
     async def extra_table():
         return table_name
 
+    @extra(
+        description="The computed color for this database",
+        example="#ff5733",
+        return_type="string",
+    )
     async def extra_database_color():
         return db.color
 
+    @extra(
+        description="Hidden form arguments for preserving state in HTML forms",
+        example=[["_size", "10"], ["_facet", "status"]],
+        return_type="array of [key, value] pairs",
+    )
     async def extra_form_hidden_args():
         form_hidden_args = []
         for key in request.args:
@@ -1566,9 +1684,19 @@ async def table_view_data(
                     form_hidden_args.append((key, value))
         return form_hidden_args
 
+    @extra(
+        description="The currently applied filters as a Filters object",
+        example={"status": "active"},
+        return_type="Filters object",
+    )
     async def extra_filters():
         return filters
 
+    @extra(
+        description="Custom template names that can be used for this table",
+        example=["_table-mydb-mytable.html", "_table-table-mydb-mytable.html", "_table.html"],
+        return_type="array of strings",
+    )
     async def extra_custom_table_templates():
         return [
             f"_table-{to_css_class(database_name)}-{to_css_class(table_name)}.html",
@@ -1576,6 +1704,11 @@ async def table_view_data(
             "_table.html",
         ]
 
+    @extra(
+        description="Facet results sorted by count descending",
+        example=[{"name": "status", "results": [{"value": "active", "count": 42}]}],
+        return_type="array of facet result objects",
+    )
     async def extra_sorted_facet_results(extra_facet_results):
         return sorted(
             extra_facet_results["results"].values(),
@@ -1583,12 +1716,27 @@ async def table_view_data(
             reverse=True,
         )
 
+    @extra(
+        description="The SQL CREATE TABLE statement for this table",
+        example="CREATE TABLE my_table (id INTEGER PRIMARY KEY, name TEXT)",
+        return_type="string or null",
+    )
     async def extra_table_definition():
         return await db.get_table_definition(table_name)
 
+    @extra(
+        description="The SQL CREATE VIEW statement for this view",
+        example="CREATE VIEW my_view AS SELECT * FROM my_table",
+        return_type="string or null",
+    )
     async def extra_view_definition():
         return await db.get_view_definition(table_name)
 
+    @extra(
+        description="Available output renderers (JSON, CSV, etc.) with their URLs",
+        example={"json": "/db/table.json", "csv": "/db/table.csv"},
+        return_type="object mapping format names to URLs",
+    )
     async def extra_renderers(extra_expandable_columns, extra_query):
         renderers = {}
         url_labels_extra = {}
@@ -1616,9 +1764,19 @@ async def table_view_data(
                 )
         return renderers
 
+    @extra(
+        description="Boolean indicating if this table/view is private",
+        example=False,
+        return_type="boolean",
+    )
     async def extra_private():
         return private
 
+    @extra(
+        description="Foreign key columns that can be expanded to show labels",
+        example=[{"column": "author_id", "other_table": "authors"}, "name"],
+        return_type="array of [foreign_key_info, label_column] pairs",
+    )
     async def extra_expandable_columns():
         expandables = []
         db = datasette.databases[database_name]
@@ -1627,30 +1785,39 @@ async def table_view_data(
             expandables.append((fk, label_column))
         return expandables
 
+    @extra(
+        description="List of available ?_extra= options with their metadata",
+        example=[{"name": "count", "description": "Total count of rows", "example": 1234, "return_type": "integer or null", "toggle_url": "?_extra=count", "selected": False}],
+        return_type="array of extra metadata objects",
+    )
     async def extra_extras():
-        "Available ?_extra= blocks"
-        all_extras = [
-            (key[len("extra_") :], fn.__doc__)
-            for key, fn in registry._registry.items()
-            if key.startswith("extra_")
-        ]
-        return [
-            {
-                "name": name,
-                "description": doc,
-                "toggle_url": datasette.absolute_url(
-                    request,
-                    datasette.urls.path(
-                        path_with_added_args(request, {"_extra": name})
-                        if name not in extras
-                        else path_with_removed_args(request, {"_extra": name})
+        all_extras = []
+        for key, fn in registry._registry.items():
+            if key.startswith("extra_"):
+                name = key[len("extra_"):]
+                info = getattr(fn, "_extra_info", None)
+                all_extras.append({
+                    "name": name,
+                    "description": info.description if info else fn.__doc__,
+                    "example": info.example if info else None,
+                    "return_type": info.return_type if info else None,
+                    "toggle_url": datasette.absolute_url(
+                        request,
+                        datasette.urls.path(
+                            path_with_added_args(request, {"_extra": name})
+                            if name not in extras
+                            else path_with_removed_args(request, {"_extra": name})
+                        ),
                     ),
-                ),
-                "selected": name in extras,
-            }
-            for name, doc in all_extras
-        ]
+                    "selected": name in extras,
+                })
+        return all_extras
 
+    @extra(
+        description="List of facet names that timed out during calculation",
+        example=["slow_column"],
+        return_type="array of strings",
+    )
     async def extra_facets_timed_out(extra_facet_results):
         return extra_facet_results["timed_out"]
 

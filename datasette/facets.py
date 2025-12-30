@@ -100,9 +100,9 @@ class Facet:
         # [('_foo', 'bar'), ('_foo', '2'), ('empty', '')]
         return urllib.parse.parse_qsl(self.request.query_string, keep_blank_values=True)
 
-    def get_facet_size(self):
-        facet_size = self.ds.setting("default_facet_size")
-        max_returned_rows = self.ds.setting("max_returned_rows")
+    async def get_facet_size(self):
+        facet_size = await self.ds.setting("default_facet_size")
+        max_returned_rows = await self.ds.setting("max_returned_rows")
         table_facet_size = None
         if self.table:
             config_facet_size = (
@@ -154,7 +154,7 @@ class ColumnFacet(Facet):
     async def suggest(self):
         row_count = await self.get_row_count()
         columns = await self.get_columns(self.sql, self.params)
-        facet_size = self.get_facet_size()
+        facet_size = await self.get_facet_size()
         suggested_facets = []
         already_enabled = [c["config"]["simple"] for c in self.get_configs()]
         for column in columns:
@@ -179,7 +179,7 @@ class ColumnFacet(Facet):
                     suggested_facet_sql,
                     self.params,
                     truncate=False,
-                    custom_time_limit=self.ds.setting("facet_suggest_time_limit_ms"),
+                    custom_time_limit=await self.ds.setting("facet_suggest_time_limit_ms"),
                 )
                 num_distinct_values = len(distinct_values)
                 if (
@@ -222,7 +222,7 @@ class ColumnFacet(Facet):
 
         qs_pairs = self.get_querystring_pairs()
 
-        facet_size = self.get_facet_size()
+        facet_size = await self.get_facet_size()
         for source_and_config in self.get_configs():
             config = source_and_config["config"]
             source = source_and_config["source"]
@@ -242,7 +242,7 @@ class ColumnFacet(Facet):
                     facet_sql,
                     self.params,
                     truncate=False,
-                    custom_time_limit=self.ds.setting("facet_time_limit_ms"),
+                    custom_time_limit=await self.ds.setting("facet_time_limit_ms"),
                 )
                 facet_results_values = []
                 facet_results.append(
@@ -333,7 +333,7 @@ class ArrayFacet(Facet):
                     suggested_facet_sql,
                     self.params,
                     truncate=False,
-                    custom_time_limit=self.ds.setting("facet_suggest_time_limit_ms"),
+                    custom_time_limit=await self.ds.setting("facet_suggest_time_limit_ms"),
                     log_sql_errors=False,
                 )
                 types = tuple(r[0] for r in results.rows)
@@ -352,7 +352,7 @@ class ArrayFacet(Facet):
                             ).format(column=escape_sqlite(column), sql=self.sql),
                             self.params,
                             truncate=False,
-                            custom_time_limit=self.ds.setting(
+                            custom_time_limit=await self.ds.setting(
                                 "facet_suggest_time_limit_ms"
                             ),
                             log_sql_errors=False,
@@ -384,7 +384,7 @@ class ArrayFacet(Facet):
         facet_results = []
         facets_timed_out = []
 
-        facet_size = self.get_facet_size()
+        facet_size = await self.get_facet_size()
         for source_and_config in self.get_configs():
             config = source_and_config["config"]
             source = source_and_config["source"]
@@ -420,7 +420,7 @@ class ArrayFacet(Facet):
                     facet_sql,
                     self.params,
                     truncate=False,
-                    custom_time_limit=self.ds.setting("facet_time_limit_ms"),
+                    custom_time_limit=await self.ds.setting("facet_time_limit_ms"),
                 )
                 facet_results_values = []
                 facet_results.append(
@@ -491,7 +491,7 @@ class DateFacet(Facet):
                     suggested_facet_sql,
                     self.params,
                     truncate=False,
-                    custom_time_limit=self.ds.setting("facet_suggest_time_limit_ms"),
+                    custom_time_limit=await self.ds.setting("facet_suggest_time_limit_ms"),
                     log_sql_errors=False,
                 )
                 values = tuple(r[0] for r in results.rows)
@@ -518,7 +518,7 @@ class DateFacet(Facet):
         facet_results = []
         facets_timed_out = []
         args = dict(self.get_querystring_pairs())
-        facet_size = self.get_facet_size()
+        facet_size = await self.get_facet_size()
         for source_and_config in self.get_configs():
             config = source_and_config["config"]
             source = source_and_config["source"]
@@ -539,7 +539,7 @@ class DateFacet(Facet):
                     facet_sql,
                     self.params,
                     truncate=False,
-                    custom_time_limit=self.ds.setting("facet_time_limit_ms"),
+                    custom_time_limit=await self.ds.setting("facet_time_limit_ms"),
                 )
                 facet_results_values = []
                 facet_results.append(

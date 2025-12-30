@@ -472,15 +472,15 @@ class Datasette:
         self._settings = dict(DEFAULT_SETTINGS, **(config_settings), **(settings or {}))
         self.renderers = {}  # File extension -> (renderer, can_render) functions
         self.version_note = version_note
-        if self.setting("num_sql_threads") == 0:
+        if self._setting_sync("num_sql_threads") == 0:
             self.executor = None
         else:
             self.executor = futures.ThreadPoolExecutor(
-                max_workers=self.setting("num_sql_threads")
+                max_workers=self._setting_sync("num_sql_threads")
             )
-        self.max_returned_rows = self.setting("max_returned_rows")
-        self.sql_time_limit_ms = self.setting("sql_time_limit_ms")
-        self.page_size = self.setting("default_page_size")
+        self.max_returned_rows = self._setting_sync("max_returned_rows")
+        self.sql_time_limit_ms = self._setting_sync("sql_time_limit_ms")
+        self.page_size = self._setting_sync("default_page_size")
         # Execute plugins in constructor, to ensure they are available
         # when the rest of `datasette inspect` executes
         if self.plugins_dir:
@@ -790,12 +790,16 @@ class Datasette:
         new_databases.pop(name)
         self.databases = new_databases
 
-    def setting(self, key):
+    async def setting(self, key):
         return self._settings.get(key, None)
 
-    def settings_dict(self):
+    def _setting_sync(self, key):
+        # Synchronous access for contexts that cannot await (threads, sync callbacks)
+        return self._settings.get(key, None)
+
+    async def settings_dict(self):
         # Returns a fully resolved settings dictionary, useful for templates
-        return {option.name: self.setting(option.name) for option in SETTINGS}
+        return {option.name: await self.setting(option.name) for option in SETTINGS}
 
     def _metadata_recursive_update(self, orig, updated):
         if not isinstance(orig, dict) or not isinstance(updated, dict):
@@ -919,8 +923,17 @@ class Datasette:
     def get_internal_database(self):
         return self._internal_database
 
-    def plugin_config(self, plugin_name, database=None, table=None, fallback=True):
+    async def plugin_config(self, plugin_name, database=None, table=None, fallback=True):
         """Return config for plugin, falling back from specified database/table"""
+        if database is None and table is None:
+            config = self._plugin_config_top(plugin_name)
+        else:
+            config = self._plugin_config_nested(plugin_name, database, table, fallback)
+
+        return resolve_env_secrets(config, os.environ)
+
+    def _plugin_config_sync(self, plugin_name, database=None, table=None, fallback=True):
+        """Synchronous access for contexts that cannot await (threads, sync callbacks)"""
         if database is None and table is None:
             config = self._plugin_config_top(plugin_name)
         else:
@@ -1003,8 +1016,8 @@ class Datasette:
                     conn.execute("SELECT load_extension(?, ?)", [path, entrypoint])
                 else:
                     conn.execute("SELECT load_extension(?)", [extension])
-        if self.setting("cache_size_kb"):
-            conn.execute(f"PRAGMA cache_size=-{self.setting('cache_size_kb')}")
+        if self._setting_sync("cache_size_kb"):
+            conn.execute(f"PRAGMA cache_size=-{self._setting_sync('cache_size_kb')}")
         # pylint: disable=no-member
         if database != INTERNAL_DB_NAME:
             pm.hook.prepare_connection(conn=conn, database=database, datasette=self)
@@ -1517,7 +1530,7 @@ class Datasette:
 
     def absolute_url(self, request, path):
         url = urllib.parse.urljoin(request.url, path)
-        if url.startswith("http://") and self.setting("force_https_urls"):
+        if url.startswith("http://") and self._setting_sync("force_https_urls"):
             url = "https://" + url[len("http://") :]
         return url
 
@@ -1632,7 +1645,7 @@ class Datasette:
         ]
 
     def _threads(self):
-        if self.setting("num_sql_threads") == 0:
+        if self._setting_sync("num_sql_threads") == 0:
             return {"num_threads": 0, "threads": []}
         threads = list(threading.enumerate())
         d = {
@@ -1790,13 +1803,13 @@ class Datasette:
                 "extra_js_urls": await self._asset_urls(
                     "extra_js_urls", template, context, request, view_name
                 ),
-                "base_url": self.setting("base_url"),
+                "base_url": await self.setting("base_url"),
                 "csrftoken": request.scope["csrftoken"] if request else lambda: "",
                 "datasette_version": __version__,
             },
             **extra_template_vars,
         }
-        if request and request.args.get("_context") and self.setting("template_debug"):
+        if request and request.args.get("_context") and await self.setting("template_debug"):
             return "<pre>{}</pre>".format(
                 escape(json.dumps(template_context, default=repr, indent=4))
             )
@@ -2110,7 +2123,7 @@ class Datasette:
             ),
             send_csrf_failed=custom_csrf_error,
         )
-        if self.setting("trace_debug"):
+        if self._setting_sync("trace_debug"):
             asgi = AsgiTracer(asgi)
         asgi = AsgiLifespan(asgi)
         asgi = AsgiRunOnFirstRequest(asgi, on_startup=[setup_db, self.invoke_startup])
@@ -2135,7 +2148,7 @@ class DatasetteRouter:
 
     async def route_path(self, scope, receive, send, path):
         # Strip off base_url if present before routing
-        base_url = self.ds.setting("base_url")
+        base_url = await self.ds.setting("base_url")
         if base_url != "/" and path.startswith(base_url):
             path = "/" + path[len(base_url) :]
             scope = dict(scope, route_path=path)
@@ -2151,7 +2164,7 @@ class DatasetteRouter:
         scope_modifications = {}
         # Apply force_https_urls, if set
         if (
-            self.ds.setting("force_https_urls")
+            await self.ds.setting("force_https_urls")
             and scope["type"] == "http"
             and scope.get("scheme") != "https"
         ):

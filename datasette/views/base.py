@@ -374,7 +374,7 @@ class DataView(BaseView):
                         if key not in ("_labels", "_facet", "_size")
                     ]
                     + [("_size", "max")],
-                    "settings": self.ds.settings_dict(),
+                    "settings": await self.ds.settings_dict(),
                 },
             }
             if "metadata" not in context:
@@ -385,7 +385,7 @@ class DataView(BaseView):
 
         ttl = request.args.get("_ttl", None)
         if ttl is None or not ttl.isdigit():
-            ttl = self.ds.setting("default_cache_ttl")
+            ttl = await self.ds.setting("default_cache_ttl")
 
         return self.set_response_headers(r, ttl)
 
@@ -428,7 +428,7 @@ async def stream_csv(datasette, fetch_data, request, database):
         request = Request(new_scope, receive)
     if stream:
         # Some quick soundness checks
-        if not datasette.setting("allow_csv_stream"):
+        if not await datasette.setting("allow_csv_stream"):
             raise BadRequest("CSV streaming is disabled")
         if request.args.get("_next"):
             raise BadRequest("_next not allowed for CSV streaming")
@@ -477,7 +477,7 @@ async def stream_csv(datasette, fetch_data, request, database):
 
     async def stream_fn(r):
         nonlocal data, trace
-        limited_writer = LimitedWriter(r, datasette.setting("max_csv_mb"))
+        limited_writer = LimitedWriter(r, await datasette.setting("max_csv_mb"))
         if trace:
             await limited_writer.write(preamble)
             writer = csv.writer(EscapeHtmlWriter(limited_writer))

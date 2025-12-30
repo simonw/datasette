@@ -47,8 +47,9 @@ def test_sign_unsign(datasette, value, namespace):
         ("allow_csv_stream", True),
     ),
 )
-def test_datasette_setting(datasette, setting, expected):
-    assert datasette.setting(setting) == expected
+@pytest.mark.asyncio
+async def test_datasette_setting(datasette, setting, expected):
+    assert await datasette.setting(setting) == expected
 
 
 @pytest.mark.asyncio

@@ -224,26 +224,26 @@ async def test_hook_render_cell_async(ds_client, path):
 
 @pytest.mark.asyncio
 async def test_plugin_config(ds_client):
-    assert {"depth": "table"} == ds_client.ds.plugin_config(
+    assert {"depth": "table"} == await ds_client.ds.plugin_config(
         "name-of-plugin", database="fixtures", table="sortable"
     )
-    assert {"depth": "database"} == ds_client.ds.plugin_config(
+    assert {"depth": "database"} == await ds_client.ds.plugin_config(
         "name-of-plugin", database="fixtures", table="unknown_table"
     )
-    assert {"depth": "database"} == ds_client.ds.plugin_config(
+    assert {"depth": "database"} == await ds_client.ds.plugin_config(
         "name-of-plugin", database="fixtures"
     )
-    assert {"depth": "root"} == ds_client.ds.plugin_config(
+    assert {"depth": "root"} == await ds_client.ds.plugin_config(
         "name-of-plugin", database="unknown_database"
     )
-    assert {"depth": "root"} == ds_client.ds.plugin_config("name-of-plugin")
-    assert None is ds_client.ds.plugin_config("unknown-plugin")
+    assert {"depth": "root"} == await ds_client.ds.plugin_config("name-of-plugin")
+    assert None is await ds_client.ds.plugin_config("unknown-plugin")
 
 
 @pytest.mark.asyncio
 async def test_plugin_config_env(ds_client, monkeypatch):
     monkeypatch.setenv("FOO_ENV", "FROM_ENVIRONMENT")
-    assert ds_client.ds.plugin_config("env-plugin") == {"foo": "FROM_ENVIRONMENT"}
+    assert await ds_client.ds.plugin_config("env-plugin") == {"foo": "FROM_ENVIRONMENT"}
 
 
 @pytest.mark.asyncio
@@ -252,13 +252,13 @@ async def test_plugin_config_env_from_config(monkeypatch):
     datasette = Datasette(
         config={"plugins": {"env-plugin": {"setting": {"$env": "FOO_ENV"}}}}
     )
-    assert datasette.plugin_config("env-plugin") == {"setting": "FROM_ENVIRONMENT_2"}
+    assert await datasette.plugin_config("env-plugin") == {"setting": "FROM_ENVIRONMENT_2"}
 
 
 @pytest.mark.asyncio
 async def test_plugin_config_env_from_list(ds_client):
     os.environ["FOO_ENV"] = "FROM_ENVIRONMENT"
-    assert [{"in_a_list": "FROM_ENVIRONMENT"}] == ds_client.ds.plugin_config(
+    assert [{"in_a_list": "FROM_ENVIRONMENT"}] == await ds_client.ds.plugin_config(
         "env-plugin-list"
     )
     del os.environ["FOO_ENV"]
@@ -268,7 +268,7 @@ async def test_plugin_config_env_from_list(ds_client):
 async def test_plugin_config_file(ds_client):
     with open(TEMP_PLUGIN_SECRET_FILE, "w") as fp:
         fp.write("FROM_FILE")
-    assert {"foo": "FROM_FILE"} == ds_client.ds.plugin_config("file-plugin")
+    assert {"foo": "FROM_FILE"} == await ds_client.ds.plugin_config("file-plugin")
     os.remove(TEMP_PLUGIN_SECRET_FILE)
 
 

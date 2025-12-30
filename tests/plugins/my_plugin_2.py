@@ -168,7 +168,7 @@ def table_actions(datasette, database, table, actor, request):
 
 @hookimpl
 def register_routes(datasette):
-    config = datasette.plugin_config("register-route-demo")
+    config = datasette._plugin_config_sync("register-route-demo")
     if not config:
         return
     path = config["path"]

@@ -196,7 +196,7 @@ async def display_columns_and_rows(
     }
 
     cell_rows = []
-    base_url = datasette.setting("base_url")
+    base_url = await datasette.setting("base_url")
     for row in rows:
         cells = []
         # Unless we are a view, the first column is a link - either to the rowid
@@ -389,7 +389,7 @@ class TableInsertView(BaseView):
                 return _errors(['"rows" must be a list of dictionaries'])
 
         # Does this exceed max_insert_rows?
-        max_insert_rows = self.ds.setting("max_insert_rows")
+        max_insert_rows = await self.ds.setting("max_insert_rows")
         if len(rows) > max_insert_rows:
             return _errors(
                 ["Too many rows, maximum allowed is {}".format(max_insert_rows)]
@@ -771,7 +771,7 @@ async def table_view(datasette, request):
     # Cache TTL header
     ttl = request.args.get("_ttl", None)
     if ttl is None or not ttl.isdigit():
-        ttl = datasette.setting("default_cache_ttl")
+        ttl = await datasette.setting("default_cache_ttl")
 
     if datasette.cache_headers and response.status == 200:
         ttl = int(ttl)
@@ -919,11 +919,11 @@ async def table_view_traced(datasette, request):
                     append_querystring=append_querystring,
                     path_with_replaced_args=path_with_replaced_args,
                     fix_path=datasette.urls.path,
-                    settings=datasette.settings_dict(),
+                    settings=await datasette.settings_dict(),
                     # TODO: review up all of these hacks:
                     alternate_url_json=alternate_url_json,
                     datasette_allow_facet=(
-                        "true" if datasette.setting("allow_facet") else "false"
+                        "true" if await datasette.setting("allow_facet") else "false"
                     ),
                     is_sortable=any(c["sortable"] for c in data["display_columns"]),
                     allow_execute_sql=await datasette.allowed(
@@ -1377,8 +1377,8 @@ async def table_view_data(
         suggested_facets = []
         # Calculate suggested facets
         if (
-            datasette.setting("suggest_facets")
-            and datasette.setting("allow_facet")
+            await datasette.setting("suggest_facets")
+            and await datasette.setting("allow_facet")
             and not _next
             and not nofacet
             and not nosuggest
@@ -1390,7 +1390,7 @@ async def table_view_data(
         return suggested_facets
 
     # Faceting
-    if not datasette.setting("allow_facet") and any(
+    if not await datasette.setting("allow_facet") and any(
         arg.startswith("_facet") for arg in request.args
     ):
         raise BadRequest("_facet= is not allowed")
@@ -1477,7 +1477,7 @@ async def table_view_data(
             results.description,
             rows,
             link_column=not is_view,
-            truncate_cells=datasette.setting("truncate_cells_html"),
+            truncate_cells=await datasette.setting("truncate_cells_html"),
             sortable_columns=sortable_columns,
             request=request,
         )

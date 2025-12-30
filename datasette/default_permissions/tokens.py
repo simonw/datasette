@@ -18,7 +18,7 @@ from datasette import hookimpl
 
 
 @hookimpl(specname="actor_from_request")
-def actor_from_signed_api_token(datasette: "Datasette", request) -> Optional[dict]:
+async def actor_from_signed_api_token(datasette: "Datasette", request) -> Optional[dict]:
     """
     Authenticate requests using signed API tokens (dstok_ prefix).
 
@@ -33,10 +33,10 @@ def actor_from_signed_api_token(datasette: "Datasette", request) -> Optional[dic
     prefix = "dstok_"
 
     # Check if tokens are enabled
-    if not datasette.setting("allow_signed_tokens"):
+    if not await datasette.setting("allow_signed_tokens"):
         return None
 
-    max_signed_tokens_ttl = datasette.setting("max_signed_tokens_ttl")
+    max_signed_tokens_ttl = await datasette.setting("max_signed_tokens_ttl")
 
     # Get authorization header
     authorization = request.headers.get("authorization")

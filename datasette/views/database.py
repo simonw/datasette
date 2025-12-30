@@ -183,7 +183,7 @@ class DatabaseView(View):
                     show_hidden=request.args.get("_show_hidden"),
                     editable=True,
                     count_limit=db.count_limit,
-                    allow_download=datasette.setting("allow_download")
+                    allow_download=await datasette.setting("allow_download")
                     and not db.is_mutable
                     and not db.is_memory,
                     attached_databases=attached_databases,
@@ -390,7 +390,7 @@ async def database_download(request, datasette):
 
     if db.is_memory:
         raise DatasetteError("Cannot download in-memory databases", status=404)
-    if not datasette.setting("allow_download") or db.is_mutable:
+    if not await datasette.setting("allow_download") or db.is_mutable:
         raise Forbidden("Database download is forbidden")
     if not db.path:
         raise DatasetteError("Cannot download database", status=404)
@@ -1190,7 +1190,7 @@ async def _table_columns(datasette, database_name):
 
 async def display_rows(datasette, database, request, rows, columns):
     display_rows = []
-    truncate_cells = datasette.setting("truncate_cells_html")
+    truncate_cells = await datasette.setting("truncate_cells_html")
     for row in rows:
         display_row = []
         for column, value in zip(columns, row):

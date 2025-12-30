@@ -620,8 +620,8 @@ class CreateTokenView(BaseView):
     name = "create_token"
     has_json_alternate = False
 
-    def check_permission(self, request):
-        if not self.ds.setting("allow_signed_tokens"):
+    async def check_permission(self, request):
+        if not await self.ds.setting("allow_signed_tokens"):
             raise Forbidden("Signed tokens are not enabled for this Datasette instance")
         if not request.actor:
             raise Forbidden("You must be logged in to create a token")
@@ -635,7 +635,7 @@ class CreateTokenView(BaseView):
             )
 
     async def shared(self, request):
-        self.check_permission(request)
+        await self.check_permission(request)
         # Build list of databases and tables the user has permission to view
         db_page = await self.ds.allowed_resources("view-database", request.actor)
         allowed_databases = [r async for r in db_page.all()]
@@ -681,13 +681,13 @@ class CreateTokenView(BaseView):
         }
 
     async def get(self, request):
-        self.check_permission(request)
+        await self.check_permission(request)
         return await self.render(
             ["create_token.html"], request, await self.shared(request)
         )
 
     async def post(self, request):
-        self.check_permission(request)
+        await self.check_permission(request)
         post = await request.post_vars()
         errors = []
         expires_after = None

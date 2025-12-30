@@ -41,7 +41,7 @@ async def default_allow_sql_check(
     unless explicitly allowed by config or other rules.
     """
     if action == "execute-sql":
-        if not datasette.setting("default_allow_sql"):
+        if not await datasette.setting("default_allow_sql"):
             return PermissionSQL.deny(reason="default_allow_sql is false")
 
     return None

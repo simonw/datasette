@@ -27,7 +27,7 @@ def prepare_connection(conn, database, datasette):
 
     def prepare_connection_args():
         return 'database={}, datasette.plugin_config("name-of-plugin")={}'.format(
-            database, datasette.plugin_config("name-of-plugin")
+            database, datasette._plugin_config_sync("name-of-plugin")
         )
 
     conn.create_function("prepare_connection_args", 0, prepare_connection_args)
@@ -84,7 +84,7 @@ def extra_body_script(
                     "template": template,
                     "database": database,
                     "table": table,
-                    "config": datasette.plugin_config(
+                    "config": await datasette.plugin_config(
                         "name-of-plugin",
                         database=database,
                         table=table,
@@ -113,7 +113,7 @@ def render_cell(row, value, column, table, database, datasette, request):
                 "column": column,
                 "table": table,
                 "database": database,
-                "config": datasette.plugin_config(
+                "config": await datasette.plugin_config(
                     "name-of-plugin",
                     database=database,
                     table=table,
@@ -453,8 +453,8 @@ def skip_csrf(scope):
 
 @hookimpl
 def register_actions(datasette):
-    extras_old = datasette.plugin_config("datasette-register-permissions") or {}
-    extras_new = datasette.plugin_config("datasette-register-actions") or {}
+    extras_old = datasette._plugin_config_sync("datasette-register-permissions") or {}
+    extras_new = datasette._plugin_config_sync("datasette-register-actions") or {}
 
     actions = [
         Action(

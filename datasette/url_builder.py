@@ -10,7 +10,7 @@ class Urls:
         if not isinstance(path, PrefixedUrlString):
             if path.startswith("/"):
                 path = path[1:]
-            path = self.ds.setting("base_url") + path
+            path = self.ds._setting_sync("base_url") + path
         if format is not None:
             path = path_with_format(path=path, format=format)
         return PrefixedUrlString(path)

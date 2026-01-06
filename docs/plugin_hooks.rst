@@ -965,12 +965,13 @@ Here is an example that validates required plugin configuration. The server will
 
 .. code-block:: python
 
+    from datasette.utils import StartupError
+
     @hookimpl
     def startup(datasette):
         config = datasette.plugin_config("my-plugin") or {}
-        assert (
-            "required-setting" in config
-        ), "my-plugin requires setting required-setting"
+        if "required-setting" not in config:
+            raise StartupError("my-plugin requires setting required-setting")
 
 You can also return an async function, which will be awaited on startup. Use this option if you need to execute any database queries, for example this function which creates the ``my_table`` database table if it does not yet exist:
 
@@ -994,6 +995,7 @@ Potential use-cases:
 * Run some initialization code for the plugin
 * Create database tables that a plugin needs on startup
 * Validate the configuration for a plugin on startup, and raise an error if it is invalid
+* Raise a ``datasette.utils.StartupError("message")`` exception to prevent Datasette from starting and display that message to the user.
 
 .. note::
 

@@ -304,6 +304,32 @@ def test_plugin_s_overwrite():
     )
 
 
+def test_startup_error_from_plugin_is_click_exception(tmp_path):
+    plugins_dir = tmp_path / "plugins"
+    plugins_dir.mkdir()
+    (plugins_dir / "startup_error.py").write_text(
+        "from datasette import hookimpl\n"
+        "from datasette.utils import StartupError\n"
+        "\n"
+        "@hookimpl\n"
+        "def startup(datasette):\n"
+        '    raise StartupError("boom")\n',
+        "utf-8",
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "--plugins-dir",
+            str(plugins_dir),
+            "--get",
+            "/",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "Error: boom" in result.output
+
+
 def test_setting_type_validation():
     runner = CliRunner()
     result = runner.invoke(cli, ["--setting", "default_page_size", "dog"])

@@ -666,7 +666,10 @@ def serve(
         return ds
 
     # Run the "startup" plugin hooks
-    run_sync(ds.invoke_startup)
+    try:
+        run_sync(ds.invoke_startup)
+    except StartupError as e:
+        raise click.ClickException(e.args[0])
 
     # Run async soundness checks - but only if we're not under pytest
     run_sync(lambda: check_databases(ds))
@@ -815,7 +818,10 @@ def create_token(
     ds = Datasette(secret=secret, plugins_dir=plugins_dir)
 
     # Run ds.invoke_startup() in an event loop
-    run_sync(ds.invoke_startup)
+    try:
+        run_sync(ds.invoke_startup)
+    except StartupError as e:
+        raise click.ClickException(e.args[0])
 
     # Warn about any unknown actions
     actions = []

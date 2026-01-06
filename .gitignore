@@ -8,6 +8,9 @@ scratchpad
 uv.lock
 data.db
 
+# test databases
+*.db
+
 # We don't use Pipfile, so ignore them
 Pipfile
 Pipfile.lock

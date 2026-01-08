@@ -114,6 +114,14 @@ def test_static_mounts():
     ) as client:
         response = client.get("/custom-static/test_html.py")
         assert response.status_code == 200
+        response = client.get(
+            "/custom-static/test_templates/pages/nested/filename with spaces"
+        )
+        assert response.status_code == 200
+        response = client.get(
+            "/custom-static/test_templates/pages/topic_{topic}/{slug}.html"
+        )
+        assert response.status_code == 200
         response = client.get("/custom-static/not_exists.py")
         assert response.status_code == 404
         response = client.get("/custom-static/../LICENSE")

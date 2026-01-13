@@ -551,7 +551,7 @@ def serve(
     if reload:
         import hupper
 
-        reloader = hupper.start_reloader("datasette.cli.serve")
+        reloader = hupper.start_reloader("datasette.cli.cli")
         if immutable:
             reloader.watch_files(immutable)
         if config:

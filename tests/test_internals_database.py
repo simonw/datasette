@@ -89,7 +89,7 @@ async def test_execute_fn_transaction_false():
                 # Table should exist
                 assert (
                     conn.execute(
-                        'select count(*) from sqlite_master where name = "foo"'
+                        "select count(*) from sqlite_master where name = 'foo'"
                     ).fetchone()[0]
                     == 1
                 )

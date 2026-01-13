@@ -152,10 +152,13 @@ class ColumnFacet(Facet):
     type = "column"
 
     async def suggest(self):
-        row_count = await self.get_row_count()
-        columns = await self.get_columns(self.sql, self.params)
-        facet_size = self.get_facet_size()
         suggested_facets = []
+        try:
+            row_count = await self.get_row_count()
+            columns = await self.get_columns(self.sql, self.params)
+        except QueryInterrupted:
+            return suggested_facets
+        facet_size = self.get_facet_size()
         already_enabled = [c["config"]["simple"] for c in self.get_configs()]
         for column in columns:
             if column in already_enabled:

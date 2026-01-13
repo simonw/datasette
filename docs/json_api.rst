@@ -188,6 +188,12 @@ query string arguments:
     JSON. Without this argument those columns will be returned as JSON objects
     that have been double-encoded into a JSON string value.
 
+    If you have many columns containing JSON values, you can pass ``_json=*``
+    to attempt converting loading all columns as JSON. This is a best effort
+    approach. Any columns that fail to render as valid JSON will be passed
+    through unaltered, while any column with valid JSON will be converted.
+    There may be a performance impact on large result sets.
+
     Compare `this query without the argument <https://fivethirtyeight.datasettes.com/fivethirtyeight.json?sql=select+%27{%22this+is%22%3A+%22a+json+object%22}%27+as+d&_shape=array>`_ to `this query using the argument <https://fivethirtyeight.datasettes.com/fivethirtyeight.json?sql=select+%27{%22this+is%22%3A+%22a+json+object%22}%27+as+d&_shape=array&_json=d>`_
 
 ``?_json_infinity=on``

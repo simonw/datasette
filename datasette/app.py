@@ -337,6 +337,7 @@ class Datasette:
             db_files = []
             for ext in ("db", "sqlite", "sqlite3"):
                 db_files.extend(config_dir.glob("*.{}".format(ext)))
+            db_files.sort(key=os.path.getmtime, reverse=True)
             self.files += tuple(str(f) for f in db_files)
         if (
             config_dir

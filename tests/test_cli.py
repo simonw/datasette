@@ -468,7 +468,9 @@ def test_serve_duplicate_database_names(tmpdir):
     nested.mkdir()
     db_2_path = str(tmpdir / "nested" / "db.db")
     for path in (db_1_path, db_2_path):
-        sqlite3.connect(path).execute("vacuum")
+        conn = sqlite3.connect(path)
+        conn.execute("vacuum")
+        conn.close()
     result = runner.invoke(cli, [db_1_path, db_2_path, "--get", "/-/databases.json"])
     assert result.exit_code == 0, result.output
     databases = json.loads(result.output)
@@ -482,7 +484,9 @@ def test_weird_database_names(tmpdir, filename):
     # https://github.com/simonw/datasette/issues/1181
     runner = CliRunner()
     db_path = str(tmpdir / filename)
-    sqlite3.connect(db_path).execute("vacuum")
+    conn = sqlite3.connect(db_path)
+    conn.execute("vacuum")
+    conn.close()
     result1 = runner.invoke(cli, [db_path, "--get", "/"])
     assert result1.exit_code == 0, result1.output
     filename_no_stem = filename.rsplit(".", 1)[0]
@@ -519,7 +523,9 @@ def test_duplicate_database_files_error(tmpdir):
     """Test that passing the same database file multiple times raises an error"""
     runner = CliRunner()
     db_path = str(tmpdir / "test.db")
-    sqlite3.connect(db_path).execute("vacuum")
+    conn = sqlite3.connect(db_path)
+    conn.execute("vacuum")
+    conn.close()
 
     # Test with exact duplicate
     result = runner.invoke(cli, ["serve", db_path, db_path, "--get", "/"])
@@ -538,7 +544,9 @@ def test_duplicate_database_files_error(tmpdir):
     config_dir = tmpdir / "config"
     config_dir.mkdir()
     config_db_path = str(config_dir / "data.db")
-    sqlite3.connect(config_db_path).execute("vacuum")
+    conn = sqlite3.connect(config_db_path)
+    conn.execute("vacuum")
+    conn.close()
 
     result3 = runner.invoke(
         cli, ["serve", config_db_path, str(config_dir), "--get", "/"]
@@ -549,7 +557,9 @@ def test_duplicate_database_files_error(tmpdir):
 
     # Test that mixing a file NOT in the directory with a directory works fine
     other_db_path = str(tmpdir / "other.db")
-    sqlite3.connect(other_db_path).execute("vacuum")
+    conn = sqlite3.connect(other_db_path)
+    conn.execute("vacuum")
+    conn.close()
 
     result4 = runner.invoke(
         cli, ["serve", other_db_path, str(config_dir), "--get", "/-/databases.json"]

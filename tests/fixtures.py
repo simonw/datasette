@@ -171,11 +171,15 @@ def make_app_client(
             crossdb=crossdb,
         )
         yield TestClient(ds)
-        # Close as many database connections as possible
-        # to try and avoid too many open files error
+        # Close all database connections first (while executor is still running)
+        # This allows db.close() to submit cleanup tasks to executor threads
         for db in ds.databases.values():
-            if not db.is_memory:
-                db.close()
+            db.close()
+        if hasattr(ds, "_internal_database"):
+            ds._internal_database.close()
+        # Then shut down executor
+        if ds.executor is not None:
+            ds.executor.shutdown(wait=True)
 
 
 @pytest.fixture(scope="session")
@@ -188,6 +192,14 @@ def app_client():
 def app_client_no_files():
     ds = Datasette([])
     yield TestClient(ds)
+    # Close databases first (while executor is still running)
+    for db in ds.databases.values():
+        db.close()
+    if hasattr(ds, "_internal_database"):
+        ds._internal_database.close()
+    # Then shut down executor
+    if ds.executor is not None:
+        ds.executor.shutdown(wait=True)
 
 
 @pytest.fixture(scope="session")
@@ -832,6 +844,7 @@ def cli(db_filename, config, metadata, plugins_path, recreate, extra_db_filename
     for sql, params in TABLE_PARAMETERIZED_SQL:
         with conn:
             conn.execute(sql, params)
+    conn.close()
     print(f"Test tables written to {db_filename}")
     if metadata:
         with open(metadata, "w") as fp:
@@ -860,6 +873,7 @@ def cli(db_filename, config, metadata, plugins_path, recreate, extra_db_filename
                 pathlib.Path(extra_db_filename).unlink()
         conn = sqlite3.connect(extra_db_filename)
         conn.executescript(EXTRA_DATABASE_SQL)
+        conn.close()
         print(f"Test tables written to {extra_db_filename}")
 
 

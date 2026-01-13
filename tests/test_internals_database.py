@@ -542,7 +542,9 @@ async def test_execute_write_fn_exception(db):
 @pytest.mark.timeout(1)
 async def test_execute_write_fn_connection_exception(tmpdir, app_client):
     path = str(tmpdir / "immutable.db")
-    sqlite3.connect(path).execute("vacuum")
+    conn = sqlite3.connect(path)
+    conn.execute("vacuum")
+    conn.close()
     db = Database(app_client.ds, path=path, is_mutable=False)
     app_client.ds.add_database(db, name="immutable-db")
 
@@ -746,19 +748,23 @@ async def test_replace_database(tmpdir):
     path1 = str(tmpdir / "data1.db")
     (tmpdir / "two").mkdir()
     path2 = str(tmpdir / "two" / "data1.db")
-    sqlite3.connect(path1).executescript(
+    conn1 = sqlite3.connect(path1)
+    conn1.executescript(
         """
         create table t (id integer primary key);
         insert into t (id) values (1);
         insert into t (id) values (2);
     """
     )
-    sqlite3.connect(path2).executescript(
+    conn1.close()
+    conn2 = sqlite3.connect(path2)
+    conn2.executescript(
         """
         create table t (id integer primary key);
         insert into t (id) values (1);
     """
     )
+    conn2.close()
     datasette = Datasette([path1])
     db = datasette.get_database("data1")
     count = (await db.execute("select count(*) from t")).first()[0]

@@ -1608,6 +1608,7 @@ class Datasette:
                     break
                 except importlib.metadata.PackageNotFoundError:
                     pass
+        conn.close()
         return info
 
     def _plugins(self, request=None, all=False):

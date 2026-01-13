@@ -42,7 +42,17 @@ async def perms_ds():
     await two.execute_write("create table if not exists t1 (id integer primary key)")
     # Trigger catalog refresh so allowed_resources() can be called
     await ds.client.get("/")
-    return ds
+    try:
+        yield ds
+    finally:
+        # Close databases first (while executor is still running)
+        for db in ds.databases.values():
+            db.close()
+        if hasattr(ds, "_internal_database"):
+            ds._internal_database.close()
+        # Then shut down executor
+        if ds.executor is not None:
+            ds.executor.shutdown(wait=True)
 
 
 @pytest.mark.parametrize(
@@ -946,24 +956,34 @@ async def test_permissions_in_config(
 @pytest.mark.asyncio
 async def test_actor_endpoint_allows_any_token():
     ds = Datasette()
-    token = ds.sign(
-        {
-            "a": "root",
+    try:
+        token = ds.sign(
+            {
+                "a": "root",
+                "token": "dstok",
+                "t": int(time.time()),
+                "_r": {"a": ["debug-menu"]},
+            },
+            namespace="token",
+        )
+        response = await ds.client.get(
+            "/-/actor.json", headers={"Authorization": f"Bearer dstok_{token}"}
+        )
+        assert response.status_code == 200
+        assert response.json()["actor"] == {
+            "id": "root",
             "token": "dstok",
-            "t": int(time.time()),
             "_r": {"a": ["debug-menu"]},
-        },
-        namespace="token",
-    )
-    response = await ds.client.get(
-        "/-/actor.json", headers={"Authorization": f"Bearer dstok_{token}"}
-    )
-    assert response.status_code == 200
-    assert response.json()["actor"] == {
-        "id": "root",
-        "token": "dstok",
-        "_r": {"a": ["debug-menu"]},
-    }
+        }
+    finally:
+        # Close databases first (while executor is still running)
+        for db in ds.databases.values():
+            db.close()
+        if hasattr(ds, "_internal_database"):
+            ds._internal_database.close()
+        # Then shut down executor
+        if ds.executor is not None:
+            ds.executor.shutdown(wait=True)
 
 
 @pytest.mark.serial
@@ -1341,9 +1361,19 @@ async def test_actor_restrictions(
 )
 async def test_restrictions_allow_action(restrictions, action, resource, expected):
     ds = Datasette()
-    await ds.invoke_startup()
-    actual = restrictions_allow_action(ds, restrictions, action, resource)
-    assert actual == expected
+    try:
+        await ds.invoke_startup()
+        actual = restrictions_allow_action(ds, restrictions, action, resource)
+        assert actual == expected
+    finally:
+        # Close databases first (while executor is still running)
+        for db in ds.databases.values():
+            db.close()
+        if hasattr(ds, "_internal_database"):
+            ds._internal_database.close()
+        # Then shut down executor
+        if ds.executor is not None:
+            ds.executor.shutdown(wait=True)
 
 
 @pytest.mark.asyncio
@@ -1524,28 +1554,36 @@ async def test_actor_restrictions_cannot_be_overridden_by_config():
     }
 
     ds = Datasette(config=config)
-    await ds.invoke_startup()
-    db = ds.add_memory_database("test_db")
-    await db.execute_write("create table t1 (id integer primary key)")
-    await db.execute_write("create table t2 (id integer primary key)")
+    try:
+        await ds.invoke_startup()
+        db = ds.add_memory_database("test_db")
+        await db.execute_write("create table t1 (id integer primary key)")
+        await db.execute_write("create table t2 (id integer primary key)")
 
-    # Actor restricted to ONLY t1 (not t2)
-    # Even though config allows t2, restrictions should deny it
-    actor = {"id": "user", "_r": {"r": {"test_db": {"t1": ["vt"]}}}}
+        # Actor restricted to ONLY t1 (not t2)
+        # Even though config allows t2, restrictions should deny it
+        actor = {"id": "user", "_r": {"r": {"test_db": {"t1": ["vt"]}}}}
 
-    # t1 should be allowed (in restrictions AND config allows)
-    result = await ds.allowed(
-        action="view-table", resource=TableResource("test_db", "t1"), actor=actor
-    )
-    assert result is True, "t1 should be allowed - in restriction allowlist"
+        # t1 should be allowed (in restrictions AND config allows)
+        result = await ds.allowed(
+            action="view-table", resource=TableResource("test_db", "t1"), actor=actor
+        )
+        assert result is True, "t1 should be allowed - in restriction allowlist"
 
-    # t2 should be DENIED (not in restrictions, even though config allows)
-    result = await ds.allowed(
-        action="view-table", resource=TableResource("test_db", "t2"), actor=actor
-    )
-    assert (
-        result is False
-    ), "t2 should be denied - NOT in restriction allowlist, config cannot override"
+        # t2 should be DENIED (not in restrictions, even though config allows)
+        result = await ds.allowed(
+            action="view-table", resource=TableResource("test_db", "t2"), actor=actor
+        )
+        assert (
+            result is False
+        ), "t2 should be denied - NOT in restriction allowlist, config cannot override"
+    finally:
+        if ds.executor is not None:
+            ds.executor.shutdown(wait=True)
+        for db_obj in ds.databases.values():
+            db_obj.close()
+        if hasattr(ds, "_internal_database"):
+            ds._internal_database.close()
 
 
 @pytest.mark.asyncio
@@ -1644,29 +1682,42 @@ async def test_permission_check_view_requires_debug_permission():
     """Test that /-/check requires permissions-debug permission"""
     # Anonymous user should be denied
     ds = Datasette()
-    response = await ds.client.get("/-/check.json?action=view-instance")
-    assert response.status_code == 403
-    assert "permissions-debug" in response.text
+    ds_with_root = None
+    try:
+        response = await ds.client.get("/-/check.json?action=view-instance")
+        assert response.status_code == 403
+        assert "permissions-debug" in response.text
 
-    # User without permissions-debug should be denied
-    response = await ds.client.get(
-        "/-/check.json?action=view-instance",
-        cookies={"ds_actor": ds.sign({"id": "user"}, "actor")},
-    )
-    assert response.status_code == 403
+        # User without permissions-debug should be denied
+        response = await ds.client.get(
+            "/-/check.json?action=view-instance",
+            cookies={"ds_actor": ds.sign({"id": "user"}, "actor")},
+        )
+        assert response.status_code == 403
 
-    # Root user should have access (root has all permissions)
-    ds_with_root = Datasette()
-    ds_with_root.root_enabled = True
-    root_token = ds_with_root.create_token("root")
-    response = await ds_with_root.client.get(
-        "/-/check.json?action=view-instance",
-        headers={"Authorization": f"Bearer {root_token}"},
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["action"] == "view-instance"
-    assert data["allowed"] is True
+        # Root user should have access (root has all permissions)
+        ds_with_root = Datasette()
+        ds_with_root.root_enabled = True
+        root_token = ds_with_root.create_token("root")
+        response = await ds_with_root.client.get(
+            "/-/check.json?action=view-instance",
+            headers={"Authorization": f"Bearer {root_token}"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["action"] == "view-instance"
+        assert data["allowed"] is True
+    finally:
+        for ds_obj in [ds, ds_with_root]:
+            if ds_obj is not None:
+                # Close databases first (while executor is still running)
+                for db in ds_obj.databases.values():
+                    db.close()
+                if hasattr(ds_obj, "_internal_database"):
+                    ds_obj._internal_database.close()
+                # Then shut down executor
+                if ds_obj.executor is not None:
+                    ds_obj.executor.shutdown(wait=True)
 
 
 @pytest.mark.asyncio
@@ -1686,29 +1737,37 @@ async def test_root_allow_block_with_table_restricted_actor():
             "allow": {"id": "admin"},  # Root-level allow block
         }
     )
-    await ds.invoke_startup()
-    db = ds.add_memory_database("mydb")
-    await db.execute_write("create table t1 (id integer primary key)")
-    await ds.client.get("/")  # Trigger catalog refresh
+    try:
+        await ds.invoke_startup()
+        db = ds.add_memory_database("mydb")
+        await db.execute_write("create table t1 (id integer primary key)")
+        await ds.client.get("/")  # Trigger catalog refresh
 
-    # Actor with table-level restrictions only (not global)
-    actor = {"id": "user", "_r": {"r": {"mydb": {"t1": ["view-table"]}}}}
+        # Actor with table-level restrictions only (not global)
+        actor = {"id": "user", "_r": {"r": {"mydb": {"t1": ["view-table"]}}}}
 
-    # The root-level allow: {id: admin} should be processed and deny this user
-    # because they're not "admin", even though they have table restrictions
-    result = await ds.allowed(
-        action="view-table",
-        resource=TableResource("mydb", "t1"),
-        actor=actor,
-    )
-    # Should be False because root allow: {id: admin} denies non-admin users
-    assert result is False
+        # The root-level allow: {id: admin} should be processed and deny this user
+        # because they're not "admin", even though they have table restrictions
+        result = await ds.allowed(
+            action="view-table",
+            resource=TableResource("mydb", "t1"),
+            actor=actor,
+        )
+        # Should be False because root allow: {id: admin} denies non-admin users
+        assert result is False
 
-    # But admin with same restrictions should be allowed
-    admin_actor = {"id": "admin", "_r": {"r": {"mydb": {"t1": ["view-table"]}}}}
-    result = await ds.allowed(
-        action="view-table",
-        resource=TableResource("mydb", "t1"),
-        actor=admin_actor,
-    )
-    assert result is True
+        # But admin with same restrictions should be allowed
+        admin_actor = {"id": "admin", "_r": {"r": {"mydb": {"t1": ["view-table"]}}}}
+        result = await ds.allowed(
+            action="view-table",
+            resource=TableResource("mydb", "t1"),
+            actor=admin_actor,
+        )
+        assert result is True
+    finally:
+        if ds.executor is not None:
+            ds.executor.shutdown(wait=True)
+        for db_obj in ds.databases.values():
+            db_obj.close()
+        if hasattr(ds, "_internal_database"):
+            ds._internal_database.close()

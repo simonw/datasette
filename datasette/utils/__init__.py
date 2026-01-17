@@ -1513,3 +1513,22 @@ def deep_dict_update(dict1, dict2):
         else:
             dict1[key] = value
     return dict1
+
+
+def normalize_canned_query_params(params: list) -> list[dict]:
+    """
+    Normalize canned query parameters into a list of dicts with at least 'name'.
+    Accepts either a list of strings or dicts, returns list of dicts.
+    """
+    normalized = []
+    for param in params:
+        if isinstance(param, str):
+            normalized.append({"name": param})
+        elif isinstance(param, dict):
+            # Copy all keys to preserve fields like 'description', 'default', etc.
+            normalized.append(dict(param))
+        else:
+            raise ValueError(
+                f"Canned query param must be str or dict, got {type(param)}"
+            )
+    return normalized

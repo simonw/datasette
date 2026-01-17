@@ -18,6 +18,7 @@ from datasette.utils import (
     await_me_maybe,
     call_with_supported_arguments,
     named_parameters as derive_named_parameters,
+    normalize_canned_query_params,
     format_bytes,
     make_slot_function,
     tilde_decode,
@@ -571,18 +572,40 @@ class QueryView(View):
         # Extract any :named parameters
         named_parameters = []
         if canned_query and canned_query.get("params"):
-            named_parameters = canned_query["params"]
-        if not named_parameters:
+            canned_query["params"] = normalize_canned_query_params(
+                canned_query["params"]
+            )
+            named_parameters = [p["name"] for p in canned_query["params"]]
+        else:
             named_parameters = derive_named_parameters(sql)
-        named_parameter_values = {
-            named_parameter: params.get(named_parameter) or ""
-            for named_parameter in named_parameters
-            if not named_parameter.startswith("_")
-        }
-        # Set to blank string if missing from params
-        for named_parameter in named_parameters:
-            if named_parameter not in params and not named_parameter.startswith("_"):
-                params[named_parameter] = ""
+        if canned_query and canned_query.get("params"):
+            # Build a dict of param name -> param dict for lookup
+            param_dict_by_name = {p["name"]: p for p in canned_query["params"]}
+            named_parameter_values = {}
+            for named_parameter in named_parameters:
+                if named_parameter.startswith("_"):
+                    continue
+                value = params.get(named_parameter)
+                if value is None or value == "":
+                    # Use default if available
+                    param_dict = param_dict_by_name.get(named_parameter, {})
+                    value = param_dict.get("default", "")
+                named_parameter_values[named_parameter] = value
+                # Also set in params for downstream use
+                if named_parameter not in params:
+                    params[named_parameter] = value
+        else:
+            named_parameter_values = {
+                named_parameter: params.get(named_parameter) or ""
+                for named_parameter in named_parameters
+                if not named_parameter.startswith("_")
+            }
+            # Set to blank string if missing from params
+            for named_parameter in named_parameters:
+                if named_parameter not in params and not named_parameter.startswith(
+                    "_"
+                ):
+                    params[named_parameter] = ""
 
         extra_args = {}
         if params.get("_timelimit"):

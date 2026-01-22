@@ -612,7 +612,10 @@ def get_outbound_foreign_keys(conn, table):
 
 def get_all_foreign_keys(conn):
     tables = [
-        r[0] for r in conn.execute('select name from sqlite_master where type="table"')
+        r[0]
+        for r in conn.execute(
+            'select name from sqlite_master where type="table" order by name'
+        )
     ]
     table_to_foreign_keys = {}
     for table in tables:
@@ -633,6 +636,15 @@ def get_all_foreign_keys(conn):
             table_to_foreign_keys[table]["outgoing"].append(
                 {"other_table": table_name, "column": from_, "other_column": to_}
             )
+
+    # Sort foreign keys for deterministic ordering
+    for table in table_to_foreign_keys:
+        table_to_foreign_keys[table]["incoming"].sort(
+            key=lambda fk: (fk["other_table"], fk["column"], fk["other_column"])
+        )
+        table_to_foreign_keys[table]["outgoing"].sort(
+            key=lambda fk: (fk["other_table"], fk["column"], fk["other_column"])
+        )
 
     return table_to_foreign_keys
 

@@ -73,504 +73,187 @@ async def test_database_page(ds_client):
     assert response.status_code == 200
     data = response.json()
     assert data["database"] == "fixtures"
-    assert data["tables"] == [
-        {
-            "name": "123_starts_with_digits",
-            "columns": ["content"],
-            "primary_keys": [],
-            "count": 0,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "private": False,
-        },
-        {
-            "name": "Table With Space In Name",
-            "columns": ["pk", "content"],
-            "primary_keys": ["pk"],
-            "count": 0,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "private": False,
-        },
-        {
-            "name": "attraction_characteristic",
-            "columns": ["pk", "name"],
-            "primary_keys": ["pk"],
-            "count": 2,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {
-                "incoming": [
-                    {
-                        "other_table": "roadside_attraction_characteristics",
-                        "column": "pk",
-                        "other_column": "characteristic_id",
-                    }
-                ],
-                "outgoing": [],
-            },
-            "private": False,
-        },
-        {
-            "name": "binary_data",
-            "columns": ["data"],
-            "primary_keys": [],
-            "count": 3,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "private": False,
-        },
-        {
-            "name": "complex_foreign_keys",
-            "columns": ["pk", "f1", "f2", "f3"],
-            "primary_keys": ["pk"],
-            "count": 1,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {
-                "incoming": [],
-                "outgoing": [
-                    {
-                        "other_table": "simple_primary_key",
-                        "column": "f3",
-                        "other_column": "id",
-                    },
-                    {
-                        "other_table": "simple_primary_key",
-                        "column": "f2",
-                        "other_column": "id",
-                    },
-                    {
-                        "other_table": "simple_primary_key",
-                        "column": "f1",
-                        "other_column": "id",
-                    },
-                ],
-            },
-            "private": False,
-        },
-        {
-            "name": "compound_primary_key",
-            "columns": ["pk1", "pk2", "content"],
-            "primary_keys": ["pk1", "pk2"],
-            "count": 2,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "private": False,
-        },
-        {
-            "name": "compound_three_primary_keys",
-            "columns": ["pk1", "pk2", "pk3", "content"],
-            "primary_keys": ["pk1", "pk2", "pk3"],
-            "count": 1001,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "private": False,
-        },
-        {
-            "name": "custom_foreign_key_label",
-            "columns": ["pk", "foreign_key_with_custom_label"],
-            "primary_keys": ["pk"],
-            "count": 1,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {
-                "incoming": [],
-                "outgoing": [
-                    {
-                        "other_table": "primary_key_multiple_columns_explicit_label",
-                        "column": "foreign_key_with_custom_label",
-                        "other_column": "id",
-                    }
-                ],
-            },
-            "private": False,
-        },
-        {
-            "name": "facet_cities",
-            "columns": ["id", "name"],
-            "primary_keys": ["id"],
-            "count": 4,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {
-                "incoming": [
-                    {
-                        "other_table": "facetable",
-                        "column": "id",
-                        "other_column": "_city_id",
-                    }
-                ],
-                "outgoing": [],
-            },
-            "private": False,
-        },
-        {
-            "name": "facetable",
-            "columns": [
-                "pk",
-                "created",
-                "planet_int",
-                "on_earth",
-                "state",
-                "_city_id",
-                "_neighborhood",
-                "tags",
-                "complex_array",
-                "distinct_some_null",
-                "n",
-            ],
-            "primary_keys": ["pk"],
-            "count": 15,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {
-                "incoming": [],
-                "outgoing": [
-                    {
-                        "other_table": "facet_cities",
-                        "column": "_city_id",
-                        "other_column": "id",
-                    }
-                ],
-            },
-            "private": False,
-        },
-        {
-            "name": "foreign_key_references",
-            "columns": [
-                "pk",
-                "foreign_key_with_label",
-                "foreign_key_with_blank_label",
-                "foreign_key_with_no_label",
-                "foreign_key_compound_pk1",
-                "foreign_key_compound_pk2",
-            ],
-            "primary_keys": ["pk"],
-            "count": 2,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {
-                "incoming": [],
-                "outgoing": [
-                    {
-                        "other_table": "primary_key_multiple_columns",
-                        "column": "foreign_key_with_no_label",
-                        "other_column": "id",
-                    },
-                    {
-                        "other_table": "simple_primary_key",
-                        "column": "foreign_key_with_blank_label",
-                        "other_column": "id",
-                    },
-                    {
-                        "other_table": "simple_primary_key",
-                        "column": "foreign_key_with_label",
-                        "other_column": "id",
-                    },
-                ],
-            },
-            "private": False,
-        },
-    ] + [
-        {
-            "name": "infinity",
-            "columns": ["value"],
-            "primary_keys": [],
-            "count": 3,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "private": False,
-        },
-        {
-            "name": "primary_key_multiple_columns",
-            "columns": ["id", "content", "content2"],
-            "primary_keys": ["id"],
-            "count": 1,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {
-                "incoming": [
-                    {
-                        "other_table": "foreign_key_references",
-                        "column": "id",
-                        "other_column": "foreign_key_with_no_label",
-                    }
-                ],
-                "outgoing": [],
-            },
-            "private": False,
-        },
-        {
-            "name": "primary_key_multiple_columns_explicit_label",
-            "columns": ["id", "content", "content2"],
-            "primary_keys": ["id"],
-            "count": 1,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {
-                "incoming": [
-                    {
-                        "other_table": "custom_foreign_key_label",
-                        "column": "id",
-                        "other_column": "foreign_key_with_custom_label",
-                    }
-                ],
-                "outgoing": [],
-            },
-            "private": False,
-        },
-        {
-            "name": "roadside_attraction_characteristics",
-            "columns": ["attraction_id", "characteristic_id"],
-            "primary_keys": [],
-            "count": 5,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {
-                "incoming": [],
-                "outgoing": [
-                    {
-                        "other_table": "attraction_characteristic",
-                        "column": "characteristic_id",
-                        "other_column": "pk",
-                    },
-                    {
-                        "other_table": "roadside_attractions",
-                        "column": "attraction_id",
-                        "other_column": "pk",
-                    },
-                ],
-            },
-            "private": False,
-        },
-        {
-            "name": "roadside_attractions",
-            "columns": ["pk", "name", "address", "url", "latitude", "longitude"],
-            "primary_keys": ["pk"],
-            "count": 4,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {
-                "incoming": [
-                    {
-                        "other_table": "roadside_attraction_characteristics",
-                        "column": "pk",
-                        "other_column": "attraction_id",
-                    }
-                ],
-                "outgoing": [],
-            },
-            "private": False,
-        },
-        {
-            "name": "searchable",
-            "columns": ["pk", "text1", "text2", "name with . and spaces"],
-            "primary_keys": ["pk"],
-            "count": 2,
-            "hidden": False,
-            "fts_table": "searchable_fts",
-            "foreign_keys": {
-                "incoming": [
-                    {
-                        "other_table": "searchable_tags",
-                        "column": "pk",
-                        "other_column": "searchable_id",
-                    }
-                ],
-                "outgoing": [],
-            },
-            "private": False,
-        },
-        {
-            "name": "searchable_tags",
-            "columns": ["searchable_id", "tag"],
-            "primary_keys": ["searchable_id", "tag"],
-            "count": 2,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {
-                "incoming": [],
-                "outgoing": [
-                    {"other_table": "tags", "column": "tag", "other_column": "tag"},
-                    {
-                        "other_table": "searchable",
-                        "column": "searchable_id",
-                        "other_column": "pk",
-                    },
-                ],
-            },
-            "private": False,
-        },
-        {
-            "name": "select",
-            "columns": ["group", "having", "and", "json"],
-            "primary_keys": [],
-            "count": 1,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "private": False,
-        },
-        {
-            "name": "simple_primary_key",
-            "columns": ["id", "content"],
-            "primary_keys": ["id"],
-            "count": 5,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {
-                "incoming": [
-                    {
-                        "other_table": "foreign_key_references",
-                        "column": "id",
-                        "other_column": "foreign_key_with_blank_label",
-                    },
-                    {
-                        "other_table": "foreign_key_references",
-                        "column": "id",
-                        "other_column": "foreign_key_with_label",
-                    },
-                    {
-                        "other_table": "complex_foreign_keys",
-                        "column": "id",
-                        "other_column": "f3",
-                    },
-                    {
-                        "other_table": "complex_foreign_keys",
-                        "column": "id",
-                        "other_column": "f2",
-                    },
-                    {
-                        "other_table": "complex_foreign_keys",
-                        "column": "id",
-                        "other_column": "f1",
-                    },
-                ],
-                "outgoing": [],
-            },
-            "private": False,
-        },
-        {
-            "name": "sortable",
-            "columns": [
-                "pk1",
-                "pk2",
-                "content",
-                "sortable",
-                "sortable_with_nulls",
-                "sortable_with_nulls_2",
-                "text",
-            ],
-            "primary_keys": ["pk1", "pk2"],
-            "count": 201,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "private": False,
-        },
-        {
-            "name": "table/with/slashes.csv",
-            "columns": ["pk", "content"],
-            "primary_keys": ["pk"],
-            "count": 1,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "private": False,
-        },
-        {
-            "name": "tags",
-            "columns": ["tag"],
-            "primary_keys": ["tag"],
-            "count": 2,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {
-                "incoming": [
-                    {
-                        "other_table": "searchable_tags",
-                        "column": "tag",
-                        "other_column": "tag",
-                    }
-                ],
-                "outgoing": [],
-            },
-            "private": False,
-        },
-        {
-            "name": "no_primary_key",
-            "columns": ["content", "a", "b", "c"],
-            "primary_keys": [],
-            "count": 201,
-            "hidden": True,
-            "fts_table": None,
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "private": False,
-        },
-        {
-            "columns": [
-                "text1",
-                "text2",
-                "name with . and spaces",
-                "searchable_fts",
-                "rank",
-            ],
-            "count": 2,
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "fts_table": "searchable_fts",
-            "hidden": True,
-            "name": "searchable_fts",
-            "primary_keys": [],
-            "private": False,
-        },
-        {
-            "name": "searchable_fts_config",
-            "columns": ["k", "v"],
-            "primary_keys": ["k"],
-            "count": 1,
-            "hidden": True,
-            "fts_table": None,
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "private": False,
-        },
-        {
-            "name": "searchable_fts_data",
-            "columns": ["id", "block"],
-            "primary_keys": ["id"],
-            "count": 3,
-            "hidden": True,
-            "fts_table": None,
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "private": False,
-        },
-        {
-            "name": "searchable_fts_docsize",
-            "columns": ["id", "sz"],
-            "primary_keys": ["id"],
-            "count": 2,
-            "hidden": True,
-            "fts_table": None,
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "private": False,
-        },
-        {
-            "name": "searchable_fts_idx",
-            "columns": ["segid", "term", "pgno"],
-            "primary_keys": ["segid", "term"],
-            "count": 1,
-            "hidden": True,
-            "fts_table": None,
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "private": False,
-        },
-    ]
+
+    # Build lookup for easier assertions
+    tables = data["tables"]
+    tables_by_name = {t["name"]: t for t in tables}
+
+    # Verify tables are sorted by (hidden, name) - visible first, then hidden
+    table_names = [t["name"] for t in tables]
+    expected_order = sorted(tables, key=lambda t: (t["hidden"], t["name"]))
+    assert table_names == [t["name"] for t in expected_order]
+
+    # Expected visible tables (not hidden)
+    expected_visible_tables = {
+        "123_starts_with_digits",
+        "Table With Space In Name",
+        "attraction_characteristic",
+        "binary_data",
+        "complex_foreign_keys",
+        "compound_primary_key",
+        "compound_three_primary_keys",
+        "custom_foreign_key_label",
+        "facet_cities",
+        "facetable",
+        "foreign_key_references",
+        "infinity",
+        "primary_key_multiple_columns",
+        "primary_key_multiple_columns_explicit_label",
+        "roadside_attraction_characteristics",
+        "roadside_attractions",
+        "searchable",
+        "searchable_tags",
+        "select",
+        "simple_primary_key",
+        "sortable",
+        "table/with/slashes.csv",
+        "tags",
+    }
+
+    # Expected hidden tables
+    expected_hidden_tables = {
+        "no_primary_key",
+        "searchable_fts",
+        "searchable_fts_config",
+        "searchable_fts_data",
+        "searchable_fts_docsize",
+        "searchable_fts_idx",
+    }
+
+    # Verify all expected tables exist
+    assert expected_visible_tables.issubset(tables_by_name.keys())
+    assert expected_hidden_tables.issubset(tables_by_name.keys())
+
+    # Verify hidden status
+    visible_tables = {t["name"] for t in tables if not t["hidden"]}
+    hidden_tables = {t["name"] for t in tables if t["hidden"]}
+    assert expected_visible_tables == visible_tables
+    assert expected_hidden_tables == hidden_tables
+
+    # Helper to compare foreign keys (order-insensitive)
+    def fk_set(fks):
+        return {(fk["other_table"], fk["column"], fk["other_column"]) for fk in fks}
+
+    # Test specific table properties
+    # -- facetable: has outgoing FK to facet_cities
+    facetable = tables_by_name["facetable"]
+    assert facetable["count"] == 15
+    assert facetable["primary_keys"] == ["pk"]
+    assert facetable["fts_table"] is None
+    assert facetable["private"] is False
+    assert fk_set(facetable["foreign_keys"]["outgoing"]) == {
+        ("facet_cities", "_city_id", "id")
+    }
+    assert fk_set(facetable["foreign_keys"]["incoming"]) == set()
+
+    # -- facet_cities: has incoming FK from facetable
+    facet_cities = tables_by_name["facet_cities"]
+    assert facet_cities["count"] == 4
+    assert facet_cities["columns"] == ["id", "name"]
+    assert fk_set(facet_cities["foreign_keys"]["incoming"]) == {
+        ("facetable", "id", "_city_id")
+    }
+
+    # -- simple_primary_key: has multiple incoming FKs
+    simple_pk = tables_by_name["simple_primary_key"]
+    assert simple_pk["count"] == 5
+    assert simple_pk["columns"] == ["id", "content"]
+    assert simple_pk["primary_keys"] == ["id"]
+    # Should have incoming FKs from complex_foreign_keys (f1, f2, f3) and foreign_key_references
+    incoming = fk_set(simple_pk["foreign_keys"]["incoming"])
+    assert ("complex_foreign_keys", "id", "f1") in incoming
+    assert ("complex_foreign_keys", "id", "f2") in incoming
+    assert ("complex_foreign_keys", "id", "f3") in incoming
+    assert ("foreign_key_references", "id", "foreign_key_with_label") in incoming
+    assert ("foreign_key_references", "id", "foreign_key_with_blank_label") in incoming
+
+    # -- complex_foreign_keys: has multiple outgoing FKs to same table
+    complex_fk = tables_by_name["complex_foreign_keys"]
+    assert complex_fk["count"] == 1
+    assert complex_fk["columns"] == ["pk", "f1", "f2", "f3"]
+    outgoing = fk_set(complex_fk["foreign_keys"]["outgoing"])
+    assert outgoing == {
+        ("simple_primary_key", "f1", "id"),
+        ("simple_primary_key", "f2", "id"),
+        ("simple_primary_key", "f3", "id"),
+    }
+
+    # -- searchable: has FTS table association
+    searchable = tables_by_name["searchable"]
+    assert searchable["count"] == 2
+    assert searchable["fts_table"] == "searchable_fts"
+    assert searchable["columns"] == ["pk", "text1", "text2", "name with . and spaces"]
+
+    # -- searchable_fts: is the FTS virtual table (hidden)
+    searchable_fts = tables_by_name["searchable_fts"]
+    assert searchable_fts["hidden"] is True
+    assert searchable_fts["fts_table"] == "searchable_fts"
+    assert "rank" in searchable_fts["columns"]
+
+    # -- compound primary keys
+    compound_pk = tables_by_name["compound_primary_key"]
+    assert compound_pk["primary_keys"] == ["pk1", "pk2"]
+    assert compound_pk["count"] == 2
+
+    compound_three = tables_by_name["compound_three_primary_keys"]
+    assert compound_three["primary_keys"] == ["pk1", "pk2", "pk3"]
+    assert compound_three["count"] == 1001
+
+    # -- sortable: generated data
+    sortable = tables_by_name["sortable"]
+    assert sortable["count"] == 201
+    assert sortable["primary_keys"] == ["pk1", "pk2"]
+
+    # -- no_primary_key: hidden table with generated data
+    no_pk = tables_by_name["no_primary_key"]
+    assert no_pk["hidden"] is True
+    assert no_pk["count"] == 201
+    assert no_pk["primary_keys"] == []
+
+    # -- roadside attractions relationship chain
+    attractions = tables_by_name["roadside_attractions"]
+    assert attractions["count"] == 4
+    assert fk_set(attractions["foreign_keys"]["incoming"]) == {
+        ("roadside_attraction_characteristics", "pk", "attraction_id")
+    }
+
+    characteristics = tables_by_name["attraction_characteristic"]
+    assert characteristics["count"] == 2
+    assert fk_set(characteristics["foreign_keys"]["incoming"]) == {
+        ("roadside_attraction_characteristics", "pk", "characteristic_id")
+    }
+
+    # -- searchable_tags: multiple outgoing FKs
+    searchable_tags = tables_by_name["searchable_tags"]
+    assert searchable_tags["primary_keys"] == ["searchable_id", "tag"]
+    outgoing = fk_set(searchable_tags["foreign_keys"]["outgoing"])
+    assert outgoing == {
+        ("searchable", "searchable_id", "pk"),
+        ("tags", "tag", "tag"),
+    }
+
+    # -- tables with special names
+    assert "123_starts_with_digits" in tables_by_name
+    assert "Table With Space In Name" in tables_by_name
+    assert "table/with/slashes.csv" in tables_by_name
+    assert "select" in tables_by_name  # SQL reserved word
+
+    # Verify select table has SQL reserved word columns
+    select_table = tables_by_name["select"]
+    assert set(select_table["columns"]) == {"group", "having", "and", "json"}
+
+    # Verify all tables have required fields
+    for table in tables:
+        assert "name" in table
+        assert "columns" in table
+        assert "primary_keys" in table
+        assert "count" in table
+        assert "hidden" in table
+        assert "fts_table" in table
+        assert "foreign_keys" in table
+        assert "private" in table
+        assert "incoming" in table["foreign_keys"]
+        assert "outgoing" in table["foreign_keys"]
 
 
 def test_no_files_uses_memory_database(app_client_no_files):

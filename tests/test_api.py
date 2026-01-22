@@ -396,7 +396,29 @@ async def test_row_foreign_key_tables(ds_client):
         "/fixtures/simple_primary_key/1.json?_extras=foreign_key_tables"
     )
     assert response.status_code == 200
+    # Foreign keys are sorted by (other_table, column, other_column)
     assert response.json()["foreign_key_tables"] == [
+        {
+            "other_table": "complex_foreign_keys",
+            "column": "id",
+            "other_column": "f1",
+            "count": 1,
+            "link": "/fixtures/complex_foreign_keys?f1=1",
+        },
+        {
+            "other_table": "complex_foreign_keys",
+            "column": "id",
+            "other_column": "f2",
+            "count": 0,
+            "link": "/fixtures/complex_foreign_keys?f2=1",
+        },
+        {
+            "other_table": "complex_foreign_keys",
+            "column": "id",
+            "other_column": "f3",
+            "count": 1,
+            "link": "/fixtures/complex_foreign_keys?f3=1",
+        },
         {
             "other_table": "foreign_key_references",
             "column": "id",
@@ -410,27 +432,6 @@ async def test_row_foreign_key_tables(ds_client):
             "other_column": "foreign_key_with_label",
             "count": 1,
             "link": "/fixtures/foreign_key_references?foreign_key_with_label=1",
-        },
-        {
-            "other_table": "complex_foreign_keys",
-            "column": "id",
-            "other_column": "f3",
-            "count": 1,
-            "link": "/fixtures/complex_foreign_keys?f3=1",
-        },
-        {
-            "other_table": "complex_foreign_keys",
-            "column": "id",
-            "other_column": "f2",
-            "count": 0,
-            "link": "/fixtures/complex_foreign_keys?f2=1",
-        },
-        {
-            "other_table": "complex_foreign_keys",
-            "column": "id",
-            "other_column": "f1",
-            "count": 1,
-            "link": "/fixtures/complex_foreign_keys?f1=1",
         },
     ]
 

@@ -967,11 +967,14 @@ Here is an example that validates required plugin configuration. The server will
 
     from datasette.utils import StartupError
 
+
     @hookimpl
     def startup(datasette):
         config = datasette.plugin_config("my-plugin") or {}
         if "required-setting" not in config:
-            raise StartupError("my-plugin requires setting required-setting")
+            raise StartupError(
+                "my-plugin requires setting required-setting"
+            )
 
 You can also return an async function, which will be awaited on startup. Use this option if you need to execute any database queries, for example this function which creates the ``my_table`` database table if it does not yet exist:
 

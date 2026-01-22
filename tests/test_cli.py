@@ -4,7 +4,7 @@ from .fixtures import (
     EXPECTED_PLUGINS,
 )
 from datasette.app import SETTINGS
-from datasette.plugins import DEFAULT_PLUGINS
+from datasette.plugins import DEFAULT_PLUGINS, pm
 from datasette.cli import cli, serve
 from datasette.version import __version__
 from datasette.utils import tilde_encode
@@ -326,8 +326,16 @@ def test_startup_error_from_plugin_is_click_exception(tmp_path):
             "/",
         ],
     )
-    assert result.exit_code == 1
-    assert "Error: boom" in result.output
+    try:
+        assert result.exit_code == 1
+        assert "Error: boom" in result.output
+    finally:
+        # Cleanup: Unregister the plugin to avoid test isolation issues
+        to_unregister = [
+            p for p in pm.get_plugins() if p.__name__ == "startup_error.py"
+        ]
+        if to_unregister:
+            pm.unregister(to_unregister[0])
 
 
 def test_setting_type_validation():

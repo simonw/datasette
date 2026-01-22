@@ -66,6 +66,7 @@ dev = [
     "pytest-timeout>=1.4.2",
     "trustme>=0.7",
     "cogapp>=3.3.0",
+    "multipart-form-data-conformance==0.1a0",
     # docs
     "Sphinx==7.4.7",
     "furo==2025.9.25",

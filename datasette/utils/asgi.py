@@ -1,5 +1,6 @@
 import json
 from datasette.utils import MultiParams, calculate_etag
+from datasette.utils.multipart import parse_form_data, MultipartParseError, FormData
 from mimetypes import guess_type
 from urllib.parse import parse_qs, urlunparse, parse_qsl
 from pathlib import Path
@@ -138,6 +139,50 @@ class Request:
     async def post_vars(self):
         body = await self.post_body()
         return dict(parse_qsl(body.decode("utf-8"), keep_blank_values=True))
+
+    async def form(
+        self,
+        files: bool = False,
+        max_file_size: int = 50 * 1024 * 1024,
+        max_request_size: int = 100 * 1024 * 1024,
+        max_fields: int = 1000,
+        max_files: int = 100,
+    ) -> FormData:
+        """
+        Parse form data from the request body.
+
+        Supports both application/x-www-form-urlencoded and multipart/form-data.
+
+        Args:
+            files: If True, store file uploads; if False (default), discard them
+            max_file_size: Maximum size per file in bytes (default 50MB)
+            max_request_size: Maximum total request size in bytes (default 100MB)
+            max_fields: Maximum number of form fields (default 1000)
+            max_files: Maximum number of file uploads (default 100)
+
+        Returns:
+            FormData object with dict-like access to fields and files.
+            Use form["key"] for first value, form.getlist("key") for all values.
+
+        Raises:
+            BadRequest: If content-type is missing, unsupported, or parsing fails
+        """
+        content_type = self.headers.get("content-type", "")
+        if not content_type:
+            raise BadRequest("Missing Content-Type header")
+
+        try:
+            return await parse_form_data(
+                receive=self.receive,
+                content_type=content_type,
+                files=files,
+                max_file_size=max_file_size,
+                max_request_size=max_request_size,
+                max_fields=max_fields,
+                max_files=max_files,
+            )
+        except MultipartParseError as e:
+            raise BadRequest(str(e))
 
     @classmethod
     def fake(cls, path_with_query_string, method="GET", scheme="http", url_vars=None):

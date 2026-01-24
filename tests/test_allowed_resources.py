@@ -117,7 +117,6 @@ async def test_tables_endpoint_database_restriction(test_ds):
 
         # Bob should only see analytics tables
         analytics_tables = [m for m in result if m["name"].startswith("analytics/")]
-        production_tables = [m for m in result if m["name"].startswith("production/")]
 
         assert len(analytics_tables) == 3
         table_names = {m["name"] for m in analytics_tables}

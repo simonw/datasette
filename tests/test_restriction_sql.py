@@ -182,8 +182,8 @@ async def test_also_requires_with_restrictions():
     """
     ds = Datasette()
     await ds.invoke_startup()
-    db1 = ds.add_memory_database("db1_also_requires")
-    db2 = ds.add_memory_database("db2_also_requires")
+    ds.add_memory_database("db1_also_requires")
+    ds.add_memory_database("db2_also_requires")
     await ds._refresh_schemas()
 
     # Actor restricted to only db1_also_requires for view-database

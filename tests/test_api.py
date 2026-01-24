@@ -1,21 +1,7 @@
 from datasette.app import Datasette
 from datasette.plugins import DEFAULT_PLUGINS
 from datasette.version import __version__
-from .fixtures import (  # noqa
-    app_client,
-    app_client_no_files,
-    app_client_with_dot,
-    app_client_shorter_time_limit,
-    app_client_two_attached_databases_one_immutable,
-    app_client_larger_cache_size,
-    app_client_with_cors,
-    app_client_two_attached_databases,
-    app_client_conflicting_database_names,
-    app_client_immutable_and_inspect_file,
-    make_app_client,
-    EXPECTED_PLUGINS,
-    METADATA,
-)
+from .fixtures import make_app_client, EXPECTED_PLUGINS
 import pathlib
 import pytest
 import sys
@@ -815,14 +801,14 @@ def test_databases_json(app_client_two_attached_databases_one_immutable):
     assert 2 == len(databases)
     extra_database, fixtures_database = databases
     assert "extra database" == extra_database["name"]
-    assert None == extra_database["hash"]
-    assert True == extra_database["is_mutable"]
-    assert False == extra_database["is_memory"]
+    assert extra_database["hash"] is None
+    assert extra_database["is_mutable"] is True
+    assert extra_database["is_memory"] is False
 
     assert "fixtures" == fixtures_database["name"]
     assert fixtures_database["hash"] is not None
-    assert False == fixtures_database["is_mutable"]
-    assert False == fixtures_database["is_memory"]
+    assert fixtures_database["is_mutable"] is False
+    assert fixtures_database["is_memory"] is False
 
 
 @pytest.mark.asyncio

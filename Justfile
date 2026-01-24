@@ -17,11 +17,15 @@ export DATASETTE_SECRET := "not_a_secret"
   uv run codespell datasette -S datasette/static --ignore-words docs/codespell-ignore-words.txt
   uv run codespell tests --ignore-words docs/codespell-ignore-words.txt
 
-# Run linters: black, flake8, mypy, cog
+# Run linters: black, ruff, cog
 @lint: codespell
-  uv run black . --check
-  uv run flake8
+  uv run black datasette tests --check
+  uv run ruff check datasette tests
   uv run cog --check README.md docs/*.rst
+
+# Apply ruff fixes
+@fix:
+  uv run ruff check --fix datasette tests
 
 # Rebuild docs with cog
 @cog:
@@ -37,7 +41,7 @@ export DATASETTE_SECRET := "not_a_secret"
 
 # Apply Black
 @black:
-  uv run black .
+  uv run black datasette tests
 
 # Apply blacken-docs
 @blacken-docs:

@@ -1,7 +1,6 @@
 import asyncio
 import csv
 import hashlib
-import json
 import sys
 import textwrap
 import time

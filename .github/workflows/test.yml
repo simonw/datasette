@@ -35,6 +35,8 @@ jobs:
         tests/test_datasette_https_server.sh
     - name: Black
       run: black --check .
+    - name: Ruff
+      run: ruff check datasette tests
     - name: Check if cog needs to be run
       run: |
         cog --check docs/*.rst

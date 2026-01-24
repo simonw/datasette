@@ -158,7 +158,7 @@ def test_datasette_error_if_string_not_list(tmpdir):
     # https://github.com/simonw/datasette/issues/1985
     db_path = str(tmpdir / "data.db")
     with pytest.raises(ValueError):
-        ds = Datasette(db_path)
+        Datasette(db_path)
 
 
 @pytest.mark.asyncio

@@ -589,6 +589,10 @@ class Datasette:
         return None
 
     async def refresh_schemas(self):
+        # Throttle schema refreshes to at most once per second
+        if time.monotonic() - getattr(self, "_last_schema_refresh", 0) < 1.0:
+            return
+        self._last_schema_refresh = time.monotonic()
         if self._refresh_schemas_lock.locked():
             return
         async with self._refresh_schemas_lock:

@@ -1,5 +1,6 @@
 from datasette.app import Datasette
 from datasette.plugins import DEFAULT_PLUGINS
+from datasette.utils.sqlite import sqlite_version
 from datasette.version import __version__
 from .fixtures import make_app_client, EXPECTED_PLUGINS
 import pathlib
@@ -174,7 +175,9 @@ async def test_database_page(ds_client):
     searchable_fts = tables_by_name["searchable_fts"]
     assert searchable_fts["hidden"] is True
     assert searchable_fts["fts_table"] == "searchable_fts"
-    assert "rank" in searchable_fts["columns"]
+    # The "rank" column became visible in pragma_table_info in SQLite 3.37+
+    if sqlite_version() >= (3, 37, 0):
+        assert "rank" in searchable_fts["columns"]
 
     # -- compound primary keys
     compound_pk = tables_by_name["compound_primary_key"]

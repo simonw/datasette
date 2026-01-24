@@ -6,7 +6,7 @@ import contextvars
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List
 
 if TYPE_CHECKING:
-    from datasette.permissions import AllowedResource, Resource
+    from datasette.permissions import Resource
 import asgi_csrf
 import collections
 import dataclasses
@@ -1144,7 +1144,7 @@ class Datasette:
 
         # Validate that resource is a Resource object or None
         if resource is not None and not isinstance(resource, Resource):
-            raise TypeError(f"resource must be a Resource subclass instance or None.")
+            raise TypeError("resource must be a Resource subclass instance or None.")
 
         # Check if actor can see it
         if not await self.allowed(action=action, resource=resource, actor=actor):

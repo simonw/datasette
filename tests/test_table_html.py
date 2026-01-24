@@ -1,10 +1,6 @@
 from datasette.app import Datasette
 from bs4 import BeautifulSoup as Soup
-from .fixtures import (  # noqa
-    app_client,
-    make_app_client,
-    app_client_with_dot,
-)
+from .fixtures import make_app_client
 import pathlib
 import pytest
 import urllib.parse
@@ -1263,7 +1259,7 @@ async def test_foreign_key_labels_obey_permissions(config):
         "insert or replace into b (id, name, a_id) values (1, 'world', 1)"
     )
     # Anonymous user can see table b but not table a
-    blah = await ds.client.get("/foreign_key_labels.json")
+    await ds.client.get("/foreign_key_labels.json")
     anon_a = await ds.client.get("/foreign_key_labels/a.json?_labels=on")
     assert anon_a.status_code == 403
     anon_b = await ds.client.get("/foreign_key_labels/b.json?_labels=on")

@@ -1,12 +1,6 @@
 from datasette.app import Datasette
 from bs4 import BeautifulSoup as Soup
 import pytest
-from .fixtures import (  # noqa
-    app_client,
-    app_client_csv_max_mb_one,
-    app_client_with_cors,
-    app_client_with_trace,
-)
 import urllib.parse
 
 EXPECTED_TABLE_CSV = """id,content

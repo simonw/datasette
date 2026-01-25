@@ -647,8 +647,12 @@ button.core[type=button] {
     border-radius: 3px;
     -webkit-appearance: none;
     padding: 9px 4px;
-    font-size: 1em;
+    font-size: 16px;
     font-family: Helvetica, sans-serif;
+}
+
+#_search {
+    font-size: 16px;
 }
 
 

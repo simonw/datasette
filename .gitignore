@@ -130,3 +130,5 @@ node_modules
 tests/*.dylib
 tests/*.so
 tests/*.dll
+
+.idea

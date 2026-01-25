@@ -219,6 +219,27 @@ class DeleteRowEvent(Event):
     pks: list
 
 
+@dataclass
+class ExecuteScriptEvent(Event):
+    """
+    Event name: ``execute-script``
+
+    A SQL script with multiple statements was executed.
+
+    :ivar database: The name of the database where the script was executed.
+    :type database: str
+    :ivar table: The table context for the script execution.
+    :type table: str
+    :ivar num_statements: The number of SQL statements in the script.
+    :type num_statements: int
+    """
+
+    name = "execute-script"
+    database: str
+    table: str
+    num_statements: int
+
+
 @hookimpl
 def register_events():
     return [
@@ -232,4 +253,5 @@ def register_events():
         UpsertRowsEvent,
         UpdateRowEvent,
         DeleteRowEvent,
+        ExecuteScriptEvent,
     ]

@@ -397,9 +397,7 @@ class TestMultipartWithFiles:
             b"------TestBoundary123\r\n"
             b'Content-Disposition: form-data; name="bigfile"; filename="large.bin"\r\n'
             b"Content-Type: application/octet-stream\r\n"
-            b"\r\n"
-            + large_content
-            + b"\r\n"
+            b"\r\n" + large_content + b"\r\n"
             b"------TestBoundary123--\r\n"
         )
         scope = {
@@ -630,10 +628,10 @@ class TestSecurityLimits:
         parts = []
         for i in range(1001):  # Default max is 1000
             parts.append(
-                f'------TestBoundary123\r\n'
+                f"------TestBoundary123\r\n"
                 f'Content-Disposition: form-data; name="field{i}"\r\n'
-                f'\r\n'
-                f'value{i}\r\n'
+                f"\r\n"
+                f"value{i}\r\n"
             )
         parts.append("------TestBoundary123--\r\n")
         body = "".join(parts).encode()
@@ -659,9 +657,7 @@ class TestSecurityLimits:
             b"------TestBoundary123\r\n"
             b'Content-Disposition: form-data; name="file"; filename="big.bin"\r\n'
             b"Content-Type: application/octet-stream\r\n"
-            b"\r\n"
-            + large_content
-            + b"\r\n"
+            b"\r\n" + large_content + b"\r\n"
             b"------TestBoundary123--\r\n"
         )
         scope = {
@@ -685,9 +681,7 @@ class TestSecurityLimits:
             b"------TestBoundary123\r\n"
             b'Content-Disposition: form-data; name="file"; filename="big.bin"\r\n'
             b"Content-Type: application/octet-stream\r\n"
-            b"\r\n"
-            + large_content
-            + b"\r\n"
+            b"\r\n" + large_content + b"\r\n"
             b"------TestBoundary123--\r\n"
         )
         scope = {
@@ -840,9 +834,7 @@ class TestMultipartStrictnessAndLimits:
             b"------TestBoundary123\r\n"
             b'Content-Disposition: form-data; name="file"; filename="big.bin"\r\n'
             b"Content-Type: application/octet-stream\r\n"
-            b"\r\n"
-            + big_content
-            + b"\r\n"
+            b"\r\n" + big_content + b"\r\n"
             b"------TestBoundary123--\r\n"
         )
         scope = {
@@ -948,9 +940,7 @@ class TestMultipartStrictnessAndLimits:
         # No CRLF is included after the header line
         body = (
             b"------TestBoundary123\r\n"
-            b'Content-Disposition: form-data; name="field"; foo="'
-            + huge
-            + b'"'
+            b'Content-Disposition: form-data; name="field"; foo="' + huge + b'"'
         )
         scope = {
             "type": "http",
@@ -997,7 +987,7 @@ FILENAME_SANITIZATION_TESTS = {
 
 # Tests for optional/lenient features we don't implement
 OPTIONAL_TESTS = {
-    "085-header-folding",          # Obsolete header folding feature
+    "085-header-folding",  # Obsolete header folding feature
 }
 
 # Tests for malformed input where we're lenient instead of erroring
@@ -1037,17 +1027,17 @@ def load_conformance_test_cases():
             # Add marks for tests we handle differently
             marks = []
             if test_id in FILENAME_SANITIZATION_TESTS:
-                marks.append(pytest.mark.xfail(
-                    reason="Parser sanitizes filenames for security"
-                ))
+                marks.append(
+                    pytest.mark.xfail(reason="Parser sanitizes filenames for security")
+                )
             elif test_id in OPTIONAL_TESTS:
-                marks.append(pytest.mark.xfail(
-                    reason="Optional feature not implemented"
-                ))
+                marks.append(
+                    pytest.mark.xfail(reason="Optional feature not implemented")
+                )
             elif test_id in LENIENT_PARSING_TESTS:
-                marks.append(pytest.mark.xfail(
-                    reason="Parser is lenient with malformed input"
-                ))
+                marks.append(
+                    pytest.mark.xfail(reason="Parser is lenient with malformed input")
+                )
 
             test_cases.append(
                 pytest.param(
@@ -1103,9 +1093,7 @@ async def test_conformance(test_spec, headers, body):
 
         # Find the value at the correct index for this name
         # (handles multiple values with same name)
-        same_name_count = sum(
-            1 for p in expected["parts"][:i] if p["name"] == name
-        )
+        same_name_count = sum(1 for p in expected["parts"][:i] if p["name"] == name)
 
         if same_name_count >= len(values):
             pytest.fail(
@@ -1134,19 +1122,21 @@ async def test_conformance(test_spec, headers, body):
             assert hasattr(value, "filename"), f"Expected file for {name}"
 
             # Check filename - use filename_star if present, else filename
-            expected_filename = expected_part.get("filename_star") or expected_part.get("filename")
+            expected_filename = expected_part.get("filename_star") or expected_part.get(
+                "filename"
+            )
             if expected_filename:
-                assert value.filename == expected_filename, (
-                    f"Filename mismatch: expected {expected_filename!r}, got {value.filename!r}"
-                )
+                assert (
+                    value.filename == expected_filename
+                ), f"Filename mismatch: expected {expected_filename!r}, got {value.filename!r}"
 
             if expected_part.get("content_type"):
                 assert value.content_type == expected_part["content_type"]
 
             content = await value.read()
-            assert len(content) == expected_part["body_size"], (
-                f"Size mismatch: expected {expected_part['body_size']}, got {len(content)}"
-            )
+            assert (
+                len(content) == expected_part["body_size"]
+            ), f"Size mismatch: expected {expected_part['body_size']}, got {len(content)}"
             if expected_content is not None:
                 assert content == expected_content
         else:
@@ -1160,6 +1150,6 @@ async def test_conformance(test_spec, headers, body):
                     expected_text = expected_content.decode("utf-8")
                 except UnicodeDecodeError:
                     expected_text = expected_content.decode("latin-1")
-                assert value == expected_text, (
-                    f"Value mismatch: expected {expected_text!r}, got {value!r}"
-                )
+                assert (
+                    value == expected_text
+                ), f"Value mismatch: expected {expected_text!r}, got {value!r}"

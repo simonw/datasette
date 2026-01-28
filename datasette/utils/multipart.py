@@ -112,9 +112,7 @@ class FormData:
                 return v
         raise KeyError(key)
 
-    def get(
-        self, key: str, default: Any = None
-    ) -> Optional[Union[str, UploadedFile]]:
+    def get(self, key: str, default: Any = None) -> Optional[Union[str, UploadedFile]]:
         """Get the first value for a key, or default if not found."""
         try:
             return self[key]

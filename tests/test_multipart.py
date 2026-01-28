@@ -7,6 +7,7 @@ Uses TDD approach - these tests are written first, then implementation follows.
 import json
 import pytest
 from pathlib import Path
+from collections import namedtuple
 
 from multipart_form_data_conformance import get_tests_dir
 
@@ -37,6 +38,52 @@ def make_chunked_receive(body: bytes, chunk_size: int = 64):
         chunk = body[offset : offset + chunk_size]
         offset += chunk_size
         more_body = offset < len(body)
+        return {"type": "http.request", "body": chunk, "more_body": more_body}
+
+    return receive
+
+
+def make_receive_with_noise(body: bytes):
+    """
+    Create an async receive callable that includes an unexpected ASGI message.
+
+    The parser should ignore the unknown message type and continue.
+    """
+    messages = [
+        {"type": "http.response.start", "status": 200, "headers": []},
+        {"type": "http.request", "body": body, "more_body": False},
+    ]
+    index = 0
+
+    async def receive():
+        nonlocal index
+        if index >= len(messages):
+            return {"type": "http.request", "body": b"", "more_body": False}
+        message = messages[index]
+        index += 1
+        return message
+
+    return receive
+
+
+def make_disconnect_receive(body: bytes, chunk_size: int = 64):
+    """
+    Create an async receive callable that disconnects mid-request.
+
+    The parser should raise on the disconnect.
+    """
+    offset = 0
+    disconnected = False
+
+    async def receive():
+        nonlocal offset, disconnected
+        if disconnected:
+            return {"type": "http.disconnect"}
+        chunk = body[offset : offset + chunk_size]
+        offset += chunk_size
+        more_body = offset < len(body)
+        if more_body:
+            disconnected = True
         return {"type": "http.request", "body": chunk, "more_body": more_body}
 
     return receive
@@ -408,6 +455,65 @@ class TestMultipartWithFiles:
         assert content2 == b"Hello, World!"
 
 
+class TestMultipartCleanup:
+    """Test deterministic cleanup of uploaded files."""
+
+    @pytest.mark.asyncio
+    async def test_formdata_close_closes_uploaded_files(self):
+        boundary = "----TestBoundary123"
+        body = (
+            b"------TestBoundary123\r\n"
+            b'Content-Disposition: form-data; name="file"; filename="test.txt"\r\n'
+            b"Content-Type: text/plain\r\n"
+            b"\r\n"
+            b"Hello\r\n"
+            b"------TestBoundary123--\r\n"
+        )
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "headers": [
+                (b"content-type", f"multipart/form-data; boundary={boundary}".encode()),
+            ],
+        }
+        request = Request(scope, make_receive(body))
+        form = await request.form(files=True)
+        uploaded_file = form["file"]
+
+        form.close()
+
+        with pytest.raises(ValueError):
+            await uploaded_file.read()
+
+    @pytest.mark.asyncio
+    async def test_formdata_async_context_manager_closes_files(self):
+        boundary = "----TestBoundary123"
+        body = (
+            b"------TestBoundary123\r\n"
+            b'Content-Disposition: form-data; name="file"; filename="test.txt"\r\n'
+            b"Content-Type: text/plain\r\n"
+            b"\r\n"
+            b"Hello\r\n"
+            b"------TestBoundary123--\r\n"
+        )
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "headers": [
+                (b"content-type", f"multipart/form-data; boundary={boundary}".encode()),
+            ],
+        }
+        request = Request(scope, make_receive(body))
+        form = await request.form(files=True)
+        uploaded_file = form["file"]
+
+        async with form:
+            pass
+
+        with pytest.raises(ValueError):
+            await uploaded_file.read()
+
+
 class TestMultipartEdgeCases:
     """Test edge cases in multipart parsing."""
 
@@ -597,6 +703,287 @@ class TestSecurityLimits:
             await request.form(files=True, max_request_size=5 * 1024 * 1024)
 
 
+class TestMultipartStrictnessAndLimits:
+    """Tests that enforce stricter ASGI and multipart behaviors."""
+
+    @pytest.mark.asyncio
+    async def test_multipart_truncated_body_is_error(self):
+        """Truncated multipart without closing boundary should raise."""
+        boundary = "----TestBoundary123"
+        # Missing the final closing boundary line
+        body = (
+            b"------TestBoundary123\r\n"
+            b'Content-Disposition: form-data; name="field"\r\n'
+            b"\r\n"
+            b"value\r\n"
+        )
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "headers": [
+                (b"content-type", f"multipart/form-data; boundary={boundary}".encode()),
+            ],
+        }
+        request = Request(scope, make_receive(body))
+
+        with pytest.raises(BadRequest, match="Truncated multipart body"):
+            await request.form()
+
+    @pytest.mark.asyncio
+    async def test_disconnect_mid_body_is_error(self):
+        """Client disconnect during body streaming should raise."""
+        boundary = "----TestBoundary123"
+        body = (
+            b"------TestBoundary123\r\n"
+            b'Content-Disposition: form-data; name="field"\r\n'
+            b"\r\n"
+            b"value\r\n"
+            b"------TestBoundary123--\r\n"
+        )
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "headers": [
+                (b"content-type", f"multipart/form-data; boundary={boundary}".encode()),
+            ],
+        }
+        request = Request(scope, make_disconnect_receive(body, chunk_size=16))
+
+        with pytest.raises(BadRequest, match="disconnected"):
+            await request.form()
+
+    @pytest.mark.asyncio
+    async def test_unknown_asgi_message_type_is_ignored(self):
+        """Unexpected ASGI message types should be ignored."""
+        boundary = "----TestBoundary123"
+        body = (
+            b"------TestBoundary123\r\n"
+            b'Content-Disposition: form-data; name="field"\r\n'
+            b"\r\n"
+            b"value\r\n"
+            b"------TestBoundary123--\r\n"
+        )
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "headers": [
+                (b"content-type", f"multipart/form-data; boundary={boundary}".encode()),
+            ],
+        }
+        request = Request(scope, make_receive_with_noise(body))
+
+        form = await request.form()
+        assert form["field"] == "value"
+
+    @pytest.mark.asyncio
+    async def test_max_files_enforced_even_when_files_false(self):
+        """File count limits should apply even when file handling is disabled."""
+        boundary = "----TestBoundary123"
+        body = (
+            b"------TestBoundary123\r\n"
+            b'Content-Disposition: form-data; name="f1"; filename="a.txt"\r\n'
+            b"Content-Type: text/plain\r\n"
+            b"\r\n"
+            b"a\r\n"
+            b"------TestBoundary123\r\n"
+            b'Content-Disposition: form-data; name="f2"; filename="b.txt"\r\n'
+            b"Content-Type: text/plain\r\n"
+            b"\r\n"
+            b"b\r\n"
+            b"------TestBoundary123--\r\n"
+        )
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "headers": [
+                (b"content-type", f"multipart/form-data; boundary={boundary}".encode()),
+            ],
+        }
+        request = Request(scope, make_receive(body))
+
+        with pytest.raises(BadRequest, match="Too many files"):
+            await request.form(files=False, max_files=1)
+
+    @pytest.mark.asyncio
+    async def test_max_parts_limit(self):
+        """Total part count should be bounded."""
+        boundary = "----TestBoundary123"
+        body = (
+            b"------TestBoundary123\r\n"
+            b'Content-Disposition: form-data; name="a"\r\n'
+            b"\r\n"
+            b"1\r\n"
+            b"------TestBoundary123\r\n"
+            b'Content-Disposition: form-data; name="b"\r\n'
+            b"\r\n"
+            b"2\r\n"
+            b"------TestBoundary123--\r\n"
+        )
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "headers": [
+                (b"content-type", f"multipart/form-data; boundary={boundary}".encode()),
+            ],
+        }
+        request = Request(scope, make_receive(body))
+
+        with pytest.raises(BadRequest, match="Too many parts"):
+            await request.form(max_parts=1)
+
+    @pytest.mark.asyncio
+    async def test_max_file_size_enforced_even_when_files_false(self):
+        """File size limits should apply even when file handling is disabled."""
+        boundary = "----TestBoundary123"
+        big_content = b"x" * 2048
+        body = (
+            b"------TestBoundary123\r\n"
+            b'Content-Disposition: form-data; name="file"; filename="big.bin"\r\n'
+            b"Content-Type: application/octet-stream\r\n"
+            b"\r\n"
+            + big_content
+            + b"\r\n"
+            b"------TestBoundary123--\r\n"
+        )
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "headers": [
+                (b"content-type", f"multipart/form-data; boundary={boundary}".encode()),
+            ],
+        }
+        request = Request(scope, make_receive(body))
+
+        with pytest.raises(BadRequest, match="File too large"):
+            await request.form(files=False, max_file_size=1024)
+
+    @pytest.mark.asyncio
+    async def test_part_header_limits(self):
+        """Overly large part headers should be rejected."""
+        boundary = "----TestBoundary123"
+        huge_header_value = "x" * 5000
+        body = (
+            b"------TestBoundary123\r\n"
+            + f'Content-Disposition: form-data; name="field"; foo="{huge_header_value}"\r\n'.encode()
+            + b"\r\n"
+            + b"value\r\n"
+            + b"------TestBoundary123--\r\n"
+        )
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "headers": [
+                (b"content-type", f"multipart/form-data; boundary={boundary}".encode()),
+            ],
+        }
+        request = Request(scope, make_receive(body))
+
+        with pytest.raises(BadRequest, match="headers too large"):
+            await request.form(max_part_header_bytes=1024)
+
+    @pytest.mark.asyncio
+    async def test_insufficient_disk_space_rejects_upload(self, monkeypatch):
+        """Uploads should be rejected when free disk is below the floor."""
+        boundary = "----TestBoundary123"
+        body = (
+            b"------TestBoundary123\r\n"
+            b'Content-Disposition: form-data; name="file"; filename="test.txt"\r\n'
+            b"Content-Type: text/plain\r\n"
+            b"\r\n"
+            b"Hello\r\n"
+            b"------TestBoundary123--\r\n"
+        )
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "headers": [
+                (b"content-type", f"multipart/form-data; boundary={boundary}".encode()),
+            ],
+        }
+
+        DiskUsage = namedtuple("DiskUsage", ("total", "used", "free"))
+        monkeypatch.setattr(
+            "datasette.utils.multipart.shutil.disk_usage",
+            lambda path: DiskUsage(total=100, used=95, free=5),
+        )
+
+        request = Request(scope, make_receive(body))
+        with pytest.raises(BadRequest, match="Insufficient disk space"):
+            await request.form(files=True, min_free_disk_bytes=50)
+
+    @pytest.mark.asyncio
+    async def test_low_disk_space_does_not_block_field_only_forms(self, monkeypatch):
+        """Low disk space should not reject multipart forms with no file parts."""
+        boundary = "----TestBoundary123"
+        body = (
+            b"------TestBoundary123\r\n"
+            b'Content-Disposition: form-data; name="field"\r\n'
+            b"\r\n"
+            b"value\r\n"
+            b"------TestBoundary123--\r\n"
+        )
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "headers": [
+                (b"content-type", f"multipart/form-data; boundary={boundary}".encode()),
+            ],
+        }
+
+        DiskUsage = namedtuple("DiskUsage", ("total", "used", "free"))
+        monkeypatch.setattr(
+            "datasette.utils.multipart.shutil.disk_usage",
+            lambda path: DiskUsage(total=100, used=99, free=1),
+        )
+
+        request = Request(scope, make_receive(body))
+        form = await request.form(files=True, min_free_disk_bytes=50)
+        assert form["field"] == "value"
+
+    @pytest.mark.asyncio
+    async def test_headers_without_newline_hit_header_byte_limit(self):
+        """Headers that never terminate should still hit the header byte limit."""
+        boundary = "----TestBoundary123"
+        huge = b"x" * 5000
+        # No CRLF is included after the header line
+        body = (
+            b"------TestBoundary123\r\n"
+            b'Content-Disposition: form-data; name="field"; foo="'
+            + huge
+            + b'"'
+        )
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "headers": [
+                (b"content-type", f"multipart/form-data; boundary={boundary}".encode()),
+            ],
+        }
+        request = Request(scope, make_receive(body))
+
+        with pytest.raises(BadRequest, match="headers too large"):
+            await request.form(max_part_header_bytes=1024)
+
+
+class TestFormDataLenSemantics:
+    """Test that FormData.__len__ reflects number of items, not unique keys."""
+
+    @pytest.mark.asyncio
+    async def test_len_counts_items(self):
+        body = b"tag=python&tag=web&tag=api"
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "headers": [
+                (b"content-type", b"application/x-www-form-urlencoded"),
+            ],
+        }
+        request = Request(scope, make_receive(body))
+
+        form = await request.form()
+        assert len(form) == 3
+
+
 # Conformance test suite using multipart-form-data-conformance
 
 import base64
@@ -615,12 +1002,8 @@ OPTIONAL_TESTS = {
 
 # Tests for malformed input where we're lenient instead of erroring
 LENIENT_PARSING_TESTS = {
-    "200-missing-final-terminator",
-    "201-wrong-boundary",
-    "202-truncated-body",
     "203-missing-content-disposition",
     "204-invalid-content-disposition",
-    "205-no-blank-line",
 }
 
 

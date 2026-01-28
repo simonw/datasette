@@ -1,6 +1,21 @@
 import json
+from typing import Optional
 from datasette.utils import MultiParams, calculate_etag
-from datasette.utils.multipart import parse_form_data, MultipartParseError, FormData
+from datasette.utils.multipart import (
+    parse_form_data,
+    MultipartParseError,
+    FormData,
+    DEFAULT_MAX_FILE_SIZE,
+    DEFAULT_MAX_REQUEST_SIZE,
+    DEFAULT_MAX_FIELDS,
+    DEFAULT_MAX_FILES,
+    DEFAULT_MAX_PARTS,
+    DEFAULT_MAX_FIELD_SIZE,
+    DEFAULT_MAX_MEMORY_FILE_SIZE,
+    DEFAULT_MAX_PART_HEADER_BYTES,
+    DEFAULT_MAX_PART_HEADER_LINES,
+    DEFAULT_MIN_FREE_DISK_BYTES,
+)
 from mimetypes import guess_type
 from urllib.parse import parse_qs, urlunparse, parse_qsl
 from pathlib import Path
@@ -143,10 +158,16 @@ class Request:
     async def form(
         self,
         files: bool = False,
-        max_file_size: int = 50 * 1024 * 1024,
-        max_request_size: int = 100 * 1024 * 1024,
-        max_fields: int = 1000,
-        max_files: int = 100,
+        max_file_size: int = DEFAULT_MAX_FILE_SIZE,
+        max_request_size: int = DEFAULT_MAX_REQUEST_SIZE,
+        max_fields: int = DEFAULT_MAX_FIELDS,
+        max_files: int = DEFAULT_MAX_FILES,
+        max_parts: Optional[int] = DEFAULT_MAX_PARTS,
+        max_field_size: int = DEFAULT_MAX_FIELD_SIZE,
+        max_memory_file_size: int = DEFAULT_MAX_MEMORY_FILE_SIZE,
+        max_part_header_bytes: int = DEFAULT_MAX_PART_HEADER_BYTES,
+        max_part_header_lines: int = DEFAULT_MAX_PART_HEADER_LINES,
+        min_free_disk_bytes: int = DEFAULT_MIN_FREE_DISK_BYTES,
     ) -> FormData:
         """
         Parse form data from the request body.
@@ -159,6 +180,12 @@ class Request:
             max_request_size: Maximum total request size in bytes (default 100MB)
             max_fields: Maximum number of form fields (default 1000)
             max_files: Maximum number of file uploads (default 100)
+            max_parts: Maximum number of multipart parts (default max_fields + max_files)
+            max_field_size: Maximum size of a text field value in bytes (default 100KB)
+            max_memory_file_size: Threshold before files spill to disk (default 1MB)
+            max_part_header_bytes: Maximum bytes allowed in part headers (default 16KB)
+            max_part_header_lines: Maximum header lines per part (default 100)
+            min_free_disk_bytes: Minimum free bytes required in temp dir (default 50MB)
 
         Returns:
             FormData object with dict-like access to fields and files.
@@ -180,6 +207,12 @@ class Request:
                 max_request_size=max_request_size,
                 max_fields=max_fields,
                 max_files=max_files,
+                max_parts=max_parts,
+                max_field_size=max_field_size,
+                max_memory_file_size=max_memory_file_size,
+                max_part_header_bytes=max_part_header_bytes,
+                max_part_header_lines=max_part_header_lines,
+                min_free_disk_bytes=min_free_disk_bytes,
             )
         except MultipartParseError as e:
             raise BadRequest(str(e))

@@ -8,12 +8,13 @@ Supports:
 - Both multipart/form-data and application/x-www-form-urlencoded
 """
 
+import asyncio
 import re
+import shutil
 import tempfile
 from dataclasses import dataclass, field
 from typing import (
     Any,
-    AsyncIterator,
     Callable,
     Dict,
     List,
@@ -22,7 +23,19 @@ from typing import (
     Union,
 )
 from urllib.parse import parse_qsl
-import os
+
+# Centralized defaults for multipart/form-data parsing
+DEFAULT_MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+DEFAULT_MAX_REQUEST_SIZE = 100 * 1024 * 1024  # 100MB
+DEFAULT_MAX_FIELDS = 1000
+DEFAULT_MAX_FILES = 100
+# If max_parts is not specified, it defaults to max_fields + max_files
+DEFAULT_MAX_PARTS: Optional[int] = None
+DEFAULT_MAX_FIELD_SIZE = 100 * 1024  # 100KB
+DEFAULT_MAX_MEMORY_FILE_SIZE = 1024 * 1024  # 1MB
+DEFAULT_MAX_PART_HEADER_BYTES = 16 * 1024  # 16KB
+DEFAULT_MAX_PART_HEADER_LINES = 100
+DEFAULT_MIN_FREE_DISK_BYTES = 50 * 1024 * 1024  # 50MB
 
 
 class MultipartParseError(Exception):
@@ -51,15 +64,25 @@ class UploadedFile:
 
     async def read(self, size: int = -1) -> bytes:
         """Read file contents."""
-        return self._file.read(size)
+        return await asyncio.to_thread(self._file.read, size)
 
     async def seek(self, offset: int, whence: int = 0) -> int:
         """Seek to position in file."""
-        return self._file.seek(offset, whence)
+        return await asyncio.to_thread(self._file.seek, offset, whence)
 
     async def close(self) -> None:
         """Close the underlying file."""
+        await asyncio.to_thread(self._file.close)
+
+    def close_sync(self) -> None:
+        """Close the underlying file synchronously."""
         self._file.close()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        await self.close()
 
     def __del__(self):
         try:
@@ -107,8 +130,8 @@ class FormData:
         return any(k == key for k, _ in self._data)
 
     def __len__(self) -> int:
-        """Return number of unique keys."""
-        return len(set(k for k, _ in self._data))
+        """Return number of items."""
+        return len(self._data)
 
     def __iter__(self):
         """Iterate over unique keys."""
@@ -129,6 +152,44 @@ class FormData:
     def values(self) -> List[Union[str, UploadedFile]]:
         """Return all values."""
         return [v for _, v in self._data]
+
+    def _uploaded_files(self) -> List[UploadedFile]:
+        """Return UploadedFile instances contained in this form."""
+        return [v for _, v in self._data if isinstance(v, UploadedFile)]
+
+    def close(self) -> None:
+        """
+        Close any uploaded files.
+
+        This provides deterministic cleanup for spooled temp files.
+        """
+        for uploaded in self._uploaded_files():
+            try:
+                uploaded.close_sync()
+            except Exception:
+                # Best-effort cleanup; ignore close errors
+                pass
+
+    async def aclose(self) -> None:
+        """Asynchronously close any uploaded files."""
+        for uploaded in self._uploaded_files():
+            try:
+                await uploaded.close()
+            except Exception:
+                # Best-effort cleanup; ignore close errors
+                pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        await self.aclose()
 
 
 def parse_content_disposition(header: str) -> Dict[str, Optional[str]]:
@@ -245,12 +306,16 @@ class MultipartParser:
     def __init__(
         self,
         boundary: bytes,
-        max_file_size: int = 50 * 1024 * 1024,  # 50MB default
-        max_request_size: int = 100 * 1024 * 1024,  # 100MB default
-        max_fields: int = 1000,
-        max_files: int = 100,
-        max_field_size: int = 100 * 1024,  # 100KB for text fields
-        max_memory_file_size: int = 1024 * 1024,  # 1MB before spill to disk
+        max_file_size: int = DEFAULT_MAX_FILE_SIZE,
+        max_request_size: int = DEFAULT_MAX_REQUEST_SIZE,
+        max_fields: int = DEFAULT_MAX_FIELDS,
+        max_files: int = DEFAULT_MAX_FILES,
+        max_parts: Optional[int] = DEFAULT_MAX_PARTS,
+        max_field_size: int = DEFAULT_MAX_FIELD_SIZE,
+        max_memory_file_size: int = DEFAULT_MAX_MEMORY_FILE_SIZE,
+        max_part_header_bytes: int = DEFAULT_MAX_PART_HEADER_BYTES,
+        max_part_header_lines: int = DEFAULT_MAX_PART_HEADER_LINES,
+        min_free_disk_bytes: int = DEFAULT_MIN_FREE_DISK_BYTES,
         handle_files: bool = False,
     ):
         self.boundary = b"--" + boundary
@@ -259,23 +324,36 @@ class MultipartParser:
         self.max_request_size = max_request_size
         self.max_fields = max_fields
         self.max_files = max_files
+        # If not specified, tie max_parts to the other cardinality limits
+        if max_parts is None:
+            max_parts = max_fields + max_files
+        self.max_parts = max_parts
         self.max_field_size = max_field_size
         self.max_memory_file_size = max_memory_file_size
+        self.max_part_header_bytes = max_part_header_bytes
+        self.max_part_header_lines = max_part_header_lines
+        self.min_free_disk_bytes = min_free_disk_bytes
         self.handle_files = handle_files
 
         self.state = self.STATE_PREAMBLE
-        self.buffer = b""
+        self.buffer = bytearray()
         self.total_bytes = 0
         self.field_count = 0
         self.file_count = 0
+        self.part_count = 0
         self.current_part_size = 0
+        self.current_header_bytes = 0
+        self.current_header_lines = 0
 
         self.form_data = FormData()
+        self._disk_check_interval_bytes = 1024 * 1024  # 1MB between disk checks
+        self._bytes_since_disk_check = 0
+        self._tempdir = tempfile.gettempdir()
 
         # Current part state
         self.current_headers: Dict[str, str] = {}
         self.current_file: Optional[tempfile.SpooledTemporaryFile] = None
-        self.current_body = b""
+        self.current_body = bytearray()
         self.current_name: Optional[str] = None
         self.current_filename: Optional[str] = None
         self.current_content_type: Optional[str] = None
@@ -286,7 +364,7 @@ class MultipartParser:
         if self.total_bytes > self.max_request_size:
             raise MultipartParseError("Request body too large")
 
-        self.buffer += chunk
+        self.buffer.extend(chunk)
         self._process()
 
     def _process(self) -> None:
@@ -334,6 +412,8 @@ class MultipartParser:
         self.buffer = self.buffer[after_boundary:]
         self.state = self.STATE_HEADER
         self.current_headers = {}
+        self.current_header_bytes = 0
+        self.current_header_lines = 0
         return True
 
     def _process_header(self) -> bool:
@@ -344,6 +424,9 @@ class MultipartParser:
             lf_idx = self.buffer.find(b"\n")
 
             if crlf_idx == -1 and lf_idx == -1:
+                # Guard against unbounded header buffering if no newline is ever sent
+                if len(self.buffer) > self.max_part_header_bytes:
+                    raise MultipartParseError("Part headers too large")
                 return False  # Need more data
 
             # Use whichever comes first
@@ -356,6 +439,14 @@ class MultipartParser:
 
             line = self.buffer[:idx]
             self.buffer = self.buffer[idx + line_end_len :]
+
+            self.current_header_lines += 1
+            self.current_header_bytes += idx + line_end_len
+            if (
+                self.current_header_lines > self.max_part_header_lines
+                or self.current_header_bytes > self.max_part_header_bytes
+            ):
+                raise MultipartParseError("Part headers too large")
 
             if not line:
                 # Empty line = end of headers
@@ -375,6 +466,10 @@ class MultipartParser:
 
     def _start_body(self) -> None:
         """Initialize body parsing for current part."""
+        self.part_count += 1
+        if self.part_count > self.max_parts:
+            raise MultipartParseError("Too many parts")
+
         # Parse Content-Disposition
         cd = self.current_headers.get("content-disposition", "")
         parsed = parse_content_disposition(cd)
@@ -385,10 +480,10 @@ class MultipartParser:
 
         if self.current_filename is not None:
             # It's a file
+            self.file_count += 1
+            if self.file_count > self.max_files:
+                raise MultipartParseError("Too many files")
             if self.handle_files:
-                self.file_count += 1
-                if self.file_count > self.max_files:
-                    raise MultipartParseError("Too many files")
                 self.current_file = tempfile.SpooledTemporaryFile(
                     max_size=self.max_memory_file_size
                 )
@@ -400,8 +495,12 @@ class MultipartParser:
             self.field_count += 1
             if self.field_count > self.max_fields:
                 raise MultipartParseError("Too many fields")
-            self.current_body = b""
+            self.current_body = bytearray()
             self.current_file = None
+
+        # Check disk space before allocating a spooled temp file
+        if self.current_filename is not None and self.handle_files:
+            self._ensure_disk_space()
 
     def _process_body(self) -> bool:
         """Process body data for current part."""
@@ -425,13 +524,13 @@ class MultipartParser:
             safe_len = len(self.buffer) - len(search_boundary) - 1
             if safe_len > 0:
                 safe_data = self.buffer[:safe_len]
-                self._write_body_data(safe_data)
+                self._write_body_data(bytes(safe_data))
                 self.buffer = self.buffer[safe_len:]
             return False
 
         # Found boundary - write remaining body data
         body_data = self.buffer[:idx]
-        self._write_body_data(body_data)
+        self._write_body_data(bytes(body_data))
 
         # Move past the boundary
         after_boundary = idx + len(search_boundary)
@@ -454,6 +553,8 @@ class MultipartParser:
         self._finish_part()
         self.state = self.STATE_HEADER
         self.current_headers = {}
+        self.current_header_bytes = 0
+        self.current_header_lines = 0
         return True
 
     def _write_body_data(self, data: bytes) -> None:
@@ -465,17 +566,20 @@ class MultipartParser:
 
         if self.current_filename is not None:
             # File data
-            if self.handle_files:
-                if self.current_part_size > self.max_file_size:
-                    raise MultipartParseError("File too large")
-                if self.current_file:
-                    self.current_file.write(data)
+            if self.current_part_size > self.max_file_size:
+                raise MultipartParseError("File too large")
+            if self.handle_files and self.current_file:
+                self._bytes_since_disk_check += len(data)
+                if self._bytes_since_disk_check >= self._disk_check_interval_bytes:
+                    self._ensure_disk_space()
+                    self._bytes_since_disk_check = 0
+                self.current_file.write(data)
             # else: discard file data
         else:
             # Field data
             if self.current_part_size > self.max_field_size:
                 raise MultipartParseError("Field value too large")
-            self.current_body += data
+            self.current_body.extend(data)
 
     def _finish_part(self) -> None:
         """Finalize current part and add to form data."""
@@ -498,14 +602,14 @@ class MultipartParser:
         else:
             # Text field
             try:
-                value = self.current_body.decode("utf-8")
+                value = bytes(self.current_body).decode("utf-8")
             except UnicodeDecodeError:
-                value = self.current_body.decode("latin-1")
+                value = bytes(self.current_body).decode("latin-1")
             self.form_data.append(self.current_name, value)
 
         # Reset part state
         self.current_file = None
-        self.current_body = b""
+        self.current_body = bytearray()
         self.current_name = None
         self.current_filename = None
         self.current_content_type = None
@@ -514,19 +618,41 @@ class MultipartParser:
         """Finalize parsing and return form data."""
         # Process any remaining data
         self._process()
+        if self.state != self.STATE_DONE:
+            raise MultipartParseError(
+                "Truncated multipart body (missing closing boundary)"
+            )
         return self.form_data
+
+    def _ensure_disk_space(self) -> None:
+        """
+        Ensure there is enough free space on the temp filesystem.
+
+        This is a best-effort guard against filling the disk with uploads.
+        """
+        if not self.handle_files:
+            return
+        if self.min_free_disk_bytes <= 0:
+            return
+        free_bytes = shutil.disk_usage(self._tempdir).free
+        if free_bytes < self.min_free_disk_bytes:
+            raise MultipartParseError("Insufficient disk space for uploads")
 
 
 async def parse_form_data(
     receive: Callable,
     content_type: str,
     files: bool = False,
-    max_file_size: int = 50 * 1024 * 1024,
-    max_request_size: int = 100 * 1024 * 1024,
-    max_fields: int = 1000,
-    max_files: int = 100,
-    max_field_size: int = 100 * 1024,
-    max_memory_file_size: int = 1024 * 1024,
+    max_file_size: int = DEFAULT_MAX_FILE_SIZE,
+    max_request_size: int = DEFAULT_MAX_REQUEST_SIZE,
+    max_fields: int = DEFAULT_MAX_FIELDS,
+    max_files: int = DEFAULT_MAX_FILES,
+    max_parts: Optional[int] = DEFAULT_MAX_PARTS,
+    max_field_size: int = DEFAULT_MAX_FIELD_SIZE,
+    max_memory_file_size: int = DEFAULT_MAX_MEMORY_FILE_SIZE,
+    max_part_header_bytes: int = DEFAULT_MAX_PART_HEADER_BYTES,
+    max_part_header_lines: int = DEFAULT_MAX_PART_HEADER_LINES,
+    min_free_disk_bytes: int = DEFAULT_MIN_FREE_DISK_BYTES,
 ) -> FormData:
     """
     Parse form data from an ASGI receive callable.
@@ -551,23 +677,28 @@ async def parse_form_data(
 
     if media_type == "application/x-www-form-urlencoded":
         # Read entire body for URL-encoded forms (they're typically small)
-        body = b""
+        body = bytearray()
         total = 0
         while True:
             message = await receive()
+            message_type = message.get("type")
+            if message_type == "http.disconnect":
+                raise MultipartParseError("Client disconnected during request body")
+            if message_type is not None and message_type != "http.request":
+                continue
             chunk = message.get("body", b"")
             total += len(chunk)
             if total > max_request_size:
                 raise MultipartParseError("Request body too large")
-            body += chunk
+            body.extend(chunk)
             if not message.get("more_body", False):
                 break
 
         form_data = FormData()
         try:
-            pairs = parse_qsl(body.decode("utf-8"), keep_blank_values=True)
+            pairs = parse_qsl(bytes(body).decode("utf-8"), keep_blank_values=True)
         except UnicodeDecodeError:
-            pairs = parse_qsl(body.decode("latin-1"), keep_blank_values=True)
+            pairs = parse_qsl(bytes(body).decode("latin-1"), keep_blank_values=True)
 
         for key, value in pairs:
             form_data.append(key, value)
@@ -585,21 +716,42 @@ async def parse_form_data(
             max_request_size=max_request_size,
             max_fields=max_fields,
             max_files=max_files,
+            max_parts=max_parts,
             max_field_size=max_field_size,
             max_memory_file_size=max_memory_file_size,
+            max_part_header_bytes=max_part_header_bytes,
+            max_part_header_lines=max_part_header_lines,
+            min_free_disk_bytes=min_free_disk_bytes,
             handle_files=files,
         )
 
         # Stream body through parser
+        batch_target = 64 * 1024
+        batch = bytearray()
+
+        async def flush_batch() -> None:
+            if batch:
+                data = bytes(batch)
+                batch.clear()
+                await asyncio.to_thread(parser.feed, data)
+
         while True:
             message = await receive()
+            message_type = message.get("type")
+            if message_type == "http.disconnect":
+                raise MultipartParseError("Client disconnected during request body")
+            if message_type is not None and message_type != "http.request":
+                continue
             chunk = message.get("body", b"")
             if chunk:
-                parser.feed(chunk)
+                batch.extend(chunk)
+                if len(batch) >= batch_target:
+                    await flush_batch()
             if not message.get("more_body", False):
                 break
 
-        return parser.finalize()
+        await flush_batch()
+        return await asyncio.to_thread(parser.finalize)
 
     else:
         raise MultipartParseError(

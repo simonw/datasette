@@ -66,6 +66,12 @@ The object also has the following awaitable methods:
     - ``max_request_size`` (int, default 100MB): Maximum total request body size in bytes.
     - ``max_fields`` (int, default 1000): Maximum number of form fields.
     - ``max_files`` (int, default 100): Maximum number of uploaded files.
+    - ``max_parts`` (int, default ``max_fields + max_files``): Maximum number of multipart parts in total.
+    - ``max_field_size`` (int, default 100KB): Maximum size of a text field value in bytes.
+    - ``max_memory_file_size`` (int, default 1MB): File size threshold before uploads spill to disk.
+    - ``max_part_header_bytes`` (int, default 16KB): Maximum total bytes allowed in part headers.
+    - ``max_part_header_lines`` (int, default 100): Maximum header lines per part.
+    - ``min_free_disk_bytes`` (int, default 50MB): Minimum free bytes required in the temp directory before accepting file uploads.
 
     Example usage:
 
@@ -81,6 +87,12 @@ The object also has the following awaitable methods:
         uploaded = form["avatar"]
         content = await uploaded.read()
         print(uploaded.filename, uploaded.content_type, uploaded.size)
+
+    Cleanup note:
+
+    When using ``files=True``, call ``await form.aclose()`` once you are done with the uploads
+    to ensure spooled temporary files are closed promptly. You can also use
+    ``async with form: ...`` for automatic cleanup.
 
     Don't forget to read about :ref:`internals_csrf`!
 

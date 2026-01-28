@@ -1,14 +1,7 @@
 from bs4 import BeautifulSoup as Soup
 from datasette.app import Datasette
 from datasette.utils import allowed_pragmas
-from .fixtures import (  # noqa
-    app_client,
-    app_client_base_url_prefix,
-    app_client_shorter_time_limit,
-    app_client_two_attached_databases,
-    make_app_client,
-    METADATA,
-)
+from .fixtures import make_app_client
 from .utils import assert_footer_links, inner_html
 import copy
 import json

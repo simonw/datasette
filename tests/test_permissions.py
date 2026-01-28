@@ -2,7 +2,7 @@ import collections
 from datasette.app import Datasette
 from datasette.cli import cli
 from datasette.default_permissions import restrictions_allow_action
-from .fixtures import app_client, assert_permissions_checked, make_app_client
+from .fixtures import assert_permissions_checked, make_app_client
 from click.testing import CliRunner
 from bs4 import BeautifulSoup as Soup
 import copy
@@ -1481,7 +1481,6 @@ async def test_actor_restrictions_view_instance_only(perms_ds):
     assert response.status_code == 200
 
     # But no databases should be visible (no view-database permission)
-    data = response.json()
     # The instance is visible but databases list should be empty or minimal
     # Actually, let's check via allowed_resources
     page = await perms_ds.allowed_resources("view-database", actor)

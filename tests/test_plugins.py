@@ -1172,8 +1172,6 @@ async def test_hook_filters_from_request(ds_client):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("extra_metadata", (False, True))
 async def test_hook_register_actions(extra_metadata):
-    from datasette.permissions import Action
-    from datasette.resources import DatabaseResource, InstanceResource
 
     ds = Datasette(
         config=(
@@ -1527,7 +1525,7 @@ async def test_hook_register_events():
 
 
 @pytest.mark.asyncio
-async def test_hook_register_actions():
+async def test_hook_register_actions_view_collection():
     datasette = Datasette(memory=True, plugins_dir=PLUGINS_DIR)
     await datasette.invoke_startup()
     # Check that the custom action from my_plugin.py is registered
@@ -1545,7 +1543,7 @@ async def test_hook_register_actions_with_custom_resources():
     - A parent-level action (DocumentCollectionResource)
     - A child-level action (DocumentResource)
     """
-    from datasette.permissions import Resource, Action
+    from datasette.permissions import Resource
 
     # Define custom Resource classes
     class DocumentCollectionResource(Resource):

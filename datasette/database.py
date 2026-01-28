@@ -431,7 +431,7 @@ class Database:
 
     async def table_names(self):
         results = await self.execute(
-            "select name from sqlite_master where type='table'"
+            "select name from sqlite_master where type='table' order by name"
         )
         return [r[0] for r in results.rows]
 

@@ -612,7 +612,10 @@ def get_outbound_foreign_keys(conn, table):
 
 def get_all_foreign_keys(conn):
     tables = [
-        r[0] for r in conn.execute('select name from sqlite_master where type="table"')
+        r[0]
+        for r in conn.execute(
+            'select name from sqlite_master where type="table" order by name'
+        )
     ]
     table_to_foreign_keys = {}
     for table in tables:
@@ -633,6 +636,15 @@ def get_all_foreign_keys(conn):
             table_to_foreign_keys[table]["outgoing"].append(
                 {"other_table": table_name, "column": from_, "other_column": to_}
             )
+
+    # Sort foreign keys for deterministic ordering
+    for table in table_to_foreign_keys:
+        table_to_foreign_keys[table]["incoming"].sort(
+            key=lambda fk: (fk["other_table"], fk["column"], fk["other_column"])
+        )
+        table_to_foreign_keys[table]["outgoing"].sort(
+            key=lambda fk: (fk["other_table"], fk["column"], fk["other_column"])
+        )
 
     return table_to_foreign_keys
 
@@ -889,18 +901,26 @@ _infinities = {float("inf"), float("-inf")}
 
 
 def remove_infinites(row):
-    to_check = row
+    """
+    Replace float('inf') and float('-inf') with None in a row.
+
+    Returns the original row object unchanged if no infinities are found.
+    """
     if isinstance(row, dict):
-        to_check = row.values()
-    if not any((c in _infinities) if isinstance(c, float) else 0 for c in to_check):
-        return row
-    if isinstance(row, dict):
-        return {
-            k: (None if (isinstance(v, float) and v in _infinities) else v)
-            for k, v in row.items()
-        }
+        for v in row.values():
+            if isinstance(v, float) and v in _infinities:
+                return {
+                    k: (None if isinstance(v2, float) and v2 in _infinities else v2)
+                    for k, v2 in row.items()
+                }
     else:
-        return [None if (isinstance(c, float) and c in _infinities) else c for c in row]
+        for v in row:
+            if isinstance(v, float) and v in _infinities:
+                return [
+                    None if isinstance(v2, float) and v2 in _infinities else v2
+                    for v2 in row
+                ]
+    return row
 
 
 class StaticMount(click.ParamType):

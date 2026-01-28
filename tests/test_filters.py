@@ -104,27 +104,6 @@ async def test_through_filters_from_request(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_through_filters_from_request(ds_client):
-    request = Request.fake(
-        '/?_through={"table":"roadside_attraction_characteristics","column":"characteristic_id","value":"1"}'
-    )
-    filter_args = await through_filters(
-        request=request,
-        datasette=ds_client.ds,
-        table="roadside_attractions",
-        database="fixtures",
-    )()
-    assert filter_args.where_clauses == [
-        "pk in (select attraction_id from roadside_attraction_characteristics where characteristic_id = :p0)"
-    ]
-    assert filter_args.params == {"p0": "1"}
-    assert filter_args.human_descriptions == [
-        'roadside_attraction_characteristics.characteristic_id = "1"'
-    ]
-    assert filter_args.extra_context == {}
-
-
-@pytest.mark.asyncio
 async def test_where_filters_from_request(ds_client):
     await ds_client.ds.invoke_startup()
     request = Request.fake("/?_where=pk+>+3")

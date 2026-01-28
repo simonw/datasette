@@ -3,10 +3,9 @@ Tests for request.form() multipart form data parsing.
 
 Uses TDD approach - these tests are written first, then implementation follows.
 """
-
+import base64
 import json
 import pytest
-from pathlib import Path
 from collections import namedtuple
 
 from multipart_form_data_conformance import get_tests_dir
@@ -16,7 +15,6 @@ from datasette.utils.asgi import Request, BadRequest
 
 def make_receive(body: bytes):
     """Create an async receive callable that yields body in chunks."""
-    chunks = [body]
     consumed = False
 
     async def receive():
@@ -975,8 +973,6 @@ class TestFormDataLenSemantics:
 
 
 # Conformance test suite using multipart-form-data-conformance
-
-import base64
 
 # Tests where our parser intentionally differs from strict spec for security/practicality
 # Our parser sanitizes filenames (strips paths) while the conformance suite expects raw

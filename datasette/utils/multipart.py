@@ -9,7 +9,6 @@ Supports:
 """
 
 import asyncio
-import re
 import shutil
 import tempfile
 from dataclasses import dataclass, field

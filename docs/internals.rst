@@ -59,6 +59,11 @@ The object also has the following awaitable methods:
 
     Returns a :ref:`internals_formdata` object with dict-like access to form fields and uploaded files.
 
+    Requirements and errors:
+
+    - A ``Content-Type`` header is required. Missing or unsupported content types raise ``BadRequest``.
+    - For ``multipart/form-data``, the ``boundary=...`` parameter is required.
+
     Parameters:
 
     - ``files`` (bool, default ``False``): If ``True``, uploaded files are stored and accessible. If ``False`` (default), file content is discarded but form fields are still available.
@@ -185,7 +190,7 @@ The FormData class
     This lets you loop through every available key.
 
 ``len(form)`` - integer
-    Returns the number of unique keys.
+    Returns the total number of submitted values.
 
 .. _internals_uploadedfile:
 

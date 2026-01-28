@@ -20,7 +20,12 @@ def ds_write(tmp_path_factory):
     ds = Datasette([db_path], immutables=[db_path_immutable])
     ds.root_enabled = True
     yield ds
-    db.close()
+    # Close both setup connections plus any Datasette-managed connections.
+    db1.close()
+    db2.close()
+    for database in ds.databases.values():
+        if not database.is_memory:
+            database.close()
 
 
 def write_token(ds, actor_id="root", permissions=None):

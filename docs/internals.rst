@@ -91,7 +91,9 @@ The object also has the following awaitable methods:
         form = await request.form(files=True)
         uploaded = form["avatar"]
         content = await uploaded.read()
-        print(uploaded.filename, uploaded.content_type, uploaded.size)
+        print(
+            uploaded.filename, uploaded.content_type, uploaded.size
+        )
 
     Cleanup note:
 

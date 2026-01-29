@@ -4,6 +4,61 @@
 Changelog
 =========
 
+.. _v1_0_a24:
+
+1.0a24 (2026-01-29)
+-------------------
+
+``request.form()`` method for POST data and file uploads
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Datasette now includes a ``request.form()`` method for parsing form submissions, including handling file uploads. (`#2626 <https://github.com/simonw/datasette/pull/2626>`__)
+
+This supports both ``application/x-www-form-urlencoded`` and ``multipart/form-data`` content types, and uses a new streaming multipart parser that processes uploads without buffering entire request bodies in memory.
+
+.. code-block:: python
+
+    # Parse form fields (files are discarded by default)
+    form = await request.form()
+    username = form["username"]
+
+    # Parse form fields AND file uploads
+    form = await request.form(files=True)
+    uploaded = form["avatar"]
+    content = await uploaded.read()
+
+The returned :ref:`FormData <internals_formdata>` object provides dictionary-style access with support for multiple values per key via ``form.getlist("key")``. Uploaded files are represented as :ref:`UploadedFile <internals_uploadedfile>` objects with ``filename``, ``content_type``, ``size`` properties and async ``read()`` and ``seek()`` methods.
+
+Files smaller than 1MB are held in memory; larger files automatically spill to temporary files on disk. Configurable limits control maximum file size, request size, field counts and more.
+
+Several internal views (permissions debug, messages debug, create token) now use ``request.form()`` instead of ``request.post_vars()``.
+
+``request.post_vars()`` remains available for backwards compatibility but is no longer the recommended API for handling POST data.
+
+``render_cell`` and ``foreign_key_tables`` extras for the JSON API
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The table JSON API now supports ``?_extra=render_cell``, which returns the rendered HTML for each cell as produced by the :ref:`render_cell plugin hook <plugin_hook_render_cell>`. Only columns whose rendered output differs from the default are included. (:issue:`2619`)
+
+The row JSON API also gains ``?_extra=render_cell`` and ``?_extra=foreign_key_tables`` extras, bringing it closer to parity with the table API.
+
+The row JSON API now returns ``"ok": true`` in its response, for consistency with the table API.
+
+``uv run pytest`` with a ``dev=`` dependency group
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The recommended development environment for Datasette now uses `uv <https://github.com/astral-sh/uv>`__. You can now set up a development environment and run the test suite with just ``uv run pytest`` — no manual virtualenv or ``pip install`` step required. (:issue:`2611`)
+
+Other changes
+~~~~~~~~~~~~~
+
+- Plugins that raise ``datasette.utils.StartupError()`` during startup now display a clean error message instead of a full traceback. (:issue:`2624`)
+- Schema refreshes are now throttled to at most once per second, providing a small performance increase. (:issue:`2629`)
+- Minor performance improvement to ``remove_infinites`` — rows without infinity values now skip the list/dict reconstruction step. (:issue:`2629`)
+- Filter inputs and the search input no longer trigger unwanted zoom on iOS Safari. Thanks, `Daniel Olasubomi Sobowale <https://github.com/bowale-os>`__. (:issue:`2346`)
+- ``table_names()`` and ``get_all_foreign_keys()`` now return results in deterministic sorted order. (:issue:`2628`)
+- Switched linting to `ruff <https://github.com/astral-sh/ruff>`__ and fixed all lint errors. (:issue:`2630`)
+
 .. _v1_0_a23:
 
 1.0a23 (2025-12-02)

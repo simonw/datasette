@@ -196,7 +196,10 @@ class Request:
         """
         content_type = self.headers.get("content-type", "")
         if not content_type:
-            raise BadRequest("Missing Content-Type header")
+            raise BadRequest(
+                "Missing Content-Type header; expected application/x-www-form-urlencoded "
+                "or multipart/form-data"
+            )
 
         try:
             return await parse_form_data(

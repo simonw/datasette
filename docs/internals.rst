@@ -52,10 +52,59 @@ The request object is passed to various plugin hooks. It represents an incoming 
 ``.actor`` - dictionary (str -> Any) or None
     The currently authenticated actor (see :ref:`actors <authentication_actor>`), or ``None`` if the request is unauthenticated.
 
-The object also has two awaitable methods:
+The object also has the following awaitable methods:
+
+``await request.form(files=False, ...)`` - FormData
+    Parses form data from the request body. Supports both ``application/x-www-form-urlencoded`` and ``multipart/form-data`` content types.
+
+    Returns a :ref:`internals_formdata` object with dict-like access to form fields and uploaded files.
+
+    Requirements and errors:
+
+    - A ``Content-Type`` header is required. Missing or unsupported content types raise ``BadRequest``.
+    - For ``multipart/form-data``, the ``boundary=...`` parameter is required.
+
+    Parameters:
+
+    - ``files`` (bool, default ``False``): If ``True``, uploaded files are stored and accessible. If ``False`` (default), file content is discarded but form fields are still available.
+    - ``max_file_size`` (int, default 50MB): Maximum size per uploaded file in bytes.
+    - ``max_request_size`` (int, default 100MB): Maximum total request body size in bytes.
+    - ``max_fields`` (int, default 1000): Maximum number of form fields.
+    - ``max_files`` (int, default 100): Maximum number of uploaded files.
+    - ``max_parts`` (int, default ``max_fields + max_files``): Maximum number of multipart parts in total.
+    - ``max_field_size`` (int, default 100KB): Maximum size of a text field value in bytes.
+    - ``max_memory_file_size`` (int, default 1MB): File size threshold before uploads spill to disk.
+    - ``max_part_header_bytes`` (int, default 16KB): Maximum total bytes allowed in part headers.
+    - ``max_part_header_lines`` (int, default 100): Maximum header lines per part.
+    - ``min_free_disk_bytes`` (int, default 50MB): Minimum free bytes required in the temp directory before accepting file uploads.
+
+    Example usage:
+
+    .. code-block:: python
+
+        # Parse form fields only (files are discarded)
+        form = await request.form()
+        username = form["username"]
+        tags = form.getlist("tags")  # For multiple values
+
+        # Parse form fields AND files
+        form = await request.form(files=True)
+        uploaded = form["avatar"]
+        content = await uploaded.read()
+        print(
+            uploaded.filename, uploaded.content_type, uploaded.size
+        )
+
+    Cleanup note:
+
+    When using ``files=True``, call ``await form.aclose()`` once you are done with the uploads
+    to ensure spooled temporary files are closed promptly. You can also use
+    ``async with form: ...`` for automatic cleanup.
+
+    Don't forget to read about :ref:`internals_csrf`!
 
 ``await request.post_vars()`` - dictionary
-    Returns a dictionary of form variables that were submitted in the request body via ``POST``. Don't forget to read about :ref:`internals_csrf`!
+    Returns a dictionary of form variables that were submitted in the request body via ``POST`` using ``application/x-www-form-urlencoded`` encoding. For multipart forms or file uploads, use ``request.form()`` instead.
 
 ``await request.post_body()`` - bytes
     Returns the un-parsed body of a request submitted by ``POST`` - useful for things like incoming JSON data.
@@ -116,6 +165,84 @@ Consider the query string ``?foo=1&foo=2&bar=3`` - with two values for ``foo`` a
 
 ``len(request.args)`` - integer
     Returns the number of keys.
+
+.. _internals_formdata:
+
+The FormData class
+==================
+
+``await request.form()`` returns a ``FormData`` object - a dictionary-like object which provides access to form fields and uploaded files. It has a similar interface to ``MultiParams``.
+
+``form[key]`` - string or UploadedFile
+    Returns the first value for that key, or raises a ``KeyError`` if the key is missing.
+
+``form.get(key)`` - string, UploadedFile, or None
+    Returns the first value for that key, or ``None`` if the key is missing. Pass a second argument to specify a different default.
+
+``form.getlist(key)`` - list
+    Returns the list of values for that key. If the key is missing an empty list will be returned.
+
+``form.keys()`` - list of strings
+    Returns the list of available keys.
+
+``key in form`` - True or False
+    You can use ``if key in form`` to check if a key is present.
+
+``for key in form`` - iterator
+    This lets you loop through every available key.
+
+``len(form)`` - integer
+    Returns the total number of submitted values.
+
+.. _internals_uploadedfile:
+
+The UploadedFile class
+======================
+
+When parsing multipart form data with ``files=True``, file uploads are returned as ``UploadedFile`` objects with the following properties and methods:
+
+``uploaded_file.name`` - string
+    The form field name.
+
+``uploaded_file.filename`` - string
+    The original filename provided by the client. Note: This is sanitized to remove path components for security.
+
+``uploaded_file.content_type`` - string or None
+    The MIME type of the uploaded file, if provided by the client.
+
+``uploaded_file.size`` - integer
+    The size of the uploaded file in bytes.
+
+``await uploaded_file.read(size=-1)`` - bytes
+    Read and return up to ``size`` bytes from the file. If ``size`` is -1 (default), read the entire file.
+
+``await uploaded_file.seek(offset, whence=0)`` - integer
+    Seek to the given position in the file. Returns the new position.
+
+``await uploaded_file.close()``
+    Close the underlying file. This is called automatically when the object is garbage collected.
+
+Files smaller than 1MB are stored in memory. Larger files are automatically spilled to temporary files on disk and cleaned up when the request completes.
+
+Example:
+
+.. code-block:: python
+
+    form = await request.form(files=True)
+    uploaded = form["document"]
+
+    # Check file metadata
+    print(f"Filename: {uploaded.filename}")
+    print(f"Content-Type: {uploaded.content_type}")
+    print(f"Size: {uploaded.size} bytes")
+
+    # Read file content
+    content = await uploaded.read()
+
+    # Or read in chunks
+    await uploaded.seek(0)
+    while chunk := await uploaded.read(8192):
+        process_chunk(chunk)
 
 .. _internals_response:
 

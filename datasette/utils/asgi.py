@@ -1,5 +1,21 @@
 import json
+from typing import Optional
 from datasette.utils import MultiParams, calculate_etag
+from datasette.utils.multipart import (
+    parse_form_data,
+    MultipartParseError,
+    FormData,
+    DEFAULT_MAX_FILE_SIZE,
+    DEFAULT_MAX_REQUEST_SIZE,
+    DEFAULT_MAX_FIELDS,
+    DEFAULT_MAX_FILES,
+    DEFAULT_MAX_PARTS,
+    DEFAULT_MAX_FIELD_SIZE,
+    DEFAULT_MAX_MEMORY_FILE_SIZE,
+    DEFAULT_MAX_PART_HEADER_BYTES,
+    DEFAULT_MAX_PART_HEADER_LINES,
+    DEFAULT_MIN_FREE_DISK_BYTES,
+)
 from mimetypes import guess_type
 from urllib.parse import parse_qs, urlunparse, parse_qsl
 from pathlib import Path
@@ -138,6 +154,71 @@ class Request:
     async def post_vars(self):
         body = await self.post_body()
         return dict(parse_qsl(body.decode("utf-8"), keep_blank_values=True))
+
+    async def form(
+        self,
+        files: bool = False,
+        max_file_size: int = DEFAULT_MAX_FILE_SIZE,
+        max_request_size: int = DEFAULT_MAX_REQUEST_SIZE,
+        max_fields: int = DEFAULT_MAX_FIELDS,
+        max_files: int = DEFAULT_MAX_FILES,
+        max_parts: Optional[int] = DEFAULT_MAX_PARTS,
+        max_field_size: int = DEFAULT_MAX_FIELD_SIZE,
+        max_memory_file_size: int = DEFAULT_MAX_MEMORY_FILE_SIZE,
+        max_part_header_bytes: int = DEFAULT_MAX_PART_HEADER_BYTES,
+        max_part_header_lines: int = DEFAULT_MAX_PART_HEADER_LINES,
+        min_free_disk_bytes: int = DEFAULT_MIN_FREE_DISK_BYTES,
+    ) -> FormData:
+        """
+        Parse form data from the request body.
+
+        Supports both application/x-www-form-urlencoded and multipart/form-data.
+
+        Args:
+            files: If True, store file uploads; if False (default), discard them
+            max_file_size: Maximum size per file in bytes (default 50MB)
+            max_request_size: Maximum total request size in bytes (default 100MB)
+            max_fields: Maximum number of form fields (default 1000)
+            max_files: Maximum number of file uploads (default 100)
+            max_parts: Maximum number of multipart parts (default max_fields + max_files)
+            max_field_size: Maximum size of a text field value in bytes (default 100KB)
+            max_memory_file_size: Threshold before files spill to disk (default 1MB)
+            max_part_header_bytes: Maximum bytes allowed in part headers (default 16KB)
+            max_part_header_lines: Maximum header lines per part (default 100)
+            min_free_disk_bytes: Minimum free bytes required in temp dir (default 50MB)
+
+        Returns:
+            FormData object with dict-like access to fields and files.
+            Use form["key"] for first value, form.getlist("key") for all values.
+
+        Raises:
+            BadRequest: If content-type is missing, unsupported, or parsing fails
+        """
+        content_type = self.headers.get("content-type", "")
+        if not content_type:
+            raise BadRequest(
+                "Missing Content-Type header; expected application/x-www-form-urlencoded "
+                "or multipart/form-data"
+            )
+
+        try:
+            return await parse_form_data(
+                receive=self.receive,
+                content_type=content_type,
+                files=files,
+                max_file_size=max_file_size,
+                max_request_size=max_request_size,
+                max_fields=max_fields,
+                max_files=max_files,
+                max_parts=max_parts,
+                max_field_size=max_field_size,
+                max_memory_file_size=max_memory_file_size,
+                max_part_header_bytes=max_part_header_bytes,
+                max_part_header_lines=max_part_header_lines,
+                min_free_disk_bytes=min_free_disk_bytes,
+            )
+        except MultipartParseError as e:
+            raise BadRequest(str(e))
 
     @classmethod
     def fake(cls, path_with_query_string, method="GET", scheme="http", url_vars=None):

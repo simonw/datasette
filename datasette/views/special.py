@@ -177,11 +177,11 @@ class PermissionsDebugView(BaseView):
     async def post(self, request):
         await self.ds.ensure_permission(action="view-instance", actor=request.actor)
         await self.ds.ensure_permission(action="permissions-debug", actor=request.actor)
-        vars = await request.post_vars()
-        actor = json.loads(vars["actor"])
-        permission = vars["permission"]
-        parent = vars.get("resource_1") or None
-        child = vars.get("resource_2") or None
+        form = await request.form()
+        actor = json.loads(form["actor"])
+        permission = form["permission"]
+        parent = form.get("resource_1") or None
+        child = form.get("resource_2") or None
 
         response, status = await _check_permission_for_actor(
             self.ds, permission, parent, child, actor
@@ -602,9 +602,9 @@ class MessagesDebugView(BaseView):
 
     async def post(self, request):
         await self.ds.ensure_permission(action="view-instance", actor=request.actor)
-        post = await request.post_vars()
-        message = post.get("message", "")
-        message_type = post.get("message_type") or "INFO"
+        form = await request.form()
+        message = form.get("message", "")
+        message_type = form.get("message_type") or "INFO"
         assert message_type in ("INFO", "WARNING", "ERROR", "all")
         datasette = self.ds
         if message_type == "all":
@@ -688,11 +688,11 @@ class CreateTokenView(BaseView):
 
     async def post(self, request):
         self.check_permission(request)
-        post = await request.post_vars()
+        form = await request.form()
         errors = []
         expires_after = None
-        if post.get("expire_type"):
-            duration_string = post.get("expire_duration")
+        if form.get("expire_type"):
+            duration_string = form.get("expire_duration")
             if (
                 not duration_string
                 or not duration_string.isdigit()
@@ -700,7 +700,7 @@ class CreateTokenView(BaseView):
             ):
                 errors.append("Invalid expire duration")
             else:
-                unit = post["expire_type"]
+                unit = form["expire_type"]
                 if unit == "minutes":
                     expires_after = int(duration_string) * 60
                 elif unit == "hours":
@@ -715,7 +715,7 @@ class CreateTokenView(BaseView):
         restrict_database = {}
         restrict_resource = {}
 
-        for key in post:
+        for key in form:
             if key.startswith("all:") and key.count(":") == 1:
                 restrict_all.append(key.split(":")[1])
             elif key.startswith("database:") and key.count(":") == 2:

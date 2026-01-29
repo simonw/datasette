@@ -706,8 +706,11 @@ def table_column_details(conn, table):
             ).fetchall()
         ]
     else:
-        # Treat hidden as 0 for all columns
+        # First trigger a query against sqlite_master to fix an intermittent
+        # test failure, see https://github.com/simonw/datasette/issues/2632
+        conn.execute("select 1 from sqlite_master limit 1").fetchall()
         return [
+            # Treat hidden as 0 for all columns.
             Column(*(list(r) + [0]))
             for r in conn.execute(
                 f"PRAGMA table_info({escape_sqlite(table)});"

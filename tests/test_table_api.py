@@ -332,6 +332,71 @@ async def test_sortable(ds_client, query_string, sort_key, human_description_en)
     assert [r["content"] for r in expected] == [r["content"] for r in fetched]
 
 
+async def _assert_pagination_works(ds_client, response):
+    """Helper to verify pagination works correctly."""
+    assert response.status_code == 200
+    data = response.json()
+    assert "rows" in data
+    assert len(data["rows"]) > 0
+    if "next_url" in data and data["next_url"]:
+        next_path = data["next_url"].replace("http://localhost", "")
+        next_response = await ds_client.get(next_path)
+        assert next_response.status_code == 200
+        next_data = next_response.json()
+        assert "rows" in next_data
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "sort_param,exclude_param",
+    [
+        ("_sort=sortable", "_col=content"),
+        ("_sort=sortable", "_nocol=text&_nocol=sortable_with_nulls"),
+        ("_sort_desc=sortable", "_col=content"),
+    ],
+)
+async def test_labels_sort_excluded_column(ds_client, sort_param, exclude_param):
+    """Test that sorting works when _labels=on and sort column is excluded from SELECT."""
+    path = (
+        f"/fixtures/sortable.json"
+        f"?_labels=on"
+        f"&{sort_param}"
+        f"&{exclude_param}"
+        f"&_shape=objects"
+        f"&_extra=next_url"
+    )
+    response = await ds_client.get(path)
+    await _assert_pagination_works(ds_client, response)
+
+
+@pytest.mark.asyncio
+async def test_labels_foreign_key_sort_excluded_column(ds_client):
+    """
+    Test sorting with _labels=on when sort column is excluded from SELECT.
+    Uses facetable which has foreign keys and a primary key.
+    """
+    path = (
+        "/fixtures/facetable.json"
+        "?_labels=on"
+        "&_sort=state"
+        "&_col=pk"
+        "&_col=_city_id"
+        "&_size=2"
+    )
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    data = response.json()
+    assert "rows" in data
+    assert len(data["rows"]) > 0
+
+    if "next_url" in data and data["next_url"]:
+        next_path = data["next_url"].replace("http://localhost", "")
+        next_response = await ds_client.get(next_path)
+        assert next_response.status_code == 200
+        next_data = next_response.json()
+        assert "rows" in next_data
+
+
 @pytest.mark.asyncio
 async def test_sortable_and_filtered(ds_client):
     path = (

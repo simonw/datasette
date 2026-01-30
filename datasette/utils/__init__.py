@@ -949,6 +949,15 @@ class LoadExtension(click.ParamType):
     name = "path:entrypoint?"
 
     def convert(self, value, param, ctx):
+        #:\ indicates we're on a Windows machine study the argument a bit more
+        if ":\\" in r"%r" % value:
+            path_entry = value.split(":", 2)
+            if len(path_entry) < 3:
+                return value
+            # argument contains a Windows/DOS path and an entry point
+            path = path_entry[0] + ":" + path_entry[1]
+            entrypoint = path_entry[-1]
+            return path, entrypoint
         if ":" not in value:
             return value
         path, entrypoint = value.split(":", 1)

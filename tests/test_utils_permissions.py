@@ -27,6 +27,7 @@ from datasette import hookimpl
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 class PermissionRulesPlugin:
     """Thin shim that delegates to a callback for permission_resources_sql."""
 
@@ -59,7 +60,11 @@ async def ds():
 
     per_parent = 10
     parents = ["perm_accounting", "perm_hr", "perm_analytics"]
-    specials = {"perm_accounting": ["sales"], "perm_analytics": ["secret"], "perm_hr": []}
+    specials = {
+        "perm_accounting": ["sales"],
+        "perm_analytics": ["secret"],
+        "perm_hr": [],
+    }
 
     for parent in parents:
         db = instance.add_memory_database(parent)
@@ -83,8 +88,10 @@ async def ds():
 # Plugin factories — return callables suitable for PermissionRulesPlugin
 # ---------------------------------------------------------------------------
 
+
 def _cb_allow_all_for_user(user):
     """Global allow for a specific user."""
+
     def cb(datasette, actor, action):
         if not actor or actor.get("id") != user:
             return None
@@ -95,11 +102,13 @@ def _cb_allow_all_for_user(user):
             ),
             params={"_aau_user": user},
         )
+
     return cb
 
 
 def _cb_deny_specific_table(user, parent, child):
     """Child-level deny for a specific user + table."""
+
     def cb(datasette, actor, action):
         if not actor or actor.get("id") != user:
             return None
@@ -110,11 +119,13 @@ def _cb_deny_specific_table(user, parent, child):
             ),
             params={"_dst_parent": parent, "_dst_child": child, "_dst_user": user},
         )
+
     return cb
 
 
 def _cb_org_policy_deny_parent(parent):
     """Unconditional parent-level deny (applies to all actors)."""
+
     def cb(datasette, actor, action):
         return PermissionSQL(
             sql=(
@@ -123,11 +134,13 @@ def _cb_org_policy_deny_parent(parent):
             ),
             params={"_opd_parent": parent},
         )
+
     return cb
 
 
 def _cb_allow_parent_for_user(user, parent):
     """Parent-level allow for a specific user."""
+
     def cb(datasette, actor, action):
         if not actor or actor.get("id") != user:
             return None
@@ -138,11 +151,13 @@ def _cb_allow_parent_for_user(user, parent):
             ),
             params={"_apu_parent": parent, "_apu_user": user},
         )
+
     return cb
 
 
 def _cb_child_allow_for_user(user, parent, child):
     """Child-level allow for a specific user."""
+
     def cb(datasette, actor, action):
         if not actor or actor.get("id") != user:
             return None
@@ -153,11 +168,13 @@ def _cb_child_allow_for_user(user, parent, child):
             ),
             params={"_cau_parent": parent, "_cau_child": child, "_cau_user": user},
         )
+
     return cb
 
 
 def _cb_root_deny_for_all():
     """Unconditional global deny."""
+
     def cb(datasette, actor, action):
         return PermissionSQL(
             sql=(
@@ -165,11 +182,13 @@ def _cb_root_deny_for_all():
                 "'root deny for all' AS reason"
             ),
         )
+
     return cb
 
 
 def _cb_conflicting_same_child_rules(user, parent, child):
     """Two plugins: one allow + one deny at the same child level."""
+
     def cb_allow(datasette, actor, action):
         if not actor or actor.get("id") != user:
             return None
@@ -197,6 +216,7 @@ def _cb_conflicting_same_child_rules(user, parent, child):
 
 def _cb_allow_all_for_action(user, allowed_action):
     """Global allow for a specific user on a specific action only."""
+
     def cb(datasette, actor, action):
         if action != allowed_action:
             return None
@@ -209,12 +229,14 @@ def _cb_allow_all_for_action(user, allowed_action):
             ),
             params={"_aafa_user": user},
         )
+
     return cb
 
 
 # ---------------------------------------------------------------------------
 # Helpers for asserting results
 # ---------------------------------------------------------------------------
+
 
 def _allowed_set(resources):
     """Convert PaginatedResources.resources to {(parent, child), ...}."""
@@ -484,6 +506,7 @@ async def test_implicit_deny_when_no_rules(ds):
     """
     When no plugins return any rules, everything is denied (implicit deny).
     """
+
     def no_rules(datasette, actor, action):
         return None
 
@@ -542,6 +565,7 @@ async def test_actor_parameters_available_in_sql(ds):
     """
     Test that :actor (JSON), :actor_id, and :action are all available in plugin SQL.
     """
+
     def cb(datasette, actor, action):
         return PermissionSQL(
             sql="""
@@ -586,6 +610,7 @@ async def test_multiple_plugins_with_own_parameters(ds):
     """
     Multiple plugins can use their own parameter names without conflict.
     """
+
     def cb_one(datasette, actor, action):
         if action != VIEW_TABLE:
             return None

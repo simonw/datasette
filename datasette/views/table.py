@@ -550,7 +550,7 @@ class TableInsertView(BaseView):
                 method_all(rows, **kwargs)
 
         try:
-            rows = await db.execute_write_fn(insert_or_upsert_rows)
+            rows = await db.execute_write_fn(insert_or_upsert_rows, request=request)
         except Exception as e:
             return _error([str(e)])
         result = {"ok": True}
@@ -670,7 +670,7 @@ class TableDropView(BaseView):
         def drop_table(conn):
             sqlite_utils.Database(conn)[table_name].drop()
 
-        await db.execute_write_fn(drop_table)
+        await db.execute_write_fn(drop_table, request=request)
         await self.ds.track_event(
             DropTableEvent(
                 actor=request.actor, database=database_name, table=table_name

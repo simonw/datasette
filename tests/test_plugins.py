@@ -1525,6 +1525,36 @@ async def test_hook_register_events():
 
 
 @pytest.mark.asyncio
+async def test_hook_wrap_write():
+    datasette = Datasette(memory=True)
+    log = []
+
+    class WrapWritePlugin:
+        __name__ = "WrapWritePlugin"
+
+        @staticmethod
+        @hookimpl
+        def wrap_write(datasette, database, request, transaction):
+            if database != "_memory":
+                return None
+
+            def wrapper(conn):
+                log.append("before")
+                yield
+                log.append("after")
+
+            return wrapper
+
+    pm.register(WrapWritePlugin(), name="WrapWritePluginTest")
+    try:
+        db = datasette.get_database("_memory")
+        await db.execute_write("create table t (id integer primary key)")
+        assert log == ["before", "after"]
+    finally:
+        pm.unregister(name="WrapWritePluginTest")
+
+
+@pytest.mark.asyncio
 async def test_hook_register_actions_view_collection():
     datasette = Datasette(memory=True, plugins_dir=PLUGINS_DIR)
     await datasette.invoke_startup()

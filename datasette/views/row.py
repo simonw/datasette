@@ -245,7 +245,7 @@ class RowDeleteView(BaseView):
             sqlite_utils.Database(conn)[resolved.table].delete(resolved.pk_values)
 
         try:
-            await resolved.db.execute_write_fn(delete_row)
+            await resolved.db.execute_write_fn(delete_row, request=request)
         except Exception as e:
             return _error([str(e)], 500)
 
@@ -305,7 +305,7 @@ class RowUpdateView(BaseView):
             )
 
         try:
-            await resolved.db.execute_write_fn(update_row)
+            await resolved.db.execute_write_fn(update_row, request=request)
         except Exception as e:
             return _error([str(e)], 400)
 

@@ -466,7 +466,7 @@ class QueryView(View):
         ok = None
         redirect_url = None
         try:
-            cursor = await db.execute_write(canned_query["sql"], params_for_query)
+            cursor = await db.execute_write(canned_query["sql"], params_for_query, request=request)
             # success message can come from on_success_message or on_success_message_sql
             message = None
             message_type = datasette.INFO
@@ -1119,7 +1119,7 @@ class TableCreateView(BaseView):
             return table.schema
 
         try:
-            schema = await db.execute_write_fn(create_table)
+            schema = await db.execute_write_fn(create_table, request=request)
         except Exception as e:
             return _error([str(e)])
 

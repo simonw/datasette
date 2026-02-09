@@ -61,6 +61,92 @@ arguments and can be called like this::
 
 Examples: `datasette-jellyfish <https://datasette.io/plugins/datasette-jellyfish>`__, `datasette-jq <https://datasette.io/plugins/datasette-jq>`__, `datasette-haversine <https://datasette.io/plugins/datasette-haversine>`__, `datasette-rure <https://datasette.io/plugins/datasette-rure>`__
 
+.. _plugin_hook_write_wrapper:
+
+write_wrapper(datasette, database, request, transaction)
+--------------------------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
+
+``database`` - string
+    The name of the database being written to.
+
+``request`` - :ref:`internals_request` or ``None``
+    The HTTP request that triggered this write, if available.  This will be ``None`` for writes that do not originate from an HTTP request (e.g. writes triggered by plugins during startup).
+
+``transaction`` - bool
+    ``True`` if the write will be wrapped in a database transaction.
+
+Return a generator function that accepts a ``conn`` argument (a SQLite connection object).  The generator should ``yield`` exactly once.  Code before the ``yield`` runs before the write function executes; code after the ``yield`` runs after it completes.
+
+The result of the write function is sent back through the ``yield``, so you can capture it with ``result = yield``.
+
+If the write function raises an exception, it is thrown into the generator so you can handle it with a ``try`` / ``except`` around the ``yield``.
+
+Return ``None`` to skip wrapping for this particular write.
+
+This example logs every write operation:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+
+    @hookimpl
+    def write_wrapper(datasette, database, request):
+        def wrapper(conn):
+            print(f"Before write to {database}")
+            result = yield
+            print(f"After write to {database}")
+
+        return wrapper
+
+This more advanced example uses the SQLite authorizer callback to block writes to a specific table for non-admin users:
+
+.. code-block:: python
+
+    import sqlite3
+    from datasette import hookimpl
+
+    WRITE_ACTIONS = (
+        sqlite3.SQLITE_INSERT,
+        sqlite3.SQLITE_UPDATE,
+        sqlite3.SQLITE_DELETE,
+    )
+
+
+    @hookimpl
+    def write_wrapper(datasette, database, request):
+        actor = None
+        if request:
+            actor = request.actor
+        if actor and actor.get("id") == "admin":
+            return None
+
+        def wrapper(conn):
+            def authorizer(
+                action, arg1, arg2, db_name, trigger
+            ):
+                if (
+                    action in WRITE_ACTIONS
+                    and arg1 == "protected_table"
+                ):
+                    return sqlite3.SQLITE_DENY
+                return sqlite3.SQLITE_OK
+
+            conn.set_authorizer(authorizer)
+            try:
+                yield
+            finally:
+                conn.set_authorizer(None)
+
+        return wrapper
+
+The ``conn`` object passed to the generator is the same connection that the write function will use.  Because the generator and the write function execute together in a single call on the write thread, any state you set on the connection (authorizers, pragmas, temporary tables) is visible to the write and can be cleaned up afterwards.
+
+When multiple plugins implement ``write_wrapper``, they are nested following pluggy's default calling convention.
+
 .. _plugin_hook_prepare_jinja2_environment:
 
 prepare_jinja2_environment(env, datasette)
@@ -2250,88 +2336,3 @@ The plugin can then call ``datasette.track_event(...)`` to send a ``ban-user`` e
         BanUserEvent(user={"id": 1, "username": "cleverbot"})
     )
 
-.. _plugin_hook_write_wrapper:
-
-write_wrapper(datasette, database, request, transaction)
---------------------------------------------------------
-
-``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
-
-``database`` - string
-    The name of the database being written to.
-
-``request`` - :ref:`internals_request` or ``None``
-    The HTTP request that triggered this write, if available.  This will be ``None`` for writes that do not originate from an HTTP request (e.g. writes triggered by plugins during startup).
-
-``transaction`` - bool
-    ``True`` if the write will be wrapped in a database transaction.
-
-Return a generator function that accepts a ``conn`` argument (a SQLite connection object).  The generator should ``yield`` exactly once.  Code before the ``yield`` runs before the write function executes; code after the ``yield`` runs after it completes.
-
-The result of the write function is sent back through the ``yield``, so you can capture it with ``result = yield``.
-
-If the write function raises an exception, it is thrown into the generator so you can handle it with a ``try`` / ``except`` around the ``yield``.
-
-Return ``None`` to skip wrapping for this particular write.
-
-This example logs every write operation:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-
-
-    @hookimpl
-    def write_wrapper(datasette, database, request):
-        def wrapper(conn):
-            print(f"Before write to {database}")
-            result = yield
-            print(f"After write to {database}")
-
-        return wrapper
-
-This more advanced example uses the SQLite authorizer callback to block writes to a specific table for non-admin users:
-
-.. code-block:: python
-
-    import sqlite3
-    from datasette import hookimpl
-
-    WRITE_ACTIONS = (
-        sqlite3.SQLITE_INSERT,
-        sqlite3.SQLITE_UPDATE,
-        sqlite3.SQLITE_DELETE,
-    )
-
-
-    @hookimpl
-    def write_wrapper(datasette, database, request):
-        actor = None
-        if request:
-            actor = request.actor
-        if actor and actor.get("id") == "admin":
-            return None
-
-        def wrapper(conn):
-            def authorizer(
-                action, arg1, arg2, db_name, trigger
-            ):
-                if (
-                    action in WRITE_ACTIONS
-                    and arg1 == "protected_table"
-                ):
-                    return sqlite3.SQLITE_DENY
-                return sqlite3.SQLITE_OK
-
-            conn.set_authorizer(authorizer)
-            try:
-                yield
-            finally:
-                conn.set_authorizer(None)
-
-        return wrapper
-
-The ``conn`` object passed to the generator is the same connection that the write function will use.  Because the generator and the write function execute together in a single call on the write thread, any state you set on the connection (authorizers, pragmas, temporary tables) is visible to the write and can be cleaned up afterwards.
-
-When multiple plugins implement ``write_wrapper``, they are nested following pluggy's default calling convention.

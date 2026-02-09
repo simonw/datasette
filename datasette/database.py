@@ -135,9 +135,7 @@ class Database:
             return conn.execute(sql, params or [])
 
         with trace("sql", database=self.name, sql=sql.strip(), params=params):
-            results = await self.execute_write_fn(
-                _inner, block=block, request=request
-            )
+            results = await self.execute_write_fn(_inner, block=block, request=request)
         return results
 
     async def execute_write_script(self, sql, block=True, request=None):

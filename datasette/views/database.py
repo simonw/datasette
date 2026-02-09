@@ -466,7 +466,9 @@ class QueryView(View):
         ok = None
         redirect_url = None
         try:
-            cursor = await db.execute_write(canned_query["sql"], params_for_query, request=request)
+            cursor = await db.execute_write(
+                canned_query["sql"], params_for_query, request=request
+            )
             # success message can come from on_success_message or on_success_message_sql
             message = None
             message_type = datasette.INFO

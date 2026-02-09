@@ -102,7 +102,9 @@ async def test_wrap_write_exception_thrown_into_generator(datasette):
     try:
         db = datasette.get_database("test")
         with pytest.raises(Exception, match="deliberate"):
-            await db.execute_write_fn(lambda conn: (_ for _ in ()).throw(Exception("deliberate")))
+            await db.execute_write_fn(
+                lambda conn: (_ for _ in ()).throw(Exception("deliberate"))
+            )
         assert "error" in caught
         assert str(caught["error"]) == "deliberate"
     finally:
@@ -112,7 +114,6 @@ async def test_wrap_write_exception_thrown_into_generator(datasette):
 @pytest.mark.asyncio
 async def test_wrap_write_conn_is_usable(datasette):
     """Test that the conn passed to the wrapper can execute SQL."""
-    log = []
 
     class WrapWritePlugin:
         __name__ = "WrapWritePlugin"
@@ -333,9 +334,7 @@ async def test_wrap_write_via_execute_write(datasette):
     pm.register(WrapWritePlugin(), name="WrapWritePluginEW")
     try:
         db = datasette.get_database("test")
-        await db.execute_write(
-            "create table if not exists t9 (id integer primary key)"
-        )
+        await db.execute_write("create table if not exists t9 (id integer primary key)")
         assert log == ["before", "after"]
     finally:
         pm.unregister(name="WrapWritePluginEW")
@@ -376,12 +375,18 @@ async def test_wrap_write_via_api(tmp_path):
 
         # Use the API to insert a row (as root to bypass permissions)
         token = "dstok_{}".format(
-            ds.sign({"a": "root", "token": "dstok", "t": int(time.time())}, namespace="token")
+            ds.sign(
+                {"a": "root", "token": "dstok", "t": int(time.time())},
+                namespace="token",
+            )
         )
         response = await ds.client.post(
             "/test/api_test/-/insert",
             json={"row": {"name": "test"}, "return": True},
-            headers={"Authorization": "Bearer {}".format(token), "Content-Type": "application/json"},
+            headers={
+                "Authorization": "Bearer {}".format(token),
+                "Content-Type": "application/json",
+            },
         )
         assert response.status_code == 201, response.json()
         assert log == ["before", "after"]
@@ -430,9 +435,7 @@ async def test_wrap_write_change_group_pattern(datasette):
             group_id = 1
 
         await db.execute_write_fn(
-            lambda conn: conn.execute(
-                "insert into data (value) values ('test')"
-            ),
+            lambda conn: conn.execute("insert into data (value) values ('test')"),
             request=FakeRequest(),
         )
 

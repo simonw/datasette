@@ -17,12 +17,17 @@ def datasette(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_write_wrapper_before_and_after(datasette):
+@pytest.mark.parametrize(
+    "use_execute_write",
+    (False, True),
+    ids=["execute_write_fn", "execute_write"],
+)
+async def test_write_wrapper_before_and_after(datasette, use_execute_write):
     """Test that code before and after yield both execute."""
     log = []
 
-    class WrapWritePlugin:
-        __name__ = "WrapWritePlugin"
+    class Plugin:
+        __name__ = "Plugin"
 
         @staticmethod
         @hookimpl
@@ -34,17 +39,22 @@ async def test_write_wrapper_before_and_after(datasette):
 
             return wrapper
 
-    pm.register(WrapWritePlugin(), name="WrapWritePlugin")
+    pm.register(Plugin(), name="test_before_after")
     try:
         db = datasette.get_database("test")
-        await db.execute_write_fn(
-            lambda conn: conn.execute(
+        if use_execute_write:
+            await db.execute_write(
                 "create table if not exists t (id integer primary key)"
             )
-        )
+        else:
+            await db.execute_write_fn(
+                lambda conn: conn.execute(
+                    "create table if not exists t (id integer primary key)"
+                )
+            )
         assert log == ["before", "after"]
     finally:
-        pm.unregister(name="WrapWritePlugin")
+        pm.unregister(name="test_before_after")
 
 
 @pytest.mark.asyncio
@@ -52,8 +62,8 @@ async def test_write_wrapper_receives_result_via_yield(datasette):
     """Test that the result of fn(conn) is sent back through yield."""
     captured = {}
 
-    class WrapWritePlugin:
-        __name__ = "WrapWritePlugin"
+    class Plugin:
+        __name__ = "Plugin"
 
         @staticmethod
         @hookimpl
@@ -64,7 +74,7 @@ async def test_write_wrapper_receives_result_via_yield(datasette):
 
             return wrapper
 
-    pm.register(WrapWritePlugin(), name="WrapWritePlugin2")
+    pm.register(Plugin(), name="test_result")
     try:
         db = datasette.get_database("test")
         await db.execute_write_fn(
@@ -76,7 +86,7 @@ async def test_write_wrapper_receives_result_via_yield(datasette):
         # Should be a sqlite3 Cursor
         assert captured["result"] is not None
     finally:
-        pm.unregister(name="WrapWritePlugin2")
+        pm.unregister(name="test_result")
 
 
 @pytest.mark.asyncio
@@ -84,8 +94,8 @@ async def test_write_wrapper_exception_thrown_into_generator(datasette):
     """Test that exceptions from fn(conn) are thrown into the generator."""
     caught = {}
 
-    class WrapWritePlugin:
-        __name__ = "WrapWritePlugin"
+    class Plugin:
+        __name__ = "Plugin"
 
         @staticmethod
         @hookimpl
@@ -98,7 +108,7 @@ async def test_write_wrapper_exception_thrown_into_generator(datasette):
 
             return wrapper
 
-    pm.register(WrapWritePlugin(), name="WrapWritePlugin3")
+    pm.register(Plugin(), name="test_exception")
     try:
         db = datasette.get_database("test")
         with pytest.raises(Exception, match="deliberate"):
@@ -108,15 +118,15 @@ async def test_write_wrapper_exception_thrown_into_generator(datasette):
         assert "error" in caught
         assert str(caught["error"]) == "deliberate"
     finally:
-        pm.unregister(name="WrapWritePlugin3")
+        pm.unregister(name="test_exception")
 
 
 @pytest.mark.asyncio
 async def test_write_wrapper_conn_is_usable(datasette):
     """Test that the conn passed to the wrapper can execute SQL."""
 
-    class WrapWritePlugin:
-        __name__ = "WrapWritePlugin"
+    class Plugin:
+        __name__ = "Plugin"
 
         @staticmethod
         @hookimpl
@@ -129,7 +139,7 @@ async def test_write_wrapper_conn_is_usable(datasette):
 
             return wrapper
 
-    pm.register(WrapWritePlugin(), name="WrapWritePlugin4")
+    pm.register(Plugin(), name="test_conn")
     try:
         db = datasette.get_database("test")
         await db.execute_write_fn(
@@ -137,17 +147,16 @@ async def test_write_wrapper_conn_is_usable(datasette):
                 "create table if not exists t3 (id integer primary key)"
             )
         )
-        # Check that both before and after SQL ran
         result = await db.execute("select msg from hook_log order by rowid")
         messages = [row[0] for row in result.rows]
         assert messages == ["before", "after"]
     finally:
-        pm.unregister(name="WrapWritePlugin4")
+        pm.unregister(name="test_conn")
 
 
 @pytest.mark.asyncio
 async def test_write_wrapper_multiple_plugins_nest(datasette):
-    """Test that multiple write_wrapper plugins nest correctly (outermost first)."""
+    """Test that multiple write_wrapper plugins nest correctly."""
     log = []
 
     class PluginA:
@@ -185,8 +194,6 @@ async def test_write_wrapper_multiple_plugins_nest(datasette):
                 "create table if not exists t4 (id integer primary key)"
             )
         )
-        # Both plugins should wrap the write. The exact nesting order
-        # follows pluggy's default LIFO convention.
         assert set(log) == {"A-before", "A-after", "B-before", "B-after"}
         # Verify proper nesting: each plugin's before/after should be
         # symmetric around the write
@@ -194,7 +201,6 @@ async def test_write_wrapper_multiple_plugins_nest(datasette):
         a_after = log.index("A-after")
         b_before = log.index("B-before")
         b_after = log.index("B-after")
-        # Whichever plugin is outer should have before first and after last
         if a_before < b_before:
             assert a_after > b_after, "A is outer so A-after should come after B-after"
         else:
@@ -209,8 +215,8 @@ async def test_write_wrapper_return_none_skips(datasette):
     """Test that returning None from write_wrapper means no wrapping."""
     log = []
 
-    class SkipPlugin:
-        __name__ = "SkipPlugin"
+    class Plugin:
+        __name__ = "Plugin"
 
         @staticmethod
         @hookimpl
@@ -218,7 +224,7 @@ async def test_write_wrapper_return_none_skips(datasette):
             log.append("hook-called")
             return None
 
-    pm.register(SkipPlugin(), name="SkipPlugin")
+    pm.register(Plugin(), name="test_skip")
     try:
         db = datasette.get_database("test")
         await db.execute_write_fn(
@@ -228,116 +234,56 @@ async def test_write_wrapper_return_none_skips(datasette):
         )
         assert log == ["hook-called"]
     finally:
-        pm.unregister(name="SkipPlugin")
+        pm.unregister(name="test_skip")
 
 
 @pytest.mark.asyncio
-async def test_write_wrapper_receives_request(datasette):
-    """Test that the request parameter is passed through."""
+@pytest.mark.parametrize(
+    "request_value,transaction_value,expected_request,expected_transaction",
+    (
+        ("fake-request", True, "fake-request", True),
+        (None, True, None, True),
+        (None, False, None, False),
+    ),
+    ids=["with-request", "request-none-by-default", "transaction-false"],
+)
+async def test_write_wrapper_hook_parameters(
+    datasette,
+    request_value,
+    transaction_value,
+    expected_request,
+    expected_transaction,
+):
+    """Test that request and transaction parameters are passed through."""
     captured = {}
 
-    class RequestPlugin:
-        __name__ = "RequestPlugin"
+    class Plugin:
+        __name__ = "Plugin"
 
         @staticmethod
         @hookimpl
         def write_wrapper(datasette, database, request, transaction):
             captured["request"] = request
             captured["database"] = database
+            captured["transaction"] = transaction
 
-    pm.register(RequestPlugin(), name="RequestPlugin")
+    pm.register(Plugin(), name="test_params")
     try:
         db = datasette.get_database("test")
+        kwargs = {"transaction": transaction_value}
+        if request_value is not None:
+            kwargs["request"] = request_value
         await db.execute_write_fn(
             lambda conn: conn.execute(
                 "create table if not exists t6 (id integer primary key)"
             ),
-            request="fake-request",
+            **kwargs,
         )
-        assert captured["request"] == "fake-request"
+        assert captured["request"] == expected_request
         assert captured["database"] == "test"
+        assert captured["transaction"] == expected_transaction
     finally:
-        pm.unregister(name="RequestPlugin")
-
-
-@pytest.mark.asyncio
-async def test_write_wrapper_request_none_by_default(datasette):
-    """Test that request is None when not provided."""
-    captured = {}
-
-    class RequestPlugin:
-        __name__ = "RequestPlugin"
-
-        @staticmethod
-        @hookimpl
-        def write_wrapper(datasette, database, request, transaction):
-            captured["request"] = request
-
-    pm.register(RequestPlugin(), name="RequestPlugin2")
-    try:
-        db = datasette.get_database("test")
-        await db.execute_write_fn(
-            lambda conn: conn.execute(
-                "create table if not exists t7 (id integer primary key)"
-            )
-        )
-        assert captured["request"] is None
-    finally:
-        pm.unregister(name="RequestPlugin2")
-
-
-@pytest.mark.asyncio
-async def test_write_wrapper_receives_transaction(datasette):
-    """Test that the transaction parameter is passed through."""
-    captured = {}
-
-    class TransactionPlugin:
-        __name__ = "TransactionPlugin"
-
-        @staticmethod
-        @hookimpl
-        def write_wrapper(datasette, database, request, transaction):
-            captured["transaction"] = transaction
-
-    pm.register(TransactionPlugin(), name="TransactionPlugin")
-    try:
-        db = datasette.get_database("test")
-        await db.execute_write_fn(
-            lambda conn: conn.execute(
-                "create table if not exists t8 (id integer primary key)"
-            ),
-            transaction=False,
-        )
-        assert captured["transaction"] is False
-    finally:
-        pm.unregister(name="TransactionPlugin")
-
-
-@pytest.mark.asyncio
-async def test_write_wrapper_via_execute_write(datasette):
-    """Test that write_wrapper fires for execute_write() too."""
-    log = []
-
-    class WrapWritePlugin:
-        __name__ = "WrapWritePlugin"
-
-        @staticmethod
-        @hookimpl
-        def write_wrapper(datasette, database, request, transaction):
-            def wrapper(conn):
-                log.append("before")
-                yield
-                log.append("after")
-
-            return wrapper
-
-    pm.register(WrapWritePlugin(), name="WrapWritePluginEW")
-    try:
-        db = datasette.get_database("test")
-        await db.execute_write("create table if not exists t9 (id integer primary key)")
-        assert log == ["before", "after"]
-    finally:
-        pm.unregister(name="WrapWritePluginEW")
+        pm.unregister(name="test_params")
 
 
 @pytest.mark.asyncio
@@ -349,8 +295,8 @@ async def test_write_wrapper_via_api(tmp_path):
     ds = Datasette([db_path], pdb=False)
     ds.root_enabled = True
 
-    class WrapWritePlugin:
-        __name__ = "WrapWritePlugin"
+    class Plugin:
+        __name__ = "Plugin"
 
         @staticmethod
         @hookimpl
@@ -365,7 +311,7 @@ async def test_write_wrapper_via_api(tmp_path):
 
             return wrapper
 
-    pm.register(WrapWritePlugin(), name="WrapWritePluginAPI")
+    pm.register(Plugin(), name="test_api")
     try:
         db = ds.get_database("test")
         await db.execute_write(
@@ -373,7 +319,6 @@ async def test_write_wrapper_via_api(tmp_path):
         )
         log.clear()
 
-        # Use the API to insert a row (as root to bypass permissions)
         token = "dstok_{}".format(
             ds.sign(
                 {"a": "root", "token": "dstok", "t": int(time.time())},
@@ -391,7 +336,7 @@ async def test_write_wrapper_via_api(tmp_path):
         assert response.status_code == 201, response.json()
         assert log == ["before", "after"]
     finally:
-        pm.unregister(name="WrapWritePluginAPI")
+        pm.unregister(name="test_api")
 
 
 @pytest.mark.asyncio
@@ -399,19 +344,16 @@ async def test_write_wrapper_change_group_pattern(datasette):
     """Test the motivating use case: activating a change group around a write."""
     db = datasette.get_database("test")
 
-    # Set up tables
     await db.execute_write(
         "create table if not exists groups (id integer primary key, current integer)"
     )
     await db.execute_write(
         "create table if not exists data (id integer primary key, value text)"
     )
-
-    # Insert a group row
     await db.execute_write("insert into groups (id, current) values (1, null)")
 
-    class ChangeGroupPlugin:
-        __name__ = "ChangeGroupPlugin"
+    class Plugin:
+        __name__ = "Plugin"
 
         @staticmethod
         @hookimpl
@@ -428,9 +370,9 @@ async def test_write_wrapper_change_group_pattern(datasette):
 
                 return wrapper
 
-    pm.register(ChangeGroupPlugin(), name="ChangeGroupPlugin")
+    pm.register(Plugin(), name="test_change_group")
     try:
-        # Create a fake request with a group_id
+
         class FakeRequest:
             group_id = 1
 
@@ -439,8 +381,7 @@ async def test_write_wrapper_change_group_pattern(datasette):
             request=FakeRequest(),
         )
 
-        # After the write, current should be null again
         result = await db.execute("select current from groups where id = 1")
         assert result.rows[0][0] is None
     finally:
-        pm.unregister(name="ChangeGroupPlugin")
+        pm.unregister(name="test_change_group")

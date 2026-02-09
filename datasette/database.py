@@ -209,7 +209,7 @@ class Database:
     def _wrap_fn_with_hooks(self, fn, request, transaction):
         from .plugins import pm
 
-        wrappers = pm.hook.wrap_write(
+        wrappers = pm.hook.write_wrapper(
             datasette=self.ds,
             database=self.name,
             request=request,
@@ -222,7 +222,7 @@ class Database:
         # The first wrapper returned by pluggy is outermost.
         original_fn = fn
         for wrapper_factory in reversed(wrappers):
-            original_fn = _apply_wrap_write(original_fn, wrapper_factory)
+            original_fn = _apply_write_wrapper(original_fn, wrapper_factory)
         return original_fn
 
     async def _send_to_write_thread(
@@ -702,8 +702,8 @@ class Database:
         return f"<Database: {self.name}{tags_str}>"
 
 
-def _apply_wrap_write(fn, wrapper_factory):
-    """Apply a single wrap_write context manager around fn.
+def _apply_write_wrapper(fn, wrapper_factory):
+    """Apply a single write_wrapper context manager around fn.
 
     ``wrapper_factory`` is a callable that takes ``(conn)`` and returns a
     generator that yields exactly once.  Code before the yield runs before

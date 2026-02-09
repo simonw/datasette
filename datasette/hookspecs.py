@@ -223,7 +223,7 @@ def top_canned_query(datasette, request, database, query_name):
 
 
 @hookspec
-def wrap_write(datasette, database, request, transaction):
+def write_wrapper(datasette, database, request, transaction):
     """Called when a write function is about to execute.
 
     Return a generator function that accepts a ``conn`` argument.

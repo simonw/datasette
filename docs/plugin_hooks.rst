@@ -2250,10 +2250,10 @@ The plugin can then call ``datasette.track_event(...)`` to send a ``ban-user`` e
         BanUserEvent(user={"id": 1, "username": "cleverbot"})
     )
 
-.. _plugin_hook_wrap_write:
+.. _plugin_hook_write_wrapper:
 
-wrap_write(datasette, database, request, transaction)
------------------------------------------------------
+write_wrapper(datasette, database, request, transaction)
+--------------------------------------------------------
 
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
@@ -2283,7 +2283,7 @@ This example logs every write operation:
 
 
     @hookimpl
-    def wrap_write(datasette, database, request):
+    def write_wrapper(datasette, database, request):
         def wrapper(conn):
             print(f"Before write to {database}")
             result = yield
@@ -2306,7 +2306,7 @@ This more advanced example uses the SQLite authorizer callback to block writes t
 
 
     @hookimpl
-    def wrap_write(datasette, database, request):
+    def write_wrapper(datasette, database, request):
         actor = None
         if request:
             actor = request.actor
@@ -2334,4 +2334,4 @@ This more advanced example uses the SQLite authorizer callback to block writes t
 
 The ``conn`` object passed to the generator is the same connection that the write function will use.  Because the generator and the write function execute together in a single call on the write thread, any state you set on the connection (authorizers, pragmas, temporary tables) is visible to the write and can be cleaned up afterwards.
 
-When multiple plugins implement ``wrap_write``, they are nested following pluggy's default calling convention.
+When multiple plugins implement ``write_wrapper``, they are nested following pluggy's default calling convention.

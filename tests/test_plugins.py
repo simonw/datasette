@@ -1525,7 +1525,7 @@ async def test_hook_register_events():
 
 
 @pytest.mark.asyncio
-async def test_hook_wrap_write():
+async def test_hook_write_wrapper():
     datasette = Datasette(memory=True)
     log = []
 
@@ -1534,7 +1534,7 @@ async def test_hook_wrap_write():
 
         @staticmethod
         @hookimpl
-        def wrap_write(datasette, database, request, transaction):
+        def write_wrapper(datasette, database, request, transaction):
             if database != "_memory":
                 return None
 

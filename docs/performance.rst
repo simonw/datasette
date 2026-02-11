@@ -43,7 +43,7 @@ Then later you can start Datasette against the ``counts.json`` file and use it t
 
 You need to use the ``-i`` immutable mode against the database file here or the counts from the JSON file will be ignored.
 
-You will rarely need to use this optimization in every-day use, but several of the ``datasette publish`` commands described in :ref:`publishing` use this optimization for better performance when deploying a database file to a hosting provider.
+You will rarely need to use this optimization in every-day use.
 
 HTTP caching
 ------------

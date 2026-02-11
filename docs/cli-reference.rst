@@ -51,9 +51,7 @@ Running ``datasette --help`` shows a list of all of the available commands.
       create-token  Create a signed API token for the specified actor ID
       inspect       Generate JSON summary of provided database files
       install       Install plugins and packages from PyPI into the same...
-      package       Package SQLite files into a Datasette Docker container
       plugins       List currently installed plugins
-      publish       Publish specified SQLite database files to the internet...
       uninstall     Uninstall plugins and Python packages from the Datasette...
 
 
@@ -409,200 +407,6 @@ Uninstall one or more plugins.
 
 .. [[[end]]]
 
-.. _cli_help_publish___help:
-
-datasette publish
-=================
-
-Shows a list of available deployment targets for :ref:`publishing data <publishing>` with Datasette.
-
-Additional deployment targets can be added by plugins that use the :ref:`plugin_hook_publish_subcommand` hook.
-
-.. [[[cog
-    help(["publish", "--help"])
-.. ]]]
-
-::
-
-    Usage: datasette publish [OPTIONS] COMMAND [ARGS]...
-
-      Publish specified SQLite database files to the internet along with a
-      Datasette-powered interface and API
-
-    Options:
-      --help  Show this message and exit.
-
-    Commands:
-      cloudrun  Publish databases to Datasette running on Cloud Run
-      heroku    Publish databases to Datasette running on Heroku
-
-
-.. [[[end]]]
-
-
-.. _cli_help_publish_cloudrun___help:
-
-datasette publish cloudrun
-==========================
-
-See :ref:`publish_cloud_run`.
-
-.. [[[cog
-    help(["publish", "cloudrun", "--help"])
-.. ]]]
-
-::
-
-    Usage: datasette publish cloudrun [OPTIONS] [FILES]...
-
-      Publish databases to Datasette running on Cloud Run
-
-    Options:
-      -m, --metadata FILENAME         Path to JSON/YAML file containing metadata to
-                                      publish
-      --extra-options TEXT            Extra options to pass to datasette serve
-      --branch TEXT                   Install datasette from a GitHub branch e.g.
-                                      main
-      --template-dir DIRECTORY        Path to directory containing custom templates
-      --plugins-dir DIRECTORY         Path to directory containing custom plugins
-      --static MOUNT:DIRECTORY        Serve static files from this directory at
-                                      /MOUNT/...
-      --install TEXT                  Additional packages (e.g. plugins) to install
-      --plugin-secret <TEXT TEXT TEXT>...
-                                      Secrets to pass to plugins, e.g. --plugin-
-                                      secret datasette-auth-github client_id xxx
-      --version-note TEXT             Additional note to show on /-/versions
-      --secret TEXT                   Secret used for signing secure values, such as
-                                      signed cookies
-      --title TEXT                    Title for metadata
-      --license TEXT                  License label for metadata
-      --license_url TEXT              License URL for metadata
-      --source TEXT                   Source label for metadata
-      --source_url TEXT               Source URL for metadata
-      --about TEXT                    About label for metadata
-      --about_url TEXT                About URL for metadata
-      -n, --name TEXT                 Application name to use when building
-      --service TEXT                  Cloud Run service to deploy (or over-write)
-      --spatialite                    Enable SpatialLite extension
-      --show-files                    Output the generated Dockerfile and
-                                      metadata.json
-      --memory TEXT                   Memory to allocate in Cloud Run, e.g. 1Gi
-      --cpu [1|2|4]                   Number of vCPUs to allocate in Cloud Run
-      --timeout INTEGER               Build timeout in seconds
-      --apt-get-install TEXT          Additional packages to apt-get install
-      --max-instances INTEGER         Maximum Cloud Run instances (use 0 to remove
-                                      the limit)  [default: 1]
-      --min-instances INTEGER         Minimum Cloud Run instances
-      --artifact-repository TEXT      Artifact Registry repository to store the
-                                      image  [default: datasette]
-      --artifact-region TEXT          Artifact Registry location (region or multi-
-                                      region)  [default: us]
-      --artifact-project TEXT         Project ID for Artifact Registry (defaults to
-                                      the active project)
-      --help                          Show this message and exit.
-
-
-.. [[[end]]]
-
-
-.. _cli_help_publish_heroku___help:
-
-datasette publish heroku
-========================
-
-See :ref:`publish_heroku`.
-
-.. [[[cog
-    help(["publish", "heroku", "--help"])
-.. ]]]
-
-::
-
-    Usage: datasette publish heroku [OPTIONS] [FILES]...
-
-      Publish databases to Datasette running on Heroku
-
-    Options:
-      -m, --metadata FILENAME         Path to JSON/YAML file containing metadata to
-                                      publish
-      --extra-options TEXT            Extra options to pass to datasette serve
-      --branch TEXT                   Install datasette from a GitHub branch e.g.
-                                      main
-      --template-dir DIRECTORY        Path to directory containing custom templates
-      --plugins-dir DIRECTORY         Path to directory containing custom plugins
-      --static MOUNT:DIRECTORY        Serve static files from this directory at
-                                      /MOUNT/...
-      --install TEXT                  Additional packages (e.g. plugins) to install
-      --plugin-secret <TEXT TEXT TEXT>...
-                                      Secrets to pass to plugins, e.g. --plugin-
-                                      secret datasette-auth-github client_id xxx
-      --version-note TEXT             Additional note to show on /-/versions
-      --secret TEXT                   Secret used for signing secure values, such as
-                                      signed cookies
-      --title TEXT                    Title for metadata
-      --license TEXT                  License label for metadata
-      --license_url TEXT              License URL for metadata
-      --source TEXT                   Source label for metadata
-      --source_url TEXT               Source URL for metadata
-      --about TEXT                    About label for metadata
-      --about_url TEXT                About URL for metadata
-      -n, --name TEXT                 Application name to use when deploying
-      --tar TEXT                      --tar option to pass to Heroku, e.g.
-                                      --tar=/usr/local/bin/gtar
-      --generate-dir DIRECTORY        Output generated application files and stop
-                                      without deploying
-      --help                          Show this message and exit.
-
-
-.. [[[end]]]
-
-.. _cli_help_package___help:
-
-datasette package
-=================
-
-Package SQLite files into a Datasette Docker container, see :ref:`cli_package`.
-
-.. [[[cog
-    help(["package", "--help"])
-.. ]]]
-
-::
-
-    Usage: datasette package [OPTIONS] FILES...
-
-      Package SQLite files into a Datasette Docker container
-
-    Options:
-      -t, --tag TEXT            Name for the resulting Docker container, can
-                                optionally use name:tag format
-      -m, --metadata FILENAME   Path to JSON/YAML file containing metadata to
-                                publish
-      --extra-options TEXT      Extra options to pass to datasette serve
-      --branch TEXT             Install datasette from a GitHub branch e.g. main
-      --template-dir DIRECTORY  Path to directory containing custom templates
-      --plugins-dir DIRECTORY   Path to directory containing custom plugins
-      --static MOUNT:DIRECTORY  Serve static files from this directory at /MOUNT/...
-      --install TEXT            Additional packages (e.g. plugins) to install
-      --spatialite              Enable SpatialLite extension
-      --version-note TEXT       Additional note to show on /-/versions
-      --secret TEXT             Secret used for signing secure values, such as
-                                signed cookies
-      -p, --port INTEGER RANGE  Port to run the server on, defaults to 8001
-                                [1<=x<=65535]
-      --title TEXT              Title for metadata
-      --license TEXT            License label for metadata
-      --license_url TEXT        License URL for metadata
-      --source TEXT             Source label for metadata
-      --source_url TEXT         Source URL for metadata
-      --about TEXT              About label for metadata
-      --about_url TEXT          About URL for metadata
-      --help                    Show this message and exit.
-
-
-.. [[[end]]]
-
-
 .. _cli_help_inspect___help:
 
 datasette inspect
@@ -615,7 +419,7 @@ If you are opening an immutable database, you can pass this file to the ``--insp
     datasette inspect mydatabase.db > inspect-data.json
     datasette serve -i mydatabase.db --inspect-file inspect-data.json
 
-This performance optimization is used automatically by some of the ``datasette publish`` commands. You are unlikely to need to apply this optimization manually.
+You are unlikely to need to apply this optimization manually.
 
 .. [[[cog
     help(["inspect", "--help"])

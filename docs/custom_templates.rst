@@ -151,17 +151,6 @@ You can reference those files from ``datasette.yaml`` like this, see :ref:`custo
         }
 .. [[[end]]]
 
-Publishing static assets
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-The :ref:`cli_publish` command can be used to publish your static assets,
-using the same syntax as above::
-
-    datasette publish cloudrun mydb.db --static assets:static-files/
-
-This will upload the contents of the ``static-files/`` directory as part of the
-deployment, and configure Datasette to correctly serve the assets from ``/assets/``.
-
 .. _customization_custom_templates:
 
 Custom templates

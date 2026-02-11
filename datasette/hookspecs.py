@@ -50,11 +50,6 @@ def extra_template_vars(
 
 
 @hookspec
-def publish_subcommand(publish):
-    """Subcommands for 'datasette publish'"""
-
-
-@hookspec
 def render_cell(row, value, column, table, database, datasette, request):
     """Customize rendering of HTML table cell values"""
 

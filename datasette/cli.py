@@ -9,8 +9,6 @@ import json
 import os
 import pathlib
 from runpy import run_module
-import shutil
-from subprocess import call
 import sys
 import textwrap
 import webbrowser
@@ -32,7 +30,6 @@ from .utils import (
     SpatialiteConnectionProblem,
     initial_path_for_datasette,
     pairs_to_nested_config,
-    temporary_docker_directory,
     value_as_boolean,
     SpatialiteNotFound,
     StaticMount,
@@ -171,16 +168,6 @@ async def inspect_(files, sqlite_extensions):
     return data
 
 
-@cli.group()
-def publish():
-    """Publish specified SQLite database files to the internet along with a Datasette-powered interface and API"""
-    pass
-
-
-# Register publish plugins
-pm.hook.publish_subcommand(publish=publish)
-
-
 @cli.command()
 @click.option("--all", help="Include built-in default plugins", is_flag=True)
 @click.option(
@@ -200,112 +187,6 @@ def plugins(all, requirements, plugins_dir):
                 click.echo("{}=={}".format(plugin["name"], plugin["version"]))
     else:
         click.echo(json.dumps(app._plugins(all=all), indent=4))
-
-
-@cli.command()
-@click.argument("files", type=click.Path(exists=True), nargs=-1, required=True)
-@click.option(
-    "-t",
-    "--tag",
-    help="Name for the resulting Docker container, can optionally use name:tag format",
-)
-@click.option(
-    "-m",
-    "--metadata",
-    type=click.File(mode="r"),
-    help="Path to JSON/YAML file containing metadata to publish",
-)
-@click.option("--extra-options", help="Extra options to pass to datasette serve")
-@click.option("--branch", help="Install datasette from a GitHub branch e.g. main")
-@click.option(
-    "--template-dir",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True),
-    help="Path to directory containing custom templates",
-)
-@click.option(
-    "--plugins-dir",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True),
-    help="Path to directory containing custom plugins",
-)
-@click.option(
-    "--static",
-    type=StaticMount(),
-    help="Serve static files from this directory at /MOUNT/...",
-    multiple=True,
-)
-@click.option(
-    "--install", help="Additional packages (e.g. plugins) to install", multiple=True
-)
-@click.option("--spatialite", is_flag=True, help="Enable SpatialLite extension")
-@click.option("--version-note", help="Additional note to show on /-/versions")
-@click.option(
-    "--secret",
-    help="Secret used for signing secure values, such as signed cookies",
-    envvar="DATASETTE_PUBLISH_SECRET",
-    default=lambda: os.urandom(32).hex(),
-)
-@click.option(
-    "-p",
-    "--port",
-    default=8001,
-    type=click.IntRange(1, 65535),
-    help="Port to run the server on, defaults to 8001",
-)
-@click.option("--title", help="Title for metadata")
-@click.option("--license", help="License label for metadata")
-@click.option("--license_url", help="License URL for metadata")
-@click.option("--source", help="Source label for metadata")
-@click.option("--source_url", help="Source URL for metadata")
-@click.option("--about", help="About label for metadata")
-@click.option("--about_url", help="About URL for metadata")
-def package(
-    files,
-    tag,
-    metadata,
-    extra_options,
-    branch,
-    template_dir,
-    plugins_dir,
-    static,
-    install,
-    spatialite,
-    version_note,
-    secret,
-    port,
-    **extra_metadata,
-):
-    """Package SQLite files into a Datasette Docker container"""
-    if not shutil.which("docker"):
-        click.secho(
-            ' The package command requires "docker" to be installed and configured ',
-            bg="red",
-            fg="white",
-            bold=True,
-            err=True,
-        )
-        sys.exit(1)
-    with temporary_docker_directory(
-        files,
-        "datasette",
-        metadata=metadata,
-        extra_options=extra_options,
-        branch=branch,
-        template_dir=template_dir,
-        plugins_dir=plugins_dir,
-        static=static,
-        install=install,
-        spatialite=spatialite,
-        version_note=version_note,
-        secret=secret,
-        extra_metadata=extra_metadata,
-        port=port,
-    ):
-        args = ["docker", "build"]
-        if tag:
-            args.append("-t")
-            args.append(tag)
-        args.append(".")
-        call(args)
 
 
 @cli.command()

@@ -591,15 +591,6 @@ async def test_hook_prepare_jinja2_environment(ds_client):
     assert "Hello there, 3,412,341, HI, 15" == rendered
 
 
-def test_hook_publish_subcommand():
-    # This is hard to test properly, because publish subcommand plugins
-    # cannot be loaded using the --plugins-dir mechanism - they need
-    # to be installed using "pip install". So I'm cheating and taking
-    # advantage of the fact that cloudrun/heroku use the plugin hook
-    # to register themselves as default plugins.
-    assert ["cloudrun", "heroku"] == cli.publish.list_commands({})
-
-
 @pytest.mark.asyncio
 async def test_hook_register_facet_classes(ds_client):
     response = await ds_client.get(
@@ -1110,9 +1101,7 @@ def test_hook_register_commands():
         "serve",
         "inspect",
         "install",
-        "package",
         "plugins",
-        "publish",
         "uninstall",
         "create-token",
     }
@@ -1139,9 +1128,7 @@ def test_hook_register_commands():
         "serve",
         "inspect",
         "install",
-        "package",
         "plugins",
-        "publish",
         "uninstall",
         "verify",
         "unverify",

@@ -10,20 +10,15 @@ import hashlib
 import inspect
 import json
 import markupsafe
-import mergedeep
 import os
 import re
-import shlex
-import tempfile
 import typing
 import time
 import types
 import secrets
-import shutil
 from typing import Iterable, List, Tuple
 import urllib
 import yaml
-from .shutil_backport import copytree
 from .sqlite import sqlite3, supports_table_xinfo
 
 if typing.TYPE_CHECKING:
@@ -98,12 +93,6 @@ reserved_words = set(
         "vacuum values view virtual when where with without"
     ).split()
 )
-
-APT_GET_DOCKERFILE_EXTRAS = r"""
-RUN apt-get update && \
-    apt-get install -y {} && \
-    rm -rf /var/lib/apt/lists/*
-"""
 
 # Can replace with sqlite-utils when I add that dependency
 SPATIALITE_PATHS = (
@@ -408,172 +397,6 @@ def escape_sqlite(s):
         return f"[{s}]"
 
 
-def make_dockerfile(
-    files,
-    metadata_file,
-    extra_options,
-    branch,
-    template_dir,
-    plugins_dir,
-    static,
-    install,
-    spatialite,
-    version_note,
-    secret,
-    environment_variables=None,
-    port=8001,
-    apt_get_extras=None,
-):
-    cmd = ["datasette", "serve", "--host", "0.0.0.0"]
-    environment_variables = environment_variables or {}
-    environment_variables["DATASETTE_SECRET"] = secret
-    apt_get_extras = apt_get_extras or []
-    for filename in files:
-        cmd.extend(["-i", filename])
-    cmd.extend(["--cors", "--inspect-file", "inspect-data.json"])
-    if metadata_file:
-        cmd.extend(["--metadata", f"{metadata_file}"])
-    if template_dir:
-        cmd.extend(["--template-dir", "templates/"])
-    if plugins_dir:
-        cmd.extend(["--plugins-dir", "plugins/"])
-    if version_note:
-        cmd.extend(["--version-note", f"{version_note}"])
-    if static:
-        for mount_point, _ in static:
-            cmd.extend(["--static", f"{mount_point}:{mount_point}"])
-    if extra_options:
-        for opt in extra_options.split():
-            cmd.append(f"{opt}")
-    cmd = [shlex.quote(part) for part in cmd]
-    # port attribute is a (fixed) env variable and should not be quoted
-    cmd.extend(["--port", "$PORT"])
-    cmd = " ".join(cmd)
-    if branch:
-        install = [f"https://github.com/simonw/datasette/archive/{branch}.zip"] + list(
-            install
-        )
-    else:
-        install = ["datasette"] + list(install)
-
-    apt_get_extras_ = []
-    apt_get_extras_.extend(apt_get_extras)
-    apt_get_extras = apt_get_extras_
-    if spatialite:
-        apt_get_extras.extend(["python3-dev", "gcc", "libsqlite3-mod-spatialite"])
-        environment_variables["SQLITE_EXTENSIONS"] = (
-            "/usr/lib/x86_64-linux-gnu/mod_spatialite.so"
-        )
-    return """
-FROM python:3.11.0-slim-bullseye
-COPY . /app
-WORKDIR /app
-{apt_get_extras}
-{environment_variables}
-RUN pip install -U {install_from}
-RUN datasette inspect {files} --inspect-file inspect-data.json
-ENV PORT {port}
-EXPOSE {port}
-CMD {cmd}""".format(
-        apt_get_extras=(
-            APT_GET_DOCKERFILE_EXTRAS.format(" ".join(apt_get_extras))
-            if apt_get_extras
-            else ""
-        ),
-        environment_variables="\n".join(
-            [
-                "ENV {} '{}'".format(key, value)
-                for key, value in environment_variables.items()
-            ]
-        ),
-        install_from=" ".join(install),
-        files=" ".join(files),
-        port=port,
-        cmd=cmd,
-    ).strip()
-
-
-@contextmanager
-def temporary_docker_directory(
-    files,
-    name,
-    metadata,
-    extra_options,
-    branch,
-    template_dir,
-    plugins_dir,
-    static,
-    install,
-    spatialite,
-    version_note,
-    secret,
-    extra_metadata=None,
-    environment_variables=None,
-    port=8001,
-    apt_get_extras=None,
-):
-    extra_metadata = extra_metadata or {}
-    tmp = tempfile.TemporaryDirectory()
-    # We create a datasette folder in there to get a nicer now deploy name
-    datasette_dir = os.path.join(tmp.name, name)
-    os.mkdir(datasette_dir)
-    saved_cwd = os.getcwd()
-    file_paths = [os.path.join(saved_cwd, file_path) for file_path in files]
-    file_names = [os.path.split(f)[-1] for f in files]
-    if metadata:
-        metadata_content = parse_metadata(metadata.read())
-    else:
-        metadata_content = {}
-    # Merge in the non-null values in extra_metadata
-    mergedeep.merge(
-        metadata_content,
-        {key: value for key, value in extra_metadata.items() if value is not None},
-    )
-    try:
-        dockerfile = make_dockerfile(
-            file_names,
-            metadata_content and "metadata.json",
-            extra_options,
-            branch,
-            template_dir,
-            plugins_dir,
-            static,
-            install,
-            spatialite,
-            version_note,
-            secret,
-            environment_variables,
-            port=port,
-            apt_get_extras=apt_get_extras,
-        )
-        os.chdir(datasette_dir)
-        if metadata_content:
-            with open("metadata.json", "w") as fp:
-                fp.write(json.dumps(metadata_content, indent=2))
-        with open("Dockerfile", "w") as fp:
-            fp.write(dockerfile)
-        for path, filename in zip(file_paths, file_names):
-            link_or_copy(path, os.path.join(datasette_dir, filename))
-        if template_dir:
-            link_or_copy_directory(
-                os.path.join(saved_cwd, template_dir),
-                os.path.join(datasette_dir, "templates"),
-            )
-        if plugins_dir:
-            link_or_copy_directory(
-                os.path.join(saved_cwd, plugins_dir),
-                os.path.join(datasette_dir, "plugins"),
-            )
-        for mount_point, path in static:
-            link_or_copy_directory(
-                os.path.join(saved_cwd, path), os.path.join(datasette_dir, mount_point)
-            )
-        yield datasette_dir
-    finally:
-        tmp.cleanup()
-        os.chdir(saved_cwd)
-
-
 def detect_primary_keys(conn, table):
     """Figure out primary keys for a table."""
     columns = table_column_details(conn, table)
@@ -795,23 +618,6 @@ def to_css_class(s):
     # Attach the md5 suffix
     bits = [b for b in (s, md5_suffix) if b]
     return "-".join(bits)
-
-
-def link_or_copy(src, dst):
-    # Intended for use in populating a temp directory. We link if possible,
-    # but fall back to copying if the temp directory is on a different device
-    # https://github.com/simonw/datasette/issues/141
-    try:
-        os.link(src, dst)
-    except OSError:
-        shutil.copyfile(src, dst)
-
-
-def link_or_copy_directory(src, dst):
-    try:
-        copytree(src, dst, copy_function=os.link, dirs_exist_ok=True)
-    except OSError:
-        copytree(src, dst, dirs_exist_ok=True)
 
 
 def module_from_path(path, name):

@@ -43,7 +43,6 @@ Contents
    ecosystem
    cli-reference
    pages
-   publish
    deploying
    json_api
    sql_queries

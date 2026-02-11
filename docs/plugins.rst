@@ -69,19 +69,6 @@ You can also define one-off per-project plugins by saving them as ``plugin_name.
 
     datasette mydb.db --plugins-dir=plugins/
 
-Deploying plugins using datasette publish
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The ``datasette publish`` and ``datasette package`` commands both take an optional ``--install`` argument. You can use this one or more times to tell Datasette to ``pip install`` specific plugins as part of the process::
-
-    datasette publish cloudrun mydb.db --install=datasette-vega
-
-You can use the name of a package on PyPI or any of the other valid arguments to ``pip install`` such as a URL to a ``.zip`` file::
-
-    datasette publish cloudrun mydb.db \
-        --install=https://url-to-my-package.zip
-
-
 .. _plugins_datasette_load_plugins:
 
 Controlling which plugins are loaded
@@ -483,14 +470,6 @@ Some plugins may need configuration that should stay secret - API keys for examp
           }
         }
 .. [[[end]]]
-
-If you are publishing your data using the :ref:`datasette publish <cli_publish>` family of commands, you can use the ``--plugin-secret`` option to set these secrets at publish time. For example, using Heroku you might run the following command::
-
-    datasette publish heroku my_database.db \
-        --name my-heroku-app-demo \
-        --install=datasette-auth-github \
-        --plugin-secret datasette-auth-github client_id your_client_id \
-        --plugin-secret datasette-auth-github client_secret your_client_secret
 
 This will set the necessary environment variables and add the following to the deployed ``metadata.yaml``:
 

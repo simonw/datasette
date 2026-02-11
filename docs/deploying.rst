@@ -4,9 +4,7 @@
  Deploying Datasette
 =====================
 
-The quickest way to deploy a Datasette instance on the internet is to use the ``datasette publish`` command, described in :ref:`publishing`. This can be used to quickly deploy Datasette to a number of hosting providers including Heroku, Google Cloud Run and Vercel.
-
-You can deploy Datasette to other hosting providers using the instructions on this page.
+You can deploy Datasette to various hosting providers using the instructions on this page.
 
 .. _deploying_fundamentals:
 

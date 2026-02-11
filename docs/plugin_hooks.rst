@@ -414,64 +414,6 @@ This will add the following to the end of your page:
 
 Example: `datasette-cluster-map <https://datasette.io/plugins/datasette-cluster-map>`_
 
-.. _plugin_hook_publish_subcommand:
-
-publish_subcommand(publish)
----------------------------
-
-``publish`` - Click publish command group
-    The Click command group for the ``datasette publish`` subcommand
-
-This hook allows you to create new providers for the ``datasette publish``
-command. Datasette uses this hook internally to implement the default ``cloudrun``
-and ``heroku`` subcommands, so you can read
-`their source <https://github.com/simonw/datasette/tree/main/datasette/publish>`_
-to see examples of this hook in action.
-
-Let's say you want to build a plugin that adds a ``datasette publish my_hosting_provider --api_key=xxx mydatabase.db`` publish command. Your implementation would start like this:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-    from datasette.publish.common import (
-        add_common_publish_arguments_and_options,
-    )
-    import click
-
-
-    @hookimpl
-    def publish_subcommand(publish):
-        @publish.command()
-        @add_common_publish_arguments_and_options
-        @click.option(
-            "-k",
-            "--api_key",
-            help="API key for talking to my hosting provider",
-        )
-        def my_hosting_provider(
-            files,
-            metadata,
-            extra_options,
-            branch,
-            template_dir,
-            plugins_dir,
-            static,
-            install,
-            plugin_secret,
-            version_note,
-            secret,
-            title,
-            license,
-            license_url,
-            source,
-            source_url,
-            about,
-            about_url,
-            api_key,
-        ): ...
-
-Examples: `datasette-publish-fly <https://datasette.io/plugins/datasette-publish-fly>`_, `datasette-publish-vercel <https://datasette.io/plugins/datasette-publish-vercel>`_
-
 .. _plugin_hook_render_cell:
 
 render_cell(row, value, column, table, database, datasette, request)

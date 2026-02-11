@@ -16,8 +16,6 @@ else:
 
 
 DEFAULT_PLUGINS = (
-    "datasette.publish.heroku",
-    "datasette.publish.cloudrun",
     "datasette.facets",
     "datasette.filters",
     "datasette.sql_functions",

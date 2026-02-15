@@ -503,6 +503,19 @@ async def test_hook_register_output_renderer_all_parameters(ds_client):
 
 
 @pytest.mark.asyncio
+async def test_hook_register_output_renderer_query_view_name(ds_client):
+    response = await ds_client.get(
+        "/fixtures/-/query.testall?sql=select+1"
+    )
+    assert response.status_code == 200
+    body = at_memory_re.sub(" at 0xXXX", response.text)
+    data = json.loads(body)
+    assert data["view_name"] == "query"
+    assert data["table"] is None
+    assert data["database"] == "fixtures"
+
+
+@pytest.mark.asyncio
 async def test_hook_register_output_renderer_custom_status_code(ds_client):
     response = await ds_client.get(
         "/fixtures/pragma_cache_size.testall?status_code=202"

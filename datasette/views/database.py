@@ -509,26 +509,15 @@ class QueryView(View):
 
     async def get(self, request, datasette):
         from datasette.app import TableNotFound
+        from datasette.query_page import QueryPage
 
         await datasette.refresh_schemas()
 
         db = await datasette.resolve_database(request)
         database = db.name
 
-        # Get all tables/views this actor can see in bulk with private flag
-        allowed_tables_page = await datasette.allowed_resources(
-            "view-table",
-            request.actor,
-            parent=database,
-            include_is_private=True,
-            limit=1000,
-        )
-        # Create lookup dict for quick access
-        allowed_dict = {r.child: r for r in allowed_tables_page.resources}
-
         # Are we a canned query?
         canned_query = None
-        canned_query_write = False
         if "table" in request.url_vars:
             try:
                 await datasette.resolve_table(request)
@@ -539,7 +528,6 @@ class QueryView(View):
                 )
                 if canned_query is None:
                     raise
-                canned_query_write = bool(canned_query.get("write"))
 
         private = False
         if canned_query:
@@ -551,7 +539,6 @@ class QueryView(View):
             )
             if not visible:
                 raise Forbidden("You do not have permission to view this query")
-
         else:
             await datasette.ensure_permission(
                 action="execute-sql",
@@ -574,305 +561,23 @@ class QueryView(View):
             named_parameters = canned_query["params"]
         if not named_parameters:
             named_parameters = derive_named_parameters(sql)
-        named_parameter_values = {
-            named_parameter: params.get(named_parameter) or ""
-            for named_parameter in named_parameters
-            if not named_parameter.startswith("_")
-        }
         # Set to blank string if missing from params
         for named_parameter in named_parameters:
             if named_parameter not in params and not named_parameter.startswith("_"):
                 params[named_parameter] = ""
 
-        extra_args = {}
-        if params.get("_timelimit"):
-            extra_args["custom_time_limit"] = int(params["_timelimit"])
-
-        format_ = request.url_vars.get("format") or "html"
-
-        query_error = None
-        results = None
-        rows = []
-        columns = []
-
-        params_for_query = params
-
-        if not canned_query_write:
-            try:
-                if not canned_query:
-                    # For regular queries we only allow SELECT, plus other rules
-                    validate_sql_select(sql)
-                else:
-                    # Canned queries can run magic parameters
-                    params_for_query = MagicParameters(sql, params, request, datasette)
-                    await params_for_query.execute_params()
-                results = await datasette.execute(
-                    database, sql, params_for_query, truncate=True, **extra_args
-                )
-                columns = results.columns
-                rows = results.rows
-            except QueryInterrupted as ex:
-                raise DatasetteError(
-                    textwrap.dedent(
-                        """
-                    <p>SQL query took too long. The time limit is controlled by the
-                    <a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>
-                    configuration option.</p>
-                    <textarea style="width: 90%">{}</textarea>
-                    <script>
-                    let ta = document.querySelector("textarea");
-                    ta.style.height = ta.scrollHeight + "px";
-                    </script>
-                """.format(
-                            markupsafe.escape(ex.sql)
-                        )
-                    ).strip(),
-                    title="SQL Interrupted",
-                    status=400,
-                    message_is_html=True,
-                )
-            except sqlite3.DatabaseError as ex:
-                query_error = str(ex)
-                results = None
-                rows = []
-                columns = []
-            except (sqlite3.OperationalError, InvalidSql) as ex:
-                raise DatasetteError(str(ex), title="Invalid SQL", status=400)
-            except sqlite3.OperationalError as ex:
-                raise DatasetteError(str(ex))
-            except DatasetteError:
-                raise
-
-        # Handle formats from plugins
-        if format_ == "csv":
-
-            async def fetch_data_for_csv(request, _next=None):
-                results = await db.execute(sql, params, truncate=True)
-                data = {"rows": results.rows, "columns": results.columns}
-                return data, None, None
-
-            return await stream_csv(datasette, fetch_data_for_csv, request, db.name)
-        elif format_ in datasette.renderers.keys():
-            # Dispatch request to the correct output format renderer
-            # (CSV is not handled here due to streaming)
-            result = call_with_supported_arguments(
-                datasette.renderers[format_][0],
-                datasette=datasette,
-                columns=columns,
-                rows=rows,
-                sql=sql,
-                query_name=canned_query["name"] if canned_query else None,
-                database=database,
-                table=None,
-                request=request,
-                view_name="table",
-                truncated=results.truncated if results else False,
-                error=query_error,
-                # These will be deprecated in Datasette 1.0:
-                args=request.args,
-                data={"ok": True, "rows": rows, "columns": columns},
-            )
-            if asyncio.iscoroutine(result):
-                result = await result
-            if result is None:
-                raise NotFound("No data")
-            if isinstance(result, dict):
-                r = Response(
-                    body=result.get("body"),
-                    status=result.get("status_code") or 200,
-                    content_type=result.get("content_type", "text/plain"),
-                    headers=result.get("headers"),
-                )
-            elif isinstance(result, Response):
-                r = result
-                # if status_code is not None:
-                #     # Over-ride the status code
-                #     r.status = status_code
-            else:
-                assert False, f"{result} should be dict or Response"
-        elif format_ == "html":
-            headers = {}
-            templates = [f"query-{to_css_class(database)}.html", "query.html"]
-            if canned_query:
-                templates.insert(
-                    0,
-                    f"query-{to_css_class(database)}-{to_css_class(canned_query['name'])}.html",
-                )
-
-            environment = datasette.get_jinja_environment(request)
-            template = environment.select_template(templates)
-            alternate_url_json = datasette.absolute_url(
-                request,
-                datasette.urls.path(path_with_format(request=request, format="json")),
-            )
-            data = {}
-            headers.update(
-                {
-                    "Link": '<{}>; rel="alternate"; type="application/json+datasette"'.format(
-                        alternate_url_json
-                    )
-                }
-            )
-            metadata = await datasette.get_database_metadata(database)
-
-            renderers = {}
-            for key, (_, can_render) in datasette.renderers.items():
-                it_can_render = call_with_supported_arguments(
-                    can_render,
-                    datasette=datasette,
-                    columns=data.get("columns") or [],
-                    rows=data.get("rows") or [],
-                    sql=data.get("query", {}).get("sql", None),
-                    query_name=data.get("query_name"),
-                    database=database,
-                    table=data.get("table"),
-                    request=request,
-                    view_name="database",
-                )
-                it_can_render = await await_me_maybe(it_can_render)
-                if it_can_render:
-                    renderers[key] = datasette.urls.path(
-                        path_with_format(request=request, format=key)
-                    )
-
-            allow_execute_sql = await datasette.allowed(
-                action="execute-sql",
-                resource=DatabaseResource(database=database),
-                actor=request.actor,
-            )
-
-            show_hide_hidden = ""
-            if canned_query and canned_query.get("hide_sql"):
-                if bool(params.get("_show_sql")):
-                    show_hide_link = path_with_removed_args(request, {"_show_sql"})
-                    show_hide_text = "hide"
-                    show_hide_hidden = (
-                        '<input type="hidden" name="_show_sql" value="1">'
-                    )
-                else:
-                    show_hide_link = path_with_added_args(request, {"_show_sql": 1})
-                    show_hide_text = "show"
-            else:
-                if bool(params.get("_hide_sql")):
-                    show_hide_link = path_with_removed_args(request, {"_hide_sql"})
-                    show_hide_text = "show"
-                    show_hide_hidden = (
-                        '<input type="hidden" name="_hide_sql" value="1">'
-                    )
-                else:
-                    show_hide_link = path_with_added_args(request, {"_hide_sql": 1})
-                    show_hide_text = "hide"
-            hide_sql = show_hide_text == "show"
-
-            # Show 'Edit SQL' button only if:
-            # - User is allowed to execute SQL
-            # - SQL is an approved SELECT statement
-            # - No magic parameters, so no :_ in the SQL string
-            edit_sql_url = None
-            is_validated_sql = False
-            try:
-                validate_sql_select(sql)
-                is_validated_sql = True
-            except InvalidSql:
-                pass
-            if allow_execute_sql and is_validated_sql and ":_" not in sql:
-                edit_sql_url = (
-                    datasette.urls.database(database)
-                    + "/-/query"
-                    + "?"
-                    + urlencode(
-                        {
-                            **{
-                                "sql": sql,
-                            },
-                            **named_parameter_values,
-                        }
-                    )
-                )
-
-            async def query_actions():
-                query_actions = []
-                for hook in pm.hook.query_actions(
-                    datasette=datasette,
-                    actor=request.actor,
-                    database=database,
-                    query_name=canned_query["name"] if canned_query else None,
-                    request=request,
-                    sql=sql,
-                    params=params,
-                ):
-                    extra_links = await await_me_maybe(hook)
-                    if extra_links:
-                        query_actions.extend(extra_links)
-                return query_actions
-
-            r = Response.html(
-                await datasette.render_template(
-                    template,
-                    QueryContext(
-                        database=database,
-                        database_color=db.color,
-                        query={
-                            "sql": sql,
-                            "params": params,
-                        },
-                        canned_query=canned_query["name"] if canned_query else None,
-                        private=private,
-                        canned_query_write=canned_query_write,
-                        db_is_immutable=not db.is_mutable,
-                        error=query_error,
-                        hide_sql=hide_sql,
-                        show_hide_link=datasette.urls.path(show_hide_link),
-                        show_hide_text=show_hide_text,
-                        editable=not canned_query,
-                        allow_execute_sql=allow_execute_sql,
-                        tables=await get_tables(datasette, request, db, allowed_dict),
-                        named_parameter_values=named_parameter_values,
-                        edit_sql_url=edit_sql_url,
-                        display_rows=await display_rows(
-                            datasette, database, request, rows, columns
-                        ),
-                        table_columns=(
-                            await _table_columns(datasette, database)
-                            if allow_execute_sql
-                            else {}
-                        ),
-                        columns=columns,
-                        renderers=renderers,
-                        url_csv=datasette.urls.path(
-                            path_with_format(
-                                request=request, format="csv", extra_qs={"_size": "max"}
-                            )
-                        ),
-                        show_hide_hidden=markupsafe.Markup(show_hide_hidden),
-                        metadata=canned_query or metadata,
-                        alternate_url_json=alternate_url_json,
-                        select_templates=[
-                            f"{'*' if template_name == template.name else ''}{template_name}"
-                            for template_name in templates
-                        ],
-                        top_query=make_slot_function(
-                            "top_query", datasette, request, database=database, sql=sql
-                        ),
-                        top_canned_query=make_slot_function(
-                            "top_canned_query",
-                            datasette,
-                            request,
-                            database=database,
-                            query_name=canned_query["name"] if canned_query else None,
-                        ),
-                        query_actions=query_actions,
-                    ),
-                    request=request,
-                    view_name="database",
-                ),
-                headers=headers,
-            )
-        else:
-            assert False, "Invalid format: {}".format(format_)
-        if datasette.cors:
-            add_cors_headers(r.headers)
-        return r
+        # Delegate to QueryPage for query execution and rendering
+        page = QueryPage(
+            datasette,
+            request,
+            database=database,
+            sql=sql,
+            params=params,
+            editable=not canned_query,
+            canned_query=canned_query,
+            private=private,
+        )
+        return await page.response()
 
 
 class MagicParameters(dict):
@@ -1189,68 +894,11 @@ async def _table_columns(datasette, database_name):
 
 
 async def display_rows(datasette, database, request, rows, columns):
-    display_rows = []
-    truncate_cells = datasette.setting("truncate_cells_html")
-    for row in rows:
-        display_row = []
-        for column, value in zip(columns, row):
-            display_value = value
-            # Let the plugins have a go
-            # pylint: disable=no-member
-            plugin_display_value = None
-            for candidate in pm.hook.render_cell(
-                row=row,
-                value=value,
-                column=column,
-                table=None,
-                database=database,
-                datasette=datasette,
-                request=request,
-            ):
-                candidate = await await_me_maybe(candidate)
-                if candidate is not None:
-                    plugin_display_value = candidate
-                    break
-            if plugin_display_value is not None:
-                display_value = plugin_display_value
-            else:
-                if value in ("", None):
-                    display_value = markupsafe.Markup("&nbsp;")
-                elif is_url(str(display_value).strip()):
-                    display_value = markupsafe.Markup(
-                        '<a href="{url}">{truncated_url}</a>'.format(
-                            url=markupsafe.escape(value.strip()),
-                            truncated_url=markupsafe.escape(
-                                truncate_url(value.strip(), truncate_cells)
-                            ),
-                        )
-                    )
-                elif isinstance(display_value, bytes):
-                    blob_url = path_with_format(
-                        request=request,
-                        format="blob",
-                        extra_qs={
-                            "_blob_column": column,
-                            "_blob_hash": hashlib.sha256(display_value).hexdigest(),
-                        },
-                    )
-                    formatted = format_bytes(len(value))
-                    display_value = markupsafe.Markup(
-                        '<a class="blob-download" href="{}"{}>&lt;Binary:&nbsp;{:,}&nbsp;byte{}&gt;</a>'.format(
-                            blob_url,
-                            (
-                                ' title="{}"'.format(formatted)
-                                if "bytes" not in formatted
-                                else ""
-                            ),
-                            len(value),
-                            "" if len(value) == 1 else "s",
-                        )
-                    )
-                else:
-                    display_value = str(value)
-                    if truncate_cells and len(display_value) > truncate_cells:
-                        display_value = display_value[:truncate_cells] + "\u2026"
-            display_row.append(display_value)
-        display_rows.append(display_row)
-    return display_rows
+    """Format raw query result rows for HTML display.
+
+    This is a thin wrapper around :func:`datasette.query_page._display_rows`
+    for backwards compatibility.
+    """
+    from datasette.query_page import _display_rows
+
+    return await _display_rows(datasette, database, request, rows, columns)

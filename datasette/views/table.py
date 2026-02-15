@@ -857,41 +857,23 @@ async def table_view_traced(datasette, request):
     elif format_ in datasette.renderers.keys():
         # Dispatch request to the correct output format renderer
         # (CSV is not handled here due to streaming)
-        result = call_with_supported_arguments(
-            datasette.renderers[format_][0],
-            datasette=datasette,
-            columns=columns,
-            rows=rows,
-            sql=sql,
-            query_name=None,
+        from datasette.query_page import dispatch_renderer
+
+        r = await dispatch_renderer(
+            datasette,
+            request,
+            format_,
+            columns,
+            rows,
+            sql,
             database=resolved.db.name,
             table=resolved.table,
-            request=request,
-            view_name="table",
+            query_name=None,
             truncated=False,
             error=None,
-            # These will be deprecated in Datasette 1.0:
-            args=request.args,
+            view_name="table",
             data=data,
         )
-        if asyncio.iscoroutine(result):
-            result = await result
-        if result is None:
-            raise NotFound("No data")
-        if isinstance(result, dict):
-            r = Response(
-                body=result.get("body"),
-                status=result.get("status_code") or 200,
-                content_type=result.get("content_type", "text/plain"),
-                headers=result.get("headers"),
-            )
-        elif isinstance(result, Response):
-            r = result
-            # if status_code is not None:
-            #     # Over-ride the status code
-            #     r.status = status_code
-        else:
-            assert False, f"{result} should be dict or Response"
     elif format_ == "html":
         headers = {}
         templates = [

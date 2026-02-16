@@ -48,6 +48,7 @@ from .views.index import IndexView
 from .views.special import (
     JsonDataView,
     PatternPortfolioView,
+    DebugMenuView,
     AuthTokenView,
     ApiExplorerView,
     CreateTokenView,
@@ -1995,6 +1996,10 @@ class Datasette:
         add_route(
             AllowDebugView.as_view(self),
             r"/-/allow-debug$",
+        )
+        add_route(
+            wrap_view(DebugMenuView, self),
+            r"/-/debug$",
         )
         add_route(
             wrap_view(PatternPortfolioView, self),

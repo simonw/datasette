@@ -8,34 +8,7 @@ def menu_links(datasette, actor):
             return []
 
         return [
-            {"href": datasette.urls.path("/-/databases"), "label": "Databases"},
-            {
-                "href": datasette.urls.path("/-/plugins"),
-                "label": "Installed plugins",
-            },
-            {
-                "href": datasette.urls.path("/-/versions"),
-                "label": "Version info",
-            },
-            {
-                "href": datasette.urls.path("/-/settings"),
-                "label": "Settings",
-            },
-            {
-                "href": datasette.urls.path("/-/permissions"),
-                "label": "Debug permissions",
-            },
-            {
-                "href": datasette.urls.path("/-/messages"),
-                "label": "Debug messages",
-            },
-            {
-                "href": datasette.urls.path("/-/allow-debug"),
-                "label": "Debug allow rules",
-            },
-            {"href": datasette.urls.path("/-/threads"), "label": "Debug threads"},
-            {"href": datasette.urls.path("/-/actor"), "label": "Debug actor"},
-            {"href": datasette.urls.path("/-/patterns"), "label": "Pattern portfolio"},
+            {"href": datasette.urls.path("/-/debug"), "label": "Debug"},
         ]
 
     return inner

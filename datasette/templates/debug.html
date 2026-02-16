@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Debug{% endblock %}
+
+{% block body_class %}debug{% endblock %}
+
+{% block content %}
+<h1>Debug</h1>
+
+{% if items %}
+<ul class="debug-items">
+    {% for item in items %}
+    <li>
+        <a href="{{ urls.path(item.path) }}">{{ item.title }}</a>{% if item.description %}
+        <p>{{ item.description }}</p>{% endif %}
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<p>No debug tools available.</p>
+{% endif %}
+
+{% endblock %}

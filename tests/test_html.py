@@ -955,8 +955,8 @@ def test_edit_sql_link_not_shown_if_user_lacks_permission(has_permission):
     "actor_id,should_have_links,should_not_have_links",
     [
         (None, None, None),
-        ("test", None, ["/-/permissions"]),
-        ("root", ["/-/permissions", "/-/allow-debug"], None),
+        ("test", None, ["/-/debug"]),
+        ("root", ["/-/debug"], None),
     ],
 )
 async def test_navigation_menu_links(

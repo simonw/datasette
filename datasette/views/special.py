@@ -89,6 +89,30 @@ class PatternPortfolioView(View):
         )
 
 
+class DebugMenuView(View):
+    async def get(self, request, datasette):
+        from datasette.plugins import pm
+        from datasette.utils import await_me_maybe
+
+        items = []
+        for hook in pm.hook.debug_menu(
+            datasette=datasette,
+            actor=request.actor,
+            request=request,
+        ):
+            extra_items = await await_me_maybe(hook)
+            if extra_items:
+                items.extend(extra_items)
+        return Response.html(
+            await datasette.render_template(
+                "debug.html",
+                request=request,
+                view_name="debug",
+                context={"items": items},
+            )
+        )
+
+
 class AuthTokenView(BaseView):
     name = "auth_token"
     has_json_alternate = False

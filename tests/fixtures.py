@@ -37,6 +37,7 @@ EXPECTED_PLUGINS = [
             "asgi_wrapper",
             "canned_queries",
             "database_actions",
+            "debug_menu",
             "extra_body_script",
             "extra_css_urls",
             "extra_js_urls",

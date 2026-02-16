@@ -1758,6 +1758,53 @@ This example will disable CSRF protection for that specific URL path:
 
 If any of the currently active ``skip_csrf()`` plugin hooks return ``True``, CSRF protection will be skipped for the request.
 
+.. _plugin_hook_debug_menu:
+
+debug_menu(datasette, actor, request)
+-------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``actor`` - dictionary or None
+    The currently authenticated :ref:`actor <authentication_actor>`.
+
+``request`` - :ref:`internals_request` or None
+    The current HTTP request. This can be ``None`` if the request object is not available.
+
+This hook allows plugins to add items to the ``/-/debug`` page, which serves as a hub for all debug and diagnostic tools.
+
+The hook should return a list of ``DebugItem`` objects (importable from ``datasette.permissions``). Each item has a ``title``, an optional ``description``, and a ``path`` to link to.
+
+It can alternatively return an ``async def`` awaitable function which returns a list of ``DebugItem`` objects.
+
+Hook implementations are responsible for checking permissions before returning items - only return items that the current actor should be able to see.
+
+This example adds a debug item only if the actor has the ``view-instance`` permission:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.permissions import DebugItem
+
+
+    @hookimpl
+    def debug_menu(datasette, actor):
+        async def inner():
+            if not await datasette.allowed(
+                action="view-instance", actor=actor
+            ):
+                return []
+            return [
+                DebugItem(
+                    title="My debug tool",
+                    description="Custom diagnostic page",
+                    path="/-/my-debug-tool",
+                )
+            ]
+
+        return inner
+
 .. _plugin_hook_menu_links:
 
 menu_links(datasette, actor, request)

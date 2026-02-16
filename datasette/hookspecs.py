@@ -138,6 +138,11 @@ def forbidden(datasette, request, message):
 
 
 @hookspec
+def debug_menu(datasette, actor, request):
+    """Return a list of DebugItem objects for the /-/debug page"""
+
+
+@hookspec
 def menu_links(datasette, actor, request):
     """Links for the navigation menu"""
 

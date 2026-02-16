@@ -2,7 +2,7 @@ import asyncio
 from datasette import hookimpl
 from datasette.facets import Facet
 from datasette import tracer
-from datasette.permissions import Action
+from datasette.permissions import Action, DebugItem
 from datasette.resources import DatabaseResource
 from datasette.utils import path_with_added_args
 from datasette.utils.asgi import asgi_send_json, Response
@@ -352,6 +352,18 @@ def forbidden(datasette, request, message):
     datasette._last_forbidden_message = message
     if request.path == "/data2":
         return Response.redirect("/login?message=" + message)
+
+
+@hookimpl
+def debug_menu(datasette, actor, request):
+    if actor:
+        return [
+            DebugItem(
+                title="Test debug item",
+                description="From test plugin",
+                path="/-/plugins",
+            )
+        ]
 
 
 @hookimpl

@@ -928,6 +928,18 @@ async def test_hook_handle_exception_custom_response(ds_client, param):
 
 
 @pytest.mark.asyncio
+async def test_hook_debug_menu(ds_client):
+    # Without authentication, no plugin debug items
+    response = await ds_client.get("/-/debug")
+    assert "Test debug item" not in response.text
+
+    # With authentication, plugin debug items appear
+    response_2 = await ds_client.get("/-/debug?_bot=1")
+    assert "Test debug item" in response_2.text
+    assert "From test plugin" in response_2.text
+
+
+@pytest.mark.asyncio
 async def test_hook_menu_links(ds_client):
     def get_menu_links(html):
         soup = Soup(html, "html.parser")

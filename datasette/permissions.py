@@ -123,6 +123,13 @@ class AllowedResource(NamedTuple):
 
 
 @dataclass(frozen=True, kw_only=True)
+class DebugItem:
+    title: str
+    path: str
+    description: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
 class Action:
     name: str
     description: str | None

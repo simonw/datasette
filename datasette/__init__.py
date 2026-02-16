@@ -1,4 +1,5 @@
 from datasette.permissions import Permission  # noqa
+from datasette.permissions import DebugItem  # noqa
 from datasette.version import __version_info__, __version__  # noqa
 from datasette.events import Event  # noqa
 from datasette.utils.asgi import Forbidden, NotFound, Request, Response  # noqa

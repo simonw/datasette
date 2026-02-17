@@ -136,6 +136,7 @@ async def test_table_shape_object_compound_primary_key(ds_client):
     assert response.json() == {
         "a,b": {"pk1": "a", "pk2": "b", "content": "c"},
         "a~2Fb,~2Ec-d": {"pk1": "a/b", "pk2": ".c-d", "content": "c"},
+        "d,e": {"pk1": "d", "pk2": "e", "content": "RENDER_CELL_DEMO"},
     }
 
 
@@ -169,11 +170,11 @@ async def test_table_with_reserved_word_name(ds_client):
 @pytest.mark.parametrize(
     "path,expected_rows,expected_pages",
     [
-        ("/fixtures/no_primary_key.json", 201, 5),
-        ("/fixtures/paginated_view.json", 201, 9),
-        ("/fixtures/no_primary_key.json?_size=25", 201, 9),
-        ("/fixtures/paginated_view.json?_size=50", 201, 5),
-        ("/fixtures/paginated_view.json?_size=max", 201, 3),
+        ("/fixtures/no_primary_key.json", 202, 5),
+        ("/fixtures/paginated_view.json", 202, 9),
+        ("/fixtures/no_primary_key.json?_size=25", 202, 9),
+        ("/fixtures/paginated_view.json?_size=50", 202, 5),
+        ("/fixtures/paginated_view.json?_size=max", 202, 3),
         ("/fixtures/123_starts_with_digits.json", 0, 1),
         # Ensure faceting doesn't break pagination:
         ("/fixtures/compound_three_primary_keys.json?_facet=pk1", 1001, 21),
@@ -232,7 +233,7 @@ async def test_page_size_zero(ds_client):
     )
     assert response.status_code == 200
     assert [] == response.json()["rows"]
-    assert 201 == response.json()["count"]
+    assert 202 == response.json()["count"]
     assert None is response.json()["next"]
     assert None is response.json()["next_url"]
 
@@ -722,11 +723,11 @@ def test_page_size_matching_max_returned_rows(
     while path:
         response = app_client_returned_rows_matches_page_size.get(path)
         fetched.extend(response.json["rows"])
-        assert len(response.json["rows"]) in (1, 50)
+        assert len(response.json["rows"]) in (2, 50)
         path = response.json["next_url"]
         if path:
             path = path.replace("http://localhost", "")
-    assert len(fetched) == 201
+    assert len(fetched) == 202
 
 
 @pytest.mark.asyncio

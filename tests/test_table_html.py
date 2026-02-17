@@ -597,6 +597,12 @@ async def test_table_html_compound_primary_key(ds_client):
             '<td class="col-pk2 type-str">.c-d</td>',
             '<td class="col-content type-str">c</td>',
         ],
+        [
+            '<td class="col-Link type-pk"><a href="/fixtures/compound_primary_key/d,e">d,e</a></td>',
+            '<td class="col-pk1 type-str">d</td>',
+            '<td class="col-pk2 type-str">e</td>',
+            '<td class="col-content type-str">{"row": {"pk1": "d", "pk2": "e", "content": "RENDER_CELL_DEMO"}, "column": "content", "table": "compound_primary_key", "database": "fixtures", "pks": ["pk1", "pk2"], "config": {"depth": "database"}}</td>',
+        ],
     ]
     assert [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")

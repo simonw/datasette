@@ -182,7 +182,7 @@ async def test_database_page(ds_client):
     # -- compound primary keys
     compound_pk = tables_by_name["compound_primary_key"]
     assert compound_pk["primary_keys"] == ["pk1", "pk2"]
-    assert compound_pk["count"] == 2
+    assert compound_pk["count"] == 3
 
     compound_three = tables_by_name["compound_three_primary_keys"]
     assert compound_three["primary_keys"] == ["pk1", "pk2", "pk3"]
@@ -196,7 +196,7 @@ async def test_database_page(ds_client):
     # -- no_primary_key: hidden table with generated data
     no_pk = tables_by_name["no_primary_key"]
     assert no_pk["hidden"] is True
-    assert no_pk["count"] == 201
+    assert no_pk["count"] == 202
     assert no_pk["primary_keys"] == []
 
     # -- roadside attractions relationship chain

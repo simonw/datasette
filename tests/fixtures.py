@@ -428,6 +428,7 @@ CREATE TABLE compound_primary_key (
 
 INSERT INTO compound_primary_key VALUES ('a', 'b', 'c');
 INSERT INTO compound_primary_key VALUES ('a/b', '.c-d', 'c');
+INSERT INTO compound_primary_key VALUES ('d', 'e', 'RENDER_CELL_DEMO');
 
 CREATE TABLE compound_three_primary_keys (
   pk1 varchar(30),
@@ -700,6 +701,7 @@ CREATE VIEW searchable_view_configured_by_metadata AS
             for i in range(201)
         ]
     )
+    + '\nINSERT INTO no_primary_key VALUES ("RENDER_CELL_DEMO", "a202", "b202", "c202");\n'
     + "\n".join(
         [
             'INSERT INTO compound_three_primary_keys VALUES ("{a}", "{b}", "{c}", "{content}");'.format(

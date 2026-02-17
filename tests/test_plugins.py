@@ -204,9 +204,55 @@ async def test_hook_render_cell_demo(ds_client):
         "column": "content",
         "table": "simple_primary_key",
         "database": "fixtures",
+        "pks": ["id"],
         "config": {"depth": "table", "special": "this-is-simple_primary_key"},
         "render_cell_extra": 1,
     }
+
+
+@pytest.mark.asyncio
+async def test_hook_render_cell_pks_single_pk(ds_client):
+    """pks should be ["id"] for a table with a single primary key"""
+    response = await ds_client.get("/fixtures/simple_primary_key?id=4")
+    soup = Soup(response.text, "html.parser")
+    td = soup.find("td", {"class": "col-content"})
+    data = json.loads(td.string)
+    assert data["pks"] == ["id"]
+
+
+@pytest.mark.asyncio
+async def test_hook_render_cell_pks_compound_pk(ds_client):
+    """pks should list all primary key columns for a compound pk table"""
+    response = await ds_client.get("/fixtures/compound_primary_key?pk1=d&pk2=e")
+    soup = Soup(response.text, "html.parser")
+    td = soup.find("td", {"class": "col-content"})
+    data = json.loads(td.string)
+    assert data["pks"] == ["pk1", "pk2"]
+
+
+@pytest.mark.asyncio
+async def test_hook_render_cell_pks_rowid_table(ds_client):
+    """pks should be ["rowid"] for a table with no explicit primary key"""
+    response = await ds_client.get(
+        "/fixtures/no_primary_key?content=RENDER_CELL_DEMO"
+    )
+    soup = Soup(response.text, "html.parser")
+    td = soup.find("td", {"class": "col-content"})
+    data = json.loads(td.string)
+    assert data["pks"] == ["rowid"]
+
+
+@pytest.mark.asyncio
+async def test_hook_render_cell_pks_custom_sql(ds_client):
+    """pks should be [] for custom SQL queries"""
+    response = await ds_client.get(
+        "/fixtures/-/query?sql=select+'RENDER_CELL_DEMO'+as+content"
+    )
+    soup = Soup(response.text, "html.parser")
+    td = soup.find("td", {"class": "col-content"})
+    data = json.loads(td.string)
+    assert data["pks"] == []
+    assert data["table"] is None
 
 
 @pytest.mark.asyncio

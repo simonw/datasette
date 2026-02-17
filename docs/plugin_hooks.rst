@@ -9,7 +9,7 @@ Each plugin can implement one or more hooks using the ``@hookimpl`` decorator ag
 
 When you implement a plugin hook you can accept any or all of the parameters that are documented as being passed to that hook.
 
-For example, you can implement the ``render_cell`` plugin hook like this even though the full documented hook signature is ``render_cell(row, value, column, table, database, datasette)``:
+For example, you can implement the ``render_cell`` plugin hook like this even though the full documented hook signature is ``render_cell(row, value, column, table, pks, database, datasette, request)``:
 
 .. code-block:: python
 
@@ -474,8 +474,8 @@ Examples: `datasette-publish-fly <https://datasette.io/plugins/datasette-publish
 
 .. _plugin_hook_render_cell:
 
-render_cell(row, value, column, table, database, datasette, request)
---------------------------------------------------------------------
+render_cell(row, value, column, table, pks, database, datasette, request)
+-------------------------------------------------------------------------
 
 Lets you customize the display of values within table cells in the HTML table view.
 
@@ -490,6 +490,9 @@ Lets you customize the display of values within table cells in the HTML table vi
 
 ``table`` - string or None
     The name of the table - or ``None`` if this is a custom SQL query
+
+``pks`` - list of strings
+    The primary key column names for the table being rendered. For tables without an explicitly defined primary key, this will be ``["rowid"]``. For custom SQL queries and views (where ``table`` is ``None``), this will be an empty list ``[]``.
 
 ``database`` - string
     The name of the database

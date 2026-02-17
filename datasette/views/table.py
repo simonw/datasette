@@ -235,6 +235,7 @@ async def display_columns_and_rows(
                 value=value,
                 column=column,
                 table=table_name,
+                pks=pks_for_display,
                 database=database_name,
                 datasette=datasette,
                 request=request,
@@ -1494,6 +1495,7 @@ async def table_view_data(
 
     async def extra_render_cell():
         "Rendered HTML for each cell using the render_cell plugin hook"
+        pks_for_display = pks if pks else (["rowid"] if not is_view else [])
         columns = [col[0] for col in results.description]
         rendered_rows = []
         for row in rows:
@@ -1506,6 +1508,7 @@ async def table_view_data(
                     value=value,
                     column=column,
                     table=table_name,
+                    pks=pks_for_display,
                     database=database_name,
                     datasette=datasette,
                     request=request,

@@ -1205,6 +1205,7 @@ async def display_rows(datasette, database, request, rows, columns):
                 value=value,
                 column=column,
                 table=None,
+                pks=[],
                 database=database,
                 datasette=datasette,
                 request=request,

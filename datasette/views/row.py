@@ -130,6 +130,7 @@ class RowView(DataView):
                         value=value,
                         column=column,
                         table=table,
+                        pks=resolved.pks,
                         database=database,
                         datasette=self.ds,
                         request=request,

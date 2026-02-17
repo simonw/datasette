@@ -104,7 +104,7 @@ def extra_body_script(
 
 
 @hookimpl
-def render_cell(row, value, column, table, database, datasette, request):
+def render_cell(row, value, column, table, pks, database, datasette, request):
     async def inner():
         # Render some debug output in cell with value RENDER_CELL_DEMO
         if value == "RENDER_CELL_DEMO":
@@ -113,6 +113,7 @@ def render_cell(row, value, column, table, database, datasette, request):
                 "column": column,
                 "table": table,
                 "database": database,
+                "pks": pks,
                 "config": datasette.plugin_config(
                     "name-of-plugin",
                     database=database,

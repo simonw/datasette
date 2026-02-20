@@ -632,9 +632,9 @@ def test_other_types_of_facet_in_metadata():
             assert fragment in response.text
         # Verify they appear in the metadata-defined order
         positions = [response.text.index(f) for f in fragments]
-        assert positions == sorted(positions), (
-            "Facets should appear in metadata-defined order"
-        )
+        assert positions == sorted(
+            positions
+        ), "Facets should appear in metadata-defined order"
 
 
 def test_metadata_facet_ordering():
@@ -652,9 +652,7 @@ def test_metadata_facet_ordering():
         }
     ) as client:
         # JSON response should have facets in the metadata-defined order
-        response = client.get(
-            "/fixtures/facetable.json?_extra=sorted_facet_results"
-        )
+        response = client.get("/fixtures/facetable.json?_extra=sorted_facet_results")
         data = response.json
         facet_names = [f["name"] for f in data["sorted_facet_results"]]
         assert facet_names == ["state", "tags", "created"]

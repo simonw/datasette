@@ -1589,9 +1589,7 @@ async def table_view_data(
                     metadata_facet_names.append(fc)
                 elif isinstance(fc, dict):
                     metadata_facet_names.append(list(fc.values())[0])
-            metadata_order = {
-                name: i for i, name in enumerate(metadata_facet_names)
-            }
+            metadata_order = {name: i for i, name in enumerate(metadata_facet_names)}
             metadata_facets = []
             request_facets = []
             for f in extra_facet_results["results"].values():

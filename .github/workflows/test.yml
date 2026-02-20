@@ -34,7 +34,9 @@ jobs:
         # And the test that exceeds a localhost HTTPS server
         tests/test_datasette_https_server.sh
     - name: Black
-      run: black --check .
+      run: |
+        black --version
+        black --check .
     - name: Ruff
       run: ruff check datasette tests
     - name: Check if cog needs to be run

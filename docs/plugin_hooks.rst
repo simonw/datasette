@@ -1074,11 +1074,9 @@ You can also return an async function, which will be awaited on startup. Use thi
         async def inner():
             db = datasette.get_database()
             if "my_table" not in await db.table_names():
-                await db.execute_write(
-                    """
+                await db.execute_write("""
                     create table my_table (mycol text)
-                """
-                )
+                """)
 
         return inner
 
@@ -1560,7 +1558,6 @@ The resolver will automatically apply the most specific rule.
 
     from datasette import hookimpl
     from datasette.permissions import PermissionSQL
-
 
     TRUSTED = {"alice", "bob"}
 
@@ -2261,8 +2258,7 @@ This example logs events to a ``datasette_events`` table in a database called ``
     def startup(datasette):
         async def inner():
             db = datasette.get_database("events")
-            await db.execute_write(
-                """
+            await db.execute_write("""
                 create table if not exists datasette_events (
                     id integer primary key,
                     event_type text,
@@ -2270,8 +2266,7 @@ This example logs events to a ``datasette_events`` table in a database called ``
                     actor text,
                     properties text
                 )
-            """
-            )
+            """)
 
         return inner
 

@@ -254,6 +254,55 @@ For the currently filtered data are there any columns which, if applied as a fac
 That last point is particularly important: Datasette runs a query for every column that is displayed on a page, which could get expensive - so to avoid slow load times it sets a time limit of just 50ms for each of those queries.
 This means suggested facets are unlikely to appear for tables with millions of records in them.
 
+You can turn off suggested facets for a specific table by setting ``"suggest_facets"`` to ``false`` in the table's configuration:
+
+.. [[[cog
+    from metadata_doc import metadata_example
+    metadata_example(cog, {
+      "databases": {
+        "mydb": {
+          "tables": {
+            "big_table": {
+              "suggest_facets": False
+            }
+          }
+        }
+      }
+    })
+.. ]]]
+
+.. tab:: metadata.yaml
+
+    .. code-block:: yaml
+
+        databases:
+          mydb:
+            tables:
+              big_table:
+                suggest_facets: false
+
+
+.. tab:: metadata.json
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "mydb": {
+              "tables": {
+                "big_table": {
+                  "suggest_facets": false
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
+
+This will disable suggested facets for that table only. Other tables in the same database will continue to suggest facets as normal. Explicitly requested facets (using ``?_facet=column``) will still work.
+
+You can also disable suggested facets for the entire Datasette instance using the :ref:`setting_suggest_facets` setting.
+
 Speeding up facets with indexes
 -------------------------------
 

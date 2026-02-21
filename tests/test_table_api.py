@@ -1002,6 +1002,39 @@ def test_suggest_facets_off():
         )
 
 
+def test_suggest_facets_off_per_table():
+    with make_app_client(
+        metadata={
+            "databases": {
+                "fixtures": {
+                    "tables": {
+                        "facetable": {"suggest_facets": False},
+                    }
+                }
+            }
+        }
+    ) as client:
+        # suggested_facets should be [] for the table with suggest_facets: false
+        assert (
+            []
+            == client.get("/fixtures/facetable.json?_extra=suggested_facets").json[
+                "suggested_facets"
+            ]
+        )
+        # But other tables should still get suggestions
+        other = client.get(
+            "/fixtures/simple_primary_key.json?_extra=suggested_facets"
+        ).json["suggested_facets"]
+        # simple_primary_key has a 'content' column that can be faceted
+        assert isinstance(other, list)
+        # Explicit facets should still work even when suggestions are off
+        response = client.get(
+            "/fixtures/facetable.json?_facet=state&_extra=suggested_facets"
+        )
+        assert response.json["suggested_facets"] == []
+        assert response.json["facet_results"]["results"] != {}
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("nofacet", (True, False))
 async def test_nofacet(ds_client, nofacet):

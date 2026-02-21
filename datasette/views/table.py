@@ -1378,7 +1378,9 @@ async def table_view_data(
         suggested_facets = []
         # Calculate suggested facets
         if (
-            datasette.setting("suggest_facets")
+            table_metadata.get(
+                "suggest_facets", datasette.setting("suggest_facets")
+            )
             and datasette.setting("allow_facet")
             and not _next
             and not nofacet

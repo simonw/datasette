@@ -284,3 +284,13 @@ async def test_expires_after_round_trip(datasette):
     assert actor is not None
     assert actor["id"] == "test_actor"
     assert "token_expires" in actor
+
+
+@pytest.mark.asyncio
+async def test_signed_tokens_disabled():
+    """create_token and verify_token should fail/skip when signed tokens are disabled."""
+    ds = Datasette(settings={"allow_signed_tokens": False})
+    with pytest.raises(ValueError, match="Signed tokens are not enabled"):
+        await ds.create_token("test_actor")
+    # verify_token should return None rather than raising
+    assert await ds.verify_token("dstok_anything") is None

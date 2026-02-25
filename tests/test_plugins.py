@@ -1569,14 +1569,37 @@ async def test_hook_register_events():
 @pytest.mark.asyncio
 async def test_hook_register_token_handler(ds_client):
     handlers = ds_client.ds._token_handlers()
-    assert len(handlers) >= 1
-    # Default signed handler should be present
-    assert any(h.name == "signed" for h in handlers)
-    # Should be able to create and verify a token
-    token = await ds_client.ds.create_token("test")
-    assert token.startswith("dstok_")
+    handler_names = [h.name for h in handlers]
+    # Both the default signed handler and the test hardcoded handler
+    assert "signed" in handler_names
+    assert "hardcoded" in handler_names
+
+    # Create a token using the hardcoded handler (first registered from plugins dir)
+    token = await ds_client.ds.create_token("test-user")
+    assert token.startswith("dstok_hardcoded_token_")
+
+    # Verify it
     actor = await ds_client.ds.verify_token(token)
-    assert actor["id"] == "test"
+    assert actor["id"] == "hardcoded-actor"
+    assert actor["token"] == "hardcoded"
+
+    # Create a token by explicitly requesting the hardcoded handler by name
+    token2 = await ds_client.ds.create_token(
+        "test-user", handler="hardcoded"
+    )
+    assert token2.startswith("dstok_hardcoded_token_")
+    actor2 = await ds_client.ds.verify_token(token2)
+    assert actor2["id"] == "hardcoded-actor"
+
+    # Create a token by explicitly requesting the signed handler by name
+    signed_token = await ds_client.ds.create_token(
+        "test-user", handler="signed"
+    )
+    assert signed_token.startswith("dstok_")
+    assert not signed_token.startswith("dstok_hardcoded_token_")
+    signed_actor = await ds_client.ds.verify_token(signed_token)
+    assert signed_actor["id"] == "test-user"
+    assert signed_actor["token"] == "dstok"
 
 
 @pytest.mark.asyncio

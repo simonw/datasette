@@ -1,6 +1,7 @@
 from bs4 import BeautifulSoup as Soup
 from .utils import cookie_was_deleted, last_event
 from click.testing import CliRunner
+from datasette.permissions import TokenRestrictions
 from datasette.utils import baseconv
 from datasette.cli import cli
 from datasette.resources import (
@@ -209,9 +210,7 @@ def test_auth_create_token(
         event = last_event(app_client.ds)
         assert event.name == "create-token"
         assert event.expires_after == expected_duration
-        assert isinstance(event.restrict_all, list)
-        assert isinstance(event.restrict_database, dict)
-        assert isinstance(event.restrict_resource, dict)
+        assert isinstance(event.restrictions, TokenRestrictions)
         # Extract token from page
         token = response2.text.split('value="dstok_')[1].split('"')[0]
         details = app_client.ds.unsign(token, "token")
@@ -509,7 +508,11 @@ async def test_create_signed_token_with_restrictions(ds_client):
     token = ds_client.ds.create_signed_token(
         "test_actor",
         expires_after=3600,
-        restrict_all=["view-instance"],
+        restrictions=TokenRestrictions(
+            all=["view-instance"],
+            database={},
+            resource={},
+        ),
     )
     decoded = ds_client.ds.unsign(token[len("dstok_"):], namespace="token")
     assert decoded["a"] == "test_actor"
@@ -523,24 +526,24 @@ async def test_build_token_restrictions(ds_client):
     """build_token_restrictions() returns abbreviated restriction dicts"""
     ds = ds_client.ds
     # No restrictions returns None
-    assert ds.build_token_restrictions() is None
+    assert ds.build_token_restrictions(TokenRestrictions(all=[], database={}, resource={})) is None
 
-    # With restrict_all
-    result = ds.build_token_restrictions(restrict_all=["view-instance"])
+    # With all
+    result = ds.build_token_restrictions(TokenRestrictions(all=["view-instance"], database={}, resource={}))
     assert result is not None
     assert "a" in result
 
-    # With restrict_database
+    # With database
     result = ds.build_token_restrictions(
-        restrict_database={"mydb": ["view-table"]}
+        TokenRestrictions(all=[], database={"mydb": ["view-table"]}, resource={})
     )
     assert result is not None
     assert "d" in result
     assert "mydb" in result["d"]
 
-    # With restrict_resource
+    # With resource
     result = ds.build_token_restrictions(
-        restrict_resource={"mydb": {"mytable": ["insert-row"]}}
+        TokenRestrictions(all=[], database={}, resource={"mydb": {"mytable": ["insert-row"]}})
     )
     assert result is not None
     assert "r" in result
@@ -563,8 +566,11 @@ async def test_create_token_hook_default_with_restrictions(ds_client):
     token = await ds_client.ds.create_token(
         "test_actor",
         expires_after=7200,
-        restrict_all=["view-instance"],
-        restrict_database={"fixtures": ["view-table"]},
+        restrictions=TokenRestrictions(
+            all=["view-instance"],
+            database={"fixtures": ["view-table"]},
+            resource={},
+        ),
     )
     assert token.startswith("dstok_")
     decoded = ds_client.ds.unsign(token[len("dstok_"):], namespace="token")
@@ -584,7 +590,7 @@ async def test_create_token_hook_can_be_overridden(ds_client):
 
         @staticmethod
         @hookimpl(specname="create_token")
-        def custom_create_token(datasette, actor_id, expires_after, restrict_all, restrict_database, restrict_resource):
+        def custom_create_token(datasette, actor_id, expires_after, restrictions):
             return "custom_token_for_{}".format(actor_id)
 
     pm.register(CustomTokenPlugin, name="custom_token_test_plugin")
@@ -606,7 +612,7 @@ async def test_create_token_hook_async_override(ds_client):
 
         @staticmethod
         @hookimpl(specname="create_token")
-        def async_create_token(datasette, actor_id, expires_after, restrict_all, restrict_database, restrict_resource):
+        def async_create_token(datasette, actor_id, expires_after, restrictions):
             async def inner():
                 return "async_token_for_{}".format(actor_id)
             return inner()
@@ -630,7 +636,7 @@ async def test_create_token_hook_none_falls_through(ds_client):
 
         @staticmethod
         @hookimpl(specname="create_token")
-        def none_create_token(datasette, actor_id, expires_after, restrict_all, restrict_database, restrict_resource):
+        def none_create_token(datasette, actor_id, expires_after, restrictions):
             return None
 
     pm.register(NoneTokenPlugin, name="none_token_test_plugin")

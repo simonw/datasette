@@ -96,7 +96,7 @@ def actor_from_signed_api_token(datasette: "Datasette", request) -> Optional[dic
 
 
 @hookimpl(trylast=True, specname="create_token")
-def create_signed_api_token(datasette, actor_id, expires_after, restrict_all, restrict_database, restrict_resource):
+def create_signed_api_token(datasette, actor_id, expires_after, restrictions):
     """Default create_token implementation: creates a signed dstok_ token.
 
     Runs last so that plugins like datasette-auth-tokens can override
@@ -105,7 +105,5 @@ def create_signed_api_token(datasette, actor_id, expires_after, restrict_all, re
     return datasette.create_signed_token(
         actor_id,
         expires_after=expires_after,
-        restrict_all=restrict_all,
-        restrict_database=restrict_database,
-        restrict_resource=restrict_resource,
+        restrictions=restrictions,
     )

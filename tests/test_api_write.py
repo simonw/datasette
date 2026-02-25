@@ -1,4 +1,5 @@
 from datasette.app import Datasette
+from datasette.permissions import TokenRestrictions
 from datasette.utils import sqlite3
 from .utils import last_event
 import pytest
@@ -1362,7 +1363,7 @@ async def test_create_table(
 async def test_create_table_permissions(
     ds_write, permissions, body, expected_status, expected_errors
 ):
-    token = ds_write.create_signed_token("root", restrict_all=["view-instance"] + permissions)
+    token = ds_write.create_signed_token("root", restrictions=TokenRestrictions(all=["view-instance"] + permissions, database={}, resource={}))
     response = await ds_write.client.post(
         "/data/-/create",
         json=body,

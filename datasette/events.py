@@ -53,19 +53,13 @@ class CreateTokenEvent(Event):
 
     :ivar expires_after: Number of seconds after which this token will expire.
     :type expires_after: int or None
-    :ivar restrict_all: Restricted permissions for this token.
-    :type restrict_all: list
-    :ivar restrict_database: Restricted database permissions for this token.
-    :type restrict_database: dict
-    :ivar restrict_resource: Restricted resource permissions for this token.
-    :type restrict_resource: dict
+    :ivar restrictions: Token restrictions (a :class:`TokenRestrictions` instance).
+    :type restrictions: TokenRestrictions
     """
 
     name = "create-token"
     expires_after: int | None
-    restrict_all: list
-    restrict_database: dict
-    restrict_resource: dict
+    restrictions: object  # TokenRestrictions
 
 
 @dataclass

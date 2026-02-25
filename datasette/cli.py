@@ -841,12 +841,17 @@ def create_token(
             action
         )
 
+    from datasette.permissions import TokenRestrictions
+
+    restrictions = TokenRestrictions(
+        all=alls,
+        database=restrict_database,
+        resource=restrict_resource,
+    )
     token = ds.create_signed_token(
         id,
         expires_after=expires_after,
-        restrict_all=alls,
-        restrict_database=restrict_database,
-        restrict_resource=restrict_resource,
+        restrictions=restrictions,
     )
     click.echo(token)
     if debug:

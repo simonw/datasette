@@ -121,6 +121,19 @@ class AllowedResource(NamedTuple):
     reason: str
 
 
+@dataclass
+class TokenRestrictions:
+    """Restrictions that can be applied to an API token.
+
+    ``all`` restricts globally, ``database`` restricts per-database,
+    and ``resource`` restricts per-resource within a database.
+    """
+
+    all: list[str]
+    database: dict[str, list[str]]
+    resource: dict[str, dict[str, list[str]]]
+
+
 @dataclass(frozen=True, kw_only=True)
 class Action:
     name: str

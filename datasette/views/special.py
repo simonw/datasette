@@ -1,6 +1,7 @@
 import json
 import logging
 from datasette.events import LogoutEvent, LoginEvent, CreateTokenEvent
+from datasette.permissions import TokenRestrictions
 from datasette.resources import DatabaseResource, TableResource
 from datasette.utils.asgi import Response, Forbidden
 from datasette.utils import (
@@ -731,21 +732,22 @@ class CreateTokenView(BaseView):
                     resource, []
                 ).append(action)
 
+        restrictions = TokenRestrictions(
+            all=restrict_all,
+            database=restrict_database,
+            resource=restrict_resource,
+        )
         token = self.ds.create_signed_token(
             request.actor["id"],
             expires_after=expires_after,
-            restrict_all=restrict_all,
-            restrict_database=restrict_database,
-            restrict_resource=restrict_resource,
+            restrictions=restrictions,
         )
         token_bits = self.ds.unsign(token[len("dstok_") :], namespace="token")
         await self.ds.track_event(
             CreateTokenEvent(
                 actor=request.actor,
                 expires_after=expires_after,
-                restrict_all=restrict_all,
-                restrict_database=restrict_database,
-                restrict_resource=restrict_resource,
+                restrictions=restrictions,
             )
         )
         context = await self.shared(request)

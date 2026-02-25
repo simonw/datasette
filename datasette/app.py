@@ -6,7 +6,7 @@ import contextvars
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List
 
 if TYPE_CHECKING:
-    from datasette.permissions import Resource
+    from datasette.permissions import Resource, TokenRestrictions
 import asgi_csrf
 import collections
 import dataclasses
@@ -722,60 +722,56 @@ class Datasette:
 
     def build_token_restrictions(
         self,
-        restrict_all: Iterable[str] | None = None,
-        restrict_database: Dict[str, Iterable[str]] | None = None,
-        restrict_resource: Dict[str, Dict[str, Iterable[str]]] | None = None,
+        restrictions: "TokenRestrictions",
     ) -> dict | None:
         """Build an abbreviated restrictions dict for use in token payloads.
 
         Returns a dict like ``{"a": [...], "d": {...}, "r": {...}}``
         or ``None`` if there are no restrictions.
         """
-        if not (restrict_all or restrict_database or restrict_resource):
+        if not (restrictions.all or restrictions.database or restrictions.resource):
             return None
-        restrictions: dict = {}
-        if restrict_all:
-            restrictions["a"] = [
-                self._abbreviate_action(a) for a in restrict_all
+        result: dict = {}
+        if restrictions.all:
+            result["a"] = [
+                self._abbreviate_action(a) for a in restrictions.all
             ]
-        if restrict_database:
-            restrictions["d"] = {
+        if restrictions.database:
+            result["d"] = {
                 database: [self._abbreviate_action(a) for a in actions]
-                for database, actions in restrict_database.items()
+                for database, actions in restrictions.database.items()
             }
-        if restrict_resource:
-            restrictions["r"] = {}
-            for database, resources in restrict_resource.items():
+        if restrictions.resource:
+            result["r"] = {}
+            for database, resources in restrictions.resource.items():
                 for resource, actions in resources.items():
-                    restrictions["r"].setdefault(database, {})[resource] = [
+                    result["r"].setdefault(database, {})[resource] = [
                         self._abbreviate_action(a) for a in actions
                     ]
-        return restrictions
+        return result
 
     def create_signed_token(
         self,
         actor_id: str,
         *,
         expires_after: int | None = None,
-        restrict_all: Iterable[str] | None = None,
-        restrict_database: Dict[str, Iterable[str]] | None = None,
-        restrict_resource: Dict[str, Dict[str, Iterable[str]]] | None = None,
+        restrictions: "TokenRestrictions | None" = None,
     ) -> str:
         """Create a signed ``dstok_`` API token.
 
         This always creates a signed token regardless of installed plugins.
         Use :meth:`create_token` to go through the plugin hook instead.
         """
+        from datasette.permissions import TokenRestrictions
+
         token: dict = {"a": actor_id, "t": int(time.time())}
         if expires_after:
             token["d"] = expires_after
-        restrictions = self.build_token_restrictions(
-            restrict_all=restrict_all,
-            restrict_database=restrict_database,
-            restrict_resource=restrict_resource,
-        )
-        if restrictions:
-            token["_r"] = restrictions
+        if restrictions is None:
+            restrictions = TokenRestrictions(all=[], database={}, resource={})
+        abbreviated = self.build_token_restrictions(restrictions)
+        if abbreviated:
+            token["_r"] = abbreviated
         return "dstok_{}".format(self.sign(token, namespace="token"))
 
     async def create_token(
@@ -783,9 +779,7 @@ class Datasette:
         actor_id: str,
         *,
         expires_after: int | None = None,
-        restrict_all: Iterable[str] | None = None,
-        restrict_database: Dict[str, Iterable[str]] | None = None,
-        restrict_resource: Dict[str, Dict[str, Iterable[str]]] | None = None,
+        restrictions: "TokenRestrictions | None" = None,
     ) -> str:
         """Create an API token, dispatching through the ``create_token`` hook.
 
@@ -793,13 +787,15 @@ class Datasette:
         a database-backed token instead of a signed one.  The default
         implementation creates a signed ``dstok_`` token.
         """
+        from datasette.permissions import TokenRestrictions
+
+        if restrictions is None:
+            restrictions = TokenRestrictions(all=[], database={}, resource={})
         for result in pm.hook.create_token(
             datasette=self,
             actor_id=actor_id,
             expires_after=expires_after,
-            restrict_all=restrict_all or [],
-            restrict_database=restrict_database or {},
-            restrict_resource=restrict_resource or {},
+            restrictions=restrictions,
         ):
             result = await await_me_maybe(result)
             if result is not None:

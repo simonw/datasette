@@ -1072,6 +1072,7 @@ cannot grant new access. If the underlying actor is denied by ``allow`` rules in
 ``datasette.yaml`` or by a plugin, a token that lists that resource in its
 ``"_r"`` section will still be denied.
 
+To create tokens with restrictions in Python code, use the :ref:`TokenRestrictions <TokenRestrictions>` builder and pass it to :ref:`datasette.create_token() <datasette_create_token>`.
 
 .. _permissions_plugins:
 

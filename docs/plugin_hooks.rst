@@ -2342,7 +2342,7 @@ register_token_handler(datasette)
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
 
-Return a ``TokenHandler`` instance to provide a custom token creation and verification backend.
+Return a ``TokenHandler`` instance to provide a custom token creation and verification backend. This hook can return a single ``TokenHandler`` or a list of them.
 
 The default ``SignedTokenHandler`` uses itsdangerous signed tokens (``dstok_`` prefix). Plugins can provide alternative backends such as database-backed tokens that support revocation and auditing.
 
@@ -2354,7 +2354,10 @@ The default ``SignedTokenHandler`` uses itsdangerous signed tokens (``dstok_`` p
     class DatabaseTokenHandler(TokenHandler):
         name = "database"
 
-        async def create_token(self, datasette, actor_id, **kwargs):
+        async def create_token(
+            self, datasette, actor_id, *,
+            expires_after=None, restrictions=None
+        ):
             # Store token in database and return token string
             ...
 
@@ -2366,6 +2369,8 @@ The default ``SignedTokenHandler`` uses itsdangerous signed tokens (``dstok_`` p
     @hookimpl
     def register_token_handler(datasette):
         return DatabaseTokenHandler()
+
+The ``create_token`` method receives a ``restrictions`` argument which will be a :ref:`TokenRestrictions <TokenRestrictions>` instance or ``None``.
 
 Tokens can then be created and verified using :ref:`datasette.create_token() <datasette_create_token>` and ``datasette.verify_token()``, which delegate to the registered handlers. If no ``handler`` is specified, the first handler is used according to `pluggy call-time ordering <https://pluggy.readthedocs.io/en/stable/#call-time-order>`_. Use the ``handler`` parameter to select a specific backend by name:
 
@@ -2379,4 +2384,6 @@ Tokens can then be created and verified using :ref:`datasette.create_token() <da
 
     # Verification tries all handlers
     actor = await datasette.verify_token(token)
+
+If no handlers are registered, ``create_token()`` raises ``RuntimeError``. If the requested ``handler`` name is not found, it raises ``ValueError``.
 

@@ -674,7 +674,7 @@ This example checks if the user can access a specific table, and sets ``private`
 .. _datasette_create_token:
 
 await .create_token(actor_id, expires_after=None, restrictions=None, handler=None)
------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------
 
 ``actor_id`` - string
     The ID of the actor to create a token for.

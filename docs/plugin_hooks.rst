@@ -2355,8 +2355,12 @@ The default ``SignedTokenHandler`` uses itsdangerous signed tokens (``dstok_`` p
         name = "database"
 
         async def create_token(
-            self, datasette, actor_id, *,
-            expires_after=None, restrictions=None
+            self,
+            datasette,
+            actor_id,
+            *,
+            expires_after=None,
+            restrictions=None
         ):
             # Store token in database and return token string
             ...
@@ -2380,7 +2384,9 @@ Tokens can then be created and verified using :ref:`datasette.create_token() <da
     token = await datasette.create_token("user123")
 
     # Uses a specific handler by name
-    token = await datasette.create_token("user123", handler="database")
+    token = await datasette.create_token(
+        "user123", handler="database"
+    )
 
     # Verification tries all handlers
     actor = await datasette.verify_token(token)

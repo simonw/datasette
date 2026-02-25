@@ -2367,7 +2367,7 @@ The default ``SignedTokenHandler`` uses itsdangerous signed tokens (``dstok_`` p
     def register_token_handler(datasette):
         return DatabaseTokenHandler()
 
-Tokens can then be created and verified using :ref:`datasette.create_token() <datasette_create_token>` and ``datasette.verify_token()``, which delegate to the registered handlers. Use the ``handler`` parameter to select a specific backend:
+Tokens can then be created and verified using :ref:`datasette.create_token() <datasette_create_token>` and ``datasette.verify_token()``, which delegate to the registered handlers. If no ``handler`` is specified, the first handler is used according to `pluggy call-time ordering <https://pluggy.readthedocs.io/en/stable/#call-time-order>`_. Use the ``handler`` parameter to select a specific backend by name:
 
 .. code-block:: python
 

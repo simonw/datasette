@@ -732,9 +732,7 @@ class Datasette:
         actor_id: str,
         *,
         expires_after: int | None = None,
-        restrict_all: Iterable[str] | None = None,
-        restrict_database: Dict[str, Iterable[str]] | None = None,
-        restrict_resource: Dict[str, Dict[str, Iterable[str]]] | None = None,
+        restrictions: "TokenRestrictions | None" = None,
         handler: str | None = None,
     ) -> str:
         """
@@ -742,6 +740,9 @@ class Datasette:
 
         Uses the first registered token handler by default, or a specific
         handler if ``handler`` is provided (matched by handler name).
+
+        Pass a :class:`TokenRestrictions` to limit which actions the token
+        can perform.
         """
         handlers = self._token_handlers()
         if not handlers:
@@ -763,9 +764,7 @@ class Datasette:
             self,
             actor_id,
             expires_after=expires_after,
-            restrict_all=restrict_all,
-            restrict_database=restrict_database,
-            restrict_resource=restrict_resource,
+            restrictions=restrictions,
         )
 
     async def verify_token(self, token: str) -> dict | None:

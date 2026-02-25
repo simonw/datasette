@@ -1362,7 +1362,11 @@ async def test_create_table(
 async def test_create_table_permissions(
     ds_write, permissions, body, expected_status, expected_errors
 ):
-    token = await ds_write.create_token("root", restrict_all=["view-instance"] + permissions)
+    from datasette.tokens import TokenRestrictions
+
+    token = await ds_write.create_token(
+        "root", restrictions=TokenRestrictions(all=["view-instance"] + permissions)
+    )
     response = await ds_write.client.post(
         "/data/-/create",
         json=body,

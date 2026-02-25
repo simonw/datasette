@@ -5,7 +5,7 @@ Tests for the register_token_handler plugin hook.
 from datasette.app import Datasette
 from datasette.hookspecs import hookimpl
 from datasette.plugins import pm
-from datasette.tokens import TokenHandler, SignedTokenHandler
+from datasette.tokens import TokenHandler, TokenRestrictions, SignedTokenHandler
 import pytest
 
 
@@ -36,7 +36,7 @@ async def test_create_token_with_restrictions(datasette):
     token = await datasette.create_token(
         "test_actor",
         expires_after=3600,
-        restrict_all=["view-instance"],
+        restrictions=TokenRestrictions(all=["view-instance"]),
     )
     assert token.startswith("dstok_")
     # Verify the token contains the expected data

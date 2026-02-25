@@ -8,13 +8,31 @@ Plugins can implement register_token_handler to provide custom token backends
 
 from __future__ import annotations
 
+import dataclasses
 import time
-from typing import TYPE_CHECKING, Dict, Iterable, Optional
+from typing import TYPE_CHECKING, Optional
 
 import itsdangerous
 
 if TYPE_CHECKING:
     from datasette.app import Datasette
+
+
+@dataclasses.dataclass
+class TokenRestrictions:
+    """
+    Restrictions to apply to a token, limiting which actions it can perform.
+
+    - all: actions allowed against all databases/resources
+    - database: {database_name: [actions]} for database-level restrictions
+    - resource: {database_name: {resource_name: [actions]}} for resource-level
+    """
+
+    all: list[str] = dataclasses.field(default_factory=list)
+    database: dict[str, list[str]] = dataclasses.field(default_factory=dict)
+    resource: dict[str, dict[str, list[str]]] = dataclasses.field(
+        default_factory=dict
+    )
 
 
 class TokenHandler:
@@ -33,9 +51,7 @@ class TokenHandler:
         actor_id: str,
         *,
         expires_after: Optional[int] = None,
-        restrict_all: Optional[Iterable[str]] = None,
-        restrict_database: Optional[Dict[str, Iterable[str]]] = None,
-        restrict_resource: Optional[Dict[str, Dict[str, Iterable[str]]]] = None,
+        restrictions: Optional[TokenRestrictions] = None,
     ) -> str:
         """Create and return a token string for the given actor."""
         raise NotImplementedError
@@ -63,9 +79,7 @@ class SignedTokenHandler(TokenHandler):
         actor_id: str,
         *,
         expires_after: Optional[int] = None,
-        restrict_all: Optional[Iterable[str]] = None,
-        restrict_database: Optional[Dict[str, Iterable[str]]] = None,
-        restrict_resource: Optional[Dict[str, Dict[str, Iterable[str]]]] = None,
+        restrictions: Optional[TokenRestrictions] = None,
     ) -> str:
         if not datasette.setting("allow_signed_tokens"):
             raise ValueError("Signed tokens are not enabled for this Datasette instance")
@@ -80,19 +94,23 @@ class SignedTokenHandler(TokenHandler):
 
         if expires_after:
             token["d"] = expires_after
-        if restrict_all or restrict_database or restrict_resource:
+        if restrictions and (
+            restrictions.all or restrictions.database or restrictions.resource
+        ):
             token["_r"] = {}
-            if restrict_all:
-                token["_r"]["a"] = [abbreviate_action(a) for a in restrict_all]
-            if restrict_database:
+            if restrictions.all:
+                token["_r"]["a"] = [
+                    abbreviate_action(a) for a in restrictions.all
+                ]
+            if restrictions.database:
                 token["_r"]["d"] = {}
-                for database, actions in restrict_database.items():
+                for database, actions in restrictions.database.items():
                     token["_r"]["d"][database] = [
                         abbreviate_action(a) for a in actions
                     ]
-            if restrict_resource:
+            if restrictions.resource:
                 token["_r"]["r"] = {}
-                for database, resources in restrict_resource.items():
+                for database, resources in restrictions.resource.items():
                     for resource, actions in resources.items():
                         token["_r"]["r"].setdefault(database, {})[resource] = [
                             abbreviate_action(a) for a in actions

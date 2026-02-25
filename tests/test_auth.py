@@ -491,3 +491,152 @@ async def test_root_without_root_enabled_no_special_permissions(ds_client):
         )
         is not True
     ), "Root without root_enabled should not automatically get drop-table"
+
+
+@pytest.mark.asyncio
+async def test_create_signed_token_method(ds_client):
+    """create_signed_token() creates a dstok_ token synchronously"""
+    token = ds_client.ds.create_signed_token("test_actor")
+    assert token.startswith("dstok_")
+    decoded = ds_client.ds.unsign(token[len("dstok_"):], namespace="token")
+    assert decoded["a"] == "test_actor"
+    assert "t" in decoded
+
+
+@pytest.mark.asyncio
+async def test_create_signed_token_with_restrictions(ds_client):
+    """create_signed_token() respects restriction parameters"""
+    token = ds_client.ds.create_signed_token(
+        "test_actor",
+        expires_after=3600,
+        restrict_all=["view-instance"],
+    )
+    decoded = ds_client.ds.unsign(token[len("dstok_"):], namespace="token")
+    assert decoded["a"] == "test_actor"
+    assert decoded["d"] == 3600
+    assert "_r" in decoded
+    assert "a" in decoded["_r"]
+
+
+@pytest.mark.asyncio
+async def test_build_token_restrictions(ds_client):
+    """build_token_restrictions() returns abbreviated restriction dicts"""
+    ds = ds_client.ds
+    # No restrictions returns None
+    assert ds.build_token_restrictions() is None
+
+    # With restrict_all
+    result = ds.build_token_restrictions(restrict_all=["view-instance"])
+    assert result is not None
+    assert "a" in result
+
+    # With restrict_database
+    result = ds.build_token_restrictions(
+        restrict_database={"mydb": ["view-table"]}
+    )
+    assert result is not None
+    assert "d" in result
+    assert "mydb" in result["d"]
+
+    # With restrict_resource
+    result = ds.build_token_restrictions(
+        restrict_resource={"mydb": {"mytable": ["insert-row"]}}
+    )
+    assert result is not None
+    assert "r" in result
+    assert "mydb" in result["r"]
+    assert "mytable" in result["r"]["mydb"]
+
+
+@pytest.mark.asyncio
+async def test_create_token_hook_default(ds_client):
+    """The async create_token() method uses the default hook to create signed tokens"""
+    token = await ds_client.ds.create_token("test_actor")
+    assert token.startswith("dstok_")
+    decoded = ds_client.ds.unsign(token[len("dstok_"):], namespace="token")
+    assert decoded["a"] == "test_actor"
+
+
+@pytest.mark.asyncio
+async def test_create_token_hook_default_with_restrictions(ds_client):
+    """The async create_token() with restrictions creates proper signed tokens"""
+    token = await ds_client.ds.create_token(
+        "test_actor",
+        expires_after=7200,
+        restrict_all=["view-instance"],
+        restrict_database={"fixtures": ["view-table"]},
+    )
+    assert token.startswith("dstok_")
+    decoded = ds_client.ds.unsign(token[len("dstok_"):], namespace="token")
+    assert decoded["a"] == "test_actor"
+    assert decoded["d"] == 7200
+    assert "_r" in decoded
+
+
+@pytest.mark.asyncio
+async def test_create_token_hook_can_be_overridden(ds_client):
+    """A plugin can override create_token to return a custom token"""
+    from datasette import hookimpl
+    from datasette.plugins import pm
+
+    class CustomTokenPlugin:
+        __name__ = "custom_token_test_plugin"
+
+        @staticmethod
+        @hookimpl(specname="create_token")
+        def custom_create_token(datasette, actor_id, expires_after, restrict_all, restrict_database, restrict_resource):
+            return "custom_token_for_{}".format(actor_id)
+
+    pm.register(CustomTokenPlugin, name="custom_token_test_plugin")
+    try:
+        token = await ds_client.ds.create_token("myactor")
+        assert token == "custom_token_for_myactor"
+    finally:
+        pm.unregister(name="custom_token_test_plugin")
+
+
+@pytest.mark.asyncio
+async def test_create_token_hook_async_override(ds_client):
+    """A plugin can override create_token with an async implementation"""
+    from datasette import hookimpl
+    from datasette.plugins import pm
+
+    class AsyncTokenPlugin:
+        __name__ = "async_token_test_plugin"
+
+        @staticmethod
+        @hookimpl(specname="create_token")
+        def async_create_token(datasette, actor_id, expires_after, restrict_all, restrict_database, restrict_resource):
+            async def inner():
+                return "async_token_for_{}".format(actor_id)
+            return inner()
+
+    pm.register(AsyncTokenPlugin, name="async_token_test_plugin")
+    try:
+        token = await ds_client.ds.create_token("myactor")
+        assert token == "async_token_for_myactor"
+    finally:
+        pm.unregister(name="async_token_test_plugin")
+
+
+@pytest.mark.asyncio
+async def test_create_token_hook_none_falls_through(ds_client):
+    """If a plugin returns None, the default signed token implementation is used"""
+    from datasette import hookimpl
+    from datasette.plugins import pm
+
+    class NoneTokenPlugin:
+        __name__ = "none_token_test_plugin"
+
+        @staticmethod
+        @hookimpl(specname="create_token")
+        def none_create_token(datasette, actor_id, expires_after, restrict_all, restrict_database, restrict_resource):
+            return None
+
+    pm.register(NoneTokenPlugin, name="none_token_test_plugin")
+    try:
+        token = await ds_client.ds.create_token("test_actor")
+        # Should fall through to default signed token
+        assert token.startswith("dstok_")
+    finally:
+        pm.unregister(name="none_token_test_plugin")

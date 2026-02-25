@@ -841,7 +841,7 @@ def create_token(
             action
         )
 
-    token = ds.create_token(
+    token = ds.create_signed_token(
         id,
         expires_after=expires_after,
         restrict_all=alls,

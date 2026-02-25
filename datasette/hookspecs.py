@@ -242,3 +242,25 @@ def write_wrapper(datasette, database, request, transaction):
 
     Return ``None`` to skip wrapping.
     """
+
+
+@hookspec
+def create_token(datasette, actor_id, expires_after, restrict_all, restrict_database, restrict_resource):
+    """Create an API token for the given actor.
+
+    Return a token string, or ``None`` to let the next implementation
+    handle token creation.  Implementations may be synchronous or
+    async (return an awaitable).
+
+    Parameters mirror ``Datasette.create_token()``:
+    - ``actor_id``: the actor ID to embed in the token.
+    - ``expires_after``: seconds until expiry, or ``None``.
+    - ``restrict_all``: list of action names to restrict globally.
+    - ``restrict_database``: ``{database: [actions]}`` restrictions.
+    - ``restrict_resource``: ``{database: {resource: [actions]}}``
+      restrictions.
+
+    The default (``trylast``) implementation creates a signed
+    ``dstok_`` token.  Plugins like ``datasette-auth-tokens`` can
+    override this to create database-backed tokens instead.
+    """

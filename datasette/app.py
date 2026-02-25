@@ -713,7 +713,46 @@ class Datasette:
         """
         return _in_datasette_client.get()
 
-    def create_token(
+    def _abbreviate_action(self, action: str) -> str:
+        """Return the abbreviated form of an action name if one exists."""
+        action_obj = self.actions.get(action)
+        if not action_obj:
+            return action
+        return action_obj.abbr or action
+
+    def build_token_restrictions(
+        self,
+        restrict_all: Iterable[str] | None = None,
+        restrict_database: Dict[str, Iterable[str]] | None = None,
+        restrict_resource: Dict[str, Dict[str, Iterable[str]]] | None = None,
+    ) -> dict | None:
+        """Build an abbreviated restrictions dict for use in token payloads.
+
+        Returns a dict like ``{"a": [...], "d": {...}, "r": {...}}``
+        or ``None`` if there are no restrictions.
+        """
+        if not (restrict_all or restrict_database or restrict_resource):
+            return None
+        restrictions: dict = {}
+        if restrict_all:
+            restrictions["a"] = [
+                self._abbreviate_action(a) for a in restrict_all
+            ]
+        if restrict_database:
+            restrictions["d"] = {
+                database: [self._abbreviate_action(a) for a in actions]
+                for database, actions in restrict_database.items()
+            }
+        if restrict_resource:
+            restrictions["r"] = {}
+            for database, resources in restrict_resource.items():
+                for resource, actions in resources.items():
+                    restrictions["r"].setdefault(database, {})[resource] = [
+                        self._abbreviate_action(a) for a in actions
+                    ]
+        return restrictions
+
+    def create_signed_token(
         self,
         actor_id: str,
         *,
@@ -721,36 +760,51 @@ class Datasette:
         restrict_all: Iterable[str] | None = None,
         restrict_database: Dict[str, Iterable[str]] | None = None,
         restrict_resource: Dict[str, Dict[str, Iterable[str]]] | None = None,
-    ):
-        token = {"a": actor_id, "t": int(time.time())}
+    ) -> str:
+        """Create a signed ``dstok_`` API token.
+
+        This always creates a signed token regardless of installed plugins.
+        Use :meth:`create_token` to go through the plugin hook instead.
+        """
+        token: dict = {"a": actor_id, "t": int(time.time())}
         if expires_after:
             token["d"] = expires_after
-
-        def abbreviate_action(action):
-            # rename to abbr if possible
-            action_obj = self.actions.get(action)
-            if not action_obj:
-                return action
-            return action_obj.abbr or action
-
-        if expires_after:
-            token["d"] = expires_after
-        if restrict_all or restrict_database or restrict_resource:
-            token["_r"] = {}
-            if restrict_all:
-                token["_r"]["a"] = [abbreviate_action(a) for a in restrict_all]
-            if restrict_database:
-                token["_r"]["d"] = {}
-                for database, actions in restrict_database.items():
-                    token["_r"]["d"][database] = [abbreviate_action(a) for a in actions]
-            if restrict_resource:
-                token["_r"]["r"] = {}
-                for database, resources in restrict_resource.items():
-                    for resource, actions in resources.items():
-                        token["_r"]["r"].setdefault(database, {})[resource] = [
-                            abbreviate_action(a) for a in actions
-                        ]
+        restrictions = self.build_token_restrictions(
+            restrict_all=restrict_all,
+            restrict_database=restrict_database,
+            restrict_resource=restrict_resource,
+        )
+        if restrictions:
+            token["_r"] = restrictions
         return "dstok_{}".format(self.sign(token, namespace="token"))
+
+    async def create_token(
+        self,
+        actor_id: str,
+        *,
+        expires_after: int | None = None,
+        restrict_all: Iterable[str] | None = None,
+        restrict_database: Dict[str, Iterable[str]] | None = None,
+        restrict_resource: Dict[str, Dict[str, Iterable[str]]] | None = None,
+    ) -> str:
+        """Create an API token, dispatching through the ``create_token`` hook.
+
+        If a plugin implements the ``create_token`` hook, it can return
+        a database-backed token instead of a signed one.  The default
+        implementation creates a signed ``dstok_`` token.
+        """
+        for result in pm.hook.create_token(
+            datasette=self,
+            actor_id=actor_id,
+            expires_after=expires_after,
+            restrict_all=restrict_all or [],
+            restrict_database=restrict_database or {},
+            restrict_resource=restrict_resource or {},
+        ):
+            result = await await_me_maybe(result)
+            if result is not None:
+                return result
+        raise RuntimeError("No create_token hook implementation returned a token")
 
     def get_database(self, name=None, route=None):
         if route is not None:

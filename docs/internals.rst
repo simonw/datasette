@@ -745,6 +745,23 @@ The following example creates a token that can access ``view-instance`` and ``vi
         ),
     )
 
+.. _datasette_verify_token:
+
+await .verify_token(token)
+--------------------------
+
+``token`` - string
+    The token string to verify.
+
+This is an ``async`` method that verifies an API token by trying each registered token handler in order. Returns an actor dictionary from the first handler that recognizes the token, or ``None`` if no handler accepts it.
+
+.. code-block:: python
+
+    actor = await datasette.verify_token(token)
+    if actor:
+        # Token was valid
+        print(actor["id"])
+
 .. _datasette_get_database:
 
 .get_database(name)

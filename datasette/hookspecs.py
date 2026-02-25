@@ -223,6 +223,11 @@ def top_canned_query(datasette, request, database, query_name):
 
 
 @hookspec
+def register_token_handler(datasette):
+    """Return a TokenHandler instance for token creation and verification"""
+
+
+@hookspec
 def write_wrapper(datasette, database, request, transaction):
     """Called when a write function is about to execute.
 

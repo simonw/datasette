@@ -38,6 +38,7 @@ from .defaults import (
     DEFAULT_ALLOW_ACTIONS as DEFAULT_ALLOW_ACTIONS,
 )
 from .tokens import actor_from_signed_api_token as actor_from_signed_api_token
+from .tokens import register_token_handler as register_token_handler
 
 
 @hookimpl

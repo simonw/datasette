@@ -841,12 +841,14 @@ def create_token(
             action
         )
 
-    token = ds.create_token(
-        id,
-        expires_after=expires_after,
-        restrict_all=alls,
-        restrict_database=restrict_database,
-        restrict_resource=restrict_resource,
+    token = run_sync(
+        lambda: ds.create_token(
+            id,
+            expires_after=expires_after,
+            restrict_all=alls,
+            restrict_database=restrict_database,
+            restrict_resource=restrict_resource,
+        )
     )
     click.echo(token)
     if debug:

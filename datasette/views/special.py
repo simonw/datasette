@@ -731,7 +731,7 @@ class CreateTokenView(BaseView):
                     resource, []
                 ).append(action)
 
-        token = self.ds.create_token(
+        token = await self.ds.create_token(
             request.actor["id"],
             expires_after=expires_after,
             restrict_all=restrict_all,

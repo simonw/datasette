@@ -722,9 +722,7 @@ class Datasette:
             if isinstance(result, TokenHandler):
                 handlers.append(result)
             elif isinstance(result, list):
-                handlers.extend(
-                    h for h in result if isinstance(h, TokenHandler)
-                )
+                handlers.extend(h for h in result if isinstance(h, TokenHandler))
         return handlers
 
     async def create_token(

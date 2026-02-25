@@ -33,9 +33,7 @@ class TokenRestrictions:
 
     all: list[str] = dataclasses.field(default_factory=list)
     database: dict[str, list[str]] = dataclasses.field(default_factory=dict)
-    resource: dict[str, dict[str, list[str]]] = dataclasses.field(
-        default_factory=dict
-    )
+    resource: dict[str, dict[str, list[str]]] = dataclasses.field(default_factory=dict)
 
     def allow_all(self, action: str) -> "TokenRestrictions":
         """Allow an action across all databases and resources."""
@@ -51,9 +49,7 @@ class TokenRestrictions:
         self, database: str, resource: str, action: str
     ) -> "TokenRestrictions":
         """Allow an action on a specific resource within a database."""
-        self.resource.setdefault(database, {}).setdefault(resource, []).append(
-            action
-        )
+        self.resource.setdefault(database, {}).setdefault(resource, []).append(action)
         return self
 
 
@@ -78,9 +74,7 @@ class TokenHandler:
         """Create and return a token string for the given actor."""
         raise NotImplementedError
 
-    async def verify_token(
-        self, datasette: "Datasette", token: str
-    ) -> Optional[dict]:
+    async def verify_token(self, datasette: "Datasette", token: str) -> Optional[dict]:
         """
         Verify a token and return an actor dict, or None if this handler
         does not recognize the token.
@@ -104,7 +98,9 @@ class SignedTokenHandler(TokenHandler):
         restrictions: Optional[TokenRestrictions] = None,
     ) -> str:
         if not datasette.setting("allow_signed_tokens"):
-            raise ValueError("Signed tokens are not enabled for this Datasette instance")
+            raise ValueError(
+                "Signed tokens are not enabled for this Datasette instance"
+            )
 
         token = {"a": actor_id, "t": int(time.time())}
 
@@ -121,15 +117,11 @@ class SignedTokenHandler(TokenHandler):
         ):
             token["_r"] = {}
             if restrictions.all:
-                token["_r"]["a"] = [
-                    abbreviate_action(a) for a in restrictions.all
-                ]
+                token["_r"]["a"] = [abbreviate_action(a) for a in restrictions.all]
             if restrictions.database:
                 token["_r"]["d"] = {}
                 for database, actions in restrictions.database.items():
-                    token["_r"]["d"][database] = [
-                        abbreviate_action(a) for a in actions
-                    ]
+                    token["_r"]["d"][database] = [abbreviate_action(a) for a in actions]
             if restrictions.resource:
                 token["_r"]["r"] = {}
                 for database, resources in restrictions.resource.items():
@@ -139,9 +131,7 @@ class SignedTokenHandler(TokenHandler):
                         ]
         return "dstok_{}".format(datasette.sign(token, namespace="token"))
 
-    async def verify_token(
-        self, datasette: "Datasette", token: str
-    ) -> Optional[dict]:
+    async def verify_token(self, datasette: "Datasette", token: str) -> Optional[dict]:
         prefix = "dstok_"
 
         if not datasette.setting("allow_signed_tokens"):
@@ -152,7 +142,7 @@ class SignedTokenHandler(TokenHandler):
         if not token.startswith(prefix):
             return None
 
-        raw = token[len(prefix):]
+        raw = token[len(prefix) :]
         try:
             decoded = datasette.unsign(raw, namespace="token")
         except itsdangerous.BadSignature:

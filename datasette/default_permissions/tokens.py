@@ -23,7 +23,9 @@ def register_token_handler(datasette: "Datasette"):
 
 
 @hookimpl(specname="actor_from_request")
-async def actor_from_signed_api_token(datasette: "Datasette", request) -> Optional[dict]:
+async def actor_from_signed_api_token(
+    datasette: "Datasette", request
+) -> Optional[dict]:
     """
     Authenticate requests using API tokens by delegating to all registered
     token handlers via datasette.verify_token().
@@ -34,5 +36,5 @@ async def actor_from_signed_api_token(datasette: "Datasette", request) -> Option
     if not authorization.startswith("Bearer "):
         return None
 
-    token = authorization[len("Bearer "):]
+    token = authorization[len("Bearer ") :]
     return await datasette.verify_token(token)

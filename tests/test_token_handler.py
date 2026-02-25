@@ -40,7 +40,7 @@ async def test_create_token_with_restrictions(datasette):
     )
     assert token.startswith("dstok_")
     # Verify the token contains the expected data
-    decoded = datasette.unsign(token[len("dstok_"):], namespace="token")
+    decoded = datasette.unsign(token[len("dstok_") :], namespace="token")
     assert decoded["a"] == "test_actor"
     assert decoded["d"] == 3600
     assert "_r" in decoded
@@ -97,7 +97,7 @@ async def test_custom_token_handler(datasette):
 
         async def verify_token(self, datasette, token):
             if token.startswith("custom_"):
-                return {"id": token[len("custom_"):], "token": "custom"}
+                return {"id": token[len("custom_") :], "token": "custom"}
             return None
 
     class Plugin:
@@ -221,7 +221,7 @@ async def test_custom_handler_via_http(datasette):
 
         async def verify_token(self, datasette, token):
             if token.startswith("chttp_"):
-                return {"id": token[len("chttp_"):], "token": "custom_http"}
+                return {"id": token[len("chttp_") :], "token": "custom_http"}
             return None
 
     class Plugin:

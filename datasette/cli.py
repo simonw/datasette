@@ -834,13 +834,13 @@ def create_token(
 
     from datasette.tokens import TokenRestrictions
 
-    restrictions = TokenRestrictions(all=list(alls))
+    restrictions = TokenRestrictions()
+    for action in alls:
+        restrictions.allow_all(action)
     for database, action in databases:
-        restrictions.database.setdefault(database, []).append(action)
+        restrictions.allow_database(database, action)
     for database, resource, action in resources:
-        restrictions.resource.setdefault(database, {}).setdefault(
-            resource, []
-        ).append(action)
+        restrictions.allow_resource(database, resource, action)
 
     token = run_sync(
         lambda: ds.create_token(

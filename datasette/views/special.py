@@ -716,20 +716,15 @@ class CreateTokenView(BaseView):
 
         for key in form:
             if key.startswith("all:") and key.count(":") == 1:
-                restrictions.all.append(key.split(":")[1])
+                restrictions.allow_all(key.split(":")[1])
             elif key.startswith("database:") and key.count(":") == 2:
                 bits = key.split(":")
-                database = tilde_decode(bits[1])
-                action = bits[2]
-                restrictions.database.setdefault(database, []).append(action)
+                restrictions.allow_database(tilde_decode(bits[1]), bits[2])
             elif key.startswith("resource:") and key.count(":") == 3:
                 bits = key.split(":")
-                database = tilde_decode(bits[1])
-                resource = tilde_decode(bits[2])
-                action = bits[3]
-                restrictions.resource.setdefault(database, {}).setdefault(
-                    resource, []
-                ).append(action)
+                restrictions.allow_resource(
+                    tilde_decode(bits[1]), tilde_decode(bits[2]), bits[3]
+                )
 
         token = await self.ds.create_token(
             request.actor["id"],

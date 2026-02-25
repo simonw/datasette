@@ -23,9 +23,12 @@ class TokenRestrictions:
     """
     Restrictions to apply to a token, limiting which actions it can perform.
 
-    - all: actions allowed against all databases/resources
-    - database: {database_name: [actions]} for database-level restrictions
-    - resource: {database_name: {resource_name: [actions]}} for resource-level
+    Use the builder methods to construct restrictions::
+
+        restrictions = (TokenRestrictions()
+            .allow_all("view-instance")
+            .allow_database("mydb", "create-table")
+            .allow_resource("mydb", "mytable", "insert-row"))
     """
 
     all: list[str] = dataclasses.field(default_factory=list)
@@ -33,6 +36,25 @@ class TokenRestrictions:
     resource: dict[str, dict[str, list[str]]] = dataclasses.field(
         default_factory=dict
     )
+
+    def allow_all(self, action: str) -> "TokenRestrictions":
+        """Allow an action across all databases and resources."""
+        self.all.append(action)
+        return self
+
+    def allow_database(self, database: str, action: str) -> "TokenRestrictions":
+        """Allow an action on a specific database."""
+        self.database.setdefault(database, []).append(action)
+        return self
+
+    def allow_resource(
+        self, database: str, resource: str, action: str
+    ) -> "TokenRestrictions":
+        """Allow an action on a specific resource within a database."""
+        self.resource.setdefault(database, {}).setdefault(resource, []).append(
+            action
+        )
+        return self
 
 
 class TokenHandler:

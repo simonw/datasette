@@ -36,7 +36,7 @@ async def test_create_token_with_restrictions(datasette):
     token = await datasette.create_token(
         "test_actor",
         expires_after=3600,
-        restrictions=TokenRestrictions(all=["view-instance"]),
+        restrictions=TokenRestrictions().allow_all("view-instance"),
     )
     assert token.startswith("dstok_")
     # Verify the token contains the expected data

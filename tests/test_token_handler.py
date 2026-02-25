@@ -197,7 +197,7 @@ async def test_verify_token_tries_all_handlers(datasette):
 
 @pytest.mark.asyncio
 async def test_token_handler_via_http(datasette):
-    """Tokens created via the handler should work through HTTP auth."""
+    """Default signed tokens should work through HTTP auth."""
     token = await datasette.create_token("http_user")
     response = await datasette.client.get(
         "/-/actor.json",

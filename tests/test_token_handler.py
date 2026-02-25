@@ -256,3 +256,31 @@ async def test_token_handler_base_class_raises():
         await handler.create_token(ds, "test")
     with pytest.raises(NotImplementedError):
         await handler.verify_token(ds, "test")
+
+
+@pytest.mark.asyncio
+async def test_restrictions_round_trip(datasette):
+    """Tokens with database/resource restrictions should round-trip correctly."""
+    restrictions = (
+        TokenRestrictions()
+        .allow_all("view-instance")
+        .allow_database("docs", "view-query")
+        .allow_resource("docs", "attachments", "insert-row")
+    )
+    token = await datasette.create_token("test_actor", restrictions=restrictions)
+    actor = await datasette.verify_token(token)
+    assert actor is not None
+    assert actor["id"] == "test_actor"
+    assert actor["_r"]["a"] == ["view-instance"]
+    assert actor["_r"]["d"] == {"docs": ["view-query"]}
+    assert actor["_r"]["r"] == {"docs": {"attachments": ["insert-row"]}}
+
+
+@pytest.mark.asyncio
+async def test_expires_after_round_trip(datasette):
+    """Tokens with expires_after should include token_expires in the actor."""
+    token = await datasette.create_token("test_actor", expires_after=3600)
+    actor = await datasette.verify_token(token)
+    assert actor is not None
+    assert actor["id"] == "test_actor"
+    assert "token_expires" in actor

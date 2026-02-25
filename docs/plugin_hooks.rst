@@ -2334,3 +2334,49 @@ The plugin can then call ``datasette.track_event(...)`` to send a ``ban-user`` e
         BanUserEvent(user={"id": 1, "username": "cleverbot"})
     )
 
+.. _plugin_hook_register_token_handler:
+
+register_token_handler(datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
+
+Return a ``TokenHandler`` instance to provide a custom token creation and verification backend.
+
+The default ``SignedTokenHandler`` uses itsdangerous signed tokens (``dstok_`` prefix). Plugins can provide alternative backends such as database-backed tokens that support revocation and auditing.
+
+.. code-block:: python
+
+    from datasette import hookimpl, TokenHandler
+
+
+    class DatabaseTokenHandler(TokenHandler):
+        name = "database"
+
+        async def create_token(self, datasette, actor_id, **kwargs):
+            # Store token in database and return token string
+            ...
+
+        async def verify_token(self, datasette, token):
+            # Look up token in database, return actor dict or None
+            ...
+
+
+    @hookimpl
+    def register_token_handler(datasette):
+        return DatabaseTokenHandler()
+
+Tokens can then be created and verified using :ref:`datasette.create_token() <datasette_create_token>` and ``datasette.verify_token()``, which delegate to the registered handlers. Use the ``handler`` parameter to select a specific backend:
+
+.. code-block:: python
+
+    # Uses first registered handler (default)
+    token = await datasette.create_token("user123")
+
+    # Uses a specific handler by name
+    token = await datasette.create_token("user123", handler="database")
+
+    # Verification tries all handlers
+    actor = await datasette.verify_token(token)
+

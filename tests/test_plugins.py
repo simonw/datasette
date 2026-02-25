@@ -1567,6 +1567,19 @@ async def test_hook_register_events():
 
 
 @pytest.mark.asyncio
+async def test_hook_register_token_handler(ds_client):
+    handlers = ds_client.ds._token_handlers()
+    assert len(handlers) >= 1
+    # Default signed handler should be present
+    assert any(h.name == "signed" for h in handlers)
+    # Should be able to create and verify a token
+    token = await ds_client.ds.create_token("test")
+    assert token.startswith("dstok_")
+    actor = await ds_client.ds.verify_token(token)
+    assert actor["id"] == "test"
+
+
+@pytest.mark.asyncio
 async def test_hook_write_wrapper():
     datasette = Datasette(memory=True)
     log = []

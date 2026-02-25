@@ -118,12 +118,12 @@ Instead, one should use the following methods on a Datasette class:
 (upgrade_guide_v1_a25)=
 ### Datasette 1.0a25: `create_token()` signature change
 
-The `restrict_all`, `restrict_database`, and `restrict_resource` keyword arguments on `datasette.create_token()` have been replaced by a single `restrictions` parameter that accepts a {ref}`TokenRestrictions <TokenRestrictions>` object.
+`datasette.create_token()` is now an `async` method (previously it was synchronous). The `restrict_all`, `restrict_database`, and `restrict_resource` keyword arguments have been replaced by a single `restrictions` parameter that accepts a {ref}`TokenRestrictions <TokenRestrictions>` object.
 
 Old code:
 
 ```python
-token = await datasette.create_token(
+token = datasette.create_token(
     actor_id="user1",
     restrict_all=["view-instance", "view-table"],
     restrict_database={"docs": ["view-query"]},

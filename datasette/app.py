@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List
 
 if TYPE_CHECKING:
     from datasette.permissions import Resource
+    from datasette.tokens import TokenRestrictions
 import asgi_csrf
 import collections
 import dataclasses

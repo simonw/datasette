@@ -730,6 +730,7 @@ class CreateTokenView(BaseView):
             request.actor["id"],
             expires_after=expires_after,
             restrictions=restrictions,
+            handler="signed",
         )
         token_bits = self.ds.unsign(token[len("dstok_") :], namespace="token")
         await self.ds.track_event(

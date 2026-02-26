@@ -847,6 +847,7 @@ def create_token(
             id,
             expires_after=expires_after,
             restrictions=restrictions,
+            handler="signed",
         )
     )
     click.echo(token)

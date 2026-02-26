@@ -1584,17 +1584,13 @@ async def test_hook_register_token_handler(ds_client):
     assert actor["token"] == "hardcoded"
 
     # Create a token by explicitly requesting the hardcoded handler by name
-    token2 = await ds_client.ds.create_token(
-        "test-user", handler="hardcoded"
-    )
+    token2 = await ds_client.ds.create_token("test-user", handler="hardcoded")
     assert token2.startswith("dstok_hardcoded_token_")
     actor2 = await ds_client.ds.verify_token(token2)
     assert actor2["id"] == "hardcoded-actor"
 
     # Create a token by explicitly requesting the signed handler by name
-    signed_token = await ds_client.ds.create_token(
-        "test-user", handler="signed"
-    )
+    signed_token = await ds_client.ds.create_token("test-user", handler="signed")
     assert signed_token.startswith("dstok_")
     assert not signed_token.startswith("dstok_hardcoded_token_")
     signed_actor = await ds_client.ds.verify_token(signed_token)

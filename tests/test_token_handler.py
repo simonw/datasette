@@ -25,8 +25,8 @@ async def test_default_signed_handler_registered(datasette):
 
 @pytest.mark.asyncio
 async def test_create_token_default(datasette):
-    """create_token() should use the default signed handler."""
-    token = await datasette.create_token("test_actor")
+    """create_token() with handler='signed' should create a signed token."""
+    token = await datasette.create_token("test_actor", handler="signed")
     assert token.startswith("dstok_")
 
 
@@ -35,6 +35,7 @@ async def test_create_token_with_restrictions(datasette):
     """create_token() should handle restriction parameters."""
     token = await datasette.create_token(
         "test_actor",
+        handler="signed",
         expires_after=3600,
         restrictions=TokenRestrictions().allow_all("view-instance"),
     )
@@ -49,8 +50,8 @@ async def test_create_token_with_restrictions(datasette):
 
 @pytest.mark.asyncio
 async def test_verify_token_default(datasette):
-    """verify_token() should verify tokens from the default handler."""
-    token = await datasette.create_token("test_actor")
+    """verify_token() should verify signed tokens."""
+    token = await datasette.create_token("test_actor", handler="signed")
     actor = await datasette.verify_token(token)
     assert actor is not None
     assert actor["id"] == "test_actor"
@@ -198,7 +199,7 @@ async def test_verify_token_tries_all_handlers(datasette):
 @pytest.mark.asyncio
 async def test_token_handler_via_http(datasette):
     """Default signed tokens should work through HTTP auth."""
-    token = await datasette.create_token("http_user")
+    token = await datasette.create_token("http_user", handler="signed")
     response = await datasette.client.get(
         "/-/actor.json",
         headers={"Authorization": f"Bearer {token}"},
@@ -267,7 +268,9 @@ async def test_restrictions_round_trip(datasette):
         .allow_database("docs", "view-query")
         .allow_resource("docs", "attachments", "insert-row")
     )
-    token = await datasette.create_token("test_actor", restrictions=restrictions)
+    token = await datasette.create_token(
+        "test_actor", handler="signed", restrictions=restrictions
+    )
     actor = await datasette.verify_token(token)
     assert actor is not None
     assert actor["id"] == "test_actor"
@@ -279,7 +282,9 @@ async def test_restrictions_round_trip(datasette):
 @pytest.mark.asyncio
 async def test_expires_after_round_trip(datasette):
     """Tokens with expires_after should include token_expires in the actor."""
-    token = await datasette.create_token("test_actor", expires_after=3600)
+    token = await datasette.create_token(
+        "test_actor", handler="signed", expires_after=3600
+    )
     actor = await datasette.verify_token(token)
     assert actor is not None
     assert actor["id"] == "test_actor"
@@ -291,6 +296,6 @@ async def test_signed_tokens_disabled():
     """create_token and verify_token should fail/skip when signed tokens are disabled."""
     ds = Datasette(settings={"allow_signed_tokens": False})
     with pytest.raises(ValueError, match="Signed tokens are not enabled"):
-        await ds.create_token("test_actor")
+        await ds.create_token("test_actor", handler="signed")
     # verify_token should return None rather than raising
     assert await ds.verify_token("dstok_anything") is None

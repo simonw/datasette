@@ -51,6 +51,7 @@ EXPECTED_PLUGINS = [
             "register_facet_classes",
             "register_magic_parameters",
             "register_routes",
+            "register_token_handler",
             "render_cell",
             "row_actions",
             "skip_csrf",

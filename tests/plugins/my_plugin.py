@@ -1,6 +1,7 @@
 import asyncio
 from datasette import hookimpl
 from datasette.facets import Facet
+from datasette.tokens import TokenHandler
 from datasette import tracer
 from datasette.permissions import Action
 from datasette.resources import DatabaseResource
@@ -586,3 +587,29 @@ def permission_resources_sql(datasette, actor, action):
             return PermissionSQL.allow(reason=f"todomvc actor allowed for {action}")
 
     return None
+
+
+class HardcodedTokenHandler(TokenHandler):
+    name = "hardcoded"
+    _counter = 0
+
+    async def create_token(
+        self,
+        datasette,
+        actor_id,
+        *,
+        expires_after=None,
+        restrictions=None,
+    ):
+        HardcodedTokenHandler._counter += 1
+        return f"dstok_hardcoded_token_{HardcodedTokenHandler._counter}"
+
+    async def verify_token(self, datasette, token):
+        if token.startswith("dstok_hardcoded_token_"):
+            return {"id": "hardcoded-actor", "token": "hardcoded"}
+        return None
+
+
+@hookimpl
+def register_token_handler(datasette):
+    return HardcodedTokenHandler()

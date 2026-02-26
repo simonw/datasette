@@ -1074,11 +1074,9 @@ You can also return an async function, which will be awaited on startup. Use thi
         async def inner():
             db = datasette.get_database()
             if "my_table" not in await db.table_names():
-                await db.execute_write(
-                    """
+                await db.execute_write("""
                     create table my_table (mycol text)
-                """
-                )
+                """)
 
         return inner
 
@@ -1560,7 +1558,6 @@ The resolver will automatically apply the most specific rule.
 
     from datasette import hookimpl
     from datasette.permissions import PermissionSQL
-
 
     TRUSTED = {"alice", "bob"}
 
@@ -2261,8 +2258,7 @@ This example logs events to a ``datasette_events`` table in a database called ``
     def startup(datasette):
         async def inner():
             db = datasette.get_database("events")
-            await db.execute_write(
-                """
+            await db.execute_write("""
                 create table if not exists datasette_events (
                     id integer primary key,
                     event_type text,
@@ -2270,8 +2266,7 @@ This example logs events to a ``datasette_events`` table in a database called ``
                     actor text,
                     properties text
                 )
-            """
-            )
+            """)
 
         return inner
 
@@ -2338,4 +2333,63 @@ The plugin can then call ``datasette.track_event(...)`` to send a ``ban-user`` e
     await datasette.track_event(
         BanUserEvent(user={"id": 1, "username": "cleverbot"})
     )
+
+.. _plugin_hook_register_token_handler:
+
+register_token_handler(datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
+
+Return a ``TokenHandler`` instance to provide a custom token creation and verification backend. This hook can return a single ``TokenHandler`` or a list of them.
+
+The default ``SignedTokenHandler`` uses itsdangerous signed tokens (``dstok_`` prefix). Plugins can provide alternative backends such as database-backed tokens that support revocation and auditing.
+
+.. code-block:: python
+
+    from datasette import hookimpl, TokenHandler
+
+
+    class DatabaseTokenHandler(TokenHandler):
+        name = "database"
+
+        async def create_token(
+            self,
+            datasette,
+            actor_id,
+            *,
+            expires_after=None,
+            restrictions=None
+        ):
+            # Store token in database and return token string
+            ...
+
+        async def verify_token(self, datasette, token):
+            # Look up token in database, return actor dict or None
+            ...
+
+
+    @hookimpl
+    def register_token_handler(datasette):
+        return DatabaseTokenHandler()
+
+The ``create_token`` method receives a ``restrictions`` argument which will be a :ref:`TokenRestrictions <TokenRestrictions>` instance or ``None``.
+
+Tokens can then be created and verified using :ref:`datasette.create_token() <datasette_create_token>` and ``datasette.verify_token()``, which delegate to the registered handlers. If no ``handler`` is specified, the first handler is used according to `pluggy call-time ordering <https://pluggy.readthedocs.io/en/stable/#call-time-order>`_. Use the ``handler`` parameter to select a specific backend by name:
+
+.. code-block:: python
+
+    # Uses first registered handler (default)
+    token = await datasette.create_token("user123")
+
+    # Uses a specific handler by name
+    token = await datasette.create_token(
+        "user123", handler="database"
+    )
+
+    # Verification tries all handlers
+    actor = await datasette.verify_token(token)
+
+If no handlers are registered, ``create_token()`` raises ``RuntimeError``. If the requested ``handler`` name is not found, it raises ``ValueError``.
 

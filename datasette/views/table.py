@@ -1580,11 +1580,35 @@ async def table_view_data(
         ]
 
     async def extra_sorted_facet_results(extra_facet_results):
-        return sorted(
-            extra_facet_results["results"].values(),
-            key=lambda f: (len(f["results"]), f["name"]),
-            reverse=True,
-        )
+        facet_configs = table_metadata.get("facets", [])
+        if facet_configs:
+            # Build ordered list of facet names from metadata config
+            metadata_facet_names = []
+            for fc in facet_configs:
+                if isinstance(fc, str):
+                    metadata_facet_names.append(fc)
+                elif isinstance(fc, dict):
+                    metadata_facet_names.append(list(fc.values())[0])
+            metadata_order = {name: i for i, name in enumerate(metadata_facet_names)}
+            metadata_facets = []
+            request_facets = []
+            for f in extra_facet_results["results"].values():
+                if f["name"] in metadata_order:
+                    metadata_facets.append(f)
+                else:
+                    request_facets.append(f)
+            metadata_facets.sort(key=lambda f: metadata_order[f["name"]])
+            request_facets.sort(
+                key=lambda f: (len(f["results"]), f["name"]),
+                reverse=True,
+            )
+            return metadata_facets + request_facets
+        else:
+            return sorted(
+                extra_facet_results["results"].values(),
+                key=lambda f: (len(f["results"]), f["name"]),
+                reverse=True,
+            )
 
     async def extra_table_definition():
         return await db.get_table_definition(table_name)

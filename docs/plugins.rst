@@ -231,10 +231,19 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "templates": false,
             "version": null,
             "hooks": [
-                "actor_from_request",
                 "canned_queries",
                 "permission_resources_sql",
                 "skip_csrf"
+            ]
+        },
+        {
+            "name": "datasette.default_permissions.tokens",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "actor_from_request",
+                "register_token_handler"
             ]
         },
         {

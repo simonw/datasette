@@ -832,21 +832,23 @@ def create_token(
                 err=True,
             )
 
-    restrict_database = {}
-    for database, action in databases:
-        restrict_database.setdefault(database, []).append(action)
-    restrict_resource = {}
-    for database, resource, action in resources:
-        restrict_resource.setdefault(database, {}).setdefault(resource, []).append(
-            action
-        )
+    from datasette.tokens import TokenRestrictions
 
-    token = ds.create_token(
-        id,
-        expires_after=expires_after,
-        restrict_all=alls,
-        restrict_database=restrict_database,
-        restrict_resource=restrict_resource,
+    restrictions = TokenRestrictions()
+    for action in alls:
+        restrictions.allow_all(action)
+    for database, action in databases:
+        restrictions.allow_database(database, action)
+    for database, resource, action in resources:
+        restrictions.allow_resource(database, resource, action)
+
+    token = run_sync(
+        lambda: ds.create_token(
+            id,
+            expires_after=expires_after,
+            restrictions=restrictions,
+            handler="signed",
+        )
     )
     click.echo(token)
     if debug:

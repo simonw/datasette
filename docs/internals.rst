@@ -673,8 +673,8 @@ This example checks if the user can access a specific table, and sets ``private`
 
 .. _datasette_create_token:
 
-.create_token(actor_id, expires_after=None, restrict_all=None, restrict_database=None, restrict_resource=None)
---------------------------------------------------------------------------------------------------------------
+await .create_token(actor_id, expires_after=None, restrictions=None, handler=None)
+----------------------------------------------------------------------------------
 
 ``actor_id`` - string
     The ID of the actor to create a token for.
@@ -682,16 +682,13 @@ This example checks if the user can access a specific table, and sets ``private`
 ``expires_after`` - int, optional
     The number of seconds after which the token should expire.
 
-``restrict_all`` - iterable, optional
-    A list of actions that this token should be restricted to across all databases and resources.
+``restrictions`` - :ref:`TokenRestrictions <TokenRestrictions>`, optional
+    A :ref:`TokenRestrictions <TokenRestrictions>` object limiting which actions the token can perform.
 
-``restrict_database`` - dict, optional
-    For restricting actions within specific databases, e.g. ``{"mydb": ["view-table", "view-query"]}``.
+``handler`` - string, optional
+    The name of a specific token handler to use. If omitted, the first registered handler is used. See :ref:`plugin_hook_register_token_handler`.
 
-``restrict_resource`` - dict, optional
-    For restricting actions to specific resources (tables, SQL views and :ref:`canned_queries`) within a database. For example: ``{"mydb": {"mytable": ["insert-row", "update-row"]}}``.
-
-This method returns a signed :ref:`API token <CreateTokenView>` of the format ``dstok_...`` which can be used to authenticate requests to the Datasette API.
+This is an ``async`` method that returns an :ref:`API token <CreateTokenView>` string which can be used to authenticate requests to the Datasette API. The default ``SignedTokenHandler`` returns tokens of the format ``dstok_...``.
 
 All tokens must have an ``actor_id`` string indicating the ID of the actor which the token will act on behalf of.
 
@@ -699,27 +696,71 @@ Tokens default to lasting forever, but can be set to expire after a given number
 
 .. code-block:: python
 
-    token = datasette.create_token(
+    token = await datasette.create_token(
         actor_id="user1",
         expires_after=3600,
     )
 
-The three ``restrict_*`` arguments can be used to create a token that has additional restrictions beyond what the associated actor is allowed to do.
+.. _TokenRestrictions:
+
+TokenRestrictions
+~~~~~~~~~~~~~~~~~
+
+The ``TokenRestrictions`` class uses a builder pattern to specify which actions a token is allowed to perform. Import it from ``datasette.tokens``:
+
+.. code-block:: python
+
+    from datasette.tokens import TokenRestrictions
+
+    restrictions = (
+        TokenRestrictions()
+        .allow_all("view-instance")
+        .allow_all("view-table")
+        .allow_database("docs", "view-query")
+        .allow_resource("docs", "attachments", "insert-row")
+        .allow_resource("docs", "attachments", "update-row")
+    )
+
+The builder methods are:
+
+- ``allow_all(action)`` - allow an action across all databases and resources
+- ``allow_database(database, action)`` - allow an action on a specific database
+- ``allow_resource(database, resource, action)`` - allow an action on a specific resource (table, SQL view or :ref:`canned query <canned_queries>`) within a database
+
+Each method returns the ``TokenRestrictions`` instance so calls can be chained.
 
 The following example creates a token that can access ``view-instance`` and ``view-table`` across everything, can additionally use ``view-query`` for anything in the ``docs`` database and is allowed to execute ``insert-row`` and ``update-row`` in the ``attachments`` table in that database:
 
 .. code-block:: python
 
-    token = datasette.create_token(
+    token = await datasette.create_token(
         actor_id="user1",
-        restrict_all=("view-instance", "view-table"),
-        restrict_database={"docs": ("view-query",)},
-        restrict_resource={
-            "docs": {
-                "attachments": ("insert-row", "update-row")
-            }
-        },
+        restrictions=(
+            TokenRestrictions()
+            .allow_all("view-instance")
+            .allow_all("view-table")
+            .allow_database("docs", "view-query")
+            .allow_resource("docs", "attachments", "insert-row")
+            .allow_resource("docs", "attachments", "update-row")
+        ),
     )
+
+.. _datasette_verify_token:
+
+await .verify_token(token)
+--------------------------
+
+``token`` - string
+    The token string to verify.
+
+This is an ``async`` method that verifies an API token by trying each registered token handler in order. Returns an actor dictionary from the first handler that recognizes the token, or ``None`` if no handler accepts it.
+
+.. code-block:: python
+
+    actor = await datasette.verify_token(token)
+    if actor:
+        # Token was valid
+        print(actor["id"])
 
 .. _datasette_get_database:
 

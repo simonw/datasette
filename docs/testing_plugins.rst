@@ -233,15 +233,11 @@ As an example, here's a very simple plugin which executes an HTTP response and r
 
     async def fetch_url(datasette, request):
         if request.method == "GET":
-            return Response.html(
-                """
+            return Response.html("""
                 <form action="/-/fetch-url" method="post">
                 <input type="hidden" name="csrftoken" value="{}">
                 <input name="url"><input type="submit">
-            </form>""".format(
-                    request.scope["csrftoken"]()
-                )
-            )
+            </form>""".format(request.scope["csrftoken"]()))
         vars = await request.post_vars()
         url = vars["url"]
         return Response.text(httpx.get(url).text)

@@ -623,12 +623,48 @@ def test_other_types_of_facet_in_metadata():
         }
     ) as client:
         response = client.get("/fixtures/facetable")
-        for fragment in (
-            "<strong>created (date)\n",
-            "<strong>tags (array)\n",
+        fragments = (
             "<strong>state\n",
-        ):
+            "<strong>tags (array)\n",
+            "<strong>created (date)\n",
+        )
+        for fragment in fragments:
             assert fragment in response.text
+        # Verify they appear in the metadata-defined order
+        positions = [response.text.index(f) for f in fragments]
+        assert positions == sorted(
+            positions
+        ), "Facets should appear in metadata-defined order"
+
+
+def test_metadata_facet_ordering():
+    with make_app_client(
+        metadata={
+            "databases": {
+                "fixtures": {
+                    "tables": {
+                        "facetable": {
+                            "facets": ["state", {"array": "tags"}, {"date": "created"}]
+                        }
+                    }
+                }
+            }
+        }
+    ) as client:
+        # JSON response should have facets in the metadata-defined order
+        response = client.get("/fixtures/facetable.json?_extra=sorted_facet_results")
+        data = response.json
+        facet_names = [f["name"] for f in data["sorted_facet_results"]]
+        assert facet_names == ["state", "tags", "created"]
+
+        # With an additional request-based facet, metadata facets come first
+        # in their defined order, followed by request-based facets
+        response2 = client.get(
+            "/fixtures/facetable.json?_extra=sorted_facet_results&_facet=_city_id"
+        )
+        data2 = response2.json
+        facet_names2 = [f["name"] for f in data2["sorted_facet_results"]]
+        assert facet_names2 == ["state", "tags", "created", "_city_id"]
 
 
 @pytest.mark.asyncio

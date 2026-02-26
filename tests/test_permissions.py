@@ -1657,7 +1657,7 @@ async def test_permission_check_view_requires_debug_permission():
     # Root user should have access (root has all permissions)
     ds_with_root = Datasette()
     ds_with_root.root_enabled = True
-    root_token = ds_with_root.create_token("root")
+    root_token = await ds_with_root.create_token("root", handler="signed")
     response = await ds_with_root.client.get(
         "/-/check.json?action=view-instance",
         headers={"Authorization": f"Bearer {root_token}"},

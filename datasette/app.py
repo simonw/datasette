@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List
 
 if TYPE_CHECKING:
     from datasette.permissions import Resource
+    from datasette.tokens import TokenRestrictions
 import asgi_csrf
 import collections
 import dataclasses
@@ -713,44 +714,70 @@ class Datasette:
         """
         return _in_datasette_client.get()
 
-    def create_token(
+    def _token_handlers(self):
+        """Collect all registered token handlers from plugins."""
+        from datasette.tokens import TokenHandler
+
+        handlers = []
+        for result in pm.hook.register_token_handler(datasette=self):
+            if isinstance(result, TokenHandler):
+                handlers.append(result)
+            elif isinstance(result, list):
+                handlers.extend(h for h in result if isinstance(h, TokenHandler))
+        return handlers
+
+    async def create_token(
         self,
         actor_id: str,
         *,
         expires_after: int | None = None,
-        restrict_all: Iterable[str] | None = None,
-        restrict_database: Dict[str, Iterable[str]] | None = None,
-        restrict_resource: Dict[str, Dict[str, Iterable[str]]] | None = None,
-    ):
-        token = {"a": actor_id, "t": int(time.time())}
-        if expires_after:
-            token["d"] = expires_after
+        restrictions: "TokenRestrictions | None" = None,
+        handler: str | None = None,
+    ) -> str:
+        """
+        Create an API token for the given actor.
 
-        def abbreviate_action(action):
-            # rename to abbr if possible
-            action_obj = self.actions.get(action)
-            if not action_obj:
-                return action
-            return action_obj.abbr or action
+        Uses the first registered token handler by default, or a specific
+        handler if ``handler`` is provided (matched by handler name).
 
-        if expires_after:
-            token["d"] = expires_after
-        if restrict_all or restrict_database or restrict_resource:
-            token["_r"] = {}
-            if restrict_all:
-                token["_r"]["a"] = [abbreviate_action(a) for a in restrict_all]
-            if restrict_database:
-                token["_r"]["d"] = {}
-                for database, actions in restrict_database.items():
-                    token["_r"]["d"][database] = [abbreviate_action(a) for a in actions]
-            if restrict_resource:
-                token["_r"]["r"] = {}
-                for database, resources in restrict_resource.items():
-                    for resource, actions in resources.items():
-                        token["_r"]["r"].setdefault(database, {})[resource] = [
-                            abbreviate_action(a) for a in actions
-                        ]
-        return "dstok_{}".format(self.sign(token, namespace="token"))
+        Pass a :class:`TokenRestrictions` to limit which actions the token
+        can perform.
+        """
+        handlers = self._token_handlers()
+        if not handlers:
+            raise RuntimeError("No token handlers are registered")
+
+        if handler is not None:
+            matched = [h for h in handlers if h.name == handler]
+            if not matched:
+                available = [h.name for h in handlers]
+                raise ValueError(
+                    f"Token handler {handler!r} not found. "
+                    f"Available handlers: {available}"
+                )
+            chosen = matched[0]
+        else:
+            chosen = handlers[0]
+
+        return await chosen.create_token(
+            self,
+            actor_id,
+            expires_after=expires_after,
+            restrictions=restrictions,
+        )
+
+    async def verify_token(self, token: str) -> dict | None:
+        """
+        Verify an API token by trying all registered token handlers.
+
+        Returns an actor dict from the first handler that recognizes the
+        token, or None if no handler accepts it.
+        """
+        for token_handler in self._token_handlers():
+            result = await token_handler.verify_token(self, token)
+            if result is not None:
+                return result
+        return None
 
     def get_database(self, name=None, route=None):
         if route is not None:
@@ -2159,10 +2186,13 @@ class DatasetteRouter:
         # Handle authentication
         default_actor = scope.get("actor") or None
         actor = None
-        for actor in pm.hook.actor_from_request(datasette=self.ds, request=request):
-            actor = await await_me_maybe(actor)
-            if actor:
-                break
+        results = pm.hook.actor_from_request(datasette=self.ds, request=request)
+        for result in results:
+            result = await await_me_maybe(result)
+            if result and actor is None:
+                actor = result
+                # Don't break — we must await all coroutines to avoid
+                # "coroutine was never awaited" warnings
         scope_modifications["actor"] = actor or default_actor
         scope = dict(scope, **scope_modifications)
 

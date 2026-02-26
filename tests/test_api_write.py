@@ -1367,7 +1367,9 @@ async def test_create_table_permissions(
     restrictions = TokenRestrictions()
     for action in ["view-instance"] + permissions:
         restrictions.allow_all(action)
-    token = await ds_write.create_token("root", restrictions=restrictions)
+    token = await ds_write.create_token(
+        "root", handler="signed", restrictions=restrictions
+    )
     response = await ds_write.client.post(
         "/data/-/create",
         json=body,

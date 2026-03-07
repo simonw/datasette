@@ -5,7 +5,7 @@ Tests for the datasette.app.Datasette class
 import dataclasses
 from datasette import Context
 from datasette.app import Datasette, Database, ResourcesSQL
-from datasette.resources import DatabaseResource
+from datasette.resources import DatabaseResource, TableResource
 from itsdangerous import BadSignature
 import pytest
 
@@ -206,3 +206,45 @@ async def test_allowed_resources_sql(datasette):
     assert isinstance(result, ResourcesSQL)
     assert "all_rules AS" in result.sql
     assert result.params["action"] == "view-table"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "resource,expected_resource",
+    (
+        (None, None),
+        ("fixtures", DatabaseResource(database="fixtures")),
+        (
+            ("fixtures", "simple_primary_key"),
+            TableResource("fixtures", "simple_primary_key"),
+        ),
+    ),
+)
+async def test_permission_allowed_backwards_compatibility(datasette, monkeypatch, resource, expected_resource):
+    captured = {}
+
+    async def fake_allowed(*, action, resource, actor):
+        captured["action"] = action
+        captured["resource"] = resource
+        captured["actor"] = actor
+        return True
+
+    monkeypatch.setattr(datasette, "allowed", fake_allowed)
+
+    actor = {"id": "root"}
+    result = await datasette.permission_allowed(actor=actor, action="view-table", resource=resource)
+
+    assert result is True
+    assert captured["action"] == "view-table"
+    if expected_resource is None:
+        assert captured["resource"] is None
+    else:
+        assert captured["resource"].parent == expected_resource.parent
+        assert captured["resource"].child == expected_resource.child
+    assert captured["actor"] == actor
+
+
+@pytest.mark.asyncio
+async def test_permission_allowed_rejects_invalid_resource(datasette):
+    with pytest.raises(TypeError):
+        await datasette.permission_allowed(actor=None, action="view-table", resource=("only-one",))

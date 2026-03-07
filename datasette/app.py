@@ -1441,6 +1441,31 @@ class Datasette:
 
         return result
 
+    async def permission_allowed(
+        self, actor, action, resource=None, *, default=DEFAULT_NOT_SET
+    ):
+        """Backward-compatible wrapper around allowed().
+
+        Supports the pre-1.0 signature and resource formats:
+        - None (instance-level)
+        - "database"
+        - ("database", "table")
+
+        The ``default=`` argument is accepted for compatibility but ignored.
+        """
+        _ = default
+
+        if resource is None:
+            resource_obj = None
+        elif isinstance(resource, str):
+            resource_obj = DatabaseResource(database=resource)
+        elif isinstance(resource, (tuple, list)) and len(resource) == 2:
+            resource_obj = TableResource(database=resource[0], table=resource[1])
+        else:
+            raise TypeError("resource must be None, str, or (database, table) tuple")
+
+        return await self.allowed(action=action, resource=resource_obj, actor=actor)
+
     async def ensure_permission(
         self,
         *,

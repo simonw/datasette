@@ -347,7 +347,7 @@ async def test_row_html_simple_primary_key(ds_client):
     assert ["id", "content"] == [th.string.strip() for th in table.select("thead th")]
     assert [
         [
-            '<td class="col-id type-int">1</td>',
+            '<td class="col-id type-int"><strong>1</strong></td>',
             '<td class="col-content type-str">hello</td>',
         ]
     ] == [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
@@ -363,7 +363,7 @@ async def test_row_html_no_primary_key(ds_client):
     ]
     expected = [
         [
-            '<td class="col-rowid type-int">1</td>',
+            '<td class="col-rowid type-int"><strong>1</strong></td>',
             '<td class="col-content type-str">1</td>',
             '<td class="col-a type-str">a1</td>',
             '<td class="col-b type-str">b1</td>',
@@ -407,6 +407,26 @@ async def test_row_links_from_other_tables(
 
 
 @pytest.mark.asyncio
+async def test_row_foreign_key_links(ds_client):
+    # Row detail page should render foreign key values as hyperlinks
+    response = await ds_client.get("/fixtures/foreign_key_references/1")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    # foreign_key_with_label=1 references simple_primary_key(id=1, content="hello")
+    td = soup.find("td", {"class": "col-foreign_key_with_label"})
+    a = td.find("a")
+    assert a is not None, "Expected foreign key value to be a hyperlink"
+    assert a["href"] == "/fixtures/simple_primary_key/1"
+    assert a.text == "hello"
+    # Primary key column should be first and bold
+    table = soup.find("table")
+    headers = [th.text.strip() for th in table.select("thead th")]
+    assert headers[0] == "pk"
+    first_td = table.select("tbody tr td")[0]
+    assert first_td.find("strong") is not None, "PK value should be bold"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
     (
@@ -414,8 +434,8 @@ async def test_row_links_from_other_tables(
             "/fixtures/compound_primary_key/a,b",
             [
                 [
-                    '<td class="col-pk1 type-str">a</td>',
-                    '<td class="col-pk2 type-str">b</td>',
+                    '<td class="col-pk1 type-str"><strong>a</strong></td>',
+                    '<td class="col-pk2 type-str"><strong>b</strong></td>',
                     '<td class="col-content type-str">c</td>',
                 ]
             ],
@@ -424,8 +444,8 @@ async def test_row_links_from_other_tables(
             "/fixtures/compound_primary_key/a~2Fb,~2Ec~2Dd",
             [
                 [
-                    '<td class="col-pk1 type-str">a/b</td>',
-                    '<td class="col-pk2 type-str">.c-d</td>',
+                    '<td class="col-pk1 type-str"><strong>a/b</strong></td>',
+                    '<td class="col-pk2 type-str"><strong>.c-d</strong></td>',
                     '<td class="col-content type-str">c</td>',
                 ]
             ],

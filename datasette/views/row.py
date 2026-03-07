@@ -5,12 +5,14 @@ from datasette.resources import TableResource
 from .base import DataView, BaseView, _error
 from datasette.utils import (
     await_me_maybe,
+    CustomRow,
     make_slot_function,
     to_css_class,
     escape_sqlite,
 )
 from datasette.plugins import pm
 import json
+import markupsafe
 import sqlite_utils
 from .table import display_columns_and_rows, _get_extras
 
@@ -42,19 +44,76 @@ class RowView(DataView):
         if not rows:
             raise NotFound(f"Record not found: {pk_values}")
 
+        pks = resolved.pks
+
         async def template_data():
+            # Reorder columns so primary keys come first
+            pk_set = set(pks)
+            pk_cols = [d for d in results.description if d[0] in pk_set]
+            non_pk_cols = [d for d in results.description if d[0] not in pk_set]
+            reordered_description = pk_cols + non_pk_cols
+            reordered_columns = [d[0] for d in reordered_description]
+
+            # Reorder row data to match
+            reordered_rows = []
+            for row in rows:
+                new_row = CustomRow(reordered_columns)
+                for col in reordered_columns:
+                    new_row[col] = row[col]
+                reordered_rows.append(new_row)
+
+            # Expand foreign key columns into dicts so display_columns_and_rows
+            # renders them as hyperlinks, matching the table view behavior
+            expanded_rows = reordered_rows
+            for fk in await db.foreign_keys_for_table(table):
+                column = fk["column"]
+                if column not in reordered_columns:
+                    continue
+                column_index = reordered_columns.index(column)
+                values = [row[column_index] for row in expanded_rows]
+                expanded_labels = await self.ds.expand_foreign_keys(
+                    request.actor, database, table, column, values
+                )
+                if expanded_labels:
+                    new_rows = []
+                    for row in expanded_rows:
+                        new_row = CustomRow(reordered_columns)
+                        for col in reordered_columns:
+                            value = row[col]
+                            if (
+                                col == column
+                                and (col, value) in expanded_labels
+                                and value is not None
+                            ):
+                                new_row[col] = {
+                                    "value": value,
+                                    "label": expanded_labels[(col, value)],
+                                }
+                            else:
+                                new_row[col] = value
+                        new_rows.append(new_row)
+                    expanded_rows = new_rows
+
             display_columns, display_rows = await display_columns_and_rows(
                 self.ds,
                 database,
                 table,
-                results.description,
-                rows,
+                reordered_description,
+                expanded_rows,
                 link_column=False,
                 truncate_cells=0,
                 request=request,
             )
             for column in display_columns:
                 column["sortable"] = False
+
+            # Bold primary key cell values
+            for row in display_rows:
+                for cell in row:
+                    if cell["column"] in pk_set:
+                        cell["value"] = markupsafe.Markup(
+                            "<strong>{}</strong>".format(cell["value"])
+                        )
 
             row_actions = []
             for hook in pm.hook.row_actions(
@@ -71,6 +130,7 @@ class RowView(DataView):
 
             return {
                 "private": private,
+                "columns": reordered_columns,
                 "foreign_key_tables": await self.foreign_key_tables(
                     database, table, pk_values
                 ),

@@ -248,23 +248,34 @@ async def display_columns_and_rows(
                 display_value = plugin_display_value
             elif isinstance(value, bytes):
                 formatted = format_bytes(len(value))
-                display_value = markupsafe.Markup(
-                    '<a class="blob-download" href="{}"{}>&lt;Binary:&nbsp;{:,}&nbsp;byte{}&gt;</a>'.format(
-                        datasette.urls.row_blob(
-                            database_name,
-                            table_name,
-                            path_from_row_pks(row, pks, not pks),
-                            column,
-                        ),
-                        (
-                            ' title="{}"'.format(formatted)
-                            if "bytes" not in formatted
-                            else ""
-                        ),
-                        len(value),
-                        "" if len(value) == 1 else "s",
-                    )
+                title = (
+                    ' title="{}"'.format(formatted) if "bytes" not in formatted else ""
                 )
+                try:
+                    blob_path = path_from_row_pks(row, pks, not pks)
+                except (IndexError, KeyError):
+                    blob_path = None
+                if blob_path is not None:
+                    display_value = markupsafe.Markup(
+                        '<a class="blob-download" href="{}"{}>&lt;Binary:&nbsp;{:,}&nbsp;byte{}&gt;</a>'.format(
+                            datasette.urls.row_blob(
+                                database_name,
+                                table_name,
+                                blob_path,
+                                column,
+                            ),
+                            title,
+                            len(value),
+                            "" if len(value) == 1 else "s",
+                        )
+                    )
+                else:
+                    display_value = markupsafe.Markup(
+                        "&lt;Binary:&nbsp;{:,}&nbsp;byte{}&gt;".format(
+                            len(value),
+                            "" if len(value) == 1 else "s",
+                        )
+                    )
             elif isinstance(value, dict):
                 # It's an expanded foreign key - display link to other row
                 label = value["label"]

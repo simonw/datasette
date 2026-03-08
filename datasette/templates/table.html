@@ -22,7 +22,7 @@
 
 {% block content %}
 <div class="page-header" style="border-color: #{{ database_color }}">
-    <h1>{{ metadata.get("title") or table }}{% if is_view %} (view){% endif %}{% if private %} 🔒{% endif %}</h1>
+    <h1>{{ metadata.get("title") or table }}{% if is_view %} (view){% endif %}{% if default_deny and not private %} 🌐{% elif not default_deny and private %} 🔒{% endif %}</h1>
 </div>
 {% set action_links, action_title = actions(), "View actions" if is_view else "Table actions" %}
 {% include "_action_menu.html" %}

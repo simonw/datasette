@@ -1421,6 +1421,10 @@ async def table_view_data(
         "Column names returned by this query"
         return columns
 
+    async def extra_all_columns():
+        "All columns in the table, regardless of _col/_nocol filtering"
+        return list(table_columns)
+
     async def extra_primary_keys():
         "Primary keys for this table"
         return pks
@@ -1708,6 +1712,7 @@ async def table_view_data(
             "is_view",
             "private",
             "primary_keys",
+            "all_columns",
             "expandable_columns",
             "form_hidden_args",
         ]
@@ -1728,6 +1733,7 @@ async def table_view_data(
         extra_human_description_en,
         extra_next_url,
         extra_columns,
+        extra_all_columns,
         extra_primary_keys,
         run_display_columns_and_rows,
         extra_display_columns,

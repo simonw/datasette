@@ -4,6 +4,7 @@ var DROPDOWN_HTML = `<div class="dropdown-menu">
   <li><a class="dropdown-sort-asc" href="#">Sort ascending</a></li>
   <li><a class="dropdown-sort-desc" href="#">Sort descending</a></li>
   <li><a class="dropdown-facet" href="#">Facet by this</a></li>
+  <li><a class="dropdown-choose-columns" href="#">Choose columns</a></li>
   <li><a class="dropdown-hide-column" href="#">Hide this column</a></li>
   <li><a class="dropdown-show-all-columns" href="#">Show all columns</a></li>
   <li><a class="dropdown-not-blank" href="#">Show not-blank rows</a></li>
@@ -104,6 +105,7 @@ const initDatasetteTable = function (manager) {
     var notBlank = menu.querySelector("a.dropdown-not-blank");
     var hideColumn = menu.querySelector("a.dropdown-hide-column");
     var showAllColumns = menu.querySelector("a.dropdown-show-all-columns");
+    var selectColumns = menu.querySelector("a.dropdown-choose-columns");
     if (params.get("_sort") == column) {
       sort.parentNode.style.display = "none";
     } else {
@@ -128,6 +130,18 @@ const initDatasetteTable = function (manager) {
       hideColumn.setAttribute("href", hideColumnUrl(column));
     } else {
       hideColumn.parentNode.style.display = "none";
+    }
+    /* Choose columns - show if dialog exists */
+    var selectColumnsDialog = document.getElementById("column-selector-dialog");
+    if (selectColumnsDialog) {
+      selectColumns.parentNode.style.display = "block";
+      selectColumns.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        closeMenu();
+        selectColumnsDialog.showModal();
+      });
+    } else {
+      selectColumns.parentNode.style.display = "none";
     }
     /* Only show "Facet by this" if it's not the first column, not selected,
        not a single PK and the Datasette allow_facet setting is True */
@@ -330,6 +344,39 @@ function initAutocompleteForFilterValues(manager) {
   });
 }
 
+/** Column selector dialog - Apply and Cancel handlers */
+function initColumnSelector() {
+  var dialog = document.getElementById("column-selector-dialog");
+  if (!dialog) return;
+
+  document.getElementById("column-selector-cancel").addEventListener("click", function () {
+    dialog.close();
+  });
+
+  document.getElementById("column-selector-apply").addEventListener("click", function () {
+    var checked = Array.from(dialog.querySelectorAll('input[name="column"]:checked')).map(
+      function (cb) { return cb.value; }
+    );
+    var allBoxes = Array.from(dialog.querySelectorAll('input[name="column"]'));
+    var allColumns = allBoxes.map(function (cb) { return cb.value; });
+
+    var params = new URLSearchParams(location.search);
+    params.delete("_col");
+    params.delete("_nocol");
+    params.delete("_next");
+
+    if (checked.length === allColumns.length) {
+      // All columns selected - no need for _col params
+    } else {
+      checked.forEach(function (col) {
+        params.append("_col", col);
+      });
+    }
+    var qs = params.toString();
+    location.href = qs ? "?" + qs : location.pathname;
+  });
+}
+
 // Ensures Table UI is initialized only after the Manager is ready.
 document.addEventListener("datasette_init", function (evt) {
   const { detail: manager } = evt;
@@ -340,4 +387,7 @@ document.addEventListener("datasette_init", function (evt) {
   // Other UI functions with interactive JS needs
   addButtonsToFilterRows(manager);
   initAutocompleteForFilterValues(manager);
+
+  // Column selector
+  initColumnSelector();
 });

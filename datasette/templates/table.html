@@ -136,6 +136,25 @@
     {% include "_facet_results.html" %}
 {% endif %}
 
+{% if all_columns %}
+<dialog id="column-selector-dialog" class="column-selector-dialog">
+    <form method="dialog">
+        <h3>Choose columns</h3>
+        <div class="column-selector-list">
+            {% for col in all_columns %}
+            {% if col not in primary_keys %}
+            <label><input type="checkbox" name="column" value="{{ col }}"{% if col in display_columns|map(attribute='name')|list %} checked{% endif %}> {{ col }}</label>
+            {% endif %}
+            {% endfor %}
+        </div>
+        <div class="column-selector-actions">
+            <button type="button" id="column-selector-apply" class="btn-primary">Apply</button>
+            <button type="button" id="column-selector-cancel">Cancel</button>
+        </div>
+    </form>
+</dialog>
+{% endif %}
+
 {% include custom_table_templates %}
 
 {% if next_url %}

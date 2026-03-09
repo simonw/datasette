@@ -731,6 +731,59 @@ async def test_table_html_filter_form_still_shows_nocol_columns(ds_client):
 
 
 @pytest.mark.asyncio
+async def test_column_selector_dialog_present(ds_client):
+    response = await ds_client.get("/fixtures/facetable")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    # Dialog should be present with checkboxes for non-PK columns
+    dialog = soup.find("dialog", {"id": "column-selector-dialog"})
+    assert dialog is not None
+    checkboxes = dialog.find_all("input", {"name": "column"})
+    checkbox_values = [cb["value"] for cb in checkboxes]
+    # pk should NOT be in the checkboxes
+    assert "pk" not in checkbox_values
+    # Non-PK columns should be present
+    assert "created" in checkbox_values
+    assert "state" in checkbox_values
+    # All checkboxes should be checked by default (no _col filtering)
+    for cb in checkboxes:
+        assert cb.has_attr("checked")
+
+
+@pytest.mark.asyncio
+async def test_column_selector_reflects_col_filtering(ds_client):
+    response = await ds_client.get("/fixtures/facetable?_col=state&_col=created")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    dialog = soup.find("dialog", {"id": "column-selector-dialog"})
+    assert dialog is not None
+    checkboxes = dialog.find_all("input", {"name": "column"})
+    checkbox_values = [cb["value"] for cb in checkboxes]
+    # All non-PK columns should still be listed
+    assert "state" in checkbox_values
+    assert "created" in checkbox_values
+    assert "planet_int" in checkbox_values
+    # Only state and created should be checked
+    checked = [cb["value"] for cb in checkboxes if cb.has_attr("checked")]
+    assert "state" in checked
+    assert "created" in checked
+    assert "planet_int" not in checked
+
+
+@pytest.mark.asyncio
+async def test_column_selector_shown_for_views(ds_client):
+    response = await ds_client.get("/fixtures/simple_view")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    dialog = soup.find("dialog", {"id": "column-selector-dialog"})
+    assert dialog is not None
+    checkboxes = dialog.find_all("input", {"name": "column"})
+    # Views have no PKs, so all columns should be listed
+    checkbox_values = [cb["value"] for cb in checkboxes]
+    assert "content" in checkbox_values
+
+
+@pytest.mark.asyncio
 async def test_compound_primary_key_with_foreign_key_references(ds_client):
     # e.g. a many-to-many table with a compound primary key on the two columns
     response = await ds_client.get("/fixtures/searchable_tags")

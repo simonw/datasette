@@ -1,12 +1,6 @@
 from datasette.app import Datasette
 from bs4 import BeautifulSoup as Soup
 import pytest
-from .fixtures import (  # noqa
-    app_client,
-    app_client_csv_max_mb_one,
-    app_client_with_cors,
-    app_client_with_trace,
-)
 import urllib.parse
 
 EXPECTED_TABLE_CSV = """id,content
@@ -15,16 +9,12 @@ EXPECTED_TABLE_CSV = """id,content
 3,
 4,RENDER_CELL_DEMO
 5,RENDER_CELL_ASYNC
-""".replace(
-    "\n", "\r\n"
-)
+""".replace("\n", "\r\n")
 
 EXPECTED_CUSTOM_CSV = """content
 hello
 world
-""".replace(
-    "\n", "\r\n"
-)
+""".replace("\n", "\r\n")
 
 EXPECTED_TABLE_WITH_LABELS_CSV = """
 pk,created,planet_int,on_earth,state,_city_id,_city_id_label,_neighborhood,tags,complex_array,distinct_some_null,n
@@ -43,17 +33,13 @@ pk,created,planet_int,on_earth,state,_city_id,_city_id_label,_neighborhood,tags,
 13,2019-01-17 08:00:00,1,1,MI,3,Detroit,Corktown,[],[],,
 14,2019-01-17 08:00:00,1,1,MI,3,Detroit,Mexicantown,[],[],,
 15,2019-01-17 08:00:00,2,0,MC,4,Memnonia,Arcadia Planitia,[],[],,
-""".lstrip().replace(
-    "\n", "\r\n"
-)
+""".lstrip().replace("\n", "\r\n")
 
 EXPECTED_TABLE_WITH_NULLABLE_LABELS_CSV = """
 pk,foreign_key_with_label,foreign_key_with_label_label,foreign_key_with_blank_label,foreign_key_with_blank_label_label,foreign_key_with_no_label,foreign_key_with_no_label_label,foreign_key_compound_pk1,foreign_key_compound_pk2
 1,1,hello,3,,1,1,a,b
 2,,,,,,,,
-""".lstrip().replace(
-    "\n", "\r\n"
-)
+""".lstrip().replace("\n", "\r\n")
 
 
 @pytest.mark.asyncio
@@ -114,8 +100,7 @@ async def test_table_csv_with_invalid_labels():
     )
     await ds.invoke_startup()
     db = ds.add_memory_database("db_2214")
-    await db.execute_write_script(
-        """
+    await db.execute_write_script("""
         create table t1 (id integer primary key, name text);
         insert into t1 (id, name) values (1, 'one');
         insert into t1 (id, name) values (2, 'two');
@@ -130,8 +115,7 @@ async def test_table_csv_with_invalid_labels():
         insert into maintable (id, fk_integer, fk_text) values (1, 1, 'a');
         insert into maintable (id, fk_integer, fk_text) values (2, 3, 'b'); -- invalid fk_integer
         insert into maintable (id, fk_integer, fk_text) values (3, 2, 'c'); -- invalid fk_text
-    """
-    )
+    """)
     response = await ds.client.get("/db_2214/maintable.csv?_labels=1")
     assert response.status_code == 200
     assert response.text == (

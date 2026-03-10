@@ -5,14 +5,16 @@ from datasette.resources import TableResource
 from .base import DataView, BaseView, _error
 from datasette.utils import (
     await_me_maybe,
+    CustomRow,
     make_slot_function,
     to_css_class,
     escape_sqlite,
 )
 from datasette.plugins import pm
 import json
+import markupsafe
 import sqlite_utils
-from .table import display_columns_and_rows
+from .table import display_columns_and_rows, _get_extras
 
 
 class RowView(DataView):
@@ -42,19 +44,76 @@ class RowView(DataView):
         if not rows:
             raise NotFound(f"Record not found: {pk_values}")
 
+        pks = resolved.pks
+
         async def template_data():
+            # Reorder columns so primary keys come first
+            pk_set = set(pks)
+            pk_cols = [d for d in results.description if d[0] in pk_set]
+            non_pk_cols = [d for d in results.description if d[0] not in pk_set]
+            reordered_description = pk_cols + non_pk_cols
+            reordered_columns = [d[0] for d in reordered_description]
+
+            # Reorder row data to match
+            reordered_rows = []
+            for row in rows:
+                new_row = CustomRow(reordered_columns)
+                for col in reordered_columns:
+                    new_row[col] = row[col]
+                reordered_rows.append(new_row)
+
+            # Expand foreign key columns into dicts so display_columns_and_rows
+            # renders them as hyperlinks, matching the table view behavior
+            expanded_rows = reordered_rows
+            for fk in await db.foreign_keys_for_table(table):
+                column = fk["column"]
+                if column not in reordered_columns:
+                    continue
+                column_index = reordered_columns.index(column)
+                values = [row[column_index] for row in expanded_rows]
+                expanded_labels = await self.ds.expand_foreign_keys(
+                    request.actor, database, table, column, values
+                )
+                if expanded_labels:
+                    new_rows = []
+                    for row in expanded_rows:
+                        new_row = CustomRow(reordered_columns)
+                        for col in reordered_columns:
+                            value = row[col]
+                            if (
+                                col == column
+                                and (col, value) in expanded_labels
+                                and value is not None
+                            ):
+                                new_row[col] = {
+                                    "value": value,
+                                    "label": expanded_labels[(col, value)],
+                                }
+                            else:
+                                new_row[col] = value
+                        new_rows.append(new_row)
+                    expanded_rows = new_rows
+
             display_columns, display_rows = await display_columns_and_rows(
                 self.ds,
                 database,
                 table,
-                results.description,
-                rows,
+                reordered_description,
+                expanded_rows,
                 link_column=False,
                 truncate_cells=0,
                 request=request,
             )
             for column in display_columns:
                 column["sortable"] = False
+
+            # Bold primary key cell values
+            for row in display_rows:
+                for cell in row:
+                    if cell["column"] in pk_set:
+                        cell["value"] = markupsafe.Markup(
+                            "<strong>{}</strong>".format(cell["value"])
+                        )
 
             row_actions = []
             for hook in pm.hook.row_actions(
@@ -71,6 +130,7 @@ class RowView(DataView):
 
             return {
                 "private": private,
+                "columns": reordered_columns,
                 "foreign_key_tables": await self.foreign_key_tables(
                     database, table, pk_values
                 ),
@@ -95,6 +155,7 @@ class RowView(DataView):
             }
 
         data = {
+            "ok": True,
             "database": database,
             "table": table,
             "rows": rows,
@@ -103,10 +164,45 @@ class RowView(DataView):
             "primary_key_values": pk_values,
         }
 
+        # Handle _extra parameter (new style)
+        extras = _get_extras(request)
+
+        # Also support legacy _extras parameter for backward compatibility
         if "foreign_key_tables" in (request.args.get("_extras") or "").split(","):
+            extras.add("foreign_key_tables")
+
+        # Process extras
+        if "foreign_key_tables" in extras:
             data["foreign_key_tables"] = await self.foreign_key_tables(
                 database, table, pk_values
             )
+
+        if "render_cell" in extras:
+            # Call render_cell plugin hook for each cell
+            rendered_rows = []
+            for row in rows:
+                rendered_row = {}
+                for value, column in zip(row, columns):
+                    # Call render_cell plugin hook
+                    plugin_display_value = None
+                    for candidate in pm.hook.render_cell(
+                        row=row,
+                        value=value,
+                        column=column,
+                        table=table,
+                        pks=resolved.pks,
+                        database=database,
+                        datasette=self.ds,
+                        request=request,
+                    ):
+                        candidate = await await_me_maybe(candidate)
+                        if candidate is not None:
+                            plugin_display_value = candidate
+                            break
+                    if plugin_display_value:
+                        rendered_row[column] = str(plugin_display_value)
+                rendered_rows.append(rendered_row)
+            data["render_cell"] = rendered_rows
 
         return (
             data,
@@ -210,7 +306,7 @@ class RowDeleteView(BaseView):
             sqlite_utils.Database(conn)[resolved.table].delete(resolved.pk_values)
 
         try:
-            await resolved.db.execute_write_fn(delete_row)
+            await resolved.db.execute_write_fn(delete_row, request=request)
         except Exception as e:
             return _error([str(e)], 500)
 
@@ -270,7 +366,7 @@ class RowUpdateView(BaseView):
             )
 
         try:
-            await resolved.db.execute_write_fn(update_row)
+            await resolved.db.execute_write_fn(update_row, request=request)
         except Exception as e:
             return _error([str(e)], 400)
 

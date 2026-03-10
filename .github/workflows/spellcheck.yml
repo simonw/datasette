@@ -18,7 +18,7 @@ jobs:
         cache-dependency-path: '**/pyproject.toml'
     - name: Install dependencies
       run: |
-        pip install -e '.[docs]'
+        pip install . --group dev
     - name: Check spelling
       run: |
         codespell README.md --ignore-words docs/codespell-ignore-words.txt

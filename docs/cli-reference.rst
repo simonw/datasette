@@ -119,6 +119,7 @@ Once started you can access it at ``http://localhost:8001``
                                       signed cookies
       --root                          Output URL that sets a cookie authenticating
                                       the root user
+      --default-deny                  Deny all permissions by default
       --get TEXT                      Run an HTTP GET request against this path,
                                       print results and exit
       --headers                       Include HTTP headers in --get output

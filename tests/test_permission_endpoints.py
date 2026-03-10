@@ -439,7 +439,6 @@ async def test_execute_sql_requires_view_database():
     be able to execute SQL on that database.
     """
     from datasette.permissions import PermissionSQL
-    from datasette.plugins import pm
     from datasette import hookimpl
 
     class TestPermissionPlugin:
@@ -464,11 +463,12 @@ async def test_execute_sql_requires_view_database():
             return []
 
     plugin = TestPermissionPlugin()
-    pm.register(plugin, name="test_plugin")
+
+    ds = Datasette()
+    await ds.invoke_startup()
+    ds.pm.register(plugin, name="test_plugin")
 
     try:
-        ds = Datasette()
-        await ds.invoke_startup()
         ds.add_memory_database("secret")
         await ds.refresh_schemas()
 
@@ -498,4 +498,4 @@ async def test_execute_sql_requires_view_database():
             f"but got {response.status_code}"
         )
     finally:
-        pm.unregister(plugin)
+        ds.pm.unregister(plugin)

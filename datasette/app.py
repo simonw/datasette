@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from asgi_csrf import Errors
 import asyncio
+import contextvars
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List
 
 if TYPE_CHECKING:
-    from datasette.permissions import AllowedResource, Resource
+    from datasette.permissions import Resource
+    from datasette.tokens import TokenRestrictions
 import asgi_csrf
 import collections
 import dataclasses
@@ -128,6 +130,22 @@ from .version import __version__
 from .resources import DatabaseResource, TableResource
 
 app_root = Path(__file__).parent.parent
+
+
+# Context variable to track when code is executing within a datasette.client request
+_in_datasette_client = contextvars.ContextVar("in_datasette_client", default=False)
+
+
+class _DatasetteClientContext:
+    """Context manager to mark code as executing within a datasette.client request."""
+
+    def __enter__(self):
+        self.token = _in_datasette_client.set(True)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        _in_datasette_client.reset(self.token)
+        return False
 
 
 @dataclasses.dataclass
@@ -304,6 +322,7 @@ class Datasette:
         crossdb=False,
         nolock=False,
         internal=None,
+        default_deny=False,
     ):
         self._startup_invoked = False
         assert config_dir is None or isinstance(
@@ -512,6 +531,7 @@ class Datasette:
         self._permission_checks = collections.deque(maxlen=200)
         self._root_token = secrets.token_hex(32)
         self.root_enabled = False
+        self.default_deny = default_deny
         self.client = DatasetteClient(self)
 
     async def apply_metadata_json(self):
@@ -570,6 +590,10 @@ class Datasette:
         return None
 
     async def refresh_schemas(self):
+        # Throttle schema refreshes to at most once per second
+        if time.monotonic() - getattr(self, "_last_schema_refresh", 0) < 1.0:
+            return
+        self._last_schema_refresh = time.monotonic()
         if self._refresh_schemas_lock.locked():
             return
         async with self._refresh_schemas_lock:
@@ -587,6 +611,15 @@ class Datasette:
                 "select database_name, schema_version from catalog_databases"
             )
         }
+        # Delete stale entries for databases that are no longer attached
+        stale_databases = set(current_schema_versions.keys()) - set(
+            self.databases.keys()
+        )
+        for stale_db_name in stale_databases:
+            await internal_db.execute_write(
+                "DELETE FROM catalog_databases WHERE database_name = ?",
+                [stale_db_name],
+            )
         for database_name, db in self.databases.items():
             schema_version = (await db.execute("PRAGMA schema_version")).first()[0]
             # Compare schema versions to see if we should skip it
@@ -601,9 +634,7 @@ class Datasette:
                 """
                 INSERT OR REPLACE INTO catalog_databases (database_name, path, is_memory, schema_version)
                 VALUES {}
-            """.format(
-                    placeholders
-                ),
+            """.format(placeholders),
                 values,
             )
             await populate_schema_tables(internal_db, db)
@@ -611,6 +642,17 @@ class Datasette:
     @property
     def urls(self):
         return Urls(self)
+
+    @property
+    def pm(self):
+        """
+        Return the global plugin manager instance.
+
+        This provides access to the pluggy PluginManager that manages all
+        Datasette plugins and hooks. Use datasette.pm.hook.hook_name() to
+        call plugin hooks.
+        """
+        return pm
 
     async def invoke_startup(self):
         # This must be called for Datasette to be in a usable state
@@ -664,44 +706,78 @@ class Datasette:
     def unsign(self, signed, namespace="default"):
         return URLSafeSerializer(self._secret, namespace).loads(signed)
 
-    def create_token(
+    def in_client(self) -> bool:
+        """Check if the current code is executing within a datasette.client request.
+
+        Returns:
+            bool: True if currently executing within a datasette.client request, False otherwise.
+        """
+        return _in_datasette_client.get()
+
+    def _token_handlers(self):
+        """Collect all registered token handlers from plugins."""
+        from datasette.tokens import TokenHandler
+
+        handlers = []
+        for result in pm.hook.register_token_handler(datasette=self):
+            if isinstance(result, TokenHandler):
+                handlers.append(result)
+            elif isinstance(result, list):
+                handlers.extend(h for h in result if isinstance(h, TokenHandler))
+        return handlers
+
+    async def create_token(
         self,
         actor_id: str,
         *,
         expires_after: int | None = None,
-        restrict_all: Iterable[str] | None = None,
-        restrict_database: Dict[str, Iterable[str]] | None = None,
-        restrict_resource: Dict[str, Dict[str, Iterable[str]]] | None = None,
-    ):
-        token = {"a": actor_id, "t": int(time.time())}
-        if expires_after:
-            token["d"] = expires_after
+        restrictions: "TokenRestrictions | None" = None,
+        handler: str | None = None,
+    ) -> str:
+        """
+        Create an API token for the given actor.
 
-        def abbreviate_action(action):
-            # rename to abbr if possible
-            action_obj = self.actions.get(action)
-            if not action_obj:
-                return action
-            return action_obj.abbr or action
+        Uses the first registered token handler by default, or a specific
+        handler if ``handler`` is provided (matched by handler name).
 
-        if expires_after:
-            token["d"] = expires_after
-        if restrict_all or restrict_database or restrict_resource:
-            token["_r"] = {}
-            if restrict_all:
-                token["_r"]["a"] = [abbreviate_action(a) for a in restrict_all]
-            if restrict_database:
-                token["_r"]["d"] = {}
-                for database, actions in restrict_database.items():
-                    token["_r"]["d"][database] = [abbreviate_action(a) for a in actions]
-            if restrict_resource:
-                token["_r"]["r"] = {}
-                for database, resources in restrict_resource.items():
-                    for resource, actions in resources.items():
-                        token["_r"]["r"].setdefault(database, {})[resource] = [
-                            abbreviate_action(a) for a in actions
-                        ]
-        return "dstok_{}".format(self.sign(token, namespace="token"))
+        Pass a :class:`TokenRestrictions` to limit which actions the token
+        can perform.
+        """
+        handlers = self._token_handlers()
+        if not handlers:
+            raise RuntimeError("No token handlers are registered")
+
+        if handler is not None:
+            matched = [h for h in handlers if h.name == handler]
+            if not matched:
+                available = [h.name for h in handlers]
+                raise ValueError(
+                    f"Token handler {handler!r} not found. "
+                    f"Available handlers: {available}"
+                )
+            chosen = matched[0]
+        else:
+            chosen = handlers[0]
+
+        return await chosen.create_token(
+            self,
+            actor_id,
+            expires_after=expires_after,
+            restrictions=restrictions,
+        )
+
+    async def verify_token(self, token: str) -> dict | None:
+        """
+        Verify an API token by trying all registered token handlers.
+
+        Returns an actor dict from the first handler that recognizes the
+        token, or None if no handler accepts it.
+        """
+        for token_handler in self._token_handlers():
+            result = await token_handler.verify_token(self, token)
+            if result is not None:
+                return result
+        return None
 
     def get_database(self, name=None, route=None):
         if route is not None:
@@ -762,14 +838,12 @@ class Datasette:
         return orig
 
     async def get_instance_metadata(self):
-        rows = await self.get_internal_database().execute(
-            """
+        rows = await self.get_internal_database().execute("""
               SELECT
                 key,
                 value
               FROM metadata_instance
-            """
-        )
+            """)
         return dict(rows)
 
     async def get_database_metadata(self, database_name: str):
@@ -1097,7 +1171,7 @@ class Datasette:
 
         # Validate that resource is a Resource object or None
         if resource is not None and not isinstance(resource, Resource):
-            raise TypeError(f"resource must be a Resource subclass instance or None.")
+            raise TypeError("resource must be a Resource subclass instance or None.")
 
         # Check if actor can see it
         if not await self.allowed(action=action, resource=resource, actor=actor):
@@ -2112,10 +2186,13 @@ class DatasetteRouter:
         # Handle authentication
         default_actor = scope.get("actor") or None
         actor = None
-        for actor in pm.hook.actor_from_request(datasette=self.ds, request=request):
-            actor = await await_me_maybe(actor)
-            if actor:
-                break
+        results = pm.hook.actor_from_request(datasette=self.ds, request=request)
+        for result in results:
+            result = await await_me_maybe(result)
+            if result and actor is None:
+                actor = result
+                # Don't break — we must await all coroutines to avoid
+                # "coroutine was never awaited" warnings
         scope_modifications["actor"] = actor or default_actor
         scope = dict(scope, **scope_modifications)
 
@@ -2388,7 +2465,10 @@ class DatasetteClient:
 
     def __init__(self, ds):
         self.ds = ds
-        self.app = ds.app()
+
+    @property
+    def app(self):
+        return self.ds.app()
 
     def actor_cookie(self, actor):
         # Utility method, mainly for tests
@@ -2404,19 +2484,20 @@ class DatasetteClient:
     async def _request(self, method, path, skip_permission_checks=False, **kwargs):
         from datasette.permissions import SkipPermissions
 
-        if skip_permission_checks:
-            with SkipPermissions():
+        with _DatasetteClientContext():
+            if skip_permission_checks:
+                with SkipPermissions():
+                    async with httpx.AsyncClient(
+                        transport=httpx.ASGITransport(app=self.app),
+                        cookies=kwargs.pop("cookies", None),
+                    ) as client:
+                        return await getattr(client, method)(self._fix(path), **kwargs)
+            else:
                 async with httpx.AsyncClient(
                     transport=httpx.ASGITransport(app=self.app),
                     cookies=kwargs.pop("cookies", None),
                 ) as client:
                     return await getattr(client, method)(self._fix(path), **kwargs)
-        else:
-            async with httpx.AsyncClient(
-                transport=httpx.ASGITransport(app=self.app),
-                cookies=kwargs.pop("cookies", None),
-            ) as client:
-                return await getattr(client, method)(self._fix(path), **kwargs)
 
     async def get(self, path, skip_permission_checks=False, **kwargs):
         return await self._request(
@@ -2468,8 +2549,17 @@ class DatasetteClient:
         from datasette.permissions import SkipPermissions
 
         avoid_path_rewrites = kwargs.pop("avoid_path_rewrites", None)
-        if skip_permission_checks:
-            with SkipPermissions():
+        with _DatasetteClientContext():
+            if skip_permission_checks:
+                with SkipPermissions():
+                    async with httpx.AsyncClient(
+                        transport=httpx.ASGITransport(app=self.app),
+                        cookies=kwargs.pop("cookies", None),
+                    ) as client:
+                        return await client.request(
+                            method, self._fix(path, avoid_path_rewrites), **kwargs
+                        )
+            else:
                 async with httpx.AsyncClient(
                     transport=httpx.ASGITransport(app=self.app),
                     cookies=kwargs.pop("cookies", None),
@@ -2477,11 +2567,3 @@ class DatasetteClient:
                     return await client.request(
                         method, self._fix(path, avoid_path_rewrites), **kwargs
                     )
-        else:
-            async with httpx.AsyncClient(
-                transport=httpx.ASGITransport(app=self.app),
-                cookies=kwargs.pop("cookies", None),
-            ) as client:
-                return await client.request(
-                    method, self._fix(path, avoid_path_rewrites), **kwargs
-                )

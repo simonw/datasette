@@ -13,7 +13,6 @@ import string
 import tempfile
 import textwrap
 
-
 # This temp file is used by one of the plugin config tests
 TEMP_PLUGIN_SECRET_FILE = os.path.join(tempfile.gettempdir(), "plugin-secret")
 
@@ -52,6 +51,7 @@ EXPECTED_PLUGINS = [
             "register_facet_classes",
             "register_magic_parameters",
             "register_routes",
+            "register_token_handler",
             "render_cell",
             "row_actions",
             "skip_csrf",
@@ -331,16 +331,14 @@ CONFIG = {
                     "sql": "select :_header_user_agent as user_agent, :_now_datetime_utc as datetime",
                 },
                 "neighborhood_search": {
-                    "sql": textwrap.dedent(
-                        """
+                    "sql": textwrap.dedent("""
                         select _neighborhood, facet_cities.name, state
                         from facetable
                             join facet_cities
                                 on facetable._city_id = facet_cities.id
                         where _neighborhood like '%' || :text || '%'
                         order by _neighborhood;
-                    """
-                    ),
+                    """),
                     "title": "Search neighborhoods",
                     "description_html": "<b>Demonstrating</b> simple like search",
                     "fragment": "fragment-goes-here",
@@ -428,6 +426,7 @@ CREATE TABLE compound_primary_key (
 
 INSERT INTO compound_primary_key VALUES ('a', 'b', 'c');
 INSERT INTO compound_primary_key VALUES ('a/b', '.c-d', 'c');
+INSERT INTO compound_primary_key VALUES ('d', 'e', 'RENDER_CELL_DEMO');
 
 CREATE TABLE compound_three_primary_keys (
   pk1 varchar(30),
@@ -536,9 +535,8 @@ INSERT INTO searchable_tags (searchable_id, tag) VALUES
 ;
 
 CREATE VIRTUAL TABLE "searchable_fts"
-    USING FTS4 (text1, text2, [name with . and spaces], content="searchable");
-INSERT INTO "searchable_fts" (rowid, text1, text2, [name with . and spaces])
-    SELECT rowid, text1, text2, [name with . and spaces] FROM searchable;
+    USING FTS5 (text1, text2, [name with . and spaces], content="searchable", content_rowid="pk");
+INSERT INTO "searchable_fts" (searchable_fts) VALUES ('rebuild');
 
 CREATE TABLE [select] (
   [group] text,
@@ -701,6 +699,7 @@ CREATE VIEW searchable_view_configured_by_metadata AS
             for i in range(201)
         ]
     )
+    + '\nINSERT INTO no_primary_key VALUES ("RENDER_CELL_DEMO", "a202", "b202", "c202");\n'
     + "\n".join(
         [
             'INSERT INTO compound_three_primary_keys VALUES ("{a}", "{b}", "{c}", "{content}");'.format(
@@ -709,19 +708,10 @@ CREATE VIEW searchable_view_configured_by_metadata AS
             for a, b, c, content in generate_compound_rows(1001)
         ]
     )
-    + "\n".join(
-        [
-            """INSERT INTO sortable VALUES (
+    + "\n".join(["""INSERT INTO sortable VALUES (
         "{pk1}", "{pk2}", "{content}", {sortable},
         {sortable_with_nulls}, {sortable_with_nulls_2}, "{text}");
-    """.format(
-                **row
-            ).replace(
-                "None", "null"
-            )
-            for row in generate_sortable_rows(201)
-        ]
-    )
+    """.format(**row).replace("None", "null") for row in generate_sortable_rows(201)])
 )
 TABLE_PARAMETERIZED_SQL = [
     ("insert into binary_data (data) values (?);", [b"\x15\x1c\x02\xc7\xad\x05\xfe"]),

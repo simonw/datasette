@@ -1,13 +1,6 @@
 from datasette.utils import detect_json1
 from datasette.utils.sqlite import sqlite_version
-from .fixtures import (  # noqa
-    app_client,
-    app_client_with_trace,
-    app_client_returned_rows_matches_page_size,
-    generate_compound_rows,
-    generate_sortable_rows,
-    make_app_client,
-)
+from .fixtures import generate_compound_rows, generate_sortable_rows, make_app_client
 import json
 import pytest
 import urllib
@@ -143,6 +136,7 @@ async def test_table_shape_object_compound_primary_key(ds_client):
     assert response.json() == {
         "a,b": {"pk1": "a", "pk2": "b", "content": "c"},
         "a~2Fb,~2Ec-d": {"pk1": "a/b", "pk2": ".c-d", "content": "c"},
+        "d,e": {"pk1": "d", "pk2": "e", "content": "RENDER_CELL_DEMO"},
     }
 
 
@@ -176,11 +170,11 @@ async def test_table_with_reserved_word_name(ds_client):
 @pytest.mark.parametrize(
     "path,expected_rows,expected_pages",
     [
-        ("/fixtures/no_primary_key.json", 201, 5),
-        ("/fixtures/paginated_view.json", 201, 9),
-        ("/fixtures/no_primary_key.json?_size=25", 201, 9),
-        ("/fixtures/paginated_view.json?_size=50", 201, 5),
-        ("/fixtures/paginated_view.json?_size=max", 201, 3),
+        ("/fixtures/no_primary_key.json", 202, 5),
+        ("/fixtures/paginated_view.json", 202, 9),
+        ("/fixtures/no_primary_key.json?_size=25", 202, 9),
+        ("/fixtures/paginated_view.json?_size=50", 202, 5),
+        ("/fixtures/paginated_view.json?_size=max", 202, 3),
         ("/fixtures/123_starts_with_digits.json", 0, 1),
         # Ensure faceting doesn't break pagination:
         ("/fixtures/compound_three_primary_keys.json?_facet=pk1", 1001, 21),
@@ -239,7 +233,7 @@ async def test_page_size_zero(ds_client):
     )
     assert response.status_code == 200
     assert [] == response.json()["rows"]
-    assert 201 == response.json()["count"]
+    assert 202 == response.json()["count"]
     assert None is response.json()["next"]
     assert None is response.json()["next_url"]
 
@@ -729,11 +723,11 @@ def test_page_size_matching_max_returned_rows(
     while path:
         response = app_client_returned_rows_matches_page_size.get(path)
         fetched.extend(response.json["rows"])
-        assert len(response.json["rows"]) in (1, 50)
+        assert len(response.json["rows"]) in (2, 50)
         path = response.json["next_url"]
         if path:
             path = path.replace("http://localhost", "")
-    assert len(fetched) == 201
+    assert len(fetched) == 202
 
 
 @pytest.mark.asyncio
@@ -1249,9 +1243,7 @@ async def test_paginate_using_link_header(ds_client, qs):
     reason="generated columns were added in SQLite 3.31.0",
 )
 def test_generated_columns_are_visible_in_datasette():
-    with make_app_client(
-        extra_databases={
-            "generated.db": """
+    with make_app_client(extra_databases={"generated.db": """
                 CREATE TABLE generated_columns (
                     body TEXT,
                     id INT GENERATED ALWAYS AS (json_extract(body, '$.number')) STORED,
@@ -1259,9 +1251,7 @@ def test_generated_columns_are_visible_in_datasette():
                 );
                 INSERT INTO generated_columns (body) VALUES (
                     '{"number": 1, "string": "This is a string"}'
-                );"""
-        }
-    ) as client:
+                );"""}) as client:
         response = client.get("/generated/generated_columns.json?_shape=array")
         assert response.json == [
             {
@@ -1383,3 +1373,68 @@ async def test_table_extras(ds_client, extra, expected_json):
     )
     assert response.status_code == 200
     assert response.json() == expected_json
+
+
+@pytest.mark.asyncio
+async def test_extra_render_cell():
+    """Test that _extra=render_cell returns rendered HTML from render_cell plugin hook"""
+    from datasette import hookimpl
+    from datasette.app import Datasette
+
+    class TestRenderCellPlugin:
+        __name__ = "TestRenderCellPlugin"
+
+        @hookimpl
+        def render_cell(self, value, column, table, database):
+            # Only modify cells in our test table
+            if table == "test_render" and column == "name":
+                return f"<strong>{value}</strong>"
+            return None
+
+    ds = Datasette(memory=True)
+    await ds.invoke_startup()
+    db = ds.add_memory_database("test_table_render")
+    await db.execute_write(
+        "create table test_render (id integer primary key, name text)"
+    )
+    await db.execute_write("insert into test_render values (1, 'Alice')")
+    await db.execute_write("insert into test_render values (2, 'Bob')")
+
+    # Register our test plugin
+    ds.pm.register(TestRenderCellPlugin(), name="TestRenderCellPlugin")
+
+    try:
+        # Request with _extra=render_cell
+        response = await ds.client.get(
+            "/test_table_render/test_render.json?_extra=render_cell"
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify the response structure
+        assert "render_cell" in data
+        assert "rows" in data
+
+        # render_cell should be a list of rows, each row being a dict of column -> rendered HTML
+        # Only columns modified by plugins are included (sparse output)
+        render_cell = data["render_cell"]
+        assert len(render_cell) == 2
+
+        # First row: id=1, name='Alice'
+        # The 'name' column should be rendered by our plugin as <strong>Alice</strong>
+        assert render_cell[0]["name"] == "<strong>Alice</strong>"
+        # The 'id' column is not included since no plugin modified it
+        assert "id" not in render_cell[0]
+
+        # Second row: id=2, name='Bob'
+        assert render_cell[1]["name"] == "<strong>Bob</strong>"
+        assert "id" not in render_cell[1]
+
+        # The regular rows should still contain raw values
+        assert data["rows"] == [
+            {"id": 1, "name": "Alice"},
+            {"id": 2, "name": "Bob"},
+        ]
+
+    finally:
+        ds.pm.unregister(name="TestRenderCellPlugin")

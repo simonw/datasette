@@ -235,6 +235,7 @@ async def display_columns_and_rows(
                 value=value,
                 column=column,
                 table=table_name,
+                pks=pks_for_display,
                 database=database_name,
                 datasette=datasette,
                 request=request,
@@ -550,7 +551,7 @@ class TableInsertView(BaseView):
                 method_all(rows, **kwargs)
 
         try:
-            rows = await db.execute_write_fn(insert_or_upsert_rows)
+            rows = await db.execute_write_fn(insert_or_upsert_rows, request=request)
         except Exception as e:
             return _error([str(e)])
         result = {"ok": True}
@@ -670,7 +671,7 @@ class TableDropView(BaseView):
         def drop_table(conn):
             sqlite_utils.Database(conn)[table_name].drop()
 
-        await db.execute_write_fn(drop_table)
+        await db.execute_write_fn(drop_table, request=request)
         await self.ds.track_event(
             DropTableEvent(
                 actor=request.actor, database=database_name, table=table_name
@@ -1420,6 +1421,10 @@ async def table_view_data(
         "Column names returned by this query"
         return columns
 
+    async def extra_all_columns():
+        "All columns in the table, regardless of _col/_nocol filtering"
+        return list(table_columns)
+
     async def extra_primary_keys():
         "Primary keys for this table"
         return pks
@@ -1492,6 +1497,35 @@ async def table_view_data(
     async def extra_display_rows(run_display_columns_and_rows):
         return run_display_columns_and_rows["rows"]
 
+    async def extra_render_cell():
+        "Rendered HTML for each cell using the render_cell plugin hook"
+        pks_for_display = pks if pks else (["rowid"] if not is_view else [])
+        columns = [col[0] for col in results.description]
+        rendered_rows = []
+        for row in rows:
+            rendered_row = {}
+            for value, column in zip(row, columns):
+                # Call render_cell plugin hook
+                plugin_display_value = None
+                for candidate in pm.hook.render_cell(
+                    row=row,
+                    value=value,
+                    column=column,
+                    table=table_name,
+                    pks=pks_for_display,
+                    database=database_name,
+                    datasette=datasette,
+                    request=request,
+                ):
+                    candidate = await await_me_maybe(candidate)
+                    if candidate is not None:
+                        plugin_display_value = candidate
+                        break
+                if plugin_display_value:
+                    rendered_row[column] = str(plugin_display_value)
+            rendered_rows.append(rendered_row)
+        return rendered_rows
+
     async def extra_query():
         "Details of the underlying SQL query"
         return {
@@ -1550,11 +1584,35 @@ async def table_view_data(
         ]
 
     async def extra_sorted_facet_results(extra_facet_results):
-        return sorted(
-            extra_facet_results["results"].values(),
-            key=lambda f: (len(f["results"]), f["name"]),
-            reverse=True,
-        )
+        facet_configs = table_metadata.get("facets", [])
+        if facet_configs:
+            # Build ordered list of facet names from metadata config
+            metadata_facet_names = []
+            for fc in facet_configs:
+                if isinstance(fc, str):
+                    metadata_facet_names.append(fc)
+                elif isinstance(fc, dict):
+                    metadata_facet_names.append(list(fc.values())[0])
+            metadata_order = {name: i for i, name in enumerate(metadata_facet_names)}
+            metadata_facets = []
+            request_facets = []
+            for f in extra_facet_results["results"].values():
+                if f["name"] in metadata_order:
+                    metadata_facets.append(f)
+                else:
+                    request_facets.append(f)
+            metadata_facets.sort(key=lambda f: metadata_order[f["name"]])
+            request_facets.sort(
+                key=lambda f: (len(f["results"]), f["name"]),
+                reverse=True,
+            )
+            return metadata_facets + request_facets
+        else:
+            return sorted(
+                extra_facet_results["results"].values(),
+                key=lambda f: (len(f["results"]), f["name"]),
+                reverse=True,
+            )
 
     async def extra_table_definition():
         return await db.get_table_definition(table_name)
@@ -1654,6 +1712,7 @@ async def table_view_data(
             "is_view",
             "private",
             "primary_keys",
+            "all_columns",
             "expandable_columns",
             "form_hidden_args",
         ]
@@ -1674,10 +1733,12 @@ async def table_view_data(
         extra_human_description_en,
         extra_next_url,
         extra_columns,
+        extra_all_columns,
         extra_primary_keys,
         run_display_columns_and_rows,
         extra_display_columns,
         extra_display_rows,
+        extra_render_cell,
         extra_debug,
         extra_request,
         extra_query,

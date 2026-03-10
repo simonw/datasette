@@ -4,6 +4,119 @@
 Changelog
 =========
 
+.. _v1_0_a25:
+
+1.0a25 (2026-02-25)
+-------------------
+
+``write_wrapper()`` plugin hook for intercepting write operations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A new :ref:`write_wrapper() <plugin_hook_write_wrapper>` plugin hook allows plugins to intercept and wrap database write operations. (`#2636 <https://github.com/simonw/datasette/pull/2636>`__)
+
+Plugins implement the hook as a generator-based context manager:
+
+.. code-block:: python
+
+    @hookimpl
+    def write_wrapper(datasette, database, request):
+        def wrapper(conn):
+            # Setup code runs before the write
+            yield
+            # Cleanup code runs after the write
+
+        return wrapper
+
+``register_token_handler()`` plugin hook for custom API token backends
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A new :ref:`register_token_handler() <plugin_hook_register_token_handler>` plugin hook allows plugins to provide custom token backends for API authentication. (`#2650 <https://github.com/simonw/datasette/pull/2650>`__)
+
+This includes a **backwards incompatible change**: the ``datasette.create_token()`` internal  method is now an ``async`` method. Consult the :ref:`upgrade guide <upgrade_guide_v1_a25>` for details on how to update your code.
+
+``render_cell()`` now receives a ``pks`` parameter
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The :ref:`render_cell() <plugin_hook_render_cell>` plugin hook now receives a ``pks`` parameter containing the list of primary key column names for the table being rendered. This avoids plugins needing to make redundant async calls to look up primary keys. (`#2641 <https://github.com/simonw/datasette/pull/2641>`__)
+
+Other changes
+~~~~~~~~~~~~~
+
+- Facets defined in metadata now preserve their configured order, instead of being sorted by result count. Request-based facets added via the ``_facet`` parameter are still sorted by result count and appear after metadata-defined facets. (:issue:`2647`)
+- Fixed ``--reload`` incorrectly interpreting the ``serve`` command as a file argument. Thanks, `Daniel Bates <https://github.com/danielalanbates>`__. (`#2646 <https://github.com/simonw/datasette/pull/2646>`__)
+
+.. _v1_0_a24:
+
+1.0a24 (2026-01-29)
+-------------------
+
+``request.form()`` method for POST data and file uploads
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Datasette now includes a ``request.form()`` method for parsing form submissions, including handling file uploads. (`#2626 <https://github.com/simonw/datasette/pull/2626>`__)
+
+This supports both ``application/x-www-form-urlencoded`` and ``multipart/form-data`` content types, and uses a new streaming multipart parser that processes uploads without buffering entire request bodies in memory.
+
+.. code-block:: python
+
+    # Parse form fields (files are discarded by default)
+    form = await request.form()
+    username = form["username"]
+
+    # Parse form fields AND file uploads
+    form = await request.form(files=True)
+    uploaded = form["avatar"]
+    content = await uploaded.read()
+
+The returned :ref:`FormData <internals_formdata>` object provides dictionary-style access with support for multiple values per key via ``form.getlist("key")``. Uploaded files are represented as :ref:`UploadedFile <internals_uploadedfile>` objects with ``filename``, ``content_type``, ``size`` properties and async ``read()`` and ``seek()`` methods.
+
+Files smaller than 1MB are held in memory; larger files automatically spill to temporary files on disk. Configurable limits control maximum file size, request size, field counts and more.
+
+Several internal views (permissions debug, messages debug, create token) now use ``request.form()`` instead of ``request.post_vars()``.
+
+``request.post_vars()`` remains available for backwards compatibility but is no longer the recommended API for handling POST data.
+
+``render_cell`` and ``foreign_key_tables`` extras for the JSON API
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The table JSON API now supports ``?_extra=render_cell``, which returns the rendered HTML for each cell as produced by the :ref:`render_cell plugin hook <plugin_hook_render_cell>`. Only columns whose rendered output differs from the default are included. (:issue:`2619`)
+
+The row JSON API also gains ``?_extra=render_cell`` and ``?_extra=foreign_key_tables`` extras, bringing it closer to parity with the table API.
+
+The row JSON API now returns ``"ok": true`` in its response, for consistency with the table API.
+
+``uv run pytest`` with a ``dev=`` dependency group
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The recommended development environment for Datasette now uses `uv <https://github.com/astral-sh/uv>`__. You can now set up a development environment and run the test suite with just ``uv run pytest`` — no manual virtualenv or ``pip install`` step required. (:issue:`2611`)
+
+Other changes
+~~~~~~~~~~~~~
+
+- Plugins that raise ``datasette.utils.StartupError()`` during startup now display a clean error message instead of a full traceback. (:issue:`2624`)
+- Schema refreshes are now throttled to at most once per second, providing a small performance increase. (:issue:`2629`)
+- Minor performance improvement to ``remove_infinites`` — rows without infinity values now skip the list/dict reconstruction step. (:issue:`2629`)
+- Filter inputs and the search input no longer trigger unwanted zoom on iOS Safari. Thanks, `Daniel Olasubomi Sobowale <https://github.com/bowale-os>`__. (:issue:`2346`)
+- ``table_names()`` and ``get_all_foreign_keys()`` now return results in deterministic sorted order. (:issue:`2628`)
+- Switched linting to `ruff <https://github.com/astral-sh/ruff>`__ and fixed all lint errors. (:issue:`2630`)
+
+.. _v1_0_a23:
+
+1.0a23 (2025-12-02)
+-------------------
+
+- Fix for bug where a stale database entry in ``internal.db`` could cause a 500 error on the homepage. (:issue:`2605`)
+- Cosmetic improvement to ``/-/actions`` page. (:issue:`2599`)
+
+.. _v1_0_a22:
+
+1.0a22 (2025-11-13)
+-------------------
+
+- ``datasette serve --default-deny`` option for running Datasette configured to  :ref:`deny all permissions by default <authentication_default_deny>`. (:issue:`2592`)
+- ``datasette.is_client()`` method for detecting if code is :ref:`executing inside a datasette.client request <internals_datasette_is_client>`. (:issue:`2594`)
+- ``datasette.pm`` property can now be used to :ref:`register and unregister plugins in tests <testing_plugins_register_in_test>`. (:issue:`2595`)
+
 .. _v1_0_a21:
 
 1.0a21 (2025-11-05)
@@ -278,7 +391,7 @@ To avoid similar mistakes in the future the ``datasette.permission_allowed()`` m
 Permission checks now consider opinions from every plugin
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``datasette.permission_allowed()`` method previously consulted every plugin that implemented the :ref:`permission_allowed() <plugin_hook_permission_allowed>` plugin hook and obeyed the opinion of the last plugin to return a value. (:issue:`2275`)
+The ``datasette.permission_allowed()`` method previously consulted every plugin that implemented the ``permission_allowed()`` plugin hook and obeyed the opinion of the last plugin to return a value. (:issue:`2275`)
 
 Datasette now consults every plugin and checks to see if any of them returned ``False`` (the veto rule), and if none of them did, it then checks to see if any of them returned ``True``.
 
@@ -1397,7 +1510,7 @@ You can use the new ``"allow"`` block syntax in ``metadata.json`` (or ``metadata
 
 See :ref:`authentication_permissions_allow` for more details.
 
-Plugins can implement their own custom permission checks using the new :ref:`plugin_hook_permission_allowed` hook.
+Plugins can implement their own custom permission checks using the new ``plugin_hook_permission_allowed()`` plugin hook.
 
 A new debug page at ``/-/permissions`` shows recent permission checks, to help administrators and plugin authors understand exactly what checks are being performed. This tool defaults to only being available to the root user, but can be exposed to other users by plugins that respond to the ``permissions-debug`` permission. (:issue:`788`)
 

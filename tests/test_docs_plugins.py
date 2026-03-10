@@ -2,7 +2,6 @@
 # -- start datasette_with_plugin_fixture --
 from datasette import hookimpl
 from datasette.app import Datasette
-from datasette.plugins import pm
 import pytest
 import pytest_asyncio
 
@@ -18,11 +17,12 @@ async def datasette_with_plugin():
                 (r"^/error$", lambda: 1 / 0),
             ]
 
-    pm.register(TestPlugin(), name="undo")
+    datasette = Datasette()
+    datasette.pm.register(TestPlugin(), name="undo")
     try:
-        yield Datasette()
+        yield datasette
     finally:
-        pm.unregister(name="undo")
+        datasette.pm.unregister(name="undo")
 # -- end datasette_with_plugin_fixture --
 
 

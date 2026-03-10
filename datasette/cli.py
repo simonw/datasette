@@ -109,15 +109,11 @@ def sqlite_extensions(fn):
             return fn(*args, **kwargs)
         except AttributeError as e:
             if "enable_load_extension" in str(e):
-                raise click.ClickException(
-                    textwrap.dedent(
-                        """
+                raise click.ClickException(textwrap.dedent("""
                     Your Python installation does not have the ability to load SQLite extensions.
 
                     More information: https://datasette.io/help/extensions
-                    """
-                    ).strip()
-                )
+                    """).strip())
             raise
 
     return wrapped
@@ -439,6 +435,11 @@ def uninstall(packages, yes):
     is_flag=True,
 )
 @click.option(
+    "--default-deny",
+    help="Deny all permissions by default",
+    is_flag=True,
+)
+@click.option(
     "--get",
     help="Run an HTTP GET request against this path, print results and exit",
 )
@@ -514,6 +515,7 @@ def serve(
     settings,
     secret,
     root,
+    default_deny,
     get,
     headers,
     token,
@@ -545,7 +547,7 @@ def serve(
     if reload:
         import hupper
 
-        reloader = hupper.start_reloader("datasette.cli.serve")
+        reloader = hupper.start_reloader("datasette.cli.cli")
         if immutable:
             reloader.watch_files(immutable)
         if config:
@@ -594,6 +596,7 @@ def serve(
         crossdb=crossdb,
         nolock=nolock,
         internal=internal,
+        default_deny=default_deny,
     )
 
     # Separate directories from files
@@ -659,7 +662,10 @@ def serve(
         return ds
 
     # Run the "startup" plugin hooks
-    run_sync(ds.invoke_startup)
+    try:
+        run_sync(ds.invoke_startup)
+    except StartupError as e:
+        raise click.ClickException(e.args[0])
 
     # Run async soundness checks - but only if we're not under pytest
     run_sync(lambda: check_databases(ds))
@@ -808,7 +814,10 @@ def create_token(
     ds = Datasette(secret=secret, plugins_dir=plugins_dir)
 
     # Run ds.invoke_startup() in an event loop
-    run_sync(ds.invoke_startup)
+    try:
+        run_sync(ds.invoke_startup)
+    except StartupError as e:
+        raise click.ClickException(e.args[0])
 
     # Warn about any unknown actions
     actions = []
@@ -823,21 +832,23 @@ def create_token(
                 err=True,
             )
 
-    restrict_database = {}
-    for database, action in databases:
-        restrict_database.setdefault(database, []).append(action)
-    restrict_resource = {}
-    for database, resource, action in resources:
-        restrict_resource.setdefault(database, {}).setdefault(resource, []).append(
-            action
-        )
+    from datasette.tokens import TokenRestrictions
 
-    token = ds.create_token(
-        id,
-        expires_after=expires_after,
-        restrict_all=alls,
-        restrict_database=restrict_database,
-        restrict_resource=restrict_resource,
+    restrictions = TokenRestrictions()
+    for action in alls:
+        restrictions.allow_all(action)
+    for database, action in databases:
+        restrictions.allow_database(database, action)
+    for database, resource, action in resources:
+        restrictions.allow_resource(database, resource, action)
+
+    token = run_sync(
+        lambda: ds.create_token(
+            id,
+            expires_after=expires_after,
+            restrictions=restrictions,
+            handler="signed",
+        )
     )
     click.echo(token)
     if debug:

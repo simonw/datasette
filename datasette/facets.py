@@ -233,9 +233,7 @@ class ColumnFacet(Facet):
                 )
                 where {col} is not null
                 group by {col} order by count desc, value limit {limit}
-            """.format(
-                col=escape_sqlite(column), sql=self.sql, limit=facet_size + 1
-            )
+            """.format(col=escape_sqlite(column), sql=self.sql, limit=facet_size + 1)
             try:
                 facet_rows_results = await self.ds.execute(
                     self.database,
@@ -482,9 +480,7 @@ class DateFacet(Facet):
                 select date({column}) from (
                     select * from ({sql}) limit 100
                 ) where {column} glob "????-??-*"
-            """.format(
-                column=escape_sqlite(column), sql=self.sql
-            )
+            """.format(column=escape_sqlite(column), sql=self.sql)
             try:
                 results = await self.ds.execute(
                     self.database,
@@ -530,9 +526,7 @@ class DateFacet(Facet):
                 )
                 where date({col}) is not null
                 group by date({col}) order by count desc, value limit {limit}
-            """.format(
-                col=escape_sqlite(column), sql=self.sql, limit=facet_size + 1
-            )
+            """.format(col=escape_sqlite(column), sql=self.sql, limit=facet_size + 1)
             try:
                 facet_rows_results = await self.ds.execute(
                     self.database,

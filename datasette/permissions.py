@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from typing import Any, NamedTuple
 import contextvars
 
-
 # Context variable to track when permission checks should be skipped
 _skip_permission_checks = contextvars.ContextVar(
     "skip_permission_checks", default=False

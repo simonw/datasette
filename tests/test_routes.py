@@ -63,12 +63,10 @@ async def ds_with_route():
     ds.remove_database("_memory")
     db = Database(ds, is_memory=True, memory_name="route-name-db")
     ds.add_database(db, name="original-name", route="custom-route-name")
-    await db.execute_write_script(
-        """
+    await db.execute_write_script("""
         create table if not exists t (id integer primary key);
         insert or replace into t (id) values (1);
-    """
-    )
+    """)
     return ds
 
 

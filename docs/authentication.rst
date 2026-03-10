@@ -83,6 +83,39 @@ Datasette's built-in view actions (``view-database``, ``view-table`` etc) are al
 
 Other actions, including those introduced by plugins, will default to *deny*.
 
+.. _authentication_default_deny:
+
+Denying all permissions by default
+----------------------------------
+
+By default, Datasette allows unauthenticated access to view databases, tables, and execute SQL queries.
+
+You may want to run Datasette in a mode where **all** access is denied by default, and you explicitly grant permissions only to authenticated users, either using the :ref:`--root mechanism <authentication_root>` or through :ref:`configuration file rules <authentication_permissions_config>` or plugins.
+
+Use the ``--default-deny`` command-line option to run Datasette in this mode::
+
+    datasette --default-deny data.db --root
+
+With ``--default-deny`` enabled:
+
+* Anonymous users are denied access to view the instance, databases, tables, and queries
+* Authenticated users are also denied access unless they're explicitly granted permissions
+* The root user (when using ``--root``) still has access to everything
+* You can grant permissions using :ref:`configuration file rules <authentication_permissions_config>` or plugins
+
+For example, to allow only a specific user to access your instance::
+
+    datasette --default-deny data.db --config datasette.yaml
+
+Where ``datasette.yaml`` contains:
+
+.. code-block:: yaml
+
+    allow:
+      id: alice
+
+This configuration will deny access to everyone except the user with ``id`` of ``alice``.
+
 .. _authentication_permissions_explained:
 
 How permissions are resolved
@@ -1039,6 +1072,7 @@ cannot grant new access. If the underlying actor is denied by ``allow`` rules in
 ``datasette.yaml`` or by a plugin, a token that lists that resource in its
 ``"_r"`` section will still be denied.
 
+To create tokens with restrictions in Python code, use the :ref:`TokenRestrictions <TokenRestrictions>` builder and pass it to :ref:`datasette.create_token() <datasette_create_token>`.
 
 .. _permissions_plugins:
 

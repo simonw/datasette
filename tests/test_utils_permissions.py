@@ -497,16 +497,14 @@ async def test_actor_actor_id_action_parameters_available(db):
 
     def plugin_using_all_parameters() -> Callable[[str], PermissionSQL]:
         def provider(action: str) -> PermissionSQL:
-            return PermissionSQL(
-                """
+            return PermissionSQL("""
                 SELECT NULL AS parent, NULL AS child, 1 AS allow,
                        'Actor ID: ' || COALESCE(:actor_id, 'null') ||
                        ', Actor JSON: ' || COALESCE(:actor, 'null') ||
                        ', Action: ' || :action AS reason
                 WHERE :actor_id = 'test_user' AND :action = 'view-table'
                 AND json_extract(:actor, '$.role') = 'admin'
-                """
-            )
+                """)
 
         return provider
 

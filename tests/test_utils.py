@@ -201,9 +201,7 @@ def test_detect_fts(open_quote, close_quote):
     CREATE VIEW Test_View AS SELECT * FROM Dumb_Table;
     CREATE VIRTUAL TABLE {open}Street_Tree_List_fts{close} USING FTS4 ("qAddress", "qCaretaker", "qSpecies", content={open}Street_Tree_List{close});
     CREATE VIRTUAL TABLE r USING rtree(a, b, c);
-    """.format(
-        open=open_quote, close=close_quote
-    )
+    """.format(open=open_quote, close=close_quote)
     conn = utils.sqlite3.connect(":memory:")
     conn.executescript(sql)
     assert None is utils.detect_fts(conn, "Dumb_Table")
@@ -220,9 +218,7 @@ def test_detect_fts_different_table_names(table):
       "qSpecies" TEXT
     );
     CREATE VIRTUAL TABLE [{table}_fts] USING FTS4 ("qSpecies", content="{table}");
-    """.format(
-        table=table
-    )
+    """.format(table=table)
     conn = utils.sqlite3.connect(":memory:")
     conn.executescript(sql)
     assert "{table}_fts".format(table=table) == utils.detect_fts(conn, table)
@@ -347,27 +343,21 @@ def test_compound_keys_after_sql():
 ((a > :p0)
   or
 (a = :p0 and b > :p1))
-    """.strip() == utils.compound_keys_after_sql(
-        ["a", "b"]
-    )
+    """.strip() == utils.compound_keys_after_sql(["a", "b"])
     assert """
 ((a > :p0)
   or
 (a = :p0 and b > :p1)
   or
 (a = :p0 and b = :p1 and c > :p2))
-    """.strip() == utils.compound_keys_after_sql(
-        ["a", "b", "c"]
-    )
+    """.strip() == utils.compound_keys_after_sql(["a", "b", "c"])
 
 
 def test_table_columns():
     conn = sqlite3.connect(":memory:")
-    conn.executescript(
-        """
+    conn.executescript("""
     create table places (id integer primary key, name text, bob integer)
-    """
-    )
+    """)
     assert ["id", "name", "bob"] == utils.table_columns(conn, "places")
 
 

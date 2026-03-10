@@ -180,13 +180,11 @@ async def _build_single_action_sql(
         # Skip plugins that only provide restriction_sql (no permission rules)
         if permission_sql.sql is None:
             continue
-        rule_sqls.append(
-            f"""
+        rule_sqls.append(f"""
             SELECT parent, child, allow, reason, '{permission_sql.source}' AS source_plugin FROM (
                 {permission_sql.sql}
             )
-            """.strip()
-        )
+            """.strip())
 
     # If no rules, return empty result (deny all)
     if not rule_sqls:
@@ -405,14 +403,12 @@ async def _build_single_action_sql(
 
     # Add restriction filter if there are restrictions
     if restriction_sqls:
-        query_parts.append(
-            """
+        query_parts.append("""
   AND EXISTS (
     SELECT 1 FROM restriction_list r
     WHERE (r.parent = decisions.parent OR r.parent IS NULL)
       AND (r.child = decisions.child OR r.child IS NULL)
-  )"""
-        )
+  )""")
 
     # Add parent filter if specified
     if parent is not None:
@@ -479,13 +475,11 @@ async def build_permission_rules_sql(
         if permission_sql.sql is None:
             continue
 
-        union_parts.append(
-            f"""
+        union_parts.append(f"""
             SELECT parent, child, allow, reason, '{permission_sql.source}' AS source_plugin FROM (
                 {permission_sql.sql}
             )
-            """.strip()
-        )
+            """.strip())
 
     rules_union = " UNION ALL ".join(union_parts)
     return rules_union, all_params, restriction_sqls

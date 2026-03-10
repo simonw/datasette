@@ -9,7 +9,7 @@ Each plugin can implement one or more hooks using the ``@hookimpl`` decorator ag
 
 When you implement a plugin hook you can accept any or all of the parameters that are documented as being passed to that hook.
 
-For example, you can implement the ``render_cell`` plugin hook like this even though the full documented hook signature is ``render_cell(row, value, column, table, database, datasette)``:
+For example, you can implement the ``render_cell`` plugin hook like this even though the full documented hook signature is ``render_cell(row, value, column, table, pks, database, datasette, request)``:
 
 .. code-block:: python
 
@@ -60,6 +60,92 @@ arguments and can be called like this::
 ``prepare_connection()`` hooks are not called for Datasette's :ref:`internal database <internals_internal>`.
 
 Examples: `datasette-jellyfish <https://datasette.io/plugins/datasette-jellyfish>`__, `datasette-jq <https://datasette.io/plugins/datasette-jq>`__, `datasette-haversine <https://datasette.io/plugins/datasette-haversine>`__, `datasette-rure <https://datasette.io/plugins/datasette-rure>`__
+
+.. _plugin_hook_write_wrapper:
+
+write_wrapper(datasette, database, request, transaction)
+--------------------------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
+
+``database`` - string
+    The name of the database being written to.
+
+``request`` - :ref:`internals_request` or ``None``
+    The HTTP request that triggered this write, if available.  This will be ``None`` for writes that do not originate from an HTTP request (e.g. writes triggered by plugins during startup).
+
+``transaction`` - bool
+    ``True`` if the write will be wrapped in a database transaction.
+
+Return a generator function that accepts a ``conn`` argument (a SQLite connection object).  The generator should ``yield`` exactly once.  Code before the ``yield`` runs before the write function executes; code after the ``yield`` runs after it completes.
+
+The result of the write function is sent back through the ``yield``, so you can capture it with ``result = yield``.
+
+If the write function raises an exception, it is thrown into the generator so you can handle it with a ``try`` / ``except`` around the ``yield``.
+
+Return ``None`` to skip wrapping for this particular write.
+
+This example logs every write operation:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+
+    @hookimpl
+    def write_wrapper(datasette, database, request):
+        def wrapper(conn):
+            print(f"Before write to {database}")
+            result = yield
+            print(f"After write to {database}")
+
+        return wrapper
+
+This more advanced example uses the SQLite authorizer callback to block writes to a specific table for non-admin users:
+
+.. code-block:: python
+
+    import sqlite3
+    from datasette import hookimpl
+
+    WRITE_ACTIONS = (
+        sqlite3.SQLITE_INSERT,
+        sqlite3.SQLITE_UPDATE,
+        sqlite3.SQLITE_DELETE,
+    )
+
+
+    @hookimpl
+    def write_wrapper(datasette, database, request):
+        actor = None
+        if request:
+            actor = request.actor
+        if actor and actor.get("id") == "admin":
+            return None
+
+        def wrapper(conn):
+            def authorizer(
+                action, arg1, arg2, db_name, trigger
+            ):
+                if (
+                    action in WRITE_ACTIONS
+                    and arg1 == "protected_table"
+                ):
+                    return sqlite3.SQLITE_DENY
+                return sqlite3.SQLITE_OK
+
+            conn.set_authorizer(authorizer)
+            try:
+                yield
+            finally:
+                conn.set_authorizer(None)
+
+        return wrapper
+
+The ``conn`` object passed to the generator is the same connection that the write function will use.  Because the generator and the write function execute together in a single call on the write thread, any state you set on the connection (authorizers, pragmas, temporary tables) is visible to the write and can be cleaned up afterwards.
+
+When multiple plugins implement ``write_wrapper``, they are nested following pluggy's default calling convention.
 
 .. _plugin_hook_prepare_jinja2_environment:
 
@@ -388,8 +474,8 @@ Examples: `datasette-publish-fly <https://datasette.io/plugins/datasette-publish
 
 .. _plugin_hook_render_cell:
 
-render_cell(row, value, column, table, database, datasette, request)
---------------------------------------------------------------------
+render_cell(row, value, column, table, pks, database, datasette, request)
+-------------------------------------------------------------------------
 
 Lets you customize the display of values within table cells in the HTML table view.
 
@@ -404,6 +490,9 @@ Lets you customize the display of values within table cells in the HTML table vi
 
 ``table`` - string or None
     The name of the table - or ``None`` if this is a custom SQL query
+
+``pks`` - list of strings
+    The primary key column names for the table being rendered. For tables without an explicitly defined primary key, this will be ``["rowid"]``. For custom SQL queries and views (where ``table`` is ``None``), this will be an empty list ``[]``.
 
 ``database`` - string
     The name of the database
@@ -965,12 +1054,16 @@ Here is an example that validates required plugin configuration. The server will
 
 .. code-block:: python
 
+    from datasette.utils import StartupError
+
+
     @hookimpl
     def startup(datasette):
         config = datasette.plugin_config("my-plugin") or {}
-        assert (
-            "required-setting" in config
-        ), "my-plugin requires setting required-setting"
+        if "required-setting" not in config:
+            raise StartupError(
+                "my-plugin requires setting required-setting"
+            )
 
 You can also return an async function, which will be awaited on startup. Use this option if you need to execute any database queries, for example this function which creates the ``my_table`` database table if it does not yet exist:
 
@@ -981,11 +1074,9 @@ You can also return an async function, which will be awaited on startup. Use thi
         async def inner():
             db = datasette.get_database()
             if "my_table" not in await db.table_names():
-                await db.execute_write(
-                    """
+                await db.execute_write("""
                     create table my_table (mycol text)
-                """
-                )
+                """)
 
         return inner
 
@@ -994,6 +1085,7 @@ Potential use-cases:
 * Run some initialization code for the plugin
 * Create database tables that a plugin needs on startup
 * Validate the configuration for a plugin on startup, and raise an error if it is invalid
+* Raise a ``datasette.utils.StartupError("message")`` exception to prevent Datasette from starting and display that message to the user.
 
 .. note::
 
@@ -1466,7 +1558,6 @@ The resolver will automatically apply the most specific rule.
 
     from datasette import hookimpl
     from datasette.permissions import PermissionSQL
-
 
     TRUSTED = {"alice", "bob"}
 
@@ -2167,8 +2258,7 @@ This example logs events to a ``datasette_events`` table in a database called ``
     def startup(datasette):
         async def inner():
             db = datasette.get_database("events")
-            await db.execute_write(
-                """
+            await db.execute_write("""
                 create table if not exists datasette_events (
                     id integer primary key,
                     event_type text,
@@ -2176,8 +2266,7 @@ This example logs events to a ``datasette_events`` table in a database called ``
                     actor text,
                     properties text
                 )
-            """
-            )
+            """)
 
         return inner
 
@@ -2244,3 +2333,63 @@ The plugin can then call ``datasette.track_event(...)`` to send a ``ban-user`` e
     await datasette.track_event(
         BanUserEvent(user={"id": 1, "username": "cleverbot"})
     )
+
+.. _plugin_hook_register_token_handler:
+
+register_token_handler(datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
+
+Return a ``TokenHandler`` instance to provide a custom token creation and verification backend. This hook can return a single ``TokenHandler`` or a list of them.
+
+The default ``SignedTokenHandler`` uses itsdangerous signed tokens (``dstok_`` prefix). Plugins can provide alternative backends such as database-backed tokens that support revocation and auditing.
+
+.. code-block:: python
+
+    from datasette import hookimpl, TokenHandler
+
+
+    class DatabaseTokenHandler(TokenHandler):
+        name = "database"
+
+        async def create_token(
+            self,
+            datasette,
+            actor_id,
+            *,
+            expires_after=None,
+            restrictions=None
+        ):
+            # Store token in database and return token string
+            ...
+
+        async def verify_token(self, datasette, token):
+            # Look up token in database, return actor dict or None
+            ...
+
+
+    @hookimpl
+    def register_token_handler(datasette):
+        return DatabaseTokenHandler()
+
+The ``create_token`` method receives a ``restrictions`` argument which will be a :ref:`TokenRestrictions <TokenRestrictions>` instance or ``None``.
+
+Tokens can then be created and verified using :ref:`datasette.create_token() <datasette_create_token>` and ``datasette.verify_token()``, which delegate to the registered handlers. If no ``handler`` is specified, the first handler is used according to `pluggy call-time ordering <https://pluggy.readthedocs.io/en/stable/#call-time-order>`_. Use the ``handler`` parameter to select a specific backend by name:
+
+.. code-block:: python
+
+    # Uses first registered handler (default)
+    token = await datasette.create_token("user123")
+
+    # Uses a specific handler by name
+    token = await datasette.create_token(
+        "user123", handler="database"
+    )
+
+    # Verification tries all handlers
+    actor = await datasette.verify_token(token)
+
+If no handlers are registered, ``create_token()`` raises ``RuntimeError``. If the requested ``handler`` name is not found, it raises ``ValueError``.
+

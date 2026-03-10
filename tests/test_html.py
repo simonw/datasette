@@ -1,14 +1,7 @@
 from bs4 import BeautifulSoup as Soup
 from datasette.app import Datasette
 from datasette.utils import allowed_pragmas
-from .fixtures import (  # noqa
-    app_client,
-    app_client_base_url_prefix,
-    app_client_shorter_time_limit,
-    app_client_two_attached_databases,
-    make_app_client,
-    METADATA,
-)
+from .fixtures import make_app_client
 from .utils import assert_footer_links, inner_html
 import copy
 import json
@@ -354,7 +347,7 @@ async def test_row_html_simple_primary_key(ds_client):
     assert ["id", "content"] == [th.string.strip() for th in table.select("thead th")]
     assert [
         [
-            '<td class="col-id type-int">1</td>',
+            '<td class="col-id type-int"><strong>1</strong></td>',
             '<td class="col-content type-str">hello</td>',
         ]
     ] == [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
@@ -370,7 +363,7 @@ async def test_row_html_no_primary_key(ds_client):
     ]
     expected = [
         [
-            '<td class="col-rowid type-int">1</td>',
+            '<td class="col-rowid type-int"><strong>1</strong></td>',
             '<td class="col-content type-str">1</td>',
             '<td class="col-a type-str">a1</td>',
             '<td class="col-b type-str">b1</td>',
@@ -414,6 +407,26 @@ async def test_row_links_from_other_tables(
 
 
 @pytest.mark.asyncio
+async def test_row_foreign_key_links(ds_client):
+    # Row detail page should render foreign key values as hyperlinks
+    response = await ds_client.get("/fixtures/foreign_key_references/1")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    # foreign_key_with_label=1 references simple_primary_key(id=1, content="hello")
+    td = soup.find("td", {"class": "col-foreign_key_with_label"})
+    a = td.find("a")
+    assert a is not None, "Expected foreign key value to be a hyperlink"
+    assert a["href"] == "/fixtures/simple_primary_key/1"
+    assert a.text == "hello"
+    # Primary key column should be first and bold
+    table = soup.find("table")
+    headers = [th.text.strip() for th in table.select("thead th")]
+    assert headers[0] == "pk"
+    first_td = table.select("tbody tr td")[0]
+    assert first_td.find("strong") is not None, "PK value should be bold"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
     (
@@ -421,8 +434,8 @@ async def test_row_links_from_other_tables(
             "/fixtures/compound_primary_key/a,b",
             [
                 [
-                    '<td class="col-pk1 type-str">a</td>',
-                    '<td class="col-pk2 type-str">b</td>',
+                    '<td class="col-pk1 type-str"><strong>a</strong></td>',
+                    '<td class="col-pk2 type-str"><strong>b</strong></td>',
                     '<td class="col-content type-str">c</td>',
                 ]
             ],
@@ -431,8 +444,8 @@ async def test_row_links_from_other_tables(
             "/fixtures/compound_primary_key/a~2Fb,~2Ec~2Dd",
             [
                 [
-                    '<td class="col-pk1 type-str">a/b</td>',
-                    '<td class="col-pk2 type-str">.c-d</td>',
+                    '<td class="col-pk1 type-str"><strong>a/b</strong></td>',
+                    '<td class="col-pk2 type-str"><strong>.c-d</strong></td>',
                     '<td class="col-content type-str">c</td>',
                 ]
             ],
@@ -627,14 +640,11 @@ async def test_urlify_custom_queries(ds_client):
     response = await ds_client.get(path)
     assert response.status_code == 200
     soup = Soup(response.content, "html.parser")
-    assert (
-        """<td class="col-user_url">
+    assert """<td class="col-user_url">
  <a href="https://twitter.com/simonw">
   https://twitter.com/simonw
  </a>
-</td>"""
-        == soup.find("td", {"class": "col-user_url"}).prettify().strip()
-    )
+</td>""" == soup.find("td", {"class": "col-user_url"}).prettify().strip()
 
 
 @pytest.mark.asyncio
@@ -853,7 +863,28 @@ def test_base_url_config(app_client_base_url_prefix, path, use_prefix):
     response = client.get(path_to_get)
     soup = Soup(response.content, "html.parser")
     for form in soup.select("form"):
-        assert form["action"].startswith("/prefix")
+        action = form.get("action")
+        if action is None:
+            assert form.get("method") == "dialog", json.dumps(
+                {
+                    "path": path,
+                    "path_to_get": path_to_get,
+                    "form": str(form),
+                },
+                indent=4,
+                default=repr,
+            )
+            continue
+        assert action.startswith("/prefix"), json.dumps(
+            {
+                "path": path,
+                "path_to_get": path_to_get,
+                "action": action,
+                "form": str(form),
+            },
+            indent=4,
+            default=repr,
+        )
     for el in soup.find_all(["a", "link", "script"]):
         if "href" in el.attrs:
             href = el["href"]
@@ -1190,6 +1221,21 @@ async def test_actions_page(ds_client):
         assert "<th>Name</th>" in response.text
         assert "view-instance" in response.text
         assert "view-database" in response.text
+    finally:
+        ds_client.ds.root_enabled = original_root_enabled
+
+
+@pytest.mark.asyncio
+async def test_actions_page_does_not_display_none_string(ds_client):
+    """Ensure the Resource column doesn't display the string 'None' for null values."""
+    # https://github.com/simonw/datasette/issues/2599
+    original_root_enabled = ds_client.ds.root_enabled
+    try:
+        ds_client.ds.root_enabled = True
+        cookies = {"ds_actor": ds_client.actor_cookie({"id": "root"})}
+        response = await ds_client.get("/-/actions", cookies=cookies)
+        assert response.status_code == 200
+        assert "<code>None</code>" not in response.text
     finally:
         ds_client.ds.root_enabled = original_root_enabled
 

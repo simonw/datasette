@@ -9,7 +9,6 @@ from datasette.permissions import PermissionSQL
 from datasette.plugins import pm
 from datasette.utils import await_me_maybe
 
-
 # Sentinel object to indicate permission checks should be skipped
 SKIP_PERMISSION_CHECKS = object()
 
@@ -116,13 +115,11 @@ def build_rules_union(
         if p.sql is None:
             continue
 
-        parts.append(
-            f"""
+        parts.append(f"""
             SELECT parent, child, allow, reason, '{p.source}' AS source_plugin FROM (
                 {p.sql}
             )
-            """.strip()
-        )
+            """.strip())
 
     if not parts:
         # Empty UNION that returns no rows

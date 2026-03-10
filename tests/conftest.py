@@ -11,7 +11,6 @@ import time
 from dataclasses import dataclass
 from datasette import Event, hookimpl
 
-
 try:
     import pysqlite3 as sqlite3
 except ImportError:

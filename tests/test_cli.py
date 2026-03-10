@@ -4,7 +4,7 @@ from .fixtures import (
     EXPECTED_PLUGINS,
 )
 from datasette.app import SETTINGS
-from datasette.plugins import DEFAULT_PLUGINS
+from datasette.plugins import DEFAULT_PLUGINS, pm
 from datasette.cli import cli, serve
 from datasette.version import __version__
 from datasette.utils import tilde_encode
@@ -115,13 +115,9 @@ def test_plugins_cli(app_client):
 
 
 def test_metadata_yaml():
-    yaml_file = io.StringIO(
-        textwrap.dedent(
-            """
+    yaml_file = io.StringIO(textwrap.dedent("""
     title: Hello from YAML
-    """
-        )
-    )
+    """))
     # Annoyingly we have to provide all default arguments here:
     ds = serve.callback(
         [],
@@ -142,6 +138,7 @@ def test_metadata_yaml():
         settings=[],
         secret=None,
         root=False,
+        default_deny=False,
         token=None,
         actor=None,
         version_note=None,
@@ -301,6 +298,40 @@ def test_plugin_s_overwrite():
         json.loads(result.output).get("rows")[0].get("prepare_connection_args()")
         == 'database=_memory, datasette.plugin_config("name-of-plugin")=OVERRIDE'
     )
+
+
+def test_startup_error_from_plugin_is_click_exception(tmp_path):
+    plugins_dir = tmp_path / "plugins"
+    plugins_dir.mkdir()
+    (plugins_dir / "startup_error.py").write_text(
+        "from datasette import hookimpl\n"
+        "from datasette.utils import StartupError\n"
+        "\n"
+        "@hookimpl\n"
+        "def startup(datasette):\n"
+        '    raise StartupError("boom")\n',
+        "utf-8",
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "--plugins-dir",
+            str(plugins_dir),
+            "--get",
+            "/",
+        ],
+    )
+    try:
+        assert result.exit_code == 1
+        assert "Error: boom" in result.output
+    finally:
+        # Cleanup: Unregister the plugin to avoid test isolation issues
+        to_unregister = [
+            p for p in pm.get_plugins() if p.__name__ == "startup_error.py"
+        ]
+        if to_unregister:
+            pm.unregister(to_unregister[0])
 
 
 def test_setting_type_validation():

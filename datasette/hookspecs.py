@@ -55,7 +55,7 @@ def publish_subcommand(publish):
 
 
 @hookspec
-def render_cell(row, value, column, table, database, datasette, request):
+def render_cell(row, value, column, table, pks, database, datasette, request):
     """Customize rendering of HTML table cell values"""
 
 
@@ -220,3 +220,30 @@ def top_query(datasette, request, database, sql):
 @hookspec
 def top_canned_query(datasette, request, database, query_name):
     """HTML to include at the top of the canned query page"""
+
+
+@hookspec
+def register_token_handler(datasette):
+    """Return a TokenHandler instance for token creation and verification"""
+
+
+@hookspec
+def write_wrapper(datasette, database, request, transaction):
+    """Called when a write function is about to execute.
+
+    Return a generator function that accepts a ``conn`` argument.
+    The generator should ``yield`` exactly once: code before the
+    ``yield`` runs before the write, code after the ``yield`` runs
+    after the write completes. The result of the write is sent
+    back through the ``yield``, so you can capture it with
+    ``result = yield``.
+
+    If the write raises an exception, it is thrown into the generator
+    so you can handle it with a try/except around the ``yield``.
+
+    ``request`` may be ``None`` for writes not originating from an
+    HTTP request.  ``transaction`` is ``True`` if the write will
+    be wrapped in a transaction.
+
+    Return ``None`` to skip wrapping.
+    """

@@ -153,6 +153,8 @@ Here's an example that turns on faceting by default for the ``qLegalStatus`` col
 
 Facets defined in this way will always be shown in the interface and returned in the API, regardless of the ``_facet`` arguments passed to the view.
 
+Facets defined in metadata will be displayed in the order they are listed in the configuration. Any additional facets added via query string parameters (e.g. ``?_facet=column_name``) will appear after the metadata-defined facets, sorted by the number of unique values.
+
 You can specify :ref:`array <facet_by_json_array>` or :ref:`date <facet_by_date>` facets in metadata using JSON objects with a single key of ``array`` or ``date`` and a value specifying the column, like this:
 
 .. [[[cog

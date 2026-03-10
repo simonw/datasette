@@ -231,16 +231,12 @@ def test_publish_cloudrun_plugin_secrets(
     with open("test.db", "w") as fp:
         fp.write("data")
     with open("metadata.yml", "w") as fp:
-        fp.write(
-            textwrap.dedent(
-                """
+        fp.write(textwrap.dedent("""
             title: Hello from metadata YAML
             plugins:
               datasette-auth-github:
                 foo: bar
-            """
-            ).strip()
-        )
+            """).strip())
     result = runner.invoke(
         cli.cli,
         [
@@ -333,8 +329,7 @@ def test_publish_cloudrun_apt_get_install(
         .split("\n====================\n")[0]
         .strip()
     )
-    expected = textwrap.dedent(
-        r"""
+    expected = textwrap.dedent(r"""
     FROM python:3.11.0-slim-bullseye
     COPY . /app
     WORKDIR /app
@@ -350,8 +345,7 @@ def test_publish_cloudrun_apt_get_install(
     ENV PORT 8001
     EXPOSE 8001
     CMD datasette serve --host 0.0.0.0 -i test.db --cors --inspect-file inspect-data.json --setting force_https_urls on --port $PORT
-    """
-    ).strip()
+    """).strip()
     assert expected == dockerfile
 
 

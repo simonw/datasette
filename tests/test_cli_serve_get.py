@@ -16,9 +16,7 @@ def test_serve_with_get(tmp_path_factory):
         def startup(datasette):
             with open("{}", "w") as fp:
                 fp.write("hello")
-    """.format(
-                str(plugins_dir / "hello.txt")
-            ),
+    """.format(str(plugins_dir / "hello.txt")),
         ),
         "utf-8",
     )

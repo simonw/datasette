@@ -5,7 +5,7 @@ export DATASETTE_SECRET := "not_a_secret"
 
 # Setup project
 @init:
-  uv sync --extra test --extra docs
+  uv sync
 
 # Run pytest with supplied options
 @test *options: init
@@ -17,19 +17,23 @@ export DATASETTE_SECRET := "not_a_secret"
   uv run codespell datasette -S datasette/static --ignore-words docs/codespell-ignore-words.txt
   uv run codespell tests --ignore-words docs/codespell-ignore-words.txt
 
-# Run linters: black, flake8, mypy, cog
+# Run linters: black, ruff, cog
 @lint: codespell
-  uv run black . --check
-  uv run flake8
-  uv run --extra test cog --check README.md docs/*.rst
+  uv run black datasette tests --check
+  uv run ruff check datasette tests
+  uv run cog --check README.md docs/*.rst
+
+# Apply ruff fixes
+@fix:
+  uv run ruff check --fix datasette tests
 
 # Rebuild docs with cog
 @cog:
-  uv run --extra test cog -r README.md docs/*.rst
+  uv run cog -r README.md docs/*.rst
 
 # Serve live docs on localhost:8000
 @docs: cog blacken-docs
-  uv sync --extra docs && cd docs && uv run make livehtml
+  uv run make -C docs livehtml
 
 # Build docs as static HTML
 @docs-build: cog blacken-docs
@@ -37,7 +41,7 @@ export DATASETTE_SECRET := "not_a_secret"
 
 # Apply Black
 @black:
-  uv run black .
+  uv run black datasette tests
 
 # Apply blacken-docs
 @blacken-docs:

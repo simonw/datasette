@@ -4,6 +4,7 @@ var DROPDOWN_HTML = `<div class="dropdown-menu">
   <li><a class="dropdown-sort-asc" href="#">Sort ascending</a></li>
   <li><a class="dropdown-sort-desc" href="#">Sort descending</a></li>
   <li><a class="dropdown-facet" href="#">Facet by this</a></li>
+  <li><a class="dropdown-choose-columns" href="#">Choose columns</a></li>
   <li><a class="dropdown-hide-column" href="#">Hide this column</a></li>
   <li><a class="dropdown-show-all-columns" href="#">Show all columns</a></li>
   <li><a class="dropdown-not-blank" href="#">Show not-blank rows</a></li>
@@ -104,6 +105,7 @@ const initDatasetteTable = function (manager) {
     var notBlank = menu.querySelector("a.dropdown-not-blank");
     var hideColumn = menu.querySelector("a.dropdown-hide-column");
     var showAllColumns = menu.querySelector("a.dropdown-show-all-columns");
+    var selectColumns = menu.querySelector("a.dropdown-choose-columns");
     if (params.get("_sort") == column) {
       sort.parentNode.style.display = "none";
     } else {
@@ -128,6 +130,18 @@ const initDatasetteTable = function (manager) {
       hideColumn.setAttribute("href", hideColumnUrl(column));
     } else {
       hideColumn.parentNode.style.display = "none";
+    }
+    /* Choose columns - show if web component exists */
+    var columnChooser = document.querySelector("column-chooser");
+    if (columnChooser && window._columnChooserData) {
+      selectColumns.parentNode.style.display = "block";
+      selectColumns.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        closeMenu();
+        openColumnChooser();
+      });
+    } else {
+      selectColumns.parentNode.style.display = "none";
     }
     /* Only show "Facet by this" if it's not the first column, not selected,
        not a single PK and the Datasette allow_facet setting is True */
@@ -636,6 +650,49 @@ function initRowDetailPanel() {
         showDialog();
         showRowDetails(index);
       });
+    }
+  });
+}
+
+/** Open the column-chooser web component */
+function openColumnChooser() {
+  var chooser = document.querySelector("column-chooser");
+  var data = window._columnChooserData;
+  if (!chooser || !data) return;
+
+  var nonPkColumns = data.allColumns.filter(function (col) {
+    return data.primaryKeys.indexOf(col) === -1;
+  });
+  var selected = data.selectedColumns.filter(function (col) {
+    return data.primaryKeys.indexOf(col) === -1;
+  });
+
+  chooser.open({
+    columns: nonPkColumns,
+    selected: selected,
+    onApply: function (cols) {
+      var params = new URLSearchParams(location.search);
+      params.delete("_col");
+      params.delete("_nocol");
+      params.delete("_next");
+
+      if (cols.length === nonPkColumns.length) {
+        // Check if order matches original - if so, no params needed
+        var orderMatches = cols.every(function (col, i) {
+          return col === nonPkColumns[i];
+        });
+        if (!orderMatches) {
+          cols.forEach(function (col) {
+            params.append("_col", col);
+          });
+        }
+      } else {
+        cols.forEach(function (col) {
+          params.append("_col", col);
+        });
+      }
+      var qs = params.toString();
+      location.href = qs ? "?" + qs : location.pathname;
     }
   });
 }

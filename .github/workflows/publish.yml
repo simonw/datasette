@@ -23,7 +23,7 @@ jobs:
         cache-dependency-path: pyproject.toml
     - name: Install dependencies
       run: |
-        pip install -e '.[test]'
+        pip install . --group dev
     - name: Run tests
       run: |
         pytest
@@ -65,7 +65,7 @@ jobs:
         cache-dependency-path: pyproject.toml
     - name: Install dependencies
       run: |
-        python -m pip install -e .[docs]
+        python -m pip install . --group dev
         python -m pip install sphinx-to-sqlite==0.1a1
     - name: Build docs.db
       run: |-

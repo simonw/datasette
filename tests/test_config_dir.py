@@ -51,8 +51,7 @@ def config_dir(tmp_path_factory):
 
     for dbname in ("demo.db", "immutable.db", "j.sqlite3", "k.sqlite"):
         db = sqlite3.connect(str(config_dir / dbname))
-        db.executescript(
-            """
+        db.executescript("""
         CREATE TABLE cities (
             id integer primary key,
             name text
@@ -60,8 +59,7 @@ def config_dir(tmp_path_factory):
         INSERT INTO cities (id, name) VALUES
             (1, 'San Francisco')
         ;
-        """
-        )
+        """)
 
     # Mark "immutable.db" as immutable
     (config_dir / "inspect-data.json").write_text(
@@ -87,7 +85,7 @@ def test_invalid_settings(config_dir):
     )
     try:
         with pytest.raises(StartupError) as ex:
-            ds = Datasette([], config_dir=config_dir)
+            Datasette([], config_dir=config_dir)
         assert ex.value.args[0] == "Invalid setting 'invalid' in config file"
     finally:
         (config_dir / "datasette.json").write_text(previous, "utf-8")

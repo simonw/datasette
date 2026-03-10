@@ -2,7 +2,7 @@ import collections
 from datasette.app import Datasette
 from datasette.cli import cli
 from datasette.default_permissions import restrictions_allow_action
-from .fixtures import app_client, assert_permissions_checked, make_app_client
+from .fixtures import assert_permissions_checked, make_app_client
 from click.testing import CliRunner
 from bs4 import BeautifulSoup as Soup
 import copy
@@ -1323,6 +1323,20 @@ async def test_actor_restrictions(
             ("dbname2", "tablename"),
             False,
         ),
+        # Table-level restriction allows access to that specific table
+        (
+            {"r": {"dbname": {"tablename": ["view-table"]}}},
+            "view-table",
+            ("dbname", "tablename"),
+            True,
+        ),
+        # But not to a different table in the same database
+        (
+            {"r": {"dbname": {"tablename": ["view-table"]}}},
+            "view-table",
+            ("dbname", "other_table"),
+            False,
+        ),
     ),
 )
 async def test_restrictions_allow_action(restrictions, action, resource, expected):
@@ -1467,7 +1481,6 @@ async def test_actor_restrictions_view_instance_only(perms_ds):
     assert response.status_code == 200
 
     # But no databases should be visible (no view-database permission)
-    data = response.json()
     # The instance is visible but databases list should be empty or minimal
     # Actually, let's check via allowed_resources
     page = await perms_ds.allowed_resources("view-database", actor)
@@ -1644,7 +1657,7 @@ async def test_permission_check_view_requires_debug_permission():
     # Root user should have access (root has all permissions)
     ds_with_root = Datasette()
     ds_with_root.root_enabled = True
-    root_token = ds_with_root.create_token("root")
+    root_token = await ds_with_root.create_token("root", handler="signed")
     response = await ds_with_root.client.get(
         "/-/check.json?action=view-instance",
         headers={"Authorization": f"Bearer {root_token}"},
@@ -1653,3 +1666,48 @@ async def test_permission_check_view_requires_debug_permission():
     data = response.json()
     assert data["action"] == "view-instance"
     assert data["allowed"] is True
+
+
+@pytest.mark.asyncio
+async def test_root_allow_block_with_table_restricted_actor():
+    """
+    Test that root-level allow: blocks are processed for actors with
+    table-level restrictions.
+
+    This covers the case in config.py is_in_restriction_allowlist() where
+    parent=None, child=None and actor has table restrictions but not global.
+    """
+    from datasette.resources import TableResource
+
+    # Config with root-level allow block that denies non-admin users
+    ds = Datasette(
+        config={
+            "allow": {"id": "admin"},  # Root-level allow block
+        }
+    )
+    await ds.invoke_startup()
+    db = ds.add_memory_database("mydb")
+    await db.execute_write("create table t1 (id integer primary key)")
+    await ds.client.get("/")  # Trigger catalog refresh
+
+    # Actor with table-level restrictions only (not global)
+    actor = {"id": "user", "_r": {"r": {"mydb": {"t1": ["view-table"]}}}}
+
+    # The root-level allow: {id: admin} should be processed and deny this user
+    # because they're not "admin", even though they have table restrictions
+    result = await ds.allowed(
+        action="view-table",
+        resource=TableResource("mydb", "t1"),
+        actor=actor,
+    )
+    # Should be False because root allow: {id: admin} denies non-admin users
+    assert result is False
+
+    # But admin with same restrictions should be allowed
+    admin_actor = {"id": "admin", "_r": {"r": {"mydb": {"t1": ["view-table"]}}}}
+    result = await ds.allowed(
+        action="view-table",
+        resource=TableResource("mydb", "t1"),
+        actor=admin_actor,
+    )
+    assert result is True

@@ -11,7 +11,6 @@ These tests verify:
 import pytest
 import pytest_asyncio
 from datasette.app import Datasette
-from datasette.plugins import pm
 from datasette.permissions import PermissionSQL
 from datasette.resources import TableResource
 from datasette import hookimpl
@@ -67,7 +66,7 @@ async def test_allowed_resources_global_allow(test_ds):
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
-    pm.register(plugin, name="test_plugin")
+    test_ds.pm.register(plugin, name="test_plugin")
 
     try:
         # Use the new allowed_resources() method
@@ -87,7 +86,7 @@ async def test_allowed_resources_global_allow(test_ds):
         assert ("production", "orders") in table_set
 
     finally:
-        pm.unregister(plugin, name="test_plugin")
+        test_ds.pm.unregister(plugin, name="test_plugin")
 
 
 @pytest.mark.asyncio
@@ -106,7 +105,7 @@ async def test_allowed_specific_resource(test_ds):
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
-    pm.register(plugin, name="test_plugin")
+    test_ds.pm.register(plugin, name="test_plugin")
 
     try:
         actor = {"id": "bob", "role": "analyst"}
@@ -130,7 +129,7 @@ async def test_allowed_specific_resource(test_ds):
         )
 
     finally:
-        pm.unregister(plugin, name="test_plugin")
+        test_ds.pm.unregister(plugin, name="test_plugin")
 
 
 @pytest.mark.asyncio
@@ -148,7 +147,7 @@ async def test_allowed_resources_include_reasons(test_ds):
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
-    pm.register(plugin, name="test_plugin")
+    test_ds.pm.register(plugin, name="test_plugin")
 
     try:
         # Use allowed_resources with include_reasons to get debugging info
@@ -170,7 +169,7 @@ async def test_allowed_resources_include_reasons(test_ds):
                 assert "analyst access" in reasons_text
 
     finally:
-        pm.unregister(plugin, name="test_plugin")
+        test_ds.pm.unregister(plugin, name="test_plugin")
 
 
 @pytest.mark.asyncio
@@ -190,7 +189,7 @@ async def test_child_deny_overrides_parent_allow(test_ds):
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
-    pm.register(plugin, name="test_plugin")
+    test_ds.pm.register(plugin, name="test_plugin")
 
     try:
         actor = {"id": "bob", "role": "analyst"}
@@ -219,7 +218,7 @@ async def test_child_deny_overrides_parent_allow(test_ds):
         )
 
     finally:
-        pm.unregister(plugin, name="test_plugin")
+        test_ds.pm.unregister(plugin, name="test_plugin")
 
 
 @pytest.mark.asyncio
@@ -239,7 +238,7 @@ async def test_child_allow_overrides_parent_deny(test_ds):
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
-    pm.register(plugin, name="test_plugin")
+    test_ds.pm.register(plugin, name="test_plugin")
 
     try:
         actor = {"id": "carol"}
@@ -264,7 +263,7 @@ async def test_child_allow_overrides_parent_deny(test_ds):
         )
 
     finally:
-        pm.unregister(plugin, name="test_plugin")
+        test_ds.pm.unregister(plugin, name="test_plugin")
 
 
 @pytest.mark.asyncio
@@ -288,7 +287,7 @@ async def test_sql_does_filtering_not_python(test_ds):
         return PermissionSQL(sql=sql)
 
     plugin = PermissionRulesPlugin(rules_callback)
-    pm.register(plugin, name="test_plugin")
+    test_ds.pm.register(plugin, name="test_plugin")
 
     try:
         actor = {"id": "dave"}
@@ -314,4 +313,4 @@ async def test_sql_does_filtering_not_python(test_ds):
         assert tables[0].child == "users"
 
     finally:
-        pm.unregister(plugin, name="test_plugin")
+        test_ds.pm.unregister(plugin, name="test_plugin")

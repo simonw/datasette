@@ -1,10 +1,6 @@
 from datasette.app import Datasette
 from bs4 import BeautifulSoup as Soup
-from .fixtures import (  # noqa
-    app_client,
-    make_app_client,
-    app_client_with_dot,
-)
+from .fixtures import make_app_client
 import pathlib
 import pytest
 import urllib.parse
@@ -601,6 +597,12 @@ async def test_table_html_compound_primary_key(ds_client):
             '<td class="col-pk2 type-str">.c-d</td>',
             '<td class="col-content type-str">c</td>',
         ],
+        [
+            '<td class="col-Link type-pk"><a href="/fixtures/compound_primary_key/d,e">d,e</a></td>',
+            '<td class="col-pk1 type-str">d</td>',
+            '<td class="col-pk2 type-str">e</td>',
+            '<td class="col-content type-str">{"row": {"pk1": "d", "pk2": "e", "content": "RENDER_CELL_DEMO"}, "column": "content", "table": "compound_primary_key", "database": "fixtures", "pks": ["pk1", "pk2"], "config": {"depth": "database"}}</td>',
+        ],
     ]
     assert [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
@@ -726,6 +728,69 @@ async def test_table_html_filter_form_still_shows_nocol_columns(ds_client):
         # Moved to the end because it is no longer returned by the query:
         "sortable",
     ]
+
+
+@pytest.mark.asyncio
+async def test_column_chooser_present(ds_client):
+    response = await ds_client.get("/fixtures/facetable")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    # Web component should be present
+    chooser = soup.find("column-chooser")
+    assert chooser is not None
+    # Script block should contain column data as JSON
+
+    scripts = soup.find_all("script")
+    chooser_script = [s for s in scripts if "_columnChooserData" in (s.string or "")]
+    assert len(chooser_script) == 1
+    script_text = chooser_script[0].string
+    # Extract the JSON data
+    assert "allColumns" in script_text
+    assert "selectedColumns" in script_text
+    assert "primaryKeys" in script_text
+
+
+@pytest.mark.asyncio
+async def test_column_chooser_data_reflects_col_filtering(ds_client):
+    response = await ds_client.get("/fixtures/facetable?_col=state&_col=created")
+    assert response.status_code == 200
+    import json
+    import re
+
+    soup = Soup(response.text, "html.parser")
+    chooser = soup.find("column-chooser")
+    assert chooser is not None
+    scripts = soup.find_all("script")
+    chooser_script = [s for s in scripts if "_columnChooserData" in (s.string or "")]
+    script_text = chooser_script[0].string
+    # Parse the JSON object from the script
+    match = re.search(
+        r"window\._columnChooserData\s*=\s*({.*?});", script_text, re.DOTALL
+    )
+    data = json.loads(match.group(1))
+    # All non-PK columns should still be listed in allColumns
+    assert "state" in data["allColumns"]
+    assert "created" in data["allColumns"]
+    assert "planet_int" in data["allColumns"]
+    # Only state and created should be in selectedColumns (plus pk)
+    non_pk_selected = [
+        c for c in data["selectedColumns"] if c not in data["primaryKeys"]
+    ]
+    assert "state" in non_pk_selected
+    assert "created" in non_pk_selected
+    assert "planet_int" not in non_pk_selected
+
+
+@pytest.mark.asyncio
+async def test_column_chooser_shown_for_views(ds_client):
+    response = await ds_client.get("/fixtures/simple_view")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    chooser = soup.find("column-chooser")
+    assert chooser is not None
+    scripts = soup.find_all("script")
+    chooser_script = [s for s in scripts if "_columnChooserData" in (s.string or "")]
+    assert len(chooser_script) == 1
 
 
 @pytest.mark.asyncio
@@ -1263,7 +1328,7 @@ async def test_foreign_key_labels_obey_permissions(config):
         "insert or replace into b (id, name, a_id) values (1, 'world', 1)"
     )
     # Anonymous user can see table b but not table a
-    blah = await ds.client.get("/foreign_key_labels.json")
+    await ds.client.get("/foreign_key_labels.json")
     anon_a = await ds.client.get("/foreign_key_labels/a.json?_labels=on")
     assert anon_a.status_code == 403
     anon_b = await ds.client.get("/foreign_key_labels/b.json?_labels=on")

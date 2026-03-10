@@ -10,7 +10,6 @@ from .utils import (
     sqlite3,
 )
 
-
 HASH_BLOCK_SIZE = 1024 * 1024
 
 
@@ -70,16 +69,11 @@ def inspect_tables(conn, database_metadata):
         tables[table]["foreign_keys"] = info
 
     # Mark tables 'hidden' if they relate to FTS virtual tables
-    hidden_tables = [
-        r["name"]
-        for r in conn.execute(
-            """
+    hidden_tables = [r["name"] for r in conn.execute("""
                 select name from sqlite_master
                 where rootpage = 0
                 and sql like '%VIRTUAL TABLE%USING FTS%'
-            """
-        )
-    ]
+            """)]
 
     if detect_spatialite(conn):
         # Also hide Spatialite internal tables
@@ -94,14 +88,11 @@ def inspect_tables(conn, database_metadata):
             "views_geometry_columns",
             "virts_geometry_columns",
         ] + [
-            r["name"]
-            for r in conn.execute(
-                """
+            r["name"] for r in conn.execute("""
                     select name from sqlite_master
                     where name like "idx_%"
                     and type = "table"
-                """
-            )
+                """)
         ]
 
     for t in tables.keys():

@@ -418,36 +418,37 @@ async def test_get_all_foreign_keys(db):
 @pytest.mark.asyncio
 async def test_table_names(db):
     table_names = await db.table_names()
+    # Tables are sorted alphabetically by name
     assert table_names == [
-        "simple_primary_key",
-        "primary_key_multiple_columns",
-        "primary_key_multiple_columns_explicit_label",
-        "compound_primary_key",
-        "compound_three_primary_keys",
-        "foreign_key_references",
-        "sortable",
-        "no_primary_key",
         "123_starts_with_digits",
         "Table With Space In Name",
-        "table/with/slashes.csv",
+        "attraction_characteristic",
+        "binary_data",
         "complex_foreign_keys",
+        "compound_primary_key",
+        "compound_three_primary_keys",
         "custom_foreign_key_label",
-        "tags",
-        "searchable",
-        "searchable_tags",
-        "searchable_fts",
-        "searchable_fts_segments",
-        "searchable_fts_segdir",
-        "searchable_fts_docsize",
-        "searchable_fts_stat",
-        "select",
-        "infinity",
         "facet_cities",
         "facetable",
-        "binary_data",
-        "roadside_attractions",
-        "attraction_characteristic",
+        "foreign_key_references",
+        "infinity",
+        "no_primary_key",
+        "primary_key_multiple_columns",
+        "primary_key_multiple_columns_explicit_label",
         "roadside_attraction_characteristics",
+        "roadside_attractions",
+        "searchable",
+        "searchable_fts",
+        "searchable_fts_config",
+        "searchable_fts_data",
+        "searchable_fts_docsize",
+        "searchable_fts_idx",
+        "searchable_tags",
+        "select",
+        "simple_primary_key",
+        "sortable",
+        "table/with/slashes.csv",
+        "tags",
     ]
 
 
@@ -746,19 +747,15 @@ async def test_replace_database(tmpdir):
     path1 = str(tmpdir / "data1.db")
     (tmpdir / "two").mkdir()
     path2 = str(tmpdir / "two" / "data1.db")
-    sqlite3.connect(path1).executescript(
-        """
+    sqlite3.connect(path1).executescript("""
         create table t (id integer primary key);
         insert into t (id) values (1);
         insert into t (id) values (2);
-    """
-    )
-    sqlite3.connect(path2).executescript(
-        """
+    """)
+    sqlite3.connect(path2).executescript("""
         create table t (id integer primary key);
         insert into t (id) values (1);
-    """
-    )
+    """)
     datasette = Datasette([path1])
     db = datasette.get_database("data1")
     count = (await db.execute("select count(*) from t")).first()[0]

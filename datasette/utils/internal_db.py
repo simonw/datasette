@@ -3,8 +3,7 @@ from datasette.utils import table_column_details
 
 
 async def init_internal_db(db):
-    create_tables_sql = textwrap.dedent(
-        """
+    create_tables_sql = textwrap.dedent("""
     CREATE TABLE IF NOT EXISTS catalog_databases (
         database_name TEXT PRIMARY KEY,
         path TEXT,
@@ -68,16 +67,13 @@ async def init_internal_db(db):
         FOREIGN KEY (database_name) REFERENCES catalog_databases(database_name),
         FOREIGN KEY (database_name, table_name) REFERENCES catalog_tables(database_name, table_name)
     );
-    """
-    ).strip()
+    """).strip()
     await db.execute_write_script(create_tables_sql)
     await initialize_metadata_tables(db)
 
 
 async def initialize_metadata_tables(db):
-    await db.execute_write_script(
-        textwrap.dedent(
-            """
+    await db.execute_write_script(textwrap.dedent("""
         CREATE TABLE IF NOT EXISTS metadata_instance (
             key text,
             value text,
@@ -107,9 +103,7 @@ async def initialize_metadata_tables(db):
             value text,
             unique(database_name, resource_name, column_name, key)
         );
-            """
-        )
-    )
+            """))
 
 
 async def populate_schema_tables(internal_db, db):

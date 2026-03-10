@@ -130,25 +130,25 @@ class Database:
         for connection in self._all_file_connections:
             connection.close()
 
-    async def execute_write(self, sql, params=None, block=True):
+    async def execute_write(self, sql, params=None, block=True, request=None):
         def _inner(conn):
             return conn.execute(sql, params or [])
 
         with trace("sql", database=self.name, sql=sql.strip(), params=params):
-            results = await self.execute_write_fn(_inner, block=block)
+            results = await self.execute_write_fn(_inner, block=block, request=request)
         return results
 
-    async def execute_write_script(self, sql, block=True):
+    async def execute_write_script(self, sql, block=True, request=None):
         def _inner(conn):
             return conn.executescript(sql)
 
         with trace("sql", database=self.name, sql=sql.strip(), executescript=True):
             results = await self.execute_write_fn(
-                _inner, block=block, transaction=False
+                _inner, block=block, transaction=False, request=request
             )
         return results
 
-    async def execute_write_many(self, sql, params_seq, block=True):
+    async def execute_write_many(self, sql, params_seq, block=True, request=None):
         def _inner(conn):
             count = 0
 
@@ -163,7 +163,9 @@ class Database:
         with trace(
             "sql", database=self.name, sql=sql.strip(), executemany=True
         ) as kwargs:
-            results, count = await self.execute_write_fn(_inner, block=block)
+            results, count = await self.execute_write_fn(
+                _inner, block=block, request=request
+            )
             kwargs["count"] = count
         return results
 
@@ -187,7 +189,8 @@ class Database:
             # Threaded mode - send to write thread
             return await self._send_to_write_thread(fn, isolated_connection=True)
 
-    async def execute_write_fn(self, fn, block=True, transaction=True):
+    async def execute_write_fn(self, fn, block=True, transaction=True, request=None):
+        fn = self._wrap_fn_with_hooks(fn, request, transaction)
         if self.ds.executor is None:
             # non-threaded mode
             if self._write_connection is None:
@@ -202,6 +205,25 @@ class Database:
             return await self._send_to_write_thread(
                 fn, block=block, transaction=transaction
             )
+
+    def _wrap_fn_with_hooks(self, fn, request, transaction):
+        from .plugins import pm
+
+        wrappers = pm.hook.write_wrapper(
+            datasette=self.ds,
+            database=self.name,
+            request=request,
+            transaction=transaction,
+        )
+        wrappers = [w for w in wrappers if w is not None]
+        if not wrappers:
+            return fn
+        # Build the wrapped fn by nesting context manager generators.
+        # The first wrapper returned by pluggy is outermost.
+        original_fn = fn
+        for wrapper_factory in reversed(wrappers):
+            original_fn = _apply_write_wrapper(original_fn, wrapper_factory)
+        return original_fn
 
     async def _send_to_write_thread(
         self, fn, block=True, isolated_connection=False, transaction=True
@@ -431,7 +453,7 @@ class Database:
 
     async def table_names(self):
         results = await self.execute(
-            "select name from sqlite_master where type='table'"
+            "select name from sqlite_master where type='table' order by name"
         )
         return [r[0] for r in results.rows]
 
@@ -510,10 +532,7 @@ class Database:
             ]
 
         if sqlite_version()[1] >= 37:
-            hidden_tables += [
-                x[0]
-                for x in await self.execute(
-                    """
+            hidden_tables += [x[0] for x in await self.execute("""
                       with shadow_tables as (
                         select name
                         from pragma_table_list
@@ -532,14 +551,9 @@ class Database:
                         select name from core_tables
                       )
                       select name from combined order by 1
-                    """
-                )
-            ]
+                    """)]
         else:
-            hidden_tables += [
-                x[0]
-                for x in await self.execute(
-                    """
+            hidden_tables += [x[0] for x in await self.execute("""
                       WITH base AS (
                         SELECT name
                         FROM sqlite_master
@@ -585,22 +599,15 @@ class Database:
                         SELECT name FROM fts3_shadow_tables
                       )
                       SELECT name FROM final ORDER BY 1
-                    """
-                )
-            ]
+                    """)]
         # Also hide any FTS tables that have a content= argument
-        hidden_tables += [
-            x[0]
-            for x in await self.execute(
-                """
+        hidden_tables += [x[0] for x in await self.execute("""
                   SELECT name
                   FROM sqlite_master
                   WHERE sql LIKE '%VIRTUAL TABLE%'
                     AND sql LIKE '%USING FTS%'
                     AND sql LIKE '%content=%'
-                """
-            )
-        ]
+                """)]
 
         has_spatialite = await self.execute_fn(detect_spatialite)
         if has_spatialite:
@@ -619,16 +626,11 @@ class Database:
                 "KNN",
                 "KNN2",
             ] + [
-                r[0]
-                for r in (
-                    await self.execute(
-                        """
+                r[0] for r in (await self.execute("""
                         select name from sqlite_master
                         where name like "idx_%"
                         and type = "table"
-                    """
-                    )
-                ).rows
+                    """)).rows
             ]
 
         return hidden_tables
@@ -678,6 +680,47 @@ class Database:
         if tags:
             tags_str = f" ({', '.join(tags)})"
         return f"<Database: {self.name}{tags_str}>"
+
+
+def _apply_write_wrapper(fn, wrapper_factory):
+    """Apply a single write_wrapper context manager around fn.
+
+    ``wrapper_factory`` is a callable that takes ``(conn)`` and returns a
+    generator that yields exactly once.  Code before the yield runs before
+    ``fn(conn)``, code after the yield runs after.  The result of
+    ``fn(conn)`` is sent into the generator via ``.send()``, and any
+    exception raised by ``fn(conn)`` is thrown via ``.throw()``.
+    """
+
+    def wrapped(conn):
+        gen = wrapper_factory(conn)
+        # Advance to the yield point (run "before" code)
+        try:
+            next(gen)
+        except StopIteration:
+            # Generator didn't yield — just run fn unchanged
+            return fn(conn)
+
+        # Execute the actual write
+        try:
+            result = fn(conn)
+        except Exception:
+            # Throw exception into generator so it can handle it
+            try:
+                gen.throw(*sys.exc_info())
+            except StopIteration:
+                pass
+            # Re-raise the original exception
+            raise
+        else:
+            # Send the result back through the yield
+            try:
+                gen.send(result)
+            except StopIteration:
+                pass
+            return result
+
+    return wrapped
 
 
 class WriteTask:

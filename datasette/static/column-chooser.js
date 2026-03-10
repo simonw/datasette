@@ -62,6 +62,7 @@ class ColumnChooser extends HTMLElement {
         dialog[open] {
           display: flex;
           flex-direction: column;
+          height: min(640px, calc(100vh - 32px));
         }
 
         dialog::backdrop {

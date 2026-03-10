@@ -1,7 +1,7 @@
 class ColumnChooser extends HTMLElement {
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
+    this.attachShadow({ mode: "open" });
 
     // State
     this._items = [];
@@ -370,27 +370,27 @@ class ColumnChooser extends HTMLElement {
     `;
 
     // DOM refs
-    this._dialog = this.shadowRoot.querySelector('dialog');
-    this._listWrap = this.shadowRoot.getElementById('listWrap');
-    this._dragList = this.shadowRoot.getElementById('dragList');
-    this._pulseTop = this.shadowRoot.getElementById('pulseTop');
-    this._pulseBot = this.shadowRoot.getElementById('pulseBot');
-    this._selectAllBtn = this.shadowRoot.getElementById('selectAllBtn');
-    this._deselectAllBtn = this.shadowRoot.getElementById('deselectAllBtn');
-    this._cancelBtn = this.shadowRoot.getElementById('cancelBtn');
-    this._applyBtn = this.shadowRoot.getElementById('applyBtn');
-    this._countEl = this.shadowRoot.getElementById('selectedCount');
-    this._footerEl = this.shadowRoot.getElementById('footerInfo');
+    this._dialog = this.shadowRoot.querySelector("dialog");
+    this._listWrap = this.shadowRoot.getElementById("listWrap");
+    this._dragList = this.shadowRoot.getElementById("dragList");
+    this._pulseTop = this.shadowRoot.getElementById("pulseTop");
+    this._pulseBot = this.shadowRoot.getElementById("pulseBot");
+    this._selectAllBtn = this.shadowRoot.getElementById("selectAllBtn");
+    this._deselectAllBtn = this.shadowRoot.getElementById("deselectAllBtn");
+    this._cancelBtn = this.shadowRoot.getElementById("cancelBtn");
+    this._applyBtn = this.shadowRoot.getElementById("applyBtn");
+    this._countEl = this.shadowRoot.getElementById("selectedCount");
+    this._footerEl = this.shadowRoot.getElementById("footerInfo");
 
     // Event listeners
-    this._selectAllBtn.addEventListener('click', () => this._selectAll());
-    this._deselectAllBtn.addEventListener('click', () => this._deselectAll());
-    this._cancelBtn.addEventListener('click', () => this._close());
-    this._applyBtn.addEventListener('click', () => this._apply());
-    this._dialog.addEventListener('click', e => {
+    this._selectAllBtn.addEventListener("click", () => this._selectAll());
+    this._deselectAllBtn.addEventListener("click", () => this._deselectAll());
+    this._cancelBtn.addEventListener("click", () => this._close());
+    this._applyBtn.addEventListener("click", () => this._apply());
+    this._dialog.addEventListener("click", (e) => {
       if (e.target === this._dialog) this._close();
     });
-    this._dialog.addEventListener('cancel', e => {
+    this._dialog.addEventListener("cancel", (e) => {
       e.preventDefault();
       this._close();
     });
@@ -420,13 +420,15 @@ class ColumnChooser extends HTMLElement {
 
   _close() {
     this._items = this._savedItems ? [...this._savedItems] : this._items;
-    this._checked = this._savedChecked ? new Set(this._savedChecked) : this._checked;
+    this._checked = this._savedChecked
+      ? new Set(this._savedChecked)
+      : this._checked;
     this._dialog.close();
   }
 
   _selectAll() {
-    this._items.forEach(col => this._checked.add(col));
-    this._dragList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    this._items.forEach((col) => this._checked.add(col));
+    this._dragList.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
       cb.checked = true;
     });
     this._updateCounts();
@@ -434,14 +436,14 @@ class ColumnChooser extends HTMLElement {
 
   _deselectAll() {
     this._checked.clear();
-    this._dragList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    this._dragList.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
       cb.checked = false;
     });
     this._updateCounts();
   }
 
   _apply() {
-    const selected = this._items.filter(col => this._checked.has(col));
+    const selected = this._items.filter((col) => this._checked.has(col));
     this._dialog.close();
     if (this._onApply) {
       this._onApply(selected);
@@ -449,10 +451,10 @@ class ColumnChooser extends HTMLElement {
   }
 
   _render() {
-    this._dragList.innerHTML = '';
+    this._dragList.innerHTML = "";
     this._items.forEach((col, i) => {
-      const li = document.createElement('li');
-      li.className = 'drag-item';
+      const li = document.createElement("li");
+      li.className = "drag-item";
       li.dataset.idx = i;
       li.innerHTML = `
         <span class="drag-handle" aria-label="Drag to reorder">
@@ -467,19 +469,21 @@ class ColumnChooser extends HTMLElement {
         </span>
         <label class="drag-item-content">
           <span class="drag-item-check">
-            <input type="checkbox" ${this._checked.has(col) ? 'checked' : ''}>
+            <input type="checkbox" ${this._checked.has(col) ? "checked" : ""}>
           </span>
           <span class="drag-item-label">${col}</span>
         </label>
         <div class="drop-indicator"></div>
       `;
 
-      li.querySelector('input').addEventListener('change', e => {
+      li.querySelector("input").addEventListener("change", (e) => {
         e.target.checked ? this._checked.add(col) : this._checked.delete(col);
         this._updateCounts();
       });
 
-      li.querySelector('.drag-handle').addEventListener('pointerdown', e => this._startDrag(e, i));
+      li.querySelector(".drag-handle").addEventListener("pointerdown", (e) =>
+        this._startDrag(e, i),
+      );
       this._dragList.appendChild(li);
     });
 
@@ -505,27 +509,27 @@ class ColumnChooser extends HTMLElement {
     this._ghostOffY = e.clientY - rect.top;
 
     // Build ghost inside shadow DOM
-    this._ghost = document.createElement('div');
-    this._ghost.className = 'drag-ghost';
-    this._ghost.style.width = rect.width + 'px';
-    this._ghost.style.height = rect.height + 'px';
+    this._ghost = document.createElement("div");
+    this._ghost.className = "drag-ghost";
+    this._ghost.style.width = rect.width + "px";
+    this._ghost.style.height = rect.height + "px";
     this._ghost.innerHTML = srcEl.innerHTML;
-    this._ghost.querySelector('.drop-indicator')?.remove();
-    const h = this._ghost.querySelector('.drag-handle');
-    if (h) h.style.color = 'var(--accent)';
+    this._ghost.querySelector(".drop-indicator")?.remove();
+    const h = this._ghost.querySelector(".drag-handle");
+    if (h) h.style.color = "var(--accent)";
     this.shadowRoot.appendChild(this._ghost);
 
-    srcEl.classList.add('is-dragging');
+    srcEl.classList.add("is-dragging");
     this._positionGhost(e.clientX, e.clientY);
 
-    document.addEventListener('pointermove', this._onMove);
-    document.addEventListener('pointerup', this._onUp);
-    document.addEventListener('pointercancel', this._onUp);
+    document.addEventListener("pointermove", this._onMove);
+    document.addEventListener("pointerup", this._onUp);
+    document.addEventListener("pointercancel", this._onUp);
   }
 
   _positionGhost(cx, cy) {
-    this._ghost.style.left = (cx - this._ghostOffX) + 'px';
-    this._ghost.style.top = (cy - this._ghostOffY) + 'px';
+    this._ghost.style.left = cx - this._ghostOffX + "px";
+    this._ghost.style.top = cy - this._ghostOffY + "px";
   }
 
   _onMove(e) {
@@ -537,20 +541,21 @@ class ColumnChooser extends HTMLElement {
   }
 
   _onUp() {
-    document.removeEventListener('pointermove', this._onMove);
-    document.removeEventListener('pointerup', this._onUp);
-    document.removeEventListener('pointercancel', this._onUp);
+    document.removeEventListener("pointermove", this._onMove);
+    document.removeEventListener("pointerup", this._onUp);
+    document.removeEventListener("pointercancel", this._onUp);
 
     this._stopAutoScroll();
 
-    const noMove = this._dropTargetIdx === null || this._dropTargetIdx === this._dragSrcIdx;
+    const noMove =
+      this._dropTargetIdx === null || this._dropTargetIdx === this._dragSrcIdx;
     this._clearDropIndicators();
 
     let dest = null;
     if (!noMove) {
       const moved = this._items.splice(this._dragSrcIdx, 1)[0];
       dest = this._dropTargetIdx;
-      if (this._dropPosition === 'after') dest++;
+      if (this._dropPosition === "after") dest++;
       if (dest > this._dragSrcIdx) dest--;
       this._items.splice(dest, 0, moved);
     }
@@ -573,17 +578,18 @@ class ColumnChooser extends HTMLElement {
     if (g && dest !== null) {
       const landedEl = this._dragList.children[dest];
       if (landedEl) {
-        landedEl.style.opacity = '0';
+        landedEl.style.opacity = "0";
         const r = landedEl.getBoundingClientRect();
         g.getBoundingClientRect();
-        g.style.transition = 'left 0.15s cubic-bezier(0.22, 1, 0.36, 1), top 0.15s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.15s, opacity 0.1s 0.1s';
-        g.style.left = r.left + 'px';
-        g.style.top = r.top + 'px';
-        g.style.boxShadow = '0 1px 4px rgba(0,0,0,0.08)';
-        g.style.opacity = '0';
+        g.style.transition =
+          "left 0.15s cubic-bezier(0.22, 1, 0.36, 1), top 0.15s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.15s, opacity 0.1s 0.1s";
+        g.style.left = r.left + "px";
+        g.style.top = r.top + "px";
+        g.style.boxShadow = "0 1px 4px rgba(0,0,0,0.08)";
+        g.style.opacity = "0";
         setTimeout(() => {
           g.remove();
-          if (landedEl) landedEl.style.opacity = '';
+          if (landedEl) landedEl.style.opacity = "";
         }, 160);
       } else {
         g.remove();
@@ -595,34 +601,40 @@ class ColumnChooser extends HTMLElement {
 
   _updateDropTarget(clientY) {
     this._clearDropIndicators();
-    const listItems = [...this._dragList.querySelectorAll('.drag-item:not(.is-dragging)')];
+    const listItems = [
+      ...this._dragList.querySelectorAll(".drag-item:not(.is-dragging)"),
+    ];
     if (!listItems.length) return;
 
-    let best = null, bestDist = Infinity;
-    listItems.forEach(li => {
+    let best = null,
+      bestDist = Infinity;
+    listItems.forEach((li) => {
       const r = li.getBoundingClientRect();
       const mid = r.top + r.height / 2;
       const dist = Math.abs(clientY - mid);
-      if (dist < bestDist) { bestDist = dist; best = li; }
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = li;
+      }
     });
 
     if (!best) return;
     const r = best.getBoundingClientRect();
     const mid = r.top + r.height / 2;
     const above = clientY < mid;
-    const indic = best.querySelector('.drop-indicator');
+    const indic = best.querySelector(".drop-indicator");
 
     this._dropTargetIdx = parseInt(best.dataset.idx);
-    this._dropPosition = above ? 'before' : 'after';
+    this._dropPosition = above ? "before" : "after";
 
     if (indic) {
-      indic.className = 'drop-indicator ' + (above ? 'top' : 'bottom');
+      indic.className = "drop-indicator " + (above ? "top" : "bottom");
     }
   }
 
   _clearDropIndicators() {
-    this._dragList.querySelectorAll('.drop-indicator').forEach(el => {
-      el.className = 'drop-indicator';
+    this._dragList.querySelectorAll(".drop-indicator").forEach((el) => {
+      el.className = "drop-indicator";
     });
   }
 
@@ -635,13 +647,16 @@ class ColumnChooser extends HTMLElement {
     const inTop = distTop < this._SCROLL_ZONE && distTop >= 0;
     const inBot = distBot < this._SCROLL_ZONE && distBot >= 0;
 
-    this._pulseTop.classList.toggle('active', inTop);
-    this._pulseBot.classList.toggle('active', inBot);
+    this._pulseTop.classList.toggle("active", inTop);
+    this._pulseBot.classList.toggle("active", inBot);
 
     if ((inTop || inBot) && !this._autoScrollRAF) {
       let lastTime = null;
       const loop = (ts) => {
-        if (!this._ghost) { this._stopAutoScroll(); return; }
+        if (!this._ghost) {
+          this._stopAutoScroll();
+          return;
+        }
         if (lastTime !== null) {
           const dt = ts - lastTime;
           const rect2 = this._listWrap.getBoundingClientRect();
@@ -671,10 +686,13 @@ class ColumnChooser extends HTMLElement {
   }
 
   _stopAutoScroll() {
-    if (this._autoScrollRAF) { cancelAnimationFrame(this._autoScrollRAF); this._autoScrollRAF = null; }
-    this._pulseTop.classList.remove('active');
-    this._pulseBot.classList.remove('active');
+    if (this._autoScrollRAF) {
+      cancelAnimationFrame(this._autoScrollRAF);
+      this._autoScrollRAF = null;
+    }
+    this._pulseTop.classList.remove("active");
+    this._pulseBot.classList.remove("active");
   }
 }
 
-customElements.define('column-chooser', ColumnChooser);
+customElements.define("column-chooser", ColumnChooser);

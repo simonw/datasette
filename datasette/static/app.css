@@ -803,6 +803,17 @@ p.zero-results {
     .filters input.filter-value {
         width: 140px;
     }
+    button.choose-columns-mobile {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        margin-bottom: 1em;
+        font-size: 0.9rem;
+        font-family: inherit;
+        background: white;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        cursor: pointer;
+    }
 }
 
 svg.dropdown-menu-icon {

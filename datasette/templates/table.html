@@ -139,6 +139,7 @@
 
 {% if all_columns %}
 <column-chooser></column-chooser>
+<button class="choose-columns-mobile small-screen-only" onclick="openColumnChooser()">Choose columns</button>
 <script>
 window._columnChooserData = {{ {"allColumns": all_columns, "selectedColumns": display_columns|map(attribute='name')|list, "primaryKeys": primary_keys}|tojson }};
 </script>

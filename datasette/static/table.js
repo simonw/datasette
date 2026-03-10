@@ -434,6 +434,25 @@ function initRowDetailPanel() {
     });
   }
 
+  // Tilde-encode a string for Datasette row URLs.
+  // Characters outside A-Z a-z 0-9 _ - are encoded as ~XX hex pairs.
+  // Spaces become +.
+  function tildeEncode(s) {
+    const safe = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-';
+    const bytes = new TextEncoder().encode(s);
+    let result = '';
+    for (const b of bytes) {
+      if (b === 0x20) {
+        result += '+';
+      } else if (safe.indexOf(String.fromCharCode(b)) !== -1) {
+        result += String.fromCharCode(b);
+      } else {
+        result += '~' + b.toString(16).toUpperCase().padStart(2, '0');
+      }
+    }
+    return result;
+  }
+
   // Construct row URL from row object (which has pkValues)
   function getRowUrl(rowObj) {
     if (!rowObj || !rowObj.pkValues || rowObj.pkValues.length === 0) {
@@ -446,8 +465,8 @@ function initRowDetailPanel() {
       return null;
     }
 
-    // Construct the row path by joining PK values
-    const rowPath = pkValues.map(v => encodeURIComponent(v)).join(',');
+    // Construct the row path by joining tilde-encoded PK values
+    const rowPath = pkValues.map(v => tildeEncode(v)).join(',');
 
     // Get current path and construct row URL
     const currentPath = window.location.pathname;

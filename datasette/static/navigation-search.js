@@ -19,19 +19,20 @@ class NavigationSearch extends HTMLElement {
 
                 dialog {
                     border: none;
-                    border-radius: 0.75rem;
+                    border-radius: var(--modal-border-radius, 0.75rem);
                     padding: 0;
                     max-width: 90vw;
                     width: 600px;
                     max-height: 80vh;
-                    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-                    animation: slideIn 0.2s ease-out;
+                    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
+                    animation: slideIn var(--modal-animation-duration, 0.2s) ease-out;
                 }
 
                 dialog::backdrop {
-                    background: rgba(0, 0, 0, 0.5);
-                    backdrop-filter: blur(4px);
-                    animation: fadeIn 0.2s ease-out;
+                    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
+                    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
+                    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
+                    animation: fadeIn var(--modal-animation-duration, 0.2s) ease-out;
                 }
 
                 @keyframes slideIn {

@@ -4,6 +4,7 @@
 
 {% block extra_head %}
 {{- super() -}}
+<script src="{{ urls.static('column-chooser.js') }}" defer></script>
 <script src="{{ urls.static('table.js') }}" defer></script>
 <script>DATASETTE_ALLOW_FACET = {{ datasette_allow_facet }};</script>
 <style>
@@ -134,6 +135,14 @@
 
 {% if facet_results %}
     {% include "_facet_results.html" %}
+{% endif %}
+
+{% if all_columns %}
+<column-chooser></column-chooser>
+<button class="choose-columns-mobile small-screen-only" onclick="openColumnChooser()">Choose columns</button>
+<script>
+window._columnChooserData = {{ {"allColumns": all_columns, "selectedColumns": display_columns|map(attribute='name')|list, "primaryKeys": primary_keys}|tojson }};
+</script>
 {% endif %}
 
 {% include custom_table_templates %}

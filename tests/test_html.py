@@ -863,7 +863,28 @@ def test_base_url_config(app_client_base_url_prefix, path, use_prefix):
     response = client.get(path_to_get)
     soup = Soup(response.content, "html.parser")
     for form in soup.select("form"):
-        assert form["action"].startswith("/prefix")
+        action = form.get("action")
+        if action is None:
+            assert form.get("method") == "dialog", json.dumps(
+                {
+                    "path": path,
+                    "path_to_get": path_to_get,
+                    "form": str(form),
+                },
+                indent=4,
+                default=repr,
+            )
+            continue
+        assert action.startswith("/prefix"), json.dumps(
+            {
+                "path": path,
+                "path_to_get": path_to_get,
+                "action": action,
+                "form": str(form),
+            },
+            indent=4,
+            default=repr,
+        )
     for el in soup.find_all(["a", "link", "script"]):
         if "href" in el.attrs:
             href = el["href"]

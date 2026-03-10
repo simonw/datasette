@@ -63,6 +63,14 @@ em {
 }
 /* end reset */
 
+/* Modal CSS variables (shared by web components via Shadow DOM) */
+:root {
+    --modal-backdrop-bg: rgba(0, 0, 0, 0.5);
+    --modal-backdrop-blur: blur(4px);
+    --modal-border-radius: 0.75rem;
+    --modal-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    --modal-animation-duration: 0.2s;
+}
 
 body {
     margin: 0;

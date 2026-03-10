@@ -26,7 +26,6 @@ class ColumnChooser extends HTMLElement {
     // Bound handlers
     this._onMove = this._onMove.bind(this);
     this._onUp = this._onUp.bind(this);
-    this._onKeyDown = this._onKeyDown.bind(this);
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -42,47 +41,50 @@ class ColumnChooser extends HTMLElement {
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
-        .backdrop {
-          position: fixed;
-          inset: 0;
-          background: rgba(0,0,0,0.45);
-          backdrop-filter: blur(3px);
-          -webkit-backdrop-filter: blur(3px);
-          z-index: 100;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 16px;
-          opacity: 0;
-          pointer-events: none;
-          transition: opacity 0.2s;
+        dialog {
+          border: none;
+          border-radius: var(--modal-border-radius, 0.75rem);
+          padding: 0;
+          margin: auto;
+          width: 100%;
+          max-width: 420px;
+          max-height: min(640px, calc(100vh - 32px));
+          box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
+          animation: slideIn var(--modal-animation-duration, 0.2s) ease-out;
+          overflow: hidden;
+          font-family: system-ui, -apple-system, sans-serif;
+          background: var(--card);
           -webkit-user-select: none;
           -webkit-touch-callout: none;
           -webkit-tap-highlight-color: transparent;
         }
 
-        .backdrop.open {
-          opacity: 1;
-          pointer-events: all;
-        }
-
-        .modal {
-          background: var(--card);
-          border-radius: 10px;
-          width: 100%;
-          max-width: 420px;
-          max-height: min(640px, calc(100vh - 32px));
+        dialog[open] {
           display: flex;
           flex-direction: column;
-          box-shadow: 0 24px 64px rgba(0,0,0,0.28), 0 4px 16px rgba(0,0,0,0.12);
-          transform: translateY(10px) scale(0.98);
-          transition: transform 0.2s;
-          overflow: hidden;
-          font-family: system-ui, -apple-system, sans-serif;
         }
 
-        .backdrop.open .modal {
-          transform: translateY(0) scale(1);
+        dialog::backdrop {
+          background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
+          backdrop-filter: var(--modal-backdrop-blur, blur(4px));
+          -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
+          animation: fadeIn var(--modal-animation-duration, 0.2s) ease-out;
+        }
+
+        @keyframes slideIn {
+          from {
+            opacity: 0;
+            transform: translateY(-20px) scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
 
         .modal-header {
@@ -345,8 +347,7 @@ class ColumnChooser extends HTMLElement {
         input, textarea { -webkit-user-select: auto; user-select: auto; }
       </style>
 
-      <div class="backdrop" part="backdrop">
-        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <dialog aria-labelledby="modalTitle">
           <div class="modal-header">
             <span class="modal-title" id="modalTitle">Choose columns</span>
             <span class="modal-meta" id="selectedCount"></span>
@@ -365,12 +366,11 @@ class ColumnChooser extends HTMLElement {
             <button class="btn btn-ghost" id="cancelBtn">Cancel</button>
             <button class="btn btn-primary" id="applyBtn">Apply</button>
           </div>
-        </div>
-      </div>
+      </dialog>
     `;
 
     // DOM refs
-    this._backdrop = this.shadowRoot.querySelector('.backdrop');
+    this._dialog = this.shadowRoot.querySelector('dialog');
     this._listWrap = this.shadowRoot.getElementById('listWrap');
     this._dragList = this.shadowRoot.getElementById('dragList');
     this._pulseTop = this.shadowRoot.getElementById('pulseTop');
@@ -387,17 +387,13 @@ class ColumnChooser extends HTMLElement {
     this._deselectAllBtn.addEventListener('click', () => this._deselectAll());
     this._cancelBtn.addEventListener('click', () => this._close());
     this._applyBtn.addEventListener('click', () => this._apply());
-    this._backdrop.addEventListener('click', e => {
-      if (e.target === this._backdrop) this._close();
+    this._dialog.addEventListener('click', e => {
+      if (e.target === this._dialog) this._close();
     });
-  }
-
-  connectedCallback() {
-    document.addEventListener('keydown', this._onKeyDown);
-  }
-
-  disconnectedCallback() {
-    document.removeEventListener('keydown', this._onKeyDown);
+    this._dialog.addEventListener('cancel', e => {
+      e.preventDefault();
+      this._close();
+    });
   }
 
   /**
@@ -417,21 +413,15 @@ class ColumnChooser extends HTMLElement {
     this._savedChecked = new Set(this._checked);
 
     this._render();
-    this._backdrop.classList.add('open');
+    this._dialog.showModal();
   }
 
   // ── Internal methods ──
 
-  _onKeyDown(e) {
-    if (e.key === 'Escape' && this._backdrop.classList.contains('open')) {
-      this._close();
-    }
-  }
-
   _close() {
     this._items = this._savedItems ? [...this._savedItems] : this._items;
     this._checked = this._savedChecked ? new Set(this._savedChecked) : this._checked;
-    this._backdrop.classList.remove('open');
+    this._dialog.close();
   }
 
   _selectAll() {
@@ -452,7 +442,7 @@ class ColumnChooser extends HTMLElement {
 
   _apply() {
     const selected = this._items.filter(col => this._checked.has(col));
-    this._backdrop.classList.remove('open');
+    this._dialog.close();
     if (this._onApply) {
       this._onApply(selected);
     }

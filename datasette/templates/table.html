@@ -4,6 +4,7 @@
 
 {% block extra_head %}
 {{- super() -}}
+<script src="{{ urls.static('column-chooser.js') }}" defer></script>
 <script src="{{ urls.static('table.js') }}" defer></script>
 <script>DATASETTE_ALLOW_FACET = {{ datasette_allow_facet }};</script>
 <style>
@@ -137,22 +138,10 @@
 {% endif %}
 
 {% if all_columns %}
-<dialog id="column-selector-dialog" class="column-selector-dialog">
-    <form method="dialog">
-        <h3>Choose columns</h3>
-        <div class="column-selector-list">
-            {% for col in all_columns %}
-            {% if col not in primary_keys %}
-            <label><input type="checkbox" name="column" value="{{ col }}"{% if col in display_columns|map(attribute='name')|list %} checked{% endif %}> {{ col }}</label>
-            {% endif %}
-            {% endfor %}
-        </div>
-        <div class="column-selector-actions">
-            <button type="button" id="column-selector-apply" class="btn-primary">Apply</button>
-            <button type="button" id="column-selector-cancel">Cancel</button>
-        </div>
-    </form>
-</dialog>
+<column-chooser></column-chooser>
+<script>
+window._columnChooserData = {{ {"allColumns": all_columns, "selectedColumns": display_columns|map(attribute='name')|list, "primaryKeys": primary_keys}|tojson }};
+</script>
 {% endif %}
 
 {% include custom_table_templates %}

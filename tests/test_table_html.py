@@ -731,56 +731,66 @@ async def test_table_html_filter_form_still_shows_nocol_columns(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_column_selector_dialog_present(ds_client):
+async def test_column_chooser_present(ds_client):
     response = await ds_client.get("/fixtures/facetable")
     assert response.status_code == 200
     soup = Soup(response.text, "html.parser")
-    # Dialog should be present with checkboxes for non-PK columns
-    dialog = soup.find("dialog", {"id": "column-selector-dialog"})
-    assert dialog is not None
-    checkboxes = dialog.find_all("input", {"name": "column"})
-    checkbox_values = [cb["value"] for cb in checkboxes]
-    # pk should NOT be in the checkboxes
-    assert "pk" not in checkbox_values
-    # Non-PK columns should be present
-    assert "created" in checkbox_values
-    assert "state" in checkbox_values
-    # All checkboxes should be checked by default (no _col filtering)
-    for cb in checkboxes:
-        assert cb.has_attr("checked")
+    # Web component should be present
+    chooser = soup.find("column-chooser")
+    assert chooser is not None
+    # Script block should contain column data as JSON
+
+    scripts = soup.find_all("script")
+    chooser_script = [s for s in scripts if "_columnChooserData" in (s.string or "")]
+    assert len(chooser_script) == 1
+    script_text = chooser_script[0].string
+    # Extract the JSON data
+    assert "allColumns" in script_text
+    assert "selectedColumns" in script_text
+    assert "primaryKeys" in script_text
 
 
 @pytest.mark.asyncio
-async def test_column_selector_reflects_col_filtering(ds_client):
+async def test_column_chooser_data_reflects_col_filtering(ds_client):
     response = await ds_client.get("/fixtures/facetable?_col=state&_col=created")
     assert response.status_code == 200
+    import json
+    import re
+
     soup = Soup(response.text, "html.parser")
-    dialog = soup.find("dialog", {"id": "column-selector-dialog"})
-    assert dialog is not None
-    checkboxes = dialog.find_all("input", {"name": "column"})
-    checkbox_values = [cb["value"] for cb in checkboxes]
-    # All non-PK columns should still be listed
-    assert "state" in checkbox_values
-    assert "created" in checkbox_values
-    assert "planet_int" in checkbox_values
-    # Only state and created should be checked
-    checked = [cb["value"] for cb in checkboxes if cb.has_attr("checked")]
-    assert "state" in checked
-    assert "created" in checked
-    assert "planet_int" not in checked
+    chooser = soup.find("column-chooser")
+    assert chooser is not None
+    scripts = soup.find_all("script")
+    chooser_script = [s for s in scripts if "_columnChooserData" in (s.string or "")]
+    script_text = chooser_script[0].string
+    # Parse the JSON object from the script
+    match = re.search(
+        r"window\._columnChooserData\s*=\s*({.*?});", script_text, re.DOTALL
+    )
+    data = json.loads(match.group(1))
+    # All non-PK columns should still be listed in allColumns
+    assert "state" in data["allColumns"]
+    assert "created" in data["allColumns"]
+    assert "planet_int" in data["allColumns"]
+    # Only state and created should be in selectedColumns (plus pk)
+    non_pk_selected = [
+        c for c in data["selectedColumns"] if c not in data["primaryKeys"]
+    ]
+    assert "state" in non_pk_selected
+    assert "created" in non_pk_selected
+    assert "planet_int" not in non_pk_selected
 
 
 @pytest.mark.asyncio
-async def test_column_selector_shown_for_views(ds_client):
+async def test_column_chooser_shown_for_views(ds_client):
     response = await ds_client.get("/fixtures/simple_view")
     assert response.status_code == 200
     soup = Soup(response.text, "html.parser")
-    dialog = soup.find("dialog", {"id": "column-selector-dialog"})
-    assert dialog is not None
-    checkboxes = dialog.find_all("input", {"name": "column"})
-    # Views have no PKs, so all columns should be listed
-    checkbox_values = [cb["value"] for cb in checkboxes]
-    assert "content" in checkbox_values
+    chooser = soup.find("column-chooser")
+    assert chooser is not None
+    scripts = soup.find_all("script")
+    chooser_script = [s for s in scripts if "_columnChooserData" in (s.string or "")]
+    assert len(chooser_script) == 1
 
 
 @pytest.mark.asyncio

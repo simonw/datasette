@@ -131,14 +131,14 @@ const initDatasetteTable = function (manager) {
     } else {
       hideColumn.parentNode.style.display = "none";
     }
-    /* Choose columns - show if dialog exists */
-    var selectColumnsDialog = document.getElementById("column-selector-dialog");
-    if (selectColumnsDialog) {
+    /* Choose columns - show if web component exists */
+    var columnChooser = document.querySelector("column-chooser");
+    if (columnChooser && window._columnChooserData) {
       selectColumns.parentNode.style.display = "block";
       selectColumns.addEventListener("click", function (ev) {
         ev.preventDefault();
         closeMenu();
-        selectColumnsDialog.showModal();
+        openColumnChooser();
       });
     } else {
       selectColumns.parentNode.style.display = "none";
@@ -344,36 +344,46 @@ function initAutocompleteForFilterValues(manager) {
   });
 }
 
-/** Column selector dialog - Apply and Cancel handlers */
-function initColumnSelector() {
-  var dialog = document.getElementById("column-selector-dialog");
-  if (!dialog) return;
+/** Open the column-chooser web component */
+function openColumnChooser() {
+  var chooser = document.querySelector("column-chooser");
+  var data = window._columnChooserData;
+  if (!chooser || !data) return;
 
-  document.getElementById("column-selector-cancel").addEventListener("click", function () {
-    dialog.close();
+  var nonPkColumns = data.allColumns.filter(function (col) {
+    return data.primaryKeys.indexOf(col) === -1;
+  });
+  var selected = data.selectedColumns.filter(function (col) {
+    return data.primaryKeys.indexOf(col) === -1;
   });
 
-  document.getElementById("column-selector-apply").addEventListener("click", function () {
-    var checked = Array.from(dialog.querySelectorAll('input[name="column"]:checked')).map(
-      function (cb) { return cb.value; }
-    );
-    var allBoxes = Array.from(dialog.querySelectorAll('input[name="column"]'));
-    var allColumns = allBoxes.map(function (cb) { return cb.value; });
+  chooser.open({
+    columns: nonPkColumns,
+    selected: selected,
+    onApply: function (cols) {
+      var params = new URLSearchParams(location.search);
+      params.delete("_col");
+      params.delete("_nocol");
+      params.delete("_next");
 
-    var params = new URLSearchParams(location.search);
-    params.delete("_col");
-    params.delete("_nocol");
-    params.delete("_next");
-
-    if (checked.length === allColumns.length) {
-      // All columns selected - no need for _col params
-    } else {
-      checked.forEach(function (col) {
-        params.append("_col", col);
-      });
+      if (cols.length === nonPkColumns.length) {
+        // Check if order matches original - if so, no params needed
+        var orderMatches = cols.every(function (col, i) {
+          return col === nonPkColumns[i];
+        });
+        if (!orderMatches) {
+          cols.forEach(function (col) {
+            params.append("_col", col);
+          });
+        }
+      } else {
+        cols.forEach(function (col) {
+          params.append("_col", col);
+        });
+      }
+      var qs = params.toString();
+      location.href = qs ? "?" + qs : location.pathname;
     }
-    var qs = params.toString();
-    location.href = qs ? "?" + qs : location.pathname;
   });
 }
 
@@ -388,6 +398,4 @@ document.addEventListener("datasette_init", function (evt) {
   addButtonsToFilterRows(manager);
   initAutocompleteForFilterValues(manager);
 
-  // Column selector
-  initColumnSelector();
 });

@@ -68,6 +68,7 @@ from .views.table import (
     TableInsertView,
     TableUpsertView,
     TableDropView,
+    TableScriptView,
     table_view,
 )
 from .views.row import RowView, RowDeleteView, RowUpdateView
@@ -2059,6 +2060,10 @@ class Datasette:
         add_route(
             TableDropView.as_view(self),
             r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/drop$",
+        )
+        add_route(
+            TableScriptView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/script$",
         )
         add_route(
             TableSchemaView.as_view(self),

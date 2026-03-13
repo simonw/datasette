@@ -472,7 +472,11 @@ async def stream_csv(datasette, fetch_data, request, database):
 
     async def stream_fn(r):
         nonlocal data, trace
-        limited_writer = LimitedWriter(r, datasette.setting("max_csv_mb"))
+        # Table exports should not be constrained by max_csv_mb - that limit
+        # is intended for arbitrary query exports.
+        is_table_export = request.url_vars.get("table") is not None
+        max_csv_mb = 0 if is_table_export else datasette.setting("max_csv_mb")
+        limited_writer = LimitedWriter(r, max_csv_mb)
         if trace:
             await limited_writer.write(preamble)
             writer = csv.writer(EscapeHtmlWriter(limited_writer))

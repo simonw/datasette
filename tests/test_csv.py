@@ -185,6 +185,23 @@ async def test_csv_with_non_ascii_characters(ds_client):
     assert response.text == "text,number\r\n𝐜𝐢𝐭𝐢𝐞𝐬,1\r\nbob,2\r\n"
 
 
+@pytest.mark.asyncio
+async def test_table_csv_ignores_max_csv_mb():
+    ds = Datasette(settings={"max_csv_mb": 1})
+    await ds.invoke_startup()
+    db = ds.add_memory_database("max_csv")
+    await db.execute_write("create table t (id integer primary key, content text)")
+    await db.execute_write(
+        "insert into t (content) values (?)",
+        ["a" * (2 * 1024 * 1024)],
+    )
+
+    response = await ds.client.get("/max_csv/t.csv")
+    assert response.status_code == 200
+    assert "CSV contains more than" not in response.text
+    assert len([line for line in response.text.split("\r\n") if line]) == 2
+
+
 @pytest.mark.xfail(reason="Flaky, see https://github.com/simonw/datasette/issues/2355")
 def test_max_csv_mb(app_client_csv_max_mb_one):
     # This query deliberately generates a really long string

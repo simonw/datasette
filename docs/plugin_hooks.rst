@@ -957,6 +957,25 @@ The fields of the ``Action`` dataclass are as follows:
     - Implement a ``resources_sql()`` classmethod that returns SQL returning all resources as ``(parent, child)`` columns
     - Have an ``__init__`` method that accepts appropriate parameters and calls ``super().__init__(parent=..., child=...)``
 
+Checking a registered action
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To check one of these actions in your plugin code, call
+``datasette.allowed()`` with both the action name and a resource instance.
+For example, this checks if the current actor can view a specific
+``DocumentResource``:
+
+.. code-block:: python
+
+    async def can_view_document(
+        datasette, actor, collection, document_id
+    ):
+        return await datasette.allowed(
+            actor,
+            "view-document",
+            resource=DocumentResource(collection, document_id),
+        )
+
 The ``resources_sql()`` method
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

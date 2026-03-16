@@ -365,6 +365,8 @@ class Datasette:
                 self._refresh_schemas_lock = asyncio.Lock()
             else:
                 raise
+        self._database_updated = {}
+        self._db_watcher_tasks = {}
         self.crossdb = crossdb
         self.nolock = nolock
         if memory or crossdb or not self.files:
@@ -699,6 +701,45 @@ class Datasette:
         for hook in pm.hook.startup(datasette=self):
             await await_me_maybe(hook)
         self._startup_invoked = True
+
+    async def _start_database_watchers(self):
+        for name, db in self.databases.items():
+            if db.path and name not in self._db_watcher_tasks:
+                self._db_watcher_tasks[name] = asyncio.create_task(
+                    self._watch_database(name, db.path)
+                )
+
+    async def _watch_database(self, name, db_path, interval=1.0):
+        loop = asyncio.get_running_loop()
+        conn = sqlite3.connect(
+            db_path, isolation_level=None, check_same_thread=False
+        )
+        try:
+            last = await loop.run_in_executor(
+                None, lambda: conn.execute("PRAGMA data_version").fetchone()[0]
+            )
+            while True:
+                await asyncio.sleep(interval)
+                v = await loop.run_in_executor(
+                    None, lambda: conn.execute("PRAGMA data_version").fetchone()[0]
+                )
+                if v != last:
+                    last = v
+                    self._database_updated[name] = time.monotonic()
+        except (asyncio.CancelledError, Exception):
+            pass
+        finally:
+            # Small delay to let any in-flight executor work finish
+            await asyncio.sleep(0.1)
+            conn.close()
+
+    async def _stop_database_watchers(self):
+        for task in self._db_watcher_tasks.values():
+            task.cancel()
+        await asyncio.gather(
+            *self._db_watcher_tasks.values(), return_exceptions=True
+        )
+        self._db_watcher_tasks.clear()
 
     def sign(self, value, namespace="default"):
         return URLSafeSerializer(self._secret, namespace).dumps(value)
@@ -1558,6 +1599,7 @@ class Datasette:
                 "is_mutable": d.is_mutable,
                 "is_memory": d.is_memory,
                 "hash": d.hash,
+                "last_updated": self._database_updated.get(d.name),
             }
             for name, d in self.databases.items()
         ]
@@ -2139,8 +2181,10 @@ class Datasette:
         )
         if self.setting("trace_debug"):
             asgi = AsgiTracer(asgi)
-        asgi = AsgiLifespan(asgi)
-        asgi = AsgiRunOnFirstRequest(asgi, on_startup=[setup_db, self.invoke_startup])
+        asgi = AsgiLifespan(asgi, on_shutdown=[self._stop_database_watchers])
+        asgi = AsgiRunOnFirstRequest(
+            asgi, on_startup=[setup_db, self.invoke_startup, self._start_database_watchers]
+        )
         for wrapper in pm.hook.asgi_wrapper(datasette=self):
             asgi = wrapper(asgi)
         return asgi

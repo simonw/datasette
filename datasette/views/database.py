@@ -1205,6 +1205,8 @@ async def display_rows(datasette, database, request, rows, columns):
                 database=database,
                 datasette=datasette,
                 request=request,
+                column_type=None,
+                column_type_config=None,
             ):
                 candidate = await await_me_maybe(candidate)
                 if candidate is not None:

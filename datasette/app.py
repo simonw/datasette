@@ -354,6 +354,7 @@ class Datasette:
         self.immutables = set(immutables or [])
         self.databases = collections.OrderedDict()
         self.actions = {}  # .invoke_startup() will populate this
+        self._column_types = {}  # .invoke_startup() will populate this
         try:
             self._refresh_schemas_lock = asyncio.Lock()
         except RuntimeError as rex:
@@ -692,12 +693,25 @@ class Datasette:
                         action_abbrs[action.abbr] = action
                     self.actions[action.name] = action
 
+        # Register column types
+        self._column_types = {}
+        for hook in pm.hook.register_column_types(datasette=self):
+            if hook:
+                for ct in hook:
+                    if ct.name in self._column_types:
+                        raise StartupError(
+                            f"Duplicate column type name: {ct.name}"
+                        )
+                    self._column_types[ct.name] = ct
+
         for hook in pm.hook.prepare_jinja2_environment(
             env=self._jinja_env, datasette=self
         ):
             await await_me_maybe(hook)
         # Ensure internal tables and metadata are populated before startup hooks
         await self._refresh_schemas()
+        # Load column_types from config into internal DB
+        await self._apply_column_types_config()
         for hook in pm.hook.startup(datasette=self):
             await await_me_maybe(hook)
         self._startup_invoked = True
@@ -944,6 +958,95 @@ class Datasette:
             """,
             [database_name, resource_name, column_name, key, value],
         )
+
+    # Column types API
+
+    async def _apply_column_types_config(self):
+        """Load column_types from datasette.json config into the internal DB."""
+        import logging
+
+        for db_name, db_conf in (self.config or {}).get("databases", {}).items():
+            for table_name, table_conf in db_conf.get("tables", {}).items():
+                for col_name, ct in table_conf.get("column_types", {}).items():
+                    if isinstance(ct, str):
+                        col_type, config = ct, None
+                    else:
+                        col_type = ct["type"]
+                        config = ct.get("config")
+                    if col_type not in self._column_types:
+                        logging.warning(
+                            "column_types config references unknown type %r "
+                            "for %s.%s.%s",
+                            col_type, db_name, table_name, col_name,
+                        )
+                    await self.set_column_type(
+                        db_name, table_name, col_name, col_type, config
+                    )
+
+    async def get_column_type(
+        self, database: str, resource: str, column: str
+    ) -> tuple:
+        """
+        Return (column_type_name, config_dict) for a specific column,
+        or (None, None) if no column type is assigned.
+        """
+        row = await self.get_internal_database().execute(
+            "SELECT column_type, config FROM column_types "
+            "WHERE database_name = ? AND resource_name = ? AND column_name = ?",
+            [database, resource, column],
+        )
+        rows = row.rows
+        if not rows:
+            return None, None
+        ct, config = rows[0]
+        return (ct, json.loads(config) if config else None)
+
+    async def get_column_types(
+        self, database: str, resource: str
+    ) -> dict:
+        """
+        Return {column_name: (column_type_name, config_dict_or_None)}
+        for all columns with assigned types on the given resource.
+        """
+        rows = await self.get_internal_database().execute(
+            "SELECT column_name, column_type, config FROM column_types "
+            "WHERE database_name = ? AND resource_name = ?",
+            [database, resource],
+        )
+        return {
+            row[0]: (row[1], json.loads(row[2]) if row[2] else None)
+            for row in rows.rows
+        }
+
+    async def set_column_type(
+        self, database: str, resource: str, column: str,
+        column_type: str, config: dict = None
+    ) -> None:
+        """Assign a column type. Overwrites any existing assignment."""
+        await self.get_internal_database().execute_write(
+            """INSERT OR REPLACE INTO column_types
+               (database_name, resource_name, column_name, column_type, config)
+               VALUES (?, ?, ?, ?, ?)""",
+            [database, resource, column, column_type,
+             json.dumps(config) if config else None],
+        )
+
+    async def remove_column_type(
+        self, database: str, resource: str, column: str
+    ) -> None:
+        """Remove a column type assignment."""
+        await self.get_internal_database().execute_write(
+            "DELETE FROM column_types "
+            "WHERE database_name = ? AND resource_name = ? AND column_name = ?",
+            [database, resource, column],
+        )
+
+    def get_column_type_class(self, column_type_name: str):
+        """
+        Return the registered ColumnType instance for a given name,
+        or None if no plugin has registered that name.
+        """
+        return self._column_types.get(column_type_name)
 
     def get_internal_database(self):
         return self._internal_database

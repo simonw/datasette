@@ -1948,3 +1948,14 @@ def test_metadata_plugin_config_treated_as_config(
     assert "plugins" not in actual_metadata
     assert actual_metadata == expected_metadata
     assert ds.config == expected_config
+
+
+@pytest.mark.asyncio
+async def test_hook_register_column_types():
+    ds = Datasette()
+    await ds.invoke_startup()
+    # Built-in column types should be registered
+    assert ds.get_column_type_class("url") is not None
+    assert ds.get_column_type_class("email") is not None
+    assert ds.get_column_type_class("json") is not None
+    assert ds.get_column_type_class("nonexistent") is None

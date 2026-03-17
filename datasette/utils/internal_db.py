@@ -103,6 +103,15 @@ async def initialize_metadata_tables(db):
             value text,
             unique(database_name, resource_name, column_name, key)
         );
+
+        CREATE TABLE IF NOT EXISTS column_types (
+            database_name TEXT,
+            resource_name TEXT,
+            column_name TEXT,
+            column_type TEXT NOT NULL,
+            config TEXT,
+            PRIMARY KEY (database_name, resource_name, column_name)
+        );
             """))
 
 

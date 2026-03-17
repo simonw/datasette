@@ -352,7 +352,11 @@ async def test_validation_allows_empty_string(ds_ct):
 
 @pytest.mark.asyncio
 async def test_column_type_base_defaults():
-    ct = ColumnType(name="test", description="Test type")
+    class TestType(ColumnType):
+        name = "test"
+        description = "Test type"
+
+    ct = TestType()
     assert await ct.render_cell("val", "col", "tbl", "db", None, None, None) is None
     assert await ct.validate("val", None, None) is None
     assert await ct.transform_value("val", None, None) == "val"
@@ -378,6 +382,9 @@ async def test_render_cell_extra_with_column_types(ds_ct):
 @pytest.mark.asyncio
 async def test_duplicate_column_type_name_raises_error():
     class DuplicateUrlType(ColumnType):
+        name = "url"
+        description = "Duplicate URL"
+
         async def render_cell(
             self, value, column, table, database, datasette, request, config
         ):
@@ -386,7 +393,7 @@ async def test_duplicate_column_type_name_raises_error():
     class _Plugin:
         @hookimpl
         def register_column_types(self, datasette):
-            return [DuplicateUrlType(name="url", description="Duplicate URL")]
+            return [DuplicateUrlType()]
 
     plugin = _Plugin()
     pm.register(plugin, name="test_duplicate_ct")
@@ -420,6 +427,9 @@ async def test_transform_value_in_json_output(tmp_path_factory):
     """A column type with transform_value should modify rows in JSON API."""
 
     class UpperColumnType(ColumnType):
+        name = "upper"
+        description = "Uppercase"
+
         async def transform_value(self, value, config, datasette):
             if isinstance(value, str):
                 return value.upper()
@@ -428,7 +438,7 @@ async def test_transform_value_in_json_output(tmp_path_factory):
     class _Plugin:
         @hookimpl
         def register_column_types(self, datasette):
-            return [UpperColumnType(name="upper", description="Uppercase")]
+            return [UpperColumnType()]
 
     plugin = _Plugin()
     pm.register(plugin, name="test_transform_ct")
@@ -469,6 +479,9 @@ async def test_column_type_render_cell_has_priority_over_plugins(tmp_path_factor
     """Column type render_cell should take priority over render_cell plugin hook."""
 
     class PriorityColumnType(ColumnType):
+        name = "priority_test"
+        description = "Priority test"
+
         async def render_cell(
             self, value, column, table, database, datasette, request, config
         ):
@@ -481,9 +494,7 @@ async def test_column_type_render_cell_has_priority_over_plugins(tmp_path_factor
     class _ColumnTypePlugin:
         @hookimpl
         def register_column_types(self, datasette):
-            return [
-                PriorityColumnType(name="priority_test", description="Priority test")
-            ]
+            return [PriorityColumnType()]
 
     class _RenderCellPlugin:
         @hookimpl

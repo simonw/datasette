@@ -1,19 +1,17 @@
-from dataclasses import dataclass
-
-
-@dataclass(frozen=True, kw_only=True)
 class ColumnType:
-    name: str
     """
-    Unique identifier string. Lowercase, no spaces.
-    Examples: "markdown", "file", "email", "url", "point", "image".
+    Base class for column types.
+
+    Subclasses must define ``name`` and ``description`` as class attributes:
+
+    - ``name``: Unique identifier string. Lowercase, no spaces.
+      Examples: "markdown", "file", "email", "url", "point", "image".
+    - ``description``: Human-readable label for admin UI dropdowns.
+      Examples: "Markdown text", "File reference", "Email address".
     """
 
+    name: str
     description: str
-    """
-    Human-readable label for admin UI dropdowns.
-    Examples: "Markdown text", "File reference", "Email address".
-    """
 
     async def render_cell(
         self, value, column, table, database, datasette, request, config

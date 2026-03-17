@@ -1012,6 +1012,9 @@ Return a list of :ref:`ColumnType <column_types>` instances to register custom c
 
 
     class ColorColumnType(ColumnType):
+        name = "color"
+        description = "CSS color value"
+
         async def render_cell(
             self,
             value,
@@ -1045,14 +1048,9 @@ Return a list of :ref:`ColumnType <column_types>` instances to register custom c
 
     @hookimpl
     def register_column_types(datasette):
-        return [
-            ColorColumnType(
-                name="color",
-                description="CSS color value",
-            )
-        ]
+        return [ColorColumnType()]
 
-Each ``ColumnType`` instance has the following attributes:
+Each ``ColumnType`` subclass must define the following class attributes:
 
 ``name`` - string
     Unique identifier for the column type, e.g. ``"color"``. Must be unique across all plugins.

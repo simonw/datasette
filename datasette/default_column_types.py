@@ -8,6 +8,8 @@ from datasette.column_types import ColumnType
 
 
 class UrlColumnType(ColumnType):
+    name = "url"
+    description = "URL"
 
     async def render_cell(
         self, value, column, table, database, datasette, request, config
@@ -28,6 +30,8 @@ class UrlColumnType(ColumnType):
 
 
 class EmailColumnType(ColumnType):
+    name = "email"
+    description = "Email address"
 
     async def render_cell(
         self, value, column, table, database, datasette, request, config
@@ -48,6 +52,8 @@ class EmailColumnType(ColumnType):
 
 
 class JsonColumnType(ColumnType):
+    name = "json"
+    description = "JSON data"
 
     async def render_cell(
         self, value, column, table, database, datasette, request, config
@@ -76,7 +82,7 @@ class JsonColumnType(ColumnType):
 @hookimpl
 def register_column_types(datasette):
     return [
-        UrlColumnType(name="url", description="URL"),
-        EmailColumnType(name="email", description="Email address"),
-        JsonColumnType(name="json", description="JSON data"),
+        UrlColumnType(),
+        EmailColumnType(),
+        JsonColumnType(),
     ]

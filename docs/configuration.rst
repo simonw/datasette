@@ -641,7 +641,6 @@ Table configuration
 
 Datasette supports a number of table-level configuration options inside ``datasette.yaml``. These are placed under ``databases.database_name.tables.table_name``.
 
-.. _metadata_default_sort:
 .. _table_configuration_sort:
 
 ``sort`` / ``sort_desc``
@@ -731,7 +730,6 @@ Or use ``sort_desc`` to sort in descending order:
         }
 .. [[[end]]]
 
-.. _metadata_page_size:
 .. _table_configuration_size:
 
 ``size``
@@ -780,7 +778,6 @@ Datasette defaults to displaying 100 rows per page, for both tables and views. Y
 
 This size can still be over-ridden by passing e.g. ``?_size=50`` in the query string.
 
-.. _metadata_sortable_columns:
 .. _table_configuration_sortable_columns:
 
 ``sortable_columns``
@@ -886,7 +883,6 @@ You can use ``sortable_columns`` to enable specific sort orders for a view calle
         }
 .. [[[end]]]
 
-.. _label_columns:
 .. _table_configuration_label_column:
 
 ``label_column``
@@ -935,7 +931,6 @@ If your table has more than two columns you can specify which column should be u
         }
 .. [[[end]]]
 
-.. _metadata_hiding_tables:
 .. _table_configuration_hidden:
 
 ``hidden``
@@ -1097,7 +1092,6 @@ These configure :ref:`full-text search <full_text_search>` for a table or view. 
         }
 .. [[[end]]]
 
-.. _metadata_column_descriptions:
 .. _table_configuration_columns:
 
 ``columns``

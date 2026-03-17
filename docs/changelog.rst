@@ -934,7 +934,7 @@ Other small fixes
 0.59 (2021-10-14)
 -----------------
 
-- Columns can now have associated metadata descriptions in ``metadata.json``, see :ref:`metadata_column_descriptions`. (:issue:`942`)
+- Columns can now have associated metadata descriptions in ``metadata.json``, see :ref:`table_configuration_columns`. (:issue:`942`)
 - New :ref:`register_commands() <plugin_hook_register_commands>` plugin hook allows plugins to register additional Datasette CLI commands, e.g. ``datasette mycommand file.db``. (:issue:`1449`)
 - Adding ``?_facet_size=max`` to a table page now shows the number of unique values in each facet. (:issue:`1423`)
 - Upgraded dependency `httpx 0.20 <https://github.com/encode/httpx/releases/tag/0.20.0>`__ - the undocumented ``allow_redirects=`` parameter to :ref:`internals_datasette_client` is now ``follow_redirects=``, and defaults to ``False`` where it previously defaulted to ``True``. (:issue:`1488`)
@@ -1624,7 +1624,7 @@ The main focus of this release is a major upgrade to the :ref:`plugin_register_o
 * Redesign of :ref:`plugin_register_output_renderer` to provide more context to the render callback and support an optional ``"can_render"`` callback that controls if a suggested link to the output format is provided. (:issue:`581`, :issue:`770`)
 * Visually distinguish float and integer columns - useful for figuring out why order-by-column might be returning unexpected results. (:issue:`729`)
 * The :ref:`internals_request`, which is passed to several plugin hooks, is now documented. (:issue:`706`)
-* New ``metadata.json`` option for setting a custom default page size for specific tables and views, see :ref:`metadata_page_size`. (:issue:`751`)
+* New ``metadata.json`` option for setting a custom default page size for specific tables and views, see :ref:`table_configuration_size`. (:issue:`751`)
 * Canned queries can now be configured with a default URL fragment hash, useful when working with plugins such as `datasette-vega <https://github.com/simonw/datasette-vega>`__, see :ref:`canned_queries_options`. (:issue:`706`)
 * Fixed a bug in ``datasette publish`` when running on operating systems where the ``/tmp`` directory lives in a different volume, using a backport of the Python 3.8 ``shutil.copytree()`` function. (:issue:`744`)
 * Every plugin hook is now covered by the unit tests, and a new unit test checks that each plugin hook has at least one corresponding test. (:issue:`771`, :issue:`773`)
@@ -1688,7 +1688,7 @@ Also in this release:
 -----------------
 
 * New :ref:`setting_base_url` configuration setting for serving up the correct links while running Datasette under a different URL prefix. (:issue:`394`)
-* New metadata settings ``"sort"`` and ``"sort_desc"`` for setting the default sort order for a table. See :ref:`metadata_default_sort`. (:issue:`702`)
+* New metadata settings ``"sort"`` and ``"sort_desc"`` for setting the default sort order for a table. See :ref:`table_configuration_sort`. (:issue:`702`)
 * Sort direction arrow now displays by default on the primary key. This means you only have to click once (not twice) to sort in reverse order. (:issue:`677`)
 * New ``await Request(scope, receive).post_vars()`` method for accessing POST form variables. (:issue:`700`)
 * :ref:`plugin_hooks` documentation now links to example uses of each plugin. (:issue:`709`)
@@ -2123,7 +2123,7 @@ New plugin hooks, improved database view support and an easier way to use more r
 - New ``render_cell`` plugin hook. Plugins can now customize how values are displayed in the HTML tables produced by Datasette's browsable interface. `datasette-json-html <https://github.com/simonw/datasette-json-html>`__ and `datasette-render-images <https://github.com/simonw/datasette-render-images>`__ are two new plugins that use this hook. :ref:`render_cell documentation <plugin_hook_render_cell>`. Closes :issue:`352`
 - New ``extra_body_script`` plugin hook, enabling plugins to provide additional JavaScript that should be added to the page footer. :ref:`extra_body_script documentation <plugin_hook_extra_body_script>`.
 - ``extra_css_urls`` and ``extra_js_urls`` hooks now take additional optional parameters, allowing them to be more selective about which pages they apply to. :ref:`Documentation <plugin_hook_extra_css_urls>`.
-- You can now use the :ref:`sortable_columns metadata setting <metadata_sortable_columns>` to explicitly enable sort-by-column in the interface for database views, as well as for specific tables.
+- You can now use the :ref:`sortable_columns metadata setting <table_configuration_sortable_columns>` to explicitly enable sort-by-column in the interface for database views, as well as for specific tables.
 - The new ``fts_table`` and ``fts_pk`` metadata settings can now be used to :ref:`explicitly configure full-text search for a table or a view <full_text_search_table_or_view>`, even if that table is not directly coupled to the SQLite FTS feature in the database schema itself.
 - Datasette will now use `pysqlite3 <https://github.com/coleifer/pysqlite3>`__ in place of the standard library ``sqlite3`` module if it has been installed in the current environment. This makes it much easier to run Datasette against a more recent version of SQLite, including the just-released `SQLite 3.25.0 <https://www.sqlite.org/releaselog/3_25_0.html>`__ which adds window function support. More details on how to use this in :issue:`360`
 - New mechanism that allows :ref:`plugin configuration options <plugins_configuration>` to be set using ``metadata.json``.
@@ -2208,7 +2208,7 @@ Foreign key expansions
 ~~~~~~~~~~~~~~~~~~~~~~
 
 When Datasette detects a foreign key reference it attempts to resolve a label
-for that reference (automatically or using the :ref:`label_columns` metadata
+for that reference (automatically or using the :ref:`table_configuration_label_column` metadata
 option) so it can display a link to the associated row.
 
 This expansion is now also available for JSON and CSV representations of the

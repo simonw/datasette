@@ -98,8 +98,8 @@ You can increase this on an individual page by adding ``?_facet_size=100`` to th
 
 .. _facets_metadata:
 
-Facets in metadata
-------------------
+Facets in configuration
+-----------------------
 
 You can turn facets on by default for specific tables by adding a ``"facets"`` key to the table configuration in ``datasette.yaml``. See also the :ref:`table configuration reference <table_configuration_facets>` for a quick overview.
 

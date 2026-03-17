@@ -888,9 +888,13 @@ You can use ``sortable_columns`` to enable specific sort orders for a view calle
 ``label_column``
 ^^^^^^^^^^^^^^^^
 
-Datasette's HTML interface attempts to display foreign key references as labelled hyperlinks. By default, it looks for referenced tables that only have two columns: a primary key column and one other. It assumes that the second column should be used as the link label.
+Datasette's HTML interface attempts to display foreign key references as labelled hyperlinks. By default, it automatically detects a label column using the following rules (in order):
 
-If your table has more than two columns you can specify which column should be used for the link label with the ``label_column`` property:
+1. If there is exactly one unique text column, use that.
+2. If there is a column called ``name`` or ``title`` (case-insensitive), use that.
+3. If the table has only two columns - a primary key and one other - use the non-primary-key column.
+
+You can override this automatic detection by specifying which column should be used for the link label with the ``label_column`` property:
 
 .. [[[cog
     config_example(cog, textwrap.dedent(

@@ -65,8 +65,8 @@ The ``"searchmode": "raw"`` property can be used to default the table to accepti
 Here is an example which enables full-text search (with SQLite advanced search operators) for a ``display_ads`` view which is defined against the ``ads`` table and hence needs to run FTS against the ``ads_fts`` table, using the ``id`` as the primary key:
 
 .. [[[cog
-    from metadata_doc import metadata_example
-    metadata_example(cog, {
+    from metadata_doc import config_example
+    config_example(cog, {
         "databases": {
             "russian-ads": {
                 "tables": {
@@ -81,7 +81,7 @@ Here is an example which enables full-text search (with SQLite advanced search o
     })
 .. ]]]
 
-.. tab:: metadata.yaml
+.. tab:: datasette.yaml
 
     .. code-block:: yaml
 
@@ -94,7 +94,7 @@ Here is an example which enables full-text search (with SQLite advanced search o
                 searchmode: raw
 
 
-.. tab:: metadata.json
+.. tab:: datasette.json
 
     .. code-block:: json
 

@@ -106,8 +106,8 @@ You can turn facets on by default for specific tables by adding a ``"facets"`` k
 Here's an example that turns on faceting by default for the ``qLegalStatus`` column in the ``Street_Tree_List`` table in the ``sf-trees`` database:
 
 .. [[[cog
-    from metadata_doc import metadata_example
-    metadata_example(cog, {
+    from metadata_doc import config_example
+    config_example(cog, {
       "databases": {
         "sf-trees": {
           "tables": {
@@ -120,7 +120,7 @@ Here's an example that turns on faceting by default for the ``qLegalStatus`` col
     })
 .. ]]]
 
-.. tab:: metadata.yaml
+.. tab:: datasette.yaml
 
     .. code-block:: yaml
 
@@ -132,7 +132,7 @@ Here's an example that turns on faceting by default for the ``qLegalStatus`` col
                 - qLegalStatus
 
 
-.. tab:: metadata.json
+.. tab:: datasette.json
 
     .. code-block:: json
 
@@ -153,12 +153,12 @@ Here's an example that turns on faceting by default for the ``qLegalStatus`` col
 
 Facets defined in this way will always be shown in the interface and returned in the API, regardless of the ``_facet`` arguments passed to the view.
 
-Facets defined in metadata will be displayed in the order they are listed in the configuration. Any additional facets added via query string parameters (e.g. ``?_facet=column_name``) will appear after the metadata-defined facets, sorted by the number of unique values.
+Facets defined in configuration will be displayed in the order they are listed. Any additional facets added via query string parameters (e.g. ``?_facet=column_name``) will appear after the configured facets, sorted by the number of unique values.
 
-You can specify :ref:`array <facet_by_json_array>` or :ref:`date <facet_by_date>` facets in metadata using JSON objects with a single key of ``array`` or ``date`` and a value specifying the column, like this:
+You can specify :ref:`array <facet_by_json_array>` or :ref:`date <facet_by_date>` facets using JSON objects with a single key of ``array`` or ``date`` and a value specifying the column, like this:
 
 .. [[[cog
-    metadata_example(cog, {
+    config_example(cog, {
       "facets": [
         {"array": "tags"},
         {"date": "created"}
@@ -166,7 +166,7 @@ You can specify :ref:`array <facet_by_json_array>` or :ref:`date <facet_by_date>
     })
 .. ]]]
 
-.. tab:: metadata.yaml
+.. tab:: datasette.yaml
 
     .. code-block:: yaml
 
@@ -175,7 +175,7 @@ You can specify :ref:`array <facet_by_json_array>` or :ref:`date <facet_by_date>
         - date: created
 
 
-.. tab:: metadata.json
+.. tab:: datasette.json
 
     .. code-block:: json
 
@@ -194,7 +194,7 @@ You can specify :ref:`array <facet_by_json_array>` or :ref:`date <facet_by_date>
 You can change the default facet size (the number of results shown for each facet) for a table using ``facet_size``:
 
 .. [[[cog
-    metadata_example(cog, {
+    config_example(cog, {
       "databases": {
         "sf-trees": {
           "tables": {
@@ -208,7 +208,7 @@ You can change the default facet size (the number of results shown for each face
     })
 .. ]]]
 
-.. tab:: metadata.yaml
+.. tab:: datasette.yaml
 
     .. code-block:: yaml
 
@@ -221,7 +221,7 @@ You can change the default facet size (the number of results shown for each face
                 facet_size: 10
 
 
-.. tab:: metadata.json
+.. tab:: datasette.json
 
     .. code-block:: json
 

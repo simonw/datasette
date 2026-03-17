@@ -1,7 +1,5 @@
 import logging
 
-import logging
-
 from datasette.app import Datasette
 from datasette.column_types import ColumnType
 from datasette.hookspecs import hookimpl

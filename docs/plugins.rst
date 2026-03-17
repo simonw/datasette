@@ -208,6 +208,15 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             ]
         },
         {
+            "name": "datasette.default_column_types",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "register_column_types"
+            ]
+        },
+        {
             "name": "datasette.default_magic_parameters",
             "static": false,
             "templates": false,

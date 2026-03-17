@@ -863,6 +863,18 @@ async def test_hook_startup(ds_client):
 
 
 @pytest.mark.asyncio
+async def test_hook_startup_metadata_available(ds_client):
+    # Metadata from metadata.yaml should be populated before startup() fires
+    assert "title" in ds_client.ds._startup_metadata_keys
+
+
+@pytest.mark.asyncio
+async def test_hook_startup_catalog_populated(ds_client):
+    # Internal catalog tables should be populated before startup() fires
+    assert "fixtures" in ds_client.ds._startup_catalog_databases
+
+
+@pytest.mark.asyncio
 async def test_hook_canned_queries(ds_client):
     queries = (await ds_client.get("/fixtures.json")).json()["queries"]
     queries_by_name = {q["name"]: q for q in queries}

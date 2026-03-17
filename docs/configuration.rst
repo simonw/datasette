@@ -1096,67 +1096,12 @@ These configure :ref:`full-text search <full_text_search>` for a table or view. 
         }
 .. [[[end]]]
 
-.. _table_configuration_columns:
-
-``columns``
-^^^^^^^^^^^
-
-You can include descriptions for your columns by adding a ``columns`` mapping of column names to descriptions. These will be displayed at the top of the table page, and will also show in the cog menu for each column.
-
-.. [[[cog
-    config_example(cog, textwrap.dedent(
-      """
-        databases:
-          mydatabase:
-            tables:
-              example_table:
-                columns:
-                  column1: Description of column 1
-                  column2: Description of column 2
-      """).strip()
-    )
-.. ]]]
-
-.. tab:: datasette.yaml
-
-    .. code-block:: yaml
-
-        databases:
-          mydatabase:
-            tables:
-              example_table:
-                columns:
-                  column1: Description of column 1
-                  column2: Description of column 2
-
-.. tab:: datasette.json
-
-    .. code-block:: json
-
-        {
-          "databases": {
-            "mydatabase": {
-              "tables": {
-                "example_table": {
-                  "columns": {
-                    "column1": "Description of column 1",
-                    "column2": "Description of column 2"
-                  }
-                }
-              }
-            }
-          }
-        }
-.. [[[end]]]
-
-You can see an example of how these look at `latest.datasette.io/fixtures/roadside_attractions <https://latest.datasette.io/fixtures/roadside_attractions>`__.
-
 .. _table_configuration_column_types:
 
 ``column_types``
 ^^^^^^^^^^^^^^^^
 
-You can assign semantic column types to columns, which affect how values are rendered, validated, and transformed. Built-in column types include ``url``, ``email``, and ``json``. Plugins can register additional column types using the ``register_column_types`` plugin hook.
+You can assign semantic column types to columns, which affect how values are rendered, validated, and transformed. Built-in column types include ``url``, ``email``, and ``json``. Plugins can register additional column types using the :ref:`register_column_types <plugin_register_column_types>` plugin hook.
 
 The simplest form maps column names to type name strings:
 

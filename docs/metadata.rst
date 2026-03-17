@@ -144,6 +144,67 @@ The three visible metadata fields you can apply to everything, specific database
 
 For each of these you can provide just the ``*_url`` field and Datasette will treat that as the default link label text and display the URL directly on the page.
 
+.. _metadata_column_descriptions:
+
+Column descriptions
+-------------------
+
+You can include descriptions for your columns by adding a ``"columns": {"name-of-column": "description-of-column"}`` block to your table metadata:
+
+.. [[[cog
+    metadata_example(cog, {
+        "databases": {
+            "database1": {
+                "tables": {
+                    "example_table": {
+                        "columns": {
+                            "column1": "Description of column 1",
+                            "column2": "Description of column 2"
+                        }
+                    }
+                }
+            }
+        }
+    })
+.. ]]]
+
+.. tab:: metadata.yaml
+
+    .. code-block:: yaml
+
+        databases:
+          database1:
+            tables:
+              example_table:
+                columns:
+                  column1: Description of column 1
+                  column2: Description of column 2
+
+
+.. tab:: metadata.json
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "database1": {
+              "tables": {
+                "example_table": {
+                  "columns": {
+                    "column1": "Description of column 1",
+                    "column2": "Description of column 2"
+                  }
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
+
+These will be displayed at the top of the table page, and will also show in the cog menu for each column.
+
+You can see an example of how these look at `latest.datasette.io/fixtures/roadside_attractions <https://latest.datasette.io/fixtures/roadside_attractions>`__.
+
 .. _metadata_table_config:
 
 Table configuration
@@ -204,5 +265,6 @@ The following metadata fields are supported at the table level:
 - ``license_url``
 - ``about``
 - ``about_url``
+- ``columns`` (see :ref:`metadata_column_descriptions`)
 
-Additionally, tables support a number of configuration options (``sort``, ``sort_desc``, ``size``, ``sortable_columns``, ``label_column``, ``hidden``, ``facets``, ``facet_size``, ``fts_table``, ``fts_pk``, ``searchmode``, ``columns``, ``column_types``). See :ref:`table configuration <configuration_reference_table>` for full details.
+Additionally, tables support a number of configuration options (``sort``, ``sort_desc``, ``size``, ``sortable_columns``, ``label_column``, ``hidden``, ``facets``, ``facet_size``, ``fts_table``, ``fts_pk``, ``searchmode``, ``column_types``). See :ref:`table configuration <configuration_reference_table>` for full details.

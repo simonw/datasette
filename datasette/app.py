@@ -697,7 +697,7 @@ class Datasette:
         ):
             await await_me_maybe(hook)
         # Ensure internal tables and metadata are populated before startup hooks
-        await self.refresh_schemas()
+        await self._refresh_schemas()
         for hook in pm.hook.startup(datasette=self):
             await await_me_maybe(hook)
         self._startup_invoked = True

@@ -55,7 +55,17 @@ def publish_subcommand(publish):
 
 
 @hookspec
-def render_cell(row, value, column, table, pks, database, datasette, request):
+def render_cell(
+    row,
+    value,
+    column,
+    table,
+    pks,
+    database,
+    datasette,
+    request,
+    column_type,
+):
     """Customize rendering of HTML table cell values"""
 
 
@@ -72,6 +82,11 @@ def register_facet_classes():
 @hookspec
 def register_actions(datasette):
     """Register actions: returns a list of datasette.permission.Action objects"""
+
+
+@hookspec
+def register_column_types(datasette):
+    """Return a list of ColumnType instances"""
 
 
 @hookspec

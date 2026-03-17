@@ -134,6 +134,22 @@ async def _redirect_if_needed(datasette, request, resolved):
         )
 
 
+async def _validate_column_types(datasette, database_name, table_name, rows):
+    """Validate row values against assigned column types. Returns list of error strings."""
+    ct_map = await datasette.get_column_types(database_name, table_name)
+    if not ct_map:
+        return []
+    errors = []
+    for row in rows:
+        for col_name, ct in ct_map.items():
+            if col_name not in row:
+                continue
+            error = await ct.validate(row[col_name], datasette)
+            if error:
+                errors.append(f"{col_name}: {error}")
+    return errors
+
+
 async def display_columns_and_rows(
     datasette,
     database_name,
@@ -163,6 +179,9 @@ async def display_columns_and_rows(
         )
     )
 
+    # Look up column types for this table
+    column_types_map = await datasette.get_column_types(database_name, table_name)
+
     column_details = {
         col.name: col for col in await db.table_column_details(table_name)
     }
@@ -179,16 +198,21 @@ async def display_columns_and_rows(
         else:
             type_ = column_details[r[0]].type
             notnull = column_details[r[0]].notnull
-        columns.append(
-            {
-                "name": r[0],
-                "sortable": r[0] in sortable_columns,
-                "is_pk": r[0] in pks_for_display,
-                "type": type_,
-                "notnull": notnull,
-                "description": column_descriptions.get(r[0]),
-            }
-        )
+        col_dict = {
+            "name": r[0],
+            "sortable": r[0] in sortable_columns,
+            "is_pk": r[0] in pks_for_display,
+            "type": type_,
+            "notnull": notnull,
+            "description": column_descriptions.get(r[0]),
+            "column_type": None,
+            "column_type_config": None,
+        }
+        ct = column_types_map.get(r[0])
+        if ct:
+            col_dict["column_type"] = ct.name
+            col_dict["column_type_config"] = ct.config
+        columns.append(col_dict)
 
     column_to_foreign_key_table = {
         fk["column"]: fk["other_table"]
@@ -227,23 +251,37 @@ async def display_columns_and_rows(
                 # already shown in the link column.
                 continue
 
-            # First let the plugins have a go
+            # First try column type render_cell, then plugins
             # pylint: disable=no-member
             plugin_display_value = None
-            for candidate in pm.hook.render_cell(
-                row=row,
-                value=value,
-                column=column,
-                table=table_name,
-                pks=pks_for_display,
-                database=database_name,
-                datasette=datasette,
-                request=request,
-            ):
-                candidate = await await_me_maybe(candidate)
+            ct = column_types_map.get(column)
+            if ct:
+                candidate = await ct.render_cell(
+                    value=value,
+                    column=column,
+                    table=table_name,
+                    database=database_name,
+                    datasette=datasette,
+                    request=request,
+                )
                 if candidate is not None:
                     plugin_display_value = candidate
-                    break
+            if plugin_display_value is None:
+                for candidate in pm.hook.render_cell(
+                    row=row,
+                    value=value,
+                    column=column,
+                    table=table_name,
+                    pks=pks_for_display,
+                    database=database_name,
+                    datasette=datasette,
+                    request=request,
+                    column_type=ct,
+                ):
+                    candidate = await await_me_maybe(candidate)
+                    if candidate is not None:
+                        plugin_display_value = candidate
+                        break
             if plugin_display_value:
                 display_value = plugin_display_value
             elif isinstance(value, bytes):
@@ -483,6 +521,13 @@ class TableInsertView(BaseView):
         )
         if errors:
             return _error(errors, 400)
+
+        # Validate column types
+        ct_errors = await _validate_column_types(
+            self.ds, database_name, table_name, rows
+        )
+        if ct_errors:
+            return _error(ct_errors, 400)
 
         num_rows = len(rows)
 
@@ -1500,27 +1545,42 @@ async def table_view_data(
     async def extra_render_cell():
         "Rendered HTML for each cell using the render_cell plugin hook"
         pks_for_display = pks if pks else (["rowid"] if not is_view else [])
-        columns = [col[0] for col in results.description]
+        col_names = [col[0] for col in results.description]
+        ct_map = await datasette.get_column_types(database_name, table_name)
         rendered_rows = []
         for row in rows:
             rendered_row = {}
-            for value, column in zip(row, columns):
-                # Call render_cell plugin hook
+            for value, column in zip(row, col_names):
+                ct = ct_map.get(column)
                 plugin_display_value = None
-                for candidate in pm.hook.render_cell(
-                    row=row,
-                    value=value,
-                    column=column,
-                    table=table_name,
-                    pks=pks_for_display,
-                    database=database_name,
-                    datasette=datasette,
-                    request=request,
-                ):
-                    candidate = await await_me_maybe(candidate)
+                # Try column type render_cell first
+                if ct:
+                    candidate = await ct.render_cell(
+                        value=value,
+                        column=column,
+                        table=table_name,
+                        database=database_name,
+                        datasette=datasette,
+                        request=request,
+                    )
                     if candidate is not None:
                         plugin_display_value = candidate
-                        break
+                if plugin_display_value is None:
+                    for candidate in pm.hook.render_cell(
+                        row=row,
+                        value=value,
+                        column=column,
+                        table=table_name,
+                        pks=pks_for_display,
+                        database=database_name,
+                        datasette=datasette,
+                        request=request,
+                        column_type=ct,
+                    ):
+                        candidate = await await_me_maybe(candidate)
+                        if candidate is not None:
+                            plugin_display_value = candidate
+                            break
                 if plugin_display_value:
                     rendered_row[column] = str(plugin_display_value)
             rendered_rows.append(rendered_row)
@@ -1531,6 +1591,17 @@ async def table_view_data(
         return {
             "sql": sql,
             "params": params,
+        }
+
+    async def extra_column_types():
+        "Column type assignments for this table"
+        ct_map = await datasette.get_column_types(database_name, table_name)
+        return {
+            col_name: {
+                "type": ct.name,
+                "config": ct.config,
+            }
+            for col_name, ct in ct_map.items()
         }
 
     async def extra_metadata():
@@ -1742,6 +1813,7 @@ async def table_view_data(
         extra_debug,
         extra_request,
         extra_query,
+        extra_column_types,
         extra_metadata,
         extra_extras,
         extra_database,
@@ -1775,7 +1847,18 @@ async def table_view_data(
         }
     )
     raw_sqlite_rows = rows[:page_size]
-    data["rows"] = [dict(r) for r in raw_sqlite_rows]
+    # Apply transform_value for columns with assigned types
+    ct_map = await datasette.get_column_types(database_name, table_name)
+    transformed_rows = []
+    for r in raw_sqlite_rows:
+        row_dict = dict(r)
+        for col_name, ct in ct_map.items():
+            if col_name in row_dict:
+                row_dict[col_name] = await ct.transform_value(
+                    row_dict[col_name], datasette
+                )
+        transformed_rows.append(row_dict)
+    data["rows"] = transformed_rows
 
     if context_for_html_hack:
         data.update(extra_context_from_filters)

@@ -474,8 +474,8 @@ Examples: `datasette-publish-fly <https://datasette.io/plugins/datasette-publish
 
 .. _plugin_hook_render_cell:
 
-render_cell(row, value, column, table, pks, database, datasette, request)
--------------------------------------------------------------------------
+render_cell(row, value, column, table, pks, database, datasette, request, column_type)
+--------------------------------------------------------------------------------------
 
 Lets you customize the display of values within table cells in the HTML table view.
 
@@ -502,6 +502,11 @@ Lets you customize the display of values within table cells in the HTML table vi
 
 ``request`` - :ref:`internals_request`
     The current request object
+
+``column_type`` - :ref:`ColumnType <column_types>` subclass instance or None
+    The :ref:`ColumnType <column_types>` subclass instance assigned to this column (with ``.config`` populated), or ``None`` if no column type is assigned. You can access ``column_type.name``, ``column_type.config``, etc.
+
+If a column has a :ref:`column type <column_types>` assigned and that column type's ``render_cell`` method returns a non-``None`` value, it will take priority over this plugin hook.
 
 If your hook returns ``None``, it will be ignored. Use this to indicate that your hook is not able to custom render this particular value.
 
@@ -988,6 +993,94 @@ For example, if you're building a document management plugin with collections an
 This tells Datasette "here's how to find all documents in the system - look in the documents table and get the collection name and document ID for each one."
 
 The permission system then uses this query along with rules from plugins to determine which documents each user can access, all efficiently in SQL rather than loading everything into Python.
+
+.. _plugin_register_column_types:
+
+register_column_types(datasette)
+--------------------------------
+
+Return a list of :ref:`ColumnType <column_types>` **subclasses** (not instances) to register custom column types. Column types define how values in specific columns are rendered, validated, and transformed.
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.column_types import ColumnType
+    import markupsafe
+
+
+    class ColorColumnType(ColumnType):
+        name = "color"
+        description = "CSS color value"
+
+        async def render_cell(
+            self,
+            value,
+            column,
+            table,
+            database,
+            datasette,
+            request,
+        ):
+            if value:
+                return markupsafe.Markup(
+                    '<span style="background-color: {color}">'
+                    "{color}</span>"
+                ).format(color=markupsafe.escape(value))
+            return None
+
+        async def validate(self, value, datasette):
+            if value and not value.startswith("#"):
+                return "Color must start with #"
+            return None
+
+        async def transform_value(self, value, datasette):
+            # Normalize to uppercase
+            if isinstance(value, str):
+                return value.upper()
+            return value
+
+
+    @hookimpl
+    def register_column_types(datasette):
+        return [ColorColumnType]
+
+Each ``ColumnType`` subclass must define the following class attributes:
+
+``name`` - string
+    Unique identifier for the column type, e.g. ``"color"``. Must be unique across all plugins.
+
+``description`` - string
+    Human-readable label, e.g. ``"CSS color value"``.
+
+And the following methods, all optional:
+
+``render_cell(self, value, column, table, database, datasette, request)``
+    Return an HTML string to render this cell value, or ``None`` to fall through to the default ``render_cell`` plugin hook chain. When a column type provides rendering, it takes priority over the ``render_cell`` plugin hook.
+
+``validate(self, value, datasette)``
+    Validate a value before it is written via the insert, update, or upsert API endpoints. Return ``None`` if valid, or a string error message if invalid. Null values and empty strings skip validation.
+
+``transform_value(self, value, datasette)``
+    Transform a value before it appears in JSON API output. Return the transformed value. The default implementation returns the value unchanged.
+
+Per-column configuration is available via ``self.config`` in all methods. When a column type is looked up for a specific column (via :ref:`get_column_type <datasette_get_column_type>` or :ref:`get_column_types <datasette_get_column_types>`), the returned instance has ``config`` set to the parsed JSON config dict for that column assignment, or ``None`` if no config was provided.
+
+Column types are assigned to columns via the ``column_types`` key in :ref:`table configuration <metadata_tables>`:
+
+.. code-block:: yaml
+
+    databases:
+      mydb:
+        tables:
+          mytable:
+            column_types:
+              bg_color: color
+              highlight:
+                type: color
+                config:
+                  format: rgb
+
+Datasette includes three built-in column types: ``url``, ``email``, and ``json``.
 
 .. _plugin_asgi_wrapper:
 

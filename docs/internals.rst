@@ -903,6 +903,102 @@ Adds a new metadata entry for the specified column.
 Any previous column-level metadata entry with the same ``key`` will be overwritten.
 Internally upserts the value into the  the ``metadata_columns`` table inside the :ref:`internal database <internals_internal>`.
 
+.. _datasette_column_types:
+
+Column types
+------------
+
+Column types are stored in the ``column_types`` table in the :ref:`internal database <internals_internal>`. The following methods provide the API for reading and modifying column type assignments.
+
+.. _datasette_get_column_type:
+
+await .get_column_type(database, resource, column)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``database`` - string
+    The name of the database.
+``resource`` - string
+    The name of the table or view.
+``column`` - string
+    The name of the column.
+
+Returns a :ref:`ColumnType <column_types>` subclass instance with ``.config`` populated for the specified column, or ``None`` if no column type is assigned.
+
+.. code-block:: python
+
+    ct = await datasette.get_column_type(
+        "mydb", "mytable", "email_col"
+    )
+    if ct:
+        print(ct.name)  # "email"
+        print(ct.config)  # None or {...}
+
+.. _datasette_get_column_types:
+
+await .get_column_types(database, resource)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``database`` - string
+    The name of the database.
+``resource`` - string
+    The name of the table or view.
+
+Returns a dictionary mapping column names to :ref:`ColumnType <column_types>` subclass instances (with ``.config`` populated) for all columns that have assigned types on the given resource.
+
+.. code-block:: python
+
+    ct_map = await datasette.get_column_types("mydb", "mytable")
+    for col_name, ct in ct_map.items():
+        print(col_name, ct.name, ct.config)
+
+.. _datasette_set_column_type:
+
+await .set_column_type(database, resource, column, column_type, config=None)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``database`` - string
+    The name of the database.
+``resource`` - string
+    The name of the table or view.
+``column`` - string
+    The name of the column.
+``column_type`` - string
+    The column type name to assign, e.g. ``"email"``.
+``config`` - dict, optional
+    Optional configuration dict for the column type.
+
+Assigns a column type to a column. Overwrites any existing assignment for that column.
+
+.. code-block:: python
+
+    await datasette.set_column_type(
+        "mydb",
+        "mytable",
+        "location",
+        "point",
+        config={"srid": 4326},
+    )
+
+.. _datasette_remove_column_type:
+
+await .remove_column_type(database, resource, column)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``database`` - string
+    The name of the database.
+``resource`` - string
+    The name of the table or view.
+``column`` - string
+    The name of the column.
+
+Removes the column type assignment for the specified column.
+
+.. code-block:: python
+
+    await datasette.remove_column_type(
+        "mydb", "mytable", "location"
+    )
+
 .. _datasette_add_database:
 
 .add_database(db, name=None, route=None)
@@ -1940,6 +2036,14 @@ The internal database schema is as follows:
         key text,
         value text,
         unique(database_name, resource_name, column_name, key)
+    );
+    CREATE TABLE column_types (
+        database_name TEXT NOT NULL,
+        resource_name TEXT NOT NULL,
+        column_name TEXT NOT NULL,
+        column_type TEXT NOT NULL,
+        config TEXT,
+        PRIMARY KEY (database_name, resource_name, column_name)
     );
 
 .. [[[end]]]

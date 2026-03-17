@@ -179,26 +179,41 @@ class RowView(DataView):
 
         if "render_cell" in extras:
             # Call render_cell plugin hook for each cell
+            ct_map = await self.ds.get_column_types(database, table)
             rendered_rows = []
             for row in rows:
                 rendered_row = {}
                 for value, column in zip(row, columns):
-                    # Call render_cell plugin hook
+                    ct = ct_map.get(column)
                     plugin_display_value = None
-                    for candidate in pm.hook.render_cell(
-                        row=row,
-                        value=value,
-                        column=column,
-                        table=table,
-                        pks=resolved.pks,
-                        database=database,
-                        datasette=self.ds,
-                        request=request,
-                    ):
-                        candidate = await await_me_maybe(candidate)
+                    # Try column type render_cell first
+                    if ct:
+                        candidate = await ct.render_cell(
+                            value=value,
+                            column=column,
+                            table=table,
+                            database=database,
+                            datasette=self.ds,
+                            request=request,
+                        )
                         if candidate is not None:
                             plugin_display_value = candidate
-                            break
+                    if plugin_display_value is None:
+                        for candidate in pm.hook.render_cell(
+                            row=row,
+                            value=value,
+                            column=column,
+                            table=table,
+                            pks=resolved.pks,
+                            database=database,
+                            datasette=self.ds,
+                            request=request,
+                            column_type=ct,
+                        ):
+                            candidate = await await_me_maybe(candidate)
+                            if candidate is not None:
+                                plugin_display_value = candidate
+                                break
                     if plugin_display_value:
                         rendered_row[column] = str(plugin_display_value)
                 rendered_rows.append(rendered_row)
@@ -351,6 +366,15 @@ class RowUpdateView(BaseView):
             return _error(["Invalid keys: {}".format(", ".join(invalid_keys))])
 
         update = data["update"]
+
+        # Validate column types
+        from datasette.views.table import _validate_column_types
+
+        ct_errors = await _validate_column_types(
+            self.ds, resolved.db.name, resolved.table, [update]
+        )
+        if ct_errors:
+            return _error(ct_errors, 400)
 
         alter = data.get("alter")
         if alter and not await self.ds.allowed(

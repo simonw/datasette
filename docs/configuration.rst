@@ -1245,7 +1245,7 @@ For column types that accept additional configuration, use an object with ``type
                   website:
                     type: url
                     config:
-                      prefix: https://
+                      prefix: "https://"
 
 .. tab:: datasette.json
 

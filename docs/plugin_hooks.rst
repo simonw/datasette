@@ -503,8 +503,8 @@ Lets you customize the display of values within table cells in the HTML table vi
 ``request`` - :ref:`internals_request`
     The current request object
 
-``column_type`` - :ref:`ColumnType <column_types>` instance or None
-    The :ref:`ColumnType <column_types>` instance assigned to this column (with ``.config`` populated), or ``None`` if no column type is assigned. You can access ``column_type.name``, ``column_type.config``, etc.
+``column_type`` - :ref:`ColumnType <column_types>` subclass instance or None
+    The :ref:`ColumnType <column_types>` subclass instance assigned to this column (with ``.config`` populated), or ``None`` if no column type is assigned. You can access ``column_type.name``, ``column_type.config``, etc.
 
 If a column has a :ref:`column type <column_types>` assigned and that column type's ``render_cell`` method returns a non-``None`` value, it will take priority over this plugin hook.
 
@@ -999,7 +999,7 @@ The permission system then uses this query along with rules from plugins to dete
 register_column_types(datasette)
 --------------------------------
 
-Return a list of :ref:`ColumnType <column_types>` **classes** (not instances) to register custom column types. Column types define how values in specific columns are rendered, validated, and transformed.
+Return a list of :ref:`ColumnType <column_types>` **subclasses** (not instances) to register custom column types. Column types define how values in specific columns are rendered, validated, and transformed.
 
 .. code-block:: python
 

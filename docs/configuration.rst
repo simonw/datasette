@@ -986,7 +986,7 @@ You can hide tables from the database listing view (in the same way that FTS and
 ``facets`` / ``facet_size``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-You can turn on facets by default for specific tables. See :ref:`facets_metadata` for full details.
+You can turn on facets by default for specific tables. ``facet_size`` controls how many unique values are shown for each facet on that table (the default is controlled by the :ref:`setting_default_facet_size` setting). See :ref:`facets_metadata` for full details.
 
 .. [[[cog
     config_example(cog, textwrap.dedent(

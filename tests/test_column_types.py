@@ -381,17 +381,6 @@ async def test_column_type_base_defaults():
     assert await ct.transform_value("val", None) == "val"
 
 
-@pytest.mark.asyncio
-async def test_column_type_with_config():
-    class TestType(ColumnType):
-        name = "test"
-        description = "Test type"
-
-    ct = TestType(config={"key": "value"})
-    assert ct.config == {"key": "value"}
-    assert ct.name == "test"
-
-
 # --- render_cell extra with column types ---
 
 

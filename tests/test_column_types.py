@@ -84,47 +84,62 @@ async def test_column_types_table_created(ds_ct):
 async def test_config_loaded_into_internal_db(ds_ct):
     await ds_ct.invoke_startup()
     ct_map = await ds_ct.get_column_types("data", "posts")
-    assert "body" in ct_map
-    assert ct_map["body"] == ("markdown", None)
-    assert ct_map["author_email"] == ("email", None)
-    assert ct_map["website"] == ("url", None)
-    assert ct_map["metadata"] == ("json", None)
+    # "markdown" is not a registered type, so it won't appear
+    assert "body" not in ct_map
+    assert ct_map["author_email"].name == "email"
+    assert ct_map["author_email"].config is None
+    assert ct_map["website"].name == "url"
+    assert ct_map["metadata"].name == "json"
 
 
 @pytest.mark.asyncio
 async def test_config_with_type_and_config(tmp_path_factory):
-    db_directory = tmp_path_factory.mktemp("dbs")
-    db_path = str(db_directory / "data.db")
-    db = sqlite3.connect(str(db_path))
-    db.execute("vacuum")
-    db.execute("create table geo (id integer primary key, location text)")
-    ds = Datasette(
-        [db_path],
-        config={
-            "databases": {
-                "data": {
-                    "tables": {
-                        "geo": {
-                            "column_types": {
-                                "location": {
-                                    "type": "point",
-                                    "config": {"srid": 4326},
+    class PointColumnType(ColumnType):
+        name = "point"
+        description = "Geographic point"
+
+    class _Plugin:
+        @hookimpl
+        def register_column_types(self, datasette):
+            return [PointColumnType]
+
+    plugin = _Plugin()
+    pm.register(plugin, name="test_point_ct")
+    try:
+        db_directory = tmp_path_factory.mktemp("dbs")
+        db_path = str(db_directory / "data.db")
+        db = sqlite3.connect(str(db_path))
+        db.execute("vacuum")
+        db.execute("create table geo (id integer primary key, location text)")
+        ds = Datasette(
+            [db_path],
+            config={
+                "databases": {
+                    "data": {
+                        "tables": {
+                            "geo": {
+                                "column_types": {
+                                    "location": {
+                                        "type": "point",
+                                        "config": {"srid": 4326},
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
-        },
-    )
-    await ds.invoke_startup()
-    ct, config = await ds.get_column_type("data", "geo", "location")
-    assert ct == "point"
-    assert config == {"srid": 4326}
-    db.close()
-    for database in ds.databases.values():
-        if not database.is_memory:
-            database.close()
+            },
+        )
+        await ds.invoke_startup()
+        ct = await ds.get_column_type("data", "geo", "location")
+        assert ct.name == "point"
+        assert ct.config == {"srid": 4326}
+        db.close()
+        for database in ds.databases.values():
+            if not database.is_memory:
+                database.close()
+    finally:
+        pm.unregister(plugin, name="test_point_ct")
 
 
 # --- Datasette API methods ---
@@ -133,39 +148,39 @@ async def test_config_with_type_and_config(tmp_path_factory):
 @pytest.mark.asyncio
 async def test_get_column_type(ds_ct):
     await ds_ct.invoke_startup()
-    ct, config = await ds_ct.get_column_type("data", "posts", "author_email")
-    assert ct == "email"
-    assert config is None
+    ct = await ds_ct.get_column_type("data", "posts", "author_email")
+    assert isinstance(ct, ColumnType)
+    assert ct.name == "email"
+    assert ct.config is None
 
 
 @pytest.mark.asyncio
 async def test_get_column_type_missing(ds_ct):
     await ds_ct.invoke_startup()
-    ct, config = await ds_ct.get_column_type("data", "posts", "title")
+    ct = await ds_ct.get_column_type("data", "posts", "title")
     assert ct is None
-    assert config is None
 
 
 @pytest.mark.asyncio
 async def test_set_and_remove_column_type(ds_ct):
     await ds_ct.invoke_startup()
-    await ds_ct.set_column_type("data", "posts", "title", "markdown")
-    ct, config = await ds_ct.get_column_type("data", "posts", "title")
-    assert ct == "markdown"
-    assert config is None
+    await ds_ct.set_column_type("data", "posts", "title", "email")
+    ct = await ds_ct.get_column_type("data", "posts", "title")
+    assert ct.name == "email"
+    assert ct.config is None
 
     await ds_ct.remove_column_type("data", "posts", "title")
-    ct, config = await ds_ct.get_column_type("data", "posts", "title")
+    ct = await ds_ct.get_column_type("data", "posts", "title")
     assert ct is None
 
 
 @pytest.mark.asyncio
 async def test_set_column_type_with_config(ds_ct):
     await ds_ct.invoke_startup()
-    await ds_ct.set_column_type("data", "posts", "title", "file", {"accept": "image/*"})
-    ct, config = await ds_ct.get_column_type("data", "posts", "title")
-    assert ct == "file"
-    assert config == {"accept": "image/*"}
+    await ds_ct.set_column_type("data", "posts", "title", "url", {"max_length": 200})
+    ct = await ds_ct.get_column_type("data", "posts", "title")
+    assert ct.name == "url"
+    assert ct.config == {"max_length": 200}
 
 
 # --- Plugin registration ---
@@ -173,22 +188,23 @@ async def test_set_column_type_with_config(ds_ct):
 
 @pytest.mark.asyncio
 async def test_builtin_column_types_registered(ds_ct):
+    """register_column_types returns classes; _column_types stores them by name."""
     await ds_ct.invoke_startup()
-    assert ds_ct.get_column_type_class("url") is not None
-    assert ds_ct.get_column_type_class("email") is not None
-    assert ds_ct.get_column_type_class("json") is not None
-    assert ds_ct.get_column_type_class("nonexistent") is None
+    assert "url" in ds_ct._column_types
+    assert "email" in ds_ct._column_types
+    assert "json" in ds_ct._column_types
+    assert "nonexistent" not in ds_ct._column_types
 
 
 @pytest.mark.asyncio
 async def test_column_type_class_attributes(ds_ct):
     await ds_ct.invoke_startup()
-    url_type = ds_ct.get_column_type_class("url")
-    assert url_type.name == "url"
-    assert url_type.description == "URL"
-    email_type = ds_ct.get_column_type_class("email")
-    assert email_type.name == "email"
-    assert email_type.description == "Email address"
+    url_cls = ds_ct._column_types["url"]
+    assert url_cls.name == "url"
+    assert url_cls.description == "URL"
+    email_cls = ds_ct._column_types["email"]
+    assert email_cls.name == "email"
+    assert email_cls.description == "Email address"
 
 
 # --- JSON API ---
@@ -201,9 +217,11 @@ async def test_column_types_extra(ds_ct):
     assert response.status_code == 200
     data = response.json()
     assert "column_types" in data
-    assert data["column_types"]["body"] == {"type": "markdown", "config": None}
     assert data["column_types"]["author_email"] == {"type": "email", "config": None}
     assert data["column_types"]["website"] == {"type": "url", "config": None}
+    assert data["column_types"]["metadata"] == {"type": "json", "config": None}
+    # "markdown" is not a registered type, so body should not appear
+    assert "body" not in data["column_types"]
     # title has no column type, should not appear
     assert "title" not in data["column_types"]
 
@@ -357,9 +375,21 @@ async def test_column_type_base_defaults():
         description = "Test type"
 
     ct = TestType()
-    assert await ct.render_cell("val", "col", "tbl", "db", None, None, None) is None
-    assert await ct.validate("val", None, None) is None
-    assert await ct.transform_value("val", None, None) == "val"
+    assert ct.config is None
+    assert await ct.render_cell("val", "col", "tbl", "db", None, None) is None
+    assert await ct.validate("val", None) is None
+    assert await ct.transform_value("val", None) == "val"
+
+
+@pytest.mark.asyncio
+async def test_column_type_with_config():
+    class TestType(ColumnType):
+        name = "test"
+        description = "Test type"
+
+    ct = TestType(config={"key": "value"})
+    assert ct.config == {"key": "value"}
+    assert ct.name == "test"
 
 
 # --- render_cell extra with column types ---
@@ -385,15 +415,13 @@ async def test_duplicate_column_type_name_raises_error():
         name = "url"
         description = "Duplicate URL"
 
-        async def render_cell(
-            self, value, column, table, database, datasette, request, config
-        ):
+        async def render_cell(self, value, column, table, database, datasette, request):
             return None
 
     class _Plugin:
         @hookimpl
         def register_column_types(self, datasette):
-            return [DuplicateUrlType()]
+            return [DuplicateUrlType]
 
     plugin = _Plugin()
     pm.register(plugin, name="test_duplicate_ct")
@@ -430,7 +458,7 @@ async def test_transform_value_in_json_output(tmp_path_factory):
         name = "upper"
         description = "Uppercase"
 
-        async def transform_value(self, value, config, datasette):
+        async def transform_value(self, value, datasette):
             if isinstance(value, str):
                 return value.upper()
             return value
@@ -438,7 +466,7 @@ async def test_transform_value_in_json_output(tmp_path_factory):
     class _Plugin:
         @hookimpl
         def register_column_types(self, datasette):
-            return [UpperColumnType()]
+            return [UpperColumnType]
 
     plugin = _Plugin()
     pm.register(plugin, name="test_transform_ct")
@@ -482,9 +510,7 @@ async def test_column_type_render_cell_has_priority_over_plugins(tmp_path_factor
         name = "priority_test"
         description = "Priority test"
 
-        async def render_cell(
-            self, value, column, table, database, datasette, request, config
-        ):
+        async def render_cell(self, value, column, table, database, datasette, request):
             if value is not None:
                 return markupsafe.Markup(
                     f"<b>COLUMN_TYPE:{markupsafe.escape(value)}</b>"
@@ -494,7 +520,7 @@ async def test_column_type_render_cell_has_priority_over_plugins(tmp_path_factor
     class _ColumnTypePlugin:
         @hookimpl
         def register_column_types(self, datasette):
-            return [PriorityColumnType()]
+            return [PriorityColumnType]
 
     class _RenderCellPlugin:
         @hookimpl
@@ -509,7 +535,6 @@ async def test_column_type_render_cell_has_priority_over_plugins(tmp_path_factor
             datasette,
             request,
             column_type,
-            column_type_config,
         ):
             if column == "name":
                 return markupsafe.Markup(f"<i>PLUGIN:{markupsafe.escape(value)}</i>")
@@ -663,18 +688,18 @@ async def test_config_overwrites_on_restart(tmp_path_factory):
         },
     )
     await ds.invoke_startup()
-    ct, _ = await ds.get_column_type("data", "t", "col")
-    assert ct == "email"
+    ct = await ds.get_column_type("data", "t", "col")
+    assert ct.name == "email"
 
     # Manually change the column type in the internal DB
     await ds.set_column_type("data", "t", "col", "url")
-    ct, _ = await ds.get_column_type("data", "t", "col")
-    assert ct == "url"
+    ct = await ds.get_column_type("data", "t", "col")
+    assert ct.name == "url"
 
     # Re-apply config (simulating what happens on restart)
     await ds._apply_column_types_config()
-    ct, _ = await ds.get_column_type("data", "t", "col")
-    assert ct == "email"  # Config wins
+    ct = await ds.get_column_type("data", "t", "col")
+    assert ct.name == "email"  # Config wins
 
     db.close()
     for database in ds.databases.values():

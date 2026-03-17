@@ -922,13 +922,16 @@ await .get_column_type(database, resource, column)
 ``column`` - string
     The name of the column.
 
-Returns a ``(column_type_name, config)`` tuple for the specified column. ``column_type_name`` is a string like ``"email"`` or ``"url"``, and ``config`` is a dict or ``None``. If no column type is assigned, returns ``(None, None)``.
+Returns a :ref:`ColumnType <column_types>` instance with ``.config`` populated for the specified column, or ``None`` if no column type is assigned.
 
 .. code-block:: python
 
-    ct_name, config = await datasette.get_column_type(
+    ct = await datasette.get_column_type(
         "mydb", "mytable", "email_col"
     )
+    if ct:
+        print(ct.name)  # "email"
+        print(ct.config)  # None or {...}
 
 .. _datasette_get_column_types:
 
@@ -940,12 +943,13 @@ await .get_column_types(database, resource)
 ``resource`` - string
     The name of the table or view.
 
-Returns a dictionary mapping column names to ``(column_type_name, config)`` tuples for all columns that have assigned types on the given resource.
+Returns a dictionary mapping column names to :ref:`ColumnType <column_types>` instances (with ``.config`` populated) for all columns that have assigned types on the given resource.
 
 .. code-block:: python
 
     ct_map = await datasette.get_column_types("mydb", "mytable")
-    # {"email_col": ("email", None), "site": ("url", None)}
+    for col_name, ct in ct_map.items():
+        print(col_name, ct.name, ct.config)
 
 .. _datasette_set_column_type:
 
@@ -994,22 +998,6 @@ Removes the column type assignment for the specified column.
     await datasette.remove_column_type(
         "mydb", "mytable", "location"
     )
-
-.. _datasette_get_column_type_class:
-
-.get_column_type_class(column_type_name)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-``column_type_name`` - string
-    The name of the column type, e.g. ``"email"``.
-
-Returns the registered ``ColumnType`` instance for the given name, or ``None`` if no plugin has registered a column type with that name. This is a synchronous method.
-
-.. code-block:: python
-
-    ct = datasette.get_column_type_class("email")
-    if ct:
-        print(ct.description)  # "Email address"
 
 .. _datasette_add_database:
 
@@ -2048,6 +2036,14 @@ The internal database schema is as follows:
         key text,
         value text,
         unique(database_name, resource_name, column_name, key)
+    );
+    CREATE TABLE column_types (
+        database_name TEXT NOT NULL,
+        resource_name TEXT NOT NULL,
+        column_name TEXT NOT NULL,
+        column_type TEXT NOT NULL,
+        config TEXT,
+        PRIMARY KEY (database_name, resource_name, column_name)
     );
 
 .. [[[end]]]

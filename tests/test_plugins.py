@@ -1955,7 +1955,7 @@ async def test_hook_register_column_types():
     ds = Datasette()
     await ds.invoke_startup()
     # Built-in column types should be registered
-    assert ds.get_column_type_class("url") is not None
-    assert ds.get_column_type_class("email") is not None
-    assert ds.get_column_type_class("json") is not None
-    assert ds.get_column_type_class("nonexistent") is None
+    assert "url" in ds._column_types
+    assert "email" in ds._column_types
+    assert "json" in ds._column_types
+    assert "nonexistent" not in ds._column_types

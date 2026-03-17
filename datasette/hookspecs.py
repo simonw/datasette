@@ -65,7 +65,6 @@ def render_cell(
     datasette,
     request,
     column_type,
-    column_type_config,
 ):
     """Customize rendering of HTML table cell values"""
 

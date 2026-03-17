@@ -11,15 +11,13 @@ class UrlColumnType(ColumnType):
     name = "url"
     description = "URL"
 
-    async def render_cell(
-        self, value, column, table, database, datasette, request, config
-    ):
+    async def render_cell(self, value, column, table, database, datasette, request):
         if not value or not isinstance(value, str):
             return None
         escaped = markupsafe.escape(value.strip())
         return markupsafe.Markup(f'<a href="{escaped}">{escaped}</a>')
 
-    async def validate(self, value, config, datasette):
+    async def validate(self, value, datasette):
         if value is None or value == "":
             return None
         if not isinstance(value, str):
@@ -33,15 +31,13 @@ class EmailColumnType(ColumnType):
     name = "email"
     description = "Email address"
 
-    async def render_cell(
-        self, value, column, table, database, datasette, request, config
-    ):
+    async def render_cell(self, value, column, table, database, datasette, request):
         if not value or not isinstance(value, str):
             return None
         escaped = markupsafe.escape(value.strip())
         return markupsafe.Markup(f'<a href="mailto:{escaped}">{escaped}</a>')
 
-    async def validate(self, value, config, datasette):
+    async def validate(self, value, datasette):
         if value is None or value == "":
             return None
         if not isinstance(value, str):
@@ -55,9 +51,7 @@ class JsonColumnType(ColumnType):
     name = "json"
     description = "JSON data"
 
-    async def render_cell(
-        self, value, column, table, database, datasette, request, config
-    ):
+    async def render_cell(self, value, column, table, database, datasette, request):
         if value is None:
             return None
         try:
@@ -68,7 +62,7 @@ class JsonColumnType(ColumnType):
         except (json.JSONDecodeError, TypeError):
             return None
 
-    async def validate(self, value, config, datasette):
+    async def validate(self, value, datasette):
         if value is None or value == "":
             return None
         if isinstance(value, str):
@@ -81,8 +75,4 @@ class JsonColumnType(ColumnType):
 
 @hookimpl
 def register_column_types(datasette):
-    return [
-        UrlColumnType(),
-        EmailColumnType(),
-        JsonColumnType(),
-    ]
+    return [UrlColumnType, EmailColumnType, JsonColumnType]

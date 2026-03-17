@@ -693,14 +693,14 @@ class Datasette:
                         action_abbrs[action.abbr] = action
                     self.actions[action.name] = action
 
-        # Register column types
+        # Register column types (classes, not instances)
         self._column_types = {}
         for hook in pm.hook.register_column_types(datasette=self):
             if hook:
-                for ct in hook:
-                    if ct.name in self._column_types:
-                        raise StartupError(f"Duplicate column type name: {ct.name}")
-                    self._column_types[ct.name] = ct
+                for ct_cls in hook:
+                    if ct_cls.name in self._column_types:
+                        raise StartupError(f"Duplicate column type name: {ct_cls.name}")
+                    self._column_types[ct_cls.name] = ct_cls
 
         for hook in pm.hook.prepare_jinja2_environment(
             env=self._jinja_env, datasette=self
@@ -984,10 +984,10 @@ class Datasette:
                         db_name, table_name, col_name, col_type, config
                     )
 
-    async def get_column_type(self, database: str, resource: str, column: str) -> tuple:
+    async def get_column_type(self, database: str, resource: str, column: str):
         """
-        Return (column_type_name, config_dict) for a specific column,
-        or (None, None) if no column type is assigned.
+        Return a ColumnType instance (with config baked in) for a specific
+        column, or None if no column type is assigned.
         """
         row = await self.get_internal_database().execute(
             "SELECT column_type, config FROM column_types "
@@ -996,13 +996,16 @@ class Datasette:
         )
         rows = row.rows
         if not rows:
-            return None, None
-        ct, config = rows[0]
-        return (ct, json.loads(config) if config else None)
+            return None
+        ct_name, config = rows[0]
+        ct_cls = self._column_types.get(ct_name)
+        if ct_cls is None:
+            return None
+        return ct_cls(config=json.loads(config) if config else None)
 
     async def get_column_types(self, database: str, resource: str) -> dict:
         """
-        Return {column_name: (column_type_name, config_dict_or_None)}
+        Return {column_name: ColumnType instance (with config)}
         for all columns with assigned types on the given resource.
         """
         rows = await self.get_internal_database().execute(
@@ -1010,10 +1013,13 @@ class Datasette:
             "WHERE database_name = ? AND resource_name = ?",
             [database, resource],
         )
-        return {
-            row[0]: (row[1], json.loads(row[2]) if row[2] else None)
-            for row in rows.rows
-        }
+        result = {}
+        for row in rows.rows:
+            col_name, ct_name, config = row
+            ct_cls = self._column_types.get(ct_name)
+            if ct_cls is not None:
+                result[col_name] = ct_cls(config=json.loads(config) if config else None)
+        return result
 
     async def set_column_type(
         self,
@@ -1046,13 +1052,6 @@ class Datasette:
             "WHERE database_name = ? AND resource_name = ? AND column_name = ?",
             [database, resource, column],
         )
-
-    def get_column_type_class(self, column_type_name: str):
-        """
-        Return the registered ColumnType instance for a given name,
-        or None if no plugin has registered that name.
-        """
-        return self._column_types.get(column_type_name)
 
     def get_internal_database(self):
         return self._internal_database

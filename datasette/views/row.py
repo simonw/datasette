@@ -184,25 +184,20 @@ class RowView(DataView):
             for row in rows:
                 rendered_row = {}
                 for value, column in zip(row, columns):
-                    ct_info = ct_map.get(column)
-                    ct_name = ct_info[0] if ct_info else None
-                    ct_config = ct_info[1] if ct_info else None
+                    ct = ct_map.get(column)
                     plugin_display_value = None
                     # Try column type render_cell first
-                    if ct_name:
-                        ct_class = self.ds.get_column_type_class(ct_name)
-                        if ct_class:
-                            candidate = await ct_class.render_cell(
-                                value=value,
-                                column=column,
-                                table=table,
-                                database=database,
-                                datasette=self.ds,
-                                request=request,
-                                config=ct_config,
-                            )
-                            if candidate is not None:
-                                plugin_display_value = candidate
+                    if ct:
+                        candidate = await ct.render_cell(
+                            value=value,
+                            column=column,
+                            table=table,
+                            database=database,
+                            datasette=self.ds,
+                            request=request,
+                        )
+                        if candidate is not None:
+                            plugin_display_value = candidate
                     if plugin_display_value is None:
                         for candidate in pm.hook.render_cell(
                             row=row,
@@ -213,8 +208,7 @@ class RowView(DataView):
                             database=database,
                             datasette=self.ds,
                             request=request,
-                            column_type=ct_name,
-                            column_type_config=ct_config,
+                            column_type=ct,
                         ):
                             candidate = await await_me_maybe(candidate)
                             if candidate is not None:

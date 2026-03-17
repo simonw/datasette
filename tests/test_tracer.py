@@ -32,25 +32,11 @@ def test_trace(trace_debug):
         assert isinstance(trace.get("params"), (list, dict, None.__class__))
 
     sqls = [trace["sql"] for trace in traces if "sql" in trace]
-    # There should be a mix of different types of SQL statement
-    expected = (
-        "CREATE TABLE ",
-        "PRAGMA ",
-        "INSERT OR REPLACE INTO ",
-        "INSERT INTO",
-        "select ",
-    )
-    for prefix in expected:
-        assert any(
-            sql.startswith(prefix) for sql in sqls
-        ), "No trace beginning with: {}".format(prefix)
-
-    # Should be at least one executescript
-    assert any(trace for trace in traces if trace.get("executescript"))
-    # And at least one executemany
-    execute_manys = [trace for trace in traces if trace.get("executemany")]
-    assert execute_manys
-    assert all(isinstance(trace["count"], int) for trace in execute_manys)
+    # There should be SQL statements from request handling in the trace.
+    # Note: CREATE TABLE, INSERT OR REPLACE, executescript, and executemany
+    # are not expected here because internal tables are now created and
+    # populated during invoke_startup(), before the request is traced.
+    assert any(sql.startswith("select ") for sql in sqls), "No select statements traced"
 
 
 def test_trace_silently_fails_for_large_page():

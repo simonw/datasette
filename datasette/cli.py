@@ -661,14 +661,15 @@ def serve(
         # Private utility mechanism for writing unit tests
         return ds
 
+    # Run async soundness checks before startup hooks, since invoke_startup
+    # now populates internal tables which requires querying each database
+    run_sync(lambda: check_databases(ds))
+
     # Run the "startup" plugin hooks
     try:
         run_sync(ds.invoke_startup)
     except StartupError as e:
         raise click.ClickException(e.args[0])
-
-    # Run async soundness checks - but only if we're not under pytest
-    run_sync(lambda: check_databases(ds))
 
     if headers and not get:
         raise click.ClickException("--headers can only be used with --get")

@@ -127,6 +127,18 @@ def startup(datasette):
         internal_db = datasette.get_internal_database()
         result = await internal_db.execute("select 1 + 1")
         datasette._startup_hook_calculation = result.first()[0]
+        # Check that metadata tables have been populated before startup fires
+        metadata_rows = await internal_db.execute(
+            "select key, value from metadata_instance"
+        )
+        datasette._startup_metadata_keys = [row["key"] for row in metadata_rows]
+        # Check that catalog/schema tables have been populated before startup fires
+        catalog_rows = await internal_db.execute(
+            "select database_name from catalog_databases"
+        )
+        datasette._startup_catalog_databases = [
+            row["database_name"] for row in catalog_rows
+        ]
 
     return inner
 

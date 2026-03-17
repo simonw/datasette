@@ -50,7 +50,7 @@ Some tables listed on the database page are treated as hidden. Hidden tables are
 The following tables are hidden by default:
 
 - Any table with a name that starts with an underscore - this is a Datasette convention to help plugins easily hide their own internal tables.
-- Tables that have been configured as ``"hidden": true`` using :ref:`metadata_hiding_tables`.
+- Tables that have been configured as ``"hidden": true`` using :ref:`table_configuration_hidden`.
 - ``*_fts`` tables that implement SQLite full-text search indexes.
 - Tables relating to the inner workings of the SpatiaLite SQLite extension.
 - ``sqlite_stat`` tables used to store statistics used by the query optimizer.

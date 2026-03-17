@@ -438,7 +438,7 @@ looks like:
     ]
 
 The column in the foreign key table that is used for the label can be specified
-in ``metadata.json`` - see :ref:`label_columns`.
+in ``datasette.yaml`` - see :ref:`table_configuration_label_column`.
 
 .. _json_api_discover_alternate:
 

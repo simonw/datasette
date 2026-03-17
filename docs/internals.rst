@@ -1820,13 +1820,13 @@ The ``Database`` class also provides properties and methods for introspecting th
     The name of the FTS table associated with this table, if one exists.
 
 ``await db.label_column_for_table(table)`` - string or None
-    The label column that is associated with this table - either automatically detected or using the ``"label_column"`` key from :ref:`metadata`, see :ref:`label_columns`.
+    The label column that is associated with this table - either automatically detected or using the ``"label_column"`` key in configuration, see :ref:`table_configuration_label_column`.
 
 ``await db.foreign_keys_for_table(table)`` - list of dictionaries
     Details of columns in this table which are foreign keys to other tables. A list of dictionaries where each dictionary is shaped like this: ``{"column": string, "other_table": string, "other_column": string}``.
 
 ``await db.hidden_table_names()`` - list of strings
-    List of tables which Datasette "hides" by default - usually these are tables associated with SQLite's full-text search feature, the SpatiaLite extension or tables hidden using the :ref:`metadata_hiding_tables` feature.
+    List of tables which Datasette "hides" by default - usually these are tables associated with SQLite's full-text search feature, the SpatiaLite extension or tables hidden using the :ref:`table_configuration_hidden` feature.
 
 ``await db.get_table_definition(table)`` - string
     Returns the SQL definition for the table - the ``CREATE TABLE`` statement and any associated ``CREATE INDEX`` statements.

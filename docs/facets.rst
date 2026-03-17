@@ -101,7 +101,7 @@ You can increase this on an individual page by adding ``?_facet_size=100`` to th
 Facets in metadata
 ------------------
 
-You can turn facets on by default for specific tables by adding them to a ``"facets"`` key in a Datasette :ref:`metadata` file.
+You can turn facets on by default for specific tables by adding a ``"facets"`` key to the table configuration in ``datasette.yaml``. See also the :ref:`table configuration reference <table_configuration_facets>` for a quick overview.
 
 Here's an example that turns on faceting by default for the ``qLegalStatus`` column in the ``Street_Tree_List`` table in the ``sf-trees`` database:
 

@@ -193,18 +193,27 @@ class RowView(DataView):
                         ct_class = self.ds.get_column_type_class(ct_name)
                         if ct_class:
                             candidate = await ct_class.render_cell(
-                                value=value, column=column, table=table,
-                                database=database, datasette=self.ds,
-                                request=request, config=ct_config,
+                                value=value,
+                                column=column,
+                                table=table,
+                                database=database,
+                                datasette=self.ds,
+                                request=request,
+                                config=ct_config,
                             )
                             if candidate is not None:
                                 plugin_display_value = candidate
                     if plugin_display_value is None:
                         for candidate in pm.hook.render_cell(
-                            row=row, value=value, column=column,
-                            table=table, pks=resolved.pks,
-                            database=database, datasette=self.ds,
-                            request=request, column_type=ct_name,
+                            row=row,
+                            value=value,
+                            column=column,
+                            table=table,
+                            pks=resolved.pks,
+                            database=database,
+                            datasette=self.ds,
+                            request=request,
+                            column_type=ct_name,
                             column_type_config=ct_config,
                         ):
                             candidate = await await_me_maybe(candidate)
@@ -366,6 +375,7 @@ class RowUpdateView(BaseView):
 
         # Validate column types
         from datasette.views.table import _validate_column_types
+
         ct_errors = await _validate_column_types(
             self.ds, resolved.db.name, resolved.table, [update]
         )

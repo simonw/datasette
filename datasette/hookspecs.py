@@ -56,8 +56,16 @@ def publish_subcommand(publish):
 
 @hookspec
 def render_cell(
-    row, value, column, table, pks, database, datasette, request,
-    column_type, column_type_config
+    row,
+    value,
+    column,
+    table,
+    pks,
+    database,
+    datasette,
+    request,
+    column_type,
+    column_type_config,
 ):
     """Customize rendering of HTML table cell values"""
 

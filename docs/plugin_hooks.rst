@@ -1013,8 +1013,14 @@ Return a list of :ref:`ColumnType <column_types>` instances to register custom c
 
     class ColorColumnType(ColumnType):
         async def render_cell(
-            self, value, column, table, database,
-            datasette, request, config
+            self,
+            value,
+            column,
+            table,
+            database,
+            datasette,
+            request,
+            config,
         ):
             if value:
                 return markupsafe.Markup(

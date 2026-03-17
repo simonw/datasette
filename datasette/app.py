@@ -699,9 +699,7 @@ class Datasette:
             if hook:
                 for ct in hook:
                     if ct.name in self._column_types:
-                        raise StartupError(
-                            f"Duplicate column type name: {ct.name}"
-                        )
+                        raise StartupError(f"Duplicate column type name: {ct.name}")
                     self._column_types[ct.name] = ct
 
         for hook in pm.hook.prepare_jinja2_environment(
@@ -977,15 +975,16 @@ class Datasette:
                         logging.warning(
                             "column_types config references unknown type %r "
                             "for %s.%s.%s",
-                            col_type, db_name, table_name, col_name,
+                            col_type,
+                            db_name,
+                            table_name,
+                            col_name,
                         )
                     await self.set_column_type(
                         db_name, table_name, col_name, col_type, config
                     )
 
-    async def get_column_type(
-        self, database: str, resource: str, column: str
-    ) -> tuple:
+    async def get_column_type(self, database: str, resource: str, column: str) -> tuple:
         """
         Return (column_type_name, config_dict) for a specific column,
         or (None, None) if no column type is assigned.
@@ -1001,9 +1000,7 @@ class Datasette:
         ct, config = rows[0]
         return (ct, json.loads(config) if config else None)
 
-    async def get_column_types(
-        self, database: str, resource: str
-    ) -> dict:
+    async def get_column_types(self, database: str, resource: str) -> dict:
         """
         Return {column_name: (column_type_name, config_dict_or_None)}
         for all columns with assigned types on the given resource.
@@ -1019,16 +1016,25 @@ class Datasette:
         }
 
     async def set_column_type(
-        self, database: str, resource: str, column: str,
-        column_type: str, config: dict = None
+        self,
+        database: str,
+        resource: str,
+        column: str,
+        column_type: str,
+        config: dict = None,
     ) -> None:
         """Assign a column type. Overwrites any existing assignment."""
         await self.get_internal_database().execute_write(
             """INSERT OR REPLACE INTO column_types
                (database_name, resource_name, column_name, column_type, config)
                VALUES (?, ?, ?, ?, ?)""",
-            [database, resource, column, column_type,
-             json.dumps(config) if config else None],
+            [
+                database,
+                resource,
+                column,
+                column_type,
+                json.dumps(config) if config else None,
+            ],
         )
 
     async def remove_column_type(

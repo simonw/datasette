@@ -944,9 +944,7 @@ Returns a dictionary mapping column names to ``(column_type_name, config)`` tupl
 
 .. code-block:: python
 
-    ct_map = await datasette.get_column_types(
-        "mydb", "mytable"
-    )
+    ct_map = await datasette.get_column_types("mydb", "mytable")
     # {"email_col": ("email", None), "site": ("url", None)}
 
 .. _datasette_set_column_type:
@@ -970,8 +968,11 @@ Assigns a column type to a column. Overwrites any existing assignment for that c
 .. code-block:: python
 
     await datasette.set_column_type(
-        "mydb", "mytable", "location", "point",
-        config={"srid": 4326}
+        "mydb",
+        "mytable",
+        "location",
+        "point",
+        config={"srid": 4326},
     )
 
 .. _datasette_remove_column_type:

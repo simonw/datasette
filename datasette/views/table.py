@@ -208,14 +208,13 @@ async def display_columns_and_rows(
             "type": type_,
             "notnull": notnull,
             "description": column_descriptions.get(r[0]),
+            "column_type": None,
+            "column_type_config": None,
         }
         ct_info = column_types_map.get(r[0])
         if ct_info:
             col_dict["column_type"] = ct_info[0]
             col_dict["column_type_config"] = ct_info[1]
-        else:
-            col_dict["column_type"] = None
-            col_dict["column_type_config"] = None
         columns.append(col_dict)
 
     column_to_foreign_key_table = {

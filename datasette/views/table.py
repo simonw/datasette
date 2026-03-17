@@ -1851,7 +1851,20 @@ async def table_view_data(
         }
     )
     raw_sqlite_rows = rows[:page_size]
-    data["rows"] = [dict(r) for r in raw_sqlite_rows]
+    # Apply transform_value for columns with assigned types
+    ct_map = await datasette.get_column_types(database_name, table_name)
+    transformed_rows = []
+    for r in raw_sqlite_rows:
+        row_dict = dict(r)
+        for col_name, (ct_name, ct_config) in ct_map.items():
+            if col_name in row_dict:
+                ct_class = datasette.get_column_type_class(ct_name)
+                if ct_class:
+                    row_dict[col_name] = await ct_class.transform_value(
+                        row_dict[col_name], ct_config, datasette
+                    )
+        transformed_rows.append(row_dict)
+    data["rows"] = transformed_rows
 
     if context_for_html_hack:
         data.update(extra_context_from_filters)

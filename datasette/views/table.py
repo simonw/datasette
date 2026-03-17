@@ -532,7 +532,9 @@ class TableInsertView(BaseView):
             return _error(errors, 400)
 
         # Validate column types
-        ct_errors = await _validate_column_types(self.ds, database_name, table_name, rows)
+        ct_errors = await _validate_column_types(
+            self.ds, database_name, table_name, rows
+        )
         if ct_errors:
             return _error(ct_errors, 400)
 
@@ -1567,18 +1569,27 @@ async def table_view_data(
                     ct_class = datasette.get_column_type_class(ct_name)
                     if ct_class:
                         candidate = await ct_class.render_cell(
-                            value=value, column=column, table=table_name,
-                            database=database_name, datasette=datasette,
-                            request=request, config=ct_config,
+                            value=value,
+                            column=column,
+                            table=table_name,
+                            database=database_name,
+                            datasette=datasette,
+                            request=request,
+                            config=ct_config,
                         )
                         if candidate is not None:
                             plugin_display_value = candidate
                 if plugin_display_value is None:
                     for candidate in pm.hook.render_cell(
-                        row=row, value=value, column=column,
-                        table=table_name, pks=pks_for_display,
-                        database=database_name, datasette=datasette,
-                        request=request, column_type=ct_name,
+                        row=row,
+                        value=value,
+                        column=column,
+                        table=table_name,
+                        pks=pks_for_display,
+                        database=database_name,
+                        datasette=datasette,
+                        request=request,
+                        column_type=ct_name,
                         column_type_config=ct_config,
                     ):
                         candidate = await await_me_maybe(candidate)

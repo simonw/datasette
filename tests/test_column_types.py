@@ -6,7 +6,6 @@ from datasette.hookspecs import hookimpl
 from datasette.plugins import pm
 from datasette.utils import sqlite3
 from datasette.utils import StartupError
-import json
 import markupsafe
 import pytest
 import time
@@ -354,9 +353,7 @@ async def test_validation_allows_empty_string(ds_ct):
 @pytest.mark.asyncio
 async def test_column_type_base_defaults():
     ct = ColumnType(name="test", description="Test type")
-    assert await ct.render_cell(
-        "val", "col", "tbl", "db", None, None, None
-    ) is None
+    assert await ct.render_cell("val", "col", "tbl", "db", None, None, None) is None
     assert await ct.validate("val", None, None) is None
     assert await ct.transform_value("val", None, None) == "val"
 
@@ -381,7 +378,9 @@ async def test_render_cell_extra_with_column_types(ds_ct):
 @pytest.mark.asyncio
 async def test_duplicate_column_type_name_raises_error():
     class DuplicateUrlType(ColumnType):
-        async def render_cell(self, value, column, table, database, datasette, request, config):
+        async def render_cell(
+            self, value, column, table, database, datasette, request, config
+        ):
             return None
 
     class _Plugin:
@@ -445,13 +444,7 @@ async def test_transform_value_in_json_output(tmp_path_factory):
             [db_path],
             config={
                 "databases": {
-                    "data": {
-                        "tables": {
-                            "t": {
-                                "column_types": {"name": "upper"}
-                            }
-                        }
-                    }
+                    "data": {"tables": {"t": {"column_types": {"name": "upper"}}}}
                 }
             },
         )
@@ -476,20 +469,37 @@ async def test_column_type_render_cell_has_priority_over_plugins(tmp_path_factor
     """Column type render_cell should take priority over render_cell plugin hook."""
 
     class PriorityColumnType(ColumnType):
-        async def render_cell(self, value, column, table, database, datasette, request, config):
+        async def render_cell(
+            self, value, column, table, database, datasette, request, config
+        ):
             if value is not None:
-                return markupsafe.Markup(f"<b>COLUMN_TYPE:{markupsafe.escape(value)}</b>")
+                return markupsafe.Markup(
+                    f"<b>COLUMN_TYPE:{markupsafe.escape(value)}</b>"
+                )
             return None
 
     class _ColumnTypePlugin:
         @hookimpl
         def register_column_types(self, datasette):
-            return [PriorityColumnType(name="priority_test", description="Priority test")]
+            return [
+                PriorityColumnType(name="priority_test", description="Priority test")
+            ]
 
     class _RenderCellPlugin:
         @hookimpl
-        def render_cell(self, row, value, column, table, pks, database, datasette, request,
-                        column_type, column_type_config):
+        def render_cell(
+            self,
+            row,
+            value,
+            column,
+            table,
+            pks,
+            database,
+            datasette,
+            request,
+            column_type,
+            column_type_config,
+        ):
             if column == "name":
                 return markupsafe.Markup(f"<i>PLUGIN:{markupsafe.escape(value)}</i>")
 
@@ -510,11 +520,7 @@ async def test_column_type_render_cell_has_priority_over_plugins(tmp_path_factor
             config={
                 "databases": {
                     "data": {
-                        "tables": {
-                            "t": {
-                                "column_types": {"name": "priority_test"}
-                            }
-                        }
+                        "tables": {"t": {"column_types": {"name": "priority_test"}}}
                     }
                 }
             },
@@ -613,13 +619,7 @@ async def test_unknown_type_warning_logged(tmp_path_factory, caplog):
         [db_path],
         config={
             "databases": {
-                "data": {
-                    "tables": {
-                        "t": {
-                            "column_types": {"col": "nonexistent_type"}
-                        }
-                    }
-                }
+                "data": {"tables": {"t": {"column_types": {"col": "nonexistent_type"}}}}
             }
         },
     )
@@ -648,15 +648,7 @@ async def test_config_overwrites_on_restart(tmp_path_factory):
     ds = Datasette(
         [db_path],
         config={
-            "databases": {
-                "data": {
-                    "tables": {
-                        "t": {
-                            "column_types": {"col": "email"}
-                        }
-                    }
-                }
-            }
+            "databases": {"data": {"tables": {"t": {"column_types": {"col": "email"}}}}}
         },
     )
     await ds.invoke_startup()

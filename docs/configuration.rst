@@ -639,11 +639,7 @@ Will produce this HTML:
 Table configuration
 ~~~~~~~~~~~~~~~~~~~
 
-Datasette supports a number of table-level configuration options inside ``datasette.yaml``. These are placed under ``databases > <database_name> > tables > <table_name>``.
-
-.. note::
-
-    For backwards compatibility, these options can also be specified in :ref:`metadata <metadata>` files. If specified in both places, the ``datasette.yaml`` configuration takes priority.
+Datasette supports a number of table-level configuration options inside ``datasette.yaml``. These are placed under ``databases.database_name.tables.table_name``.
 
 .. _metadata_default_sort:
 .. _table_configuration_sort:

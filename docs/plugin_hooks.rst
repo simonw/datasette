@@ -1054,7 +1054,7 @@ Each ``ColumnType`` subclass must define the following class attributes:
     Human-readable label, e.g. ``"CSS color value"``.
 
 ``sqlite_types`` - tuple of ``SQLiteType`` values, optional
-    Restrict assignments of this column type to columns with matching SQLite types, e.g. ``(SQLiteType.TEXT,)``. If omitted, the column type can be assigned to any column. Datasette recognizes the core SQLite types ``TEXT``, ``INTEGER``, ``REAL``, ``BLOB``, and ``NULL`` and also maps common declarations such as ``VARCHAR(255)`` to ``TEXT`` and ``FLOAT`` to ``REAL``.
+    Restrict assignments of this column type to columns with matching SQLite types, e.g. ``(SQLiteType.TEXT,)``. If omitted, the column type can be assigned to any column.
 
 And the following methods, all optional:
 

@@ -191,7 +191,7 @@ def test_auth_create_token(
             "all:view-query",
             "database:fixtures:drop-table",
             "resource:fixtures:foreign_key_references:insert-row",
-            "resource:fixtures:facetable:set-column-types",
+            "resource:fixtures:facetable:set-column-type",
         }
     )
     # Now try actually creating one
@@ -430,7 +430,7 @@ async def test_root_with_root_enabled_gets_all_permissions(ds_client):
 
     assert (
         await ds_client.ds.allowed(
-            action="set-column-types",
+            action="set-column-type",
             resource=TableResource("fixtures", "facetable"),
             actor=root_actor,
         )
@@ -504,9 +504,9 @@ async def test_root_without_root_enabled_no_special_permissions(ds_client):
 
     assert (
         await ds_client.ds.allowed(
-            action="set-column-types",
+            action="set-column-type",
             resource=TableResource("fixtures", "facetable"),
             actor=root_actor,
         )
         is not True
-    ), "Root without root_enabled should not automatically get set-column-types"
+    ), "Root without root_enabled should not automatically get set-column-type"

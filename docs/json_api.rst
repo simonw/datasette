@@ -946,7 +946,7 @@ Pass ``"alter": true`` to automatically add any missing columns to the existing 
 Setting a column type
 ~~~~~~~~~~~~~~~~~~~~~
 
-To set a column type for a table column, make a ``POST`` to ``/<database>/<table>/-/set-column-type``. This requires the :ref:`actions_set_column_types` permission.
+To set a column type for a table column, make a ``POST`` to ``/<database>/<table>/-/set-column-type``. This requires the :ref:`actions_set_column_type` permission.
 
 ::
 

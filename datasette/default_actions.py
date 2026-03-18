@@ -86,9 +86,9 @@ def register_actions():
             resource_class=TableResource,
         ),
         Action(
-            name="set-column-types",
+            name="set-column-type",
             abbr="sct",
-            description="Set column types",
+            description="Set column type",
             resource_class=TableResource,
         ),
         Action(

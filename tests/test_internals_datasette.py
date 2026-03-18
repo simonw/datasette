@@ -170,7 +170,7 @@ async def test_get_action(ds_client):
         "vt",
         "view-table",
         "sct",
-        "set-column-types",
+        "set-column-type",
     ):
         action = ds.get_action(name_or_abbr)
         if "-" in name_or_abbr:

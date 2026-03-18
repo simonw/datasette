@@ -890,13 +890,15 @@ Actions define what operations can be performed on resources (like viewing a tab
         """A collection of documents."""
 
         name = "document-collection"
-        parent_name = None
+        parent_class = None
 
         def __init__(self, collection: str):
             super().__init__(parent=collection, child=None)
 
         @classmethod
-        def resources_sql(cls) -> str:
+        async def resources_sql(
+            cls, datasette, actor=None
+        ) -> str:
             return """
                 SELECT collection_name AS parent, NULL AS child
                 FROM document_collections
@@ -907,13 +909,15 @@ Actions define what operations can be performed on resources (like viewing a tab
         """A document in a collection."""
 
         name = "document"
-        parent_name = "document-collection"
+        parent_class = DocumentCollectionResource
 
         def __init__(self, collection: str, document: str):
             super().__init__(parent=collection, child=document)
 
         @classmethod
-        def resources_sql(cls) -> str:
+        async def resources_sql(
+            cls, datasette, actor=None
+        ) -> str:
             return """
                 SELECT collection_name AS parent, document_id AS child
                 FROM documents
@@ -959,13 +963,15 @@ The fields of the ``Action`` dataclass are as follows:
 
     - Define a ``name`` class attribute (e.g., ``"document"``)
     - Define a ``parent_class`` class attribute (``None`` for top-level resources like databases, or the parent ``Resource`` subclass for child resources)
-    - Implement a ``resources_sql()`` classmethod that returns SQL returning all resources as ``(parent, child)`` columns
+    - Implement an async ``resources_sql(cls, datasette, actor=None)`` classmethod that returns SQL returning all resources as ``(parent, child)`` columns
     - Have an ``__init__`` method that accepts appropriate parameters and calls ``super().__init__(parent=..., child=...)``
 
-The ``resources_sql()`` method
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. _plugin_resources_sql:
 
-The ``resources_sql()`` classmethod returns a SQL query that lists all resources of that type that exist in the system.
+The ``resources_sql(datasette, actor)`` method
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``resources_sql()`` classmethod returns a SQL query that lists all resources of that type that exist in the system. It can be async because Datasette calls it with ``await``, and it receives the current ``datasette`` instance plus an optional ``actor`` argument.
 
 This query is used by Datasette to efficiently check permissions across multiple resources at once. When a user requests a list of resources (like tables, documents, or other entities), Datasette uses this SQL to:
 
@@ -984,7 +990,7 @@ For example, if you're building a document management plugin with collections an
 .. code-block:: python
 
     @classmethod
-    def resources_sql(cls) -> str:
+    async def resources_sql(cls, datasette, actor=None) -> str:
         return """
             SELECT collection_name AS parent, document_id AS child
             FROM documents

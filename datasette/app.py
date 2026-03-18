@@ -68,6 +68,7 @@ from .views.special import (
 from .views.table import (
     TableInsertView,
     TableUpsertView,
+    TableSetColumnTypeView,
     TableDropView,
     table_view,
 )
@@ -2239,6 +2240,10 @@ class Datasette:
         add_route(
             TableUpsertView.as_view(self),
             r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/upsert$",
+        )
+        add_route(
+            TableSetColumnTypeView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/set-column-type$",
         )
         add_route(
             TableDropView.as_view(self),

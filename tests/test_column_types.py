@@ -1,7 +1,10 @@
 import logging
 
 from datasette.app import Datasette
-from datasette.column_types import ColumnType
+from datasette.column_types import (
+    ColumnType,
+    SQLiteType,
+)
 from datasette.hookspecs import hookimpl
 from datasette.plugins import pm
 from datasette.utils import sqlite3
@@ -183,6 +186,32 @@ async def test_set_column_type_with_config(ds_ct):
     assert ct.config == {"max_length": 200}
 
 
+@pytest.mark.asyncio
+async def test_set_column_type_rejects_incompatible_sqlite_type(ds_ct):
+    await ds_ct.invoke_startup()
+    with pytest.raises(ValueError, match="only applicable to SQLite types TEXT"):
+        await ds_ct.set_column_type("data", "posts", "id", "json")
+
+
+@pytest.mark.asyncio
+async def test_set_column_type_allows_varchar_for_text_only_type(tmp_path_factory):
+    db_directory = tmp_path_factory.mktemp("dbs")
+    db_path = str(db_directory / "data.db")
+    db = sqlite3.connect(str(db_path))
+    db.execute("vacuum")
+    db.execute("create table links (id integer primary key, url varchar(255))")
+    db.commit()
+    ds = Datasette([db_path])
+    await ds.invoke_startup()
+    await ds.set_column_type("data", "links", "url", "url")
+    ct = await ds.get_column_type("data", "links", "url")
+    assert ct.name == "url"
+    db.close()
+    for database in ds.databases.values():
+        if not database.is_memory:
+            database.close()
+
+
 # --- Plugin registration ---
 
 
@@ -202,9 +231,23 @@ async def test_column_type_class_attributes(ds_ct):
     url_cls = ds_ct._column_types["url"]
     assert url_cls.name == "url"
     assert url_cls.description == "URL"
+    assert url_cls.sqlite_types == (SQLiteType.TEXT,)
     email_cls = ds_ct._column_types["email"]
     assert email_cls.name == "email"
     assert email_cls.description == "Email address"
+    assert email_cls.sqlite_types == (SQLiteType.TEXT,)
+    json_cls = ds_ct._column_types["json"]
+    assert json_cls.sqlite_types == (SQLiteType.TEXT,)
+
+
+def test_sqlite_type_from_declared_type():
+    assert SQLiteType.from_declared_type("text") == SQLiteType.TEXT
+    assert SQLiteType.from_declared_type("varchar(255)") == SQLiteType.TEXT
+    assert SQLiteType.from_declared_type("integer") == SQLiteType.INTEGER
+    assert SQLiteType.from_declared_type("float") == SQLiteType.REAL
+    assert SQLiteType.from_declared_type("blob") == SQLiteType.BLOB
+    assert SQLiteType.from_declared_type("") == SQLiteType.NULL
+    assert SQLiteType.from_declared_type("numeric") is None
 
 
 # --- JSON API ---
@@ -652,6 +695,30 @@ async def test_unknown_type_warning_logged(tmp_path_factory, caplog):
         await ds.invoke_startup()
     assert "unknown type" in caplog.text.lower()
     assert "nonexistent_type" in caplog.text
+    db.close()
+    for database in ds.databases.values():
+        if not database.is_memory:
+            database.close()
+
+
+@pytest.mark.asyncio
+async def test_incompatible_sqlite_type_warning_logged(tmp_path_factory, caplog):
+    db_directory = tmp_path_factory.mktemp("dbs")
+    db_path = str(db_directory / "data.db")
+    db = sqlite3.connect(str(db_path))
+    db.execute("vacuum")
+    db.execute("create table t (id integer primary key, col integer)")
+    db.commit()
+    ds = Datasette(
+        [db_path],
+        config={
+            "databases": {"data": {"tables": {"t": {"column_types": {"col": "json"}}}}}
+        },
+    )
+    with caplog.at_level(logging.WARNING):
+        await ds.invoke_startup()
+    assert "only applicable to sqlite types text" in caplog.text.lower()
+    assert await ds.get_column_type("data", "t", "col") is None
     db.close()
     for database in ds.databases.values():
         if not database.is_memory:

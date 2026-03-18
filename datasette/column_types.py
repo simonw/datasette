@@ -1,3 +1,39 @@
+from enum import Enum
+
+
+class SQLiteType(Enum):
+    TEXT = "TEXT"
+    INTEGER = "INTEGER"
+    REAL = "REAL"
+    BLOB = "BLOB"
+    NULL = "NULL"
+
+    @classmethod
+    def from_declared_type(cls, declared_type: str | None) -> "SQLiteType | None":
+        if declared_type is None:
+            return cls.NULL
+
+        normalized = declared_type.strip().upper()
+        if not normalized:
+            return cls.NULL
+
+        if normalized == cls.NULL.value:
+            return cls.NULL
+        if "INT" in normalized:
+            return cls.INTEGER
+        if any(token in normalized for token in ("CHAR", "CLOB", "TEXT")):
+            return cls.TEXT
+        if "BLOB" in normalized:
+            return cls.BLOB
+        if any(
+            token in normalized
+            for token in ("REAL", "FLOA", "DOUB")  # codespell:ignore doub
+        ):
+            return cls.REAL
+
+        return None
+
+
 class ColumnType:
     """
     Base class for column types.
@@ -8,6 +44,8 @@ class ColumnType:
       Examples: "markdown", "file", "email", "url", "point", "image".
     - ``description``: Human-readable label for admin UI dropdowns.
       Examples: "Markdown text", "File reference", "Email address".
+    - ``sqlite_types``: Optional tuple of SQLiteType values restricting
+      which SQLite column types this ColumnType can be assigned to.
 
     Instantiate with an optional ``config`` dict to bind per-column
     configuration::
@@ -18,6 +56,7 @@ class ColumnType:
 
     name: str
     description: str
+    sqlite_types: tuple[SQLiteType, ...] | None = None
 
     def __init__(self, config=None):
         self.config = config

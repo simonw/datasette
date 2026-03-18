@@ -1004,13 +1004,14 @@ Return a list of :ref:`ColumnType <column_types>` **subclasses** (not instances)
 .. code-block:: python
 
     from datasette import hookimpl
-    from datasette.column_types import ColumnType
+    from datasette.column_types import ColumnType, SQLiteType
     import markupsafe
 
 
     class ColorColumnType(ColumnType):
         name = "color"
         description = "CSS color value"
+        sqlite_types = (SQLiteType.TEXT,)
 
         async def render_cell(
             self,
@@ -1051,6 +1052,9 @@ Each ``ColumnType`` subclass must define the following class attributes:
 
 ``description`` - string
     Human-readable label, e.g. ``"CSS color value"``.
+
+``sqlite_types`` - tuple of ``SQLiteType`` values, optional
+    Restrict assignments of this column type to columns with matching SQLite types, e.g. ``(SQLiteType.TEXT,)``. If omitted, the column type can be assigned to any column.
 
 And the following methods, all optional:
 
@@ -2485,4 +2489,3 @@ Tokens can then be created and verified using :ref:`datasette.create_token() <da
     actor = await datasette.verify_token(token)
 
 If no handlers are registered, ``create_token()`` raises ``RuntimeError``. If the requested ``handler`` name is not found, it raises ``ValueError``.
-

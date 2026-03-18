@@ -1721,6 +1721,47 @@ async def table_view_data(
             for col_name, ct in ct_map.items()
         }
 
+    async def extra_set_column_type_ui():
+        "Column type UI metadata for this table"
+        if is_view:
+            return None
+
+        if not await datasette.allowed(
+            action="set-column-type",
+            resource=TableResource(database=database_name, table=table_name),
+            actor=request.actor,
+        ):
+            return None
+
+        column_details = await datasette._get_resource_column_details(
+            database_name, table_name
+        )
+        ct_map = await datasette.get_column_types(database_name, table_name)
+        columns = {}
+        for column_name, column_detail in column_details.items():
+            current = ct_map.get(column_name)
+            columns[column_name] = {
+                "current": (
+                    {"type": current.name, "config": current.config}
+                    if current is not None
+                    else None
+                ),
+                "options": [
+                    {
+                        "name": name,
+                        "description": ct_cls.description,
+                    }
+                    for name, ct_cls in sorted(datasette._column_types.items())
+                    if datasette._column_type_is_applicable(ct_cls, column_detail)
+                ],
+            }
+        return {
+            "path": "{}/-/set-column-type".format(
+                datasette.urls.table(database_name, table_name)
+            ),
+            "columns": columns,
+        }
+
     async def extra_metadata():
         "Metadata about the table and database"
         tablemetadata = await datasette.get_resource_metadata(database_name, table_name)
@@ -1903,6 +1944,7 @@ async def table_view_data(
             "all_columns",
             "expandable_columns",
             "form_hidden_args",
+            "set_column_type_ui",
         ]
     }
 
@@ -1931,6 +1973,7 @@ async def table_view_data(
         extra_request,
         extra_query,
         extra_column_types,
+        extra_set_column_type_ui,
         extra_metadata,
         extra_extras,
         extra_database,

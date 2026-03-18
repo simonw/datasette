@@ -986,6 +986,180 @@ dialog.mobile-column-actions-dialog::backdrop {
     color: var(--ink);
 }
 
+dialog.set-column-type-dialog {
+    --ink: #0f0f0f;
+    --paper: #f5f3ef;
+    --muted: #6b6b6b;
+    --rule: #e2dfd8;
+    --accent: #1a56db;
+    --card: #ffffff;
+    border: none;
+    border-radius: var(--modal-border-radius, 0.75rem);
+    padding: 0;
+    margin: auto;
+    width: min(520px, calc(100vw - 32px));
+    max-width: 95vw;
+    max-height: min(720px, calc(100vh - 32px));
+    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
+    animation: datasette-modal-slide-in var(--modal-animation-duration, 0.2s) ease-out;
+    overflow: hidden;
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--card);
+}
+
+dialog.set-column-type-dialog[open] {
+    display: flex;
+    flex-direction: column;
+}
+
+dialog.set-column-type-dialog::backdrop {
+    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
+    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
+    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
+    animation: datasette-modal-fade-in var(--modal-animation-duration, 0.2s) ease-out;
+}
+
+.set-column-type-dialog .modal-header {
+    padding: 20px 24px 12px;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.set-column-type-dialog .modal-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.set-column-type-dialog .modal-meta {
+    font-family: ui-monospace, monospace;
+    font-size: 0.7rem;
+    color: var(--muted);
+    background: var(--paper);
+    padding: 3px 9px;
+    border-radius: 20px;
+}
+
+.set-column-type-status,
+.set-column-type-empty,
+.set-column-type-error {
+    margin: 0;
+    padding: 12px 24px 0;
+}
+
+.set-column-type-status,
+.set-column-type-empty {
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.set-column-type-error {
+    color: #b91c1c;
+    font-size: 0.9rem;
+}
+
+.set-column-type-options {
+    padding: 16px 24px 24px;
+    overflow-y: auto;
+    display: grid;
+    gap: 12px;
+}
+
+.set-column-type-option {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 12px;
+    align-items: start;
+    padding: 14px 16px;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: #fcfbf9;
+    cursor: pointer;
+}
+
+.set-column-type-option:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(26, 86, 219, 0.12);
+}
+
+.set-column-type-option input {
+    margin-top: 3px;
+}
+
+.set-column-type-option-content {
+    display: grid;
+    gap: 4px;
+}
+
+.set-column-type-option-name {
+    font-family: ui-monospace, monospace;
+    font-size: 0.95rem;
+    color: var(--ink);
+}
+
+.set-column-type-option-description {
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.set-column-type-dialog .modal-footer {
+    padding: 14px 20px;
+    border-top: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    background: var(--paper);
+}
+
+.set-column-type-dialog .footer-info {
+    flex: 1;
+    font-family: ui-monospace, monospace;
+    font-size: 0.68rem;
+    color: var(--muted);
+}
+
+.set-column-type-dialog .btn {
+    border: none;
+    border-radius: 5px;
+    padding: 9px 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    touch-action: manipulation;
+    font-family: inherit;
+    transition: background 0.12s;
+}
+
+.set-column-type-dialog .btn-ghost {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--rule);
+}
+
+.set-column-type-dialog .btn-ghost:hover {
+    background: var(--rule);
+    color: var(--ink);
+}
+
+.set-column-type-dialog .btn-primary {
+    background: var(--accent);
+    color: #fff;
+}
+
+.set-column-type-dialog .btn-primary:hover {
+    background: #1949b8;
+}
+
+.set-column-type-dialog .btn:disabled {
+    opacity: 0.65;
+    cursor: wait;
+}
+
 @media (max-width: 640px) {
     dialog.mobile-column-actions-dialog {
         width: 95vw;
@@ -1015,6 +1189,21 @@ dialog.mobile-column-actions-dialog::backdrop {
 
     .mobile-column-description,
     .mobile-column-no-actions {
+        padding-left: 18px;
+        padding-right: 18px;
+    }
+
+    dialog.set-column-type-dialog {
+        width: 95vw;
+        max-height: 85vh;
+        border-radius: 0.5rem;
+    }
+
+    .set-column-type-dialog .modal-header,
+    .set-column-type-status,
+    .set-column-type-empty,
+    .set-column-type-error,
+    .set-column-type-options {
         padding-left: 18px;
         padding-right: 18px;
     }

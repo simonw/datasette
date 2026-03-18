@@ -6,7 +6,7 @@ function mobileColumnHeaders(manager) {
   return Array.from(
     document.querySelectorAll(manager.selectors.tableHeaders),
   ).filter(
-    (th) => th.dataset.column && th.querySelector(".dropdown-menu-icon"),
+    (th) => th.dataset.column && th.dataset.isLinkColumn !== "1",
   );
 }
 

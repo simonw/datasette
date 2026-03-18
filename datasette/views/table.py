@@ -369,6 +369,7 @@ async def display_columns_and_rows(
                 "is_pk": False,
                 "type": "",
                 "notnull": 0,
+                "is_special_link_column": True,
             }
         columns = [first_column] + columns
     return columns, cell_rows

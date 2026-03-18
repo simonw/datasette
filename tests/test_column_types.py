@@ -187,6 +187,226 @@ async def test_set_column_type_with_config(ds_ct):
 
 
 @pytest.mark.asyncio
+async def test_set_column_type_api(ds_ct):
+    await ds_ct.invoke_startup()
+    token = write_token(ds_ct, permissions=["sct"])
+    response = await ds_ct.client.post(
+        "/data/posts/-/set-column-type",
+        json={"column": "title", "column_type": {"type": "email"}},
+        headers=_headers(token),
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "database": "data",
+        "table": "posts",
+        "column": "title",
+        "column_type": {"type": "email", "config": None},
+    }
+    ct = await ds_ct.get_column_type("data", "posts", "title")
+    assert ct.name == "email"
+    assert ct.config is None
+
+
+@pytest.mark.asyncio
+async def test_set_column_type_api_with_config(ds_ct):
+    await ds_ct.invoke_startup()
+    token = write_token(ds_ct, permissions=["sct"])
+    response = await ds_ct.client.post(
+        "/data/posts/-/set-column-type",
+        json={
+            "column": "title",
+            "column_type": {"type": "url", "config": {"max_length": 200}},
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 200
+    assert response.json()["column_type"] == {
+        "type": "url",
+        "config": {"max_length": 200},
+    }
+    ct = await ds_ct.get_column_type("data", "posts", "title")
+    assert ct.name == "url"
+    assert ct.config == {"max_length": 200}
+
+
+@pytest.mark.asyncio
+async def test_clear_column_type_api(ds_ct):
+    await ds_ct.invoke_startup()
+    await ds_ct.set_column_type("data", "posts", "title", "email")
+    token = write_token(ds_ct, permissions=["sct"])
+    response = await ds_ct.client.post(
+        "/data/posts/-/set-column-type",
+        json={"column": "title", "column_type": None},
+        headers=_headers(token),
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "database": "data",
+        "table": "posts",
+        "column": "title",
+        "column_type": None,
+    }
+    ct = await ds_ct.get_column_type("data", "posts", "title")
+    assert ct is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body,special_case,expected_status,expected_errors",
+    (
+        (
+            {"column": "title", "column_type": {"type": "email"}},
+            "no_permission",
+            403,
+            ["Permission denied"],
+        ),
+        (
+            None,
+            "invalid_json",
+            400,
+            [
+                "Invalid JSON: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+            ],
+        ),
+        (
+            {"column": "title", "column_type": {"type": "email"}},
+            "invalid_content_type",
+            400,
+            ["Invalid content-type, must be application/json"],
+        ),
+        (
+            [],
+            None,
+            400,
+            ["JSON must be a dictionary"],
+        ),
+        (
+            {"column_type": {"type": "email"}},
+            None,
+            400,
+            ['"column" is required'],
+        ),
+        (
+            {"column": 1, "column_type": {"type": "email"}},
+            None,
+            400,
+            ['"column" must be a string'],
+        ),
+        (
+            {"column": "not_a_column", "column_type": {"type": "email"}},
+            None,
+            400,
+            ["Column not found: not_a_column"],
+        ),
+        (
+            {"column": "title", "column_type": "email"},
+            None,
+            400,
+            ['"column_type" must be an object or null'],
+        ),
+        (
+            {"column": "title", "column_type": {}},
+            None,
+            400,
+            ['"column_type.type" is required'],
+        ),
+        (
+            {"column": "title", "column_type": {"type": 1}},
+            None,
+            400,
+            ['"column_type.type" must be a string'],
+        ),
+        (
+            {"column": "title", "column_type": {"type": "url", "config": []}},
+            None,
+            400,
+            ['"column_type.config" must be a dictionary'],
+        ),
+        (
+            {"column": "title", "column_type": {"type": "markdown"}},
+            None,
+            400,
+            ["Unknown column type: markdown"],
+        ),
+        (
+            {"column": "id", "column_type": {"type": "json"}},
+            None,
+            400,
+            [
+                "Column type 'json' is only applicable to SQLite types TEXT but data.posts.id has SQLite type INTEGER"
+            ],
+        ),
+        (
+            {
+                "column": "title",
+                "column_type": {"type": "email"},
+                "extra": True,
+            },
+            None,
+            400,
+            ['Invalid parameter: "extra"'],
+        ),
+    ),
+)
+async def test_set_column_type_api_errors(
+    ds_ct, body, special_case, expected_status, expected_errors
+):
+    await ds_ct.invoke_startup()
+    token = write_token(
+        ds_ct,
+        permissions=(["sct"] if special_case != "no_permission" else ["vi"]),
+    )
+    kwargs = {
+        "headers": {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": (
+                "text/plain"
+                if special_case == "invalid_content_type"
+                else "application/json"
+            ),
+        }
+    }
+    if special_case == "invalid_json":
+        kwargs["content"] = "{bad json"
+    else:
+        kwargs["json"] = body
+    response = await ds_ct.client.post("/data/posts/-/set-column-type", **kwargs)
+    assert response.status_code == expected_status
+    assert response.json() == {"ok": False, "errors": expected_errors}
+
+
+@pytest.mark.asyncio
+async def test_set_column_type_api_works_for_immutable_database(tmp_path_factory):
+    db_directory = tmp_path_factory.mktemp("dbs")
+    db_path = str(db_directory / "immutable.db")
+    db = sqlite3.connect(str(db_path))
+    db.execute("vacuum")
+    db.execute("create table posts (id integer primary key, title text)")
+    db.commit()
+    ds = Datasette([], immutables=[db_path])
+    ds.root_enabled = True
+    try:
+        await ds.invoke_startup()
+        token = write_token(ds, permissions=["sct"])
+        response = await ds.client.post(
+            "/immutable/posts/-/set-column-type",
+            json={"column": "title", "column_type": {"type": "email"}},
+            headers=_headers(token),
+        )
+        assert response.status_code == 200
+        assert response.json()["column_type"] == {"type": "email", "config": None}
+        ct = await ds.get_column_type("immutable", "posts", "title")
+        assert ct.name == "email"
+    finally:
+        db.close()
+        for database in ds.databases.values():
+            if not database.is_memory:
+                database.close()
+
+
+@pytest.mark.asyncio
 async def test_set_column_type_rejects_incompatible_sqlite_type(ds_ct):
     await ds_ct.invoke_startup()
     with pytest.raises(ValueError, match="only applicable to SQLite types TEXT"):

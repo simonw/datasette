@@ -941,6 +941,70 @@ To use the ``"replace": true`` option you will also need the :ref:`actions_updat
 
 Pass ``"alter": true`` to automatically add any missing columns to the existing table that are present in the rows you are submitting. This requires the :ref:`actions_alter_table` permission.
 
+.. _TableSetColumnTypeView:
+
+Setting a column type
+~~~~~~~~~~~~~~~~~~~~~
+
+To set a column type for a table column, make a ``POST`` to ``/<database>/<table>/-/set-column-type``. This requires the :ref:`actions_set_column_types` permission.
+
+::
+
+    POST /<database>/<table>/-/set-column-type
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+
+.. code-block:: json
+
+    {
+        "column": "title",
+        "column_type": {
+            "type": "email"
+        }
+    }
+
+This will return a ``200`` response like this:
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "database": "data",
+        "table": "posts",
+        "column": "title",
+        "column_type": {
+            "type": "email",
+            "config": null
+        }
+    }
+
+To provide column type configuration, include a ``config`` object:
+
+.. code-block:: json
+
+    {
+        "column": "title",
+        "column_type": {
+            "type": "url",
+            "config": {
+                "max_length": 200
+            }
+        }
+    }
+
+To clear an existing column type assignment, set ``column_type`` to ``null``:
+
+.. code-block:: json
+
+    {
+        "column": "title",
+        "column_type": null
+    }
+
+This API stores the assignment in Datasette's internal database, so it can be used with immutable databases as well as mutable ones.
+
+Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
+
 .. _TableDropView:
 
 Dropping tables

@@ -5,9 +5,7 @@ var MOBILE_COLUMN_DIALOG_TITLE_ID = "mobile-column-actions-title";
 function mobileColumnHeaders(manager) {
   return Array.from(
     document.querySelectorAll(manager.selectors.tableHeaders),
-  ).filter(
-    (th) => th.dataset.column && th.dataset.isLinkColumn !== "1",
-  );
+  ).filter((th) => th.dataset.column && th.dataset.isLinkColumn !== "1");
 }
 
 function mobileColumnMetaText(th) {

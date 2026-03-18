@@ -831,6 +831,22 @@ PermConfigTestCase = collections.namedtuple(
             resource=("perms_ds_one", "t1"),
             expected_result=True,
         ),
+        # set-column-types on specific table
+        PermConfigTestCase(
+            config={
+                "databases": {
+                    "perms_ds_one": {
+                        "tables": {
+                            "t1": {"permissions": {"set-column-types": {"id": "user"}}}
+                        }
+                    }
+                }
+            },
+            actor={"id": "user"},
+            action="set-column-types",
+            resource=("perms_ds_one", "t1"),
+            expected_result=True,
+        ),
         # insert-row on database
         PermConfigTestCase(
             config={

@@ -164,7 +164,14 @@ def test_datasette_error_if_string_not_list(tmpdir):
 @pytest.mark.asyncio
 async def test_get_action(ds_client):
     ds = ds_client.ds
-    for name_or_abbr in ("vi", "view-instance", "vt", "view-table"):
+    for name_or_abbr in (
+        "vi",
+        "view-instance",
+        "vt",
+        "view-table",
+        "sct",
+        "set-column-types",
+    ):
         action = ds.get_action(name_or_abbr)
         if "-" in name_or_abbr:
             assert action.name == name_or_abbr

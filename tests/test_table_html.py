@@ -248,6 +248,7 @@ async def test_sort_links(ds_client):
                 "data-column-type": "",
                 "data-column-not-null": "0",
                 "data-is-pk": "0",
+                "data-is-link-column": "1",
             },
             "a_href": None,
         },

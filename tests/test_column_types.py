@@ -1,5 +1,7 @@
+import json
 import logging
 
+from bs4 import BeautifulSoup as Soup
 from datasette.app import Datasette
 from datasette.column_types import (
     ColumnType,
@@ -56,6 +58,49 @@ def ds_ct(tmp_path_factory):
             database.close()
 
 
+@pytest.fixture
+def ds_ct_editor_permission(tmp_path_factory):
+    db_directory = tmp_path_factory.mktemp("dbs")
+    db_path = str(db_directory / "data.db")
+    db = sqlite3.connect(str(db_path))
+    db.execute("vacuum")
+    db.execute(
+        "create table posts (id integer primary key, title text, body text, "
+        "author_email text, website text, metadata text)"
+    )
+    db.execute(
+        "insert into posts values (1, 'Hello', '# World', 'test@example.com', "
+        "'https://example.com', '{\"key\": \"value\"}')"
+    )
+    db.commit()
+    ds = Datasette(
+        [db_path],
+        config={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "posts": {
+                            "permissions": {"set-column-type": {"id": "editor"}},
+                            "column_types": {
+                                "body": "markdown",
+                                "author_email": "email",
+                                "website": "url",
+                                "metadata": "json",
+                            },
+                        }
+                    }
+                }
+            }
+        },
+    )
+    ds.root_enabled = True
+    yield ds
+    db.close()
+    for database in ds.databases.values():
+        if not database.is_memory:
+            database.close()
+
+
 def write_token(ds, actor_id="root", permissions=None):
     to_sign = {"a": actor_id, "token": "dstok", "t": int(time.time())}
     if permissions:
@@ -68,6 +113,19 @@ def _headers(token):
         "Authorization": "Bearer {}".format(token),
         "Content-Type": "application/json",
     }
+
+
+def _window_data_from_html(html, variable_name):
+    soup = Soup(html, "html.parser")
+    scripts = soup.find_all("script")
+    matching_scripts = [
+        script for script in scripts if variable_name in (script.string or "")
+    ]
+    assert len(matching_scripts) == 1
+    script_text = matching_scripts[0].string.strip()
+    prefix = f"window.{variable_name} = "
+    assert script_text.startswith(prefix)
+    return json.loads(script_text[len(prefix) :].rstrip(";"))
 
 
 # --- Internal DB and config loading ---
@@ -858,6 +916,50 @@ async def test_html_table_page_rendering(ds_ct):
     html = response.text
     assert "mailto:test@example.com" in html
     assert 'href="https://example.com"' in html
+
+
+@pytest.mark.asyncio
+async def test_set_column_type_ui_data_hidden_without_permission(ds_ct):
+    await ds_ct.invoke_startup()
+    response = await ds_ct.client.get("/data/posts")
+    assert response.status_code == 200
+    assert "window._setColumnTypeData" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_set_column_type_ui_data_includes_applicable_types(
+    ds_ct_editor_permission,
+):
+    await ds_ct_editor_permission.invoke_startup()
+    response = await ds_ct_editor_permission.client.get(
+        "/data/posts",
+        cookies={
+            "ds_actor": ds_ct_editor_permission.client.actor_cookie({"id": "editor"})
+        },
+    )
+    assert response.status_code == 200
+    data = _window_data_from_html(response.text, "_setColumnTypeData")
+    assert data["path"] == "/data/posts/-/set-column-type"
+    assert data["columns"]["id"] == {
+        "current": None,
+        "options": [],
+    }
+    assert data["columns"]["title"] == {
+        "current": None,
+        "options": [
+            {"name": "email", "description": "Email address"},
+            {"name": "json", "description": "JSON data"},
+            {"name": "url", "description": "URL"},
+        ],
+    }
+    assert data["columns"]["author_email"] == {
+        "current": {"type": "email", "config": None},
+        "options": [
+            {"name": "email", "description": "Email address"},
+            {"name": "json", "description": "JSON data"},
+            {"name": "url", "description": "URL"},
+        ],
+    }
 
 
 # --- Validation on upsert ---

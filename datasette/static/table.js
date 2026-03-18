@@ -10,6 +10,9 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
 </svg>`;
 
+var SET_COLUMN_TYPE_DIALOG_ID = "set-column-type-dialog";
+var setColumnTypeDialogState = null;
+
 function getParams() {
   return new URLSearchParams(location.search);
 }
@@ -99,6 +102,259 @@ function getColumnTypeText(th) {
   return `Type: ${columnType.toUpperCase()}${notNull}`;
 }
 
+function getSetColumnTypeData() {
+  return window._setColumnTypeData || null;
+}
+
+function getSetColumnTypeConfig(column) {
+  var data = getSetColumnTypeData();
+  if (!data || !data.columns) {
+    return null;
+  }
+  return data.columns[column] || null;
+}
+
+function canSetColumnType() {
+  return !!(getSetColumnTypeData() && window.HTMLDialogElement && window.fetch);
+}
+
+function setColumnTypeActionLabel(column) {
+  var columnConfig = getSetColumnTypeConfig(column);
+  if (!columnConfig) {
+    return null;
+  }
+  return columnConfig.current
+    ? `Custom type: ${columnConfig.current.type}`
+    : "Set custom type";
+}
+
+function createSetColumnTypeOption(value, name, description, checked) {
+  var label = document.createElement("label");
+  label.className = "set-column-type-option";
+
+  var input = document.createElement("input");
+  input.type = "radio";
+  input.name = "set-column-type-choice";
+  input.value = value;
+  input.checked = checked;
+
+  var content = document.createElement("span");
+  content.className = "set-column-type-option-content";
+
+  var title = document.createElement("span");
+  title.className = "set-column-type-option-name";
+  title.textContent = name;
+
+  var detail = document.createElement("span");
+  detail.className = "set-column-type-option-description";
+  detail.textContent = description;
+
+  content.appendChild(title);
+  content.appendChild(detail);
+  label.appendChild(input);
+  label.appendChild(content);
+  return label;
+}
+
+function setSetColumnTypeDialogBusy(state, isBusy) {
+  state.isBusy = isBusy;
+  state.saveButton.disabled = isBusy;
+  state.cancelButton.disabled = isBusy;
+  Array.from(
+    state.optionsWrap.querySelectorAll('input[name="set-column-type-choice"]'),
+  ).forEach(function (input) {
+    input.disabled = isBusy;
+  });
+  state.saveButton.textContent = isBusy ? "Saving..." : "Save";
+}
+
+function clearSetColumnTypeDialogError(state) {
+  state.error.hidden = true;
+  state.error.textContent = "";
+}
+
+function showSetColumnTypeDialogError(state, message) {
+  state.error.hidden = false;
+  state.error.textContent = message;
+}
+
+function ensureSetColumnTypeDialog() {
+  if (setColumnTypeDialogState) {
+    return setColumnTypeDialogState;
+  }
+  if (!window.HTMLDialogElement) {
+    return null;
+  }
+
+  var dialog = document.createElement("dialog");
+  dialog.id = SET_COLUMN_TYPE_DIALOG_ID;
+  dialog.className = "set-column-type-dialog";
+  dialog.setAttribute("aria-labelledby", "set-column-type-title");
+  dialog.innerHTML = `
+    <div class="modal-header">
+      <span class="modal-title" id="set-column-type-title">Set custom type</span>
+      <span class="modal-meta"></span>
+    </div>
+    <p class="set-column-type-status"></p>
+    <p class="set-column-type-error" hidden></p>
+    <div class="set-column-type-options"></div>
+    <div class="modal-footer">
+      <span class="footer-info"></span>
+      <button type="button" class="btn btn-ghost set-column-type-cancel">Cancel</button>
+      <button type="button" class="btn btn-primary set-column-type-save">Save</button>
+    </div>
+  `;
+  document.body.appendChild(dialog);
+
+  setColumnTypeDialogState = {
+    dialog: dialog,
+    meta: dialog.querySelector(".modal-meta"),
+    status: dialog.querySelector(".set-column-type-status"),
+    error: dialog.querySelector(".set-column-type-error"),
+    optionsWrap: dialog.querySelector(".set-column-type-options"),
+    footerInfo: dialog.querySelector(".footer-info"),
+    cancelButton: dialog.querySelector(".set-column-type-cancel"),
+    saveButton: dialog.querySelector(".set-column-type-save"),
+    currentColumn: null,
+    currentConfig: null,
+    isBusy: false,
+  };
+
+  setColumnTypeDialogState.cancelButton.addEventListener("click", function () {
+    if (!setColumnTypeDialogState.isBusy) {
+      dialog.close();
+    }
+  });
+
+  dialog.addEventListener("click", function (ev) {
+    if (ev.target === dialog && !setColumnTypeDialogState.isBusy) {
+      dialog.close();
+    }
+  });
+
+  dialog.addEventListener("cancel", function (ev) {
+    if (setColumnTypeDialogState.isBusy) {
+      ev.preventDefault();
+    }
+  });
+
+  dialog.addEventListener("close", function () {
+    clearSetColumnTypeDialogError(setColumnTypeDialogState);
+    setSetColumnTypeDialogBusy(setColumnTypeDialogState, false);
+  });
+
+  setColumnTypeDialogState.saveButton.addEventListener("click", async function () {
+    var state = setColumnTypeDialogState;
+    var selected = state.dialog.querySelector(
+      'input[name="set-column-type-choice"]:checked',
+    );
+    var selectedType = selected ? selected.value : "";
+    var currentType = state.currentConfig.current
+      ? state.currentConfig.current.type
+      : "";
+
+    if (selectedType === currentType) {
+      state.dialog.close();
+      return;
+    }
+
+    clearSetColumnTypeDialogError(state);
+    setSetColumnTypeDialogBusy(state, true);
+
+    var payload = {
+      column: state.currentColumn,
+      column_type: selectedType ? { type: selectedType } : null,
+    };
+
+    try {
+      var response = await fetch(getSetColumnTypeData().path, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      var data = await response.json();
+      if (!response.ok || data.ok === false) {
+        var message = (data.errors || ["Request failed"]).join(" ");
+        throw new Error(message);
+      }
+      location.reload();
+    } catch (error) {
+      setSetColumnTypeDialogBusy(state, false);
+      showSetColumnTypeDialogError(state, error.message || "Request failed");
+    }
+  });
+
+  return setColumnTypeDialogState;
+}
+
+function openSetColumnTypeDialog(th) {
+  var column = th.dataset.column;
+  var columnConfig = getSetColumnTypeConfig(column);
+  if (!columnConfig) {
+    return;
+  }
+
+  var state = ensureSetColumnTypeDialog();
+  if (!state) {
+    return;
+  }
+
+  clearSetColumnTypeDialogError(state);
+  setSetColumnTypeDialogBusy(state, false);
+  state.currentColumn = column;
+  state.currentConfig = columnConfig;
+  state.status.textContent = `Column: ${column}`;
+  state.meta.textContent = getColumnTypeText(th) || "Type unavailable";
+  state.footerInfo.textContent = columnConfig.current
+    ? `Current custom type: ${columnConfig.current.type}`
+    : "No custom type set.";
+  state.optionsWrap.innerHTML = "";
+
+  var currentType = columnConfig.current ? columnConfig.current.type : "";
+  state.optionsWrap.appendChild(
+    createSetColumnTypeOption(
+      "",
+      "No custom type",
+      "Use standard Datasette rendering without a custom type.",
+      currentType === "",
+    ),
+  );
+
+  columnConfig.options.forEach(function (option) {
+    state.optionsWrap.appendChild(
+      createSetColumnTypeOption(
+        option.name,
+        option.name,
+        option.description,
+        option.name === currentType,
+      ),
+    );
+  });
+
+  if (!columnConfig.options.length) {
+    var emptyState = document.createElement("p");
+    emptyState.className = "set-column-type-empty";
+    emptyState.textContent =
+      "No registered custom types are compatible with this SQLite type.";
+    state.optionsWrap.appendChild(emptyState);
+  }
+
+  if (!state.dialog.open) {
+    state.dialog.showModal();
+  }
+  var selectedOption = state.dialog.querySelector(
+    'input[name="set-column-type-choice"]:checked',
+  );
+  if (selectedOption) {
+    selectedOption.focus();
+  } else {
+    state.saveButton.focus();
+  }
+}
+
 function canChooseColumns() {
   return !!(
     document.querySelector("column-chooser") && window._columnChooserData
@@ -167,6 +423,21 @@ function buildColumnActionItems(manager, th, options) {
         function (ev) {
           ev.preventDefault();
           openColumnChooser();
+        },
+    });
+  }
+
+  if (canSetColumnType() && getSetColumnTypeConfig(column)) {
+    columnActions.push({
+      label: setColumnTypeActionLabel(column),
+      href: "#",
+      onClick:
+        options.onSetColumnType ||
+        function (ev) {
+          ev.preventDefault();
+          window.setTimeout(function () {
+            openSetColumnTypeDialog(th);
+          }, 0);
         },
     });
   }
@@ -280,6 +551,13 @@ const initDatasetteTable = function (manager) {
         ev.preventDefault();
         closeMenu();
         openColumnChooser();
+      },
+      onSetColumnType: function (ev) {
+        ev.preventDefault();
+        closeMenu();
+        window.setTimeout(function () {
+          openSetColumnTypeDialog(th);
+        }, 0);
       },
     });
     var menuList = menu.querySelector("ul.dropdown-actions");

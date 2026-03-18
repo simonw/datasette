@@ -154,6 +154,11 @@
 window._columnChooserData = {{ {"allColumns": all_columns, "selectedColumns": display_columns|map(attribute='name')|list, "primaryKeys": primary_keys}|tojson }};
 </script>
 {% endif %}
+{% if set_column_type_ui %}
+<script>
+window._setColumnTypeData = {{ set_column_type_ui|tojson }};
+</script>
+{% endif %}
 
 {% include custom_table_templates %}
 

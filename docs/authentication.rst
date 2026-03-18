@@ -1355,7 +1355,7 @@ Actor is allowed to alter a database table.
 set-column-type
 ---------------
 
-Actor is allowed to set assigned column types for columns in a table.
+Actor is allowed to set assigned :ref:`column types <table_configuration_column_types>` for columns in a table.
 
 ``resource`` - ``datasette.resources.TableResource(database, table)``
     ``database`` is the name of the database (string)

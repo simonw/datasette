@@ -503,10 +503,10 @@ Lets you customize the display of values within table cells in the HTML table vi
 ``request`` - :ref:`internals_request`
     The current request object
 
-``column_type`` - :ref:`ColumnType <column_types>` subclass instance or None
-    The :ref:`ColumnType <column_types>` subclass instance assigned to this column (with ``.config`` populated), or ``None`` if no column type is assigned. You can access ``column_type.name``, ``column_type.config``, etc.
+``column_type`` - :ref:`ColumnType <datasette_column_types>` subclass instance or None
+    The :ref:`ColumnType <datasette_column_types>` subclass instance assigned to this column (with ``.config`` populated), or ``None`` if no column type is assigned. You can access ``column_type.name``, ``column_type.config``, etc.
 
-If a column has a :ref:`column type <column_types>` assigned and that column type's ``render_cell`` method returns a non-``None`` value, it will take priority over this plugin hook.
+If a column has a :ref:`column type <datasette_column_types>` assigned and that column type's ``render_cell`` method returns a non-``None`` value, it will take priority over this plugin hook.
 
 If your hook returns ``None``, it will be ignored. Use this to indicate that your hook is not able to custom render this particular value.
 
@@ -999,7 +999,7 @@ The permission system then uses this query along with rules from plugins to dete
 register_column_types(datasette)
 --------------------------------
 
-Return a list of :ref:`ColumnType <column_types>` **subclasses** (not instances) to register custom column types. Column types define how values in specific columns are rendered, validated, and transformed.
+Return a list of :ref:`ColumnType <datasette_column_types>` **subclasses** (not instances) to register custom column types. Column types define how values in specific columns are rendered, validated, and transformed.
 
 .. code-block:: python
 
@@ -1069,7 +1069,7 @@ And the following methods, all optional:
 
 Per-column configuration is available via ``self.config`` in all methods. When a column type is looked up for a specific column (via :ref:`get_column_type <datasette_get_column_type>` or :ref:`get_column_types <datasette_get_column_types>`), the returned instance has ``config`` set to the parsed JSON config dict for that column assignment, or ``None`` if no config was provided.
 
-Column types are assigned to columns via the ``column_types`` key in :ref:`table configuration <metadata_tables>`:
+Column types are assigned to columns via the :ref:`column_types <table_configuration_column_types>` table configuration option:
 
 .. code-block:: yaml
 

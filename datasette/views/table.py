@@ -682,7 +682,7 @@ class TableSetColumnTypeView(BaseView):
         table_name = resolved.table
 
         if not await self.ds.allowed(
-            action="set-column-types",
+            action="set-column-type",
             resource=TableResource(database=database_name, table=table_name),
             actor=request.actor,
         ):

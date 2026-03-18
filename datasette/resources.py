@@ -13,7 +13,7 @@ class DatabaseResource(Resource):
         super().__init__(parent=database, child=None)
 
     @classmethod
-    async def resources_sql(cls, datasette) -> str:
+    async def resources_sql(cls, datasette, actor=None) -> str:
         return """
             SELECT database_name AS parent, NULL AS child
             FROM catalog_databases
@@ -30,7 +30,7 @@ class TableResource(Resource):
         super().__init__(parent=database, child=table)
 
     @classmethod
-    async def resources_sql(cls, datasette) -> str:
+    async def resources_sql(cls, datasette, actor=None) -> str:
         return """
             SELECT database_name AS parent, table_name AS child
             FROM catalog_tables
@@ -50,7 +50,7 @@ class QueryResource(Resource):
         super().__init__(parent=database, child=query)
 
     @classmethod
-    async def resources_sql(cls, datasette) -> str:
+    async def resources_sql(cls, datasette, actor=None) -> str:
         from datasette.plugins import pm
         from datasette.utils import await_me_maybe
 
@@ -59,14 +59,16 @@ class QueryResource(Resource):
         result = await db.execute("SELECT database_name FROM catalog_databases")
         databases = [row[0] for row in result.rows]
 
-        # Gather all canned queries from all databases
+        # Gather canned queries for this actor from all databases.
+        # This keeps allowed_resources("view-query", actor=...) consistent with
+        # actor-specific canned_queries() implementations.
         query_pairs = []
         for database_name in databases:
             # Call the hook to get queries (including from config via default plugin)
             for queries_result in pm.hook.canned_queries(
                 datasette=datasette,
                 database=database_name,
-                actor=None,  # Get ALL queries for resource enumeration
+                actor=actor,
             ):
                 queries = await await_me_maybe(queries_result)
                 if queries:

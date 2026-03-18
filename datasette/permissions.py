@@ -105,7 +105,7 @@ class Resource(ABC):
 
     @classmethod
     @abstractmethod
-    def resources_sql(cls) -> str:
+    def resources_sql(cls, datasette, actor=None) -> str:
         """
         Return SQL query that returns all resources of this type.
 

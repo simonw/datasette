@@ -147,7 +147,9 @@ async def _build_single_action_sql(
         raise ValueError(f"Unknown action: {action}")
 
     # Get base resources SQL from the resource class
-    base_resources_sql = await action_obj.resource_class.resources_sql(datasette)
+    base_resources_sql = await action_obj.resource_class.resources_sql(
+        datasette, actor=actor
+    )
 
     permission_sqls = await gather_permission_sql_from_hooks(
         datasette=datasette,

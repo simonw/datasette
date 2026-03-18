@@ -1672,7 +1672,7 @@ async def test_hook_register_actions_with_custom_resources():
             super().__init__(parent=collection, child=None)
 
         @classmethod
-        async def resources_sql(cls, datasette) -> str:
+        async def resources_sql(cls, datasette, actor=None) -> str:
             return """
                 SELECT 'collection1' AS parent, NULL AS child
                 UNION ALL
@@ -1689,7 +1689,7 @@ async def test_hook_register_actions_with_custom_resources():
             super().__init__(parent=collection, child=document)
 
         @classmethod
-        async def resources_sql(cls, datasette) -> str:
+        async def resources_sql(cls, datasette, actor=None) -> str:
             return """
                 SELECT 'collection1' AS parent, 'doc1' AS child
                 UNION ALL

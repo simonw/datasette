@@ -944,6 +944,68 @@ async def test_permissions_in_config(
 
 
 @pytest.mark.asyncio
+async def test_allowed_resources_view_query_includes_actor_specific_canned_queries():
+    """
+    Actor-specific canned queries should be listed by allowed_resources("view-query").
+
+    This test is intentionally explicit about the previous bug:
+    - the canned query only exists for actor "alice"
+    - the permission rule only allows actor "alice" to view it
+    - allowed() succeeds for that specific query resource
+    - allowed_resources("view-query", actor) must include the same query
+
+    Before the fix, QueryResource.resources_sql() called canned_queries(..., actor=None),
+    so the query was omitted from resource enumeration and allowed_resources() returned
+    an empty list even though allowed() returned True.
+    """
+    from datasette import hookimpl
+    from datasette.permissions import PermissionSQL
+    from datasette.resources import QueryResource
+
+    class ActorSpecificQueryPlugin:
+        __name__ = "ActorSpecificQueryPlugin"
+
+        @hookimpl
+        def canned_queries(self, datasette, database, actor):
+            if database == "testdb" and actor and actor.get("id") == "alice":
+                return {"user_only": {"sql": "select 1 as n"}}
+            return {}
+
+        @hookimpl
+        def permission_resources_sql(self, datasette, actor, action):
+            if action == "view-query" and actor and actor.get("id") == "alice":
+                return PermissionSQL(sql="""
+                        SELECT 'testdb' AS parent, 'user_only' AS child, 1 AS allow,
+                               'alice can view her actor-specific canned query' AS reason
+                    """)
+            return None
+
+    ds = Datasette(default_deny=True)
+    await ds.invoke_startup()
+    ds.add_memory_database("testdb")
+    await ds._refresh_schemas()
+
+    plugin = ActorSpecificQueryPlugin()
+    ds.pm.register(plugin, name="actor_specific_query_plugin")
+
+    try:
+        actor = {"id": "alice"}
+
+        assert await ds.allowed(
+            action="view-query",
+            resource=QueryResource("testdb", "user_only"),
+            actor=actor,
+        )
+
+        page = await ds.allowed_resources("view-query", actor)
+        assert [(resource.parent, resource.child) for resource in page.resources] == [
+            ("testdb", "user_only")
+        ]
+    finally:
+        ds.pm.unregister(name="actor_specific_query_plugin")
+
+
+@pytest.mark.asyncio
 async def test_actor_endpoint_allows_any_token():
     ds = Datasette()
     token = ds.sign(

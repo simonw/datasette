@@ -1212,7 +1212,9 @@ To include an expiry pass ``expire_after=`` to ``datasette.set_actor_cookie()`` 
 .. code-block:: python
 
     response = Response.redirect("/")
-    datasette.set_actor_cookie(response, {"id": "cleopaws"}, expire_after=60 * 60 * 24)
+    datasette.set_actor_cookie(
+        response, {"id": "cleopaws"}, expire_after=60 * 60 * 24
+    )
 
 The resulting cookie will encode data that looks something like this:
 

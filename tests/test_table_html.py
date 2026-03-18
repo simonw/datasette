@@ -751,6 +751,21 @@ async def test_column_chooser_present(ds_client):
 
 
 @pytest.mark.asyncio
+async def test_mobile_column_actions_present(ds_client):
+    response = await ds_client.get("/fixtures/facetable")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    button = soup.select_one("button.column-actions-mobile.small-screen-only")
+    assert button is not None
+    assert button.text.strip() == "Column actions"
+    assert button.find("svg") is not None
+    assert any(
+        "mobile-column-actions.js" in (script.get("src") or "")
+        for script in soup.find_all("script")
+    )
+
+
+@pytest.mark.asyncio
 async def test_column_chooser_data_reflects_col_filtering(ds_client):
     response = await ds_client.get("/fixtures/facetable?_col=state&_col=created")
     assert response.status_code == 200

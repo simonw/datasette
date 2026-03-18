@@ -1,14 +1,6 @@
 var DROPDOWN_HTML = `<div class="dropdown-menu">
 <div class="hook"></div>
-<ul>
-  <li><a class="dropdown-sort-asc" href="#">Sort ascending</a></li>
-  <li><a class="dropdown-sort-desc" href="#">Sort descending</a></li>
-  <li><a class="dropdown-facet" href="#">Facet by this</a></li>
-  <li><a class="dropdown-choose-columns" href="#">Choose columns</a></li>
-  <li><a class="dropdown-hide-column" href="#">Hide this column</a></li>
-  <li><a class="dropdown-show-all-columns" href="#">Show all columns</a></li>
-  <li><a class="dropdown-not-blank" href="#">Show not-blank rows</a></li>
-</ul>
+<ul class="dropdown-actions"></ul>
 <p class="dropdown-column-type"></p>
 <p class="dropdown-column-description"></p>
 </div>`;
@@ -18,53 +10,229 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
 </svg>`;
 
+function getParams() {
+  return new URLSearchParams(location.search);
+}
+
+function paramsToUrl(params) {
+  var s = params.toString();
+  return s ? "?" + s : location.pathname;
+}
+
+function sortDescUrl(column) {
+  var params = getParams();
+  params.set("_sort_desc", column);
+  params.delete("_sort");
+  params.delete("_next");
+  return paramsToUrl(params);
+}
+
+function sortAscUrl(column) {
+  var params = getParams();
+  params.set("_sort", column);
+  params.delete("_sort_desc");
+  params.delete("_next");
+  return paramsToUrl(params);
+}
+
+function facetUrl(column) {
+  var params = getParams();
+  params.append("_facet", column);
+  return paramsToUrl(params);
+}
+
+function hideColumnUrl(column) {
+  var params = getParams();
+  params.append("_nocol", column);
+  return paramsToUrl(params);
+}
+
+function showAllColumnsUrl() {
+  var params = getParams();
+  params.delete("_nocol");
+  params.delete("_col");
+  return paramsToUrl(params);
+}
+
+function notBlankUrl(column) {
+  var params = getParams();
+  params.set(`${column}__notblank`, "1");
+  return paramsToUrl(params);
+}
+
+function getDisplayedFacets() {
+  return Array.from(document.querySelectorAll(".facet-info")).map(
+    (el) => el.dataset.column,
+  );
+}
+
+function getColumnClassName(th) {
+  return Array.from(th.classList).find((className) =>
+    className.startsWith("col-"),
+  );
+}
+
+function getColumnCells(th) {
+  var table = th.closest("table");
+  var columnClassName = getColumnClassName(th);
+  if (!table || !columnClassName) {
+    return [];
+  }
+  return Array.from(table.querySelectorAll("td." + columnClassName));
+}
+
+function getColumnMeta(th) {
+  return {
+    columnName: th.dataset.column,
+    columnNotNull: th.dataset.columnNotNull === "1",
+    columnType: th.dataset.columnType,
+    isPk: th.dataset.isPk === "1",
+  };
+}
+
+function getColumnTypeText(th) {
+  var columnType = th.dataset.columnType;
+  if (!columnType) {
+    return null;
+  }
+  var notNull = th.dataset.columnNotNull === "1" ? " NOT NULL" : "";
+  return `Type: ${columnType.toUpperCase()}${notNull}`;
+}
+
+function canChooseColumns() {
+  return !!(
+    document.querySelector("column-chooser") && window._columnChooserData
+  );
+}
+
+function shouldShowShowAllColumns() {
+  var params = getParams();
+  return params.getAll("_nocol").length || params.getAll("_col").length;
+}
+
+function buildColumnActionItems(manager, th, options) {
+  options = options || {};
+  var params = getParams();
+  var column = th.dataset.column;
+  var columnActions = [];
+  var isSortable = !!th.querySelector("a");
+  var isFirstColumn = th.parentElement.querySelector("th:first-of-type") === th;
+  var isSinglePk =
+    th.dataset.isPk === "1" &&
+    document.querySelectorAll('th[data-is-pk="1"]').length === 1;
+  var hasBlankValues = getColumnCells(th).some(
+    (el) => el.innerText.trim() === "",
+  );
+
+  if (isSortable && params.get("_sort") !== column) {
+    columnActions.push({
+      label: "Sort ascending",
+      href: sortAscUrl(column),
+    });
+  }
+
+  if (isSortable && params.get("_sort_desc") !== column) {
+    columnActions.push({
+      label: "Sort descending",
+      href: sortDescUrl(column),
+    });
+  }
+
+  if (
+    DATASETTE_ALLOW_FACET &&
+    !isFirstColumn &&
+    !getDisplayedFacets().includes(column) &&
+    !isSinglePk
+  ) {
+    columnActions.push({
+      label: "Facet by this",
+      href: facetUrl(column),
+    });
+  }
+
+  if (options.includeChooseColumns && canChooseColumns()) {
+    columnActions.push({
+      label: "Choose columns",
+      href: "#",
+      onClick:
+        options.onChooseColumns ||
+        function (ev) {
+          ev.preventDefault();
+          openColumnChooser();
+        },
+    });
+  }
+
+  if (th.dataset.isPk !== "1") {
+    columnActions.push({
+      label: "Hide this column",
+      href: hideColumnUrl(column),
+    });
+  }
+
+  if (options.includeShowAllColumns && shouldShowShowAllColumns()) {
+    columnActions.push({
+      label: "Show all columns",
+      href: showAllColumnsUrl(),
+    });
+  }
+
+  if (params.get(`${column}__notblank`) !== "1" && hasBlankValues) {
+    columnActions.push({
+      label: "Show not-blank rows",
+      href: notBlankUrl(column),
+    });
+  }
+
+  return columnActions.concat(manager.makeColumnActions(getColumnMeta(th)));
+}
+
+function buildColumnActionState(manager, th, options) {
+  return {
+    column: th.dataset.column,
+    columnDescription: th.dataset.columnDescription || null,
+    columnMeta: getColumnMeta(th),
+    columnTypeText: getColumnTypeText(th),
+    actionItems: buildColumnActionItems(manager, th, options),
+  };
+}
+
+function initializeColumnActions(manager) {
+  manager.columnActions = {
+    buildColumnActionState: function (th, options) {
+      return buildColumnActionState(manager, th, options);
+    },
+    buildColumnActionItems: function (th, options) {
+      return buildColumnActionItems(manager, th, options);
+    },
+    canChooseColumns: canChooseColumns,
+    facetUrl: facetUrl,
+    getColumnMeta: getColumnMeta,
+    getColumnTypeText: getColumnTypeText,
+    hideColumnUrl: hideColumnUrl,
+    notBlankUrl: notBlankUrl,
+    shouldShowShowAllColumns: shouldShowShowAllColumns,
+    showAllColumnsUrl: showAllColumnsUrl,
+    sortAscUrl: sortAscUrl,
+    sortDescUrl: sortDescUrl,
+  };
+}
+
+function renderActionLink(itemConfig) {
+  var newLink = document.createElement("a");
+  newLink.textContent = itemConfig.label;
+  newLink.href = itemConfig.href || "#";
+  if (itemConfig.onClick) {
+    newLink.addEventListener("click", itemConfig.onClick);
+  }
+  return newLink;
+}
+
 /** Main initialization function for Datasette Table interactions */
 const initDatasetteTable = function (manager) {
   // Feature detection
   if (!window.URLSearchParams) {
     return;
-  }
-  function getParams() {
-    return new URLSearchParams(location.search);
-  }
-  function paramsToUrl(params) {
-    var s = params.toString();
-    return s ? "?" + s : location.pathname;
-  }
-  function sortDescUrl(column) {
-    var params = getParams();
-    params.set("_sort_desc", column);
-    params.delete("_sort");
-    params.delete("_next");
-    return paramsToUrl(params);
-  }
-  function sortAscUrl(column) {
-    var params = getParams();
-    params.set("_sort", column);
-    params.delete("_sort_desc");
-    params.delete("_next");
-    return paramsToUrl(params);
-  }
-  function facetUrl(column) {
-    var params = getParams();
-    params.append("_facet", column);
-    return paramsToUrl(params);
-  }
-  function hideColumnUrl(column) {
-    var params = getParams();
-    params.append("_nocol", column);
-    return paramsToUrl(params);
-  }
-  function showAllColumnsUrl() {
-    var params = getParams();
-    params.delete("_nocol");
-    params.delete("_col");
-    return paramsToUrl(params);
-  }
-  function notBlankUrl(column) {
-    var params = getParams();
-    params.set(`${column}__notblank`, "1");
-    return paramsToUrl(params);
   }
   function closeMenu() {
     menu.style.display = "none";
@@ -97,100 +265,34 @@ const initDatasetteTable = function (manager) {
     var rect = th.getBoundingClientRect();
     var menuTop = rect.bottom + window.scrollY;
     var menuLeft = rect.left + window.scrollX;
-    var column = th.getAttribute("data-column");
-    var params = getParams();
-    var sort = menu.querySelector("a.dropdown-sort-asc");
-    var sortDesc = menu.querySelector("a.dropdown-sort-desc");
-    var facetItem = menu.querySelector("a.dropdown-facet");
-    var notBlank = menu.querySelector("a.dropdown-not-blank");
-    var hideColumn = menu.querySelector("a.dropdown-hide-column");
-    var showAllColumns = menu.querySelector("a.dropdown-show-all-columns");
-    var selectColumns = menu.querySelector("a.dropdown-choose-columns");
-    if (params.get("_sort") == column) {
-      sort.parentNode.style.display = "none";
-    } else {
-      sort.parentNode.style.display = "block";
-      sort.setAttribute("href", sortAscUrl(column));
-    }
-    if (params.get("_sort_desc") == column) {
-      sortDesc.parentNode.style.display = "none";
-    } else {
-      sortDesc.parentNode.style.display = "block";
-      sortDesc.setAttribute("href", sortDescUrl(column));
-    }
-    /* Show hide columns options */
-    if (params.get("_nocol") || params.get("_col")) {
-      showAllColumns.parentNode.style.display = "block";
-      showAllColumns.setAttribute("href", showAllColumnsUrl());
-    } else {
-      showAllColumns.parentNode.style.display = "none";
-    }
-    if (th.getAttribute("data-is-pk") != "1") {
-      hideColumn.parentNode.style.display = "block";
-      hideColumn.setAttribute("href", hideColumnUrl(column));
-    } else {
-      hideColumn.parentNode.style.display = "none";
-    }
-    /* Choose columns - show if web component exists */
-    var columnChooser = document.querySelector("column-chooser");
-    if (columnChooser && window._columnChooserData) {
-      selectColumns.parentNode.style.display = "block";
-      selectColumns.addEventListener("click", function (ev) {
+    var actionState = manager.columnActions.buildColumnActionState(th, {
+      includeChooseColumns: true,
+      includeShowAllColumns: true,
+      onChooseColumns: function (ev) {
         ev.preventDefault();
         closeMenu();
         openColumnChooser();
-      });
-    } else {
-      selectColumns.parentNode.style.display = "none";
-    }
-    /* Only show "Facet by this" if it's not the first column, not selected,
-       not a single PK and the Datasette allow_facet setting is True */
-    var displayedFacets = Array.from(
-      document.querySelectorAll(".facet-info"),
-    ).map((el) => el.dataset.column);
-    var isFirstColumn =
-      th.parentElement.querySelector("th:first-of-type") == th;
-    var isSinglePk =
-      th.getAttribute("data-is-pk") == "1" &&
-      document.querySelectorAll('th[data-is-pk="1"]').length == 1;
-    if (
-      !DATASETTE_ALLOW_FACET ||
-      isFirstColumn ||
-      displayedFacets.includes(column) ||
-      isSinglePk
-    ) {
-      facetItem.parentNode.style.display = "none";
-    } else {
-      facetItem.parentNode.style.display = "block";
-      facetItem.setAttribute("href", facetUrl(column));
-    }
-    /* Show notBlank option if not selected AND at least one visible blank value */
-    var tdsForThisColumn = Array.from(
-      th.closest("table").querySelectorAll("td." + th.className),
-    );
-    if (
-      params.get(`${column}__notblank`) != "1" &&
-      tdsForThisColumn.filter((el) => el.innerText.trim() == "").length
-    ) {
-      notBlank.parentNode.style.display = "block";
-      notBlank.setAttribute("href", notBlankUrl(column));
-    } else {
-      notBlank.parentNode.style.display = "none";
-    }
-    var columnTypeP = menu.querySelector(".dropdown-column-type");
-    var columnType = th.dataset.columnType;
-    var notNull = th.dataset.columnNotNull == 1 ? " NOT NULL" : "";
+      },
+    });
+    var menuList = menu.querySelector("ul.dropdown-actions");
+    menuList.innerHTML = "";
+    actionState.actionItems.forEach((itemConfig) => {
+      var menuItem = document.createElement("li");
+      menuItem.appendChild(renderActionLink(itemConfig));
+      menuList.appendChild(menuItem);
+    });
 
-    if (columnType) {
+    var columnTypeP = menu.querySelector(".dropdown-column-type");
+    if (actionState.columnTypeText) {
       columnTypeP.style.display = "block";
-      columnTypeP.innerText = `Type: ${columnType.toUpperCase()}${notNull}`;
+      columnTypeP.innerText = actionState.columnTypeText;
     } else {
       columnTypeP.style.display = "none";
     }
 
     var columnDescriptionP = menu.querySelector(".dropdown-column-description");
-    if (th.dataset.columnDescription) {
-      columnDescriptionP.innerText = th.dataset.columnDescription;
+    if (actionState.columnDescription) {
+      columnDescriptionP.innerText = actionState.columnDescription;
       columnDescriptionP.style.display = "block";
     } else {
       columnDescriptionP.style.display = "none";
@@ -200,39 +302,6 @@ const initDatasetteTable = function (manager) {
     menu.style.left = menuLeft + "px";
     menu.style.display = "block";
     menu.classList.add("anim-scale-in");
-
-    // Custom menu items on each render
-    // Plugin hook: allow adding JS-based additional menu items
-    const columnActionsPayload = {
-      columnName: th.dataset.column,
-      columnNotNull: th.dataset.columnNotNull === "1",
-      columnType: th.dataset.columnType,
-      isPk: th.dataset.isPk === "1",
-    };
-    const columnItemConfigs = manager.makeColumnActions(columnActionsPayload);
-
-    const menuList = menu.querySelector("ul");
-    columnItemConfigs.forEach((itemConfig) => {
-      // Remove items from previous render. We assume entries have unique labels.
-      const existingItems = menuList.querySelectorAll(`li`);
-      Array.from(existingItems)
-        .filter((item) => item.innerText === itemConfig.label)
-        .forEach((node) => {
-          node.remove();
-        });
-
-      const newLink = document.createElement("a");
-      newLink.textContent = itemConfig.label;
-      newLink.href = itemConfig.href ?? "#";
-      if (itemConfig.onClick) {
-        newLink.onclick = itemConfig.onClick;
-      }
-
-      // Attach new elements to DOM
-      const menuItem = document.createElement("li");
-      menuItem.appendChild(newLink);
-      menuList.appendChild(menuItem);
-    });
 
     // Measure width of menu and adjust position if too far right
     const menuWidth = menu.offsetWidth;
@@ -383,7 +452,7 @@ function openColumnChooser() {
       }
       var qs = params.toString();
       location.href = qs ? "?" + qs : location.pathname;
-    }
+    },
   });
 }
 
@@ -391,11 +460,12 @@ function openColumnChooser() {
 document.addEventListener("datasette_init", function (evt) {
   const { detail: manager } = evt;
 
+  initializeColumnActions(manager);
+
   // Main table
   initDatasetteTable(manager);
 
   // Other UI functions with interactive JS needs
   addButtonsToFilterRows(manager);
   initAutocompleteForFilterValues(manager);
-
 });

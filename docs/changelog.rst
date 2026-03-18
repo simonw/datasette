@@ -4,6 +4,37 @@
 Changelog
 =========
 
+.. _v1_0_a26:
+
+1.0a26 (2026-03-18)
+-------------------
+
+New ``column_types`` system
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Table columns can now have custom column types assigned to them, using the new ``column_types`` table configuration option or at runtime using a new UI and ``POST /<database>/<table>/-/set-column-type`` JSON API.
+
+Built-in column types include ``url``, ``email``, and ``json``, and plugins can register additional types using the new :ref:`register_column_types() <plugin_register_column_types>` plugin hook. (:issue:`2664`, :issue:`2671`)
+
+Column types can customize HTML rendering, validate values written through the insert, update, and upsert APIs, and transform values returned by the JSON API. They can optionally restrict themselves to specific SQLite column types using ``sqlite_types``. This feature also introduces a new :ref:`set-column-type <actions_set_column_type>` permission for assigning column types to a table. (:issue:`2672`)
+
+The :ref:`render_cell() <plugin_hook_render_cell>` plugin hook now receives a ``column_type`` argument containing the assigned type instance, and a column type's own ``render_cell()`` method takes priority over the plugin hook chain.
+
+The `datasette-files <https://github.com/datasette/datasette-files>`__ plugin will be the first to use this new feature.
+
+UI for selecting columns and their order
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Table and view pages now include a dialog for selecting and re-ordering visible columns. (:issue:`2661`)
+
+Other changes
+~~~~~~~~~~~~~
+
+- Fixed ``allowed_resources("view-query", actor)`` so actor-specific canned queries are returned correctly. Any plugin that defines a ``resources_sql()`` method on a ``Resource`` subclass needs to update to the new signature, see :ref:`the resources_sql() method<plugin_resources_sql>` documentation for details.
+- Column actions can now be accessed in mobile view via a new "Column actions" button. Previously they were not available on mobile because table headers are not displayed there. (:issue:`2669`, :issue:`2670`)
+- Row pages now render foreign key values as links to the referenced row. (:issue:`1592`)
+- The ``startup()`` plugin hook now fires after metadata and internal schema tables have been populated, so plugins can reliably inspect that state during startup. (:issue:`2666`)
+
 .. _v1_0_a25:
 
 1.0a25 (2026-02-25)
@@ -437,7 +468,7 @@ Configuration
 - The ``-s/--setting`` option can now be used to set plugin configuration as well. See :ref:`configuration_cli` for details. (:issue:`2252`)
 
   The above YAML configuration example using ``-s/--setting`` looks like this:
-  
+
   .. code-block:: bash
 
         datasette mydatabase.db \

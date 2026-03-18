@@ -43,6 +43,7 @@ from jinja2.environment import Template
 from jinja2.exceptions import TemplateNotFound
 
 from .events import Event
+from .column_types import sqlite_type_from_declared_type
 from .views import Context
 from .views.database import database_download, DatabaseView, TableCreateView, QueryView
 from .views.index import IndexView
@@ -959,6 +960,63 @@ class Datasette:
 
     # Column types API
 
+    async def _get_resource_column_details(self, database: str, resource: str):
+        db = self.databases.get(database)
+        if db is None:
+            return {}
+        try:
+            return {
+                column.name: column
+                for column in await db.table_column_details(resource)
+            }
+        except sqlite3.OperationalError:
+            return {}
+
+    @staticmethod
+    def _column_type_is_applicable(ct_cls, column_detail) -> bool:
+        sqlite_types = getattr(ct_cls, "sqlite_types", None)
+        if sqlite_types is None:
+            return True
+        if column_detail is None:
+            return False
+        actual_sqlite_type = sqlite_type_from_declared_type(column_detail.type)
+        return actual_sqlite_type in sqlite_types
+
+    async def _validate_column_type_assignment(
+        self, database: str, resource: str, column: str, ct_cls
+    ) -> None:
+        sqlite_types = getattr(ct_cls, "sqlite_types", None)
+        if sqlite_types is None:
+            return
+
+        column_detail = (
+            await self._get_resource_column_details(database, resource)
+        ).get(column)
+        if column_detail is None:
+            return
+
+        actual_sqlite_type = sqlite_type_from_declared_type(column_detail.type)
+        if actual_sqlite_type in sqlite_types:
+            return
+
+        allowed = ", ".join(sqlite_type.value for sqlite_type in sqlite_types)
+        actual = (
+            actual_sqlite_type.value
+            if actual_sqlite_type is not None
+            else "unrecognized {!r}".format(column_detail.type)
+        )
+        raise ValueError(
+            "Column type {!r} is only applicable to SQLite types {} but {}.{}.{} "
+            "has SQLite type {}".format(
+                ct_cls.name,
+                allowed,
+                database,
+                resource,
+                column,
+                actual,
+            )
+        )
+
     async def _apply_column_types_config(self):
         """Load column_types from datasette.json config into the internal DB."""
         import logging
@@ -980,9 +1038,12 @@ class Datasette:
                             table_name,
                             col_name,
                         )
-                    await self.set_column_type(
-                        db_name, table_name, col_name, col_type, config
-                    )
+                    try:
+                        await self.set_column_type(
+                            db_name, table_name, col_name, col_type, config
+                        )
+                    except ValueError as ex:
+                        logging.warning(str(ex))
 
     async def get_column_type(self, database: str, resource: str, column: str):
         """
@@ -1001,6 +1062,11 @@ class Datasette:
         ct_cls = self._column_types.get(ct_name)
         if ct_cls is None:
             return None
+        column_detail = (
+            await self._get_resource_column_details(database, resource)
+        ).get(column)
+        if not self._column_type_is_applicable(ct_cls, column_detail):
+            return None
         return ct_cls(config=json.loads(config) if config else None)
 
     async def get_column_types(self, database: str, resource: str) -> dict:
@@ -1013,11 +1079,14 @@ class Datasette:
             "WHERE database_name = ? AND resource_name = ?",
             [database, resource],
         )
+        column_details = await self._get_resource_column_details(database, resource)
         result = {}
         for row in rows.rows:
             col_name, ct_name, config = row
             ct_cls = self._column_types.get(ct_name)
-            if ct_cls is not None:
+            if ct_cls is not None and self._column_type_is_applicable(
+                ct_cls, column_details.get(col_name)
+            ):
                 result[col_name] = ct_cls(config=json.loads(config) if config else None)
         return result
 
@@ -1030,6 +1099,11 @@ class Datasette:
         config: dict = None,
     ) -> None:
         """Assign a column type. Overwrites any existing assignment."""
+        ct_cls = self._column_types.get(column_type)
+        if ct_cls is not None:
+            await self._validate_column_type_assignment(
+                database, resource, column, ct_cls
+            )
         await self.get_internal_database().execute_write(
             """INSERT OR REPLACE INTO column_types
                (database_name, resource_name, column_name, column_type, config)

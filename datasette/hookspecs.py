@@ -86,7 +86,7 @@ def register_actions(datasette):
 
 @hookspec
 def register_column_types(datasette):
-    """Return a list of ColumnType instances"""
+    """Return a list of ColumnType subclasses"""
 
 
 @hookspec

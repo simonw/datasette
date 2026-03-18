@@ -968,6 +968,7 @@ await .set_column_type(database, resource, column, column_type, config=None)
     Optional configuration dict for the column type.
 
 Assigns a column type to a column. Overwrites any existing assignment for that column.
+Raises ``ValueError`` if the column type declares ``sqlite_types`` and the target column does not match one of those SQLite types.
 
 .. code-block:: python
 

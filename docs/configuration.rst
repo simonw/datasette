@@ -1103,6 +1103,8 @@ These configure :ref:`full-text search <full_text_search>` for a table or view. 
 
 You can assign semantic column types to columns, which affect how values are rendered, validated, and transformed. Built-in column types include ``url``, ``email``, and ``json``. Plugins can register additional column types using the :ref:`register_column_types <plugin_register_column_types>` plugin hook.
 
+Column types can optionally declare which SQLite column types they apply to using ``sqlite_types``. Datasette will reject incompatible assignments. The built-in ``url``, ``email``, and ``json`` column types are all restricted to ``TEXT`` columns.
+
 The simplest form maps column names to type name strings:
 
 .. [[[cog
@@ -1209,5 +1211,4 @@ For column types that accept additional configuration, use an object with ``type
           }
         }
 .. [[[end]]]
-
 

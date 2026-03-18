@@ -4,12 +4,13 @@ import re
 import markupsafe
 
 from datasette import hookimpl
-from datasette.column_types import ColumnType
+from datasette.column_types import ColumnType, SQLiteType
 
 
 class UrlColumnType(ColumnType):
     name = "url"
     description = "URL"
+    sqlite_types = (SQLiteType.TEXT,)
 
     async def render_cell(self, value, column, table, database, datasette, request):
         if not value or not isinstance(value, str):
@@ -30,6 +31,7 @@ class UrlColumnType(ColumnType):
 class EmailColumnType(ColumnType):
     name = "email"
     description = "Email address"
+    sqlite_types = (SQLiteType.TEXT,)
 
     async def render_cell(self, value, column, table, database, datasette, request):
         if not value or not isinstance(value, str):
@@ -50,6 +52,7 @@ class EmailColumnType(ColumnType):
 class JsonColumnType(ColumnType):
     name = "json"
     description = "JSON data"
+    sqlite_types = (SQLiteType.TEXT,)
 
     async def render_cell(self, value, column, table, database, datasette, request):
         if value is None:

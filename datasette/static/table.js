@@ -110,6 +110,14 @@ function shouldShowShowAllColumns() {
   return params.getAll("_nocol").length || params.getAll("_col").length;
 }
 
+function hasMultipleVisibleColumns(manager) {
+  return (
+    Array.from(document.querySelectorAll(manager.selectors.tableHeaders)).filter(
+      (th) => th.dataset.column && th.dataset.isLinkColumn !== "1",
+    ).length > 1
+  );
+}
+
 function buildColumnActionItems(manager, th, options) {
   options = options || {};
   var params = getParams();
@@ -163,7 +171,7 @@ function buildColumnActionItems(manager, th, options) {
     });
   }
 
-  if (th.dataset.isPk !== "1") {
+  if (th.dataset.isPk !== "1" && hasMultipleVisibleColumns(manager)) {
     columnActions.push({
       label: "Hide this column",
       href: hideColumnUrl(column),

@@ -33,7 +33,7 @@ The one exception is the "root" account, which you can sign into while using Dat
 The ``--root`` flag is designed for local development and testing. When you start Datasette with ``--root``, the root user automatically receives every permission, including:
 
 * All view permissions (``view-instance``, ``view-database``, ``view-table``, etc.)
-* All write permissions (``insert-row``, ``update-row``, ``delete-row``, ``create-table``, ``alter-table``, ``drop-table``)
+* All write permissions (``insert-row``, ``update-row``, ``delete-row``, ``create-table``, ``alter-table``, ``set-column-types``, ``drop-table``)
 * Debug permissions (``permissions-debug``, ``debug-menu``)
 * Any custom permissions defined by plugins
 
@@ -886,6 +886,8 @@ To grant ``create-table`` to the user with ``id`` of ``editor`` for the ``docs``
         }
 .. [[[end]]]
 
+Other table-scoped write permissions, including ``set-column-types``, can be configured in the same place.
+
 And for ``insert-row`` against the ``reports`` table in that ``docs`` database:
 
 .. [[[cog
@@ -1342,6 +1344,18 @@ alter-table
 -----------
 
 Actor is allowed to alter a database table.
+
+``resource`` - ``datasette.resources.TableResource(database, table)``
+    ``database`` is the name of the database (string)
+
+    ``table`` is the name of the table (string)
+
+.. _actions_set_column_types:
+
+set-column-types
+----------------
+
+Actor is allowed to set assigned column types for columns in a table.
 
 ``resource`` - ``datasette.resources.TableResource(database, table)``
     ``database`` is the name of the database (string)

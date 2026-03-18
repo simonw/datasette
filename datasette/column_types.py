@@ -26,8 +26,9 @@ class SQLiteType(Enum):
         if "BLOB" in normalized:
             return cls.BLOB
         if any(
-            token in normalized for token in ("REAL", "FLOA", "DOUB")
-        ):  # codespell:ignore doub
+            token in normalized
+            for token in ("REAL", "FLOA", "DOUB")  # codespell:ignore doub
+        ):
             return cls.REAL
 
         return None

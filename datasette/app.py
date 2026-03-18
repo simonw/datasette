@@ -43,7 +43,7 @@ from jinja2.environment import Template
 from jinja2.exceptions import TemplateNotFound
 
 from .events import Event
-from .column_types import sqlite_type_from_declared_type
+from .column_types import SQLiteType
 from .views import Context
 from .views.database import database_download, DatabaseView, TableCreateView, QueryView
 from .views.index import IndexView
@@ -979,7 +979,7 @@ class Datasette:
             return True
         if column_detail is None:
             return False
-        actual_sqlite_type = sqlite_type_from_declared_type(column_detail.type)
+        actual_sqlite_type = SQLiteType.from_declared_type(column_detail.type)
         return actual_sqlite_type in sqlite_types
 
     async def _validate_column_type_assignment(
@@ -995,7 +995,7 @@ class Datasette:
         if column_detail is None:
             return
 
-        actual_sqlite_type = sqlite_type_from_declared_type(column_detail.type)
+        actual_sqlite_type = SQLiteType.from_declared_type(column_detail.type)
         if actual_sqlite_type in sqlite_types:
             return
 

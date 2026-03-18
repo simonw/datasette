@@ -4,7 +4,6 @@ from datasette.app import Datasette
 from datasette.column_types import (
     ColumnType,
     SQLiteType,
-    sqlite_type_from_declared_type,
 )
 from datasette.hookspecs import hookimpl
 from datasette.plugins import pm
@@ -242,13 +241,13 @@ async def test_column_type_class_attributes(ds_ct):
 
 
 def test_sqlite_type_from_declared_type():
-    assert sqlite_type_from_declared_type("text") == SQLiteType.TEXT
-    assert sqlite_type_from_declared_type("varchar(255)") == SQLiteType.TEXT
-    assert sqlite_type_from_declared_type("integer") == SQLiteType.INTEGER
-    assert sqlite_type_from_declared_type("float") == SQLiteType.REAL
-    assert sqlite_type_from_declared_type("blob") == SQLiteType.BLOB
-    assert sqlite_type_from_declared_type("") == SQLiteType.NULL
-    assert sqlite_type_from_declared_type("numeric") is None
+    assert SQLiteType.from_declared_type("text") == SQLiteType.TEXT
+    assert SQLiteType.from_declared_type("varchar(255)") == SQLiteType.TEXT
+    assert SQLiteType.from_declared_type("integer") == SQLiteType.INTEGER
+    assert SQLiteType.from_declared_type("float") == SQLiteType.REAL
+    assert SQLiteType.from_declared_type("blob") == SQLiteType.BLOB
+    assert SQLiteType.from_declared_type("") == SQLiteType.NULL
+    assert SQLiteType.from_declared_type("numeric") is None
 
 
 # --- JSON API ---

@@ -8,27 +8,27 @@ class SQLiteType(Enum):
     BLOB = "BLOB"
     NULL = "NULL"
 
+    @classmethod
+    def from_declared_type(cls, declared_type: str | None) -> "SQLiteType | None":
+        if declared_type is None:
+            return cls.NULL
 
-def sqlite_type_from_declared_type(declared_type: str | None) -> SQLiteType | None:
-    if declared_type is None:
-        return SQLiteType.NULL
+        normalized = declared_type.strip().upper()
+        if not normalized:
+            return cls.NULL
 
-    normalized = declared_type.strip().upper()
-    if not normalized:
-        return SQLiteType.NULL
+        if normalized == cls.NULL.value:
+            return cls.NULL
+        if "INT" in normalized:
+            return cls.INTEGER
+        if any(token in normalized for token in ("CHAR", "CLOB", "TEXT")):
+            return cls.TEXT
+        if "BLOB" in normalized:
+            return cls.BLOB
+        if any(token in normalized for token in ("REAL", "FLOA", "DOUB")):
+            return cls.REAL
 
-    if normalized == SQLiteType.NULL.value:
-        return SQLiteType.NULL
-    if "INT" in normalized:
-        return SQLiteType.INTEGER
-    if any(token in normalized for token in ("CHAR", "CLOB", "TEXT")):
-        return SQLiteType.TEXT
-    if "BLOB" in normalized:
-        return SQLiteType.BLOB
-    if any(token in normalized for token in ("REAL", "FLOA", "DOUB")):
-        return SQLiteType.REAL
-
-    return None
+        return None
 
 
 class ColumnType:

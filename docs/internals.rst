@@ -91,9 +91,7 @@ The object also has the following awaitable methods:
         form = await request.form(files=True)
         uploaded = form["avatar"]
         content = await uploaded.read()
-        print(
-            uploaded.filename, uploaded.content_type, uploaded.size
-        )
+        print(uploaded.filename, uploaded.content_type, uploaded.size)
 
     Cleanup note:
 
@@ -284,13 +282,9 @@ The quickest way to create responses is using the ``Response.text(...)``, ``Resp
 
     html_response = Response.html("This is HTML")
     json_response = Response.json({"this_is": "json"})
-    text_response = Response.text(
-        "This will become utf-8 encoded text"
-    )
+    text_response = Response.text("This will become utf-8 encoded text")
     # Redirects are served as 302, unless you pass status=301:
-    redirect_response = Response.redirect(
-        "https://latest.datasette.io/"
-    )
+    redirect_response = Response.redirect("https://latest.datasette.io/")
 
 Each of these responses will use the correct corresponding content-type - ``text/html; charset=utf-8``, ``application/json; charset=utf-8`` or ``text/plain; charset=utf-8`` respectively.
 
@@ -310,9 +304,7 @@ Create a ``Response`` object and then use ``await response.asgi_send(send)``, pa
     async def require_authorization(scope, receive, send):
         response = Response.text(
             "401 Authorization Required",
-            headers={
-                "www-authenticate": 'Basic realm="Datasette", charset="UTF-8"'
-            },
+            headers={"www-authenticate": 'Basic realm="Datasette", charset="UTF-8"'},
             status=401,
         )
         await response.asgi_send(send)
@@ -372,13 +364,7 @@ You can create your own instance of this - for example to help write tests for a
     # Pass metadata as a JSON dictionary like this
     datasette = Datasette(
         files=["/path/to/my-database.db"],
-        metadata={
-            "databases": {
-                "my-database": {
-                    "description": "This is my database"
-                }
-            }
-        },
+        metadata={"databases": {"my-database": {"description": "This is my database"}}},
     )
 
 Constructor parameters include:
@@ -497,9 +483,7 @@ Example usage:
     # Check if actor can view a specific table
     can_view = await datasette.allowed(
         action="view-table",
-        resource=TableResource(
-            database="fixtures", table="facetable"
-        ),
+        resource=TableResource(database="fixtures", table="facetable"),
         actor=request.actor,
     )
 
@@ -572,9 +556,7 @@ Example usage:
         )
 
     # Iterate through all results automatically
-    page = await datasette.allowed_resources(
-        "view-table", actor=request.actor
-    )
+    page = await datasette.allowed_resources("view-table", actor=request.actor)
     async for table in page.all():
         print(table.parent, table.child)
 
@@ -630,16 +612,12 @@ Example:
     # Will raise Forbidden if actor cannot view the table
     await datasette.ensure_permission(
         action="view-table",
-        resource=TableResource(
-            database="fixtures", table="cities"
-        ),
+        resource=TableResource(database="fixtures", table="cities"),
         actor=request.actor,
     )
 
     # For instance-level actions, resource can be omitted:
-    await datasette.ensure_permission(
-        action="permissions-debug", actor=request.actor
-    )
+    await datasette.ensure_permission(action="permissions-debug", actor=request.actor)
 
 .. _datasette_check_visibility:
 
@@ -926,9 +904,7 @@ Returns a ``ColumnType`` subclass instance with ``.config`` populated for the sp
 
 .. code-block:: python
 
-    ct = await datasette.get_column_type(
-        "mydb", "mytable", "email_col"
-    )
+    ct = await datasette.get_column_type("mydb", "mytable", "email_col")
     if ct:
         print(ct.name)  # "email"
         print(ct.config)  # None or {...}
@@ -996,9 +972,7 @@ Removes the column type assignment for the specified column.
 
 .. code-block:: python
 
-    await datasette.remove_column_type(
-        "mydb", "mytable", "location"
-    )
+    await datasette.remove_column_type("mydb", "mytable", "location")
 
 .. _datasette_add_database:
 
@@ -1037,12 +1011,8 @@ Use ``is_mutable=False`` to add an immutable database.
 
 .. code-block:: python
 
-    db = datasette.add_database(
-        Database(datasette, memory_name="statistics")
-    )
-    await db.execute_write(
-        "CREATE TABLE foo(id integer primary key)"
-    )
+    db = datasette.add_database(Database(datasette, memory_name="statistics"))
+    await db.execute_write("CREATE TABLE foo(id integer primary key)")
 
 .. _datasette_add_memory_database:
 
@@ -1061,9 +1031,7 @@ This is a shortcut for the following:
 
     from datasette.database import Database
 
-    datasette.add_database(
-        Database(datasette, memory_name="statistics")
-    )
+    datasette.add_database(Database(datasette, memory_name="statistics"))
 
 Using either of these patterns will result in the in-memory database being served at ``/statistics``.
 
@@ -1095,9 +1063,7 @@ Example usage, assuming the plugin has previously registered the ``BanUserEvent`
 
 .. code-block:: python
 
-    await datasette.track_event(
-        BanUserEvent(user={"id": 1, "username": "cleverbot"})
-    )
+    await datasette.track_event(BanUserEvent(user={"id": 1, "username": "cleverbot"}))
 
 .. _datasette_sign:
 
@@ -1160,9 +1126,7 @@ Returns the absolute URL for the given path, including the protocol and host. Fo
 
 .. code-block:: python
 
-    absolute_url = datasette.absolute_url(
-        request, "/dbname/table.json"
-    )
+    absolute_url = datasette.absolute_url(request, "/dbname/table.json")
     # Would return "http://localhost:8001/dbname/table.json"
 
 The current request object is used to determine the hostname and protocol that should be used for the returned URL. The :ref:`setting_force_https_urls` configuration setting is taken into account.
@@ -1302,9 +1266,7 @@ These methods can be used with :ref:`internals_datasette_urls` - for example:
 
     table_json = (
         await datasette.client.get(
-            datasette.urls.table(
-                "fixtures", "facetable", format="json"
-            )
+            datasette.urls.table("fixtures", "facetable", format="json")
         )
     ).json()
 
@@ -1324,9 +1286,7 @@ Example usage:
 .. code-block:: python
 
     # Regular request - respects permissions
-    response = await datasette.client.get(
-        "/private-db/secret-table.json"
-    )
+    response = await datasette.client.get("/private-db/secret-table.json")
     # May return 403 Forbidden if access is denied
 
     # With skip_permission_checks - bypasses all permission checks
@@ -1659,9 +1619,7 @@ Example usage:
 .. code-block:: python
 
     def get_version(conn):
-        return conn.execute(
-            "select sqlite_version()"
-        ).fetchall()[0][0]
+        return conn.execute("select sqlite_version()").fetchall()[0][0]
 
 
     version = await db.execute_fn(get_version)
@@ -1727,15 +1685,11 @@ For example:
 
     def delete_and_return_count(conn):
         conn.execute("delete from some_table where id > 5")
-        return conn.execute(
-            "select count(*) from some_table"
-        ).fetchone()[0]
+        return conn.execute("select count(*) from some_table").fetchone()[0]
 
 
     try:
-        num_rows_left = await database.execute_write_fn(
-            delete_and_return_count
-        )
+        num_rows_left = await database.execute_write_fn(delete_and_return_count)
     except Exception as e:
         print("An error occurred:", e)
 
@@ -2128,8 +2082,9 @@ This is useful in plugins that want to define callback functions that only decla
 
     from datasette.utils import call_with_supported_arguments
 
-    def my_callback(request, datasette):
-        ...
+
+    def my_callback(request, datasette): ...
+
 
     # This will pass only request and datasette, ignoring other kwargs:
     call_with_supported_arguments(

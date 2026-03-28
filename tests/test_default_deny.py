@@ -97,6 +97,39 @@ async def test_default_deny_with_config_allow():
 
 
 @pytest.mark.asyncio
+async def test_default_deny_shows_public_icons_not_private_icons():
+    ds = Datasette(
+        default_deny=True,
+        config={
+            "allow": {"id": "user1"},
+            "databases": {
+                "test_db": {
+                    "allow": True,
+                    "tables": {
+                        "public_table": {"allow": True},
+                        "private_table": {"allow": {"id": "user1"}},
+                    },
+                }
+            },
+        },
+    )
+    await ds.invoke_startup()
+
+    db = ds.add_memory_database("test_db")
+    await db.execute_write("create table public_table (id integer primary key)")
+    await db.execute_write("create table private_table (id integer primary key)")
+    await ds._refresh_schemas()
+
+    cookie = ds.client.actor_cookie({"id": "user1"})
+    response = await ds.client.get("/test_db", cookies={"ds_actor": cookie})
+    assert response.status_code == 200
+
+    # In --default-deny mode show public icons, not private padlocks
+    assert ">public_table</a> 🌐</h3>" in response.text
+    assert ">private_table</a> 🔒</h3>" not in response.text
+
+
+@pytest.mark.asyncio
 async def test_default_deny_basic_permissions():
     """Test that default_deny=True denies basic permissions"""
     ds = Datasette(default_deny=True)

@@ -2115,6 +2115,43 @@ Note that the space character is a special case: it will be replaced with a ``+`
 
 .. autofunction:: datasette.utils.tilde_decode
 
+.. _internals_utils_call_with_supported_arguments:
+
+call_with_supported_arguments(fn, **kwargs)
+-------------------------------------------
+
+Call ``fn``, passing it only those keyword arguments that match its function signature. This implements a dependency injection pattern - the caller provides all available arguments, and the function receives only the ones it declares as parameters.
+
+This is useful in plugins that want to define callback functions that only declare the arguments they need. For example:
+
+.. code-block:: python
+
+    from datasette.utils import call_with_supported_arguments
+
+
+    def my_callback(request, datasette): ...
+
+
+    # This will pass only request and datasette, ignoring other kwargs:
+    call_with_supported_arguments(
+        my_callback,
+        request=request,
+        datasette=datasette,
+        database=database,
+        table=table,
+    )
+
+.. autofunction:: datasette.utils.call_with_supported_arguments
+
+.. _internals_utils_async_call_with_supported_arguments:
+
+await async_call_with_supported_arguments(fn, **kwargs)
+-------------------------------------------------------
+
+Async version of :ref:`call_with_supported_arguments <internals_utils_call_with_supported_arguments>`. Use this for ``async def`` callback functions.
+
+.. autofunction:: datasette.utils.async_call_with_supported_arguments
+
 .. _internals_tracer:
 
 datasette.tracer

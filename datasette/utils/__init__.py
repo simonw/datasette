@@ -1086,12 +1086,35 @@ def _gather_arguments(fn, kwargs):
     return call_with
 
 
+@documented
 def call_with_supported_arguments(fn, **kwargs):
+    """
+    Call ``fn`` with the subset of ``**kwargs`` matching its signature.
+
+    This implements dependency injection: the caller provides all available
+    keyword arguments and the function receives only the ones it declares
+    as parameters.
+
+    :param fn: A callable (sync function)
+    :param kwargs: All available keyword arguments
+    :returns: The return value of ``fn``
+    """
     call_with = _gather_arguments(fn, kwargs)
     return fn(*call_with)
 
 
+@documented
 async def async_call_with_supported_arguments(fn, **kwargs):
+    """
+    Async version of :func:`call_with_supported_arguments`.
+
+    Calls ``await fn(...)`` with the subset of ``**kwargs`` matching its
+    signature.
+
+    :param fn: An async callable
+    :param kwargs: All available keyword arguments
+    :returns: The return value of ``await fn(...)``
+    """
     call_with = _gather_arguments(fn, kwargs)
     return await fn(*call_with)
 

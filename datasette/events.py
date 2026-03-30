@@ -200,6 +200,27 @@ class UpdateRowEvent(Event):
 
 
 @dataclass
+class RenameTableEvent(Event):
+    """
+    Event name: ``rename-table``
+
+    A table has been renamed.
+
+    :ivar database: The name of the database containing the renamed table.
+    :type database: str
+    :ivar old_table: The previous name of the table.
+    :type old_table: str
+    :ivar new_table: The new name of the table.
+    :type new_table: str
+    """
+
+    name = "rename-table"
+    database: str
+    old_table: str
+    new_table: str
+
+
+@dataclass
 class DeleteRowEvent(Event):
     """
     Event name: ``delete-row``
@@ -220,6 +241,42 @@ class DeleteRowEvent(Event):
 
 
 @hookimpl
+def write_wrapper(datasette, database, request, transaction):
+    def wrapper(conn, track_event):
+        # Snapshot rootpage -> name before the write
+        before = {
+            row[1]: row[0]
+            for row in conn.execute(
+                "select name, rootpage from sqlite_master"
+                " where type='table' and rootpage != 0"
+            ).fetchall()
+        }
+        yield
+        # Snapshot rootpage -> name after the write
+        after = {
+            row[1]: row[0]
+            for row in conn.execute(
+                "select name, rootpage from sqlite_master"
+                " where type='table' and rootpage != 0"
+            ).fetchall()
+        }
+        # Detect renames: same rootpage, different name
+        for rootpage, old_name in before.items():
+            new_name = after.get(rootpage)
+            if new_name and new_name != old_name:
+                track_event(
+                    RenameTableEvent(
+                        actor=request.actor if request else None,
+                        database=database,
+                        old_table=old_name,
+                        new_table=new_name,
+                    )
+                )
+
+    return wrapper
+
+
+@hookimpl
 def register_events():
     return [
         LoginEvent,
@@ -227,6 +284,7 @@ def register_events():
         CreateTableEvent,
         CreateTokenEvent,
         AlterTableEvent,
+        RenameTableEvent,
         DropTableEvent,
         InsertRowsEvent,
         UpsertRowsEvent,

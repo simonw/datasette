@@ -641,3 +641,104 @@ async def test_track_event_with_block_false(ds_with_event_tracking):
 
     assert len(ds._tracked_events) == 1
     assert ds._tracked_events[0].message == "non-blocking"
+
+
+# --- Tests for RenameTableEvent detection ---
+
+
+@pytest.fixture
+def ds_for_rename(tmp_path):
+    """Datasette instance that records tracked events for rename detection tests."""
+    from datasette.events import RenameTableEvent
+
+    db_path = str(tmp_path / "test.db")
+    ds = Datasette([db_path])
+    ds._tracked_events = []
+    ds.event_classes = (RenameTableEvent,)
+
+    async def recording_track_event(event):
+        ds._tracked_events.append(event)
+
+    ds.track_event = recording_track_event
+    return ds
+
+
+@pytest.mark.asyncio
+async def test_rename_table_fires_event(ds_for_rename):
+    """Renaming a table via ALTER TABLE fires a RenameTableEvent."""
+    from datasette.events import RenameTableEvent
+
+    ds = ds_for_rename
+    db = ds.get_database("test")
+
+    await db.execute_write("create table old_name (id integer primary key)")
+
+    def rename(conn):
+        conn.execute("alter table old_name rename to new_name")
+
+    await db.execute_write_fn(rename)
+
+    rename_events = [e for e in ds._tracked_events if isinstance(e, RenameTableEvent)]
+    assert len(rename_events) == 1
+    assert rename_events[0].old_table == "old_name"
+    assert rename_events[0].new_table == "new_name"
+    assert rename_events[0].database == "test"
+
+
+@pytest.mark.asyncio
+async def test_no_rename_event_for_regular_writes(ds_for_rename):
+    """Regular writes (CREATE, INSERT) do not fire RenameTableEvent."""
+    from datasette.events import RenameTableEvent
+
+    ds = ds_for_rename
+    db = ds.get_database("test")
+
+    await db.execute_write("create table t (id integer primary key)")
+    await db.execute_write_fn(lambda conn: conn.execute("insert into t values (1)"))
+
+    rename_events = [e for e in ds._tracked_events if isinstance(e, RenameTableEvent)]
+    assert len(rename_events) == 0
+
+
+@pytest.mark.asyncio
+async def test_no_rename_event_on_rollback(ds_for_rename):
+    """RenameTableEvent is not fired if the write raises an exception."""
+    from datasette.events import RenameTableEvent
+
+    ds = ds_for_rename
+    db = ds.get_database("test")
+
+    await db.execute_write("create table rollback_test (id integer primary key)")
+
+    def rename_then_fail(conn):
+        conn.execute("alter table rollback_test rename to renamed")
+        raise ValueError("deliberate error")
+
+    with pytest.raises(ValueError, match="deliberate"):
+        await db.execute_write_fn(rename_then_fail)
+
+    rename_events = [e for e in ds._tracked_events if isinstance(e, RenameTableEvent)]
+    assert len(rename_events) == 0
+
+
+@pytest.mark.asyncio
+async def test_multiple_renames_in_one_write(ds_for_rename):
+    """Multiple renames in a single write fire multiple RenameTableEvents."""
+    from datasette.events import RenameTableEvent
+
+    ds = ds_for_rename
+    db = ds.get_database("test")
+
+    await db.execute_write("create table alpha (id integer primary key)")
+    await db.execute_write("create table beta (id integer primary key)")
+
+    def rename_both(conn):
+        conn.execute("alter table alpha rename to alpha2")
+        conn.execute("alter table beta rename to beta2")
+
+    await db.execute_write_fn(rename_both)
+
+    rename_events = [e for e in ds._tracked_events if isinstance(e, RenameTableEvent)]
+    assert len(rename_events) == 2
+    names = {(e.old_table, e.new_table) for e in rename_events}
+    assert names == {("alpha", "alpha2"), ("beta", "beta2")}

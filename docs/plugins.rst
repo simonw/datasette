@@ -261,7 +261,8 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "templates": false,
             "version": null,
             "hooks": [
-                "register_events"
+                "register_events",
+                "write_wrapper"
             ]
         },
         {

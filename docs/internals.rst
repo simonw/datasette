@@ -1745,21 +1745,27 @@ Your function can optionally accept a ``track_event`` parameter in addition to `
 
     from datasette.events import AlterTableEvent
 
+
     def my_write(conn, track_event):
         before_schema = conn.execute(
             "select sql from sqlite_master where name = 'my_table'"
         ).fetchone()[0]
-        conn.execute("alter table my_table add column new_col text")
+        conn.execute(
+            "alter table my_table add column new_col text"
+        )
         after_schema = conn.execute(
             "select sql from sqlite_master where name = 'my_table'"
         ).fetchone()[0]
-        track_event(AlterTableEvent(
-            actor=None,
-            database="mydb",
-            table="my_table",
-            before_schema=before_schema,
-            after_schema=after_schema,
-        ))
+        track_event(
+            AlterTableEvent(
+                actor=None,
+                database="mydb",
+                table="my_table",
+                before_schema=before_schema,
+                after_schema=after_schema,
+            )
+        )
+
 
     await database.execute_write_fn(my_write)
 

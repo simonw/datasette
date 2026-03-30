@@ -246,12 +246,18 @@ def register_token_handler(datasette):
 def write_wrapper(datasette, database, request, transaction):
     """Called when a write function is about to execute.
 
-    Return a generator function that accepts a ``conn`` argument.
-    The generator should ``yield`` exactly once: code before the
-    ``yield`` runs before the write, code after the ``yield`` runs
-    after the write completes. The result of the write is sent
-    back through the ``yield``, so you can capture it with
-    ``result = yield``.
+    Return a generator function that accepts a ``conn`` argument and
+    optionally a ``track_event`` argument.  The generator should
+    ``yield`` exactly once: code before the ``yield`` runs before
+    the write, code after the ``yield`` runs after the write
+    completes. The result of the write is sent back through the
+    ``yield``, so you can capture it with ``result = yield``.
+
+    If your generator accepts ``track_event``, you can call
+    ``track_event(event)`` to queue an event that will be dispatched
+    via ``datasette.track_event()`` after the write commits
+    successfully.  Events are discarded if the write raises an
+    exception.
 
     If the write raises an exception, it is thrown into the generator
     so you can handle it with a try/except around the ``yield``.

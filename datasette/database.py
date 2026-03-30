@@ -10,6 +10,7 @@ import uuid
 
 from .tracer import trace
 from .utils import (
+    call_with_supported_arguments,
     detect_fts,
     detect_primary_keys,
     detect_spatialite,
@@ -190,7 +191,12 @@ class Database:
             return await self._send_to_write_thread(fn, isolated_connection=True)
 
     async def execute_write_fn(self, fn, block=True, transaction=True, request=None):
-        fn = self._wrap_fn_with_hooks(fn, request, transaction)
+        pending_events = []
+
+        def track_event(event):
+            pending_events.append(event)
+
+        fn = self._wrap_fn_with_hooks(fn, request, transaction, track_event)
         if self.ds.executor is None:
             # non-threaded mode
             if self._write_connection is None:
@@ -198,16 +204,30 @@ class Database:
                 self.ds._prepare_connection(self._write_connection, self.name)
             if transaction:
                 with self._write_connection:
-                    return fn(self._write_connection)
+                    result = fn(self._write_connection)
             else:
-                return fn(self._write_connection)
+                result = fn(self._write_connection)
         else:
-            return await self._send_to_write_thread(
+            result = await self._send_to_write_thread(
                 fn, block=block, transaction=transaction
             )
+        if block:
+            for event in pending_events:
+                await self.ds.track_event(event)
+        return result
 
-    def _wrap_fn_with_hooks(self, fn, request, transaction):
+    def _wrap_fn_with_hooks(self, fn, request, transaction, track_event):
         from .plugins import pm
+
+        # Wrap fn so it receives track_event if its signature supports it
+        original_fn = fn
+
+        def fn_with_track_event(conn):
+            return call_with_supported_arguments(
+                original_fn, conn=conn, track_event=track_event
+            )
+
+        fn = fn_with_track_event
 
         wrappers = pm.hook.write_wrapper(
             datasette=self.ds,
@@ -220,10 +240,9 @@ class Database:
             return fn
         # Build the wrapped fn by nesting context manager generators.
         # The first wrapper returned by pluggy is outermost.
-        original_fn = fn
         for wrapper_factory in reversed(wrappers):
-            original_fn = _apply_write_wrapper(original_fn, wrapper_factory)
-        return original_fn
+            fn = _apply_write_wrapper(fn, wrapper_factory, track_event)
+        return fn
 
     async def _send_to_write_thread(
         self, fn, block=True, isolated_connection=False, transaction=True
@@ -682,18 +701,21 @@ class Database:
         return f"<Database: {self.name}{tags_str}>"
 
 
-def _apply_write_wrapper(fn, wrapper_factory):
+def _apply_write_wrapper(fn, wrapper_factory, track_event):
     """Apply a single write_wrapper context manager around fn.
 
-    ``wrapper_factory`` is a callable that takes ``(conn)`` and returns a
-    generator that yields exactly once.  Code before the yield runs before
-    ``fn(conn)``, code after the yield runs after.  The result of
-    ``fn(conn)`` is sent into the generator via ``.send()``, and any
-    exception raised by ``fn(conn)`` is thrown via ``.throw()``.
+    ``wrapper_factory`` is a callable that takes ``(conn)`` and optionally
+    ``track_event``, and returns a generator that yields exactly once.
+    Code before the yield runs before ``fn(conn)``, code after the yield
+    runs after.  The result of ``fn(conn)`` is sent into the generator
+    via ``.send()``, and any exception raised by ``fn(conn)`` is thrown
+    via ``.throw()``.
     """
 
     def wrapped(conn):
-        gen = wrapper_factory(conn)
+        gen = call_with_supported_arguments(
+            wrapper_factory, conn=conn, track_event=track_event
+        )
         # Advance to the yield point (run "before" code)
         try:
             next(gen)

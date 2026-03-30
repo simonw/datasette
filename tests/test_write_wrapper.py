@@ -2,12 +2,20 @@
 Tests for the write_wrapper plugin hook.
 """
 
+from dataclasses import dataclass
 from datasette.app import Datasette
+from datasette.events import Event
 from datasette.hookspecs import hookimpl
 from datasette.plugins import pm
 import pytest
 import sqlite3
 import time
+
+
+@dataclass
+class DummyEvent(Event):
+    name = "dummy"
+    message: str
 
 
 @pytest.fixture
@@ -477,3 +485,136 @@ async def test_write_wrapper_set_authorizer(datasette, actor, table, should_deny
             assert result.rows[0][0] == "test"
     finally:
         pm.unregister(name="test_set_authorizer")
+
+
+# --- Tests for track_event callback ---
+
+
+@pytest.fixture
+def ds_with_event_tracking(tmp_path):
+    """Datasette instance that records tracked events and registers DummyEvent."""
+    db_path = str(tmp_path / "test.db")
+    ds = Datasette([db_path])
+    ds._tracked_events = []
+    # Set event_classes directly to avoid needing invoke_startup
+    ds.event_classes = (DummyEvent,)
+
+    async def recording_track_event(event):
+        ds._tracked_events.append(event)
+
+    ds.track_event = recording_track_event
+
+    yield ds
+
+
+@pytest.mark.asyncio
+async def test_track_event_in_write_fn(ds_with_event_tracking):
+    """fn(conn, track_event) can queue events that are dispatched after commit."""
+    ds = ds_with_event_tracking
+    db = ds.get_database("test")
+
+    def my_write(conn, track_event):
+        conn.execute("create table if not exists te1 (id integer primary key)")
+        track_event(DummyEvent(actor=None, message="hello"))
+
+    await db.execute_write_fn(my_write)
+    assert len(ds._tracked_events) == 1
+    assert ds._tracked_events[0].message == "hello"
+
+
+@pytest.mark.asyncio
+async def test_track_event_discarded_on_exception(ds_with_event_tracking):
+    """Events are discarded if the write fn raises an exception."""
+    ds = ds_with_event_tracking
+    db = ds.get_database("test")
+
+    def my_write(conn, track_event):
+        track_event(DummyEvent(actor=None, message="should not fire"))
+        raise ValueError("deliberate error")
+
+    with pytest.raises(ValueError, match="deliberate"):
+        await db.execute_write_fn(my_write)
+    assert len(ds._tracked_events) == 0
+
+
+@pytest.mark.asyncio
+async def test_track_event_existing_fn_signature_still_works(ds_with_event_tracking):
+    """Existing fn(conn) signatures continue to work without track_event."""
+    ds = ds_with_event_tracking
+    db = ds.get_database("test")
+
+    await db.execute_write_fn(
+        lambda conn: conn.execute(
+            "create table if not exists te2 (id integer primary key)"
+        )
+    )
+    # No events, no errors
+    assert len(ds._tracked_events) == 0
+
+
+@pytest.mark.asyncio
+async def test_track_event_in_write_wrapper(ds_with_event_tracking):
+    """write_wrapper generator with (conn, track_event) can queue events."""
+    ds = ds_with_event_tracking
+    db = ds.get_database("test")
+
+    class Plugin:
+        __name__ = "Plugin"
+
+        @staticmethod
+        @hookimpl
+        def write_wrapper(datasette, database, request, transaction):
+            def wrapper(conn, track_event):
+                track_event(DummyEvent(actor=None, message="from wrapper before"))
+                yield
+                track_event(DummyEvent(actor=None, message="from wrapper after"))
+
+            return wrapper
+
+    pm.register(Plugin(), name="test_track_wrapper")
+    try:
+        await db.execute_write_fn(
+            lambda conn: conn.execute(
+                "create table if not exists te3 (id integer primary key)"
+            )
+        )
+        assert len(ds._tracked_events) == 2
+        assert ds._tracked_events[0].message == "from wrapper before"
+        assert ds._tracked_events[1].message == "from wrapper after"
+    finally:
+        pm.unregister(name="test_track_wrapper")
+
+
+@pytest.mark.asyncio
+async def test_track_event_shared_between_fn_and_wrapper(ds_with_event_tracking):
+    """Both fn and wrapper can queue events, all dispatched in order."""
+    ds = ds_with_event_tracking
+    db = ds.get_database("test")
+
+    class Plugin:
+        __name__ = "Plugin"
+
+        @staticmethod
+        @hookimpl
+        def write_wrapper(datasette, database, request, transaction):
+            def wrapper(conn, track_event):
+                track_event(DummyEvent(actor=None, message="wrapper-before"))
+                yield
+                track_event(DummyEvent(actor=None, message="wrapper-after"))
+
+            return wrapper
+
+    pm.register(Plugin(), name="test_track_shared")
+    try:
+
+        def my_write(conn, track_event):
+            conn.execute(
+                "create table if not exists te4 (id integer primary key)"
+            )
+            track_event(DummyEvent(actor=None, message="from-fn"))
+
+        await db.execute_write_fn(my_write)
+        messages = [e.message for e in ds._tracked_events]
+        assert messages == ["wrapper-before", "from-fn", "wrapper-after"]
+    finally:
+        pm.unregister(name="test_track_shared")

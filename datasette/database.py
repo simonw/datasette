@@ -214,6 +214,19 @@ class Database:
         if block:
             for event in pending_events:
                 await self.ds.track_event(event)
+        else:
+            # For non-blocking writes, spawn a background task to
+            # dispatch events after the write thread completes
+            task_id, reply_queue = result
+
+            async def _dispatch_events_after_write():
+                write_result = await reply_queue.async_q.get()
+                if not isinstance(write_result, Exception):
+                    for event in pending_events:
+                        await self.ds.track_event(event)
+
+            asyncio.ensure_future(_dispatch_events_after_write())
+            result = task_id
         return result
 
     def _wrap_fn_with_hooks(self, fn, request, transaction, track_event):
@@ -269,7 +282,7 @@ class Database:
             else:
                 return result
         else:
-            return task_id
+            return task_id, reply_queue
 
     def _execute_writes(self):
         # Infinite looping thread that protects the single write connection

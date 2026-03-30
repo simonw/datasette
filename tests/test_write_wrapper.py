@@ -608,9 +608,7 @@ async def test_track_event_shared_between_fn_and_wrapper(ds_with_event_tracking)
     try:
 
         def my_write(conn, track_event):
-            conn.execute(
-                "create table if not exists te4 (id integer primary key)"
-            )
+            conn.execute("create table if not exists te4 (id integer primary key)")
             track_event(DummyEvent(actor=None, message="from-fn"))
 
         await db.execute_write_fn(my_write)
@@ -618,3 +616,28 @@ async def test_track_event_shared_between_fn_and_wrapper(ds_with_event_tracking)
         assert messages == ["wrapper-before", "from-fn", "wrapper-after"]
     finally:
         pm.unregister(name="test_track_shared")
+
+
+@pytest.mark.asyncio
+async def test_track_event_with_block_false(ds_with_event_tracking):
+    """Events are dispatched even when block=False (non-blocking writes)."""
+    ds = ds_with_event_tracking
+    db = ds.get_database("test")
+
+    def my_write(conn, track_event):
+        conn.execute("create table if not exists te5 (id integer primary key)")
+        track_event(DummyEvent(actor=None, message="non-blocking"))
+
+    task_id = await db.execute_write_fn(my_write, block=False)
+    assert task_id is not None
+
+    # Give the background task time to complete
+    import asyncio
+
+    for _ in range(50):
+        if ds._tracked_events:
+            break
+        await asyncio.sleep(0.01)
+
+    assert len(ds._tracked_events) == 1
+    assert ds._tracked_events[0].message == "non-blocking"

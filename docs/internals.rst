@@ -1739,6 +1739,30 @@ For example:
     except Exception as e:
         print("An error occurred:", e)
 
+Your function can optionally accept a ``track_event`` parameter in addition to ``conn``.  If it does, it will be passed a callable that can be used to queue events for dispatch after the write transaction commits successfully.  Events queued this way are discarded if the write raises an exception.
+
+.. code-block:: python
+
+    from datasette.events import AlterTableEvent
+
+    def my_write(conn, track_event):
+        before_schema = conn.execute(
+            "select sql from sqlite_master where name = 'my_table'"
+        ).fetchone()[0]
+        conn.execute("alter table my_table add column new_col text")
+        after_schema = conn.execute(
+            "select sql from sqlite_master where name = 'my_table'"
+        ).fetchone()[0]
+        track_event(AlterTableEvent(
+            actor=None,
+            database="mydb",
+            table="my_table",
+            before_schema=before_schema,
+            after_schema=after_schema,
+        ))
+
+    await database.execute_write_fn(my_write)
+
 The value returned from ``await database.execute_write_fn(...)`` will be the return value from your function.
 
 If your function raises an exception that exception will be propagated up to the ``await`` line.

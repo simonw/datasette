@@ -78,11 +78,13 @@ write_wrapper(datasette, database, request, transaction)
 ``transaction`` - bool
     ``True`` if the write will be wrapped in a database transaction.
 
-Return a generator function that accepts a ``conn`` argument (a SQLite connection object).  The generator should ``yield`` exactly once.  Code before the ``yield`` runs before the write function executes; code after the ``yield`` runs after it completes.
+Return a generator function that accepts a ``conn`` argument (a SQLite connection object) and optionally a ``track_event`` argument.  The generator should ``yield`` exactly once.  Code before the ``yield`` runs before the write function executes; code after the ``yield`` runs after it completes.
 
 The result of the write function is sent back through the ``yield``, so you can capture it with ``result = yield``.
 
 If the write function raises an exception, it is thrown into the generator so you can handle it with a ``try`` / ``except`` around the ``yield``.
+
+If your generator accepts ``track_event``, you can call ``track_event(event)`` to queue an event that will be dispatched via :ref:`datasette.track_event() <datasette_track_event>` after the write commits successfully.  Events are discarded if the write raises an exception.
 
 Return ``None`` to skip wrapping for this particular write.
 

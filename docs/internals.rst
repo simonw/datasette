@@ -1788,6 +1788,8 @@ The :ref:`prepare_connection() <plugin_hook_prepare_connection>` plugin hook is 
 
 This allows plugins to execute database operations that might conflict with how database connections are usually configured. For example, running a ``VACUUM`` operation while bypassing any restrictions placed by the `datasette-sqlite-authorizer <https://github.com/datasette/datasette-sqlite-authorizer>`__ plugin.
 
+Running ``VACUUM`` using this method also ensures it won't trigger incorrect :class:`~datasette.events.RenameTableEvent` events, since ``execute_isolated_fn()`` does not trigger the Datasette mechanism that detects renamed tables in a way that can be confused by a ``VACUUM``.
+
 Plugins can also use this method to load potentially dangerous SQLite extensions, use them to perform an operation and then have them safely unloaded at the end of the call, without risk of exposing them to other connections.
 
 Functions run using ``execute_isolated_fn()`` share the same queue as ``execute_write_fn()``, which guarantees that no writes can be executed at the same time as the isolated function is executing.

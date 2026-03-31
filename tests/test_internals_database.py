@@ -774,14 +774,22 @@ async def test_replace_database(tmpdir):
     [
         ({"is_memory": True}, "<Database: test_db (mutable, memory, size=0)>"),
         ({"memory_name": "my_mem"}, "<Database: test_db (mutable, memory, size=0)>"),
-        ({"is_temp_disk": True}, "<Database: test_db (mutable, temp_disk, size=0)>"),
         ({"is_memory": True, "is_mutable": False}, "<Database: test_db (memory, size=0)>"),
     ],
-    ids=["memory", "named_memory", "temp_disk", "immutable_memory"],
+    ids=["memory", "named_memory", "immutable_memory"],
 )
 def test_repr(app_client, kwargs, expected_repr):
     db = Database(app_client.ds, **kwargs)
     db.name = "test_db"
     assert repr(db) == expected_repr
-    if kwargs.get("is_temp_disk"):
-        db.close()
+
+
+def test_repr_temp_disk(app_client):
+    db = Database(app_client.ds, is_temp_disk=True)
+    db.name = "test_db"
+    r = repr(db)
+    assert r.startswith("<Database: test_db (mutable, temp_disk, size=")
+    assert r.endswith(")>")
+    assert isinstance(db.size, int)
+    assert isinstance(db.mtime_ns, int)
+    db.close()

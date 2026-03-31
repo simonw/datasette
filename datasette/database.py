@@ -450,7 +450,7 @@ class Database:
     def size(self):
         if self.cached_size is not None:
             return self.cached_size
-        elif self.is_memory or self.is_temp_disk:
+        elif self.is_memory:
             return 0
         elif self.is_mutable:
             return Path(self.path).stat().st_size
@@ -485,7 +485,7 @@ class Database:
 
     @property
     def mtime_ns(self):
-        if self.is_memory or self.is_temp_disk:
+        if self.is_memory:
             return None
         return Path(self.path).stat().st_mtime_ns
 

@@ -1821,10 +1821,10 @@ The ``Database`` class also provides properties and methods for introspecting th
     The name of the database - usually the filename without the ``.db`` prefix.
 
 ``db.size`` - integer
-    The size of the database file in bytes. 0 for ``:memory:`` and temporary disk databases.
+    The size of the database file in bytes. 0 for ``:memory:`` databases.
 
 ``db.mtime_ns`` - integer or None
-    The last modification time of the database file in nanoseconds since the epoch. ``None`` for ``:memory:`` and temporary disk databases.
+    The last modification time of the database file in nanoseconds since the epoch. ``None`` for ``:memory:`` databases.
 
 ``db.is_mutable`` - boolean
     Is this database mutable, and allowed to accept writes?
@@ -1833,7 +1833,7 @@ The ``Database`` class also provides properties and methods for introspecting th
     Is this database an in-memory database?
 
 ``db.is_temp_disk`` - boolean
-    Is this database a temporary file-backed database? See :ref:`database_constructor` for details. Temporary disk databases report ``size`` as 0, ``hash`` as ``None``, and ``mtime_ns`` as ``None``.
+    Is this database a temporary file-backed database? See :ref:`database_constructor` for details. Temporary disk databases report ``hash`` as ``None`` but have real values for ``size`` and ``mtime_ns`` since they are backed by a file on disk.
 
 ``await db.attached_databases()`` - list of named tuples
     Returns a list of additional databases that have been connected to this database using the SQLite ATTACH command. Each named tuple has fields ``seq``, ``name`` and ``file``.

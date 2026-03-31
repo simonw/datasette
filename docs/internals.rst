@@ -1552,8 +1552,8 @@ Instances of the ``Database`` class can be used to execute queries against attac
 
 .. _database_constructor:
 
-Database(ds, path=None, is_mutable=True, is_memory=False, memory_name=None)
----------------------------------------------------------------------------
+Database(ds, path=None, is_mutable=True, is_memory=False, memory_name=None, is_temp_disk=False)
+-----------------------------------------------------------------------------------------------
 
 The ``Database()`` constructor can be used by plugins, in conjunction with :ref:`datasette_add_database`, to create and register new databases.
 
@@ -1573,6 +1573,13 @@ The arguments are as follows:
 
 ``memory_name`` - string or ``None``
     Use this to create a named in-memory database. Unlike regular memory databases these can be accessed by multiple threads and will persist an changes made to them for the lifetime of the Datasette server process.
+
+``is_temp_disk`` - boolean
+    Set this to ``True`` to create a temporary file-backed database. This creates a SQLite database in a temporary file on disk (using Python's ``tempfile.mkstemp()``) with WAL mode enabled for better concurrent read/write performance. The temporary file is automatically cleaned up when the database is closed or when the process exits.
+
+    Unlike named in-memory databases (``memory_name``), temporary disk databases support concurrent readers and writers without locking errors, because WAL mode allows readers and writers to operate simultaneously. This makes them suitable for use cases like the internal database where concurrent access is common.
+
+    When ``is_temp_disk=True``, the ``path``, ``is_mutable``, and ``mode`` parameters are set automatically and should not be provided.
 
 The first argument is the ``datasette`` instance you are attaching to, the second is a ``path=``, then ``is_mutable`` and ``is_memory`` are both optional arguments.
 
@@ -1824,6 +1831,9 @@ The ``Database`` class also provides properties and methods for introspecting th
 
 ``db.is_memory`` - boolean
     Is this database an in-memory database?
+
+``db.is_temp_disk`` - boolean
+    Is this database a temporary file-backed database? See :ref:`database_constructor` for details. Temporary disk databases report ``hash`` as ``None`` but have real values for ``size`` and ``mtime_ns`` since they are backed by a file on disk.
 
 ``await db.attached_databases()`` - list of named tuples
     Returns a list of additional databases that have been connected to this database using the SQLite ATTACH command. Each named tuple has fields ``seq``, ``name`` and ``file``.

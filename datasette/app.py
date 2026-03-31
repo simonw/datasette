@@ -381,7 +381,7 @@ class Datasette:
 
         self.internal_db_created = False
         if internal is None:
-            self._internal_database = Database(self, memory_name=secrets.token_hex())
+            self._internal_database = Database(self, is_temp_disk=True)
         else:
             self._internal_database = Database(self, path=internal, mode="rwc")
         self._internal_database.name = INTERNAL_DB_NAME

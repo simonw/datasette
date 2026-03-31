@@ -1,10 +1,13 @@
 import asyncio
+import atexit
 from collections import namedtuple
+import os
 from pathlib import Path
 import janus
 import queue
 import sqlite_utils
 import sys
+import tempfile
 import threading
 import uuid
 
@@ -43,6 +46,7 @@ class Database:
         is_memory=False,
         memory_name=None,
         mode=None,
+        is_temp_disk=False,
     ):
         self.name = None
         self._thread_local_id = f"x{self._thread_local_id_counter}"
@@ -53,8 +57,19 @@ class Database:
         self.is_mutable = is_mutable
         self.is_memory = is_memory
         self.memory_name = memory_name
+        self._is_temp_disk = is_temp_disk
         if memory_name is not None:
             self.is_memory = True
+        if is_temp_disk:
+            fd, temp_path = tempfile.mkstemp(suffix=".db", prefix="datasette_temp_")
+            os.close(fd)
+            self.path = temp_path
+            self.is_mutable = True
+            self.mode = "rwc"
+            self._wal_enabled = False
+            atexit.register(self._cleanup_temp_file)
+        else:
+            self._wal_enabled = False
         self.cached_hash = None
         self.cached_size = None
         self._cached_table_counts = None
@@ -65,7 +80,8 @@ class Database:
         self._write_connection = None
         # This is used to track all file connections so they can be closed
         self._all_file_connections = []
-        self.mode = mode
+        if not is_temp_disk:
+            self.mode = mode
 
     @property
     def cached_table_counts(self):
@@ -86,6 +102,8 @@ class Database:
         return md5_not_usedforsecurity(self.name)[:6]
 
     def suggest_name(self):
+        if self._is_temp_disk:
+            return "_temp_disk"
         if self.path:
             return Path(self.path).stem
         elif self.memory_name:
@@ -124,12 +142,25 @@ class Database:
             f"file:{self.path}{qs}", uri=True, check_same_thread=False, **extra_kwargs
         )
         self._all_file_connections.append(conn)
+        if self._is_temp_disk and not self._wal_enabled:
+            conn.execute("PRAGMA journal_mode=WAL")
+            self._wal_enabled = True
         return conn
 
     def close(self):
         # Close all connections - useful to avoid running out of file handles in tests
         for connection in self._all_file_connections:
             connection.close()
+        if self._is_temp_disk:
+            self._cleanup_temp_file()
+
+    def _cleanup_temp_file(self):
+        if self._is_temp_disk and self.path:
+            for suffix in ("", "-wal", "-shm"):
+                try:
+                    os.unlink(self.path + suffix)
+                except OSError:
+                    pass
 
     async def execute_write(self, sql, params=None, block=True, request=None):
         def _inner(conn):
@@ -405,7 +436,7 @@ class Database:
     def hash(self):
         if self.cached_hash is not None:
             return self.cached_hash
-        elif self.is_mutable or self.is_memory:
+        elif self.is_mutable or self.is_memory or self._is_temp_disk:
             return None
         elif self.ds.inspect_data and self.ds.inspect_data.get(self.name):
             self.cached_hash = self.ds.inspect_data[self.name]["hash"]
@@ -419,7 +450,7 @@ class Database:
     def size(self):
         if self.cached_size is not None:
             return self.cached_size
-        elif self.is_memory:
+        elif self.is_memory or self._is_temp_disk:
             return 0
         elif self.is_mutable:
             return Path(self.path).stat().st_size
@@ -454,7 +485,7 @@ class Database:
 
     @property
     def mtime_ns(self):
-        if self.is_memory:
+        if self.is_memory or self._is_temp_disk:
             return None
         return Path(self.path).stat().st_mtime_ns
 
@@ -704,6 +735,8 @@ class Database:
             tags.append("mutable")
         if self.is_memory:
             tags.append("memory")
+        if self._is_temp_disk:
+            tags.append("temp_disk")
         if self.hash:
             tags.append(f"hash={self.hash}")
         if self.size is not None:

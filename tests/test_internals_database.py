@@ -767,3 +767,50 @@ async def test_replace_database(tmpdir):
     db2 = datasette.get_database("data1")
     count = (await db2.execute("select count(*) from t")).first()[0]
     assert count == 1
+
+
+def test_repr_mutable_file_database(app_client):
+    db = app_client.ds.get_database("fixtures")
+    r = repr(db)
+    assert r.startswith("<Database: fixtures (mutable, size=")
+    assert r.endswith(")>")
+
+
+def test_repr_immutable_file_database(tmp_path):
+    path = str(tmp_path / "imm.db")
+    sqlite3.connect(path).execute("create table t (id integer primary key)")
+    ds = Datasette(files=[path], immutables=[path])
+    db = ds.get_database("imm")
+    r = repr(db)
+    assert "mutable" not in r
+    assert "hash=" in r
+    assert "size=" in r
+
+
+def test_repr_memory_database(app_client):
+    db = Database(app_client.ds, is_memory=True)
+    db.name = "test_mem"
+    r = repr(db)
+    assert r == "<Database: test_mem (mutable, memory, size=0)>"
+
+
+def test_repr_named_memory_database(app_client):
+    db = Database(app_client.ds, memory_name="my_mem")
+    db.name = "my_mem"
+    r = repr(db)
+    assert r == "<Database: my_mem (mutable, memory, size=0)>"
+
+
+def test_repr_temp_disk_database(app_client):
+    db = Database(app_client.ds, is_temp_disk=True)
+    db.name = "temp_test"
+    r = repr(db)
+    assert r == "<Database: temp_test (mutable, temp_disk, size=0)>"
+    db.close()
+
+
+def test_repr_immutable_memory_database(app_client):
+    db = Database(app_client.ds, is_memory=True, is_mutable=False)
+    db.name = "immut_mem"
+    r = repr(db)
+    assert r == "<Database: immut_mem (memory, size=0)>"

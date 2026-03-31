@@ -770,18 +770,18 @@ async def test_replace_database(tmpdir):
 
 
 @pytest.mark.parametrize(
-    "kwargs,expected_tags",
+    "kwargs,expected_repr",
     [
-        ({"is_memory": True}, ["mutable", "memory", "size=0"]),
-        ({"memory_name": "my_mem"}, ["mutable", "memory", "size=0"]),
-        ({"is_temp_disk": True}, ["mutable", "temp_disk", "size=0"]),
-        ({"is_memory": True, "is_mutable": False}, ["memory", "size=0"]),
+        ({"is_memory": True}, "<Database: test_db (mutable, memory, size=0)>"),
+        ({"memory_name": "my_mem"}, "<Database: test_db (mutable, memory, size=0)>"),
+        ({"is_temp_disk": True}, "<Database: test_db (mutable, temp_disk, size=0)>"),
+        ({"is_memory": True, "is_mutable": False}, "<Database: test_db (memory, size=0)>"),
     ],
     ids=["memory", "named_memory", "temp_disk", "immutable_memory"],
 )
-def test_repr(app_client, kwargs, expected_tags):
+def test_repr(app_client, kwargs, expected_repr):
     db = Database(app_client.ds, **kwargs)
     db.name = "test_db"
-    assert repr(db) == "<Database: test_db ({})>".format(", ".join(expected_tags))
+    assert repr(db) == expected_repr
     if kwargs.get("is_temp_disk"):
         db.close()

@@ -774,7 +774,10 @@ async def test_replace_database(tmpdir):
     [
         ({"is_memory": True}, "<Database: test_db (mutable, memory, size=0)>"),
         ({"memory_name": "my_mem"}, "<Database: test_db (mutable, memory, size=0)>"),
-        ({"is_memory": True, "is_mutable": False}, "<Database: test_db (memory, size=0)>"),
+        (
+            {"is_memory": True, "is_mutable": False},
+            "<Database: test_db (memory, size=0)>",
+        ),
     ],
     ids=["memory", "named_memory", "immutable_memory"],
 )

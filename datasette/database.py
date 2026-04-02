@@ -691,8 +691,8 @@ class Database:
             ] + [
                 r[0] for r in (await self.execute("""
                         select name from sqlite_master
-                        where name like "idx_%"
-                        and type = "table"
+                        where name like 'idx_%'
+                        and type = 'table'
                     """)).rows
             ]
 

@@ -2005,6 +2005,7 @@ class Datasette:
                 "base_url": self.setting("base_url"),
                 "csrftoken": request.scope["csrftoken"] if request else lambda: "",
                 "datasette_version": __version__,
+                "default_deny": self.default_deny,
             },
             **extra_template_vars,
         }

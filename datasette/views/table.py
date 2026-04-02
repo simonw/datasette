@@ -219,6 +219,15 @@ async def display_columns_and_rows(
         for fk in await db.foreign_keys_for_table(table_name)
     }
 
+    has_single_pk = len(pks) == 1
+    has_render_cell_hooks = bool(pm.hook.render_cell.get_hookimpls())
+    pk_index = None
+    if has_single_pk:
+        for idx, c in enumerate(columns):
+            if c["name"] == pks[0]:
+                pk_index = idx
+                break
+
     cell_rows = []
     base_url = datasette.setting("base_url")
     for row in rows:
@@ -226,15 +235,38 @@ async def display_columns_and_rows(
         # Unless we are a view, the first column is a link - either to the rowid
         # or to the simple or compound primary key
         if link_column:
-            is_special_link_column = len(pks) != 1
             pk_path = path_from_row_pks(row, pks, not pks, False)
+
+            # If there's a simple primary key, let plugins have a go
+            plugin_display_value = None
+            if has_single_pk and has_render_cell_hooks:
+                try:
+                    pk_value = row[pks[0]]
+                except (IndexError, KeyError, TypeError):
+                    pk_value = row[pk_index] if pk_index is not None else None
+
+                for candidate in pm.hook.render_cell(
+                    row=row,
+                    value=pk_value,
+                    column=pks[0],
+                    table=table_name,
+                    pks=pks_for_display,
+                    database=database_name,
+                    datasette=datasette,
+                    request=request,
+                ):
+                    candidate = await await_me_maybe(candidate)
+                    if candidate is not None:
+                        plugin_display_value = candidate
+                        break
+
             cells.append(
                 {
-                    "column": pks[0] if len(pks) == 1 else "Link",
+                    "column": pks[0] if has_single_pk else "Link",
                     "value_type": "pk",
-                    "is_special_link_column": is_special_link_column,
+                    "is_special_link_column": not has_single_pk,
                     "raw": pk_path,
-                    "value": markupsafe.Markup(
+                    "value": plugin_display_value if plugin_display_value is not None else markupsafe.Markup(
                         '<a href="{table_path}/{flat_pks_quoted}">{flat_pks}</a>'.format(
                             table_path=datasette.urls.table(database_name, table_name),
                             flat_pks=str(markupsafe.escape(pk_path)),
@@ -246,7 +278,7 @@ async def display_columns_and_rows(
 
         for value, column_dict in zip(row, columns):
             column = column_dict["name"]
-            if link_column and len(pks) == 1 and column == pks[0]:
+            if link_column and has_single_pk and column == pks[0]:
                 # If there's a simple primary key, don't repeat the value as it's
                 # already shown in the link column.
                 continue

@@ -583,6 +583,13 @@ def detect_primary_keys(conn, table):
 
 
 def get_outbound_foreign_keys(conn, table):
+    """Return a list of outbound foreign keys for ``table``.
+
+    Each entry is a dict with ``column``, ``other_table``, and ``other_column``
+    keys.  Compound foreign keys (where a single constraint spans multiple
+    columns) are excluded because they cannot be represented in this flat
+    format.
+    """
     infos = conn.execute(f"PRAGMA foreign_key_list([{table}])").fetchall()
     fks = []
     for info in infos:
@@ -611,6 +618,21 @@ def get_outbound_foreign_keys(conn, table):
 
 
 def get_all_foreign_keys(conn):
+    """Return a mapping of every table to its incoming and outgoing foreign keys.
+
+    Returns a dict of the form::
+
+        {
+            "table_name": {
+                "incoming": [{"other_table": ..., "column": ..., "other_column": ...}, ...],
+                "outgoing": [{"other_table": ..., "column": ..., "other_column": ...}, ...],
+            },
+            ...
+        }
+
+    Both lists are sorted for deterministic ordering.  Compound foreign keys
+    and references to non-existent tables are silently skipped.
+    """
     tables = [
         r[0]
         for r in conn.execute(
@@ -650,6 +672,11 @@ def get_all_foreign_keys(conn):
 
 
 def detect_spatialite(conn):
+    """Return True if the SpatiaLite extension is loaded on ``conn``.
+
+    Detection is based on the presence of the ``geometry_columns`` table,
+    which SpatiaLite creates when it initialises a spatial database.
+    """
     rows = conn.execute(
         'select 1 from sqlite_master where tbl_name = "geometry_columns"'
     ).fetchall()
@@ -720,6 +747,14 @@ filter_column_re = re.compile(r"^_filter_column_\d+$")
 
 
 def filters_should_redirect(special_args):
+    """Convert legacy ``_filter_column`` / ``_filter_op`` / ``_filter_value``
+    query parameters into the compact ``column__op=value`` form used by the
+    table view, and signal that a redirect is needed.
+
+    Returns a list of ``(key, value)`` pairs to add to the redirect URL.
+    A ``value`` of ``None`` means the key should be removed from the URL.
+    Returns an empty list when no legacy filter parameters are present.
+    """
     redirect_params = []
     # Handle _filter_column=foo&_filter_op=exact&_filter_value=...
     filter_column = special_args.get("_filter_column")
@@ -954,6 +989,12 @@ class LoadExtension(click.ParamType):
 
 
 def format_bytes(bytes):
+    """Format a byte count as a human-readable string.
+
+    Steps through ``bytes``, ``KB``, ``MB``, ``GB``, and ``TB``, dividing by
+    1024 at each step, and returns the value formatted to one decimal place
+    (or as an integer for plain bytes).
+    """
     current = float(bytes)
     for unit in ("bytes", "KB", "MB", "GB", "TB"):
         if current < 1024:
@@ -969,6 +1010,13 @@ _escape_fts_re = re.compile(r'\s+|(".*?")')
 
 
 def escape_fts(query):
+    """Escape a full-text search query for safe use with SQLite FTS.
+
+    Splits the query on whitespace, wrapping each bare token in double quotes
+    so that special FTS operators (``AND``, ``OR``, ``*``, etc.) are treated
+    as literals.  Tokens that are already quoted are left unchanged.
+    An unbalanced leading quote is closed before processing.
+    """
     # If query has unbalanced ", add one at end
     if query.count('"') % 2:
         query += '"'

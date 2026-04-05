@@ -11,13 +11,13 @@ from datasette.utils.asgi import Response
 
 def convert_specific_columns_to_json(rows, columns, json_cols):
     json_cols = set(json_cols)
-    if not json_cols.intersection(columns):
+    if not json_cols.intersection(columns) and not json_cols == {"*"}:
         return rows
     new_rows = []
     for row in rows:
         new_row = []
         for value, column in zip(row, columns):
-            if column in json_cols:
+            if column in json_cols or (json_cols == {"*"}):
                 try:
                     value = json.loads(value)
                 except (TypeError, ValueError):

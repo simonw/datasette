@@ -405,7 +405,7 @@ def escape_sqlite(s):
     if _boring_keyword_re.match(s) and (s.lower() not in reserved_words):
         return s
     else:
-        return f"[{s}]"
+        return "[{}]".format(s.replace("]", "]]"))
 
 
 def make_dockerfile(

@@ -812,21 +812,20 @@ def test_hook_register_routes_override():
 
 
 def test_hook_register_routes_post(app_client):
-    response = app_client.post("/post/", {"this is": "post data"}, csrftoken_from=True)
+    response = app_client.post("/post/", {"this is": "post data"})
     assert response.status_code == 200
-    assert "csrftoken" in response.json
     assert response.json["this is"] == "post data"
 
 
 def test_hook_register_routes_csrftoken(restore_working_directory, tmpdir_factory):
+    # csrftoken() is now a no-op returning the empty string
     templates = tmpdir_factory.mktemp("templates")
     (templates / "csrftoken_form.html").write_text(
         "CSRFTOKEN: {{ csrftoken() }}", "utf-8"
     )
     with make_app_client(template_dir=templates) as client:
         response = client.get("/csrftoken-form/")
-        expected_token = client.ds._last_request.scope["csrftoken"]()
-        assert f"CSRFTOKEN: {expected_token}" == response.text
+        assert response.text == "CSRFTOKEN: "
 
 
 @pytest.mark.asyncio
@@ -1123,31 +1122,6 @@ async def test_hook_homepage_actions(ds_client):
             "description": None,
         },
     ]
-
-
-def test_hook_skip_csrf(app_client):
-    cookie = app_client.actor_cookie({"id": "test"})
-    csrf_response = app_client.post(
-        "/post/",
-        post_data={"this is": "post data"},
-        csrftoken_from=True,
-        cookies={"ds_actor": cookie},
-    )
-    assert csrf_response.status_code == 200
-    missing_csrf_response = app_client.post(
-        "/post/", post_data={"this is": "post data"}, cookies={"ds_actor": cookie}
-    )
-    assert missing_csrf_response.status_code == 403
-    # But "/skip-csrf" should allow
-    allow_csrf_response = app_client.post(
-        "/skip-csrf", post_data={"this is": "post data"}, cookies={"ds_actor": cookie}
-    )
-    assert allow_csrf_response.status_code == 405  # Method not allowed
-    # /skip-csrf-2 should not
-    second_missing_csrf_response = app_client.post(
-        "/skip-csrf-2", post_data={"this is": "post data"}, cookies={"ds_actor": cookie}
-    )
-    assert second_missing_csrf_response.status_code == 403
 
 
 def _extract_commands(output):

@@ -40,16 +40,6 @@ from .defaults import (
 
 
 @hookimpl
-def skip_csrf(scope) -> Optional[bool]:
-    """Skip CSRF check for JSON content-type requests."""
-    if scope["type"] == "http":
-        headers = scope.get("headers") or {}
-        if dict(headers).get(b"content-type") == b"application/json":
-            return True
-    return None
-
-
-@hookimpl
 def canned_queries(datasette: "Datasette", database: str, actor) -> dict:
     """Return canned queries defined in datasette.yaml configuration."""
     queries = (

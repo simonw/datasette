@@ -192,11 +192,21 @@ You can now delete any of the following from your plugins and custom templates:
 
 #### Breaking changes
 
-- **The `skip_csrf` plugin hook has been removed.** It is no longer needed:
-  - Browser-initiated JSON POSTs automatically get `Sec-Fetch-Site: same-origin` and pass the check.
-  - Non-browser API clients (curl, `requests`, etc.) do not send browser security headers and are passed through.
+- **The `skip_csrf` plugin hook has been removed.** Existing plugins that still declare a `skip_csrf` hookimpl will continue to load - pluggy silently ignores unknown hook names - but the hook is no longer consulted by core, so the flows it previously unlocked will now be blocked (or allowed) purely on the basis of the new header check.
 
-  If your plugin previously implemented `skip_csrf` to allow a public endpoint to accept cross-origin POSTs from browsers, you will need to replace that endpoint's logic with an alternative authentication mechanism (for example, an API token check) and rely on the middleware's pass-through behavior for non-browser clients.
+  The new middleware already covers the common cases that `skip_csrf` was written for:
+
+  - Browser-initiated JSON POSTs automatically get `Sec-Fetch-Site: same-origin` and pass the check.
+  - Non-browser API clients (curl, `requests`, server-to-server scripts) do not send browser security headers and are passed through.
+  - Requests with an explicit `Authorization: Bearer ...` header are exempt from the CSRF check (see above).
+
+  If your plugin previously used `skip_csrf` to accept cross-origin browser POSTs, replace that flow with an authentication mechanism that does **not** rely on ambient browser credentials. Safe patterns include:
+
+  - Requiring an `Authorization: Bearer ...` API token on the endpoint.
+  - Requiring a non-ambient credential in the request body (a webhook secret, HMAC signature, signed capability URL, OAuth client credential, or similar).
+  - Issuing a short-lived signed URL that encodes the actor, the action, and an expiry, and verifying the signature on request.
+
+  Do not rely on the `ds_csrftoken` cookie for your own plugin's security checks - Datasette no longer sets or validates it, and the `request.scope["csrftoken"]()` compatibility shim now returns a fresh random value each request rather than the signed cookie-bound value it used to.
 
 - **The `asgi-csrf` dependency has been dropped.** Any plugin that imported from `asgi_csrf` directly will need to be updated.
 

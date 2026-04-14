@@ -354,6 +354,28 @@ async def test_cross_site_post_without_auth_still_blocked(ds):
     assert response.status_code == 403
 
 
+def test_legacy_skip_csrf_hookimpl_does_not_break_loading():
+    # Plugins that still define skip_csrf must load cleanly - pluggy ignores
+    # unknown hook implementations - even though the hook is no longer
+    # consulted by core.
+    from datasette.plugins import pm
+    from datasette import hookimpl
+
+    class LegacyPlugin:
+        __name__ = "legacy-skip-csrf-plugin"
+
+        @hookimpl
+        def skip_csrf(self, datasette, scope):
+            return True
+
+    plugin = LegacyPlugin()
+    pm.register(plugin, name=LegacyPlugin.__name__)
+    try:
+        assert pm.is_registered(plugin)
+    finally:
+        pm.unregister(plugin)
+
+
 @pytest.mark.asyncio
 async def test_middleware_unit_non_browser_allowed():
     from datasette.app import CrossOriginProtectionMiddleware

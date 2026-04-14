@@ -128,6 +128,17 @@ async def test_csrf_error_page_renders(ds):
 
 
 @pytest.mark.asyncio
+async def test_csrf_error_page_title_has_no_typo(ds):
+    response = await ds.client.post(
+        "/-/messages",
+        data={"message": "hello"},
+        headers={"sec-fetch-site": "cross-site"},
+    )
+    assert "<title>CSRF check failed</title>" in response.text
+    assert "CSRF check failed)" not in response.text
+
+
+@pytest.mark.asyncio
 async def test_websocket_scope_passes_through():
     # Non-http scope types should never be blocked by CSRF middleware
     from datasette.app import CrossOriginProtectionMiddleware

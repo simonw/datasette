@@ -155,3 +155,49 @@ token = await datasette.create_token(
 ```
 
 The `datasette create-token` CLI command is unchanged.
+
+(upgrade_guide_csrf)=
+### CSRF protection is now header-based
+
+Datasette's Cross-Site Request Forgery protection no longer uses tokens. The previous `asgi-csrf` mechanism - which set a `ds_csrftoken` cookie and required a matching `<input type="hidden" name="csrftoken">` in every form - has been replaced with an ASGI middleware that inspects the browser-set `Sec-Fetch-Site` and `Origin` headers, following the approach described in [Filippo Valsorda's research](https://words.filippo.io/csrf/) and implemented in Go 1.25's `http.CrossOriginProtection`.
+
+This works identically on HTTPS, HTTP, and localhost. Non-browser clients (curl, Python `requests`, server-to-server scripts) do not send `Sec-Fetch-Site` or `Origin` and are passed through unchanged - CSRF is a browser-only attack.
+
+#### What you can remove
+
+You can now delete any of the following from your plugins and custom templates:
+
+- Hidden CSRF form fields:
+
+  ```html
+  <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
+  ```
+
+  The `csrftoken()` template helper still exists but always returns an empty string, so leaving these in place is harmless.
+
+- Manual CSRF token extraction in tests, e.g.:
+
+  ```python
+  # No longer needed
+  csrftoken = response.cookies["ds_csrftoken"]
+  cookies["ds_csrftoken"] = csrftoken
+  post_data["csrftoken"] = csrftoken
+  ```
+
+  The `ds_csrftoken` cookie is no longer set at all. The `csrftoken_from=` argument of the Datasette test client's `.post()` method is now a no-op and can be removed from your test code.
+
+#### Breaking changes
+
+- **The `skip_csrf` plugin hook has been removed.** It is no longer needed:
+  - Browser-initiated JSON POSTs automatically get `Sec-Fetch-Site: same-origin` and pass the check.
+  - Non-browser API clients (curl, `requests`, etc.) do not send browser security headers and are passed through.
+
+  If your plugin previously implemented `skip_csrf` to allow a public endpoint to accept cross-origin POSTs from browsers, you will need to replace that endpoint's logic with an alternative authentication mechanism (for example, an API token check) and rely on the middleware's pass-through behavior for non-browser clients.
+
+- **The `asgi-csrf` dependency has been dropped.** Any plugin that imported from `asgi_csrf` directly will need to be updated.
+
+- **The `csrf_error.html` template now receives a `reason` context variable** instead of `message_id` and `message_name`. Custom overrides of this template should be updated.
+
+#### Security properties
+
+For defense-in-depth the `ds_actor` and `ds_messages` cookies continue to be set with `SameSite=Lax` (Datasette's long-standing default). This means a genuine cross-site POST from an attacker's page would arrive without the user's authentication cookie even if the header check somehow failed.

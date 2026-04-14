@@ -2304,9 +2304,7 @@ class Datasette:
                 if not database.is_mutable:
                     await database.table_counts(limit=60 * 60 * 1000)
 
-        asgi = CrossOriginProtectionMiddleware(
-            DatasetteRouter(self, routes), self
-        )
+        asgi = CrossOriginProtectionMiddleware(DatasetteRouter(self, routes), self)
         if self.setting("trace_debug"):
             asgi = AsgiTracer(asgi)
         asgi = AsgiLifespan(asgi)

@@ -42,6 +42,17 @@ def wait_until_responds(url, timeout=5.0, client=httpx, **kwargs):
     raise AssertionError("Timed out waiting for {} to respond".format(url))
 
 
+@pytest.fixture
+def bare_ds():
+    """
+    Minimal Datasette with no plugins, data, metadata, or config - for tests
+    that want to exercise core behavior (e.g. middleware) in isolation.
+    """
+    from datasette.app import Datasette
+
+    return Datasette(memory=True)
+
+
 @pytest_asyncio.fixture
 async def ds_client():
     from datasette.app import Datasette

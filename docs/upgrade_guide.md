@@ -173,7 +173,9 @@ You can now delete any of the following from your plugins and custom templates:
   <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
   ```
 
-  The `csrftoken()` template helper still exists but always returns an empty string, so leaving these in place is harmless.
+  The `csrftoken()` template helper (and `request.scope["csrftoken"]()` for plugins that call it from Python) still exists as a compatibility shim. It now returns a per-request random string rather than a cookie-bound signed value. Datasette no longer validates this token, and no `ds_csrftoken` cookie is set.
+
+  **Important for plugin authors:** if your plugin previously used `request.scope["csrftoken"]()` or the `ds_csrftoken` cookie as a security primitive (for example, signing a URL and later comparing it to the cookie), the invariant that the token equals `request.cookies["ds_csrftoken"]` no longer holds. Replace those flows with signed, short-lived action URLs or explicit non-ambient credentials.
 
 - Manual CSRF token extraction in tests, e.g.:
 

@@ -2001,7 +2001,11 @@ class Datasette:
                     "extra_js_urls", template, context, request, view_name
                 ),
                 "base_url": self.setting("base_url"),
-                "csrftoken": lambda: "",
+                "csrftoken": (
+                    request.scope["csrftoken"]
+                    if request and "csrftoken" in request.scope
+                    else lambda: ""
+                ),
                 "datasette_version": __version__,
             },
             **extra_template_vars,
@@ -2314,6 +2318,21 @@ class Datasette:
         return asgi
 
 
+def _install_legacy_csrftoken(scope):
+    """
+    Populate ``scope["csrftoken"]`` with a callable returning a per-request
+    random token. Provided for plugin compatibility only - core no longer
+    uses this value for CSRF enforcement.
+    """
+
+    def csrftoken():
+        if "_datasette_legacy_csrftoken" not in scope:
+            scope["_datasette_legacy_csrftoken"] = secrets.token_urlsafe(32)
+        return scope["_datasette_legacy_csrftoken"]
+
+    scope["csrftoken"] = csrftoken
+
+
 class CrossOriginProtectionMiddleware:
     """
     Modern CSRF protection using the Sec-Fetch-Site and Origin headers.
@@ -2333,7 +2352,13 @@ class CrossOriginProtectionMiddleware:
         self.datasette = datasette
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] != "http" or scope.get("method", "GET") in self.SAFE_METHODS:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        _install_legacy_csrftoken(scope)
+
+        if scope.get("method", "GET") in self.SAFE_METHODS:
             await self.app(scope, receive, send)
             return
 

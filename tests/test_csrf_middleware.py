@@ -174,6 +174,66 @@ async def test_middleware_unit_cross_site_blocked():
     assert start["status"] == 403
 
 
+def test_legacy_csrftoken_scope_value_nonempty(app_client):
+    # GET /post/ calls request.scope["csrftoken"]() - must not 500
+    response = app_client.get("/post/")
+    assert response.status == 200
+    assert response.text.strip() != ""
+    assert len(response.text.strip()) >= 20
+
+
+def test_legacy_csrftoken_no_ds_csrftoken_cookie(app_client):
+    response = app_client.get("/post/")
+    assert "ds_csrftoken" not in response.cookies
+
+
+def test_legacy_csrftoken_varies_across_requests(app_client):
+    r1 = app_client.get("/post/").text.strip()
+    r2 = app_client.get("/post/").text.strip()
+    assert r1 != r2
+
+
+def test_legacy_csrftoken_stable_within_request():
+    # Two calls in the same request return the same value
+    from datasette.app import _install_legacy_csrftoken
+
+    scope = {}
+    _install_legacy_csrftoken(scope)
+    assert scope["csrftoken"]() == scope["csrftoken"]()
+
+
+def test_legacy_csrftoken_template_helper_renders(
+    restore_working_directory, tmpdir_factory
+):
+    from tests.fixtures import make_app_client
+
+    templates = tmpdir_factory.mktemp("templates")
+    (templates / "csrftoken_form.html").write_text(
+        "CSRFTOKEN:{{ csrftoken() }}:END", "utf-8"
+    )
+    with make_app_client(template_dir=templates) as client:
+        response = client.get("/csrftoken-form/")
+        assert response.status_code == 200
+        assert response.text.startswith("CSRFTOKEN:")
+        assert response.text.endswith(":END")
+        token = response.text[len("CSRFTOKEN:") : -len(":END")]
+        assert len(token) >= 20
+        assert "ds_csrftoken" not in response.cookies
+
+
+@pytest.mark.asyncio
+async def test_cross_site_post_blocked_even_with_ds_csrftoken_cookie(ds):
+    # A stale ds_csrftoken cookie + csrftoken body field must NOT bypass
+    # the header-based CSRF check.
+    response = await ds.client.post(
+        "/-/messages",
+        data={"message": "hi", "message_class": "info", "csrftoken": "abc"},
+        headers={"sec-fetch-site": "cross-site"},
+        cookies={"ds_csrftoken": "abc"},
+    )
+    assert response.status_code == 403
+
+
 @pytest.mark.asyncio
 async def test_middleware_unit_non_browser_allowed():
     from datasette.app import CrossOriginProtectionMiddleware

@@ -818,14 +818,19 @@ def test_hook_register_routes_post(app_client):
 
 
 def test_hook_register_routes_csrftoken(restore_working_directory, tmpdir_factory):
-    # csrftoken() is now a no-op returning the empty string
+    # csrftoken() is a legacy compatibility shim that returns a
+    # per-request random value - it is no longer used for CSRF enforcement.
     templates = tmpdir_factory.mktemp("templates")
     (templates / "csrftoken_form.html").write_text(
-        "CSRFTOKEN: {{ csrftoken() }}", "utf-8"
+        "CSRFTOKEN:{{ csrftoken() }}:END", "utf-8"
     )
     with make_app_client(template_dir=templates) as client:
         response = client.get("/csrftoken-form/")
-        assert response.text == "CSRFTOKEN: "
+        assert response.text.startswith("CSRFTOKEN:")
+        assert response.text.endswith(":END")
+        token = response.text[len("CSRFTOKEN:") : -len(":END")]
+        assert len(token) >= 20
+        assert "ds_csrftoken" not in response.cookies
 
 
 @pytest.mark.asyncio

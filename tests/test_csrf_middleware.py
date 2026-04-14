@@ -14,14 +14,9 @@ from datasette.csrf import CrossOriginProtectionMiddleware, _install_legacy_csrf
 from datasette.plugins import pm
 
 
-@pytest.fixture
-def ds(bare_ds):
-    return bare_ds
-
-
-async def _post(ds, **kwargs):
+async def _post(bare_ds, **kwargs):
     kwargs.setdefault("data", {"message": "hello", "message_class": "info"})
-    return await ds.client.post("/-/messages", **kwargs)
+    return await bare_ds.client.post("/-/messages", **kwargs)
 
 
 async def _run_middleware(scope):
@@ -63,9 +58,9 @@ def _http_scope(headers, method="POST"):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("method", ["GET", "HEAD", "OPTIONS"])
-async def test_safe_methods_always_pass(ds, method):
+async def test_safe_methods_always_pass(bare_ds, method):
     # Safe methods bypass CSRF entirely, even with hostile headers
-    response = await ds.client.request(
+    response = await bare_ds.client.request(
         method,
         "/-/messages",
         headers={"sec-fetch-site": "cross-site", "origin": "http://evil.example"},
@@ -75,59 +70,59 @@ async def test_safe_methods_always_pass(ds, method):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("sec_fetch_site", ["same-origin", "none"])
-async def test_post_with_trusted_sec_fetch_site_allowed(ds, sec_fetch_site):
+async def test_post_with_trusted_sec_fetch_site_allowed(bare_ds, sec_fetch_site):
     # "same-origin" = first-party; "none" = user-initiated direct navigation
-    response = await _post(ds, headers={"sec-fetch-site": sec_fetch_site})
+    response = await _post(bare_ds, headers={"sec-fetch-site": sec_fetch_site})
     assert response.status_code != 403
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("sec_fetch_site", ["cross-site", "same-site", "cross-origin"])
-async def test_post_with_untrusted_sec_fetch_site_blocked(ds, sec_fetch_site):
+async def test_post_with_untrusted_sec_fetch_site_blocked(bare_ds, sec_fetch_site):
     # same-site is blocked too: different subdomains must not bypass CSRF
     response = await _post(
-        ds, data={"message": "hi"}, headers={"sec-fetch-site": sec_fetch_site}
+        bare_ds, data={"message": "hi"}, headers={"sec-fetch-site": sec_fetch_site}
     )
     assert response.status_code == 403
     assert response.headers["content-type"].startswith("text/html")
 
 
 @pytest.mark.asyncio
-async def test_post_with_no_browser_headers_allowed(ds):
+async def test_post_with_no_browser_headers_allowed(bare_ds):
     # curl / requests / server-to-server: no Sec-Fetch-Site, no Origin.
     # CSRF is browser-specific so these pass through.
-    response = await _post(ds)
+    response = await _post(bare_ds)
     assert response.status_code != 403
 
 
 @pytest.mark.asyncio
-async def test_post_with_matching_origin_allowed(ds):
+async def test_post_with_matching_origin_allowed(bare_ds):
     # Fallback for older browsers without Sec-Fetch-Site: Origin must match Host
-    response = await _post(ds, headers={"origin": "http://localhost"})
+    response = await _post(bare_ds, headers={"origin": "http://localhost"})
     assert response.status_code != 403
 
 
 @pytest.mark.asyncio
-async def test_post_with_mismatched_origin_blocked(ds):
+async def test_post_with_mismatched_origin_blocked(bare_ds):
     response = await _post(
-        ds, data={"message": "hi"}, headers={"origin": "http://evil.example.com"}
+        bare_ds, data={"message": "hi"}, headers={"origin": "http://evil.example.com"}
     )
     assert response.status_code == 403
 
 
 @pytest.mark.asyncio
-async def test_csrf_error_page_renders(ds):
+async def test_csrf_error_page_renders(bare_ds):
     response = await _post(
-        ds, data={"message": "hi"}, headers={"sec-fetch-site": "cross-site"}
+        bare_ds, data={"message": "hi"}, headers={"sec-fetch-site": "cross-site"}
     )
     assert response.status_code == 403
     assert "origin" in response.text.lower()
 
 
 @pytest.mark.asyncio
-async def test_csrf_error_page_title_has_no_typo(ds):
+async def test_csrf_error_page_title_has_no_typo(bare_ds):
     response = await _post(
-        ds, data={"message": "hi"}, headers={"sec-fetch-site": "cross-site"}
+        bare_ds, data={"message": "hi"}, headers={"sec-fetch-site": "cross-site"}
     )
     assert "<title>CSRF check failed</title>" in response.text
     assert "CSRF check failed)" not in response.text
@@ -221,11 +216,11 @@ def test_legacy_csrftoken_stable_within_request():
 
 
 @pytest.mark.asyncio
-async def test_cross_site_post_blocked_even_with_ds_csrftoken_cookie(ds):
+async def test_cross_site_post_blocked_even_with_ds_csrftoken_cookie(bare_ds):
     # A stale ds_csrftoken cookie + csrftoken body field must NOT bypass
     # the header-based CSRF check.
     response = await _post(
-        ds,
+        bare_ds,
         data={"message": "hi", "message_class": "info", "csrftoken": "abc"},
         headers={"sec-fetch-site": "cross-site"},
         cookies={"ds_csrftoken": "abc"},
@@ -234,11 +229,11 @@ async def test_cross_site_post_blocked_even_with_ds_csrftoken_cookie(ds):
 
 
 @pytest.mark.asyncio
-async def test_bearer_invalid_token_not_csrf_error(ds):
+async def test_bearer_invalid_token_not_csrf_error(bare_ds):
     # Cross-site POST with bogus bearer must pass CSRF and be rejected
     # by auth/permission handling, not by the CSRF middleware.
     response = await _post(
-        ds,
+        bare_ds,
         headers={
             "sec-fetch-site": "cross-site",
             "authorization": "Bearer totally-invalid-token",
@@ -250,9 +245,9 @@ async def test_bearer_invalid_token_not_csrf_error(ds):
 
 
 @pytest.mark.asyncio
-async def test_cross_site_post_without_auth_still_blocked(ds):
+async def test_cross_site_post_without_auth_still_blocked(bare_ds):
     response = await _post(
-        ds, data={"message": "hi"}, headers={"sec-fetch-site": "cross-site"}
+        bare_ds, data={"message": "hi"}, headers={"sec-fetch-site": "cross-site"}
     )
     assert response.status_code == 403
 

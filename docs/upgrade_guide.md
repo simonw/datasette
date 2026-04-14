@@ -163,6 +163,8 @@ Datasette's Cross-Site Request Forgery protection no longer uses tokens. The pre
 
 This works identically on HTTPS, HTTP, and localhost. Non-browser clients (curl, Python `requests`, server-to-server scripts) do not send `Sec-Fetch-Site` or `Origin` and are passed through unchanged - CSRF is a browser-only attack.
 
+Requests that carry an explicit `Authorization: Bearer ...` header are also exempt from the CSRF check, because bearer tokens are not ambient browser credentials: a malicious cross-origin page cannot cause the browser to attach a target site's bearer token unless the attacker's JavaScript already possesses it. This exemption is narrow - it covers the `Bearer` scheme only, not `Basic` or `Digest` - and it does not depend on the `--cors` setting. The exemption is about CSRF classification, not browser read access; CORS still controls the latter.
+
 #### What you can remove
 
 You can now delete any of the following from your plugins and custom templates:

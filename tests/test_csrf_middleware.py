@@ -235,6 +235,115 @@ async def test_cross_site_post_blocked_even_with_ds_csrftoken_cookie(ds):
 
 
 @pytest.mark.asyncio
+async def test_bearer_auth_cross_site_bypasses_csrf():
+    # Cross-site browser POST with Authorization: Bearer must bypass CSRF
+    from datasette.app import CrossOriginProtectionMiddleware
+
+    inner_called = []
+
+    async def app(scope, receive, send):
+        inner_called.append(True)
+
+    mw = CrossOriginProtectionMiddleware(app, datasette=None)
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "headers": [
+            (b"sec-fetch-site", b"cross-site"),
+            (b"origin", b"https://evil.example"),
+            (b"host", b"example.com"),
+            (b"authorization", b"Bearer dstok_abc"),
+        ],
+    }
+    await mw(scope, None, None)
+    assert inner_called == [True]
+
+
+@pytest.mark.asyncio
+async def test_bearer_auth_scheme_case_insensitive():
+    from datasette.app import CrossOriginProtectionMiddleware
+
+    inner_called = []
+
+    async def app(scope, receive, send):
+        inner_called.append(True)
+
+    mw = CrossOriginProtectionMiddleware(app, datasette=None)
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "headers": [
+            (b"sec-fetch-site", b"cross-site"),
+            (b"host", b"example.com"),
+            (b"authorization", b"bearer dstok_abc"),
+        ],
+    }
+    await mw(scope, None, None)
+    assert inner_called == [True]
+
+
+@pytest.mark.asyncio
+async def test_basic_auth_cross_site_still_blocked():
+    # Only Bearer is exempt - Basic auth is ambient and must not bypass
+    class FakeDs:
+        async def render_template(self, name, ctx):
+            return "BLOCKED"
+
+    from datasette.app import CrossOriginProtectionMiddleware
+
+    sent = []
+
+    async def app(scope, receive, send):
+        raise AssertionError("should not reach inner app")
+
+    async def send(msg):
+        sent.append(msg)
+
+    mw = CrossOriginProtectionMiddleware(app, FakeDs())
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "headers": [
+            (b"sec-fetch-site", b"cross-site"),
+            (b"host", b"example.com"),
+            (b"authorization", b"Basic dXNlcjpwYXNz"),
+        ],
+    }
+    await mw(scope, None, send)
+    start = [m for m in sent if m["type"] == "http.response.start"][0]
+    assert start["status"] == 403
+
+
+@pytest.mark.asyncio
+async def test_bearer_invalid_token_not_csrf_error(ds):
+    # Cross-site POST with bogus bearer must pass CSRF and be rejected
+    # by auth/permission handling, not by the CSRF middleware.
+    response = await ds.client.post(
+        "/-/messages",
+        data={"message": "hi", "message_class": "info"},
+        headers={
+            "sec-fetch-site": "cross-site",
+            "authorization": "Bearer totally-invalid-token",
+        },
+    )
+    # /-/messages happens to accept this; the key property is
+    # "not a CSRF 403 with the CSRF error page"
+    if response.status_code == 403:
+        assert "origin" not in response.text.lower()
+        assert "sec-fetch-site" not in response.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_cross_site_post_without_auth_still_blocked(ds):
+    response = await ds.client.post(
+        "/-/messages",
+        data={"message": "hi"},
+        headers={"sec-fetch-site": "cross-site"},
+    )
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_middleware_unit_non_browser_allowed():
     from datasette.app import CrossOriginProtectionMiddleware
 

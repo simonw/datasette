@@ -2363,6 +2363,18 @@ class CrossOriginProtectionMiddleware:
             return
 
         headers = dict(scope.get("headers") or [])
+
+        # Bearer-token requests are not ambient browser credentials, so they
+        # are not CSRF-vulnerable. Narrowly exempt them from the header check
+        # before evaluating Sec-Fetch-Site / Origin. Only "Bearer" is exempt;
+        # schemes like Basic or Digest can be browser-managed and ambient.
+        authorization = headers.get(b"authorization", b"").decode("latin-1")
+        if authorization:
+            scheme = authorization.split(None, 1)[0].lower()
+            if scheme == "bearer":
+                await self.app(scope, receive, send)
+                return
+
         origin_bytes = headers.get(b"origin")
         sec_fetch_site_bytes = headers.get(b"sec-fetch-site")
         host_bytes = headers.get(b"host", b"")

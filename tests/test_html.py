@@ -1003,10 +1003,10 @@ async def test_navigation_menu_links(
     # Enable root user if testing with root actor
     if actor_id == "root":
         ds_client.ds.root_enabled = True
-    cookies = {}
+    kwargs = {}
     if actor_id:
-        cookies = {"ds_actor": ds_client.actor_cookie({"id": actor_id})}
-    html = (await ds_client.get("/", cookies=cookies)).text
+        kwargs["actor"] = {"id": actor_id}
+    html = (await ds_client.get("/", **kwargs)).text
     soup = Soup(html, "html.parser")
     details = soup.find("nav").find("details")
     if not actor_id:
@@ -1214,8 +1214,7 @@ async def test_actions_page(ds_client):
     original_root_enabled = ds_client.ds.root_enabled
     try:
         ds_client.ds.root_enabled = True
-        cookies = {"ds_actor": ds_client.actor_cookie({"id": "root"})}
-        response = await ds_client.get("/-/actions", cookies=cookies)
+        response = await ds_client.get("/-/actions", actor={"id": "root"})
         assert response.status_code == 200
         assert "Registered actions" in response.text
         assert "<th>Name</th>" in response.text
@@ -1232,8 +1231,7 @@ async def test_actions_page_does_not_display_none_string(ds_client):
     original_root_enabled = ds_client.ds.root_enabled
     try:
         ds_client.ds.root_enabled = True
-        cookies = {"ds_actor": ds_client.actor_cookie({"id": "root"})}
-        response = await ds_client.get("/-/actions", cookies=cookies)
+        response = await ds_client.get("/-/actions", actor={"id": "root"})
         assert response.status_code == 200
         assert "<code>None</code>" not in response.text
     finally:
@@ -1246,11 +1244,11 @@ async def test_permission_debug_tabs_with_query_string(ds_client):
     original_root_enabled = ds_client.ds.root_enabled
     try:
         ds_client.ds.root_enabled = True
-        cookies = {"ds_actor": ds_client.actor_cookie({"id": "root"})}
+        actor = {"id": "root"}
 
         # Test /-/allowed with query string
         response = await ds_client.get(
-            "/-/allowed?action=view-table&page_size=50", cookies=cookies
+            "/-/allowed?action=view-table&page_size=50", actor=actor
         )
         assert response.status_code == 200
         # Check that Rules and Check tabs have the query string
@@ -1262,7 +1260,7 @@ async def test_permission_debug_tabs_with_query_string(ds_client):
 
         # Test /-/rules with query string
         response = await ds_client.get(
-            "/-/rules?action=view-database&parent=test", cookies=cookies
+            "/-/rules?action=view-database&parent=test", actor=actor
         )
         assert response.status_code == 200
         # Check that Allowed and Check tabs have the query string
@@ -1270,7 +1268,7 @@ async def test_permission_debug_tabs_with_query_string(ds_client):
         assert 'href="/-/check?action=view-database&amp;parent=test"' in response.text
 
         # Test /-/check with query string
-        response = await ds_client.get("/-/check?action=execute-sql", cookies=cookies)
+        response = await ds_client.get("/-/check?action=execute-sql", actor=actor)
         assert response.status_code == 200
         # Check that Allowed and Rules tabs have the query string
         assert 'href="/-/allowed?action=execute-sql"' in response.text

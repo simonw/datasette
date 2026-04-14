@@ -553,8 +553,7 @@ async def test_actions_json(ds_client):
     original_root_enabled = ds_client.ds.root_enabled
     try:
         ds_client.ds.root_enabled = True
-        cookies = {"ds_actor": ds_client.actor_cookie({"id": "root"})}
-        response = await ds_client.get("/-/actions.json", cookies=cookies)
+        response = await ds_client.get("/-/actions.json", actor={"id": "root"})
         data = response.json()
     finally:
         ds_client.ds.root_enabled = original_root_enabled

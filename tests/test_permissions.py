@@ -1176,10 +1176,10 @@ async def test_api_explorer_visibility(
     try:
         prev_config = perms_ds.config
         perms_ds.config = config or {}
-        cookies = {}
+        kwargs = {}
         if is_logged_in:
-            cookies = {"ds_actor": perms_ds.client.actor_cookie({"id": "user"})}
-        response = await perms_ds.client.get("/-/api", cookies=cookies)
+            kwargs["actor"] = {"id": "user"}
+        response = await perms_ds.client.get("/-/api", **kwargs)
         if expected_visible_tables:
             assert response.status_code == 200
             # Search HTML for stuff matching:
@@ -1213,8 +1213,7 @@ async def test_view_table_token_cannot_gain_access_without_base_permission(perms
             # Restricted token claims access to perms_ds_two/t1 only
             "_r": {"r": {"perms_ds_two": {"t1": ["vt"]}}},
         }
-        cookies = {"ds_actor": perms_ds.client.actor_cookie(actor)}
-        response = await perms_ds.client.get("/perms_ds_two/t1.json", cookies=cookies)
+        response = await perms_ds.client.get("/perms_ds_two/t1.json", actor=actor)
         assert response.status_code == 403
     finally:
         perms_ds.config = previous_config
@@ -1333,7 +1332,7 @@ async def test_actor_restrictions(
     if restrictions:
         actor["_r"] = restrictions
     method = getattr(perms_ds.client, verb)
-    kwargs = {"cookies": {"ds_actor": perms_ds.client.actor_cookie(actor)}}
+    kwargs = {"actor": actor}
     if body:
         kwargs["json"] = body
     perms_ds._permission_checks.clear()
@@ -1464,7 +1463,7 @@ async def test_actor_restrictions_do_not_expand_allowed_resources(perms_ds):
         # And explicit permission checks should still deny
         response = await perms_ds.client.get(
             "/perms_ds_one/t1.json",
-            cookies={"ds_actor": perms_ds.client.actor_cookie(actor)},
+            actor=actor,
         )
         assert response.status_code == 403
     finally:
@@ -1532,18 +1531,17 @@ async def test_actor_restrictions_json_endpoints_show_filtered_listings(perms_ds
     """Test that /.json and /db.json show correct filtered listings - issue #2534"""
 
     actor = {"id": "user", "_r": {"r": {"perms_ds_one": {"t1": ["vt"]}}}}
-    cookies = {"ds_actor": perms_ds.client.actor_cookie(actor)}
 
     # /.json should be 403 (no view-instance permission)
-    response = await perms_ds.client.get("/.json", cookies=cookies)
+    response = await perms_ds.client.get("/.json", actor=actor)
     assert response.status_code == 403
 
     # /perms_ds_one.json should be 403 (no view-database permission)
-    response = await perms_ds.client.get("/perms_ds_one.json", cookies=cookies)
+    response = await perms_ds.client.get("/perms_ds_one.json", actor=actor)
     assert response.status_code == 403
 
     # /perms_ds_one/t1.json should be 200
-    response = await perms_ds.client.get("/perms_ds_one/t1.json", cookies=cookies)
+    response = await perms_ds.client.get("/perms_ds_one/t1.json", actor=actor)
     assert response.status_code == 200
 
 
@@ -1552,10 +1550,9 @@ async def test_actor_restrictions_view_instance_only(perms_ds):
     """Test actor restricted to view-instance only - issue #2534"""
 
     actor = {"id": "user", "_r": {"a": ["vi"]}}
-    cookies = {"ds_actor": perms_ds.client.actor_cookie(actor)}
 
     # /.json should be 200 (has view-instance permission)
-    response = await perms_ds.client.get("/.json", cookies=cookies)
+    response = await perms_ds.client.get("/.json", actor=actor)
     assert response.status_code == 200
 
     # But no databases should be visible (no view-database permission)

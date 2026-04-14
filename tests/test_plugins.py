@@ -1020,7 +1020,7 @@ async def test_hook_view_actions(ds_client):
     assert get_actions_links(response.text) == []
     response_2 = await ds_client.get(
         "/fixtures/simple_view",
-        cookies={"ds_actor": ds_client.actor_cookie({"id": "bob"})},
+        actor={"id": "bob"},
     )
     assert ">View actions<" in response_2.text
     assert sorted(
@@ -1084,7 +1084,7 @@ async def test_hook_row_actions(ds_client):
 
     response_2 = await ds_client.get(
         "/fixtures/facet_cities/1",
-        cookies={"ds_actor": ds_client.actor_cookie({"id": "sam"})},
+        actor={"id": "sam"},
     )
     assert get_actions_links(response_2.text) == [
         {
@@ -1113,7 +1113,7 @@ async def test_hook_homepage_actions(ds_client):
     assert "<span>Homepage actions</span>" not in response.text
     # Signed in user gets an action
     response2 = await ds_client.get(
-        "/", cookies={"ds_actor": ds_client.actor_cookie({"id": "troy"})}
+        "/", actor={"id": "troy"}
     )
     assert "<span>Homepage actions</span>" in response2.text
     assert get_actions_links(response2.text) == [

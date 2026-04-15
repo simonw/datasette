@@ -59,6 +59,7 @@ async def test_database_page(ds_client):
     response = await ds_client.get("/fixtures.json")
     assert response.status_code == 200
     data = response.json()
+    assert data["ok"] is True
     assert data["database"] == "fixtures"
 
     # Build lookup for easier assertions

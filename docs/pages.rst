@@ -40,6 +40,8 @@ The JSON version of this page provides programmatic access to the underlying dat
 * `fivethirtyeight.datasettes.com/fivethirtyeight.json <https://fivethirtyeight.datasettes.com/fivethirtyeight.json>`_
 * `datasette.io/global-power-plants.json <https://datasette.io/global-power-plants.json>`_
 
+The returned object includes an ``"ok": true`` key alongside keys such as ``"database"``, ``"tables"``, ``"views"``, ``"queries"`` and ``"metadata"``.
+
 .. _DatabaseView_hidden:
 
 Hidden tables

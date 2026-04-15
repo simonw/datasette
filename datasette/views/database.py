@@ -130,6 +130,7 @@ class DatabaseView(View):
             actor=request.actor,
         )
         json_data = {
+            "ok": True,
             "database": database,
             "private": private,
             "path": datasette.urls.database(database),

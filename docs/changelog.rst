@@ -3,6 +3,12 @@
 =========
 Changelog
 =========
+.. dev:
+
+dev
+---
+
+- The ``/<database>.json`` endpoint now includes an ``"ok": true`` key, for consistency with other JSON API responses.
 
 .. _v1_0_a26:
 

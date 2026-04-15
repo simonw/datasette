@@ -299,6 +299,14 @@ async def test_insert_rows(ds_write, return_rows):
             400,
             ['Row 0 is missing primary key column(s): "id"'],
         ),
+        # null primary key
+        (
+            "/data/docs/-/upsert",
+            {"rows": [{"id": None, "title": "Null PK"}]},
+            None,
+            400,
+            ['Row 0 has null primary key column(s): "id"'],
+        ),
         # Upsert does not support ignore or replace
         (
             "/data/docs/-/upsert",

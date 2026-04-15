@@ -461,6 +461,13 @@ class TableInsertView(BaseView):
                             i, '", "'.join(missing_pks)
                         )
                     )
+                null_pks = [pk for pk in pks_list if pk in row and row[pk] is None]
+                if null_pks:
+                    errors.append(
+                        'Row {} has null primary key column(s): "{}"'.format(
+                            i, '", "'.join(null_pks)
+                        )
+                    )
             invalid_columns = set(row.keys()) - columns
             if invalid_columns and not extras.get("alter"):
                 errors.append(

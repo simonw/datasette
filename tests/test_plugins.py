@@ -1116,9 +1116,7 @@ async def test_hook_homepage_actions(ds_client):
     # No button for anonymous users
     assert "<span>Homepage actions</span>" not in response.text
     # Signed in user gets an action
-    response2 = await ds_client.get(
-        "/", actor={"id": "troy"}
-    )
+    response2 = await ds_client.get("/", actor={"id": "troy"})
     assert "<span>Homepage actions</span>" in response2.text
     assert get_actions_links(response2.text) == [
         {

@@ -316,9 +316,7 @@ async def test_in_client_with_skip_permission_checks():
 @pytest.mark.asyncio
 async def test_actor_parameter_sets_cookie(datasette):
     """Passing actor= should sign a ds_actor cookie and authenticate the request."""
-    response = await datasette.client.get(
-        "/-/actor.json", actor={"id": "root"}
-    )
+    response = await datasette.client.get("/-/actor.json", actor={"id": "root"})
     assert response.status_code == 200
     assert response.json() == {"actor": {"id": "root"}}
 

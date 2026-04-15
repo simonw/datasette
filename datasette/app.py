@@ -2661,9 +2661,7 @@ class DatasetteClient:
             return
         cookies = dict(kwargs.get("cookies") or {})
         if "ds_actor" in cookies:
-            raise TypeError(
-                "Cannot pass both actor= and a ds_actor cookie"
-            )
+            raise TypeError("Cannot pass both actor= and a ds_actor cookie")
         cookies["ds_actor"] = self.actor_cookie(actor)
         kwargs["cookies"] = cookies
 

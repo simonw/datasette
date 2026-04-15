@@ -266,6 +266,56 @@ async def test_bearer_with_cookie_does_not_bypass():
     assert await _run_middleware(scope) == ("blocked", 403)
 
 
+@pytest.mark.asyncio
+async def test_origin_scheme_must_match():
+    # http Origin against an https request must be blocked even when host matches.
+    scope = _http_scope({"origin": "http://example.com", "host": "example.com"})
+    scope["scheme"] = "https"
+    assert await _run_middleware(scope) == ("blocked", 403)
+
+
+@pytest.mark.asyncio
+async def test_origin_port_must_match():
+    scope = _http_scope({"origin": "http://example.com:8001", "host": "example.com"})
+    scope["scheme"] = "http"
+    assert await _run_middleware(scope) == ("blocked", 403)
+
+
+@pytest.mark.asyncio
+async def test_origin_default_port_normalized():
+    # http://example.com:80 == http://example.com
+    scope = _http_scope({"origin": "http://example.com:80", "host": "example.com"})
+    scope["scheme"] = "http"
+    assert await _run_middleware(scope) == ("allowed",)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"authorization": "   ", "host": "example.com", "origin": "http://evil"},
+        {"origin": "http://example.com:notaport", "host": "example.com"},
+        {"origin": "not-a-url", "host": "example.com"},
+    ],
+)
+async def test_malformed_headers_do_not_500(headers):
+    # Should be a clean 403, not an unhandled exception.
+    result = await _run_middleware(_http_scope(headers))
+    assert result[0] == "blocked"
+    assert result[1] == 403
+
+
+@pytest.mark.asyncio
+async def test_uppercase_header_names_normalized():
+    # ASGI servers should lowercase, but middleware normalizes defensively.
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "headers": [(b"Sec-Fetch-Site", b"same-origin")],
+    }
+    assert await _run_middleware(scope) == ("allowed",)
+
+
 def test_legacy_skip_csrf_hookimpl_does_not_break_loading():
     # Plugins that still define skip_csrf must load cleanly - pluggy ignores
     # unknown hook implementations - even though the hook is no longer

@@ -16,6 +16,38 @@ from .utils.asgi import asgi_send
 
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
+DEFAULT_PORTS = {"http": 80, "https": 443, "ws": 80, "wss": 443}
+
+
+def _normalize_headers(raw_headers):
+    """Lowercase header names; for duplicates, last value wins."""
+    result = {}
+    for name, value in raw_headers:
+        if isinstance(name, str):
+            name = name.encode("latin-1")
+        if isinstance(value, str):
+            value = value.encode("latin-1")
+        result[name.lower()] = value
+    return result
+
+
+def _origin_tuple(value):
+    """
+    Parse an origin-like string into ``(scheme, host, port)`` with default
+    ports filled in. Raises ``ValueError`` for malformed input.
+    """
+    parsed = urllib.parse.urlsplit(value)
+    scheme = (parsed.scheme or "").lower()
+    host = (parsed.hostname or "").lower()
+    if not scheme or not host:
+        raise ValueError("missing scheme or host in {!r}".format(value))
+    port = parsed.port  # may raise ValueError on bad ports
+    if port is None:
+        port = DEFAULT_PORTS.get(scheme)
+    if port is None:
+        raise ValueError("unknown default port for scheme {!r}".format(scheme))
+    return scheme, host, port
+
 
 def _install_legacy_csrftoken(scope):
     """
@@ -61,19 +93,19 @@ class CrossOriginProtectionMiddleware:
             await self.app(scope, receive, send)
             return
 
-        headers = dict(scope.get("headers") or [])
+        headers = _normalize_headers(scope.get("headers") or [])
 
+        authorization = headers.get(b"authorization", b"").decode("latin-1")
+        cookie_header = headers.get(b"cookie")
         # Bearer-token requests are not ambient browser credentials, so they
         # are not CSRF-vulnerable. Narrowly exempt them from the header check
         # before evaluating Sec-Fetch-Site / Origin. Only "Bearer" is exempt;
         # schemes like Basic or Digest can be browser-managed and ambient.
-        authorization = headers.get(b"authorization", b"").decode("latin-1")
-        cookie_header = headers.get(b"cookie")
         # If the request also carries a Cookie header, ambient cookie auth
         # could be in play, so do NOT treat it as exempt.
         if authorization and not cookie_header:
-            scheme = authorization.split(None, 1)[0].lower()
-            if scheme == "bearer":
+            parts = authorization.split(None, 1)
+            if parts and parts[0].lower() == "bearer":
                 await self.app(scope, receive, send)
                 return
 
@@ -104,12 +136,20 @@ class CrossOriginProtectionMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Fallback for older browsers: Origin host must match Host header
-        parsed = urllib.parse.urlparse(origin)
-        origin_host = parsed.hostname or ""
-        if parsed.port:
-            origin_host = "{}:{}".format(origin_host, parsed.port)
-        if origin_host == host:
+        # Fallback for older browsers: Origin must match the request's own
+        # scheme + host + port. Compare full origin tuples, not host alone.
+        request_scheme = self._request_scheme(scope)
+        try:
+            origin_tuple = _origin_tuple(origin)
+            expected_tuple = _origin_tuple("{}://{}".format(request_scheme, host))
+        except ValueError:
+            await self._forbid(
+                send,
+                "Malformed Origin {!r} or Host {!r}".format(origin, host),
+            )
+            return
+
+        if origin_tuple == expected_tuple:
             await self.app(scope, receive, send)
             return
 
@@ -117,6 +157,15 @@ class CrossOriginProtectionMiddleware:
             send,
             "Origin {!r} does not match Host {!r}".format(origin, host),
         )
+
+    def _request_scheme(self, scope):
+        if self.datasette is not None:
+            try:
+                if self.datasette.setting("force_https_urls"):
+                    return "https"
+            except Exception:
+                pass
+        return scope.get("scheme") or "http"
 
     async def _forbid(self, send, reason):
         await asgi_send(

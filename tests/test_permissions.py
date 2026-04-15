@@ -711,10 +711,6 @@ async def test_actor_restricted_permissions(
     perms_ds.pdb = True
     perms_ds.root_enabled = True  # Allow root actor to access /-/permissions
     cookies = {"ds_actor": perms_ds.sign({"a": {"id": "root"}}, "actor")}
-    csrftoken = (await perms_ds.client.get("/-/permissions", cookies=cookies)).cookies[
-        "ds_csrftoken"
-    ]
-    cookies["ds_csrftoken"] = csrftoken
     response = await perms_ds.client.post(
         "/-/permissions",
         data={
@@ -722,7 +718,6 @@ async def test_actor_restricted_permissions(
             "permission": permission,
             "resource_1": resource_1,
             "resource_2": resource_2,
-            "csrftoken": csrftoken,
         },
         cookies=cookies,
     )

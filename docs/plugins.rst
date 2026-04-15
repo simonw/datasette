@@ -241,8 +241,7 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "version": null,
             "hooks": [
                 "canned_queries",
-                "permission_resources_sql",
-                "skip_csrf"
+                "permission_resources_sql"
             ]
         },
         {

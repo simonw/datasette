@@ -17,7 +17,7 @@ UNION/INTERSECT operations. The order of evaluation is:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from datasette.app import Datasette
@@ -37,16 +37,6 @@ from .defaults import (
     default_action_permissions_sql as default_action_permissions_sql,
     DEFAULT_ALLOW_ACTIONS as DEFAULT_ALLOW_ACTIONS,
 )
-
-
-@hookimpl
-def skip_csrf(scope) -> Optional[bool]:
-    """Skip CSRF check for JSON content-type requests."""
-    if scope["type"] == "http":
-        headers = scope.get("headers") or {}
-        if dict(headers).get(b"content-type") == b"application/json":
-            return True
-    return None
 
 
 @hookimpl

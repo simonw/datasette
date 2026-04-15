@@ -1837,31 +1837,6 @@ This example logs an error to `Sentry <https://sentry.io/>`__ and then renders a
 
 Example: `datasette-sentry <https://datasette.io/plugins/datasette-sentry>`_
 
-.. _plugin_hook_skip_csrf:
-
-skip_csrf(datasette, scope)
----------------------------
-
-``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
-
-``scope`` - dictionary
-    The `ASGI scope <https://asgi.readthedocs.io/en/latest/specs/www.html#http-connection-scope>`__ for the incoming HTTP request.
-
-This hook can be used to skip :ref:`internals_csrf` for a specific incoming request. For example, you might have a custom path at ``/submit-comment`` which is designed to accept comments from anywhere, whether or not the incoming request originated on the site and has an accompanying CSRF token.
-
-This example will disable CSRF protection for that specific URL path:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-
-
-    @hookimpl
-    def skip_csrf(scope):
-        return scope["path"] == "/submit-comment"
-
-If any of the currently active ``skip_csrf()`` plugin hooks return ``True``, CSRF protection will be skipped for the request.
 
 .. _plugin_hook_menu_links:
 

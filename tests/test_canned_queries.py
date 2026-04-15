@@ -109,31 +109,12 @@ def test_insert(canned_write_client):
     assert response.headers["Location"] == "/data/add_name?success"
 
 
-@pytest.mark.parametrize(
-    "query_name,expect_csrf_hidden_field",
-    [
-        ("canned_read", False),
-        ("add_name_specify_id", True),
-        ("add_name", True),
-    ],
-)
-def test_canned_query_form_csrf_hidden_field(
-    canned_write_client, query_name, expect_csrf_hidden_field
-):
-    response = canned_write_client.get(f"/data/{query_name}")
-    html = response.text
-    fragment = '<input type="hidden" name="csrftoken" value="'
-    if expect_csrf_hidden_field:
-        assert fragment in html
-    else:
-        assert fragment not in html
-
-
-def test_insert_with_cookies_requires_csrf(canned_write_client):
+def test_insert_blocked_cross_site(canned_write_client):
+    # A cross-site POST (browser-originated) must be blocked
     response = canned_write_client.post(
         "/data/add_name",
         {"name": "Hello"},
-        cookies={"foo": "bar"},
+        headers={"sec-fetch-site": "cross-site"},
     )
     assert 403 == response.status
 
@@ -218,10 +199,11 @@ def test_custom_params(canned_write_client):
     assert '<input type="text" id="qp3" name="extra" value="foo">' in response.text
 
 
-def test_vary_header(canned_write_client):
-    # These forms embed a csrftoken so they should be served with Vary: Cookie
+def test_canned_query_pages_no_vary_header(canned_write_client):
+    # These pages no longer embed per-cookie CSRF tokens, so they must not
+    # set Vary: Cookie - they should be cacheable across users.
     assert "vary" not in canned_write_client.get("/data").headers
-    assert "Cookie" == canned_write_client.get("/data/update_name").headers["vary"]
+    assert "vary" not in canned_write_client.get("/data/update_name").headers
 
 
 def test_json_post_body(canned_write_client):

@@ -1941,19 +1941,16 @@ The ``Database`` class also provides properties and methods for introspecting th
 CSRF protection
 ===============
 
-Datasette uses `asgi-csrf <https://github.com/simonw/asgi-csrf>`__ to guard against CSRF attacks on form POST submissions. Users receive a ``ds_csrftoken`` cookie which is compared against the ``csrftoken`` form field (or ``x-csrftoken`` HTTP header) for every incoming request.
+Datasette protects against Cross-Site Request Forgery by inspecting the browser-set ``Sec-Fetch-Site`` and ``Origin`` headers on every unsafe (non-``GET``/``HEAD``/``OPTIONS``) request, following the approach described in `Filippo Valsorda's article <https://words.filippo.io/csrf/>`__ and implemented in Go 1.25's ``http.CrossOriginProtection``.
 
-If your plugin implements a ``<form method="POST">`` anywhere you will need to include that token. You can do so with the following template snippet:
+A request is rejected with a ``403`` response if:
 
-.. code-block:: html
+- It carries ``Sec-Fetch-Site`` with any value other than ``same-origin`` or ``none``, or
+- It has no ``Sec-Fetch-Site`` header but does carry an ``Origin`` header whose host does not match the request ``Host``.
 
-    <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
+Requests from non-browser clients (``curl``, server-to-server scripts, etc.) do not send ``Sec-Fetch-Site`` or ``Origin`` and pass through unchanged - CSRF is a browser-only attack.
 
-If you are rendering templates using the :ref:`datasette_render_template` method the ``csrftoken()`` helper will only work if you provide the ``request=`` argument to that method. If you forget to do this you will see the following error::
-
-    form-urlencoded POST field did not match cookie
-
-You can selectively disable CSRF protection using the :ref:`plugin_hook_skip_csrf` hook.
+No token, cookie, or hidden form field is needed. Any ``<form method="POST">`` inside Datasette or a plugin will be accepted from the same origin without modification.
 
 .. _internals_internal:
 

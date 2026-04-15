@@ -10,7 +10,6 @@
 
 <form class="core" action="{{ urls.logout() }}" method="post">
     <div>
-        <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
         <input type="submit" value="Log out">
     </div>
 </form>

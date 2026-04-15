@@ -445,11 +445,6 @@ def homepage_actions(datasette, actor, request):
 
 
 @hookimpl
-def skip_csrf(scope):
-    return scope["path"] == "/skip-csrf"
-
-
-@hookimpl
 def register_actions(datasette):
     extras_old = datasette.plugin_config("datasette-register-permissions") or {}
     extras_new = datasette.plugin_config("datasette-register-actions") or {}

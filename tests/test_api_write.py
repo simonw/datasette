@@ -45,6 +45,22 @@ def _headers(token):
 
 
 @pytest.mark.asyncio
+async def test_api_explorer_upsert_example_json(ds_write):
+    response = await ds_write.client.get("/-/api", actor={"id": "root"})
+    print("STATUS", response.status_code)
+    assert response.status_code == 200
+    import urllib.parse
+
+    text = urllib.parse.unquote_plus(response.text)
+    upsert_idx = text.index("/data/docs/-/upsert")
+    upsert_chunk = text[upsert_idx : upsert_idx + 500]
+    assert '"id": "<id (primary key)>"' in upsert_chunk
+    assert '"title": "<title>"' in upsert_chunk
+    assert '"score": "<score>"' in upsert_chunk
+    assert '"age": "<age>"' in upsert_chunk
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "content_type",
     (

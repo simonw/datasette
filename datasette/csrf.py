@@ -68,7 +68,10 @@ class CrossOriginProtectionMiddleware:
         # before evaluating Sec-Fetch-Site / Origin. Only "Bearer" is exempt;
         # schemes like Basic or Digest can be browser-managed and ambient.
         authorization = headers.get(b"authorization", b"").decode("latin-1")
-        if authorization:
+        cookie_header = headers.get(b"cookie")
+        # If the request also carries a Cookie header, ambient cookie auth
+        # could be in play, so do NOT treat it as exempt.
+        if authorization and not cookie_header:
             scheme = authorization.split(None, 1)[0].lower()
             if scheme == "bearer":
                 await self.app(scope, receive, send)

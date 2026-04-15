@@ -252,6 +252,20 @@ async def test_cross_site_post_without_auth_still_blocked(bare_ds):
     assert response.status_code == 403
 
 
+@pytest.mark.asyncio
+async def test_bearer_with_cookie_does_not_bypass():
+    # Bearer + Cookie => ambient cookie auth is in play, not exempt.
+    scope = _http_scope(
+        {
+            "sec-fetch-site": "cross-site",
+            "host": "example.com",
+            "authorization": "Bearer dstok_abc",
+            "cookie": "ds_actor=anything",
+        }
+    )
+    assert await _run_middleware(scope) == ("blocked", 403)
+
+
 def test_legacy_skip_csrf_hookimpl_does_not_break_loading():
     # Plugins that still define skip_csrf must load cleanly - pluggy ignores
     # unknown hook implementations - even though the hook is no longer

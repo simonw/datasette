@@ -51,6 +51,7 @@ markdown_uri_doc_suffix = ".html"
 
 extlinks = {
     "issue": ("https://github.com/simonw/datasette/issues/%s", "#%s"),
+    "pr": ("https://github.com/simonw/datasette/pull/%s", "#%s"),
 }
 
 # Add any paths that contain templates here, relative to this directory.

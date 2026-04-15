@@ -7,11 +7,11 @@ in Go 1.25's http.CrossOriginProtection. This replaces the previous
 token-based asgi-csrf mechanism.
 """
 
+import pluggy
 import pytest
 
 from datasette import hookimpl
 from datasette.csrf import CrossOriginProtectionMiddleware, _install_legacy_csrftoken
-from datasette.plugins import pm
 
 
 async def _post(bare_ds, **kwargs):
@@ -255,7 +255,8 @@ async def test_cross_site_post_without_auth_still_blocked(bare_ds):
 def test_legacy_skip_csrf_hookimpl_does_not_break_loading():
     # Plugins that still define skip_csrf must load cleanly - pluggy ignores
     # unknown hook implementations - even though the hook is no longer
-    # consulted by core.
+    # consulted by core. Use a throwaway PluginManager so that registering
+    # this hookimpl does not leak a _HookCaller onto the real datasette.pm.
     class LegacyPlugin:
         __name__ = "legacy-skip-csrf-plugin"
 
@@ -263,9 +264,7 @@ def test_legacy_skip_csrf_hookimpl_does_not_break_loading():
         def skip_csrf(self, datasette, scope):
             return True
 
+    throwaway = pluggy.PluginManager("datasette")
     plugin = LegacyPlugin()
-    pm.register(plugin, name=LegacyPlugin.__name__)
-    try:
-        assert pm.is_registered(plugin)
-    finally:
-        pm.unregister(plugin)
+    throwaway.register(plugin, name=LegacyPlugin.__name__)
+    assert throwaway.is_registered(plugin)

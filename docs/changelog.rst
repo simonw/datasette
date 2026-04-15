@@ -3,12 +3,35 @@
 =========
 Changelog
 =========
-.. dev:
 
-dev
----
+.. _v1_0_a27:
 
+1.0a27 (2026-04-15)
+-------------------
+
+CSRF protection no longer uses CSRF tokens
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Datasette's token-based CSRF protection has been replaced with a mechanism based on the ``Sec-Fetch-Site`` and ``Origin`` request headers, which are `supported by all modern browsers <https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Sec-Fetch-Site>`__. See `this article by Filippo Valsorda <https://words.filippo.io/csrf/>`__ for more details of this approach. This removes the need for CSRF tokens in forms and AJAX requests. (:pr:`2689`)
+
+``RenameTableEvent`` when a table is renamed
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Renaming a table within Datasette will now fire a new :class:`~datasette.events.RenameTableEvent`, which plugins can use to react by updating ACL records or re-assigning comments or other associated records to the new table name. (:issue:`2681`)
+
+This event will not be fired if the table is renamed by SQL running in some other process.
+
+The ``datasette.track_event()`` method can now be called from within a write operation (using :ref:`database.execute_write() <database_execute_write>` and related methods) and the event will be fired after the write transaction has successfully committed. (:pr:`2682`)
+
+Other changes
+~~~~~~~~~~~~~
+
+- New :ref:`actor= parameter <internals_datasette_client_actor>` for ``datasette.client`` methods, allowing internal requests to be made as a specific actor. This is particularly useful for writing automated tests. (:pr:`2688`)
+- New ``Database(is_temp_disk=True)`` option, used internally for the internal database. This helps resolve intermittent database locked errors caused by the internal database being in-memory as opposed to on-disk. (:issue:`2683`) (:pr:`2684`)
+- The ``/<database>/<table>/-/upsert`` API (:ref:`docs <TableUpsertView>`) now rejects rows with ``null`` primary key values. (:issue:`1936`)
+- Improved example in the API explorer for the ``/-/upsert`` endpoint (:ref:`docs <TableUpsertView>`). (:issue:`1936`)
 - The ``/<database>.json`` endpoint now includes an ``"ok": true`` key, for consistency with other JSON API responses.
+- :ref:`call_with_supported_arguments() <internals_utils_call_with_supported_arguments>` is now documented as a supported public API. (:pr:`2678`)
 
 .. _v1_0_a26:
 

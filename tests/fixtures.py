@@ -54,7 +54,6 @@ EXPECTED_PLUGINS = [
             "register_token_handler",
             "render_cell",
             "row_actions",
-            "skip_csrf",
             "startup",
             "table_actions",
             "view_actions",

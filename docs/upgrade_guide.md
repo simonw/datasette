@@ -155,3 +155,63 @@ token = await datasette.create_token(
 ```
 
 The `datasette create-token` CLI command is unchanged.
+
+(upgrade_guide_csrf)=
+### CSRF protection is now header-based
+
+Datasette's Cross-Site Request Forgery protection no longer uses tokens. The previous `asgi-csrf` mechanism - which set a `ds_csrftoken` cookie and required a matching `<input type="hidden" name="csrftoken">` in every form - has been replaced with an ASGI middleware that inspects the browser-set `Sec-Fetch-Site` and `Origin` headers, following the approach described in [Filippo Valsorda's research](https://words.filippo.io/csrf/) and implemented in Go 1.25's `http.CrossOriginProtection`.
+
+This works identically on HTTPS, HTTP, and localhost. Non-browser clients (curl, Python `requests`, server-to-server scripts) do not send `Sec-Fetch-Site` or `Origin` and are passed through unchanged - CSRF is a browser-only attack.
+
+Requests that carry an explicit `Authorization: Bearer ...` header are also exempt from the CSRF check, because bearer tokens are not ambient browser credentials: a malicious cross-origin page cannot cause the browser to attach a target site's bearer token unless the attacker's JavaScript already possesses it. This exemption is narrow - it covers the `Bearer` scheme only, not `Basic` or `Digest` - and it does not depend on the `--cors` setting. The exemption is about CSRF classification, not browser read access; CORS still controls the latter.
+
+#### What you can remove
+
+You can now delete any of the following from your plugins and custom templates:
+
+- Hidden CSRF form fields:
+
+  ```html
+  <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
+  ```
+
+  The `csrftoken()` template helper (and `request.scope["csrftoken"]()` for plugins that call it from Python) still exists as a compatibility shim. It now returns a per-request random string rather than a cookie-bound signed value. Datasette no longer validates this token, and no `ds_csrftoken` cookie is set.
+
+  **Important for plugin authors:** if your plugin previously used `request.scope["csrftoken"]()` or the `ds_csrftoken` cookie as a security primitive (for example, signing a URL and later comparing it to the cookie), the invariant that the token equals `request.cookies["ds_csrftoken"]` no longer holds. Replace those flows with signed, short-lived action URLs or explicit non-ambient credentials.
+
+- Manual CSRF token extraction in tests, e.g.:
+
+  ```python
+  # No longer needed
+  csrftoken = response.cookies["ds_csrftoken"]
+  cookies["ds_csrftoken"] = csrftoken
+  post_data["csrftoken"] = csrftoken
+  ```
+
+  The `ds_csrftoken` cookie is no longer set at all. The `csrftoken_from=` argument of the Datasette test client's `.post()` method is now a no-op and can be removed from your test code.
+
+#### Breaking changes
+
+- **The `skip_csrf` plugin hook has been removed.** Existing plugins that still declare a `skip_csrf` hookimpl will continue to load - pluggy silently ignores unknown hook names - but the hook is no longer consulted by core, so the flows it previously unlocked will now be blocked (or allowed) purely on the basis of the new header check.
+
+  The new middleware already covers the common cases that `skip_csrf` was written for:
+
+  - Browser-initiated JSON POSTs automatically get `Sec-Fetch-Site: same-origin` and pass the check.
+  - Non-browser API clients (curl, `requests`, server-to-server scripts) do not send browser security headers and are passed through.
+  - Requests with an explicit `Authorization: Bearer ...` header are exempt from the CSRF check (see above).
+
+  If your plugin previously used `skip_csrf` to accept cross-origin browser POSTs, replace that flow with an authentication mechanism that does **not** rely on ambient browser credentials. Safe patterns include:
+
+  - Requiring an `Authorization: Bearer ...` API token on the endpoint.
+  - Requiring a non-ambient credential in the request body (a webhook secret, HMAC signature, signed capability URL, OAuth client credential, or similar).
+  - Issuing a short-lived signed URL that encodes the actor, the action, and an expiry, and verifying the signature on request.
+
+  Do not rely on the `ds_csrftoken` cookie for your own plugin's security checks - Datasette no longer sets or validates it, and the `request.scope["csrftoken"]()` compatibility shim now returns a fresh random value each request rather than the signed cookie-bound value it used to.
+
+- **The `asgi-csrf` dependency has been dropped.** Any plugin that imported from `asgi_csrf` directly will need to be updated.
+
+- **The `csrf_error.html` template now receives a `reason` context variable** instead of `message_id` and `message_name`. Custom overrides of this template should be updated.
+
+#### Security properties
+
+For defense-in-depth the `ds_actor` and `ds_messages` cookies continue to be set with `SameSite=Lax` (Datasette's long-standing default). This means a genuine cross-site POST from an attacker's page would arrive without the user's authentication cookie even if the header check somehow failed.

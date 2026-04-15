@@ -65,7 +65,6 @@
     {% endif %}
     <p>
         {% if not hide_sql %}<button id="sql-format" type="button" hidden>Format SQL</button>{% endif %}
-        {% if canned_query_write %}<input type="hidden" name="csrftoken" value="{{ csrftoken() }}">{% endif %}
         <input type="submit" value="Run SQL"{% if canned_query_write and db_is_immutable %} disabled{% endif %}>
         {{ show_hide_hidden }}
         {% if canned_query and edit_sql_url %}<a href="{{ edit_sql_url }}" class="canned-query-edit-sql">Edit SQL</a>{% endif %}

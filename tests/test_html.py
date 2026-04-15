@@ -1202,11 +1202,12 @@ async def test_custom_csrf_error(ds_client):
         data={
             "message": "A message",
         },
-        cookies={"csrftoken": "x"},
+        headers={"sec-fetch-site": "cross-site"},
     )
     assert response.status_code == 403
     assert response.headers["content-type"] == "text/html; charset=utf-8"
-    assert "Error code is FORM_URLENCODED_MISMATCH." in response.text
+    assert "Reason:" in response.text
+    assert "cross-site" in response.text
 
 
 @pytest.mark.asyncio

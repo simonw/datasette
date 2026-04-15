@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from asgi_csrf import Errors
 import asyncio
 import contextvars
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List
@@ -8,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List
 if TYPE_CHECKING:
     from datasette.permissions import Resource
     from datasette.tokens import TokenRestrictions
-import asgi_csrf
 import collections
 import dataclasses
 import datetime
@@ -120,6 +118,7 @@ from .utils.asgi import (
     asgi_send_file,
     asgi_send_redirect,
 )
+from .csrf import CrossOriginProtectionMiddleware
 from .utils.internal_db import init_internal_db, populate_schema_tables
 from .utils.sqlite import (
     sqlite3,
@@ -2003,7 +2002,11 @@ class Datasette:
                     "extra_js_urls", template, context, request, view_name
                 ),
                 "base_url": self.setting("base_url"),
-                "csrftoken": request.scope["csrftoken"] if request else lambda: "",
+                "csrftoken": (
+                    request.scope["csrftoken"]
+                    if request and "csrftoken" in request.scope
+                    else lambda: ""
+                ),
                 "datasette_version": __version__,
             },
             **extra_template_vars,
@@ -2306,26 +2309,7 @@ class Datasette:
                 if not database.is_mutable:
                     await database.table_counts(limit=60 * 60 * 1000)
 
-        async def custom_csrf_error(scope, send, message_id):
-            await asgi_send(
-                send,
-                content=await self.render_template(
-                    "csrf_error.html",
-                    {"message_id": message_id, "message_name": Errors(message_id).name},
-                ),
-                status=403,
-                content_type="text/html; charset=utf-8",
-            )
-
-        asgi = asgi_csrf.asgi_csrf(
-            DatasetteRouter(self, routes),
-            signing_secret=self._secret,
-            cookie_name="ds_csrftoken",
-            skip_if_scope=lambda scope: any(
-                pm.hook.skip_csrf(datasette=self, scope=scope)
-            ),
-            send_csrf_failed=custom_csrf_error,
-        )
+        asgi = CrossOriginProtectionMiddleware(DatasetteRouter(self, routes), self)
         if self.setting("trace_debug"):
             asgi = AsgiTracer(asgi)
         asgi = AsgiLifespan(asgi)

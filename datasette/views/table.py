@@ -610,8 +610,10 @@ class TableInsertView(BaseView):
                 )
                 args = list(itertools.chain.from_iterable(row_pk_values_for_later))
                 fetched_rows = await db.execute(
-                    "select {}* from [{}] where {}".format(
-                        "rowid, " if pks == ["rowid"] else "", table_name, where_clause
+                    "select {}* from {} where {}".format(
+                        "rowid, " if pks == ["rowid"] else "",
+                        escape_sqlite(table_name),
+                        where_clause,
                     ),
                     args,
                 )
@@ -822,7 +824,11 @@ class TableDropView(BaseView):
                     "database": database_name,
                     "table": table_name,
                     "row_count": (
-                        await db.execute("select count(*) from [{}]".format(table_name))
+                        await db.execute(
+                            "select count(*) from {}".format(
+                                escape_sqlite(table_name)
+                            )
+                        )
                     ).single_value(),
                     "message": 'Pass "confirm": true to confirm',
                 },
@@ -2091,10 +2097,13 @@ async def _next_value_and_url(
             except IndexError:
                 # sort/sort_desc column missing from SELECT - look up value by PK instead
                 prefix_where_clause = " and ".join(
-                    "[{}] = :pk{}".format(pk, i) for i, pk in enumerate(pks)
+                    "{} = :pk{}".format(escape_sqlite(pk), i)
+                    for i, pk in enumerate(pks)
                 )
-                prefix_lookup_sql = "select [{}] from [{}] where {}".format(
-                    sort or sort_desc, table_name, prefix_where_clause
+                prefix_lookup_sql = "select {} from {} where {}".format(
+                    escape_sqlite(sort or sort_desc),
+                    escape_sqlite(table_name),
+                    prefix_where_clause,
                 )
                 prefix = (
                     await db.execute(

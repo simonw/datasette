@@ -226,6 +226,31 @@ def test_detect_fts_different_table_names(table):
     conn.close()
 
 
+def test_escape_sqlite_prevents_closing_bracket_sql_injection():
+    conn = utils.sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE users (id INTEGER, password TEXT)")
+    conn.execute("INSERT INTO users VALUES (1, 'super_secret_password')")
+    malicious_name = 'users] UNION SELECT password FROM users--'
+    conn.execute(f'CREATE TABLE "{malicious_name}" (id INTEGER)')
+    escaped = utils.escape_sqlite(malicious_name)
+    results = conn.execute(f"select count(*) from {escaped}").fetchall()
+    assert results == [(0,)]
+    conn.close()
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    (
+        ("simple", "simple"),
+        ("select", '"select"'),
+        ('has"quote', '"has""quote"'),
+        ("has]bracket", '"has]bracket"'),
+    ),
+)
+def test_escape_sqlite(value, expected):
+    assert utils.escape_sqlite(value) == expected
+
+
 @pytest.mark.parametrize(
     "url,expected",
     [

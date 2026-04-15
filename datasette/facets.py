@@ -85,7 +85,7 @@ class Facet:
         self.database = database
         # For foreign key expansion. Can be None for e.g. canned SQL queries:
         self.table = table
-        self.sql = sql or f"select * from [{table}]"
+        self.sql = sql or f"select * from {escape_sqlite(table)}"
         self.params = params or []
         self.table_config = table_config
         # row_count can be None, in which case we calculate it ourselves:

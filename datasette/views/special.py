@@ -817,11 +817,14 @@ class ApiExplorerView(BaseView):
                                                 column,
                                                 (
                                                     " (primary key)"
-                                                    if column in pks
+                                                    if column in (pks or ["rowid"])
                                                     else ""
                                                 ),
                                             )
-                                            for column in await db.table_columns(table)
+                                            for column in (
+                                                (["rowid"] if not pks else [])
+                                                + await db.table_columns(table)
+                                            )
                                         }
                                     ]
                                 },

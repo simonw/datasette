@@ -47,7 +47,6 @@ def _headers(token):
 @pytest.mark.asyncio
 async def test_api_explorer_upsert_example_json(ds_write):
     response = await ds_write.client.get("/-/api", actor={"id": "root"})
-    print("STATUS", response.status_code)
     assert response.status_code == 200
     import urllib.parse
 
@@ -58,6 +57,26 @@ async def test_api_explorer_upsert_example_json(ds_write):
     assert '"title": "<title>"' in upsert_chunk
     assert '"score": "<score>"' in upsert_chunk
     assert '"age": "<age>"' in upsert_chunk
+
+
+@pytest.mark.asyncio
+async def test_api_explorer_upsert_example_json_rowid_table(tmp_path_factory):
+    db_path = str(tmp_path_factory.mktemp("dbs") / "data.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute("create table things (title text, score float)")
+    conn.close()
+    ds = Datasette([db_path])
+    ds.root_enabled = True
+    response = await ds.client.get("/-/api", actor={"id": "root"})
+    assert response.status_code == 200
+    import urllib.parse
+
+    text = urllib.parse.unquote_plus(response.text)
+    upsert_idx = text.index("/data/things/-/upsert")
+    upsert_chunk = text[upsert_idx : upsert_idx + 500]
+    assert '"rowid": "<rowid (primary key)>"' in upsert_chunk
+    assert '"title": "<title>"' in upsert_chunk
+    assert '"score": "<score>"' in upsert_chunk
 
 
 @pytest.mark.asyncio

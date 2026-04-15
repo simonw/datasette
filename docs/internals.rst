@@ -1312,6 +1312,28 @@ These methods can be used with :ref:`internals_datasette_urls` - for example:
 
 For documentation on available ``**kwargs`` options and the shape of the HTTPX Response object refer to the `HTTPX Async documentation <https://www.python-httpx.org/async/>`__.
 
+.. _internals_datasette_client_actor:
+
+Authenticating as an actor
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+All ``datasette.client`` methods accept an optional ``actor=`` parameter. When set to a dictionary describing an actor, the request is made with a signed ``ds_actor`` cookie identifying that actor — as if the request had been made by a user who is signed in as that actor.
+
+This is a convenient shorthand equivalent to signing the cookie manually using ``datasette.client.actor_cookie()``.
+
+Example usage:
+
+.. code-block:: python
+
+    response = await datasette.client.get(
+        "/-/actor.json", actor={"id": "root"}
+    )
+    assert response.json() == {"actor": {"id": "root"}}
+
+This parameter works with all HTTP methods (``get``, ``post``, ``put``, ``patch``, ``delete``, ``options``, ``head``) and the generic ``request`` method.
+
+Passing both ``actor=`` and a ``ds_actor`` cookie via ``cookies=`` raises a ``TypeError``. Other unrelated cookies can be combined with ``actor=``.
+
 Bypassing permission checks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -86,7 +86,7 @@ async def test_tables_search_with_auth(ds_with_tables):
     # Editor user should see content.articles
     response = await ds_with_tables.client.get(
         "/-/tables.json?q=articles",
-        cookies={"ds_actor": ds_with_tables.client.actor_cookie({"id": "editor"})},
+        actor={"id": "editor"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -104,7 +104,7 @@ async def test_tables_search_partial_match(ds_with_tables):
     # Search for "com" should match "comments"
     response = await ds_with_tables.client.get(
         "/-/tables.json?q=com",
-        cookies={"ds_actor": ds_with_tables.client.actor_cookie({"id": "user"})},
+        actor={"id": "user"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -120,7 +120,7 @@ async def test_tables_search_respects_database_permissions(ds_with_tables):
     # Even authenticated users shouldn't see it because database is denied
     response = await ds_with_tables.client.get(
         "/-/tables.json?q=secrets",
-        cookies={"ds_actor": ds_with_tables.client.actor_cookie({"id": "user"})},
+        actor={"id": "user"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -135,7 +135,7 @@ async def test_tables_search_respects_table_permissions(ds_with_tables):
     # Regular authenticated user searching for "users"
     response = await ds_with_tables.client.get(
         "/-/tables.json?q=users",
-        cookies={"ds_actor": ds_with_tables.client.actor_cookie({"id": "regular"})},
+        actor={"id": "regular"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -150,7 +150,7 @@ async def test_tables_search_response_structure(ds_with_tables):
     """Test that response has correct structure."""
     response = await ds_with_tables.client.get(
         "/-/tables.json?q=users",
-        cookies={"ds_actor": ds_with_tables.client.actor_cookie({"id": "user"})},
+        actor={"id": "user"},
     )
     assert response.status_code == 200
     data = response.json()

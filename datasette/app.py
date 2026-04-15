@@ -2654,9 +2654,21 @@ class DatasetteClient:
             path = f"http://localhost{path}"
         return path
 
+    def _apply_actor(self, kwargs):
+        """If ``actor=`` was supplied, convert it into a signed ds_actor cookie."""
+        actor = kwargs.pop("actor", None)
+        if actor is None:
+            return
+        cookies = dict(kwargs.get("cookies") or {})
+        if "ds_actor" in cookies:
+            raise TypeError("Cannot pass both actor= and a ds_actor cookie")
+        cookies["ds_actor"] = self.actor_cookie(actor)
+        kwargs["cookies"] = cookies
+
     async def _request(self, method, path, skip_permission_checks=False, **kwargs):
         from datasette.permissions import SkipPermissions
 
+        self._apply_actor(kwargs)
         with _DatasetteClientContext():
             if skip_permission_checks:
                 with SkipPermissions():
@@ -2722,6 +2734,7 @@ class DatasetteClient:
         from datasette.permissions import SkipPermissions
 
         avoid_path_rewrites = kwargs.pop("avoid_path_rewrites", None)
+        self._apply_actor(kwargs)
         with _DatasetteClientContext():
             if skip_permission_checks:
                 with SkipPermissions():

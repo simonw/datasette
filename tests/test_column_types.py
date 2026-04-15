@@ -933,9 +933,7 @@ async def test_set_column_type_ui_data_includes_applicable_types(
     await ds_ct_editor_permission.invoke_startup()
     response = await ds_ct_editor_permission.client.get(
         "/data/posts",
-        cookies={
-            "ds_actor": ds_ct_editor_permission.client.actor_cookie({"id": "editor"})
-        },
+        actor={"id": "editor"},
     )
     assert response.status_code == 200
     data = _window_data_from_html(response.text, "_setColumnTypeData")

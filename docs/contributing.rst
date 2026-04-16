@@ -296,7 +296,7 @@ Don't forget to create the release from the correct branch - usually ``main``, b
 
 While the release is running you can confirm that the correct commits made it into the release using the https://github.com/simonw/datasette/compare/0.64.6...0.64.7 URL.
 
-Finally, post a news item about the release on `datasette.io <https://datasette.io/>`__ by editing the `news.yaml <https://github.com/simonw/datasette.io/blob/main/news.yaml>`__ file in that site's repository.
+Finally, post a news item about the release on `datasette.io <https://datasette.io/>`__ by editing the `news.yaml <https://github.com/simonw/datasette.io/blob/main/news.yaml>`__ file in that site's repository. Use `this preview tool <https://tools.simonwillison.net/datasette-io-preview>`__ to preview the edits to the YAML.
 
 .. _contributing_alpha_beta:
 

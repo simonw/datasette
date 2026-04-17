@@ -53,7 +53,7 @@ def bare_ds():
     return Datasette(memory=True)
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="session")
 async def ds_client():
     from datasette.app import Datasette
     from datasette.database import Database

@@ -289,7 +289,7 @@ async def test_datasette_close_continues_past_db_error():
         def close(self):
             raise RuntimeError("boom")
 
-    bad = ds.add_database(Boom(ds, is_memory=True), name="bad")
+    ds.add_database(Boom(ds, is_memory=True), name="bad")
     good = ds.add_database(Database(ds, is_memory=True), name="good")
     with pytest.raises(RuntimeError, match="boom"):
         ds.close()

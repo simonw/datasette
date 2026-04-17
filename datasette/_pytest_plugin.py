@@ -1,6 +1,9 @@
 """
 Pytest plugin that automatically closes any Datasette instances constructed
-inside a test body. Fixture-scoped instances survive.
+during a pytest test — both in the test body and in function-scoped
+fixtures. Instances constructed by session-, module-, class- or package-
+scoped fixtures are left alone, because other tests in the session will
+still want to use them.
 
 Registered as a pytest11 entry point in pyproject.toml so that downstream
 projects using Datasette get the same FD-safety net for their own tests.
@@ -40,7 +43,7 @@ def pytest_addoption(parser):
         "datasette_autoclose",
         help=(
             "Automatically close Datasette instances created inside test "
-            "bodies (default: true)."
+            "bodies and function-scoped fixtures (default: true)."
         ),
         default="true",
     )
@@ -54,7 +57,8 @@ def _enabled(config) -> bool:
 
 
 @pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_call(item):
+def pytest_runtest_protocol(item, nextitem):
+    """Track Datasette instances across setup, call and teardown; close at end."""
     if not _enabled(item.config):
         yield
         return
@@ -76,3 +80,29 @@ def pytest_runtest_call(item):
                         f"Error closing Datasette instance: {e!r}"
                     )
                 )
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_fixture_setup(fixturedef, request):
+    """Exempt instances created by non-function-scoped fixtures.
+
+    Session-, module-, class- and package-scoped fixtures produce Datasette
+    instances that must survive beyond the current test — other tests in
+    the session will still use them. When such a fixture creates one or
+    more Datasette instances during its setup, we snapshot the tracking
+    list before the fixture runs and subtract off any instances that were
+    added during its setup, so they don't get closed at test teardown.
+    """
+    refs = _active_instances.get()
+    if refs is None:
+        yield
+        return
+    before_ids = {id(ref) for ref in refs}
+    yield
+    if fixturedef.scope != "function":
+        new_refs = [ref for ref in refs if id(ref) not in before_ids]
+        for new_ref in new_refs:
+            try:
+                refs.remove(new_ref)
+            except ValueError:
+                pass

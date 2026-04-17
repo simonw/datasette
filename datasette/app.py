@@ -326,6 +326,7 @@ class Datasette:
         default_deny=False,
     ):
         self._startup_invoked = False
+        self._closed = False
         assert config_dir is None or isinstance(
             config_dir, Path
         ), "config_dir= should be a pathlib.Path"
@@ -833,6 +834,33 @@ class Datasette:
         new_databases = self.databases.copy()
         new_databases.pop(name)
         self.databases = new_databases
+
+    def close(self):
+        """Release all resources held by this Datasette instance.
+
+        Closes every attached Database (including the internal database),
+        shuts down the executor, and unlinks the temporary file used for
+        the internal database if one was created. Idempotent and one-way.
+        """
+        if self._closed:
+            return
+        self._closed = True
+        first_exception = None
+        dbs = list(self.databases.values()) + [self._internal_database]
+        for db in dbs:
+            try:
+                db.close()
+            except Exception as e:
+                if first_exception is None:
+                    first_exception = e
+        if self.executor is not None:
+            try:
+                self.executor.shutdown(wait=True, cancel_futures=True)
+            except Exception as e:
+                if first_exception is None:
+                    first_exception = e
+        if first_exception is not None:
+            raise first_exception
 
     def setting(self, key):
         return self._settings.get(key, None)

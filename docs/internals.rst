@@ -1079,6 +1079,19 @@ The ``name`` and ``route`` parameters are optional and work the same way as they
 
 This removes a database that has been previously added. ``name=`` is the unique name of that database.
 
+.. _datasette_close:
+
+.close()
+--------
+
+Release all resources held by this ``Datasette`` instance. This calls :ref:`database_close` on every attached database (including the internal database), shuts down the thread pool executor used to run SQL queries, and unlinks the temporary file used to back the internal database if one was created.
+
+``close()`` is synchronous, idempotent and one-way: after a call to ``close()`` any attempt to use the Datasette instance to execute SQL will raise a ``datasette.database.DatasetteClosedError`` exception. A closed ``Datasette`` cannot be reopened — callers that need a fresh instance should construct a new one.
+
+If a call to ``Database.close()`` on one of the attached databases raises an exception, ``Datasette.close()`` will continue trying to close the remaining databases and will re-raise the first exception after every database has been processed.
+
+When Datasette is being served over ASGI the ``close()`` method is wired up to the lifespan shutdown event, so resources are released cleanly on ``SIGTERM`` / ``SIGINT``.
+
 .. _datasette_track_event:
 
 await .track_event(event)

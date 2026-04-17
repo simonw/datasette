@@ -52,6 +52,38 @@ class TokenRestrictions:
         self.resource.setdefault(database, {}).setdefault(resource, []).append(action)
         return self
 
+    def abbreviated(self, datasette: "Datasette") -> Optional[dict]:
+        """
+        Return the abbreviated ``_r`` dictionary shape for this set of
+        restrictions, using action abbreviations registered with ``datasette``.
+        Returns ``None`` if no restrictions are set.
+        """
+        if not (self.all or self.database or self.resource):
+            return None
+
+        def abbreviate_action(action):
+            action_obj = datasette.actions.get(action)
+            if not action_obj:
+                return action
+            return action_obj.abbr or action
+
+        result: dict = {}
+        if self.all:
+            result["a"] = [abbreviate_action(a) for a in self.all]
+        if self.database:
+            result["d"] = {
+                database: [abbreviate_action(a) for a in actions]
+                for database, actions in self.database.items()
+            }
+        if self.resource:
+            result["r"] = {}
+            for database, resources in self.resource.items():
+                for resource, actions in resources.items():
+                    result["r"].setdefault(database, {})[resource] = [
+                        abbreviate_action(a) for a in actions
+                    ]
+        return result
+
 
 class TokenHandler:
     """
@@ -104,31 +136,12 @@ class SignedTokenHandler(TokenHandler):
 
         token = {"a": actor_id, "t": int(time.time())}
 
-        def abbreviate_action(action):
-            action_obj = datasette.actions.get(action)
-            if not action_obj:
-                return action
-            return action_obj.abbr or action
-
         if expires_after:
             token["d"] = expires_after
-        if restrictions and (
-            restrictions.all or restrictions.database or restrictions.resource
-        ):
-            token["_r"] = {}
-            if restrictions.all:
-                token["_r"]["a"] = [abbreviate_action(a) for a in restrictions.all]
-            if restrictions.database:
-                token["_r"]["d"] = {}
-                for database, actions in restrictions.database.items():
-                    token["_r"]["d"][database] = [abbreviate_action(a) for a in actions]
-            if restrictions.resource:
-                token["_r"]["r"] = {}
-                for database, resources in restrictions.resource.items():
-                    for resource, actions in resources.items():
-                        token["_r"]["r"].setdefault(database, {})[resource] = [
-                            abbreviate_action(a) for a in actions
-                        ]
+        if restrictions is not None:
+            abbreviated = restrictions.abbreviated(datasette)
+            if abbreviated is not None:
+                token["_r"] = abbreviated
         return "dstok_{}".format(datasette.sign(token, namespace="token"))
 
     async def verify_token(self, datasette: "Datasette", token: str) -> Optional[dict]:

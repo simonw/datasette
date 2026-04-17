@@ -729,6 +729,30 @@ The builder methods are:
 
 Each method returns the ``TokenRestrictions`` instance so calls can be chained.
 
+``TokenRestrictions`` also provides an ``abbreviated(datasette)`` method which returns the restrictions as a dictionary using the compact format described in :ref:`authentication_cli_create_token_restrict`, with action names replaced by their registered abbreviations. It returns the inner dictionary only - the ``"_r"`` wrapping key shown in that section is not included. Returns ``None`` if no restrictions are set. This is useful when writing a custom :ref:`plugin_hook_register_token_handler` that needs to embed restrictions in a token payload.
+
+For example, the following restrictions:
+
+.. code-block:: python
+
+    restrictions = (
+        TokenRestrictions()
+        .allow_all("view-instance")
+        .allow_database("docs", "view-query")
+        .allow_resource("docs", "attachments", "insert-row")
+    )
+    restrictions.abbreviated(datasette)
+
+Returns this dictionary, using the abbreviations registered for each action:
+
+.. code-block:: python
+
+    {
+        "a": ["vi"],
+        "d": {"docs": ["vq"]},
+        "r": {"docs": {"attachments": ["ir"]}},
+    }
+
 The following example creates a token that can access ``view-instance`` and ``view-table`` across everything, can additionally use ``view-query`` for anything in the ``docs`` database and is allowed to execute ``insert-row`` and ``update-row`` in the ``attachments`` table in that database:
 
 .. code-block:: python

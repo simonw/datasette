@@ -4,6 +4,16 @@
 Changelog
 =========
 
+.. _v1_0_a28:
+
+1.0a28 (2026-04-16)
+-------------------
+
+- Fixed a compatibility bug introduced in 1.0a27 where ``execute_write_fn()`` callbacks with a parameter name other than ``conn`` were seeing errors. (:issue:`2691`)
+- The :ref:`database.close() <database_close>` method now also shuts down the write connection for that database.
+- New :ref:`datasette.close() <datasette_close>` method for closing down all databases and resources associated with a Datasette instance. This is called automatically when the server shuts down. (:pr:`2693`)
+- Datasette now includes a pytest plugin which automatically calls ``datasette.close()`` on temporary instances created in function-scoped fixtures and during tests. See :ref:`testing_plugins_autoclose` for details. This helps avoid running out of file descriptors in plugin test suites that were written before the ``Database(is_temp_disk=True)`` feature introduced in Datasette 1.0a27. (:issue:`2692`)
+
 .. _v1_0_a27:
 
 1.0a27 (2026-04-15)

@@ -28,9 +28,6 @@ UNDOCUMENTED_PERMISSIONS = {
     "view_document",
 }
 
-_ds_client = None
-
-
 def wait_until_responds(url, timeout=5.0, client=httpx, **kwargs):
     start = time.time()
     while time.time() - start < timeout:
@@ -59,10 +56,6 @@ async def ds_client():
     from datasette.database import Database
     from .fixtures import CONFIG, METADATA, PLUGINS_DIR
     import secrets
-
-    global _ds_client
-    if _ds_client is not None:
-        return _ds_client
 
     ds = Datasette(
         metadata=METADATA,
@@ -95,8 +88,7 @@ async def ds_client():
 
     await db.execute_write_fn(prepare)
     await ds.invoke_startup()
-    _ds_client = ds.client
-    return _ds_client
+    return ds.client
 
 
 def pytest_report_header(config):

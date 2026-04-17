@@ -1079,6 +1079,19 @@ The ``name`` and ``route`` parameters are optional and work the same way as they
 
 This removes a database that has been previously added. ``name=`` is the unique name of that database.
 
+.. _datasette_close:
+
+.close()
+--------
+
+Release all resources held by this ``Datasette`` instance. This calls :ref:`database_close` on every attached database (including the internal database), shuts down the thread pool executor used to run SQL queries, and unlinks the temporary file used to back the internal database if one was created.
+
+``close()`` is synchronous, idempotent and one-way: after a call to ``close()`` any attempt to use the Datasette instance to execute SQL will raise a ``datasette.database.DatasetteClosedError`` exception. A closed ``Datasette`` cannot be reopened — callers that need a fresh instance should construct a new one.
+
+If a call to ``Database.close()`` on one of the attached databases raises an exception, ``Datasette.close()`` will continue trying to close the remaining databases and will re-raise the first exception after every database has been processed.
+
+When Datasette is being served over ASGI the ``close()`` method is wired up to the lifespan shutdown event, so resources are released cleanly on ``SIGTERM`` / ``SIGINT``.
+
 .. _datasette_track_event:
 
 await .track_event(event)
@@ -1830,7 +1843,11 @@ The return value of the function will be returned by this method. Any exceptions
 db.close()
 ----------
 
-Closes all of the open connections to file-backed databases. This is mainly intended to be used by large test suites, to avoid hitting limits on the number of open files.
+Release all resources held by this ``Database`` instance. This shuts down the background write thread (if one was started by a previous call to :ref:`database_execute_write_fn` or similar), closes the write connection, and closes any cached read connections.
+
+After ``db.close()`` has been called, any further call to :ref:`database_execute`, :ref:`database_execute_fn`, :ref:`database_execute_write`, :ref:`database_execute_write_fn`, :ref:`database_execute_write_many`, :ref:`database_execute_write_script` or :ref:`database_execute_isolated_fn` will raise a ``datasette.database.DatasetteClosedError`` exception.
+
+``close()`` is idempotent — calling it a second time is a no-op. It is one-way: a closed ``Database`` cannot be reopened.
 
 .. _internals_database_introspection:
 

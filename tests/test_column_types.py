@@ -52,10 +52,7 @@ def ds_ct(tmp_path_factory):
     )
     ds.root_enabled = True
     yield ds
-    db.close()
-    for database in ds.databases.values():
-        if not database.is_memory:
-            database.close()
+    ds.close()
 
 
 @pytest.fixture
@@ -95,10 +92,7 @@ def ds_ct_editor_permission(tmp_path_factory):
     )
     ds.root_enabled = True
     yield ds
-    db.close()
-    for database in ds.databases.values():
-        if not database.is_memory:
-            database.close()
+    ds.close()
 
 
 def write_token(ds, actor_id="root", permissions=None):

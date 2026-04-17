@@ -54,6 +54,9 @@ CI = "https://github.com/simonw/datasette/actions?query=workflow%3ATest"
 [project.scripts]
 datasette = "datasette.cli:cli"
 
+[project.entry-points.pytest11]
+datasette = "datasette._pytest_plugin"
+
 [dependency-groups]
 dev = [
     "pytest>=9",
@@ -77,6 +80,7 @@ dev = [
     "myst-parser",
     "sphinx-markdown-builder",
     "ruamel.yaml",
+    "psutil>=5.9",
 ]
 
 [project.optional-dependencies]

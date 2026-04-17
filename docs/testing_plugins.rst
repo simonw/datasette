@@ -82,6 +82,31 @@ This method registers any :ref:`plugin_hook_startup` or :ref:`plugin_hook_prepar
 
 If you are using ``await datasette.client.get()`` and similar methods then you don't need to worry about this - Datasette automatically calls ``invoke_startup()`` the first time it handles a request.
 
+.. _testing_plugins_autoclose:
+
+Automatic cleanup of Datasette instances
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Installing Datasette also installs a small pytest plugin that automatically calls :ref:`datasette_close` on any ``Datasette()`` instance constructed during a test. This helps prevent large test suites from running out of file descriptors or leaking background threads from the hundreds of instances they may build up across a session.
+
+The plugin closes:
+
+- Instances created in the body of a test function.
+- Instances created inside **function-scoped** pytest fixtures (the default scope — ``@pytest.fixture`` with no ``scope=`` argument, or ``scope="function"``).
+
+The plugin deliberately does **not** close:
+
+- Instances created inside higher-scoped fixtures (``scope="session"``, ``"module"``, ``"class"`` or ``"package"``). Those fixtures are typically designed to produce a single ``Datasette`` that is shared across many tests, and closing it automatically would break the tests that run after the first.
+
+In practice this means downstream projects rarely need to call ``ds.close()`` themselves — function-scoped fixtures and inline test code are both covered automatically, while long-lived shared fixtures keep working as before.
+
+If you need to opt out of this behavior, add the following to your ``pytest.ini`` (or equivalent):
+
+.. code-block:: ini
+
+    [pytest]
+    datasette_autoclose = false
+
 .. _testing_datasette_client:
 
 Using datasette.client in tests

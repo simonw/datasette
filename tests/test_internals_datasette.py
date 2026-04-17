@@ -3,8 +3,10 @@ Tests for the datasette.app.Datasette class
 """
 
 import dataclasses
+import os
 from datasette import Context
 from datasette.app import Datasette, Database, ResourcesSQL
+from datasette.database import DatasetteClosedError
 from datasette.resources import DatabaseResource
 from itsdangerous import BadSignature
 import pytest
@@ -213,3 +215,83 @@ async def test_allowed_resources_sql(datasette):
     assert isinstance(result, ResourcesSQL)
     assert "all_rules AS" in result.sql
     assert result.params["action"] == "view-table"
+
+
+@pytest.mark.asyncio
+async def test_datasette_close_closes_all_databases_and_executor():
+    ds = Datasette(memory=True)
+    await ds.invoke_startup()
+    # Confirm internal DB has write machinery running
+    assert ds._internal_database._write_thread is not None
+    assert ds._internal_database._write_thread.is_alive()
+    temp_path = ds._internal_database.path
+    assert os.path.exists(temp_path)
+    executor = ds.executor
+    ds.close()
+    # Executor is shut down
+    assert executor._shutdown
+    # All attached Database instances are closed
+    for db in ds.databases.values():
+        assert db._closed
+    assert ds._internal_database._closed
+    # Temp internal DB file is unlinked
+    assert not os.path.exists(temp_path)
+
+
+@pytest.mark.asyncio
+async def test_datasette_close_is_idempotent():
+    ds = Datasette(memory=True)
+    await ds.invoke_startup()
+    ds.close()
+    # Second call should be a no-op
+    ds.close()
+
+
+@pytest.mark.asyncio
+async def test_datasette_close_raises_on_use():
+    ds = Datasette(memory=True)
+    await ds.invoke_startup()
+    ds.close()
+    with pytest.raises(DatasetteClosedError):
+        await ds.get_internal_database().execute("select 1")
+
+
+@pytest.mark.asyncio
+async def test_asgi_lifespan_shutdown_closes_datasette():
+    ds = Datasette(memory=True)
+    app = ds.app()
+    # Drive an ASGI lifespan: startup, then shutdown.
+    messages_sent = []
+    inbox = [
+        {"type": "lifespan.startup"},
+        {"type": "lifespan.shutdown"},
+    ]
+
+    async def receive():
+        return inbox.pop(0)
+
+    async def send(message):
+        messages_sent.append(message)
+
+    await app({"type": "lifespan"}, receive, send)
+    assert {"type": "lifespan.startup.complete"} in messages_sent
+    assert {"type": "lifespan.shutdown.complete"} in messages_sent
+    assert ds._closed
+
+
+@pytest.mark.asyncio
+async def test_datasette_close_continues_past_db_error():
+    # If one Database raises during close(), the others still get closed.
+    ds = Datasette(memory=True)
+    await ds.invoke_startup()
+
+    class Boom(Database):
+        def close(self):
+            raise RuntimeError("boom")
+
+    ds.add_database(Boom(ds, is_memory=True), name="bad")
+    good = ds.add_database(Database(ds, is_memory=True), name="good")
+    with pytest.raises(RuntimeError, match="boom"):
+        ds.close()
+    assert good._closed
+    assert ds._internal_database._closed

@@ -23,6 +23,7 @@ async def datasette_with_plugin():
         yield datasette
     finally:
         datasette.pm.unregister(name="undo")
+        datasette.close()
 # -- end datasette_with_plugin_fixture --
 
 

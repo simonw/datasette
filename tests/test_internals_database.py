@@ -540,6 +540,37 @@ async def test_execute_write_fn_exception(db):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("param_name", ["conn", "connection", "db", "c"])
+async def test_execute_write_fn_accepts_any_single_param_name(db, param_name):
+    # Plugins historically relied on the fact that the callback was invoked
+    # positionally, so any parameter name worked. Preserve that contract.
+    scope = {}
+    exec(
+        "def write_fn({0}):\n"
+        "    return {0}.execute('select 1 + 1').fetchone()[0]".format(param_name),
+        scope,
+    )
+    write_fn = scope["write_fn"]
+    result = await db.execute_write_fn(write_fn)
+    assert result == 2
+
+
+@pytest.mark.asyncio
+async def test_execute_write_fn_with_track_event(db):
+    # When the callback declares track_event it still receives both args
+    # via dependency injection.
+    seen = []
+
+    def write_fn(conn, track_event):
+        seen.append(track_event)
+        return conn.execute("select 1 + 1").fetchone()[0]
+
+    result = await db.execute_write_fn(write_fn)
+    assert result == 2
+    assert len(seen) == 1 and callable(seen[0])
+
+
+@pytest.mark.asyncio
 @pytest.mark.timeout(1)
 async def test_execute_write_fn_connection_exception(tmpdir, app_client):
     path = str(tmpdir / "immutable.db")

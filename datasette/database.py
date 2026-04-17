@@ -1,6 +1,7 @@
 import asyncio
 import atexit
 from collections import namedtuple
+import inspect
 import os
 from pathlib import Path
 import janus
@@ -263,15 +264,21 @@ class Database:
     def _wrap_fn_with_hooks(self, fn, request, transaction, track_event):
         from .plugins import pm
 
-        # Wrap fn so it receives track_event if its signature supports it
+        # Wrap fn so it receives track_event if its signature supports it.
+        # Historically fn was called positionally, so any single-parameter
+        # name (conn, connection, db, ...) worked. Preserve that by only
+        # switching to keyword dependency injection when the callback
+        # explicitly opts in by declaring a `track_event` parameter.
         original_fn = fn
 
-        def fn_with_track_event(conn):
-            return call_with_supported_arguments(
-                original_fn, conn=conn, track_event=track_event
-            )
+        if "track_event" in inspect.signature(original_fn).parameters:
 
-        fn = fn_with_track_event
+            def fn_with_track_event(conn):
+                return call_with_supported_arguments(
+                    original_fn, conn=conn, track_event=track_event
+                )
+
+            fn = fn_with_track_event
 
         wrappers = pm.hook.write_wrapper(
             datasette=self.ds,

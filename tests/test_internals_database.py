@@ -4,6 +4,7 @@ Tests for the datasette.database.Database class
 
 from datasette.app import Datasette
 from datasette.database import Database, Results, MultipleValues
+from datasette.database import DatasetteClosedError
 from datasette.utils.sqlite import sqlite3, sqlite_version
 from datasette.utils import Column
 import pytest
@@ -833,3 +834,58 @@ def test_repr_temp_disk(app_client):
     assert isinstance(db.size, int)
     assert isinstance(db.mtime_ns, int)
     db.close()
+
+
+@pytest.mark.asyncio
+async def test_database_close_shuts_down_write_thread(tmpdir):
+    path = str(tmpdir / "dbclose.db")
+    conn = sqlite3.connect(path)
+    conn.execute("create table t (id integer primary key)")
+    conn.close()
+    ds = Datasette([path])
+    db = ds.get_database("dbclose")
+    # Trigger write thread creation
+    await db.execute_write("insert into t (id) values (1)")
+    assert db._write_thread is not None
+    assert db._write_thread.is_alive()
+    db.close()
+    # Wait briefly for the thread to exit — the sentinel should cause it to return.
+    db._write_thread.join(timeout=5)
+    assert not db._write_thread.is_alive()
+    ds._internal_database.close()
+
+
+@pytest.mark.asyncio
+async def test_database_close_raises_on_further_use(tmpdir):
+    path = str(tmpdir / "closed.db")
+    conn = sqlite3.connect(path)
+    conn.execute("create table t (id integer primary key)")
+    conn.close()
+    ds = Datasette([path])
+    db = ds.get_database("closed")
+    await db.execute("select 1")
+    db.close()
+    with pytest.raises(DatasetteClosedError):
+        await db.execute("select 1")
+    with pytest.raises(DatasetteClosedError):
+        await db.execute_write("insert into t (id) values (1)")
+    with pytest.raises(DatasetteClosedError):
+        await db.execute_fn(lambda conn: conn.execute("select 1").fetchone())
+    with pytest.raises(DatasetteClosedError):
+        await db.execute_write_fn(lambda conn: conn.execute("select 1"))
+    ds._internal_database.close()
+
+
+@pytest.mark.asyncio
+async def test_database_close_is_idempotent(tmpdir):
+    path = str(tmpdir / "idemp.db")
+    conn = sqlite3.connect(path)
+    conn.execute("create table t (id integer primary key)")
+    conn.close()
+    ds = Datasette([path])
+    db = ds.get_database("idemp")
+    await db.execute_write("insert into t (id) values (1)")
+    db.close()
+    # Second call should be a no-op, not raise
+    db.close()
+    ds._internal_database.close()

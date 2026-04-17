@@ -2338,10 +2338,13 @@ class Datasette:
                 if not database.is_mutable:
                     await database.table_counts(limit=60 * 60 * 1000)
 
+        async def _close_on_shutdown():
+            self.close()
+
         asgi = CrossOriginProtectionMiddleware(DatasetteRouter(self, routes), self)
         if self.setting("trace_debug"):
             asgi = AsgiTracer(asgi)
-        asgi = AsgiLifespan(asgi)
+        asgi = AsgiLifespan(asgi, on_shutdown=[_close_on_shutdown])
         asgi = AsgiRunOnFirstRequest(asgi, on_startup=[setup_db, self.invoke_startup])
         for wrapper in pm.hook.asgi_wrapper(datasette=self):
             asgi = wrapper(asgi)

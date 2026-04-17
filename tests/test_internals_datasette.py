@@ -257,6 +257,29 @@ async def test_datasette_close_raises_on_use():
 
 
 @pytest.mark.asyncio
+async def test_asgi_lifespan_shutdown_closes_datasette():
+    ds = Datasette(memory=True)
+    app = ds.app()
+    # Drive an ASGI lifespan: startup, then shutdown.
+    messages_sent = []
+    inbox = [
+        {"type": "lifespan.startup"},
+        {"type": "lifespan.shutdown"},
+    ]
+
+    async def receive():
+        return inbox.pop(0)
+
+    async def send(message):
+        messages_sent.append(message)
+
+    await app({"type": "lifespan"}, receive, send)
+    assert {"type": "lifespan.startup.complete"} in messages_sent
+    assert {"type": "lifespan.shutdown.complete"} in messages_sent
+    assert ds._closed
+
+
+@pytest.mark.asyncio
 async def test_datasette_close_continues_past_db_error():
     # If one Database raises during close(), the others still get closed.
     ds = Datasette(memory=True)

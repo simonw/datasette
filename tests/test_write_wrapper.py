@@ -505,6 +505,7 @@ def ds_with_event_tracking(tmp_path):
     ds.track_event = recording_track_event
 
     yield ds
+    ds.close()
 
 
 @pytest.mark.asyncio

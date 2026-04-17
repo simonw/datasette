@@ -80,6 +80,7 @@ dev = [
     "myst-parser",
     "sphinx-markdown-builder",
     "ruamel.yaml",
+    "psutil>=5.9",
 ]
 
 [project.optional-dependencies]

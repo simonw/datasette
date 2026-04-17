@@ -28,6 +28,7 @@ UNDOCUMENTED_PERMISSIONS = {
     "view_document",
 }
 
+
 def wait_until_responds(url, timeout=5.0, client=httpx, **kwargs):
     start = time.time()
     while time.time() - start < timeout:

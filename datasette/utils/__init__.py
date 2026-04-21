@@ -1471,6 +1471,7 @@ _table_config_keys = (
     "fts_table",
     "fts_pk",
     "searchmode",
+    "presets",
 )
 
 

@@ -41,6 +41,18 @@
 </dl>
 {% endif %}
 
+{% if presets %}
+    <div class="table-presets">
+        <span class="presets-label">Presets:</span>
+        {% for preset in presets %}
+            <a href="{{ preset.url }}" class="preset-link" rel="nofollow">{{ preset.name }}</a>
+            {% if not loop.last %}
+                <span class="preset-separator">|</span>
+            {% endif %}
+        {% endfor %}
+    </div>
+{% endif %}
+
 {% if count or human_description_en %}
     <h3>
         {% if count == count_limit + 1 %}&gt;{{ "{:,}".format(count_limit) }} rows

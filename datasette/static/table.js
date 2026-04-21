@@ -755,15 +755,15 @@ function initCellExpandToggle() {
       if (isExpanded) {
         truncatedValue.style.display = "";
         fullValue.style.display = "none";
-        button.textContent = "展开";
+        button.textContent = "Expand";
         button.setAttribute("data-expanded", "false");
-        button.setAttribute("aria-label", "展开");
+        button.setAttribute("aria-label", "Expand");
       } else {
         truncatedValue.style.display = "none";
         fullValue.style.display = "";
-        button.textContent = "折叠";
+        button.textContent = "Collapse";
         button.setAttribute("data-expanded", "true");
-        button.setAttribute("aria-label", "折叠");
+        button.setAttribute("aria-label", "Collapse");
       }
     });
   });

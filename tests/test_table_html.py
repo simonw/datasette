@@ -1471,7 +1471,7 @@ async def test_table_cell_truncation_with_expand():
         assert full_value.text == "This is a very long text that should be truncated"
         expand_button = long_text_td.find("button", {"class": "cell-toggle-expand"})
         assert expand_button is not None
-        assert expand_button.text == "展开"
+        assert expand_button.text == "Expand"
         assert expand_button.get("data-expanded") == "false"
         second_data_row = rows[2]
         tds_2 = second_data_row.find_all("td")
@@ -1506,3 +1506,158 @@ async def test_json_api_not_affected_by_presets():
         assert "ok" in data
         assert "rows" in data
         assert "presets" not in data
+
+
+@pytest.mark.asyncio
+async def test_table_preset_configuration_comprehensive():
+    config = {
+        "databases": {
+            "fixtures": {
+                "tables": {
+                    "simple_primary_key": {
+                        "presets": [
+                            {
+                                "name": "Contains a",
+                                "args": {"content__contains": "a"},
+                            },
+                            {
+                                "name": "Sorted by id desc",
+                                "args": {},
+                                "sort_desc": "id",
+                            },
+                            {
+                                "name": "Filtered and sorted",
+                                "args": {"content__startswith": "c"},
+                                "sort": "id",
+                            },
+                        ]
+                    }
+                }
+            }
+        }
+    }
+    with make_app_client(config=config) as client:
+        response = await client.get("/fixtures/simple_primary_key")
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        presets_div = soup.find("div", {"class": "table-presets"})
+        assert presets_div is not None
+        assert "Presets:" in presets_div.text
+        preset_links = presets_div.find_all("a", {"class": "preset-link"})
+        assert len(preset_links) == 3
+        assert preset_links[0].text == "Contains a"
+        assert "content__contains=a" in preset_links[0]["href"]
+        assert preset_links[1].text == "Sorted by id desc"
+        assert "_sort_desc=id" in preset_links[1]["href"]
+        assert preset_links[2].text == "Filtered and sorted"
+        assert "content__startswith=c" in preset_links[2]["href"]
+        assert "_sort=id" in preset_links[2]["href"]
+
+
+@pytest.mark.asyncio
+async def test_table_preset_without_name_ignored():
+    config = {
+        "databases": {
+            "fixtures": {
+                "tables": {
+                    "simple_primary_key": {
+                        "presets": [
+                            {
+                                "args": {"content__contains": "a"},
+                            },
+                            {
+                                "name": "Valid preset",
+                                "args": {"content__contains": "b"},
+                            },
+                        ]
+                    }
+                }
+            }
+        }
+    }
+    with make_app_client(config=config) as client:
+        response = await client.get("/fixtures/simple_primary_key")
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        presets_div = soup.find("div", {"class": "table-presets"})
+        assert presets_div is not None
+        preset_links = presets_div.find_all("a", {"class": "preset-link"})
+        assert len(preset_links) == 1
+        assert preset_links[0].text == "Valid preset"
+
+
+@pytest.mark.asyncio
+async def test_long_text_cell_expand_collapse_js_loaded():
+    with make_app_client(
+        settings={"truncate_cells_html": 5},
+        extra_databases={
+            "test_text.db": """
+                CREATE TABLE test_text (
+                    id integer primary key,
+                    content text
+                );
+                INSERT INTO test_text (id, content) VALUES (1, 'This is a very long text content that should be truncated');
+            """
+        },
+    ) as client:
+        response = await client.get("/test_text/test_text")
+        assert response.status_code == 200
+        assert "table.js" in response.text
+        assert "initCellExpandToggle" in response.text
+
+
+@pytest.mark.asyncio
+async def test_template_compatibility_custom_cell_value():
+    template_dir = pathlib.Path(__file__).parent / "test_templates"
+    custom_template = template_dir / "_table.html"
+    custom_content = custom_template.read_text() if custom_template.exists() else ""
+    
+    with make_app_client(
+        settings={"truncate_cells_html": 10},
+        extra_databases={
+            "compat_test.db": """
+                CREATE TABLE simple (id integer primary key, name text);
+                INSERT INTO simple (id, name) VALUES (1, 'short'), (2, 'verylongtextthatneedstruncation');
+            """
+        },
+    ) as client:
+        response = await client.get("/compat_test/simple")
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        rows = soup.find_all("tr")
+        assert len(rows) >= 3
+        first_data_row = rows[1]
+        tds = first_data_row.find_all("td")
+        assert len(tds) >= 2
+        for td in tds:
+            if "cell-truncated" in td.get("class", []):
+                truncated = td.find("span", {"class": "cell-truncated-value"})
+                full = td.find("span", {"class": "cell-full-value"})
+                button = td.find("button", {"class": "cell-toggle-expand"})
+                assert truncated is not None
+                assert full is not None
+                assert button is not None
+
+
+@pytest.mark.asyncio
+async def test_display_rows_backwards_compatibility():
+    with make_app_client(
+        settings={"truncate_cells_html": 0},
+        extra_databases={
+            "compat.db": """
+                CREATE TABLE test (id integer primary key, text_col text);
+                INSERT INTO test (id, text_col) VALUES (1, 'This is some text');
+            """
+        },
+    ) as client:
+        response = await client.get("/compat/test")
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        table = soup.find("table", {"class": "rows-and-columns"})
+        rows = table.find_all("tr")
+        data_row = rows[1]
+        tds = data_row.find_all("td")
+        for td in tds:
+            assert "cell-truncated" not in td.get("class", [])
+            assert td.find("span", {"class": "cell-truncated-value"}) is None
+            assert td.find("button", {"class": "cell-toggle-expand"}) is None

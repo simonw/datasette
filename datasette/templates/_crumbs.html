@@ -3,6 +3,9 @@
   {% set items=crumb_items(request=request, database=database, table=table) %}
   {% if items %}
     <p class="crumbs">
+        {% if metadata and metadata.brand %}
+        <a style="font-size: 18px; font-weight:bold; padding-right: 8px;" href="{{metadata.brand_url or '#'}}">{{metadata.brand}}</a>
+        {% endif %}
       {% for item in items %}
         <a href="{{ item.href }}">{{ item.label }}</a>
         {% if not loop.last %}

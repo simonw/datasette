@@ -742,6 +742,33 @@ function openColumnChooser() {
   });
 }
 
+function initCellExpandToggle() {
+  var toggleButtons = document.querySelectorAll(".cell-toggle-expand");
+  toggleButtons.forEach(function (button) {
+    button.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      var td = button.closest("td");
+      var truncatedValue = td.querySelector(".cell-truncated-value");
+      var fullValue = td.querySelector(".cell-full-value");
+      var isExpanded = button.getAttribute("data-expanded") === "true";
+
+      if (isExpanded) {
+        truncatedValue.style.display = "";
+        fullValue.style.display = "none";
+        button.textContent = "展开";
+        button.setAttribute("data-expanded", "false");
+        button.setAttribute("aria-label", "展开");
+      } else {
+        truncatedValue.style.display = "none";
+        fullValue.style.display = "";
+        button.textContent = "折叠";
+        button.setAttribute("data-expanded", "true");
+        button.setAttribute("aria-label", "折叠");
+      }
+    });
+  });
+}
+
 // Ensures Table UI is initialized only after the Manager is ready.
 document.addEventListener("datasette_init", function (evt) {
   const { detail: manager } = evt;
@@ -754,4 +781,5 @@ document.addEventListener("datasette_init", function (evt) {
   // Other UI functions with interactive JS needs
   addButtonsToFilterRows(manager);
   initAutocompleteForFilterValues(manager);
+  initCellExpandToggle();
 });

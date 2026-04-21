@@ -333,19 +333,25 @@ async def display_columns_and_rows(
                 )
             else:
                 display_value = str(value)
+                is_truncated = False
+                full_value = None
                 if truncate_cells and len(display_value) > truncate_cells:
+                    is_truncated = True
+                    full_value = display_value
                     display_value = display_value[:truncate_cells] + "\u2026"
 
-            cells.append(
-                {
-                    "column": column,
-                    "value": display_value,
-                    "raw": value,
-                    "value_type": (
-                        "none" if value is None else str(type(value).__name__)
-                    ),
-                }
-            )
+            cell_dict = {
+                "column": column,
+                "value": display_value,
+                "raw": value,
+                "value_type": (
+                    "none" if value is None else str(type(value).__name__)
+                ),
+            }
+            if is_truncated:
+                cell_dict["is_truncated"] = True
+                cell_dict["full_value"] = full_value
+            cells.append(cell_dict)
         cell_rows.append(Row(cells))
 
     if link_column:
@@ -1894,6 +1900,38 @@ async def table_view_data(
             expandables.append((fk, label_column))
         return expandables
 
+    async def extra_presets():
+        "Preset queries for this table from configuration"
+        presets = table_metadata.get("presets", [])
+        if not presets:
+            return []
+        base_url = datasette.urls.table(database_name, table_name)
+        result = []
+        for preset in presets:
+            preset_name = preset.get("name")
+            if not preset_name:
+                continue
+            preset_args = dict(preset.get("args", {}))
+            sort = preset.get("sort")
+            sort_desc = preset.get("sort_desc")
+            query_args = {}
+            for key, value in preset_args.items():
+                if value is not None:
+                    query_args[key] = value
+            if sort:
+                query_args["_sort"] = sort
+            if sort_desc:
+                query_args["_sort_desc"] = sort_desc
+            query_string = urllib.parse.urlencode(query_args)
+            preset_url = base_url
+            if query_string:
+                preset_url = f"{preset_url}?{query_string}"
+            result.append({
+                "name": preset_name,
+                "url": preset_url,
+            })
+        return result
+
     async def extra_extras():
         "Available ?_extra= blocks"
         all_extras = [
@@ -1952,6 +1990,7 @@ async def table_view_data(
             "expandable_columns",
             "form_hidden_args",
             "set_column_type_ui",
+            "presets",
         ]
     }
 
@@ -1997,6 +2036,7 @@ async def table_view_data(
         extra_private,
         extra_expandable_columns,
         extra_form_hidden_args,
+        extra_presets,
     )
 
     results = await registry.resolve_multi(

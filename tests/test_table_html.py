@@ -1379,3 +1379,130 @@ def test_foreign_keys_special_character_in_database_name(app_client_with_dot):
     # https://github.com/simonw/datasette/pull/2476
     response = app_client_with_dot.get("/fixtures~2Edot/complex_foreign_keys")
     assert '<a href="/fixtures~2Edot/simple_primary_key/2">world</a>' in response.text
+
+
+@pytest.mark.asyncio
+async def test_table_presets_from_config():
+    config = {
+        "databases": {
+            "fixtures": {
+                "tables": {
+                    "facetable": {
+                        "presets": [
+                            {
+                                "name": "Active items",
+                                "args": {"on_earth": "1"},
+                            },
+                            {
+                                "name": "Sorted by city",
+                                "args": {"on_earth": "1"},
+                                "sort": "_city_id",
+                            },
+                            {
+                                "name": "Sorted by city desc",
+                                "args": {"on_earth": "1"},
+                                "sort_desc": "_city_id",
+                            },
+                        ]
+                    }
+                }
+            }
+        }
+    }
+    with make_app_client(config=config) as client:
+        response = await client.get("/fixtures/facetable")
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        presets_div = soup.find("div", {"class": "table-presets"})
+        assert presets_div is not None
+        preset_links = presets_div.find_all("a", {"class": "preset-link"})
+        assert len(preset_links) == 3
+        assert preset_links[0].text == "Active items"
+        assert "on_earth=1" in preset_links[0]["href"]
+        assert preset_links[1].text == "Sorted by city"
+        assert "on_earth=1" in preset_links[1]["href"]
+        assert "_sort=_city_id" in preset_links[1]["href"]
+        assert preset_links[2].text == "Sorted by city desc"
+        assert "on_earth=1" in preset_links[2]["href"]
+        assert "_sort_desc=_city_id" in preset_links[2]["href"]
+
+
+@pytest.mark.asyncio
+async def test_table_presets_not_shown_when_not_configured():
+    with make_app_client() as client:
+        response = await client.get("/fixtures/facetable")
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        presets_div = soup.find("div", {"class": "table-presets"})
+        assert presets_div is None
+
+
+@pytest.mark.asyncio
+async def test_table_cell_truncation_with_expand():
+    with make_app_client(
+        settings={"truncate_cells_html": 10},
+        extra_databases={
+            "test_long_text.db": """
+                CREATE TABLE long_text (
+                    id integer primary key,
+                    short_text text,
+                    long_text text
+                );
+                INSERT INTO long_text (id, short_text, long_text) VALUES
+                    (1, 'short', 'This is a very long text that should be truncated'),
+                    (2, 'another', 'Short');
+            """
+        },
+    ) as client:
+        response = await client.get("/test_long_text/long_text")
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        table = soup.find("table", {"class": "rows-and-columns"})
+        rows = table.find_all("tr")
+        first_data_row = rows[1]
+        tds = first_data_row.find_all("td")
+        long_text_td = tds[2]
+        assert "cell-truncated" in long_text_td.get("class", [])
+        truncated_value = long_text_td.find("span", {"class": "cell-truncated-value"})
+        assert truncated_value is not None
+        assert truncated_value.text == "This is a …"
+        full_value = long_text_td.find("span", {"class": "cell-full-value"})
+        assert full_value is not None
+        assert full_value.text == "This is a very long text that should be truncated"
+        expand_button = long_text_td.find("button", {"class": "cell-toggle-expand"})
+        assert expand_button is not None
+        assert expand_button.text == "展开"
+        assert expand_button.get("data-expanded") == "false"
+        second_data_row = rows[2]
+        tds_2 = second_data_row.find_all("td")
+        short_text_td = tds_2[2]
+        assert "cell-truncated" not in short_text_td.get("class", [])
+        assert short_text_td.find("span", {"class": "cell-truncated-value"}) is None
+        assert short_text_td.find("button", {"class": "cell-toggle-expand"}) is None
+
+
+@pytest.mark.asyncio
+async def test_json_api_not_affected_by_presets():
+    config = {
+        "databases": {
+            "fixtures": {
+                "tables": {
+                    "simple_primary_key": {
+                        "presets": [
+                            {
+                                "name": "Test Preset",
+                                "args": {"content__contains": "a"},
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    }
+    with make_app_client(config=config) as client:
+        response = await client.get("/fixtures/simple_primary_key.json")
+        assert response.status_code == 200
+        data = response.json()
+        assert "ok" in data
+        assert "rows" in data
+        assert "presets" not in data

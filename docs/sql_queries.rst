@@ -270,6 +270,123 @@ You can alternatively provide an explicit list of named parameters using the ``"
         }
 .. [[[end]]]
 
+.. _dictionary_based_canned_query_parameters:
+
+Dictionary-based canned query parameters
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The items in the ``params`` list can also be dictionaries. This allows for more detailed configuration of each parameter. When using a dictionary, it **must** have a ``name`` key. The following optional keys can also be used:
+
+*   ``description``: A string providing a human-readable description for the parameter. In the web interface, this description will be used as the ``title`` attribute for the input field, typically appearing as a tooltip when the user hovers over the field.
+*   ``default``: A string specifying the default value for the parameter. This value will pre-populate the input field in the form.
+
+Here's an example of a canned query that uses dictionary-based parameter definitions to provide descriptions and default values:
+
+.. [[[cog
+    config_example(cog, """
+    databases:
+      my_store:
+        queries:
+          product_filter:
+            title: Filter Products
+            sql: |-
+              SELECT name, price, category, stock_quantity
+              FROM products
+              WHERE category = :category
+                AND price < :max_price
+                AND stock_quantity >= :min_stock
+              LIMIT :results_limit;
+            params:
+              - name: "category"
+                description: "The product category to filter by (e.g., electronics, books)"
+                default: "electronics"
+              - name: "max_price"
+                description: "The maximum price for the product (e.g., 100.00)"
+                default: "100.00"
+              - name: "min_stock"
+                description: "Minimum stock quantity"
+                default: "1"
+              - name: "results_limit"
+                description: "Maximum number of results to return"
+                default: "10"
+    """)
+.. ]]]
+
+.. tab:: datasette.yaml
+
+    .. code-block:: yaml
+
+
+        databases:
+          my_store:
+            queries:
+              product_filter:
+                title: Filter Products
+                sql: |-
+                  SELECT name, price, category, stock_quantity
+                  FROM products
+                  WHERE category = :category
+                    AND price < :max_price
+                    AND stock_quantity >= :min_stock
+                  LIMIT :results_limit;
+                params:
+                  - name: "category"
+                    description: "The product category to filter by (e.g., electronics, books)"
+                    default: "electronics"
+                  - name: "max_price"
+                    description: "The maximum price for the product (e.g., 100.00)"
+                    default: "100.00"
+                  - name: "min_stock"
+                    description: "Minimum stock quantity"
+                    default: "1"
+                  - name: "results_limit"
+                    description: "Maximum number of results to return"
+                    default: "10"
+
+
+.. tab:: datasette.json
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "my_store": {
+              "queries": {
+                "product_filter": {
+                  "title": "Filter Products",
+                  "sql": "SELECT name, price, category, stock_quantity\nFROM products\nWHERE category = :category\n  AND price < :max_price\n  AND stock_quantity >= :min_stock\nLIMIT :results_limit;",
+                  "params": [
+                    {
+                      "name": "category",
+                      "description": "The product category to filter by (e.g., electronics, books)",
+                      "default": "electronics"
+                    },
+                    {
+                      "name": "max_price",
+                      "description": "The maximum price for the product (e.g., 100.00)",
+                      "default": "100.00"
+                    },
+                    {
+                      "name": "min_stock",
+                      "description": "Minimum stock quantity",
+                      "default": "1"
+                    },
+                    {
+                      "name": "results_limit",
+                      "description": "Maximum number of results to return",
+                      "default": "10"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
+
+This configuration would generate a form with four input fields. The "category" field would default to "electronics" and have a tooltip explaining its purpose. Similar defaults and tooltips would apply to "max_price", "min_stock", and "results_limit".
+
+
 .. _canned_queries_options:
 
 Additional canned query options

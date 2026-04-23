@@ -18,6 +18,7 @@ from .utils import (
     detect_fts,
     detect_primary_keys,
     detect_spatialite,
+    escape_sqlite,
     get_all_foreign_keys,
     get_outbound_foreign_keys,
     md5_not_usedforsecurity,
@@ -552,7 +553,7 @@ class Database:
             try:
                 table_count = (
                     await self.execute(
-                        f"select count(*) from (select * from [{table}] limit {self.count_limit + 1})",
+                        f"select count(*) from (select * from {escape_sqlite(table)} limit {self.count_limit + 1})",
                         custom_time_limit=limit,
                     )
                 ).rows[0][0]

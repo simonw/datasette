@@ -25,6 +25,27 @@ async def test_execute(db):
 
 
 @pytest.mark.asyncio
+async def test_table_counts_with_closing_bracket_identifier(tmp_path):
+    path = tmp_path / "closing-bracket.db"
+    conn = sqlite3.connect(str(path))
+    conn.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, password TEXT)")
+    conn.execute("INSERT INTO users (password) VALUES ('super_secret_password')")
+    malicious_name = 'users] UNION SELECT password FROM users--'
+    conn.execute(
+        f'CREATE TABLE "{malicious_name}" (id INTEGER PRIMARY KEY, content TEXT)'
+    )
+    conn.execute(f'INSERT INTO "{malicious_name}" (content) VALUES (\'ok\')')
+    conn.commit()
+    conn.close()
+
+    ds = Datasette([str(path)])
+    database_name = next(name for name in ds.databases if name != "_internal")
+    counts = await ds.get_database(database_name).table_counts()
+    assert counts == {"users": 1, malicious_name: 1}
+    ds.get_database(database_name).close()
+
+
+@pytest.mark.asyncio
 async def test_results_first(db):
     assert None is (await db.execute("select * from facetable where pk > 100")).first()
     results = await db.execute("select * from facetable")

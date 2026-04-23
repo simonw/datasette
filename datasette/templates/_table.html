@@ -1,6 +1,6 @@
 <!-- above-table-panel is a hook node for plugins to attach to . Displays even if no data available -->
 <div class="above-table-panel"> </div>
-{% if display_rows %}
+{% if display_columns %}
 <div class="table-wrapper">
     <table class="rows-and-columns">
         <thead>
@@ -31,6 +31,7 @@
         </tbody>
     </table>
 </div>
-{% else %}
+{% endif %}
+{% if not display_rows %}
     <p class="zero-results">0 records</p>
 {% endif %}

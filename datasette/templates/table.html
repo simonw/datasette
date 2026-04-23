@@ -141,7 +141,6 @@
 {% if all_columns %}
 <column-chooser></column-chooser>
 <button class="choose-columns-mobile small-screen-only" onclick="openColumnChooser()">Choose columns</button>
-{% if display_rows %}
 <button type="button" class="column-actions-mobile small-screen-only">
     <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="3"></circle>
@@ -149,7 +148,6 @@
     </svg>
     <span>Column actions</span>
 </button>
-{% endif %}
 <script>
 window._columnChooserData = {{ {"allColumns": all_columns, "selectedColumns": display_columns|map(attribute='name')|list, "primaryKeys": primary_keys}|tojson }};
 </script>

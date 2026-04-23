@@ -752,8 +752,11 @@ async def test_column_chooser_present(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_mobile_column_actions_present(ds_client):
-    response = await ds_client.get("/fixtures/facetable")
+@pytest.mark.parametrize(
+    "path", ["/fixtures/facetable", "/fixtures/123_starts_with_digits"]
+)
+async def test_mobile_column_actions_present(ds_client, path):
+    response = await ds_client.get(path)
     assert response.status_code == 200
     soup = Soup(response.text, "html.parser")
     button = soup.select_one("button.column-actions-mobile.small-screen-only")
@@ -764,6 +767,25 @@ async def test_mobile_column_actions_present(ds_client):
         "mobile-column-actions.js" in (script.get("src") or "")
         for script in soup.find_all("script")
     )
+    # mobile-column-actions.js builds its dialog from <th data-column> elements,
+    # so the thead must render even when the table has no rows.
+    ths = soup.select("table.rows-and-columns thead th[data-column]")
+    assert len(ths) >= 1
+
+
+@pytest.mark.asyncio
+async def test_zero_row_table_renders_thead(ds_client):
+    response = await ds_client.get("/fixtures/123_starts_with_digits")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    table = soup.select_one("table.rows-and-columns")
+    assert table is not None
+    column_names = [
+        th.get("data-column") for th in table.select("thead th[data-column]")
+    ]
+    assert "content" in column_names
+    assert table.select_one("tbody tr") is None
+    assert soup.select_one("p.zero-results") is not None
 
 
 @pytest.mark.asyncio

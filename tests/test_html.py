@@ -805,7 +805,7 @@ async def test_blob_download_invalid_messages(ds_client, path, expected_message)
 async def test_zero_results(ds_client, path):
     response = await ds_client.get(path)
     soup = Soup(response.text, "html.parser")
-    assert 0 == len(soup.select("table"))
+    assert 0 == len(soup.select("table tbody tr"))
     assert 1 == len(soup.select("p.zero-results"))
 
 

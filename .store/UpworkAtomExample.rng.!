@@ -1,0 +1,129 @@
+<grammar xmlns="http://relaxng.org/ns/structure/1.0" ns="http://www.w3.org/2005/Atom"
+  datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">
+  <start>
+    <ref name="feedContent" />
+  </start>
+  <define name="feedContent">
+    <element name="feed">
+      <ref name="idContent" />
+      <ref name="titleContent" />
+      <ref name="authorContent" />
+      <ref name="updatedContent" />
+      <ref name="linkContent" />
+      <ref name="subtitleContent" />
+      <ref name="rightsContent" />
+      <ref name="logoContent" />
+      <ref name="generatorContent" />
+      <oneOrMore>
+        <ref name="entryContent" />
+      </oneOrMore>
+    </element>
+  </define>
+  <define name="idContent">
+    <element name="id">
+      <text />
+    </element>
+  </define>
+  <define name="titleContent">
+    <element name="title">
+      <empty />
+    </element>
+  </define>
+  <define name="authorContent">
+    <element name="author">
+      <ref name="nameContent" />
+      <ref name="emailContent" />
+    </element>
+  </define>
+  <define name="nameContent">
+    <element name="name">
+      <text />
+    </element>
+  </define>
+  <define name="emailContent">
+    <element name="email">
+      <text />
+    </element>
+  </define>
+  <define name="updatedContent">
+    <element name="updated">
+      <text />
+    </element>
+  </define>
+  <define name="linkContent">
+    <element name="link">
+      <attribute name="rel" />
+      <attribute name="href" />
+      <attribute name="hreflang" />
+    </element>
+  </define>
+  <define name="subtitleContent">
+    <element name="subtitle">
+      <empty />
+    </element>
+  </define>
+  <define name="rightsContent">
+    <element name="rights">
+      <text />
+    </element>
+  </define>
+  <define name="logoContent">
+    <element name="logo">
+      <text />
+    </element>
+  </define>
+  <define name="generatorContent">
+    <element name="generator">
+      <text />
+    </element>
+  </define>
+  <define name="entryContent">
+    <element name="entry">
+      <ref name="idContent" />
+      <ref name="titleContent" />
+      <ref name="updatedContent" />
+      <ref name="linkContent" />
+      <ref name="summaryContent" />
+      <ref name="contentContent" />
+    </element>
+  </define>
+  <define name="idContent">
+    <element name="id">
+      <text />
+    </element>
+  </define>
+  <define name="titleContent">
+    <element name="title">
+      <attribute name="type">
+        <value>html</value>
+      </attribute>
+    </element>
+  </define>
+  <define name="updatedContent">
+    <element name="updated">
+      <text />
+    </element>
+  </define>
+  <define name="linkContent">
+    <element name="link">
+      <attribute name="rel">
+        <value>alternate</value>
+      </attribute>
+      <attribute name="href" />
+    </element>
+  </define>
+  <define name="summaryContent">
+    <element name="summary">
+      <attribute name="type">
+        <value>html</value>
+      </attribute>
+    </element>
+  </define>
+  <define name="contentContent">
+    <element name="content">
+      <attribute name="type">
+        <value>html</value>
+      </attribute>
+    </element>
+  </define>
+</grammar>

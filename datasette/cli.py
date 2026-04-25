@@ -1,4 +1,5 @@
 import asyncio
+import socket
 import uvicorn
 import click
 from click import formatting
@@ -705,6 +706,18 @@ def serve(
         return
 
     # Start the server
+    # If port is 0 and we need to print/open a URL before the server starts
+    # (because of --root or --open), pre-bind a TCP socket so we know the
+    # OS-assigned port. See https://github.com/simonw/datasette/issues/873
+    pre_bound_socket = None
+    if port == 0 and not uds and (root or open_browser):
+        family = socket.AF_INET6 if host and ":" in host else socket.AF_INET
+        pre_bound_socket = socket.socket(family=family, type=socket.SOCK_STREAM)
+        pre_bound_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        pre_bound_socket.bind((host, 0))
+        pre_bound_socket.set_inheritable(True)
+        port = pre_bound_socket.getsockname()[1]
+
     url = None
     if root:
         ds.root_enabled = True
@@ -718,6 +731,19 @@ def serve(
             path = run_sync(lambda: initial_path_for_datasette(ds))
             url = f"http://{host}:{port}{path}"
         webbrowser.open(url)
+    if pre_bound_socket is not None:
+        # Hand the pre-bound socket to uvicorn via Server.run(sockets=[...])
+        # since uvicorn.run()'s `fd=` parameter assumes AF_UNIX.
+        config_kwargs = dict(
+            host=host, port=port, log_level="info", lifespan="on", workers=1
+        )
+        if ssl_keyfile:
+            config_kwargs["ssl_keyfile"] = ssl_keyfile
+        if ssl_certfile:
+            config_kwargs["ssl_certfile"] = ssl_certfile
+        config = uvicorn.Config(ds.app(), **config_kwargs)
+        uvicorn.Server(config).run(sockets=[pre_bound_socket])
+        return
     uvicorn_kwargs = dict(
         host=host, port=port, log_level="info", lifespan="on", workers=1
     )

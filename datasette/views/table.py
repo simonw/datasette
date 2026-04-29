@@ -976,7 +976,7 @@ async def table_view_traced(datasette, request):
     if request.method == "POST":
         return Response.text("Method not allowed", status=405)
 
-    format_ = request.url_vars.get("format") or "html"
+    format_ = request.url_vars.get("format") or request.args.get("_format") or "html"
     extra_extras = None
     context_for_html_hack = False
     default_labels = False
@@ -1024,6 +1024,33 @@ async def table_view_traced(datasette, request):
             return data, None, None
 
         return await stream_csv(datasette, fetch_data, request, resolved.db.name)
+    elif format_ == "markdown":
+
+        async def fetch_data(request, _next=None):
+            (
+                data,
+                rows,
+                columns,
+                expanded_columns,
+                sql,
+                next_url,
+            ) = await table_view_data(
+                datasette,
+                request,
+                resolved,
+                extra_extras=extra_extras,
+                context_for_html_hack=context_for_html_hack,
+                default_labels=default_labels,
+                _next=_next,
+            )
+            data["rows"] = rows
+            data["table"] = resolved.table
+            data["columns"] = columns
+            data["expanded_columns"] = expanded_columns
+            return data, None, None
+
+        from datasette.views.base import stream_markdown
+        return await stream_markdown(datasette, fetch_data, request, resolved.db.name)
     elif format_ in datasette.renderers.keys():
         # Dispatch request to the correct output format renderer
         # (CSV is not handled here due to streaming)
@@ -2045,6 +2072,12 @@ async def table_view_data(
             path_with_format(request=request, format="csv", extra_qs=url_csv_args)
         )
         url_csv_path = url_csv.split("?")[0]
+        # Markdown export URL
+        url_markdown_args = {**url_labels_extra}
+        url_markdown = datasette.urls.path(
+            path_with_format(request=request, format="markdown", extra_qs=url_markdown_args)
+        )
+        url_markdown_path = url_markdown.split("?")[0]
         data.update(
             {
                 "url_csv": url_csv,
@@ -2055,6 +2088,13 @@ async def table_view_data(
                     if key not in ("_labels", "_facet", "_size")
                 ]
                 + [("_size", "max")],
+                "url_markdown": url_markdown,
+                "url_markdown_path": url_markdown_path,
+                "url_markdown_hidden_args": [
+                    (key, value)
+                    for key, value in urllib.parse.parse_qsl(request.query_string)
+                    if key not in ("_labels", "_facet", "_size", "_max_rows")
+                ],
             }
         )
         # if no sort specified AND table has a single primary key,

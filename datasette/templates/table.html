@@ -124,7 +124,7 @@
     <p><a class="not-underlined" title="{{ query.sql }}" href="{{ urls.database(database) }}?{{ {'sql': query.sql}|urlencode|safe }}{% if query.params %}&amp;{{ query.params|urlencode|safe }}{% endif %}">&#x270e; <span class="underlined">View and edit SQL</span></a></p>
 {% endif %}
 
-<p class="export-links">This data as {% for name, url in renderers.items() %}<a href="{{ url }}">{{ name }}</a>{{ ", " if not loop.last }}{% endfor %}{% if display_rows %}, <a href="{{ url_csv }}">CSV</a> (<a href="#export">advanced</a>){% endif %}</p>
+<p class="export-links">This data as {% for name, url in renderers.items() %}<a href="{{ url }}">{{ name }}</a>{{ ", " if not loop.last }}{% endfor %}{% if display_rows %}, <a href="{{ url_csv }}">CSV</a> (<a href="#export">advanced</a>), <a href="{{ url_markdown }}">Markdown</a> (<a href="#export-markdown">advanced</a>){% endif %}</p>
 
 {% if suggested_facets %}
     {% include "_suggested_facets.html" %}
@@ -186,6 +186,20 @@ window._setColumnTypeData = {{ set_column_type_ui|tojson }};
                 {% endfor %}
             </p>
         </form>
+        <div id="export-markdown" class="advanced-export">
+            <form class="core" action="{{ url_markdown_path }}" method="get">
+                <p>
+                    Markdown options:
+                    {% if expandable_columns %}<label><input type="checkbox" name="_labels" checked> expand labels</label>{% endif %}
+                    {% if next_url and settings.allow_csv_stream %}<label><input type="checkbox" name="_stream"> export all rows (unlimited)</label>{% endif %}
+                    <label>Max rows: <input type="number" name="_max_rows" value="500" min="0" max="10000" style="width: 80px;"></label>
+                    <input type="submit" value="Export Markdown">
+                    {% for key, value in url_markdown_hidden_args %}
+                        <input type="hidden" name="{{ key }}" value="{{ value }}">
+                    {% endfor %}
+                </p>
+            </form>
+        </div>
     </div>
 {% endif %}
 

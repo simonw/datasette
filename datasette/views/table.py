@@ -976,7 +976,7 @@ async def table_view_traced(datasette, request):
     if request.method == "POST":
         return Response.text("Method not allowed", status=405)
 
-    format_ = request.url_vars.get("format") or "html"
+    format_ = request.url_vars.get("format") or request.args.get("_format") or "html"
     extra_extras = None
     context_for_html_hack = False
     default_labels = False
@@ -2072,6 +2072,12 @@ async def table_view_data(
             path_with_format(request=request, format="csv", extra_qs=url_csv_args)
         )
         url_csv_path = url_csv.split("?")[0]
+        # Markdown export URL
+        url_markdown_args = {**url_labels_extra}
+        url_markdown = datasette.urls.path(
+            path_with_format(request=request, format="markdown", extra_qs=url_markdown_args)
+        )
+        url_markdown_path = url_markdown.split("?")[0]
         data.update(
             {
                 "url_csv": url_csv,
@@ -2082,6 +2088,13 @@ async def table_view_data(
                     if key not in ("_labels", "_facet", "_size")
                 ]
                 + [("_size", "max")],
+                "url_markdown": url_markdown,
+                "url_markdown_path": url_markdown_path,
+                "url_markdown_hidden_args": [
+                    (key, value)
+                    for key, value in urllib.parse.parse_qsl(request.query_string)
+                    if key not in ("_labels", "_facet", "_size", "_max_rows")
+                ],
             }
         )
         # if no sort specified AND table has a single primary key,

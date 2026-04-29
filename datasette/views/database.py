@@ -40,7 +40,7 @@ from . import Context
 
 class DatabaseView(View):
     async def get(self, request, datasette):
-        format_ = request.url_vars.get("format") or "html"
+        format_ = request.url_vars.get("format") or request.args.get("_format") or "html"
 
         await datasette.refresh_schemas()
 
@@ -591,7 +591,7 @@ class QueryView(View):
         if params.get("_timelimit"):
             extra_args["custom_time_limit"] = int(params["_timelimit"])
 
-        format_ = request.url_vars.get("format") or "html"
+        format_ = request.url_vars.get("format") or request.args.get("_format") or "html"
 
         query_error = None
         results = None

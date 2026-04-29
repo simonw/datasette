@@ -206,16 +206,21 @@ class DataView(BaseView):
     async def as_csv(self, request, database):
         return await stream_csv(self.ds, self.data, request, database)
 
+    async def as_markdown(self, request, database):
+        return await stream_markdown(self.ds, self.data, request, database)
+
     async def get(self, request):
         db = await self.ds.resolve_database(request)
         database = db.name
         database_route = db.route
 
-        _format = request.url_vars["format"]
+        _format = request.url_vars["format"] or request.args.get("_format")
         data_kwargs = {}
 
         if _format == "csv":
             return await self.as_csv(request, database_route)
+        elif _format == "markdown":
+            return await self.as_markdown(request, database_route)
 
         if _format is None:
             # HTML views default to expanding all foreign key labels

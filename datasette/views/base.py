@@ -571,8 +571,33 @@ async def stream_csv(datasette, fetch_data, request, database):
 
 
 async def stream_markdown(datasette, fetch_data, request, database):
+    # 行数限制配置
+    DEFAULT_MAX_ROWS = 500
+    MAX_ALLOWED_ROWS = 10000
+    
+    # 解析 _max_rows 参数
+    max_rows_param = request.args.get("_max_rows")
+    if max_rows_param:
+        try:
+            max_rows = int(max_rows_param)
+            # 确保不超过最大允许值
+            max_rows = min(max_rows, MAX_ALLOWED_ROWS)
+            # 确保不小于 0
+            max_rows = max(max_rows, 0)
+        except ValueError:
+            # 无效参数，使用默认值
+            max_rows = DEFAULT_MAX_ROWS
+    else:
+        max_rows = DEFAULT_MAX_ROWS
+    
+    # 是否使用流式模式获取全部数据
+    use_stream = request.args.get("_stream")
+    
+    # 如果 _stream=1，则忽略行数限制（获取全部数据）
+    if use_stream:
+        max_rows = None  # None 表示无限制
+    
     kwargs = {}
-    stream = request.args.get("_stream")
     # Do not calculate facets or counts:
     extra_parameters = [
         "{}=1".format(key)
@@ -588,13 +613,16 @@ async def stream_markdown(datasette, fetch_data, request, database):
         new_scope = dict(request.scope, query_string=new_query_string.encode("latin-1"))
         receive = request.receive
         request = Request(new_scope, receive)
-    if stream:
+    
+    # 如果使用流式模式获取全部数据
+    if use_stream:
         # Some quick soundness checks
         if not datasette.setting("allow_csv_stream"):
             raise BadRequest("Markdown streaming is disabled")
         if request.args.get("_next"):
             raise BadRequest("_next not allowed for Markdown streaming")
         kwargs["_size"] = "max"
+    
     # Fetch the first page
     try:
         response_or_template_contexts = await fetch_data(request)
@@ -648,14 +676,17 @@ async def stream_markdown(datasette, fetch_data, request, database):
         return value
 
     async def stream_fn(r):
-        nonlocal data, trace
+        nonlocal data, trace, max_rows, use_stream
         limited_writer = LimitedWriter(r, datasette.setting("max_csv_mb"))
         if trace:
             await limited_writer.write(preamble)
         
         first = True
         next = None
-        while first or (next and stream):
+        row_count = 0
+        is_truncated = False
+        
+        while first or (next and use_stream):
             try:
                 kwargs = {}
                 if next:
@@ -673,6 +704,13 @@ async def stream_markdown(datasette, fetch_data, request, database):
                     first = False
                 next = data.get("next")
                 for row in data["rows"]:
+                    # 检查是否达到行数限制
+                    if max_rows is not None and row_count >= max_rows:
+                        is_truncated = True
+                        # 退出循环
+                        next = None
+                        break
+                    
                     if any(isinstance(r, bytes) for r in row):
                         new_row = []
                         for column, cell in zip(headings, row):
@@ -710,6 +748,8 @@ async def stream_markdown(datasette, fetch_data, request, database):
                                     )
                             new_row.append(cell)
                         row = new_row
+                    
+                    # 构建并写入数据行
                     if not expanded_columns:
                         # Simple path
                         markdown_row = "| " + " | ".join(escape_markdown(cell) for cell in row) + " |\n"
@@ -731,11 +771,20 @@ async def stream_markdown(datasette, fetch_data, request, database):
                                 new_row.append(cell)
                         markdown_row = "| " + " | ".join(escape_markdown(cell) for cell in new_row) + " |\n"
                         await limited_writer.write(markdown_row)
+                    
+                    # 增加行数计数
+                    row_count += 1
             except Exception as ex:
                 sys.stderr.write("Caught this error: {}\n".format(ex))
                 sys.stderr.flush()
                 await r.write(str(ex))
                 return
+        
+        # 如果被截断，添加截断注释
+        if is_truncated:
+            truncation_note = f"\n*已截断，仅显示前{row_count}行*\n"
+            await limited_writer.write(truncation_note)
+        
         await limited_writer.write(postamble)
 
     headers = {}

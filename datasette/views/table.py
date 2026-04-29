@@ -1024,6 +1024,33 @@ async def table_view_traced(datasette, request):
             return data, None, None
 
         return await stream_csv(datasette, fetch_data, request, resolved.db.name)
+    elif format_ == "markdown":
+
+        async def fetch_data(request, _next=None):
+            (
+                data,
+                rows,
+                columns,
+                expanded_columns,
+                sql,
+                next_url,
+            ) = await table_view_data(
+                datasette,
+                request,
+                resolved,
+                extra_extras=extra_extras,
+                context_for_html_hack=context_for_html_hack,
+                default_labels=default_labels,
+                _next=_next,
+            )
+            data["rows"] = rows
+            data["table"] = resolved.table
+            data["columns"] = columns
+            data["expanded_columns"] = expanded_columns
+            return data, None, None
+
+        from datasette.views.base import stream_markdown
+        return await stream_markdown(datasette, fetch_data, request, resolved.db.name)
     elif format_ in datasette.renderers.keys():
         # Dispatch request to the correct output format renderer
         # (CSV is not handled here due to streaming)

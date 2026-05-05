@@ -818,7 +818,8 @@ dialog.mobile-column-actions-dialog::backdrop {
 }
 
 .mobile-column-actions-dialog .list-wrap {
-    flex: 1;
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
     position: relative;

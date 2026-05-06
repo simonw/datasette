@@ -17,6 +17,23 @@ If you want to start making contributions to the Datasette project by installing
 Basic installation
 ==================
 
+.. _installation_uv:
+
+Using uv (recommended)
+----------------------
+
+`uv <https://docs.astral.sh/uv/>`__ is a fast Python package installer and resolver. It's the quickest way to install Datasette::
+
+    uv tool install datasette
+
+You can then run Datasette with::
+
+    datasette --version
+
+To upgrade to the latest version::
+
+    uv tool upgrade datasette
+
 .. _installation_datasette_desktop:
 
 Datasette Desktop for Mac

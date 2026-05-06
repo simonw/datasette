@@ -2037,6 +2037,7 @@ class Datasette:
                     else lambda: ""
                 ),
                 "datasette_version": __version__,
+                "default_deny": self.default_deny,
             },
             **extra_template_vars,
         }

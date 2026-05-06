@@ -495,6 +495,7 @@ def uninstall(packages, yes):
     "--internal",
     type=click.Path(),
     help="Path to a persistent Datasette internal SQLite database",
+    envvar="DATASETTE_INTERNAL",
 )
 def serve(
     files,

@@ -64,7 +64,7 @@ To see the output of your plugin.
 Starting an installable plugin using cookiecutter
 -------------------------------------------------
 
-Plugins that can be installed should be written as Python packages using a ``setup.py`` file.
+Plugins that can be installed should be written as Python packages, typically configured using a ``pyproject.toml`` file.
 
 The quickest way to start writing one an installable plugin is to use the `datasette-plugin <https://github.com/simonw/datasette-plugin>`__ cookiecutter template. This creates a new plugin structure for you complete with an example test and GitHub Actions workflows for testing and publishing your plugin.
 
@@ -79,31 +79,26 @@ Read `a cookiecutter template for writing Datasette plugins <https://simonwillis
 Packaging a plugin
 ------------------
 
-Plugins can be packaged using Python setuptools. You can see an example of a packaged plugin at https://github.com/simonw/datasette-plugin-demos
+Plugins can be packaged as standard Python projects. You can see an example of a packaged plugin at https://github.com/simonw/datasette-plugin-demos
 
-The example consists of two files: a ``setup.py`` file that defines the plugin:
+A modern plugin package uses a ``pyproject.toml`` file that defines the plugin metadata and entry point:
 
-.. code-block:: python
+.. code-block:: toml
 
-    from setuptools import setup
+    [build-system]
+    requires = ["setuptools>=61"]
+    build-backend = "setuptools.build_meta"
 
-    VERSION = "0.1"
+    [project]
+    name = "datasette-plugin-demos"
+    version = "0.1"
+    description = "Examples of plugins for Datasette"
+    readme = "README.md"
+    license = {text = "Apache License, Version 2.0"}
+    dependencies = ["datasette"]
 
-    setup(
-        name="datasette-plugin-demos",
-        description="Examples of plugins for Datasette",
-        author="Simon Willison",
-        url="https://github.com/simonw/datasette-plugin-demos",
-        license="Apache License, Version 2.0",
-        version=VERSION,
-        py_modules=["datasette_plugin_demos"],
-        entry_points={
-            "datasette": [
-                "plugin_demos = datasette_plugin_demos"
-            ]
-        },
-        install_requires=["datasette"],
-    )
+    [project.entry-points.datasette]
+    plugin_demos = "datasette_plugin_demos"
 
 And a Python module file, ``datasette_plugin_demos.py``, that implements the plugin:
 
@@ -126,9 +121,9 @@ And a Python module file, ``datasette_plugin_demos.py``, that implements the plu
 
 Having built a plugin in this way you can turn it into an installable package using the following command::
 
-    python3 setup.py sdist
+    python3 -m build
 
-This will create a ``.tar.gz`` file in the ``dist/`` directory.
+This will create a source distribution and wheel in the ``dist/`` directory.
 
 You can then install your new plugin into a Datasette virtual environment or Docker container using ``pip``::
 
@@ -147,17 +142,12 @@ If your plugin has a ``static/`` directory, Datasette will automatically configu
 
 Use the ``datasette.urls.static_plugins(plugin_name, path)`` method to generate URLs to that asset that take the ``base_url`` setting into account, see :ref:`internals_datasette_urls`.
 
-To bundle the static assets for a plugin in the package that you publish to PyPI, add the following to the plugin's ``setup.py``:
+To bundle static assets for a plugin in the package that you publish to PyPI, add package data configuration to ``pyproject.toml``:
 
-.. code-block:: python
+.. code-block:: toml
 
-        package_data = (
-            {
-                "datasette_plugin_name": [
-                    "static/plugin.js",
-                ],
-            },
-        )
+    [tool.setuptools.package-data]
+    datasette_plugin_name = ["static/plugin.js"]
 
 Where ``datasette_plugin_name`` is the name of the plugin package (note that it uses underscores, not hyphens) and ``static/plugin.js`` is the path within that package to the static file.
 
@@ -180,17 +170,12 @@ The priority order for template loading is:
 
 See :ref:`customization` for more details on how to write custom templates, including which filenames to use to customize which parts of the Datasette UI.
 
-Templates should be bundled for distribution using the same ``package_data`` mechanism in ``setup.py`` described for static assets above, for example:
+Templates should be bundled for distribution using the same package data mechanism in ``pyproject.toml`` described for static assets above, for example:
 
-.. code-block:: python
+.. code-block:: toml
 
-        package_data = (
-            {
-                "datasette_plugin_name": [
-                    "templates/my_template.html",
-                ],
-            },
-        )
+    [tool.setuptools.package-data]
+    datasette_plugin_name = ["templates/my_template.html"]
 
 You can also use wildcards here such as ``templates/*.html``. See `datasette-edit-schema <https://github.com/simonw/datasette-edit-schema>`__ for an example of this pattern.
 

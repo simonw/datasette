@@ -20,7 +20,7 @@
 {% endblock %}
 
 {% block content %}
-<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color }}">{{ table }}: {{ ', '.join(primary_key_values) }}{% if private %} 🔒{% endif %}</h1>
+<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color }}">{{ table }}: {{ ', '.join(primary_key_values) }}{% if default_deny and not private %} 🌐{% elif not default_deny and private %} 🔒{% endif %}</h1>
 
 {% set action_links, action_title = row_actions, "Row actions" %}
 {% include "_action_menu.html" %}

@@ -1014,6 +1014,50 @@ async def test_binary_data_display_in_table(ds_client):
     ]
 
 
+@pytest.mark.asyncio
+async def test_blob_column_in_join_view_does_not_error(tmp_path):
+    from datasette.utils.sqlite import sqlite3
+    from datasette.views.table import display_columns_and_rows
+
+    db_path = str(tmp_path / "data.db")
+    conn = sqlite3.connect(db_path)
+    conn.executescript("""
+create table foo(term, value);
+create table bar(term, definition, bytes);
+
+insert into foo values ('text one', 1), ('text two', 2);
+insert into bar values
+    ('text one', 'definition one', x'8af8ab88'),
+    ('text two', 'definition two', x'98246547');
+
+create view foo_view as
+    select foo.*, bar.* from foo join bar on foo.term = bar.term;
+""")
+    conn.close()
+
+    ds = Datasette([db_path])
+    await ds.invoke_startup()
+    internal_db = ds.get_internal_database()
+    await internal_db.execute_write(
+        "create table if not exists metadata_columns (database_name text, resource_name text, column_name text, key text, value text)"
+    )
+    db = ds.databases["data"]
+    results = await db.execute("select * from foo_view")
+    description = [(column_name,) for column_name in results.columns]
+
+    _, cell_rows = await display_columns_and_rows(
+        ds,
+        "data",
+        "foo_view",
+        description,
+        results.rows,
+        link_column=False,
+    )
+
+    binary_cell = next(cell for cell in cell_rows[0] if cell["column"] == "bytes")
+    assert "&lt;Binary" in str(binary_cell["value"])
+
+
 def test_custom_table_include():
     with make_app_client(
         template_dir=str(pathlib.Path(__file__).parent / "test_templates")

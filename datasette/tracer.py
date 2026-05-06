@@ -14,6 +14,14 @@ trace_task_id = ContextVar("trace_task_id", default=None)
 
 
 def get_task_id():
+    """Return a stable identifier for the current asyncio task.
+
+    Checks the ``trace_task_id`` context variable first (set by
+    :func:`trace_child_tasks`) so that child tasks spawned inside a traced
+    block share the parent's ID and are captured by the same tracer.
+    Falls back to the ``id()`` of the running asyncio task, or ``None``
+    when called outside an event loop.
+    """
     current = trace_task_id.get(None)
     if current is not None:
         return current
@@ -26,6 +34,14 @@ def get_task_id():
 
 @contextmanager
 def trace_child_tasks():
+    """Context manager that propagates the current task's trace ID to child tasks.
+
+    Normally each asyncio task gets its own task ID, so traces recorded inside
+    ``asyncio.create_task()`` calls would be invisible to the parent tracer.
+    Wrapping the ``create_task`` call in this context manager pins the parent's
+    ID onto the ``trace_task_id`` context variable so child tasks are attributed
+    to the same tracer bucket.
+    """
     token = trace_task_id.set(get_task_id())
     yield
     trace_task_id.reset(token)
@@ -33,6 +49,23 @@ def trace_child_tasks():
 
 @contextmanager
 def trace(trace_type, **kwargs):
+    """Context manager that records a single timed trace entry.
+
+    If no tracer is active for the current task (i.e. the code is not running
+    inside a :func:`capture_traces` block) the context manager is a no-op and
+    simply yields ``kwargs`` unchanged.
+
+    When a tracer *is* active, the yielded dict is populated with any extra
+    context added inside the ``with`` block, and on exit a trace entry is
+    appended containing ``type``, ``start``, ``end``, ``duration_ms``,
+    ``traceback``, ``error``, plus all keyword arguments.
+
+    Args:
+        trace_type: A string label for this trace entry (e.g. ``"sql"``).
+        **kwargs: Arbitrary extra key/value pairs included in the trace entry.
+            Must not use any of the reserved keys: ``type``, ``start``,
+            ``end``, ``duration_ms``, ``traceback``.
+    """
     assert not TRACE_RESERVED_KEYS.intersection(
         kwargs.keys()
     ), f".trace() keyword parameters cannot include {TRACE_RESERVED_KEYS}"
@@ -67,6 +100,15 @@ def trace(trace_type, **kwargs):
 
 @contextmanager
 def capture_traces(tracer):
+    """Context manager that activates trace collection for the current task.
+
+    While the block is active, any :func:`trace` calls made from the same
+    asyncio task will append entries to ``tracer``.  The list is de-registered
+    when the block exits so that subsequent work is not attributed to it.
+
+    Args:
+        tracer: A list to which trace entry dicts will be appended.
+    """
     # tracer is a list
     task_id = get_task_id()
     if task_id is None:
@@ -78,6 +120,16 @@ def capture_traces(tracer):
 
 
 class AsgiTracer:
+    """ASGI middleware that appends timing traces to responses when ``?_trace=1`` is set.
+
+    When the ``_trace=1`` query parameter is present the middleware collects
+    all :func:`trace` entries produced while handling the request and injects
+    a ``_trace`` object into JSON responses, or a ``<pre>`` block before
+    ``</body>`` in HTML responses.  Responses larger than
+    :attr:`max_body_bytes` are passed through unchanged to avoid excessive
+    memory use.
+    """
+
     # If the body is larger than this we don't attempt to append the trace
     max_body_bytes = 1024 * 256  # 256 KB
 

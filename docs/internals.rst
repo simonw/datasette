@@ -2037,6 +2037,8 @@ Plugin authors are asked to practice good etiquette when using the internal data
 3. Use temporary tables or shared in-memory attached databases when possible.
 4. Avoid implementing features that could expose private data stored in the internal database by other plugins.
 
+If a plugin writes to the default temporary internal database, Datasette prints a one-time warning to standard error noting that the data will be lost on shutdown and recommending the ``--internal path/to/file.db`` flag for persistence. Datasette suppresses this warning for its own catalog and metadata writes, which are recreated on every startup.
+
 .. _internals_internal_schema:
 
 Internal database schema

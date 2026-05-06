@@ -73,7 +73,7 @@ from .views.table import (
 from .views.row import RowView, RowDeleteView, RowUpdateView
 from .renderer import json_renderer
 from .url_builder import Urls
-from .database import Database, QueryInterrupted
+from .database import Database, QueryInterrupted, internal_ephemeral_writes
 
 from .utils import (
     PaginatedResources,
@@ -380,6 +380,7 @@ class Datasette:
             )
 
         self.internal_db_created = False
+        self._warned_internal_temp_write = False
         if internal is None:
             self._internal_database = Database(self, is_temp_disk=True)
         else:
@@ -604,43 +605,44 @@ class Datasette:
 
     async def _refresh_schemas(self):
         internal_db = self.get_internal_database()
-        if not self.internal_db_created:
-            await init_internal_db(internal_db)
-            await self.apply_metadata_json()
-            self.internal_db_created = True
-        current_schema_versions = {
-            row["database_name"]: row["schema_version"]
-            for row in await internal_db.execute(
-                "select database_name, schema_version from catalog_databases"
+        with internal_ephemeral_writes():
+            if not self.internal_db_created:
+                await init_internal_db(internal_db)
+                await self.apply_metadata_json()
+                self.internal_db_created = True
+            current_schema_versions = {
+                row["database_name"]: row["schema_version"]
+                for row in await internal_db.execute(
+                    "select database_name, schema_version from catalog_databases"
+                )
+            }
+            # Delete stale entries for databases that are no longer attached
+            stale_databases = set(current_schema_versions.keys()) - set(
+                self.databases.keys()
             )
-        }
-        # Delete stale entries for databases that are no longer attached
-        stale_databases = set(current_schema_versions.keys()) - set(
-            self.databases.keys()
-        )
-        for stale_db_name in stale_databases:
-            await internal_db.execute_write(
-                "DELETE FROM catalog_databases WHERE database_name = ?",
-                [stale_db_name],
-            )
-        for database_name, db in self.databases.items():
-            schema_version = (await db.execute("PRAGMA schema_version")).first()[0]
-            # Compare schema versions to see if we should skip it
-            if schema_version == current_schema_versions.get(database_name):
-                continue
-            placeholders = "(?, ?, ?, ?)"
-            values = [database_name, str(db.path), db.is_memory, schema_version]
-            if db.path is None:
-                placeholders = "(?, null, ?, ?)"
-                values = [database_name, db.is_memory, schema_version]
-            await internal_db.execute_write(
-                """
-                INSERT OR REPLACE INTO catalog_databases (database_name, path, is_memory, schema_version)
-                VALUES {}
-            """.format(placeholders),
-                values,
-            )
-            await populate_schema_tables(internal_db, db)
+            for stale_db_name in stale_databases:
+                await internal_db.execute_write(
+                    "DELETE FROM catalog_databases WHERE database_name = ?",
+                    [stale_db_name],
+                )
+            for database_name, db in self.databases.items():
+                schema_version = (await db.execute("PRAGMA schema_version")).first()[0]
+                # Compare schema versions to see if we should skip it
+                if schema_version == current_schema_versions.get(database_name):
+                    continue
+                placeholders = "(?, ?, ?, ?)"
+                values = [database_name, str(db.path), db.is_memory, schema_version]
+                if db.path is None:
+                    placeholders = "(?, null, ?, ?)"
+                    values = [database_name, db.is_memory, schema_version]
+                await internal_db.execute_write(
+                    """
+                    INSERT OR REPLACE INTO catalog_databases (database_name, path, is_memory, schema_version)
+                    VALUES {}
+                """.format(placeholders),
+                    values,
+                )
+                await populate_schema_tables(internal_db, db)
 
     @property
     def urls(self):

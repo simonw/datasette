@@ -1,6 +1,8 @@
 import asyncio
 import atexit
 from collections import namedtuple
+import contextlib
+import contextvars
 import inspect
 import os
 from pathlib import Path
@@ -13,6 +15,24 @@ import threading
 import uuid
 
 from .tracer import trace
+
+
+_internal_ephemeral_write = contextvars.ContextVar(
+    "datasette_internal_ephemeral_write", default=False
+)
+
+
+@contextlib.contextmanager
+def internal_ephemeral_writes():
+    """Mark internal-database writes inside this block as ephemeral catalog
+    writes that Datasette recreates on startup. Suppresses the temp-internal-DB
+    warning for the duration of the block. Plugins should NOT use this — their
+    writes are exactly what the warning is meant to catch."""
+    token = _internal_ephemeral_write.set(True)
+    try:
+        yield
+    finally:
+        _internal_ephemeral_write.reset(token)
 from .utils import (
     call_with_supported_arguments,
     detect_fts,
@@ -289,6 +309,18 @@ class Database:
 
     async def execute_write_fn(self, fn, block=True, transaction=True, request=None):
         self._check_not_closed()
+        if (
+            self.is_temp_disk
+            and not self.ds._warned_internal_temp_write
+            and not _internal_ephemeral_write.get()
+        ):
+            self.ds._warned_internal_temp_write = True
+            print(
+                "Datasette warning: write to the internal database, which is a "
+                "temporary file that will be deleted on shutdown. If this data "
+                "should persist, restart Datasette with --internal path/to/file.db",
+                file=sys.stderr,
+            )
         pending_events = []
 
         def track_event(event):

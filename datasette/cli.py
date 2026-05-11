@@ -206,6 +206,12 @@ def plugins(all, requirements, plugins_dir):
     help="Name for the resulting Docker container, can optionally use name:tag format",
 )
 @click.option(
+    "-c",
+    "--config",
+    type=click.File(mode="r"),
+    help="Path to JSON/YAML Datasette configuration file",
+)
+@click.option(
     "-m",
     "--metadata",
     type=click.File(mode="r"),
@@ -257,6 +263,7 @@ def plugins(all, requirements, plugins_dir):
 def package(
     files,
     tag,
+    config,
     metadata,
     extra_options,
     branch,
@@ -283,6 +290,7 @@ def package(
     with temporary_docker_directory(
         files,
         "datasette",
+        config=config,
         metadata=metadata,
         extra_options=extra_options,
         branch=branch,

@@ -84,6 +84,8 @@ class Database:
         self._write_thread = None
         self._write_queue = None
         self._closed = False
+        self._pending_execute_futures = set()
+        self._pending_execute_futures_lock = threading.Lock()
         # These are used when in non-threaded mode:
         self._read_connection = None
         self._write_connection = None
@@ -97,6 +99,10 @@ class Database:
             raise DatasetteClosedError(
                 "Database {!r} has been closed".format(self.name)
             )
+
+    def _remove_pending_execute_future(self, future):
+        with self._pending_execute_futures_lock:
+            self._pending_execute_futures.discard(future)
 
     @property
     def cached_table_counts(self):
@@ -170,7 +176,11 @@ class Database:
         """
         if self._closed:
             return
-        self._closed = True
+        with self._pending_execute_futures_lock:
+            if self._closed:
+                return
+            self._closed = True
+            pending_execute_futures = tuple(self._pending_execute_futures)
         # Shut down the write thread, if any, via a sentinel. The thread
         # drains any writes already queued before the sentinel and then
         # closes its own write connection and returns.
@@ -185,6 +195,11 @@ class Database:
                     )
                 )
                 sys.stderr.flush()
+        for future in pending_execute_futures:
+            try:
+                future.result()
+            except Exception:
+                pass
         # Close anything still tracked in _all_file_connections
         for connection in self._all_file_connections:
             try:
@@ -456,9 +471,12 @@ class Database:
                 setattr(connections, self._thread_local_id, conn)
             return fn(conn)
 
-        return await asyncio.get_event_loop().run_in_executor(
-            self.ds.executor, in_thread
-        )
+        with self._pending_execute_futures_lock:
+            self._check_not_closed()
+            future = self.ds.executor.submit(in_thread)
+            self._pending_execute_futures.add(future)
+        future.add_done_callback(self._remove_pending_execute_future)
+        return await asyncio.wrap_future(future)
 
     async def execute(
         self,

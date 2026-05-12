@@ -2,8 +2,11 @@
 Tests for the datasette.app.Datasette class
 """
 
+import asyncio
 import dataclasses
 import os
+import sqlite3
+import time
 from datasette import Context
 from datasette.app import Datasette, Database, ResourcesSQL
 from datasette.database import DatasetteClosedError
@@ -254,6 +257,52 @@ async def test_datasette_close_raises_on_use():
     ds.close()
     with pytest.raises(DatasetteClosedError):
         await ds.get_internal_database().execute("select 1")
+
+
+async def _datasette_with_sleeping_execute(tmp_path, sleep_ms=200):
+    db_path = tmp_path / "data.db"
+    internal_path = tmp_path / "internal.db"
+    sqlite3.connect(db_path).close()
+    ds = Datasette([str(db_path)], internal=str(internal_path))
+    loop = asyncio.get_running_loop()
+    sql_started = asyncio.Event()
+    original_prepare_connection = ds._prepare_connection
+
+    def prepare_connection(conn, name):
+        original_prepare_connection(conn, name)
+
+        def sleep_ms(ms):
+            loop.call_soon_threadsafe(sql_started.set)
+            time.sleep(ms / 1000)
+            return ms
+
+        conn.create_function("sleep_ms", 1, sleep_ms)
+
+    ds._prepare_connection = prepare_connection
+    task = asyncio.create_task(
+        ds.get_database().execute(
+            f"select sleep_ms({sleep_ms})", custom_time_limit=1000
+        )
+    )
+    await asyncio.wait_for(sql_started.wait(), timeout=5)
+    return ds, task
+
+
+@pytest.mark.asyncio
+async def test_datasette_close_waits_for_in_flight_execute(tmp_path):
+    ds, task = await _datasette_with_sleeping_execute(tmp_path)
+    ds.close()
+    results = await task
+    assert [tuple(row) for row in results.rows] == [(200,)]
+
+
+@pytest.mark.asyncio
+async def test_datasette_close_waits_for_cancelled_in_flight_execute(tmp_path):
+    ds, task = await _datasette_with_sleeping_execute(tmp_path)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    ds.close()
 
 
 @pytest.mark.asyncio

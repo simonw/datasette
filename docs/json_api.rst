@@ -235,16 +235,16 @@ You can filter the data returned by the table based on column values using a que
     Returns rows where the column does not match the value.
 
 ``?column__contains=value``
-    Rows where the string column contains the specified value (``column like "%value%"`` in SQL).
+    Rows where the string column contains the specified value (``column like '%value%'`` in SQL).
 
 ``?column__notcontains=value``
-    Rows where the string column does not contain the specified value (``column not like "%value%"`` in SQL).
+    Rows where the string column does not contain the specified value (``column not like '%value%'`` in SQL).
 
 ``?column__endswith=value``
-    Rows where the string column ends with the specified value (``column like "%value"`` in SQL).
+    Rows where the string column ends with the specified value (``column like '%value'`` in SQL).
 
 ``?column__startswith=value``
-    Rows where the string column starts with the specified value (``column like "value%"`` in SQL).
+    Rows where the string column starts with the specified value (``column like 'value%'`` in SQL).
 
 ``?column__gt=value``
     Rows which are greater than the specified value.
@@ -358,8 +358,8 @@ Special table arguments
 
     Some examples:
 
-    * `facetable?_where=_neighborhood like "%c%"&_where=_city_id=3 <https://latest.datasette.io/fixtures/facetable?_where=_neighborhood%20like%20%22%c%%22&_where=_city_id=3>`__
-    * `facetable?_where=_city_id in (select id from facet_cities where name != "Detroit") <https://latest.datasette.io/fixtures/facetable?_where=_city_id%20in%20(select%20id%20from%20facet_cities%20where%20name%20!=%20%22Detroit%22)>`__
+    * `facetable?_where=_neighborhood like '%c%'&_where=_city_id=3 <https://latest.datasette.io/fixtures/facetable?_where=_neighborhood%20like%20%27%c%%27&_where=_city_id=3>`__
+    * `facetable?_where=_city_id in (select id from facet_cities where name != 'Detroit') <https://latest.datasette.io/fixtures/facetable?_where=_city_id%20in%20(select%20id%20from%20facet_cities%20where%20name%20!=%20%27Detroit%27)>`__
 
 ``?_through={json}``
     This can be used to filter rows via a join against another table.

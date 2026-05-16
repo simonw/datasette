@@ -4,7 +4,6 @@ from collections import namedtuple
 import inspect
 import os
 from pathlib import Path
-import janus
 import queue
 import sqlite_utils
 import sys
@@ -330,13 +329,16 @@ class Database:
         else:
             # For non-blocking writes, spawn a background task to
             # dispatch events after the write thread completes
-            task_id, reply_queue = result
+            task_id, reply_future = result
 
             async def _dispatch_events_after_write():
-                write_result = await reply_queue.async_q.get()
-                if not isinstance(write_result, Exception):
-                    for event in pending_events:
-                        await self.ds.track_event(event)
+                try:
+                    await reply_future
+                except Exception:
+                    # if the write failed, don't emit success events
+                    return
+                for event in pending_events:
+                    await self.ds.track_event(event)
 
             asyncio.ensure_future(_dispatch_events_after_write())
             result = task_id
@@ -390,18 +392,15 @@ class Database:
             )
             self._write_thread.start()
         task_id = uuid.uuid5(uuid.NAMESPACE_DNS, "datasette.io")
-        reply_queue = janus.Queue()
+        loop = asyncio.get_running_loop()
+        reply_future = loop.create_future()
         self._write_queue.put(
-            WriteTask(fn, task_id, reply_queue, isolated_connection, transaction)
+            WriteTask(fn, task_id, loop, reply_future, isolated_connection, transaction)
         )
         if block:
-            result = await reply_queue.async_q.get()
-            if isinstance(result, Exception):
-                raise result
-            else:
-                return result
+            return await reply_future
         else:
-            return task_id, reply_queue
+            return task_id, reply_future
 
     def _execute_writes(self):
         # Infinite looping thread that protects the single write connection
@@ -422,36 +421,37 @@ class Database:
                     except Exception:
                         pass
                 return
+            exception = None
+            result = None
             if conn_exception is not None:
-                result = conn_exception
+                exception = conn_exception
+            elif task.isolated_connection:
+                isolated_connection = self.connect(write=True)
+                try:
+                    result = task.fn(isolated_connection)
+                except Exception as e:
+                    sys.stderr.write("{}\n".format(e))
+                    sys.stderr.flush()
+                    exception = e
+                finally:
+                    isolated_connection.close()
+                    try:
+                        self._all_file_connections.remove(isolated_connection)
+                    except ValueError:
+                        # Was probably a memory connection
+                        pass
             else:
-                if task.isolated_connection:
-                    isolated_connection = self.connect(write=True)
-                    try:
-                        result = task.fn(isolated_connection)
-                    except Exception as e:
-                        sys.stderr.write("{}\n".format(e))
-                        sys.stderr.flush()
-                        result = e
-                    finally:
-                        isolated_connection.close()
-                        try:
-                            self._all_file_connections.remove(isolated_connection)
-                        except ValueError:
-                            # Was probably a memory connection
-                            pass
-                else:
-                    try:
-                        if task.transaction:
-                            with conn:
-                                result = task.fn(conn)
-                        else:
+                try:
+                    if task.transaction:
+                        with conn:
                             result = task.fn(conn)
-                    except Exception as e:
-                        sys.stderr.write("{}\n".format(e))
-                        sys.stderr.flush()
-                        result = e
-            task.reply_queue.sync_q.put(result)
+                    else:
+                        result = task.fn(conn)
+                except Exception as e:
+                    sys.stderr.write("{}\n".format(e))
+                    sys.stderr.flush()
+                    exception = e
+            _deliver_write_result(task, result, exception)
 
     async def execute_fn(self, fn):
         self._check_not_closed()
@@ -892,14 +892,43 @@ def _apply_write_wrapper(fn, wrapper_factory, track_event):
 
 
 class WriteTask:
-    __slots__ = ("fn", "task_id", "reply_queue", "isolated_connection", "transaction")
+    __slots__ = (
+        "fn",
+        "task_id",
+        "loop",
+        "reply_future",
+        "isolated_connection",
+        "transaction",
+    )
 
-    def __init__(self, fn, task_id, reply_queue, isolated_connection, transaction):
+    def __init__(
+        self, fn, task_id, loop, reply_future, isolated_connection, transaction
+    ):
         self.fn = fn
         self.task_id = task_id
-        self.reply_queue = reply_queue
+        self.loop = loop
+        self.reply_future = reply_future
         self.isolated_connection = isolated_connection
         self.transaction = transaction
+
+
+def _deliver_write_result(task, result, exception):
+    # Called from the write thread. Delivers the result back to the
+    # awaiting coroutine on its event loop via call_soon_threadsafe.
+    def _set():
+        if task.reply_future.done():
+            # Awaiter was cancelled; nothing to do.
+            return
+        if exception is not None:
+            task.reply_future.set_exception(exception)
+        else:
+            task.reply_future.set_result(result)
+
+    try:
+        task.loop.call_soon_threadsafe(_set)
+    except RuntimeError:
+        # Event loop has been closed; the awaiter is gone.
+        pass
 
 
 class QueryInterrupted(Exception):

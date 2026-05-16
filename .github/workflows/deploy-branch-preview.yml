@@ -12,7 +12,7 @@ jobs:
   deploy-branch-preview:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
     - name: Set up Python 3.11
       uses: actions/setup-python@v6
       with:

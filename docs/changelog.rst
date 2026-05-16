@@ -4,6 +4,14 @@
 Changelog
 =========
 
+.. _unreleased:
+
+Unreleased
+----------
+
+- Dropped Janus as a dependency, previously used to manage the write queue. This should not have any impact on plugin developers or end-users. (:issue:`1752`)
+
+
 .. _v1_0_a29:
 
 1.0a29 (2026-05-12)

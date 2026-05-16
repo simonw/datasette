@@ -2,6 +2,7 @@
 Tests for the write_wrapper plugin hook.
 """
 
+import asyncio
 from dataclasses import dataclass
 from datasette.app import Datasette
 from datasette.events import Event
@@ -633,8 +634,6 @@ async def test_track_event_with_block_false(ds_with_event_tracking):
     assert task_id is not None
 
     # Give the background task time to complete
-    import asyncio
-
     for _ in range(50):
         if ds._tracked_events:
             break
@@ -642,6 +641,30 @@ async def test_track_event_with_block_false(ds_with_event_tracking):
 
     assert len(ds._tracked_events) == 1
     assert ds._tracked_events[0].message == "non-blocking"
+
+
+@pytest.mark.asyncio
+async def test_track_event_with_block_false_discarded_on_exception(
+    ds_with_event_tracking,
+):
+    """Events queued by a non-blocking write are discarded if the write fails."""
+    ds = ds_with_event_tracking
+    db = ds.get_database("test")
+
+    def my_write(conn, track_event):
+        track_event(DummyEvent(actor=None, message="should not fire"))
+        raise ValueError("deliberate error")
+
+    task_id = await db.execute_write_fn(my_write, block=False)
+    assert task_id is not None
+
+    # A following blocking write proves the failed non-blocking task has
+    # completed; one more loop turn lets its event-dispatch task observe the
+    # exception and exit.
+    await db.execute_write_fn(lambda conn: conn.execute("select 1"))
+    await asyncio.sleep(0)
+
+    assert ds._tracked_events == []
 
 
 # --- Tests for RenameTableEvent detection ---

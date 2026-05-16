@@ -2,9 +2,12 @@
 Tests for the datasette.database.Database class
 """
 
+import asyncio
+from types import SimpleNamespace
 from datasette.app import Datasette
 from datasette.database import Database, Results, MultipleValues
 from datasette.database import DatasetteClosedError
+from datasette.database import _deliver_write_result
 from datasette.utils.sqlite import sqlite3, sqlite_version
 from datasette.utils import Column
 import pytest
@@ -588,6 +591,37 @@ async def test_execute_write_fn_connection_exception(tmpdir, app_client):
         await db.execute_write_fn(write_fn)
 
     app_client.ds.remove_database("immutable-db")
+
+
+@pytest.mark.asyncio
+async def test_deliver_write_result_leaves_done_future_alone():
+    loop = asyncio.get_running_loop()
+    reply_future = loop.create_future()
+    reply_future.set_result("original")
+    task = SimpleNamespace(loop=loop, reply_future=reply_future)
+
+    # The write thread can finish after the caller has stopped waiting for the
+    # result. Delivery should notice that the future is already resolved and
+    # leave the caller's outcome alone instead of raising InvalidStateError.
+    _deliver_write_result(task, "replacement", None)
+    await asyncio.sleep(0)
+
+    assert reply_future.result() == "original"
+
+
+@pytest.mark.asyncio
+async def test_deliver_write_result_ignores_closed_loop():
+    closed_loop = asyncio.new_event_loop()
+    closed_loop.close()
+    reply_future = asyncio.get_running_loop().create_future()
+    task = SimpleNamespace(loop=closed_loop, reply_future=reply_future)
+
+    # If the event loop that submitted the write has gone away, the write
+    # thread should drop the result rather than crash while reporting back to
+    # that closed loop.
+    _deliver_write_result(task, "result", None)
+
+    assert not reply_future.done()
 
 
 def table_exists(conn, name):

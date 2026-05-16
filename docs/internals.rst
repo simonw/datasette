@@ -2256,6 +2256,13 @@ Async version of :ref:`call_with_supported_arguments <internals_utils_call_with_
 
 .. _internals_tracer:
 
+JSON encoding
+-------------
+
+.. _internals_utils_CustomJSONEncoder:
+
+.. autoclass:: datasette.utils.CustomJSONEncoder
+
 datasette.tracer
 ================
 

@@ -1,5 +1,7 @@
+from datasette.app import Datasette
 from datasette.cli import cli
 from click.testing import CliRunner
+import pytest
 import urllib
 import sqlite3
 
@@ -75,3 +77,22 @@ def test_crossdb_attached_database_list_display(
         '<li><strong>extra database</strong> - <a href="/extra+database/-/query?sql=',
     ):
         assert fragment in response.text
+
+
+@pytest.mark.asyncio
+async def test_crossdb_attaches_database_with_closing_bracket_in_name(tmp_path):
+    main_db = tmp_path / "fixtures.db"
+    extra_db = tmp_path / "extra]database.db"
+    for path in (main_db, extra_db):
+        conn = sqlite3.connect(path)
+        conn.execute("create table searchable (pk integer primary key, text1 text)")
+        conn.execute("insert into searchable (text1) values ('ok')")
+        conn.commit()
+        conn.close()
+
+    ds = Datasette([str(main_db), str(extra_db)], crossdb=True)
+    response = await ds.client.get("/_memory")
+    assert response.status_code == 200
+    assert "extra]database" in response.text
+    for db in ds.databases.values():
+        db.close()

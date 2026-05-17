@@ -1,5 +1,6 @@
 from datasette.app import Datasette
 from datasette.plugins import DEFAULT_PLUGINS
+from datasette.utils import tilde_encode
 from datasette.utils.sqlite import sqlite_version
 from datasette.version import __version__
 from .fixtures import make_app_client, EXPECTED_PLUGINS
@@ -378,6 +379,42 @@ async def test_row_strange_table_name(ds_client):
     )
     assert response.status_code == 200
     assert response.json()["rows"] == [{"pk": "3", "content": "hey"}]
+
+
+@pytest.mark.asyncio
+async def test_table_name_with_closing_bracket_does_not_inject():
+    malicious_name = 'users] UNION SELECT password FROM users--'
+    ds = Datasette()
+    db = ds.add_memory_database("fixtures")
+    await db.execute_write("CREATE TABLE users (id INTEGER PRIMARY KEY, password TEXT)")
+    await db.execute_write(
+        "INSERT INTO users (password) VALUES ('super_secret_password')"
+    )
+    await db.execute_write(
+        f'CREATE TABLE "{malicious_name}" (id INTEGER PRIMARY KEY, content TEXT)'
+    )
+    await db.execute_write(
+        f'INSERT INTO "{malicious_name}" (content) VALUES (\'ok\')'
+    )
+    response = await ds.client.get(
+        f"/fixtures/{tilde_encode(malicious_name)}.json?_extra=count&_facet=content&_shape=objects"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 1
+    assert data["rows"] == [{"id": 1, "content": "ok"}]
+    assert data["facet_results"]["results"]["content"]["results"] == [
+        {
+            "value": "ok",
+            "label": "ok",
+            "count": 1,
+            "toggle_url": (
+                f"http://localhost/fixtures/{tilde_encode(malicious_name)}.json"
+                "?_extra=count&_facet=content&_shape=objects&content=ok"
+            ),
+            "selected": False,
+        }
+    ]
 
 
 @pytest.mark.asyncio

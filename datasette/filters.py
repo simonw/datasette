@@ -206,10 +206,16 @@ class TemplatedFilter(Filter):
         if self.numeric and converted.isdigit():
             converted = int(converted)
         if self.no_argument:
-            kwargs = {"c": column}
+            kwargs = {"c": column, "c_escaped": escape_sqlite(column)}
             converted = None
         else:
-            kwargs = {"c": column, "p": f"p{param_counter}", "t": table}
+            kwargs = {
+                "c": column,
+                "c_escaped": escape_sqlite(column),
+                "p": f"p{param_counter}",
+                "t": table,
+                "t_escaped": escape_sqlite(table),
+            }
         return self.sql_template.format(**kwargs), converted
 
     def human_clause(self, column, value):
@@ -322,13 +328,13 @@ class Filters:
                 TemplatedFilter(
                     "arraycontains",
                     "array contains",
-                    """:{p} in (select value from json_each([{t}].[{c}]))""",
+                    """:{p} in (select value from json_each({t_escaped}.{c_escaped}))""",
                     '{c} contains "{v}"',
                 ),
                 TemplatedFilter(
                     "arraynotcontains",
                     "array does not contain",
-                    """:{p} not in (select value from json_each([{t}].[{c}]))""",
+                    """:{p} not in (select value from json_each({t_escaped}.{c_escaped}))""",
                     '{c} does not contain "{v}"',
                 ),
             ]

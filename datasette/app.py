@@ -1253,10 +1253,10 @@ class Datasette:
             for db_name, db in self.databases.items():
                 if count >= SQLITE_LIMIT_ATTACHED or db.is_memory:
                     continue
-                sql = 'ATTACH DATABASE "file:{path}?{qs}" AS [{name}];'.format(
+                sql = 'ATTACH DATABASE "file:{path}?{qs}" AS {name};'.format(
                     path=db.path,
                     qs="mode=ro" if db.is_mutable else "immutable=1",
-                    name=db_name,
+                    name=escape_sqlite(db_name),
                 )
                 conn.execute(sql)
                 count += 1

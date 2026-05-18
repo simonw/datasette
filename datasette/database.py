@@ -561,25 +561,26 @@ class Database:
             self.cached_size = Path(self.path).stat().st_size
             return self.cached_size
 
-    async def table_counts(self, limit=10):
+    async def table_counts(self, limit=10, exact=False):
         if not self.is_mutable and self.cached_table_counts is not None:
             return self.cached_table_counts
         # Try to get counts for each table, $limit timeout for each count
         counts = {}
         for table in await self.table_names():
             try:
+                if exact:
+                    sql = f"select count(*) from [{table}]"
+                else:
+                    sql = f"select count(*) from (select * from [{table}] limit {self.count_limit + 1})"
                 table_count = (
-                    await self.execute(
-                        f"select count(*) from (select * from [{table}] limit {self.count_limit + 1})",
-                        custom_time_limit=limit,
-                    )
+                    await self.execute(sql, custom_time_limit=limit)
                 ).rows[0][0]
                 counts[table] = table_count
             # In some cases I saw "SQL Logic Error" here in addition to
             # QueryInterrupted - so we catch that too:
             except (QueryInterrupted, sqlite3.OperationalError, sqlite3.DatabaseError):
                 counts[table] = None
-        if not self.is_mutable:
+        if not self.is_mutable and not exact:
             self._cached_table_counts = counts
         return counts
 

@@ -324,6 +324,19 @@ async def test_query_json_csv_export_links(ds_client):
 
 
 @pytest.mark.asyncio
+async def test_query_size(ds_client):
+    response = await ds_client.get(
+        "/fixtures/-/query?sql=select+*+from+compound_three_primary_keys&_size=10"
+    )
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    assert "Custom SQL query returning more than 10 rows" in soup.find("h3").text
+    assert len(soup.select("table.rows-and-columns tbody tr")) == 10
+    hidden = soup.select_one('input[type="hidden"][name="_size"]')
+    assert hidden["value"] == "10"
+
+
+@pytest.mark.asyncio
 async def test_query_parameter_form_fields(ds_client):
     response = await ds_client.get("/fixtures/-/query?sql=select+:name")
     assert response.status_code == 200

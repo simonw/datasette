@@ -31,7 +31,7 @@ from datasette.utils import (
     truncate_url,
     InvalidSql,
 )
-from datasette.utils.asgi import AsgiFileDownload, NotFound, Response, Forbidden
+from datasette.utils.asgi import AsgiFileDownload, BadRequest, NotFound, Response, Forbidden
 from datasette.plugins import pm
 
 from .base import BaseView, DatasetteError, View, _error, stream_csv
@@ -311,6 +311,9 @@ class QueryContext(Context):
     columns: list = field(metadata={"help": "List of column names"})
     renderers: dict = field(metadata={"help": "Dictionary of renderer name to URL"})
     url_csv: str = field(metadata={"help": "URL for CSV export"})
+    truncated: bool = field(
+        metadata={"help": "Boolean indicating if the query results were truncated"}
+    )
     show_hide_hidden: str = field(
         metadata={"help": "Hidden input field for the _show_sql parameter"}
     )
@@ -590,11 +593,25 @@ class QueryView(View):
         extra_args = {}
         if params.get("_timelimit"):
             extra_args["custom_time_limit"] = int(params["_timelimit"])
+        page_size = None
+        if params.get("_size"):
+            page_size = params["_size"]
+            if page_size == "max":
+                page_size = datasette.max_returned_rows
+            try:
+                page_size = int(page_size)
+                if page_size < 0:
+                    raise ValueError
+            except ValueError:
+                raise BadRequest("_size must be a positive integer")
+            if page_size > datasette.max_returned_rows:
+                raise BadRequest(f"_size must be <= {datasette.max_returned_rows}")
 
         format_ = request.url_vars.get("format") or "html"
 
         query_error = None
         results = None
+        truncated = False
         rows = []
         columns = []
 
@@ -614,6 +631,10 @@ class QueryView(View):
                 )
                 columns = results.columns
                 rows = results.rows
+                truncated = results.truncated
+                if page_size is not None and len(rows) > page_size:
+                    rows = rows[:page_size]
+                    truncated = True
             except QueryInterrupted as ex:
                 raise DatasetteError(
                     textwrap.dedent("""
@@ -647,7 +668,10 @@ class QueryView(View):
 
             async def fetch_data_for_csv(request, _next=None):
                 results = await db.execute(sql, params, truncate=True)
-                data = {"rows": results.rows, "columns": results.columns}
+                csv_rows = results.rows
+                if page_size is not None and len(csv_rows) > page_size:
+                    csv_rows = csv_rows[:page_size]
+                data = {"rows": csv_rows, "columns": results.columns}
                 return data, None, None
 
             return await stream_csv(datasette, fetch_data_for_csv, request, db.name)
@@ -665,7 +689,7 @@ class QueryView(View):
                 table=None,
                 request=request,
                 view_name="table",
-                truncated=results.truncated if results else False,
+                truncated=truncated,
                 error=query_error,
                 # These will be deprecated in Datasette 1.0:
                 args=request.args,
@@ -843,6 +867,7 @@ class QueryView(View):
                                 request=request, format="csv", extra_qs={"_size": "max"}
                             )
                         ),
+                        truncated=truncated,
                         show_hide_hidden=markupsafe.Markup(show_hide_hidden),
                         metadata=canned_query or metadata,
                         alternate_url_json=alternate_url_json,

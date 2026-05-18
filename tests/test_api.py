@@ -317,6 +317,34 @@ async def test_custom_sql(ds_client):
     }
 
 
+@pytest.mark.asyncio
+async def test_custom_sql_size(ds_client):
+    response = await ds_client.get(
+        "/fixtures/-/query.json?sql=select+*+from+compound_three_primary_keys&_size=10",
+    )
+    data = response.json()
+    assert response.status_code == 200
+    assert len(data["rows"]) == 10
+    assert data["truncated"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "size,expected_error",
+    [
+        ("dog", "_size must be a positive integer"),
+        ("-1", "_size must be a positive integer"),
+        ("101", "_size must be <= 100"),
+    ],
+)
+async def test_custom_sql_size_validation(ds_client, size, expected_error):
+    response = await ds_client.get(
+        f"/fixtures/-/query.json?sql=select+1&_size={size}",
+    )
+    assert response.status_code == 400
+    assert response.json()["error"] == expected_error
+
+
 @pytest.mark.xfail(reason="Sometimes flaky in CI due to timing issues")
 def test_sql_time_limit(app_client_shorter_time_limit):
     response = app_client_shorter_time_limit.get(

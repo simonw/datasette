@@ -127,3 +127,25 @@ async def test_default_deny_basic_permissions():
 
     # Authenticated user without explicit permission should also be denied
     assert await ds.allowed(action="view-instance", actor={"id": "user"}) is False
+
+
+@pytest.mark.asyncio
+async def test_default_deny_no_config_index_pages_dont_500():
+    """Regression for #2644: root visiting the index pages on a --default-deny
+    instance without any config file used to return 500 because the anon_rules
+    CTE was conditionally emitted but unconditionally referenced."""
+    ds = Datasette(default_deny=True)
+    ds.root_enabled = True
+    await ds.invoke_startup()
+
+    db = ds.add_memory_database("test_db_no_config")
+    await db.execute_write("create table test_table (id integer primary key)")
+    await ds._refresh_schemas()
+
+    cookies = {"ds_actor": ds.client.actor_cookie({"id": "root"})}
+
+    response = await ds.client.get("/", cookies=cookies)
+    assert response.status_code == 200
+
+    response = await ds.client.get("/test_db_no_config", cookies=cookies)
+    assert response.status_code == 200

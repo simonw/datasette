@@ -241,6 +241,20 @@ async def _build_single_action_sql(
                     "),",
                 ]
             )
+        else:
+            # The anon_*_lvl CTEs below LEFT JOIN anon_rules unconditionally,
+            # so when no anonymous rules are produced (e.g. --default-deny
+            # without a config file) we still need an empty CTE with the
+            # expected columns. Without it the whole permissions query is
+            # invalid SQL and the index pages 500.
+            query_parts.extend(
+                [
+                    "anon_rules AS (",
+                    "  SELECT NULL AS parent, NULL AS child, NULL AS allow,",
+                    "         NULL AS reason, NULL AS source_plugin WHERE 0",
+                    "),",
+                ]
+            )
 
     # Continue with the cascading logic
     query_parts.extend(

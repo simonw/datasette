@@ -923,3 +923,156 @@ async def test_database_close_is_idempotent(tmpdir):
     # Second call should be a no-op, not raise
     db.close()
     ds._internal_database.close()
+
+
+@pytest.mark.asyncio
+async def test_request_connection_basic(db):
+    async with db.request_connection() as conn:
+        results = await conn.execute("select 1 + 1")
+    assert results.single_value() == 2
+
+
+@pytest.mark.asyncio
+async def test_request_connection_exposes_raw_sqlite_connection(db):
+    async with db.request_connection() as conn:
+        assert isinstance(conn.connection, sqlite3.Connection)
+        # Direct execution on the raw connection works too
+        assert conn.connection.execute("select 1").fetchone()[0] == 1
+
+
+@pytest.mark.asyncio
+async def test_request_connection_fresh_each_call(db):
+    async with db.request_connection() as conn_a:
+        async with db.request_connection() as conn_b:
+            assert conn_a.connection is not conn_b.connection
+
+
+@pytest.mark.asyncio
+async def test_request_connection_closes_on_exit(db):
+    async with db.request_connection() as conn:
+        raw = conn.connection
+        await conn.execute("select 1")
+    with pytest.raises(sqlite3.ProgrammingError):
+        raw.execute("select 1")
+
+
+@pytest.mark.asyncio
+async def test_request_connection_readonly_by_default(db):
+    async with db.request_connection() as conn:
+        with pytest.raises(sqlite3.OperationalError):
+            await conn.execute(
+                "create table should_not_exist (id integer primary key)"
+            )
+
+
+@pytest.mark.asyncio
+async def test_request_connection_writable():
+    ds = Datasette(memory=True)
+    db = ds.add_memory_database("test_request_connection_writable")
+    async with db.request_connection(write=True) as conn:
+        await conn.execute_fn(
+            lambda c: c.execute("create table t (id integer primary key)")
+        )
+        await conn.execute_fn(lambda c: c.execute("insert into t (id) values (1)"))
+        row = await conn.execute_fn(
+            lambda c: c.execute("select id from t").fetchone()
+        )
+    assert row[0] == 1
+
+
+@pytest.mark.asyncio
+async def test_request_connection_authorizer_does_not_leak_to_pool(db):
+    def deny_all(action, *args):
+        return sqlite3.SQLITE_DENY
+
+    async with db.request_connection() as conn:
+        conn.connection.set_authorizer(deny_all)
+        with pytest.raises(sqlite3.DatabaseError):
+            await conn.execute("select 1")
+
+    # Plain pool execute should still succeed
+    assert (await db.execute("select 1")).single_value() == 1
+
+
+@pytest.mark.asyncio
+async def test_request_connection_skips_prepare_connection_hook_by_default(db):
+    # The `fixtures` db has my_plugin loaded, which would register
+    # convert_units via the prepare_connection hook. The per-request
+    # connection should NOT have that function available by default.
+    async with db.request_connection() as conn:
+        with pytest.raises(sqlite3.OperationalError):
+            await conn.execute("select convert_units(100, 'm', 'ft')")
+
+
+@pytest.mark.asyncio
+async def test_request_connection_runs_prepare_connection_hook_when_opted_in(db):
+    async with db.request_connection(run_prepare_connection_hook=True) as conn:
+        result = await conn.execute("select convert_units(100, 'm', 'ft')")
+    assert result.single_value() == pytest.approx(328.0839)
+
+
+@pytest.mark.asyncio
+async def test_request_connection_row_factory_applied(db):
+    async with db.request_connection() as conn:
+        row = (await conn.execute("select 1 as one")).first()
+    assert isinstance(row, sqlite3.Row)
+    assert row["one"] == 1
+
+
+@pytest.mark.asyncio
+async def test_request_connection_not_tracked_in_all_file_connections(db):
+    before = list(db._all_file_connections)
+    async with db.request_connection() as conn:
+        pass
+    assert db._all_file_connections == before
+
+
+@pytest.mark.asyncio
+async def test_request_connection_cleans_up_on_exception(db):
+    raw = None
+    with pytest.raises(RuntimeError, match="boom"):
+        async with db.request_connection() as conn:
+            raw = conn.connection
+            raise RuntimeError("boom")
+    with pytest.raises(sqlite3.ProgrammingError):
+        raw.execute("select 1")
+
+
+@pytest.mark.asyncio
+async def test_request_connection_execute_fn(db):
+    async with db.request_connection() as conn:
+        value = await conn.execute_fn(
+            lambda c: c.execute("select 41 + 1").fetchone()[0]
+        )
+    assert value == 42
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("disable_threads", (False, True))
+async def test_request_connection_non_threaded(disable_threads):
+    if disable_threads:
+        ds = Datasette(memory=True, settings={"num_sql_threads": 0})
+    else:
+        ds = Datasette(memory=True)
+    db = ds.add_memory_database("test_request_connection_non_threaded")
+    async with db.request_connection() as conn:
+        assert (await conn.execute("select 1")).single_value() == 1
+        assert (
+            await conn.execute_fn(lambda c: c.execute("select 2").fetchone()[0])
+        ) == 2
+
+
+@pytest.mark.asyncio
+async def test_request_connection_raises_after_database_closed(tmpdir):
+    path = str(tmpdir / "closed_req.db")
+    conn = sqlite3.connect(path)
+    conn.execute("create table t (id integer primary key)")
+    conn.close()
+    ds = Datasette([path])
+    db = ds.get_database("closed_req")
+    await db.execute("select 1")
+    db.close()
+    with pytest.raises(DatasetteClosedError):
+        async with db.request_connection() as conn:
+            pass
+    ds._internal_database.close()

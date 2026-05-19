@@ -1229,7 +1229,7 @@ class Datasette:
         if query:
             return query
 
-    def _prepare_connection(self, conn, database):
+    def _prepare_connection(self, conn, database, *, run_plugin_hook=True):
         conn.row_factory = sqlite3.Row
         conn.text_factory = lambda x: str(x, "utf-8", "replace")
         if self.sqlite_extensions and database != INTERNAL_DB_NAME:
@@ -1245,7 +1245,7 @@ class Datasette:
         if self.setting("cache_size_kb"):
             conn.execute(f"PRAGMA cache_size=-{self.setting('cache_size_kb')}")
         # pylint: disable=no-member
-        if database != INTERNAL_DB_NAME:
+        if database != INTERNAL_DB_NAME and run_plugin_hook:
             pm.hook.prepare_connection(conn=conn, database=database, datasette=self)
         # If self.crossdb and this is _memory, connect the first SQLITE_LIMIT_ATTACHED databases
         if self.crossdb and database == "_memory":

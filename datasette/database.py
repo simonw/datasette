@@ -1,6 +1,7 @@
 import asyncio
 import atexit
 from collections import namedtuple
+from contextlib import asynccontextmanager
 import inspect
 import os
 from pathlib import Path
@@ -131,7 +132,7 @@ class Database:
         else:
             return "db"
 
-    def connect(self, write=False):
+    def connect(self, write=False, track=True):
         extra_kwargs = {}
         if write:
             extra_kwargs["isolation_level"] = "IMMEDIATE"
@@ -161,7 +162,8 @@ class Database:
         conn = sqlite3.connect(
             f"file:{self.path}{qs}", uri=True, check_same_thread=False, **extra_kwargs
         )
-        self._all_file_connections.append(conn)
+        if track:
+            self._all_file_connections.append(conn)
         if self.is_temp_disk and not self._wal_enabled:
             conn.execute("PRAGMA journal_mode=WAL")
             self._wal_enabled = True
@@ -478,17 +480,9 @@ class Database:
         future.add_done_callback(self._remove_pending_execute_future)
         return await asyncio.wrap_future(future)
 
-    async def execute(
-        self,
-        sql,
-        params=None,
-        truncate=False,
-        custom_time_limit=None,
-        page_size=None,
-        log_sql_errors=True,
+    def _make_sql_operation(
+        self, sql, params, truncate, custom_time_limit, page_size, log_sql_errors
     ):
-        """Executes sql against db_name in a thread"""
-        self._check_not_closed()
         page_size = page_size or self.ds.page_size
 
         def sql_operation_in_thread(conn):
@@ -528,9 +522,71 @@ class Database:
             else:
                 return Results(rows, False, cursor.description)
 
+        return sql_operation_in_thread
+
+    async def execute(
+        self,
+        sql,
+        params=None,
+        truncate=False,
+        custom_time_limit=None,
+        page_size=None,
+        log_sql_errors=True,
+    ):
+        """Executes sql against db_name in a thread"""
+        self._check_not_closed()
+        sql_operation_in_thread = self._make_sql_operation(
+            sql, params, truncate, custom_time_limit, page_size, log_sql_errors
+        )
         with trace("sql", database=self.name, sql=sql.strip(), params=params):
             results = await self.execute_fn(sql_operation_in_thread)
         return results
+
+    async def _execute_fn_on_connection(self, conn, fn):
+        """Run fn(conn) on the shared executor (or inline in non-threaded mode).
+
+        The caller owns the connection's lifecycle; this method does not
+        cache or close it. Used by request_connection().
+        """
+        self._check_not_closed()
+        if self.ds.executor is None:
+            return fn(conn)
+
+        def in_thread():
+            return fn(conn)
+
+        with self._pending_execute_futures_lock:
+            self._check_not_closed()
+            future = self.ds.executor.submit(in_thread)
+            self._pending_execute_futures.add(future)
+        future.add_done_callback(self._remove_pending_execute_future)
+        return await asyncio.wrap_future(future)
+
+    @asynccontextmanager
+    async def request_connection(self, write=False, run_prepare_connection_hook=False):
+        """Open a fresh sqlite3 connection scoped to an ``async with`` block.
+
+        Intended for short-lived per-request work — for example, installing
+        a ``set_authorizer`` callback derived from ``request.actor`` before
+        running queries. The connection is not added to the pool, not
+        cached, and is closed when the context exits.
+
+        Pass ``run_prepare_connection_hook=True`` to opt into the
+        ``prepare_connection`` plugin hook; by default it is skipped so
+        these connections stay cheap.
+        """
+        self._check_not_closed()
+        conn = self.connect(write=write, track=False)
+        self.ds._prepare_connection(
+            conn, self.name, run_plugin_hook=run_prepare_connection_hook
+        )
+        try:
+            yield RequestConnection(self, conn)
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     @property
     def hash(self):
@@ -929,6 +985,38 @@ def _deliver_write_result(task, result, exception):
     except RuntimeError:
         # Event loop has been closed; the awaiter is gone.
         pass
+
+
+class RequestConnection:
+    """Thin async wrapper around a single sqlite3.Connection.
+
+    Yielded by :meth:`Database.request_connection`. Exposes ``execute`` and
+    ``execute_fn`` with the same semantics as :class:`Database`, but bound
+    to the underlying ``connection`` so a caller can attach per-request
+    state (e.g. ``set_authorizer``) without touching the pool.
+    """
+
+    def __init__(self, db, connection):
+        self._db = db
+        self.connection = connection
+
+    async def execute_fn(self, fn):
+        return await self._db._execute_fn_on_connection(self.connection, fn)
+
+    async def execute(
+        self,
+        sql,
+        params=None,
+        truncate=False,
+        custom_time_limit=None,
+        page_size=None,
+        log_sql_errors=True,
+    ):
+        fn = self._db._make_sql_operation(
+            sql, params, truncate, custom_time_limit, page_size, log_sql_errors
+        )
+        with trace("sql", database=self._db.name, sql=sql.strip(), params=params):
+            return await self._db._execute_fn_on_connection(self.connection, fn)
 
 
 class QueryInterrupted(Exception):

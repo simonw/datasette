@@ -187,3 +187,48 @@ async def test_stale_catalog_child_entries_removed_for_missing_database(tmp_path
     assert [tuple(row) for row in catalog_tables.rows] == [("alpha", "alpha_table")]
 
     ds2.close()
+
+
+@pytest.mark.asyncio
+async def test_orphan_stale_catalog_child_entries_removed(tmp_path):
+    from datasette.app import Datasette
+
+    import sqlite3
+
+    internal_db_path = str(tmp_path / "internal.db")
+    alpha_db_path = str(tmp_path / "alpha.db")
+
+    conn = sqlite3.connect(alpha_db_path)
+    conn.execute("CREATE TABLE alpha_table (id INTEGER PRIMARY KEY)")
+    conn.close()
+
+    ds1 = Datasette(files=[alpha_db_path], internal=internal_db_path)
+    await ds1.invoke_startup()
+    ds1.close()
+
+    # Simulate the state left behind by old cleanup code: the parent database
+    # row was deleted, but child catalog rows survived because foreign key
+    # enforcement is not enabled for these internal catalog writes.
+    conn = sqlite3.connect(internal_db_path)
+    conn.execute("DELETE FROM catalog_databases WHERE database_name = 'fixtures'")
+    conn.execute("""
+        INSERT INTO catalog_tables (database_name, table_name, rootpage, sql)
+        VALUES ('fixtures', 'stale_table', 1, 'CREATE TABLE stale_table (id INTEGER)')
+    """)
+    conn.commit()
+    conn.close()
+
+    ds2 = Datasette(files=[alpha_db_path], internal=internal_db_path)
+    await ds2.invoke_startup()
+
+    catalog_tables = await ds2.get_internal_database().execute("""
+        SELECT database_name, table_name
+        FROM catalog_tables
+        ORDER BY database_name, table_name
+        """)
+    assert [tuple(row) for row in catalog_tables.rows] == [("alpha", "alpha_table")]
+
+    response = await ds2.client.get("/-/tables.json")
+    assert response.status_code == 200
+
+    ds2.close()

@@ -46,6 +46,29 @@ async def test_default_deny_denies_default_permissions():
 
 
 @pytest.mark.asyncio
+async def test_default_deny_root_user_index_pages_do_not_500_without_config():
+    """Regression test for issue #2644."""
+    ds = Datasette(default_deny=True)
+    ds.root_enabled = True
+    await ds.invoke_startup()
+
+    db = ds.add_memory_database("test_db")
+    await db.execute_write("create table test_table (id integer primary key)")
+    await ds._refresh_schemas()
+
+    # Authenticate as root using the one-time token
+    auth_response = await ds.client.get(f"/-/auth-token?token={ds._root_token}")
+    assert auth_response.status_code == 302
+    root_cookie = auth_response.cookies["ds_actor"]
+
+    response = await ds.client.get("/", cookies={"ds_actor": root_cookie})
+    assert response.status_code == 200
+
+    response = await ds.client.get("/test_db", cookies={"ds_actor": root_cookie})
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_default_deny_with_root_user():
     """Test that root user still has access when default_deny=True"""
     ds = Datasette(default_deny=True)

@@ -20,7 +20,7 @@
 <body class="{% block body_class %}{% endblock %}">
 <div class="not-footer">
 <header class="hd"><nav>{% block nav %}{% block crumbs %}{{ crumbs.nav(request=request) }}{% endblock %}
-    {% set links = menu_links() %}{% if links or show_logout %}
+    {% set links = menu_links() %}
     <details class="nav-menu details-menu">
         <summary><svg aria-labelledby="nav-menu-svg-title" role="img"
             fill="currentColor" stroke="currentColor" xmlns="http://www.w3.org/2000/svg"
@@ -29,19 +29,18 @@
                 <path fill-rule="evenodd" d="M1 2.75A.75.75 0 011.75 2h12.5a.75.75 0 110 1.5H1.75A.75.75 0 011 2.75zm0 5A.75.75 0 011.75 7h12.5a.75.75 0 110 1.5H1.75A.75.75 0 011 7.75zM1.75 12a.75.75 0 100 1.5h12.5a.75.75 0 100-1.5H1.75z"></path>
         </svg></summary>
         <div class="nav-menu-inner">
-            {% if links %}
             <ul>
+                <li><button type="button" class="button-as-link" data-navigation-search-open>Jump to... <kbd class="keyboard-shortcut" aria-hidden="true" title="Keyboard shortcut: press / to open Jump to">/</kbd></button></li>
                 {% for link in links %}
                 <li><a href="{{ link.href }}">{{ link.label }}</a></li>
                 {% endfor %}
             </ul>
-            {% endif %}
             {% if show_logout %}
             <form class="nav-menu-logout" action="{{ urls.logout() }}" method="post">
                 <button class="button-as-link">Log out</button>
             </form>{% endif %}
         </div>
-    </details>{% endif %}
+    </details>
     {% if actor %}
     <div class="actor">
         <strong>{{ display_actor(actor) }}</strong>

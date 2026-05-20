@@ -362,6 +362,32 @@ form.nav-menu-logout {
 .nav-menu-inner a {
     display: block;
 }
+.nav-menu-inner button.button-as-link {
+    display: block;
+    width: 100%;
+    text-align: left;
+    font: inherit;
+}
+.nav-menu-inner .keyboard-shortcut {
+    float: right;
+    box-sizing: border-box;
+    min-width: 1.4em;
+    margin-left: 0.75rem;
+    padding: 0 0.35em;
+    border: 1px solid rgba(255,255,244,0.6);
+    border-radius: 3px;
+    background: rgba(255,255,244,0.12);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85em;
+    line-height: 1.35;
+    text-align: center;
+    text-decoration: none;
+}
+@media (max-width: 640px) {
+    .nav-menu-inner .keyboard-shortcut {
+        display: none;
+    }
+}
 
 /* Table/database actions menu */
 .page-action-menu {

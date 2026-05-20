@@ -1008,10 +1008,22 @@ async def test_navigation_menu_links(
         kwargs["actor"] = {"id": actor_id}
     html = (await ds_client.get("/", **kwargs)).text
     soup = Soup(html, "html.parser")
-    details = soup.find("nav").find("details")
+    details = soup.find("nav").find("details", {"class": "nav-menu"})
+    assert details is not None
+    search_button = details.find("button", {"data-navigation-search-open": True})
+    assert search_button is not None
+    assert search_button.text.strip() == "Jump to... /"
+    assert search_button.find("kbd", {"class": "keyboard-shortcut"}).text == "/"
+    assert search_button.find("kbd")["aria-hidden"] == "true"
+    assert (
+        search_button.find("kbd")["title"]
+        == "Keyboard shortcut: press / to open Jump to"
+    )
+    assert details.find("li").find("button") == search_button
     if not actor_id:
-        # Should not show a menu
-        assert details is None
+        # The app menu is always visible, but anonymous users do not see logout
+        # or debug links.
+        assert details.find("form") is None
         return
     # They are logged in: should show a menu
     assert details is not None

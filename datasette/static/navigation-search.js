@@ -199,6 +199,15 @@ class NavigationSearch extends HTMLElement {
       }
     });
 
+    document.addEventListener("click", (e) => {
+      const trigger = e.target.closest("[data-navigation-search-open]");
+      if (trigger) {
+        e.preventDefault();
+        trigger.closest("details")?.removeAttribute("open");
+        this.openMenu();
+      }
+    });
+
     // Input event
     input.addEventListener("input", (e) => {
       this.handleSearch(e.target.value);
@@ -390,7 +399,9 @@ class NavigationSearch extends HTMLElement {
     const dialog = this.shadowRoot.querySelector("dialog");
     const input = this.shadowRoot.querySelector(".search-input");
 
-    dialog.showModal();
+    if (!dialog.open) {
+      dialog.showModal();
+    }
     input.value = "";
     input.focus();
 

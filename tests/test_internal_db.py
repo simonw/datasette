@@ -139,3 +139,51 @@ async def test_stale_catalog_entry_database_fix(tmp_path):
         f"Index page should return 200, not {response.status_code}. "
         "This fails due to stale catalog entries causing KeyError."
     )
+
+
+@pytest.mark.asyncio
+async def test_stale_catalog_child_entries_removed_for_missing_database(tmp_path):
+    from datasette.app import Datasette
+
+    import sqlite3
+
+    internal_db_path = str(tmp_path / "internal.db")
+    alpha_db_path = str(tmp_path / "alpha.db")
+    bravo_db_path = str(tmp_path / "bravo.db")
+
+    for db_path, table_name in (
+        (alpha_db_path, "alpha_table"),
+        (bravo_db_path, "bravo_table"),
+        (bravo_db_path, "bravo_table_2"),
+    ):
+        conn = sqlite3.connect(db_path)
+        conn.execute(f"CREATE TABLE {table_name} (id INTEGER PRIMARY KEY)")
+        conn.close()
+
+    ds1 = Datasette(files=[alpha_db_path, bravo_db_path], internal=internal_db_path)
+    await ds1.invoke_startup()
+
+    catalog_tables = await ds1.get_internal_database().execute("""
+        SELECT database_name, table_name
+        FROM catalog_tables
+        ORDER BY database_name, table_name
+        """)
+    assert [tuple(row) for row in catalog_tables.rows] == [
+        ("alpha", "alpha_table"),
+        ("bravo", "bravo_table"),
+        ("bravo", "bravo_table_2"),
+    ]
+
+    ds1.close()
+
+    ds2 = Datasette(files=[alpha_db_path], internal=internal_db_path)
+    await ds2.invoke_startup()
+
+    catalog_tables = await ds2.get_internal_database().execute("""
+        SELECT database_name, table_name
+        FROM catalog_tables
+        ORDER BY database_name, table_name
+        """)
+    assert [tuple(row) for row in catalog_tables.rows] == [("alpha", "alpha_table")]
+
+    ds2.close()

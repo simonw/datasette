@@ -10,7 +10,7 @@ Unreleased
 ----------
 
 - Dropped Janus as a dependency, previously used to manage the write queue. This should not have any impact on plugin developers or end-users. (:issue:`1752`)
-
+- Fixed a bug where stale tables and other related resources were not removed from ``catalog_*`` tables when a database was removed. (:issue:`2723`)
 
 .. _v1_0_a29:
 

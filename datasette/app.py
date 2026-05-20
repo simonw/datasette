@@ -618,11 +618,24 @@ class Datasette:
         stale_databases = set(current_schema_versions.keys()) - set(
             self.databases.keys()
         )
-        for stale_db_name in stale_databases:
-            await internal_db.execute_write(
-                "DELETE FROM catalog_databases WHERE database_name = ?",
-                [stale_db_name],
-            )
+        if stale_databases:
+
+            def delete_stale_database_catalog(conn):
+                for stale_db_name in stale_databases:
+                    for table in (
+                        "catalog_columns",
+                        "catalog_foreign_keys",
+                        "catalog_indexes",
+                        "catalog_views",
+                        "catalog_tables",
+                        "catalog_databases",
+                    ):
+                        conn.execute(
+                            "DELETE FROM {} WHERE database_name = ?".format(table),
+                            [stale_db_name],
+                        )
+
+            await internal_db.execute_write_fn(delete_stale_database_catalog)
         for database_name, db in self.databases.items():
             schema_version = (await db.execute("PRAGMA schema_version")).first()[0]
             # Compare schema versions to see if we should skip it

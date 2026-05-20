@@ -54,7 +54,6 @@ class NavigationSearch extends HTMLElement {
                 .search-container {
                     display: flex;
                     flex-direction: column;
-                    height: 100%;
                 }
 
                 .search-input-wrapper {

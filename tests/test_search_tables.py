@@ -33,7 +33,7 @@ async def ds_with_tables():
     await ds.invoke_startup()
 
     # Add content database with some tables
-    content_db = ds.add_memory_database("content")
+    content_db = ds.add_memory_database("search_tables_content", name="content")
     await content_db.execute_write(
         "CREATE TABLE IF NOT EXISTS articles (id INTEGER PRIMARY KEY, title TEXT)"
     )
@@ -45,27 +45,28 @@ async def ds_with_tables():
     )
 
     # Add private database with a table
-    private_db = ds.add_memory_database("private")
+    private_db = ds.add_memory_database("search_tables_private", name="private")
     await private_db.execute_write(
         "CREATE TABLE IF NOT EXISTS secrets (id INTEGER PRIMARY KEY, data TEXT)"
     )
 
     # Add another public database
-    public_db = ds.add_memory_database("public")
+    public_db = ds.add_memory_database("search_tables_public", name="public")
     await public_db.execute_write(
         "CREATE TABLE IF NOT EXISTS articles (id INTEGER PRIMARY KEY, content TEXT)"
     )
+    await ds._refresh_schemas()
 
     return ds
 
 
-# /-/tables.json tests
+# /-/jump.json table search tests
 @pytest.mark.asyncio
 async def test_tables_basic_search(ds_with_tables):
     """Test basic table search functionality."""
     # Search for "articles" - should find it in both content and public databases
     # but only return public.articles for anonymous user (content.articles requires auth)
-    response = await ds_with_tables.client.get("/-/tables.json?q=articles")
+    response = await ds_with_tables.client.get("/-/jump.json?q=articles")
     assert response.status_code == 200
     data = response.json()
 
@@ -85,7 +86,7 @@ async def test_tables_search_with_auth(ds_with_tables):
     """Test that authenticated users see more tables."""
     # Editor user should see content.articles
     response = await ds_with_tables.client.get(
-        "/-/tables.json?q=articles",
+        "/-/jump.json?q=articles",
         actor={"id": "editor"},
     )
     assert response.status_code == 200
@@ -103,7 +104,7 @@ async def test_tables_search_partial_match(ds_with_tables):
     """Test that search matches partial table names."""
     # Search for "com" should match "comments"
     response = await ds_with_tables.client.get(
-        "/-/tables.json?q=com",
+        "/-/jump.json?q=com",
         actor={"id": "user"},
     )
     assert response.status_code == 200
@@ -119,7 +120,7 @@ async def test_tables_search_respects_database_permissions(ds_with_tables):
     # Search for "secrets" which is in the private database
     # Even authenticated users shouldn't see it because database is denied
     response = await ds_with_tables.client.get(
-        "/-/tables.json?q=secrets",
+        "/-/jump.json?q=secrets",
         actor={"id": "user"},
     )
     assert response.status_code == 200
@@ -134,7 +135,7 @@ async def test_tables_search_respects_table_permissions(ds_with_tables):
     """Test that tables with specific permissions are filtered correctly."""
     # Regular authenticated user searching for "users"
     response = await ds_with_tables.client.get(
-        "/-/tables.json?q=users",
+        "/-/jump.json?q=users",
         actor={"id": "regular"},
     )
     assert response.status_code == 200
@@ -149,7 +150,7 @@ async def test_tables_search_respects_table_permissions(ds_with_tables):
 async def test_tables_search_response_structure(ds_with_tables):
     """Test that response has correct structure."""
     response = await ds_with_tables.client.get(
-        "/-/tables.json?q=users",
+        "/-/jump.json?q=users",
         actor={"id": "user"},
     )
     assert response.status_code == 200

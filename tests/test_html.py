@@ -1019,6 +1019,13 @@ async def test_navigation_menu_links(
         search_button.find("kbd")["title"]
         == "Keyboard shortcut: press / to open Jump to"
     )
+    navigation_search_script = soup.find(
+        "script", {"src": re.compile(r"navigation-search\.js")}
+    )
+    assert navigation_search_script["src"] == (
+        "/-/static/navigation-search.js?"
+        + ds_client.ds.static_hash("navigation-search.js")
+    )
     assert details.find("li").find("button") == search_button
     if not actor_id:
         # The app menu is always visible, but anonymous users do not see logout

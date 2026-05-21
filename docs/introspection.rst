@@ -144,46 +144,65 @@ Shows currently attached databases. `Databases example <https://latest.datasette
         }
     ]
 
-.. _TablesView:
+.. _JumpView:
 
-/-/tables
----------
+/-/jump
+-------
 
-Returns a JSON list of all tables that the current actor has permission to view. This endpoint uses the resource-based permission system and respects database and table-level access controls.
+Returns a JSON list of items that the current actor has permission to view for Datasette's jump menu. By default this includes visible databases, tables, views and canned queries, and plugins can contribute additional items.
 
-The endpoint supports a ``?q=`` query parameter for filtering tables by name using case-insensitive regex matching.
+The endpoint supports a ``?q=`` query parameter for filtering items by name.
+Canned queries with a configured ``title`` also include a ``display_name`` in
+their results, and can be found by searching for that title. Plugins can provide
+the same extra field from ``jump_items_sql`` by returning a ``display_name``
+column and setting ``JumpSQL(..., has_display_name=True)``.
 
-`Tables example <https://latest.datasette.io/-/tables>`_:
+`Jump example <https://latest.datasette.io/-/jump>`_:
 
 .. code-block:: json
 
     {
         "matches": [
             {
-                "name": "fixtures/facetable",
-                "url": "/fixtures/facetable"
+                "name": "fixtures",
+                "url": "/fixtures",
+                "type": "database",
+                "description": "Database"
             },
             {
-                "name": "fixtures/searchable",
-                "url": "/fixtures/searchable"
+                "name": "fixtures: facetable",
+                "url": "/fixtures/facetable",
+                "type": "table",
+                "description": "Table"
+            },
+            {
+                "name": "fixtures: recent_releases",
+                "display_name": "Recent Datasette releases",
+                "url": "/fixtures/recent_releases",
+                "type": "query",
+                "description": "Canned query"
             }
-        ]
+        ],
+        "truncated": false
     }
 
-Search example with ``?q=facet`` returns only tables matching ``.*facet.*``:
+Search example with ``?q=facet`` returns only items matching ``.*facet.*``:
 
 .. code-block:: json
 
     {
         "matches": [
             {
-                "name": "fixtures/facetable",
-                "url": "/fixtures/facetable"
+                "name": "fixtures: facetable",
+                "url": "/fixtures/facetable",
+                "type": "table",
+                "description": "Table"
             }
-        ]
+        ],
+        "truncated": false
     }
 
-When multiple search terms are provided (e.g., ``?q=user+profile``), tables must match the pattern ``.*user.*profile.*``. Results are ordered by shortest table name first.
+When multiple search terms are provided (e.g., ``?q=user+profile``), items must match the pattern ``.*user.*profile.*``. Results are ordered by relevance, then by item type and shortest display name.
 
 .. _JsonDataView_threads:
 

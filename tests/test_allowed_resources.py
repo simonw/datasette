@@ -52,7 +52,7 @@ async def test_ds():
 
 @pytest.mark.asyncio
 async def test_tables_endpoint_global_access(test_ds):
-    """Test /-/tables with global access permissions"""
+    """Test allowed_resources() with global access permissions"""
 
     def rules_callback(datasette, actor, action):
         if actor and actor.get("id") == "alice":
@@ -91,7 +91,7 @@ async def test_tables_endpoint_global_access(test_ds):
 
 @pytest.mark.asyncio
 async def test_tables_endpoint_database_restriction(test_ds):
-    """Test /-/tables with database-level restriction"""
+    """Test allowed_resources() with database-level restriction"""
 
     def rules_callback(datasette, actor, action):
         if actor and actor.get("role") == "analyst":
@@ -133,7 +133,7 @@ async def test_tables_endpoint_database_restriction(test_ds):
 
 @pytest.mark.asyncio
 async def test_tables_endpoint_table_exception(test_ds):
-    """Test /-/tables with table-level exception (deny database, allow specific table)"""
+    """Test allowed_resources() with table-level exception (deny database, allow specific table)"""
 
     def rules_callback(datasette, actor, action):
         if actor and actor.get("id") == "carol":
@@ -217,7 +217,7 @@ async def test_tables_endpoint_deny_overrides_allow(test_ds):
 
 @pytest.mark.asyncio
 async def test_tables_endpoint_no_permissions():
-    """Test /-/tables when user has no custom permissions (only defaults)"""
+    """Test allowed_resources() when user has no custom permissions (only defaults)"""
 
     ds = Datasette()
     await ds.invoke_startup()
@@ -241,7 +241,7 @@ async def test_tables_endpoint_no_permissions():
 
 @pytest.mark.asyncio
 async def test_tables_endpoint_specific_table_only(test_ds):
-    """Test /-/tables when only specific tables are allowed (no parent/global rules)"""
+    """Test allowed_resources() when only specific tables are allowed (no parent/global rules)"""
 
     def rules_callback(datasette, actor, action):
         if actor and actor.get("id") == "dave":
@@ -283,7 +283,7 @@ async def test_tables_endpoint_specific_table_only(test_ds):
 
 @pytest.mark.asyncio
 async def test_tables_endpoint_empty_result(test_ds):
-    """Test /-/tables when all tables are explicitly denied"""
+    """Test allowed_resources() when all tables are explicitly denied"""
 
     def rules_callback(datasette, actor, action):
         if actor and actor.get("id") == "blocked":
@@ -314,7 +314,7 @@ async def test_tables_endpoint_empty_result(test_ds):
 
 @pytest.mark.asyncio
 async def test_tables_endpoint_no_query_returns_all():
-    """Test /-/tables without query parameter returns all tables"""
+    """Test allowed_resources() without query parameter returns all tables"""
     ds = Datasette()
     await ds.invoke_startup()
 
@@ -338,7 +338,7 @@ async def test_tables_endpoint_no_query_returns_all():
 
 @pytest.mark.asyncio
 async def test_tables_endpoint_truncation():
-    """Test /-/tables truncates at 100 tables and sets truncated flag"""
+    """Test allowed_resources() truncates at 100 tables and sets truncated flag"""
     ds = Datasette()
     await ds.invoke_startup()
 
@@ -359,7 +359,7 @@ async def test_tables_endpoint_truncation():
 
 @pytest.mark.asyncio
 async def test_tables_endpoint_search_single_term():
-    """Test /-/tables?q=user to filter tables matching 'user'"""
+    """Test allowed_resources()?q=user to filter tables matching 'user'"""
 
     ds = Datasette()
     await ds.invoke_startup()
@@ -396,7 +396,7 @@ async def test_tables_endpoint_search_single_term():
 
 @pytest.mark.asyncio
 async def test_tables_endpoint_search_multiple_terms():
-    """Test /-/tables?q=user+profile to filter tables matching .*user.*profile.*"""
+    """Test allowed_resources()?q=user+profile to filter tables matching .*user.*profile.*"""
 
     ds = Datasette()
     await ds.invoke_startup()

@@ -58,7 +58,7 @@ from .views.special import (
     AllowedResourcesView,
     PermissionRulesView,
     PermissionCheckView,
-    TablesView,
+    JumpView,
     InstanceSchemaView,
     DatabaseSchemaView,
     TableSchemaView,
@@ -1219,13 +1219,24 @@ class Datasette:
 
         return db_plugin_config
 
+    def static_hash(self, filename):
+        if not hasattr(self, "_static_hashes"):
+            self._static_hashes = {}
+        path = os.path.join(str(app_root), "datasette/static", filename)
+        signature = (os.path.getmtime(path), os.path.getsize(path))
+        cached = self._static_hashes.get(filename)
+        if cached and cached["signature"] == signature:
+            return cached["hash"]
+        with open(path) as fp:
+            static_hash = hashlib.sha1(fp.read().encode("utf8")).hexdigest()[:6]
+        self._static_hashes[filename] = {
+            "signature": signature,
+            "hash": static_hash,
+        }
+        return static_hash
+
     def app_css_hash(self):
-        if not hasattr(self, "_app_css_hash"):
-            with open(os.path.join(str(app_root), "datasette/static/app.css")) as fp:
-                self._app_css_hash = hashlib.sha1(fp.read().encode("utf8")).hexdigest()[
-                    :6
-                ]
-        return self._app_css_hash
+        return self.static_hash("app.css")
 
     async def get_canned_queries(self, database_name, actor):
         queries = {}
@@ -2028,6 +2039,22 @@ class Datasette:
                     links.extend(extra_links)
             return links
 
+        async def jump_start():
+            html_bits = []
+            for hook in pm.hook.jump_start(
+                datasette=self,
+                actor=request.actor if request else None,
+                request=request or None,
+            ):
+                extra_html = await await_me_maybe(hook)
+                if not extra_html:
+                    continue
+                if isinstance(extra_html, (list, tuple)):
+                    html_bits.extend(extra_html)
+                else:
+                    html_bits.append(extra_html)
+            return Markup("").join(Markup(html) for html in html_bits)
+
         template_context = {
             **context,
             **{
@@ -2036,11 +2063,13 @@ class Datasette:
                 "urls": self.urls,
                 "actor": request.actor if request else None,
                 "menu_links": menu_links,
+                "jump_start": jump_start,
                 "display_actor": display_actor,
                 "show_logout": request is not None
                 and "ds_actor" in request.cookies
                 and request.actor,
                 "app_css_hash": self.app_css_hash(),
+                "navigation_search_js_hash": self.static_hash("navigation-search.js"),
                 "zip": zip,
                 "body_scripts": body_scripts,
                 "format_bytes": format_bytes,
@@ -2222,8 +2251,8 @@ class Datasette:
             r"/-/api$",
         )
         add_route(
-            TablesView.as_view(self),
-            r"/-/tables(\.(?P<format>json))?$",
+            JumpView.as_view(self),
+            r"/-/jump(\.(?P<format>json))?$",
         )
         add_route(
             InstanceSchemaView.as_view(self),

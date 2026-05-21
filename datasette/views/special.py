@@ -1,11 +1,14 @@
 import json
 import logging
+from datasette.jump import JumpSQL, namespace_sql_params
+from datasette.plugins import pm
 from datasette.events import LogoutEvent, LoginEvent, CreateTokenEvent
 from datasette.resources import DatabaseResource, TableResource
 from datasette.utils.asgi import Response, Forbidden
 from datasette.utils import (
     actor_matches_allow,
     add_cors_headers,
+    await_me_maybe,
     tilde_encode,
     tilde_decode,
 )
@@ -910,75 +913,231 @@ class ApiExplorerView(BaseView):
         )
 
 
-class TablesView(BaseView):
+class JumpView(BaseView):
     """
-    Simple endpoint that uses the new allowed_resources() API.
-    Returns JSON list of all tables the actor can view.
-
-    Supports ?q=foo+bar to filter tables matching .*foo.*bar.* pattern,
-    ordered by shortest name first.
+    Endpoint for the jump menu. Returns JSON navigation items the actor can use.
     """
 
-    name = "tables"
+    name = "jump"
     has_json_alternate = False
 
-    async def get(self, request):
-        # Get search query parameter
-        q = request.args.get("q", "").strip()
+    async def _query_display_names_sql(self, request):
+        selects = []
+        params = {}
+        for database_name in self.ds.databases.keys():
+            queries = await self.ds.get_canned_queries(database_name, request.actor)
+            for query_name, query in queries.items():
+                display_name = query.get("title") if isinstance(query, dict) else None
+                if not display_name:
+                    continue
+                index = len(selects)
+                params[f"display_database_{index}"] = database_name
+                params[f"display_query_{index}"] = query_name
+                params[f"display_name_{index}"] = str(display_name)
+                selects.append(f"""
+                SELECT
+                    :display_database_{index} AS database_name,
+                    :display_query_{index} AS query_name,
+                    :display_name_{index} AS display_name
+                """)
+        if not selects:
+            return (
+                "SELECT NULL AS database_name, NULL AS query_name, NULL AS display_name WHERE 0",
+                {},
+            )
+        return " UNION ALL ".join(selects), params
 
-        # Get SQL for allowed resources using the permission system
-        permission_sql, params = await self.ds.allowed_resources_sql(
+    async def _core_fragments(self, request):
+        database_sql, database_params = await self.ds.allowed_resources_sql(
+            action="view-database", actor=request.actor
+        )
+        table_sql, table_params = await self.ds.allowed_resources_sql(
             action="view-table", actor=request.actor
         )
+        query_sql, query_params = await self.ds.allowed_resources_sql(
+            action="view-query", actor=request.actor
+        )
+        query_display_names_sql, query_display_names_params = (
+            await self._query_display_names_sql(request)
+        )
+        return [
+            JumpSQL(
+                sql=f"""
+                WITH allowed_databases AS (
+                    {database_sql}
+                )
+                SELECT
+                    'database' AS type,
+                    parent AS label,
+                    'Database' AS description,
+                    NULL AS url,
+                    parent AS database_name,
+                    NULL AS resource_name,
+                    parent AS search_text,
+                    10 AS sort_key,
+                    'datasette' AS source,
+                    NULL AS display_name
+                FROM allowed_databases
+                """,
+                params=database_params,
+                has_display_name=True,
+            ),
+            JumpSQL(
+                sql=f"""
+                WITH allowed_tables AS (
+                    {table_sql}
+                )
+                SELECT
+                    CASE WHEN catalog_views.view_name IS NULL THEN 'table' ELSE 'view' END AS type,
+                    allowed_tables.parent || ': ' || allowed_tables.child AS label,
+                    CASE WHEN catalog_views.view_name IS NULL THEN 'Table' ELSE 'View' END AS description,
+                    NULL AS url,
+                    allowed_tables.parent AS database_name,
+                    allowed_tables.child AS resource_name,
+                    allowed_tables.parent || ' ' || allowed_tables.child AS search_text,
+                    CASE WHEN catalog_views.view_name IS NULL THEN 20 ELSE 25 END AS sort_key,
+                    'datasette' AS source,
+                    NULL AS display_name
+                FROM allowed_tables
+                LEFT JOIN catalog_views
+                    ON catalog_views.database_name = allowed_tables.parent
+                   AND catalog_views.view_name = allowed_tables.child
+                """,
+                params=table_params,
+                has_display_name=True,
+            ),
+            JumpSQL(
+                sql=f"""
+                WITH allowed_queries AS (
+                    {query_sql}
+                ),
+                query_display_names AS (
+                    {query_display_names_sql}
+                )
+                SELECT
+                    'query' AS type,
+                    allowed_queries.parent || ': ' || allowed_queries.child AS label,
+                    'Canned query' AS description,
+                    NULL AS url,
+                    allowed_queries.parent AS database_name,
+                    allowed_queries.child AS resource_name,
+                    allowed_queries.parent || ' ' || allowed_queries.child || ' ' || COALESCE(query_display_names.display_name, '') AS search_text,
+                    30 AS sort_key,
+                    'datasette' AS source,
+                    query_display_names.display_name AS display_name
+                FROM allowed_queries
+                LEFT JOIN query_display_names
+                    ON query_display_names.database_name = allowed_queries.parent
+                   AND query_display_names.query_name = allowed_queries.child
+                """,
+                params={**query_params, **query_display_names_params},
+                has_display_name=True,
+            ),
+        ]
 
-        # Build query based on whether we have a search query
-        if q:
-            # Build SQL LIKE pattern from search terms
-            # Split search terms by whitespace and build pattern: %term1%term2%term3%
-            terms = q.split()
-            pattern = "%" + "%".join(terms) + "%"
+    async def _plugin_fragments(self, request):
+        fragments = []
+        for hook in pm.hook.jump_items_sql(
+            datasette=self.ds,
+            actor=request.actor,
+            request=request,
+        ):
+            value = await await_me_maybe(hook)
+            if value is None:
+                continue
+            if isinstance(value, JumpSQL):
+                fragments.append(value)
+            elif isinstance(value, (list, tuple)):
+                for fragment in value:
+                    if fragment is not None:
+                        assert isinstance(
+                            fragment, JumpSQL
+                        ), "jump_items_sql must return JumpSQL instances"
+                        fragments.append(fragment)
+            else:
+                raise TypeError("jump_items_sql must return JumpSQL instances")
+        return fragments
 
-            # Build query with CTE to filter by search pattern
-            sql = f"""
-            WITH allowed_tables AS (
-                {permission_sql}
+    def _url_for_row(self, row):
+        if row["url"]:
+            return row["url"]
+        if row["type"] == "database":
+            return self.ds.urls.database(row["database_name"])
+        if row["type"] in ("table", "view"):
+            return self.ds.urls.table(row["database_name"], row["resource_name"])
+        if row["type"] == "query":
+            return self.ds.urls.query(row["database_name"], row["resource_name"])
+        return ""
+
+    async def get(self, request):
+        q = request.args.get("q", "").strip()
+        terms = q.split()
+        pattern = "%" + "%".join(terms) + "%" if terms else "%"
+        fragments = await self._core_fragments(request)
+        fragments.extend(await self._plugin_fragments(request))
+
+        union_parts = []
+        all_params = {"q": q, "pattern": pattern}
+        for index, fragment in enumerate(fragments):
+            fragment_sql, fragment_params = namespace_sql_params(
+                fragment.sql,
+                fragment.params or {},
+                f"jump_{index}",
             )
-            SELECT parent, child
-            FROM allowed_tables
-            WHERE child LIKE :pattern COLLATE NOCASE
-            ORDER BY length(child), child
-            """
-            all_params = {**params, "pattern": pattern}
-        else:
-            # No search query - return all tables, ordered by name
-            # Fetch 101 to detect if we need to truncate
-            sql = f"""
-            WITH allowed_tables AS (
-                {permission_sql}
-            )
-            SELECT parent, child
-            FROM allowed_tables
-            ORDER BY parent, child
-            LIMIT 101
-            """
-            all_params = params
+            union_parts.append(f"""
+                SELECT
+                    type,
+                    label,
+                    description,
+                    url,
+                    database_name,
+                    resource_name,
+                    search_text,
+                    sort_key,
+                    source,
+                    {"display_name" if fragment.has_display_name else "NULL AS display_name"}
+                FROM (
+                    {fragment_sql}
+                )
+            """)
+            all_params.update(fragment_params)
 
-        # Execute against internal database
+        sql = f"""
+        WITH jump_items AS (
+            {" UNION ALL ".join(union_parts)}
+        )
+        SELECT *
+        FROM jump_items
+        WHERE :q = ''
+           OR search_text LIKE :pattern COLLATE NOCASE
+        ORDER BY
+            CASE
+                WHEN lower(COALESCE(display_name, label)) = lower(:q) THEN 0
+                WHEN lower(COALESCE(display_name, label)) LIKE lower(:q || '%') THEN 1
+                ELSE 2
+            END,
+            sort_key,
+            length(COALESCE(display_name, label)),
+            label
+        LIMIT 101
+        """
         result = await self.ds.get_internal_database().execute(sql, all_params)
-
-        # Build response with truncation
         rows = list(result.rows)
         truncated = len(rows) > 100
         if truncated:
             rows = rows[:100]
 
-        matches = [
-            {
-                "name": f"{row['parent']}: {row['child']}",
-                "url": self.ds.urls.table(row["parent"], row["child"]),
+        matches = []
+        for row in rows:
+            match = {
+                "name": row["label"],
+                "url": self._url_for_row(row),
+                "type": row["type"],
+                "description": row["description"],
             }
-            for row in rows
-        ]
+            if row["display_name"]:
+                match["display_name"] = row["display_name"]
+            matches.append(match)
 
         return Response.json({"matches": matches, "truncated": truncated})
 

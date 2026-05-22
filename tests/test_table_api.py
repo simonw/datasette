@@ -1,6 +1,7 @@
 from datasette.utils import detect_json1
 from datasette.utils.sqlite import sqlite_version
-from .fixtures import generate_compound_rows, generate_sortable_rows, make_app_client
+from datasette.fixtures import generate_compound_rows, generate_sortable_rows
+from .fixtures import make_app_client
 import json
 import pytest
 import urllib

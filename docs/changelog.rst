@@ -13,6 +13,7 @@ Unreleased
 - Fixed a bug where stale tables and other related resources were not removed from ``catalog_*`` tables when a database was removed. (:issue:`2723`)
 - Fixed a Safari bug with the table search mechanism triggered by pressing ``/``. (:issue:`2724`)
 - New "Jump to..." menu item, always visible, for triggering the previously undocumented ``/`` menu. (:issue:`2725`)
+- New documented :ref:`datasette.fixtures.populate_fixture_database(conn) <datasette_fixtures_populate_fixture_database>` helper for creating the fixture database tables used by Datasette's own tests, intended for plugin test suites.
 
 .. _v1_0_a29:
 

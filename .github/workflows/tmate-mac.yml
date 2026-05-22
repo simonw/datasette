@@ -12,4 +12,4 @@ jobs:
     steps:
     - uses: actions/checkout@v6
     - name: Setup tmate session
-      uses: mxschmitt/action-tmate@v3
+      uses: mxschmitt/action-tmate@v3.23

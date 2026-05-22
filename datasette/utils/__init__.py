@@ -155,9 +155,15 @@ Column = namedtuple(
 functions_marked_as_documented = []
 
 
-def documented(fn):
-    functions_marked_as_documented.append(fn)
-    return fn
+def documented(fn=None, *, label=None):
+    def decorate(fn):
+        fn._datasette_docs_label = label or "internals_utils_{}".format(fn.__name__)
+        functions_marked_as_documented.append(fn)
+        return fn
+
+    if fn is None:
+        return decorate
+    return decorate(fn)
 
 
 @documented

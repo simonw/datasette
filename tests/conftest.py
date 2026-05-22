@@ -72,7 +72,7 @@ async def ds_client():
             "num_sql_threads": 1,
         },
     )
-    from .fixtures import TABLES, TABLE_PARAMETERIZED_SQL
+    from datasette.fixtures import populate_fixture_database
 
     # Use a unique memory_name to avoid collisions between different
     # Datasette instances in the same process, but use "fixtures" for routing
@@ -82,10 +82,7 @@ async def ds_client():
 
     def prepare(conn):
         if not conn.execute("select count(*) from sqlite_master").fetchone()[0]:
-            conn.executescript(TABLES)
-            for sql, params in TABLE_PARAMETERIZED_SQL:
-                with conn:
-                    conn.execute(sql, params)
+            populate_fixture_database(conn)
 
     await db.execute_write_fn(prepare)
     await ds.invoke_startup()
@@ -264,8 +261,6 @@ from .fixtures import (  # noqa: E402, F401
     app_client_with_cors,
     app_client_with_dot,
     app_client_with_trace,
-    generate_compound_rows,
-    generate_sortable_rows,
     make_app_client,
     TEMP_PLUGIN_SECRET_FILE,
 )

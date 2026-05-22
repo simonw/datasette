@@ -82,6 +82,48 @@ This method registers any :ref:`plugin_hook_startup` or :ref:`plugin_hook_prepar
 
 If you are using ``await datasette.client.get()`` and similar methods then you don't need to worry about this - Datasette automatically calls ``invoke_startup()`` the first time it handles a request.
 
+.. _testing_plugins_datasette_fixtures_database:
+
+Using Datasette's fixtures database
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Datasette's own test suite uses a SQLite database with tables that exercise features such as compound primary keys, foreign keys, sortable columns, facets, full-text search and binary data.
+
+You can use those same tables in your plugin tests using the ``populate_fixture_database(conn)`` helper in ``datasette.fixtures``:
+
+Be aware that future Datasette releases may change details of these tables, so try not to rely on their exact structure in your own tests.
+
+.. _datasette_fixtures_populate_fixture_database:
+
+``populate_fixture_database(conn)``
+    Populates an existing SQLite connection with the fixture tables.
+
+For an in-memory test database:
+
+.. code-block:: python
+
+    from datasette.app import Datasette
+    from datasette.fixtures import populate_fixture_database
+    import pytest
+    import pytest_asyncio
+
+
+    @pytest_asyncio.fixture
+    async def datasette():
+        datasette = Datasette()
+        db = datasette.add_memory_database("fixtures")
+        await db.execute_write_fn(populate_fixture_database)
+        await datasette.invoke_startup()
+        return datasette
+
+
+    @pytest.mark.asyncio
+    async def test_facetable(datasette):
+        response = await datasette.client.get(
+            "/fixtures/facetable.json?_shape=array"
+        )
+        assert response.status_code == 200
+
 .. _testing_plugins_autoclose:
 
 Automatic cleanup of Datasette instances

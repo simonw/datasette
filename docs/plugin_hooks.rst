@@ -1881,6 +1881,120 @@ Using :ref:`internals_datasette_urls` here ensures that links in the menu will t
 
 Examples: `datasette-search-all <https://datasette.io/plugins/datasette-search-all>`_, `datasette-graphql <https://datasette.io/plugins/datasette-graphql>`_
 
+.. _plugin_hook_jump_items_sql:
+
+jump_items_sql(datasette, actor, request)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``actor`` - dictionary or None
+    The currently authenticated :ref:`actor <authentication_actor>`.
+
+``request`` - :ref:`internals_request` or None
+    The current HTTP request. This can be ``None`` if the request object is not available.
+
+This hook allows plugins to add extra results to Datasette's ``/`` jump menu, which is powered by the ``/-/jump`` JSON endpoint.
+
+Return a ``datasette.jump.JumpSQL`` object, or a list of ``JumpSQL`` objects. Each ``JumpSQL`` object wraps a SQL query to be combined with Datasette's own databases, tables, views and canned query results.
+
+The SQL query must return these columns:
+
+``type``
+    A short type string for the result, for example ``"app"`` or ``"dashboard"``.
+
+``label``
+    The stable name for the result. This is returned as ``name`` in the JSON API and is used for sorting.
+
+``description``
+    A short description shown above the item in the jump menu.
+
+``url``
+    The URL to navigate to when the item is selected.
+
+``database_name``
+    The database name for Datasette resources, or ``NULL`` for custom plugin results.
+
+``resource_name``
+    The table, view or query name for Datasette resources, or ``NULL`` for custom plugin results.
+
+``search_text``
+    Text that should be searched by the ``?q=`` parameter.
+
+``sort_key``
+    A numeric value used to order results.
+
+``source``
+    A string identifying the plugin that supplied the result.
+
+If the SQL query also returns a ``display_name`` column, set ``has_display_name=True`` on the ``JumpSQL`` object. Datasette will return that value as ``display_name`` in the JSON API, and the jump menu will show it as the primary readable label with ``name`` shown underneath.
+
+This example adds a "Plugin dashboard" result for signed-in users:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.jump import JumpSQL
+
+
+    @hookimpl
+    def jump_items_sql(actor):
+        if not actor:
+            return None
+        return JumpSQL(
+            sql="""
+            SELECT
+                'dashboard' AS type,
+                'plugin-dashboard' AS label,
+                'Dashboard' AS description,
+                '/-/plugin-dashboard' AS url,
+                NULL AS database_name,
+                NULL AS resource_name,
+                'plugin dashboard' AS search_text,
+                80 AS sort_key,
+                'my-plugin' AS source,
+                'Plugin dashboard' AS display_name
+            """,
+            has_display_name=True,
+        )
+
+Use ``params=`` to pass SQL parameters. Datasette will automatically namespace those parameters before combining SQL fragments from different plugins.
+
+.. _plugin_hook_jump_start:
+
+jump_start(datasette, actor, request)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``actor`` - dictionary or None
+    The currently authenticated :ref:`actor <authentication_actor>`.
+
+``request`` - :ref:`internals_request` or None
+    The current HTTP request. This can be ``None`` if the request object is not available.
+
+This hook allows plugins to add custom HTML to the default blank state of Datasette's ``/`` jump menu, before the user starts typing a search.
+
+The hook can return a string, a ``markupsafe.Markup`` object, or an awaitable function that returns either of those. Return ``None`` to add nothing.
+
+This example shows a link for starting a new chat if the user is signed in:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from markupsafe import Markup
+
+
+    @hookimpl
+    def jump_start(actor):
+        if not actor:
+            return None
+        return Markup(
+            '<p><a href="/-/agent/new">Start a new chat</a></p>'
+        )
+
 .. _plugin_actions:
 
 Action hooks

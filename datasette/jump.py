@@ -10,6 +10,49 @@ class JumpSQL:
     sql: str
     params: dict[str, Any] | None = None
 
+    @classmethod
+    def menu_item(
+        cls,
+        *,
+        label: str,
+        url: str,
+        description: str = "Menu item",
+        source: str = "datasette",
+        sort_key: int = 50,
+        search_text: str | None = None,
+        display_name: str | None = None,
+        item_type: str = "menu",
+    ) -> "JumpSQL":
+        if search_text is None:
+            search_text = " ".join(
+                text for text in (label, display_name, description) if text is not None
+            )
+        return cls(
+            sql="""
+            SELECT
+                :type AS type,
+                :label AS label,
+                :description AS description,
+                :url AS url,
+                NULL AS database_name,
+                NULL AS resource_name,
+                :search_text AS search_text,
+                :sort_key AS sort_key,
+                :source AS source,
+                :display_name AS display_name
+            """,
+            params={
+                "type": item_type,
+                "label": label,
+                "description": description,
+                "url": url,
+                "search_text": search_text,
+                "sort_key": sort_key,
+                "source": source,
+                "display_name": display_name,
+            },
+        )
+
 
 _PARAM_RE = re.compile(r"(?<!:):([A-Za-z_][A-Za-z0-9_]*)")
 

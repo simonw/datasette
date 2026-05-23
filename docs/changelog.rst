@@ -13,6 +13,11 @@ Unreleased
 - Fixed a bug where stale tables and other related resources were not removed from ``catalog_*`` tables when a database was removed. (:issue:`2723`)
 - Fixed a Safari bug with the table search mechanism triggered by pressing ``/``. (:issue:`2724`)
 - New "Jump to..." menu item, always visible, for triggering the previously undocumented ``/`` menu. (:issue:`2725`)
+- The ``/`` jump-to search interface now covers databases, views, canned queries and plugin-provided items in addition to tables. The endpoint backing it has been renamed from ``/-/tables`` to ``/-/jump``.
+- New :ref:`plugin_hook_jump_items_sql` plugin hook, allowing plugins to contribute additional items to the jump-to menu by returning SQL that queries the internal catalog.
+- ``datasette.jump.JumpSQL.menu_item()`` is a shortcut for adding individual jump menu items that are not backed by resources in the internal catalog.
+- New :ref:`javascript_plugins_makeJumpSections` JavaScript plugin hook, allowing plugins to add custom blank-state sections to the jump-to menu before the user has typed a query.
+- Debug menu links now appear in the jump-to menu instead of the top-right app menu.
 - New documented :ref:`datasette.fixtures.populate_fixture_database(conn) <datasette_fixtures_populate_fixture_database>` helper for creating the fixture database tables used by Datasette's own tests, intended for plugin test suites.
 
 .. _v1_0_a29:
@@ -274,7 +279,7 @@ Other changes
 ~~~~~~~~~~~~~
 
 - The internal ``catalog_views`` table now tracks SQLite views alongside tables in the introspection database. (:issue:`2495`)
-- Hitting the ``/`` brings up a search interface for navigating to databases, tables, views, canned queries and plugin-provided items that the current user can view. A new ``/-/jump`` endpoint supports this functionality, and JavaScript plugins can add custom blank-state sections using ``makeJumpSections()``. (:issue:`2523`)
+- Hitting the ``/`` brings up a search interface for navigating to tables that the current user can view. A new ``/-/tables`` endpoint supports this functionality. (:issue:`2523`)
 - Datasette attempts to detect some configuration errors on startup.
 - Datasette now supports Python 3.14 and no longer tests against Python 3.9.
 

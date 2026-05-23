@@ -1943,21 +1943,20 @@ This example adds a "Plugin dashboard" result for signed-in users:
     def jump_items_sql(actor):
         if not actor:
             return None
-        return JumpSQL(sql="""
-            SELECT
-                'dashboard' AS type,
-                'plugin-dashboard' AS label,
-                'Dashboard' AS description,
-                '/-/plugin-dashboard' AS url,
-                NULL AS database_name,
-                NULL AS resource_name,
-                'plugin dashboard' AS search_text,
-                80 AS sort_key,
-                'my-plugin' AS source,
-                'Plugin dashboard' AS display_name
-            """)
+        return JumpSQL.menu_item(
+            item_type="dashboard",
+            label="plugin-dashboard",
+            description="Dashboard",
+            url="/-/plugin-dashboard",
+            search_text="plugin dashboard",
+            sort_key=80,
+            source="my-plugin",
+            display_name="Plugin dashboard",
+        )
 
 Use ``params=`` to pass SQL parameters. Datasette will automatically namespace those parameters before combining SQL fragments from different plugins.
+
+``JumpSQL.menu_item(...)`` is a shortcut for adding a single jump menu item that is not backed by a resource in Datasette's internal catalog tables. It returns ``NULL`` for ``database_name`` and ``resource_name`` and accepts the keyword arguments shown above.
 
 .. _plugin_actions:
 

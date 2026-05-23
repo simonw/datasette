@@ -3,6 +3,7 @@ import pytest_asyncio
 
 from datasette import hookimpl
 from datasette.app import Datasette
+from datasette.jump import JumpSQL
 from datasette.plugins import pm
 
 
@@ -140,9 +141,77 @@ async def test_jump_respects_resource_permissions(ds_for_jump):
 
 
 @pytest.mark.asyncio
-async def test_jump_uses_plugin_sql_with_namespaced_parameters(ds_for_jump):
-    from datasette.jump import JumpSQL
+async def test_jump_sql_menu_item_helper(ds_for_jump):
+    fragment = JumpSQL.menu_item(
+        label="Plugin dashboard",
+        url="/-/plugin-dashboard",
+        description="Plugin tool",
+        source="test-plugin",
+        sort_key=70,
+        search_text="dashboard plugin",
+        display_name="Plugin Dashboard",
+        item_type="plugin",
+    )
+    result = await ds_for_jump.get_internal_database().execute(
+        fragment.sql, fragment.params
+    )
+    assert dict(result.first()) == {
+        "type": "plugin",
+        "label": "Plugin dashboard",
+        "description": "Plugin tool",
+        "url": "/-/plugin-dashboard",
+        "database_name": None,
+        "resource_name": None,
+        "search_text": "dashboard plugin",
+        "sort_key": 70,
+        "source": "test-plugin",
+        "display_name": "Plugin Dashboard",
+    }
 
+
+@pytest.mark.asyncio
+async def test_debug_menu_items_are_in_jump_for_debug_menu_permission():
+    ds = Datasette(
+        config={
+            "permissions": {
+                "debug-menu": {"id": "debugger"},
+            }
+        }
+    )
+    await ds.invoke_startup()
+    response = await ds.client.get("/-/jump.json?q=debug", actor={"id": "debugger"})
+    assert response.status_code == 200
+    debug_matches = [
+        match for match in response.json()["matches"] if match["type"] == "debug"
+    ]
+    assert {match["name"]: match["url"] for match in debug_matches} == {
+        "Databases": "/-/databases",
+        "Installed plugins": "/-/plugins",
+        "Version info": "/-/versions",
+        "Settings": "/-/settings",
+        "Debug permissions": "/-/permissions",
+        "Debug messages": "/-/messages",
+        "Debug allow rules": "/-/allow-debug",
+        "Debug threads": "/-/threads",
+        "Debug actor": "/-/actor",
+        "Pattern portfolio": "/-/patterns",
+    }
+    assert {match["description"] for match in debug_matches} == {"Debug menu"}
+
+
+@pytest.mark.asyncio
+async def test_debug_menu_items_are_hidden_without_debug_menu_permission():
+    ds = Datasette()
+    await ds.invoke_startup()
+    response = await ds.client.get("/-/jump.json?q=debug", actor={"id": "regular"})
+    assert response.status_code == 200
+    assert [
+        match for match in response.json()["matches"] if match["type"] == "debug"
+    ] == []
+
+
+@pytest.mark.asyncio
+async def test_jump_uses_plugin_sql_with_namespaced_parameters(ds_for_jump):
     class JumpPlugin:
         @hookimpl
         def jump_items_sql(self, datasette, actor, request):

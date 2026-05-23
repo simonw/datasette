@@ -1398,4 +1398,4 @@ Actor is allowed to view the ``/-/permissions`` debug tools.
 debug-menu
 ----------
 
-Controls if the various debug pages are displayed in the navigation menu.
+Controls if the various debug pages are displayed in the jump menu.

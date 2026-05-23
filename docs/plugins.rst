@@ -235,12 +235,12 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             ]
         },
         {
-            "name": "datasette.default_menu_links",
+            "name": "datasette.default_debug_menu",
             "static": false,
             "templates": false,
             "version": null,
             "hooks": [
-                "menu_links"
+                "jump_items_sql"
             ]
         },
         {

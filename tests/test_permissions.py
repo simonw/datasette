@@ -430,7 +430,6 @@ async def test_permissions_debug(ds_client, filter_):
             "result": True,
             "actor": {"id": "root"},
         },
-        {"action": "debug-menu", "result": False, "actor": None},
         {
             "action": "view-instance",
             "result": True,

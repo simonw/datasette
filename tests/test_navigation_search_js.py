@@ -1,12 +1,18 @@
 import json
+from pathlib import Path
 import subprocess
 import textwrap
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+STATIC_DIR = REPO_ROOT / "datasette" / "static"
 
 
 def test_navigation_search_tracks_and_renders_recent_items():
     script = textwrap.dedent("""
         const fs = require("fs");
         const vm = require("vm");
+        const navigationSearchJs = __NAVIGATION_SEARCH_JS__;
 
         class FakeElement {
           constructor() {
@@ -102,7 +108,7 @@ def test_navigation_search_tracks_and_renders_recent_items():
         global.window = { location: { href: "" } };
 
         vm.runInThisContext(
-          fs.readFileSync("datasette/static/navigation-search.js", "utf8"),
+          fs.readFileSync(navigationSearchJs, "utf8"),
           { filename: "navigation-search.js" }
         );
 
@@ -180,10 +186,13 @@ def test_navigation_search_tracks_and_renders_recent_items():
         }
 
         process.stdout.write(JSON.stringify(stored));
-        """)
+        """).replace(
+        "__NAVIGATION_SEARCH_JS__",
+        json.dumps(str(STATIC_DIR / "navigation-search.js")),
+    )
     result = subprocess.run(
         ["node", "-e", script],
-        cwd=".",
+        cwd=REPO_ROOT,
         text=True,
         capture_output=True,
         check=False,
@@ -203,6 +212,8 @@ def test_navigation_search_renders_jump_sections_from_javascript_plugins():
     script = textwrap.dedent("""
         const fs = require("fs");
         const vm = require("vm");
+        const datasetteManagerJs = __DATASETTE_MANAGER_JS__;
+        const navigationSearchJs = __NAVIGATION_SEARCH_JS__;
 
         const documentListeners = {};
 
@@ -320,7 +331,7 @@ def test_navigation_search_renders_jump_sections_from_javascript_plugins():
         global.window = { datasetteVersion: "test", location: { href: "" } };
 
         vm.runInThisContext(
-          fs.readFileSync("datasette/static/datasette-manager.js", "utf8"),
+          fs.readFileSync(datasetteManagerJs, "utf8"),
           { filename: "datasette-manager.js" }
         );
         for (const callback of documentListeners.DOMContentLoaded || []) {
@@ -348,7 +359,7 @@ def test_navigation_search_renders_jump_sections_from_javascript_plugins():
         });
 
         vm.runInThisContext(
-          fs.readFileSync("datasette/static/navigation-search.js", "utf8"),
+          fs.readFileSync(navigationSearchJs, "utf8"),
           { filename: "navigation-search.js" }
         );
 
@@ -362,10 +373,16 @@ def test_navigation_search_renders_jump_sections_from_javascript_plugins():
           throw new Error(`Missing jump section content: ${html}`);
         }
         process.stdout.write("ok");
-        """)
+        """).replace(
+        "__DATASETTE_MANAGER_JS__",
+        json.dumps(str(STATIC_DIR / "datasette-manager.js")),
+    ).replace(
+        "__NAVIGATION_SEARCH_JS__",
+        json.dumps(str(STATIC_DIR / "navigation-search.js")),
+    )
     result = subprocess.run(
         ["node", "-e", script],
-        cwd=".",
+        cwd=REPO_ROOT,
         text=True,
         capture_output=True,
         check=False,

@@ -1943,8 +1943,7 @@ This example adds a "Plugin dashboard" result for signed-in users:
     def jump_items_sql(actor):
         if not actor:
             return None
-        return JumpSQL(
-            sql="""
+        return JumpSQL(sql="""
             SELECT
                 'dashboard' AS type,
                 'plugin-dashboard' AS label,
@@ -1956,8 +1955,7 @@ This example adds a "Plugin dashboard" result for signed-in users:
                 80 AS sort_key,
                 'my-plugin' AS source,
                 'Plugin dashboard' AS display_name
-            """
-        )
+            """)
 
 Use ``params=`` to pass SQL parameters. Datasette will automatically namespace those parameters before combining SQL fragments from different plugins.
 

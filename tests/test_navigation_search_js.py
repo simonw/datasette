@@ -3,7 +3,6 @@ from pathlib import Path
 import subprocess
 import textwrap
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = REPO_ROOT / "datasette" / "static"
 
@@ -209,7 +208,8 @@ def test_navigation_search_tracks_and_renders_recent_items():
 
 
 def test_navigation_search_renders_jump_sections_from_javascript_plugins():
-    script = textwrap.dedent("""
+    script = (
+        textwrap.dedent("""
         const fs = require("fs");
         const vm = require("vm");
         const datasetteManagerJs = __DATASETTE_MANAGER_JS__;
@@ -373,12 +373,15 @@ def test_navigation_search_renders_jump_sections_from_javascript_plugins():
           throw new Error(`Missing jump section content: ${html}`);
         }
         process.stdout.write("ok");
-        """).replace(
-        "__DATASETTE_MANAGER_JS__",
-        json.dumps(str(STATIC_DIR / "datasette-manager.js")),
-    ).replace(
-        "__NAVIGATION_SEARCH_JS__",
-        json.dumps(str(STATIC_DIR / "navigation-search.js")),
+        """)
+        .replace(
+            "__DATASETTE_MANAGER_JS__",
+            json.dumps(str(STATIC_DIR / "datasette-manager.js")),
+        )
+        .replace(
+            "__NAVIGATION_SEARCH_JS__",
+            json.dumps(str(STATIC_DIR / "navigation-search.js")),
+        )
     )
     result = subprocess.run(
         ["node", "-e", script],

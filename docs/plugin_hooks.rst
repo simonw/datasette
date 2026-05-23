@@ -1892,8 +1892,8 @@ jump_items_sql(datasette, actor, request)
 ``actor`` - dictionary or None
     The currently authenticated :ref:`actor <authentication_actor>`.
 
-``request`` - :ref:`internals_request` or None
-    The current HTTP request. This can be ``None`` if the request object is not available.
+``request`` - :ref:`internals_request`
+    The current HTTP request.
 
 This hook allows plugins to add extra results to Datasette's ``/`` jump menu, which is powered by the ``/-/jump`` JSON endpoint.
 

@@ -159,12 +159,7 @@ def menu_links(datasette, actor, request):
 
 @hookspec
 def jump_items_sql(datasette, actor, request):
-    """SQL fragments for extra items in the jump menu, optionally with display_name"""
-
-
-@hookspec
-def jump_start(datasette, actor, request):
-    """HTML to display in the jump menu before the user types"""
+    """SQL fragments for extra items in the jump menu"""
 
 
 @hookspec

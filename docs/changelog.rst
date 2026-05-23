@@ -274,7 +274,7 @@ Other changes
 ~~~~~~~~~~~~~
 
 - The internal ``catalog_views`` table now tracks SQLite views alongside tables in the introspection database. (:issue:`2495`)
-- Hitting the ``/`` brings up a search interface for navigating to tables that the current user can view. A new ``/-/tables`` endpoint supports this functionality. (:issue:`2523`)
+- Hitting the ``/`` brings up a search interface for navigating to databases, tables, views, canned queries and plugin-provided items that the current user can view. A new ``/-/jump`` endpoint supports this functionality, and JavaScript plugins can add custom blank-state sections using ``makeJumpSections()``. (:issue:`2523`)
 - Datasette attempts to detect some configuration errors on startup.
 - Datasette now supports Python 3.14 and no longer tests against Python 3.9.
 

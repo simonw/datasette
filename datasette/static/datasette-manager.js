@@ -82,6 +82,19 @@ const datasetteManager = {
     return columnActions;
   },
 
+  makeJumpSections: (context) => {
+    let jumpSections = [];
+
+    datasetteManager.plugins.forEach((plugin) => {
+      if (plugin.makeJumpSections) {
+        const sections = plugin.makeJumpSections(context) || [];
+        jumpSections.push(...sections);
+      }
+    });
+
+    return jumpSections;
+  },
+
   /**
    * In MVP, each plugin can only have 1 instance.
    * In future, panels could be repeated. We omit that for now since so many plugins depend on
@@ -192,7 +205,6 @@ const initializeDatasette = () => {
   // DATASETTE_EVENTS.INIT event to avoid the habit of reading from the window.
 
   window.__DATASETTE__ = datasetteManager;
-  console.debug("Datasette Manager Created!");
 
   const initDatasetteEvent = new CustomEvent(DATASETTE_EVENTS.INIT, {
     detail: datasetteManager,

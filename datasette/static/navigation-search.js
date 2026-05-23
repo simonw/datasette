@@ -447,9 +447,46 @@ class NavigationSearch extends HTMLElement {
     this.renderResults();
   }
 
-  startContentHtml() {
-    const template = this.querySelector("template[data-jump-start]");
-    return template ? template.innerHTML.trim() : "";
+  jumpSections() {
+    const manager = window.__DATASETTE__;
+    if (!manager || typeof manager.makeJumpSections !== "function") {
+      return [];
+    }
+    const sections = manager.makeJumpSections({
+      navigationSearch: this,
+    });
+    return Array.isArray(sections)
+      ? sections.filter(
+          (section) => section && typeof section.render === "function",
+        )
+      : [];
+  }
+
+  jumpSectionsHtml(jumpSections) {
+    return jumpSections
+      .map((section, index) => {
+        const id = section.id
+          ? ` data-jump-section-id="${this.escapeHtml(section.id)}"`
+          : "";
+        return `<div class="jump-start-content" data-jump-section-index="${index}"${id}></div>`;
+      })
+      .join("");
+  }
+
+  renderJumpSections(container, jumpSections) {
+    jumpSections.forEach((section, index) => {
+      const node = container.querySelector(
+        `[data-jump-section-index="${index}"]`,
+      );
+      if (!node) {
+        return;
+      }
+      section.render(node, {
+        navigationSearch: this,
+        container,
+        input: this.shadowRoot.querySelector(".search-input"),
+      });
+    });
   }
 
   resultItemHtml(match, index) {
@@ -484,9 +521,9 @@ class NavigationSearch extends HTMLElement {
     const container = this.shadowRoot.querySelector(".results-container");
     const input = this.shadowRoot.querySelector(".search-input");
     const showStartContent = !input.value.trim();
-    const startContent = showStartContent ? this.startContentHtml() : "";
-    const startBlock = startContent
-      ? `<div class="jump-start-content">${startContent}</div>`
+    const jumpSections = showStartContent ? this.jumpSections() : [];
+    const startBlock = showStartContent
+      ? this.jumpSectionsHtml(jumpSections)
       : "";
     const recentItems = showStartContent ? this.loadRecentItems() : [];
     const defaultMatches = showStartContent ? [] : this.matches;
@@ -507,6 +544,7 @@ class NavigationSearch extends HTMLElement {
     if (renderedMatches.length === 0) {
       if (startBlock) {
         container.innerHTML = startBlock;
+        this.renderJumpSections(container, jumpSections);
       } else if (showStartContent) {
         container.innerHTML = "";
       } else {
@@ -529,6 +567,7 @@ class NavigationSearch extends HTMLElement {
       )
       .join("");
     container.innerHTML = startBlock + recentHtml + defaultHtml;
+    this.renderJumpSections(container, jumpSections);
 
     // Scroll selected item into view
     if (this.selectedIndex >= 0) {

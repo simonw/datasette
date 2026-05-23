@@ -980,7 +980,6 @@ class JumpView(BaseView):
                 FROM allowed_databases
                 """,
                 params=database_params,
-                has_display_name=True,
             ),
             JumpSQL(
                 sql=f"""
@@ -1004,7 +1003,6 @@ class JumpView(BaseView):
                    AND catalog_views.view_name = allowed_tables.child
                 """,
                 params=table_params,
-                has_display_name=True,
             ),
             JumpSQL(
                 sql=f"""
@@ -1031,7 +1029,6 @@ class JumpView(BaseView):
                    AND query_display_names.query_name = allowed_queries.child
                 """,
                 params={**query_params, **query_display_names_params},
-                has_display_name=True,
             ),
         ]
 
@@ -1095,7 +1092,7 @@ class JumpView(BaseView):
                     search_text,
                     sort_key,
                     source,
-                    {"display_name" if fragment.has_display_name else "NULL AS display_name"}
+                    display_name
                 FROM (
                     {fragment_sql}
                 )

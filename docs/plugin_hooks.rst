@@ -1928,7 +1928,8 @@ The SQL query must return these columns:
 ``source``
     A string identifying the plugin that supplied the result.
 
-If the SQL query also returns a ``display_name`` column, set ``has_display_name=True`` on the ``JumpSQL`` object. Datasette will return that value as ``display_name`` in the JSON API, and the jump menu will show it as the primary readable label with ``name`` shown underneath.
+``display_name``
+    A human-readable label for the result, or ``NULL``. Datasette returns this as ``display_name`` in the JSON API, and the jump menu shows it as the primary readable label with ``name`` shown underneath.
 
 This example adds a "Plugin dashboard" result for signed-in users:
 
@@ -1955,45 +1956,10 @@ This example adds a "Plugin dashboard" result for signed-in users:
                 80 AS sort_key,
                 'my-plugin' AS source,
                 'Plugin dashboard' AS display_name
-            """,
-            has_display_name=True,
+            """
         )
 
 Use ``params=`` to pass SQL parameters. Datasette will automatically namespace those parameters before combining SQL fragments from different plugins.
-
-.. _plugin_hook_jump_start:
-
-jump_start(datasette, actor, request)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
-
-``actor`` - dictionary or None
-    The currently authenticated :ref:`actor <authentication_actor>`.
-
-``request`` - :ref:`internals_request` or None
-    The current HTTP request. This can be ``None`` if the request object is not available.
-
-This hook allows plugins to add custom HTML to the default blank state of Datasette's ``/`` jump menu, before the user starts typing a search.
-
-The hook can return a string, a ``markupsafe.Markup`` object, or an awaitable function that returns either of those. Return ``None`` to add nothing.
-
-This example shows a link for starting a new chat if the user is signed in:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-    from markupsafe import Markup
-
-
-    @hookimpl
-    def jump_start(actor):
-        if not actor:
-            return None
-        return Markup(
-            '<p><a href="/-/agent/new">Start a new chat</a></p>'
-        )
 
 .. _plugin_actions:
 

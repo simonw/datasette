@@ -1,6 +1,5 @@
 import pytest
 import pytest_asyncio
-from markupsafe import Markup
 
 from datasette import hookimpl
 from datasette.app import Datasette
@@ -163,7 +162,6 @@ async def test_jump_uses_plugin_sql_with_namespaced_parameters(ds_for_jump):
                     'Plugin dashboard for ' || :actor_id AS display_name
                 """,
                 params={"actor_id": actor["id"] if actor else "anonymous"},
-                has_display_name=True,
             )
 
     plugin = JumpPlugin()
@@ -188,34 +186,6 @@ async def test_jump_uses_plugin_sql_with_namespaced_parameters(ds_for_jump):
             "description": "Plugin supplied item",
         }
     ]
-
-
-@pytest.mark.asyncio
-async def test_jump_start_hook_renders_empty_state_template(ds_for_jump):
-    class JumpStartPlugin:
-        @hookimpl
-        def jump_start(self, datasette, actor, request):
-            if not actor:
-                return None
-            return Markup(
-                '<section class="agent-jump-start">'
-                "<h3>Agent chat</h3>"
-                '<a href="/-/agent/new">Start a new agent chat</a>'
-                "</section>"
-            )
-
-    plugin = JumpStartPlugin()
-    pm.register(plugin, name="test-jump-start-plugin")
-    try:
-        anonymous = await ds_for_jump.client.get("/")
-        authenticated = await ds_for_jump.client.get("/", actor={"id": "alice"})
-    finally:
-        pm.unregister(name="test-jump-start-plugin")
-
-    assert 'url="/-/jump"' in authenticated.text
-    assert "<template data-jump-start>" not in anonymous.text
-    assert "<template data-jump-start>" in authenticated.text
-    assert "Start a new agent chat" in authenticated.text
 
 
 @pytest.mark.asyncio

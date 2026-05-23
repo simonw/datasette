@@ -2039,22 +2039,6 @@ class Datasette:
                     links.extend(extra_links)
             return links
 
-        async def jump_start():
-            html_bits = []
-            for hook in pm.hook.jump_start(
-                datasette=self,
-                actor=request.actor if request else None,
-                request=request or None,
-            ):
-                extra_html = await await_me_maybe(hook)
-                if not extra_html:
-                    continue
-                if isinstance(extra_html, (list, tuple)):
-                    html_bits.extend(extra_html)
-                else:
-                    html_bits.append(extra_html)
-            return Markup("").join(Markup(html) for html in html_bits)
-
         template_context = {
             **context,
             **{
@@ -2063,7 +2047,6 @@ class Datasette:
                 "urls": self.urls,
                 "actor": request.actor if request else None,
                 "menu_links": menu_links,
-                "jump_start": jump_start,
                 "display_actor": display_actor,
                 "show_logout": request is not None
                 and "ds_actor" in request.cookies

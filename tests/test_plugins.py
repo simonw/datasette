@@ -43,6 +43,11 @@ def test_plugin_hooks_have_tests(plugin_hook):
     assert ok, f"Plugin hook is missing tests: {plugin_hook}"
 
 
+def test_hook_jump_items_sql():
+    # Detailed behavior is covered in tests/test_jump.py.
+    assert "jump_items_sql" in dir(pm.hook)
+
+
 @pytest.mark.asyncio
 async def test_hook_plugins_dir_plugin_prepare_connection(ds_client):
     response = await ds_client.get(

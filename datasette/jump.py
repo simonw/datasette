@@ -9,7 +9,6 @@ from typing import Any
 class JumpSQL:
     sql: str
     params: dict[str, Any] | None = None
-    has_display_name: bool = False
 
 
 _PARAM_RE = re.compile(r"(?<!:):([A-Za-z_][A-Za-z0-9_]*)")

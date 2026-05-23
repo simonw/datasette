@@ -155,7 +155,7 @@ The endpoint supports a ``?q=`` query parameter for filtering items by name.
 Canned queries with a configured ``title`` also include a ``display_name`` in
 their results, and can be found by searching for that title. Plugins can provide
 the same extra field from ``jump_items_sql`` by returning a ``display_name``
-column and setting ``JumpSQL(..., has_display_name=True)``.
+column.
 
 `Jump example <https://latest.datasette.io/-/jump>`_:
 

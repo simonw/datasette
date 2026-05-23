@@ -410,7 +410,12 @@ class NavigationSearch extends HTMLElement {
   }
 
   saveRecentItem(match) {
-    if (typeof localStorage === "undefined" || !match || !match.name || !match.url) {
+    if (
+      typeof localStorage === "undefined" ||
+      !match ||
+      !match.name ||
+      !match.url
+    ) {
       return;
     }
 
@@ -559,7 +564,9 @@ class NavigationSearch extends HTMLElement {
     const recentHtml = recentItems.length
       ? `<div class="results-heading">Recent</div>${recentItems
           .map((match, index) => this.resultItemHtml(match, index))
-          .join("")}<div class="recent-actions"><button type="button" class="clear-recent" data-clear-recent-items>Clear recent</button></div>`
+          .join(
+            "",
+          )}<div class="recent-actions"><button type="button" class="clear-recent" data-clear-recent-items>Clear recent</button></div>`
       : "";
     const defaultHtml = defaultMatches
       .map((match, index) =>

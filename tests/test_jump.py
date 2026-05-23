@@ -90,27 +90,26 @@ async def test_jump_searches_tables_databases_views_and_canned_queries(ds_for_ju
     assert ("query", "content: recent_comments") in matches_by_type_and_name
     assert matches_by_type_and_name[("database", "content")]["url"] == "/content"
     assert (
-        matches_by_type_and_name[("query", "content: recent_comments")]["display_name"]
-        == "Recent comments"
-    )
-    assert (
         matches_by_type_and_name[("query", "content: recent_comments")]["url"]
         == "/content/recent_comments"
     )
 
 
 @pytest.mark.asyncio
-async def test_jump_searches_and_displays_canned_query_titles(ds_for_jump):
+async def test_jump_uses_canned_query_names_not_titles(ds_for_jump):
     response = await ds_for_jump.client.get(
         "/-/jump.json?q=datasette", actor={"id": "user"}
     )
     assert response.status_code == 200
-    data = response.json()
+    assert response.json()["matches"] == []
 
-    assert data["matches"] == [
+    response = await ds_for_jump.client.get(
+        "/-/jump.json?q=release", actor={"id": "user"}
+    )
+    assert response.status_code == 200
+    assert response.json()["matches"] == [
         {
             "name": "content: release_notes",
-            "display_name": "Recent Datasette releases",
             "url": "/content/release_notes",
             "type": "query",
             "description": "Canned query",

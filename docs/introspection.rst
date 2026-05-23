@@ -152,10 +152,8 @@ Shows currently attached databases. `Databases example <https://latest.datasette
 Returns a JSON list of items that the current actor has permission to view for Datasette's jump menu. By default this includes visible databases, tables, views and canned queries, and plugins can contribute additional items.
 
 The endpoint supports a ``?q=`` query parameter for filtering items by name.
-Canned queries with a configured ``title`` also include a ``display_name`` in
-their results, and can be found by searching for that title. Plugins can provide
-the same extra field from ``jump_items_sql`` by returning a ``display_name``
-column.
+Plugins can provide an optional ``display_name`` field from
+``jump_items_sql`` by returning a ``display_name`` column.
 
 `Jump example <https://latest.datasette.io/-/jump>`_:
 
@@ -177,7 +175,6 @@ column.
             },
             {
                 "name": "fixtures: recent_releases",
-                "display_name": "Recent Datasette releases",
                 "url": "/fixtures/recent_releases",
                 "type": "query",
                 "description": "Canned query"

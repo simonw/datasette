@@ -14,10 +14,9 @@ Unreleased
 - Fixed a Safari bug with the table search mechanism triggered by pressing ``/``. (:issue:`2724`)
 - New "Jump to..." menu item, always visible, for triggering the previously undocumented ``/`` menu. (:issue:`2725`)
 - The ``/`` jump-to search interface now covers databases, views, canned queries and plugin-provided items in addition to tables. The endpoint backing it has been renamed from ``/-/tables`` to ``/-/jump``.
-- New :ref:`plugin_hook_jump_items_sql` plugin hook, allowing plugins to contribute additional items to the jump-to menu by returning SQL. ``JumpSQL`` queries run against Datasette's internal database by default, or can target another database using the optional ``database=`` argument. Datasette groups these queries by database and executes one ``UNION ALL`` query for each database. Each row returned by this hook includes a ``url`` value, which can be a string starting with ``/`` or a JSON object describing a call to one of the :ref:`internals_datasette_urls` methods.
+- New :ref:`plugin_hook_jump_items_sql` plugin hook, allowing plugins to contribute additional items to the jump-to menu by returning SQL. ``JumpSQL`` queries run against Datasette's internal database by default, or can target another database using the optional ``database=`` argument.
 - ``datasette.jump.JumpSQL.menu_item()`` is a shortcut for adding individual jump menu items that are not backed by resources in the internal catalog.
 - New :ref:`javascript_plugins_makeJumpSections` JavaScript plugin hook, allowing plugins to add custom blank-state sections to the jump-to menu before the user has typed a query.
-- Jump menu results now show their ``type`` as a category label, and can show optional longer ``description`` text for individual results.
 - Debug menu links now appear in the jump-to menu instead of the top-right app menu, with descriptions for each debug item.
 - New documented :ref:`datasette.fixtures.populate_fixture_database(conn) <datasette_fixtures_populate_fixture_database>` helper for creating the fixture database tables used by Datasette's own tests, intended for plugin test suites.
 

@@ -1884,7 +1884,7 @@ Examples: `datasette-search-all <https://datasette.io/plugins/datasette-search-a
 .. _plugin_hook_jump_items_sql:
 
 jump_items_sql(datasette, actor, request)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-----------------------------------------
 
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
@@ -1897,7 +1897,11 @@ jump_items_sql(datasette, actor, request)
 
 This hook allows plugins to add extra results to Datasette's ``/`` jump menu, which is powered by the ``/-/jump`` JSON endpoint.
 
-Return a ``datasette.jump.JumpSQL`` object, or a list of ``JumpSQL`` objects. Each ``JumpSQL`` object wraps a SQL query to be combined with Datasette's own databases, tables, views and canned query results.
+Return a ``datasette.jump.JumpSQL`` object, or a list of ``JumpSQL`` objects. Each ``JumpSQL`` object wraps a SQL query to be searched alongside Datasette's own databases, tables, views and canned query results.
+
+``JumpSQL`` queries run against Datasette's internal database by default. To run a query against another database, pass its name as the optional ``database=`` argument. For example, ``JumpSQL(database="content", sql="...")`` runs against the ``content`` database.
+
+Datasette groups ``JumpSQL`` queries by database and executes one ``UNION ALL`` query for each database.
 
 The SQL query must return these columns:
 
@@ -1940,7 +1944,7 @@ This example adds a "Plugin dashboard" result for signed-in users:
             display_name="Plugin dashboard",
         )
 
-Use ``params=`` to pass SQL parameters. Datasette will automatically namespace those parameters before combining SQL fragments from different plugins.
+Use ``params=`` to pass SQL parameters. Datasette will automatically namespace those parameters before adding the SQL fragment to the per-database ``UNION ALL`` query.
 
 ``JumpSQL.menu_item(...)`` is a shortcut for adding a single jump menu item from Python code. It accepts the keyword arguments shown above.
 

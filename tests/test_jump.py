@@ -143,6 +143,10 @@ async def test_jump_respects_resource_permissions(ds_for_jump):
 
 @pytest.mark.asyncio
 async def test_jump_sql_menu_item_helper(ds_for_jump):
+    assert JumpSQL("SELECT 1").database is None
+    assert JumpSQL("SELECT 1", database="content").database == "content"
+    assert JumpSQL("SELECT 1", None, "content").database == "content"
+
     fragment = JumpSQL.menu_item(
         label="Plugin dashboard",
         url="/-/plugin-dashboard",
@@ -249,6 +253,155 @@ async def test_jump_uses_plugin_sql_with_namespaced_parameters(ds_for_jump):
             "url": "/-/plugin-dashboard",
             "type": "plugin",
             "description": "Plugin supplied item",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_jump_sql_unions_fragments_by_database(ds_for_jump, monkeypatch):
+    class JumpPlugin:
+        @hookimpl
+        def jump_items_sql(self, datasette, actor, request):
+            return [
+                JumpSQL(sql="""
+                    SELECT
+                        'plugin' AS type,
+                        'first-unioned-item' AS label,
+                        NULL AS description,
+                        '/-/first-unioned-item' AS url,
+                        'unioned item' AS search_text,
+                        NULL AS display_name
+                    """),
+                JumpSQL(sql="""
+                    SELECT
+                        'plugin' AS type,
+                        'second-unioned-item' AS label,
+                        NULL AS description,
+                        '/-/second-unioned-item' AS url,
+                        'unioned item' AS search_text,
+                        NULL AS display_name
+                    """),
+                JumpSQL(
+                    """
+                    SELECT
+                        'plugin' AS type,
+                        'content-first-unioned-item' AS label,
+                        NULL AS description,
+                        '/-/content-first-unioned-item' AS url,
+                        'unioned item' AS search_text,
+                        NULL AS display_name
+                    """,
+                    None,
+                    "content",
+                ),
+                JumpSQL(
+                    database="content",
+                    sql="""
+                    SELECT
+                        'plugin' AS type,
+                        'content-second-unioned-item' AS label,
+                        NULL AS description,
+                        '/-/content-second-unioned-item' AS url,
+                        'unioned item' AS search_text,
+                        NULL AS display_name
+                    """,
+                ),
+            ]
+
+    internal_db = ds_for_jump.get_internal_database()
+    original_execute = internal_db.execute
+    internal_jump_query_sql = []
+
+    async def internal_execute_with_recording(sql, *args, **kwargs):
+        if "unioned-item" in sql:
+            internal_jump_query_sql.append(sql)
+        return await original_execute(sql, *args, **kwargs)
+
+    monkeypatch.setattr(internal_db, "execute", internal_execute_with_recording)
+
+    content_db = ds_for_jump.get_database("content")
+    original_content_execute = content_db.execute
+    content_jump_query_sql = []
+
+    async def content_execute_with_recording(sql, *args, **kwargs):
+        if "unioned-item" in sql:
+            content_jump_query_sql.append(sql)
+        return await original_content_execute(sql, *args, **kwargs)
+
+    monkeypatch.setattr(content_db, "execute", content_execute_with_recording)
+
+    plugin = JumpPlugin()
+    pm.register(plugin, name="test-jump-union-plugin")
+    try:
+        response = await ds_for_jump.client.get(
+            "/-/jump.json?q=unioned", actor={"id": "alice"}
+        )
+    finally:
+        pm.unregister(name="test-jump-union-plugin")
+
+    assert response.status_code == 200
+    assert len(internal_jump_query_sql) == 1
+    assert " UNION ALL " in internal_jump_query_sql[0]
+    assert len(content_jump_query_sql) == 1
+    assert " UNION ALL " in content_jump_query_sql[0]
+    assert {match["name"] for match in response.json()["matches"]} == {
+        "content-first-unioned-item",
+        "content-second-unioned-item",
+        "first-unioned-item",
+        "second-unioned-item",
+    }
+
+
+@pytest.mark.asyncio
+async def test_jump_sql_can_query_named_database(ds_for_jump):
+    content_db = ds_for_jump.get_database("content")
+    await content_db.execute_write(
+        "INSERT INTO comments (id, body) VALUES (1001, 'Named database jump target')"
+    )
+
+    class JumpPlugin:
+        @hookimpl
+        def jump_items_sql(self, datasette, actor, request):
+            return JumpSQL(
+                database="content",
+                sql="""
+                SELECT
+                    'comment' AS type,
+                    body AS label,
+                    'Comment from content database' AS description,
+                    json_object(
+                        'method', 'table',
+                        'database', 'content',
+                        'table', 'comments'
+                    ) AS url,
+                    body AS search_text,
+                    body AS display_name
+                FROM comments
+                WHERE id = :comment_id
+                """,
+                params={"comment_id": 1001},
+            )
+
+    plugin = JumpPlugin()
+    pm.register(plugin, name="test-jump-content-db-plugin")
+    try:
+        response = await ds_for_jump.client.get(
+            "/-/jump.json?q=named+database", actor={"id": "alice"}
+        )
+    finally:
+        pm.unregister(name="test-jump-content-db-plugin")
+
+    assert response.status_code == 200
+    plugin_matches = [
+        match for match in response.json()["matches"] if match["type"] == "comment"
+    ]
+    assert plugin_matches == [
+        {
+            "name": "Named database jump target",
+            "display_name": "Named database jump target",
+            "url": "/content/comments",
+            "type": "comment",
+            "description": "Comment from content database",
         }
     ]
 

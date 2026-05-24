@@ -9,6 +9,7 @@ from typing import Any
 class JumpSQL:
     sql: str
     params: dict[str, Any] | None = None
+    database: str | None = None
 
     @classmethod
     def menu_item(
@@ -50,7 +51,7 @@ _PARAM_RE = re.compile(r"(?<!:):([A-Za-z_][A-Za-z0-9_]*)")
 
 
 def namespace_sql_params(sql: str, params: dict[str, Any], prefix: str):
-    """Rename named SQL parameters so UNION fragments cannot collide."""
+    """Rename named SQL parameters so UNION query parameters cannot collide."""
     if not params:
         return sql, {}
 

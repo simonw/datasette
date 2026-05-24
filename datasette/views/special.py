@@ -972,15 +972,28 @@ class JumpView(BaseView):
                 f"Invalid arguments for datasette.urls.{method_name}(): {ex}"
             ) from ex
 
-    async def get(self, request):
-        q = request.args.get("q", "").strip()
-        terms = q.split()
-        pattern = "%" + "%".join(terms) + "%" if terms else "%"
-        fragments = await self._fragments(request)
+    def _sort_key(self, row, q):
+        display_label = row["display_name"] or row["label"]
+        display_label_lower = display_label.lower()
+        q_lower = q.lower()
+        if display_label_lower == q_lower:
+            relevance = 0
+        elif display_label_lower.startswith(q_lower):
+            relevance = 1
+        else:
+            relevance = 2
+        type_sort = {
+            "database": 10,
+            "table": 20,
+            "view": 25,
+            "query": 30,
+        }.get(row["type"], 50)
+        return (relevance, type_sort, len(display_label), row["label"])
 
+    async def _rows_for_database(self, database_name, indexed_fragments, q, pattern):
+        params = {"q": q, "pattern": pattern}
         union_parts = []
-        all_params = {"q": q, "pattern": pattern}
-        for index, fragment in enumerate(fragments):
+        for index, fragment in indexed_fragments:
             fragment_sql, fragment_params = namespace_sql_params(
                 fragment.sql,
                 fragment.params or {},
@@ -998,13 +1011,18 @@ class JumpView(BaseView):
                     {fragment_sql}
                 )
             """)
-            all_params.update(fragment_params)
-
+            params.update(fragment_params)
         sql = f"""
         WITH jump_items AS (
             {" UNION ALL ".join(union_parts)}
         )
-        SELECT *
+        SELECT
+            type,
+            label,
+            description,
+            url,
+            search_text,
+            display_name
         FROM jump_items
         WHERE :q = ''
            OR search_text LIKE :pattern COLLATE NOCASE
@@ -1025,10 +1043,40 @@ class JumpView(BaseView):
             label
         LIMIT 101
         """
-        result = await self.ds.get_internal_database().execute(sql, all_params)
-        rows = list(result.rows)
-        truncated = len(rows) > 100
-        if truncated:
+        db = (
+            self.ds.get_internal_database()
+            if database_name is None
+            else self.ds.get_database(database_name)
+        )
+        result = await db.execute(sql, params)
+        return list(result.rows)
+
+    async def get(self, request):
+        q = request.args.get("q", "").strip()
+        terms = q.split()
+        pattern = "%" + "%".join(terms) + "%" if terms else "%"
+        fragments = await self._fragments(request)
+
+        fragments_by_database = {}
+        for index, fragment in enumerate(fragments):
+            fragments_by_database.setdefault(fragment.database, []).append(
+                (index, fragment)
+            )
+
+        rows = []
+        truncated = False
+        for database_name, indexed_fragments in fragments_by_database.items():
+            database_rows = await self._rows_for_database(
+                database_name, indexed_fragments, q, pattern
+            )
+            if len(database_rows) > 100:
+                truncated = True
+                database_rows = database_rows[:100]
+            rows.extend(database_rows)
+        rows.sort(key=lambda row: self._sort_key(row, q))
+
+        if len(rows) > 100:
+            truncated = True
             rows = rows[:100]
 
         matches = []

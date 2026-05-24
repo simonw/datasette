@@ -1,11 +1,14 @@
 import json
 import logging
+from datasette.jump import JumpSQL, namespace_sql_params
+from datasette.plugins import pm
 from datasette.events import LogoutEvent, LoginEvent, CreateTokenEvent
 from datasette.resources import DatabaseResource, TableResource
 from datasette.utils.asgi import Response, Forbidden
 from datasette.utils import (
     actor_matches_allow,
     add_cors_headers,
+    await_me_maybe,
     tilde_encode,
     tilde_decode,
 )
@@ -910,75 +913,183 @@ class ApiExplorerView(BaseView):
         )
 
 
-class TablesView(BaseView):
+class JumpView(BaseView):
     """
-    Simple endpoint that uses the new allowed_resources() API.
-    Returns JSON list of all tables the actor can view.
-
-    Supports ?q=foo+bar to filter tables matching .*foo.*bar.* pattern,
-    ordered by shortest name first.
+    Endpoint for the jump menu. Returns JSON navigation items the actor can use.
     """
 
-    name = "tables"
+    name = "jump"
     has_json_alternate = False
 
-    async def get(self, request):
-        # Get search query parameter
-        q = request.args.get("q", "").strip()
+    async def _fragments(self, request):
+        fragments = []
+        for hook in pm.hook.jump_items_sql(
+            datasette=self.ds,
+            actor=request.actor,
+            request=request,
+        ):
+            value = await await_me_maybe(hook)
+            if value is None:
+                continue
+            if isinstance(value, JumpSQL):
+                fragments.append(value)
+            elif isinstance(value, (list, tuple)):
+                for fragment in value:
+                    if fragment is not None:
+                        assert isinstance(
+                            fragment, JumpSQL
+                        ), "jump_items_sql must return JumpSQL instances"
+                        fragments.append(fragment)
+            else:
+                raise TypeError("jump_items_sql must return JumpSQL instances")
+        return fragments
 
-        # Get SQL for allowed resources using the permission system
-        permission_sql, params = await self.ds.allowed_resources_sql(
-            action="view-table", actor=request.actor
-        )
+    def _resolve_url(self, url):
+        if not url or url.startswith("/"):
+            return url
 
-        # Build query based on whether we have a search query
-        if q:
-            # Build SQL LIKE pattern from search terms
-            # Split search terms by whitespace and build pattern: %term1%term2%term3%
-            terms = q.split()
-            pattern = "%" + "%".join(terms) + "%"
+        descriptor = json.loads(url)
+        if not isinstance(descriptor, dict):
+            raise TypeError("jump item url JSON must be an object")
+        method_name = descriptor.get("method")
+        if not isinstance(method_name, str) or not method_name:
+            raise TypeError("jump item url JSON must include a method")
+        if method_name.startswith("_"):
+            raise AttributeError(f"datasette.urls has no method named {method_name!r}")
+        try:
+            method = getattr(self.ds.urls, method_name)
+        except AttributeError as ex:
+            raise AttributeError(
+                f"datasette.urls has no method named {method_name!r}"
+            ) from ex
+        if not callable(method):
+            raise TypeError(f"datasette.urls.{method_name} is not callable")
+        kwargs = {key: value for key, value in descriptor.items() if key != "method"}
+        try:
+            return method(**kwargs)
+        except TypeError as ex:
+            raise TypeError(
+                f"Invalid arguments for datasette.urls.{method_name}(): {ex}"
+            ) from ex
 
-            # Build query with CTE to filter by search pattern
-            sql = f"""
-            WITH allowed_tables AS (
-                {permission_sql}
-            )
-            SELECT parent, child
-            FROM allowed_tables
-            WHERE child LIKE :pattern COLLATE NOCASE
-            ORDER BY length(child), child
-            """
-            all_params = {**params, "pattern": pattern}
+    def _sort_key(self, row, q):
+        display_label = row["display_name"] or row["label"]
+        display_label_lower = display_label.lower()
+        q_lower = q.lower()
+        if display_label_lower == q_lower:
+            relevance = 0
+        elif display_label_lower.startswith(q_lower):
+            relevance = 1
         else:
-            # No search query - return all tables, ordered by name
-            # Fetch 101 to detect if we need to truncate
-            sql = f"""
-            WITH allowed_tables AS (
-                {permission_sql}
+            relevance = 2
+        type_sort = {
+            "database": 10,
+            "table": 20,
+            "view": 25,
+            "query": 30,
+        }.get(row["type"], 50)
+        return (relevance, type_sort, len(display_label), row["label"])
+
+    async def _rows_for_database(self, database_name, indexed_fragments, q, pattern):
+        params = {"q": q, "pattern": pattern}
+        union_parts = []
+        for index, fragment in indexed_fragments:
+            fragment_sql, fragment_params = namespace_sql_params(
+                fragment.sql,
+                fragment.params or {},
+                f"jump_{index}",
             )
-            SELECT parent, child
-            FROM allowed_tables
-            ORDER BY parent, child
-            LIMIT 101
-            """
-            all_params = params
+            union_parts.append(f"""
+                SELECT
+                    type,
+                    label,
+                    description,
+                    url,
+                    search_text,
+                    display_name
+                FROM (
+                    {fragment_sql}
+                )
+            """)
+            params.update(fragment_params)
+        sql = f"""
+        WITH jump_items AS (
+            {" UNION ALL ".join(union_parts)}
+        )
+        SELECT
+            type,
+            label,
+            description,
+            url,
+            search_text,
+            display_name
+        FROM jump_items
+        WHERE :q = ''
+           OR search_text LIKE :pattern COLLATE NOCASE
+        ORDER BY
+            CASE
+                WHEN lower(COALESCE(display_name, label)) = lower(:q) THEN 0
+                WHEN lower(COALESCE(display_name, label)) LIKE lower(:q || '%') THEN 1
+                ELSE 2
+            END,
+            CASE type
+                WHEN 'database' THEN 10
+                WHEN 'table' THEN 20
+                WHEN 'view' THEN 25
+                WHEN 'query' THEN 30
+                ELSE 50
+            END,
+            length(COALESCE(display_name, label)),
+            label
+        LIMIT 101
+        """
+        db = (
+            self.ds.get_internal_database()
+            if database_name is None
+            else self.ds.get_database(database_name)
+        )
+        result = await db.execute(sql, params)
+        return list(result.rows)
 
-        # Execute against internal database
-        result = await self.ds.get_internal_database().execute(sql, all_params)
+    async def get(self, request):
+        q = request.args.get("q", "").strip()
+        terms = q.split()
+        pattern = "%" + "%".join(terms) + "%" if terms else "%"
+        fragments = await self._fragments(request)
 
-        # Build response with truncation
-        rows = list(result.rows)
-        truncated = len(rows) > 100
-        if truncated:
+        fragments_by_database = {}
+        for index, fragment in enumerate(fragments):
+            fragments_by_database.setdefault(fragment.database, []).append(
+                (index, fragment)
+            )
+
+        rows = []
+        truncated = False
+        for database_name, indexed_fragments in fragments_by_database.items():
+            database_rows = await self._rows_for_database(
+                database_name, indexed_fragments, q, pattern
+            )
+            if len(database_rows) > 100:
+                truncated = True
+                database_rows = database_rows[:100]
+            rows.extend(database_rows)
+        rows.sort(key=lambda row: self._sort_key(row, q))
+
+        if len(rows) > 100:
+            truncated = True
             rows = rows[:100]
 
-        matches = [
-            {
-                "name": f"{row['parent']}: {row['child']}",
-                "url": self.ds.urls.table(row["parent"], row["child"]),
+        matches = []
+        for row in rows:
+            match = {
+                "name": row["label"],
+                "url": self._resolve_url(row["url"]),
+                "type": row["type"],
+                "description": row["description"],
             }
-            for row in rows
-        ]
+            if row["display_name"]:
+                match["display_name"] = row["display_name"]
+            matches.append(match)
 
         return Response.json({"matches": matches, "truncated": truncated})
 

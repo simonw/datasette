@@ -228,7 +228,7 @@ async def test_orphan_stale_catalog_child_entries_removed(tmp_path):
         """)
     assert [tuple(row) for row in catalog_tables.rows] == [("alpha", "alpha_table")]
 
-    response = await ds2.client.get("/-/tables.json")
+    response = await ds2.client.get("/-/jump.json")
     assert response.status_code == 200
 
     ds2.close()

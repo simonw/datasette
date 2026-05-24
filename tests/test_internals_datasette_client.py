@@ -195,7 +195,7 @@ async def test_skip_permission_checks_with_admin_actor(datasette_with_permission
 
 @pytest.mark.asyncio
 async def test_skip_permission_checks_shows_denied_tables():
-    """Test that skip_permission_checks=True shows tables from denied databases in /-/tables.json"""
+    """Test that skip_permission_checks=True shows tables from denied databases in /-/jump.json"""
     ds = Datasette(
         config={
             "databases": {
@@ -211,8 +211,8 @@ async def test_skip_permission_checks_shows_denied_tables():
     await db.execute_write("INSERT INTO test_table (id, name) VALUES (1, 'Alice')")
     await ds._refresh_schemas()
 
-    # Without skip_permission_checks, tables from denied database should not appear in /-/tables.json
-    response = await ds.client.get("/-/tables.json")
+    # Without skip_permission_checks, tables from denied database should not appear in /-/jump.json
+    response = await ds.client.get("/-/jump.json")
     assert response.status_code == 200
     data = response.json()
     table_names = [match["name"] for match in data["matches"]]
@@ -221,7 +221,7 @@ async def test_skip_permission_checks_shows_denied_tables():
     assert len(fixtures_tables) == 0
 
     # With skip_permission_checks=True, tables from denied database SHOULD appear
-    response = await ds.client.get("/-/tables.json", skip_permission_checks=True)
+    response = await ds.client.get("/-/jump.json", skip_permission_checks=True)
     assert response.status_code == 200
     data = response.json()
     table_names = [match["name"] for match in data["matches"]]

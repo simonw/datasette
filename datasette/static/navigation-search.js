@@ -100,14 +100,79 @@ class NavigationSearch extends HTMLElement {
                     background-color: #dbeafe;
                 }
 
+                .result-item > div {
+                    flex: 1;
+                    min-width: 0;
+                }
+
+                .jump-start-content {
+                    border-bottom: 1px solid #e5e7eb;
+                    margin-bottom: 0.5rem;
+                    padding: 0.5rem 0.5rem 1rem;
+                }
+
+                .jump-start-content:empty {
+                    display: none;
+                }
+
                 .result-name {
                     font-weight: 500;
                     color: #111827;
                 }
 
+                .result-label {
+                    font-size: 0.875rem;
+                    color: #4b5563;
+                }
+
+                .result-type {
+                    color: #4b5563;
+                    font-size: 0.75rem;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                }
+
                 .result-url {
                     font-size: 0.875rem;
                     color: #6b7280;
+                }
+
+                .result-description {
+                    color: #374151;
+                    display: -webkit-box;
+                    font-size: 0.8125rem;
+                    line-height: 1.35;
+                    margin-top: 0.35rem;
+                    overflow: hidden;
+                    -webkit-box-orient: vertical;
+                    -webkit-line-clamp: 2;
+                }
+
+                .results-heading {
+                    color: #4b5563;
+                    font-size: 0.75rem;
+                    font-weight: 600;
+                    letter-spacing: 0;
+                    padding: 0.5rem 1rem 0.25rem;
+                    text-transform: uppercase;
+                }
+
+                .recent-actions {
+                    padding: 0.25rem 1rem 0.75rem;
+                }
+
+                .clear-recent {
+                    background: transparent;
+                    border: 0;
+                    color: #2563eb;
+                    cursor: pointer;
+                    font: inherit;
+                    font-size: 0.875rem;
+                    padding: 0;
+                }
+
+                .clear-recent:hover {
+                    text-decoration: underline;
                 }
 
                 .no-results {
@@ -168,8 +233,8 @@ class NavigationSearch extends HTMLElement {
                         <input 
                             type="text" 
                             class="search-input" 
-                            placeholder="Search..."
-                            aria-label="Search navigation"
+                            placeholder="Jump to..."
+                            aria-label="Jump to"
                             autocomplete="off"
                             spellcheck="false"
                         >
@@ -231,6 +296,13 @@ class NavigationSearch extends HTMLElement {
 
     // Click on result item
     resultsContainer.addEventListener("click", (e) => {
+      const clearRecent = e.target.closest("[data-clear-recent-items]");
+      if (clearRecent) {
+        e.preventDefault();
+        this.clearRecentItems();
+        return;
+      }
+
       const item = e.target.closest(".result-item");
       if (item) {
         const index = parseInt(item.dataset.index);
@@ -306,12 +378,13 @@ class NavigationSearch extends HTMLElement {
 
   filterLocalItems(query) {
     if (!query.trim()) {
-      this.matches = [];
+      this.matches = this.allItems || [];
     } else {
       const lowerQuery = query.toLowerCase();
       this.matches = (this.allItems || []).filter(
         (item) =>
           item.name.toLowerCase().includes(lowerQuery) ||
+          (item.display_name || "").toLowerCase().includes(lowerQuery) ||
           item.url.toLowerCase().includes(lowerQuery),
       );
     }
@@ -319,43 +392,215 @@ class NavigationSearch extends HTMLElement {
     this.renderResults();
   }
 
-  renderResults() {
-    const container = this.shadowRoot.querySelector(".results-container");
-    const input = this.shadowRoot.querySelector(".search-input");
+  recentItemsStorageKey() {
+    return "datasette.navigationSearch.recentItems";
+  }
 
-    if (this.matches.length === 0) {
-      const message = input.value.trim()
-        ? "No results found"
-        : "Start typing to search...";
-      container.innerHTML = `<div class="no-results">${message}</div>`;
+  loadRecentItems() {
+    if (typeof localStorage === "undefined") {
+      return [];
+    }
+
+    try {
+      const raw = localStorage.getItem(this.recentItemsStorageKey());
+      if (!raw) {
+        return [];
+      }
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+      return parsed
+        .filter((item) => item && item.name && item.url)
+        .map((item) => ({
+          name: String(item.name),
+          display_name: item.display_name ? String(item.display_name) : "",
+          url: String(item.url),
+          type: item.type ? String(item.type) : "",
+          description: item.description ? String(item.description) : "",
+        }))
+        .slice(0, 5);
+    } catch (e) {
+      return [];
+    }
+  }
+
+  saveRecentItem(match) {
+    if (
+      typeof localStorage === "undefined" ||
+      !match ||
+      !match.name ||
+      !match.url
+    ) {
       return;
     }
 
-    container.innerHTML = this.matches
-      .map(
-        (match, index) => `
-            <div 
-                class="result-item ${
-                  index === this.selectedIndex ? "selected" : ""
-                }" 
+    try {
+      const item = {
+        name: String(match.name),
+        display_name: match.display_name ? String(match.display_name) : "",
+        url: String(match.url),
+        type: match.type ? String(match.type) : "",
+        description: match.description ? String(match.description) : "",
+      };
+      const recentItems = this.loadRecentItems().filter(
+        (recentItem) => recentItem.url !== item.url,
+      );
+      localStorage.setItem(
+        this.recentItemsStorageKey(),
+        JSON.stringify([item, ...recentItems].slice(0, 5)),
+      );
+    } catch (e) {
+      // localStorage may be unavailable, full, or disabled.
+    }
+  }
+
+  clearRecentItems() {
+    if (typeof localStorage === "undefined") {
+      return;
+    }
+
+    try {
+      localStorage.removeItem(this.recentItemsStorageKey());
+    } catch (e) {
+      localStorage.setItem(this.recentItemsStorageKey(), "[]");
+    }
+    this.renderResults();
+  }
+
+  jumpSections() {
+    const manager = window.__DATASETTE__;
+    if (!manager || typeof manager.makeJumpSections !== "function") {
+      return [];
+    }
+    const sections = manager.makeJumpSections({
+      navigationSearch: this,
+    });
+    return Array.isArray(sections)
+      ? sections.filter(
+          (section) => section && typeof section.render === "function",
+        )
+      : [];
+  }
+
+  jumpSectionsHtml(jumpSections) {
+    return jumpSections
+      .map((section, index) => {
+        const id = section.id
+          ? ` data-jump-section-id="${this.escapeHtml(section.id)}"`
+          : "";
+        return `<div class="jump-start-content" data-jump-section-index="${index}"${id}></div>`;
+      })
+      .join("");
+  }
+
+  renderJumpSections(container, jumpSections) {
+    jumpSections.forEach((section, index) => {
+      const node = container.querySelector(
+        `[data-jump-section-index="${index}"]`,
+      );
+      if (!node) {
+        return;
+      }
+      section.render(node, {
+        navigationSearch: this,
+        container,
+        input: this.shadowRoot.querySelector(".search-input"),
+      });
+    });
+  }
+
+  resultItemHtml(match, index) {
+    const displayName = match.display_name || match.name;
+    const label =
+      match.display_name && match.display_name !== match.name
+        ? `<div class="result-label">${this.escapeHtml(match.name)}</div>`
+        : "";
+    const type = match.type
+      ? `<div class="result-type">${this.escapeHtml(match.type)}</div>`
+      : "";
+    const description = match.description
+      ? `<div class="result-description">${this.escapeHtml(
+          match.description,
+        )}</div>`
+      : "";
+    return `
+            <div
+                class="result-item ${index === this.selectedIndex ? "selected" : ""}"
                 data-index="${index}"
                 role="option"
                 aria-selected="${index === this.selectedIndex}"
             >
                 <div>
-                    <div class="result-name">${this.escapeHtml(
-                      match.name,
-                    )}</div>
+                    ${type}
+                    <div class="result-name">${this.escapeHtml(displayName)}</div>
+                    ${label}
                     <div class="result-url">${this.escapeHtml(match.url)}</div>
+                    ${description}
                 </div>
             </div>
-        `,
+        `;
+  }
+
+  renderResults() {
+    const container = this.shadowRoot.querySelector(".results-container");
+    const input = this.shadowRoot.querySelector(".search-input");
+    const showStartContent = !input.value.trim();
+    const jumpSections = showStartContent ? this.jumpSections() : [];
+    const startBlock = showStartContent
+      ? this.jumpSectionsHtml(jumpSections)
+      : "";
+    const recentItems = showStartContent ? this.loadRecentItems() : [];
+    const defaultMatches = showStartContent ? [] : this.matches;
+    const renderedMatches = [...recentItems, ...defaultMatches];
+    this.renderedMatches = renderedMatches;
+
+    if (renderedMatches.length) {
+      if (
+        this.selectedIndex < 0 ||
+        this.selectedIndex >= renderedMatches.length
+      ) {
+        this.selectedIndex = 0;
+      }
+    } else {
+      this.selectedIndex = -1;
+    }
+
+    if (renderedMatches.length === 0) {
+      if (startBlock) {
+        container.innerHTML = startBlock;
+        this.renderJumpSections(container, jumpSections);
+      } else if (showStartContent) {
+        container.innerHTML = "";
+      } else {
+        const message = input.value.trim()
+          ? "No results found"
+          : "Start typing to search...";
+        container.innerHTML = `<div class="no-results">${message}</div>`;
+      }
+      return;
+    }
+
+    const recentHtml = recentItems.length
+      ? `<div class="results-heading">Recent</div>${recentItems
+          .map((match, index) => this.resultItemHtml(match, index))
+          .join(
+            "",
+          )}<div class="recent-actions"><button type="button" class="clear-recent" data-clear-recent-items>Clear recent</button></div>`
+      : "";
+    const defaultHtml = defaultMatches
+      .map((match, index) =>
+        this.resultItemHtml(match, recentItems.length + index),
       )
       .join("");
+    container.innerHTML = startBlock + recentHtml + defaultHtml;
+    this.renderJumpSections(container, jumpSections);
 
     // Scroll selected item into view
     if (this.selectedIndex >= 0) {
-      const selectedItem = container.children[this.selectedIndex];
+      const selectedItem = container.querySelector(
+        `.result-item[data-index="${this.selectedIndex}"]`,
+      );
       if (selectedItem) {
         selectedItem.scrollIntoView({ block: "nearest" });
       }
@@ -363,22 +608,27 @@ class NavigationSearch extends HTMLElement {
   }
 
   moveSelection(direction) {
+    const matches = this.renderedMatches || this.matches;
     const newIndex = this.selectedIndex + direction;
-    if (newIndex >= 0 && newIndex < this.matches.length) {
+    if (newIndex >= 0 && newIndex < matches.length) {
       this.selectedIndex = newIndex;
       this.renderResults();
     }
   }
 
   selectCurrentItem() {
-    if (this.selectedIndex >= 0 && this.selectedIndex < this.matches.length) {
+    const matches = this.renderedMatches || this.matches;
+    if (this.selectedIndex >= 0 && this.selectedIndex < matches.length) {
       this.selectItem(this.selectedIndex);
     }
   }
 
   selectItem(index) {
-    const match = this.matches[index];
+    const matches = this.renderedMatches || this.matches;
+    const match = matches[index];
     if (match) {
+      this.saveRecentItem(match);
+
       // Dispatch custom event
       this.dispatchEvent(
         new CustomEvent("select", {
@@ -405,7 +655,7 @@ class NavigationSearch extends HTMLElement {
     input.value = "";
     input.focus();
 
-    // Reset state - start with no items shown
+    // Reset state, then populate the default jump list.
     this.matches = [];
     this.selectedIndex = -1;
     this.renderResults();
@@ -418,7 +668,7 @@ class NavigationSearch extends HTMLElement {
 
   escapeHtml(text) {
     const div = document.createElement("div");
-    div.textContent = text;
+    div.textContent = text == null ? "" : text;
     return div.innerHTML;
   }
 }

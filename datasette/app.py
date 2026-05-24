@@ -58,7 +58,7 @@ from .views.special import (
     AllowedResourcesView,
     PermissionRulesView,
     PermissionCheckView,
-    TablesView,
+    JumpView,
     InstanceSchemaView,
     DatabaseSchemaView,
     TableSchemaView,
@@ -1219,13 +1219,24 @@ class Datasette:
 
         return db_plugin_config
 
+    def static_hash(self, filename):
+        if not hasattr(self, "_static_hashes"):
+            self._static_hashes = {}
+        path = os.path.join(str(app_root), "datasette/static", filename)
+        signature = (os.path.getmtime(path), os.path.getsize(path))
+        cached = self._static_hashes.get(filename)
+        if cached and cached["signature"] == signature:
+            return cached["hash"]
+        with open(path) as fp:
+            static_hash = hashlib.sha1(fp.read().encode("utf8")).hexdigest()[:6]
+        self._static_hashes[filename] = {
+            "signature": signature,
+            "hash": static_hash,
+        }
+        return static_hash
+
     def app_css_hash(self):
-        if not hasattr(self, "_app_css_hash"):
-            with open(os.path.join(str(app_root), "datasette/static/app.css")) as fp:
-                self._app_css_hash = hashlib.sha1(fp.read().encode("utf8")).hexdigest()[
-                    :6
-                ]
-        return self._app_css_hash
+        return self.static_hash("app.css")
 
     async def get_canned_queries(self, database_name, actor):
         queries = {}
@@ -2222,8 +2233,8 @@ class Datasette:
             r"/-/api$",
         )
         add_route(
-            TablesView.as_view(self),
-            r"/-/tables(\.(?P<format>json))?$",
+            JumpView.as_view(self),
+            r"/-/jump(\.(?P<format>json))?$",
         )
         add_route(
             InstanceSchemaView.as_view(self),

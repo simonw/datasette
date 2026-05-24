@@ -58,6 +58,48 @@ JavaScript plugins are blocks of code that can be registered with Datasette usin
 
 The ``implementation`` object passed to this method should include a ``version`` key defining the plugin version, and one or more of the following named functions providing the implementation of the plugin:
 
+.. _javascript_plugins_makeJumpSections:
+
+makeJumpSections()
+~~~~~~~~~~~~~~~~~~
+
+This method should return a JavaScript array of objects defining additional sections to be added to the blank state of the ``/`` jump menu, before the user starts typing a search.
+
+Each object should have the following:
+
+``id`` - string
+    A unique string ID for the section, for example ``agent-chat``
+``render(node, context)`` - function
+    A function that will be called with a DOM node to render the section into
+
+The ``context`` object has the following keys:
+
+``navigationSearch``
+    The ``<navigation-search>`` custom element instance.
+
+This example shows how a plugin might add a button for starting a new chat:
+
+.. code-block:: javascript
+
+    document.addEventListener('datasette_init', function(ev) {
+      ev.detail.registerPlugin('agent-plugin', {
+        version: 0.1,
+        makeJumpSections: () => {
+          return [
+            {
+              id: 'agent-chat',
+              render: node => {
+                node.innerHTML = '<button type="button">Start a new chat</button>';
+                node.querySelector('button').addEventListener('click', () => {
+                  location.href = '/-/agent/new';
+                });
+              }
+            }
+          ];
+        }
+      });
+    });
+
 .. _javascript_plugins_makeAboveTablePanelConfigs:
 
 makeAboveTablePanelConfigs()

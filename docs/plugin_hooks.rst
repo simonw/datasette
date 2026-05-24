@@ -1942,7 +1942,7 @@ This example returns a SQL fragment that searches rows from a ``dashboards`` tab
             SELECT
                 'dashboard' AS type,
                 slug AS label,
-                description AS description,
+                description,
                 json_object(
                     'method', 'row',
                     'database', 'content',

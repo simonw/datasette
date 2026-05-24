@@ -200,7 +200,7 @@ async def test_debug_menu_items_are_in_jump_for_debug_menu_permission():
     }
     assert all(descriptions_by_name.values())
     assert descriptions_by_name["Databases"] == (
-        "Inspect the databases, tables, views and columns known to this Datasette instance."
+        "List of databases known to this Datasette instance"
     )
 
 

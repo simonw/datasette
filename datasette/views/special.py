@@ -67,7 +67,7 @@ class JsonDataView(BaseView):
             context = {
                 "filename": self.filename,
                 "data": data,
-                "data_json": json.dumps(data, indent=4, default=repr),
+                "data_json": json.dumps(data, indent=2, default=repr),
             }
             # Add has_debug_permission if this view requires permissions-debug
             if self.permission == "permissions-debug":

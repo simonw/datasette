@@ -30,7 +30,7 @@
         </svg></summary>
         <div class="nav-menu-inner">
             <ul>
-                <li><button type="button" class="button-as-link" data-navigation-search-open>Jump to... <kbd class="keyboard-shortcut" aria-hidden="true" title="Keyboard shortcut: press / to open Jump to">/</kbd></button></li>
+                <li><button type="button" class="button-as-link" data-navigation-search-open aria-haspopup="dialog" aria-expanded="false" aria-keyshortcuts="/">Jump to... <kbd class="keyboard-shortcut" aria-hidden="true" title="Keyboard shortcut: press / to open Jump to">/</kbd></button></li>
                 {% for link in links %}
                 <li><a href="{{ link.href }}">{{ link.label }}</a></li>
                 {% endfor %}

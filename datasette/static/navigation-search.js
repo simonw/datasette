@@ -1,10 +1,22 @@
+let navigationSearchInstanceCounter = 0;
+
 class NavigationSearch extends HTMLElement {
   constructor() {
     super();
+    this.instanceId = ++navigationSearchInstanceCounter;
+    this.inputId = `navigation-search-input-${this.instanceId}`;
+    this.instructionsId = `navigation-search-instructions-${this.instanceId}`;
+    this.listboxId = `navigation-search-results-${this.instanceId}`;
+    this.recentHeadingId = `navigation-search-recent-${this.instanceId}`;
+    this.statusId = `navigation-search-status-${this.instanceId}`;
+    this.titleId = `navigation-search-title-${this.instanceId}`;
     this.attachShadow({ mode: "open" });
     this.selectedIndex = -1;
     this.matches = [];
+    this.renderedMatches = [];
     this.debounceTimer = null;
+    this.restoreFocusTarget = null;
+    this.shouldRestoreFocus = true;
 
     this.render();
     this.setupEventListeners();
@@ -59,10 +71,15 @@ class NavigationSearch extends HTMLElement {
                 .search-input-wrapper {
                     padding: 1.25rem;
                     border-bottom: 1px solid #e5e7eb;
+                    display: flex;
+                    gap: 0.5rem;
+                    align-items: center;
                 }
 
                 .search-input {
                     width: 100%;
+                    flex: 1;
+                    min-width: 0;
                     padding: 0.75rem 1rem;
                     font-size: 1rem;
                     border: 2px solid #e5e7eb;
@@ -76,10 +93,34 @@ class NavigationSearch extends HTMLElement {
                     border-color: #2563eb;
                 }
 
+                .close-search {
+                    background: transparent;
+                    border: 1px solid transparent;
+                    border-radius: 0.375rem;
+                    color: #4b5563;
+                    cursor: pointer;
+                    flex: 0 0 auto;
+                    font: inherit;
+                    font-size: 1.5rem;
+                    height: 2.75rem;
+                    line-height: 1;
+                    width: 2.75rem;
+                }
+
+                .close-search:hover,
+                .close-search:focus {
+                    background-color: #f3f4f6;
+                    border-color: #d1d5db;
+                }
+
                 .results-container {
                     overflow-y: auto;
                     height: calc(80vh - 180px);
                     padding: 0.5rem;
+                }
+
+                .results-list:empty {
+                    display: none;
                 }
 
                 .result-item {
@@ -200,6 +241,18 @@ class NavigationSearch extends HTMLElement {
                     font-family: monospace;
                 }
 
+                .visually-hidden {
+                    border: 0;
+                    clip: rect(0 0 0 0);
+                    height: 1px;
+                    margin: -1px;
+                    overflow: hidden;
+                    padding: 0;
+                    position: absolute;
+                    white-space: nowrap;
+                    width: 1px;
+                }
+
                 /* Mobile optimizations */
                 @media (max-width: 640px) {
                     dialog {
@@ -227,19 +280,29 @@ class NavigationSearch extends HTMLElement {
                 }
             </style>
 
-            <dialog>
+            <dialog aria-modal="true" aria-labelledby="${this.titleId}">
                 <div class="search-container">
+                    <h2 id="${this.titleId}" class="visually-hidden">Jump to</h2>
+                    <p id="${this.instructionsId}" class="visually-hidden">Type to search. Use up and down arrow keys to move through results, Enter to select a result, and Escape to close this menu.</p>
+                    <div id="${this.statusId}" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
                     <div class="search-input-wrapper">
                         <input 
+                            id="${this.inputId}"
                             type="text" 
                             class="search-input" 
                             placeholder="Jump to..."
                             aria-label="Jump to"
+                            aria-describedby="${this.instructionsId}"
+                            role="combobox"
+                            aria-autocomplete="list"
+                            aria-controls="${this.listboxId}"
+                            aria-expanded="false"
                             autocomplete="off"
                             spellcheck="false"
                         >
+                        <button type="button" class="close-search" aria-label="Close jump menu">&times;</button>
                     </div>
-                    <div class="results-container" role="listbox"></div>
+                    <div class="results-container"></div>
                     <div class="hint-text">
                         <span><kbd>↑</kbd> <kbd>↓</kbd> Navigate</span>
                         <span><kbd>Enter</kbd> Select</span>
@@ -253,6 +316,7 @@ class NavigationSearch extends HTMLElement {
   setupEventListeners() {
     const dialog = this.shadowRoot.querySelector("dialog");
     const input = this.shadowRoot.querySelector(".search-input");
+    const closeButton = this.shadowRoot.querySelector(".close-search");
     const resultsContainer =
       this.shadowRoot.querySelector(".results-container");
 
@@ -268,8 +332,10 @@ class NavigationSearch extends HTMLElement {
       const trigger = e.target.closest("[data-navigation-search-open]");
       if (trigger) {
         e.preventDefault();
-        trigger.closest("details")?.removeAttribute("open");
-        this.openMenu();
+        const details = trigger.closest("details");
+        const restoreTarget = details?.querySelector("summary") || trigger;
+        details?.removeAttribute("open");
+        this.openMenu(restoreTarget);
       }
     });
 
@@ -292,6 +358,10 @@ class NavigationSearch extends HTMLElement {
       } else if (e.key === "Escape") {
         this.closeMenu();
       }
+    });
+
+    closeButton.addEventListener("click", () => {
+      this.closeMenu();
     });
 
     // Click on result item
@@ -317,6 +387,15 @@ class NavigationSearch extends HTMLElement {
       }
     });
 
+    dialog.addEventListener("cancel", (e) => {
+      e.preventDefault();
+      this.closeMenu();
+    });
+
+    dialog.addEventListener("close", () => {
+      this.onMenuClosed();
+    });
+
     // Initial load
     this.loadInitialData();
   }
@@ -329,6 +408,106 @@ class NavigationSearch extends HTMLElement {
         activeElement.tagName === "TEXTAREA" ||
         activeElement.isContentEditable)
     );
+  }
+
+  setElementAttribute(element, name, value) {
+    if (!element) {
+      return;
+    }
+    if (typeof element.setAttribute === "function") {
+      element.setAttribute(name, value);
+    } else {
+      element[name] = String(value);
+    }
+  }
+
+  removeElementAttribute(element, name) {
+    if (!element) {
+      return;
+    }
+    if (typeof element.removeAttribute === "function") {
+      element.removeAttribute(name);
+    } else {
+      delete element[name];
+    }
+  }
+
+  focusRestoreTarget(trigger) {
+    if (trigger && typeof trigger.focus === "function") {
+      return trigger;
+    }
+    if (
+      document.activeElement &&
+      typeof document.activeElement.focus === "function"
+    ) {
+      return document.activeElement;
+    }
+    return null;
+  }
+
+  setNavigationTriggersExpanded(expanded) {
+    if (typeof document.querySelectorAll !== "function") {
+      return;
+    }
+    document
+      .querySelectorAll("[data-navigation-search-open]")
+      .forEach((trigger) => {
+        this.setElementAttribute(
+          trigger,
+          "aria-expanded",
+          expanded ? "true" : "false",
+        );
+      });
+  }
+
+  resultOptionId(index) {
+    return `${this.listboxId}-option-${index}`;
+  }
+
+  updateComboboxState() {
+    const dialog = this.shadowRoot.querySelector("dialog");
+    const input = this.shadowRoot.querySelector(".search-input");
+    const matches = this.renderedMatches || [];
+    this.setElementAttribute(
+      input,
+      "aria-expanded",
+      dialog && dialog.open && matches.length > 0 ? "true" : "false",
+    );
+
+    if (
+      dialog &&
+      dialog.open &&
+      this.selectedIndex >= 0 &&
+      this.selectedIndex < matches.length
+    ) {
+      this.setElementAttribute(
+        input,
+        "aria-activedescendant",
+        this.resultOptionId(this.selectedIndex),
+      );
+    } else {
+      this.removeElementAttribute(input, "aria-activedescendant");
+    }
+  }
+
+  setStatus(message) {
+    const status = this.shadowRoot.querySelector(`#${this.statusId}`);
+    if (status) {
+      status.textContent = message || "";
+    }
+  }
+
+  resultsStatus(count, truncated) {
+    if (truncated) {
+      return "More than 100 results. Keep typing to narrow the list.";
+    }
+    if (count === 0) {
+      return "No results found.";
+    }
+    if (count === 1) {
+      return "1 result.";
+    }
+    return `${count} results.`;
   }
 
   loadInitialData() {
@@ -347,6 +526,11 @@ class NavigationSearch extends HTMLElement {
 
   handleSearch(query) {
     clearTimeout(this.debounceTimer);
+    if (query.trim()) {
+      this.setStatus("Searching...");
+    } else {
+      this.setStatus("");
+    }
 
     this.debounceTimer = setTimeout(() => {
       const url = this.getAttribute("url");
@@ -369,10 +553,16 @@ class NavigationSearch extends HTMLElement {
       this.matches = data.matches || [];
       this.selectedIndex = this.matches.length > 0 ? 0 : -1;
       this.renderResults();
+      if (query.trim()) {
+        this.setStatus(this.resultsStatus(this.matches.length, data.truncated));
+      } else {
+        this.setStatus("");
+      }
     } catch (e) {
       console.error("Failed to fetch search results:", e);
       this.matches = [];
       this.renderResults();
+      this.setStatus("Search failed.");
     }
   }
 
@@ -390,6 +580,11 @@ class NavigationSearch extends HTMLElement {
     }
     this.selectedIndex = this.matches.length > 0 ? 0 : -1;
     this.renderResults();
+    if (query.trim()) {
+      this.setStatus(this.resultsStatus(this.matches.length, false));
+    } else {
+      this.setStatus("");
+    }
   }
 
   recentItemsStorageKey() {
@@ -466,6 +661,7 @@ class NavigationSearch extends HTMLElement {
       localStorage.setItem(this.recentItemsStorageKey(), "[]");
     }
     this.renderResults();
+    this.setStatus("Recent items cleared.");
   }
 
   jumpSections() {
@@ -526,6 +722,7 @@ class NavigationSearch extends HTMLElement {
       : "";
     return `
             <div
+                id="${this.resultOptionId(index)}"
                 class="result-item ${index === this.selectedIndex ? "selected" : ""}"
                 data-index="${index}"
                 role="option"
@@ -554,6 +751,7 @@ class NavigationSearch extends HTMLElement {
     const defaultMatches = showStartContent ? [] : this.matches;
     const renderedMatches = [...recentItems, ...defaultMatches];
     this.renderedMatches = renderedMatches;
+    const emptyListbox = `<div id="${this.listboxId}" class="results-list" role="listbox" aria-label="Jump results"></div>`;
 
     if (renderedMatches.length) {
       if (
@@ -568,33 +766,43 @@ class NavigationSearch extends HTMLElement {
 
     if (renderedMatches.length === 0) {
       if (startBlock) {
-        container.innerHTML = startBlock;
+        container.innerHTML = startBlock + emptyListbox;
         this.renderJumpSections(container, jumpSections);
       } else if (showStartContent) {
-        container.innerHTML = "";
+        container.innerHTML = emptyListbox;
       } else {
         const message = input.value.trim()
           ? "No results found"
           : "Start typing to search...";
-        container.innerHTML = `<div class="no-results">${message}</div>`;
+        container.innerHTML = `${emptyListbox}<div class="no-results">${message}</div>`;
       }
+      this.updateComboboxState();
       return;
     }
 
-    const recentHtml = recentItems.length
-      ? `<div class="results-heading">Recent</div>${recentItems
+    const recentHeading = recentItems.length
+      ? `<div class="results-heading" id="${this.recentHeadingId}">Recent</div>`
+      : "";
+    const recentGroup = recentItems.length
+      ? `<div role="group" aria-labelledby="${this.recentHeadingId}">${recentItems
           .map((match, index) => this.resultItemHtml(match, index))
-          .join(
-            "",
-          )}<div class="recent-actions"><button type="button" class="clear-recent" data-clear-recent-items>Clear recent</button></div>`
+          .join("")}</div>`
+      : "";
+    const recentActions = recentItems.length
+      ? `<div class="recent-actions"><button type="button" class="clear-recent" data-clear-recent-items>Clear recent</button></div>`
       : "";
     const defaultHtml = defaultMatches
       .map((match, index) =>
         this.resultItemHtml(match, recentItems.length + index),
       )
       .join("");
-    container.innerHTML = startBlock + recentHtml + defaultHtml;
+    container.innerHTML =
+      startBlock +
+      recentHeading +
+      `<div id="${this.listboxId}" class="results-list" role="listbox" aria-label="Jump results">${recentGroup}${defaultHtml}</div>` +
+      recentActions;
     this.renderJumpSections(container, jumpSections);
+    this.updateComboboxState();
 
     // Scroll selected item into view
     if (this.selectedIndex >= 0) {
@@ -641,17 +849,20 @@ class NavigationSearch extends HTMLElement {
       // Navigate to URL
       window.location.href = match.url;
 
-      this.closeMenu();
+      this.closeMenu({ restoreFocus: false });
     }
   }
 
-  openMenu() {
+  openMenu(trigger) {
     const dialog = this.shadowRoot.querySelector("dialog");
     const input = this.shadowRoot.querySelector(".search-input");
 
+    this.restoreFocusTarget = this.focusRestoreTarget(trigger);
+    this.shouldRestoreFocus = true;
     if (!dialog.open) {
       dialog.showModal();
     }
+    this.setNavigationTriggersExpanded(true);
     input.value = "";
     input.focus();
 
@@ -659,11 +870,33 @@ class NavigationSearch extends HTMLElement {
     this.matches = [];
     this.selectedIndex = -1;
     this.renderResults();
+    this.setStatus("");
   }
 
-  closeMenu() {
+  closeMenu(options = {}) {
     const dialog = this.shadowRoot.querySelector("dialog");
-    dialog.close();
+    this.shouldRestoreFocus = options.restoreFocus !== false;
+    if (dialog.open) {
+      dialog.close();
+    } else {
+      this.onMenuClosed();
+    }
+  }
+
+  onMenuClosed() {
+    const input = this.shadowRoot.querySelector(".search-input");
+    this.setElementAttribute(input, "aria-expanded", "false");
+    this.removeElementAttribute(input, "aria-activedescendant");
+    this.setNavigationTriggersExpanded(false);
+    this.setStatus("");
+    if (
+      this.shouldRestoreFocus &&
+      this.restoreFocusTarget &&
+      typeof this.restoreFocusTarget.focus === "function"
+    ) {
+      this.restoreFocusTarget.focus();
+    }
+    this.restoreFocusTarget = null;
   }
 
   escapeHtml(text) {

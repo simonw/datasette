@@ -1897,7 +1897,7 @@ jump_items_sql(datasette, actor, request)
 
 This hook allows plugins to add extra results to Datasette's ``/`` jump menu, which is powered by the ``/-/jump`` JSON endpoint.
 
-Return a ``datasette.jump.JumpSQL`` object, or a list of ``JumpSQL`` objects. Each ``JumpSQL`` object wraps a SQL query to be searched alongside Datasette's own databases, tables, views and canned query results.
+Return a ``datasette.jump.JumpSQL`` object, or a list of ``JumpSQL`` objects. Each ``JumpSQL`` object wraps a SQL query to be searched alongside Datasette's own databases, tables, views and canned query results. The hook can also be an ``async def`` function, or return an awaitable that resolves to one of these values.
 
 ``JumpSQL`` queries run against Datasette's internal database by default. To run a query against another database, pass its name as the optional ``database=`` argument. For example, ``JumpSQL(database="content", sql="...")`` runs against the ``content`` database.
 
@@ -1923,7 +1923,9 @@ The SQL query must return these columns:
 ``display_name``
     A human-readable label for the result, or ``NULL``. Datasette returns this as ``display_name`` in the JSON API, and the jump menu shows it as the primary readable label with ``name`` shown underneath.
 
-This example adds a "Plugin dashboard" result for signed-in users:
+Use ``params=`` to pass SQL parameters. Datasette will automatically namespace those parameters before adding the SQL fragment to the per-database ``UNION ALL`` query.
+
+This example returns a SQL fragment that searches rows from a ``dashboards`` table in the ``content`` database. The ``url`` column uses ``json_object()`` to describe a call to ``datasette.urls.row(database='content', table='dashboards', row_path=slug)``:
 
 .. code-block:: python
 
@@ -1932,7 +1934,40 @@ This example adds a "Plugin dashboard" result for signed-in users:
 
 
     @hookimpl
-    def jump_items_sql(actor):
+    def jump_items_sql(datasette, actor, request):
+        if not actor:
+            return None
+        return JumpSQL(
+            sql="""
+            SELECT
+                'dashboard' AS type,
+                slug AS label,
+                description AS description,
+                json_object(
+                    'method', 'row',
+                    'database', 'content',
+                    'table', 'dashboards',
+                    'row_path', slug
+                ) AS url,
+                slug || ' ' || COALESCE(title, '') || ' ' || COALESCE(description, '') AS search_text,
+                title AS display_name
+            FROM dashboards
+            WHERE owner_id = :actor_id
+            """,
+            params={"actor_id": actor["id"]},
+            database="content",
+        )
+
+This example uses the ``JumpSQL.menu_item()`` shortcut to add a single "Plugin dashboard" result for signed-in users:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.jump import JumpSQL
+
+
+    @hookimpl
+    def jump_items_sql(datasette, actor, request):
         if not actor:
             return None
         return JumpSQL.menu_item(
@@ -1943,8 +1978,6 @@ This example adds a "Plugin dashboard" result for signed-in users:
             search_text="plugin dashboard",
             display_name="Plugin dashboard",
         )
-
-Use ``params=`` to pass SQL parameters. Datasette will automatically namespace those parameters before adding the SQL fragment to the per-database ``UNION ALL`` query.
 
 ``JumpSQL.menu_item(...)`` is a shortcut for adding a single jump menu item from Python code. It accepts the keyword arguments shown above.
 

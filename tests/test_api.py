@@ -717,6 +717,17 @@ def test_cors(
     assert "Access-Control-Max-Age" not in response.headers
 
 
+def test_cors_query_redirect(app_client_with_cors):
+    # /db?sql= redirects to /db/-/query - the redirect itself needs CORS
+    # headers, otherwise browsers refuse to follow it cross-origin
+    response = app_client_with_cors.get(
+        "/fixtures?sql=select+1", follow_redirects=False
+    )
+    assert response.status == 302
+    assert response.headers["Location"] == "/fixtures/-/query?sql=select+1"
+    assert response.headers["Access-Control-Allow-Origin"] == "*"
+
+
 @pytest.mark.parametrize(
     "path",
     (

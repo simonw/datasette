@@ -147,8 +147,6 @@ async def test_jump_sql_menu_item_helper(ds_for_jump):
         label="Plugin dashboard",
         url="/-/plugin-dashboard",
         description="Plugin tool",
-        source="test-plugin",
-        sort_key=70,
         search_text="dashboard plugin",
         display_name="Plugin Dashboard",
         item_type="plugin",
@@ -162,8 +160,6 @@ async def test_jump_sql_menu_item_helper(ds_for_jump):
         "description": "Plugin tool",
         "url": "/-/plugin-dashboard",
         "search_text": "dashboard plugin",
-        "sort_key": 70,
-        "source": "test-plugin",
         "display_name": "Plugin Dashboard",
     }
 
@@ -200,7 +196,7 @@ async def test_debug_menu_items_are_in_jump_for_debug_menu_permission():
     }
     assert all(descriptions_by_name.values())
     assert descriptions_by_name["Databases"] == (
-        "List of databases known to this Datasette instance"
+        "List of databases known to this Datasette instance."
     )
 
 
@@ -228,8 +224,6 @@ async def test_jump_uses_plugin_sql_with_namespaced_parameters(ds_for_jump):
                     'Plugin supplied item' AS description,
                     '/-/plugin-dashboard' AS url,
                     'plugin dashboard ' || :actor_id AS search_text,
-                    80 AS sort_key,
-                    'test-plugin' AS source,
                     'Plugin dashboard for ' || :actor_id AS display_name
                 """,
                 params={"actor_id": actor["id"] if actor else "anonymous"},
@@ -275,8 +269,6 @@ async def test_jump_resolves_url_descriptors_from_sql(ds_for_jump):
                         'table', 'comments'
                     ) AS url,
                     'table descriptor comments' AS search_text,
-                    80 AS sort_key,
-                    'test-plugin' AS source,
                     NULL AS display_name
                 """)
 

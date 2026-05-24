@@ -1916,12 +1916,6 @@ The SQL query must return these columns:
 ``search_text``
     Text that should be searched by the ``?q=`` parameter.
 
-``sort_key``
-    A numeric value used to order results.
-
-``source``
-    A string identifying the plugin that supplied the result.
-
 ``display_name``
     A human-readable label for the result, or ``NULL``. Datasette returns this as ``display_name`` in the JSON API, and the jump menu shows it as the primary readable label with ``name`` shown underneath.
 
@@ -1943,8 +1937,6 @@ This example adds a "Plugin dashboard" result for signed-in users:
             description="Review plugin status and configuration.",
             url="/-/plugin-dashboard",
             search_text="plugin dashboard",
-            sort_key=80,
-            source="my-plugin",
             display_name="Plugin dashboard",
         )
 

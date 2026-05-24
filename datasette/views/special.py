@@ -993,8 +993,6 @@ class JumpView(BaseView):
                     description,
                     url,
                     search_text,
-                    sort_key,
-                    source,
                     display_name
                 FROM (
                     {fragment_sql}
@@ -1016,7 +1014,13 @@ class JumpView(BaseView):
                 WHEN lower(COALESCE(display_name, label)) LIKE lower(:q || '%') THEN 1
                 ELSE 2
             END,
-            sort_key,
+            CASE type
+                WHEN 'database' THEN 10
+                WHEN 'table' THEN 20
+                WHEN 'view' THEN 25
+                WHEN 'query' THEN 30
+                ELSE 50
+            END,
             length(COALESCE(display_name, label)),
             label
         LIMIT 101

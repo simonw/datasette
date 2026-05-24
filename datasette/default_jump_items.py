@@ -29,8 +29,6 @@ def jump_items_sql(datasette, actor, request):
                         'database', parent
                     ) AS url,
                     parent AS search_text,
-                    10 AS sort_key,
-                    'datasette' AS source,
                     NULL AS display_name
                 FROM allowed_databases
                 """,
@@ -51,8 +49,6 @@ def jump_items_sql(datasette, actor, request):
                         'table', allowed_tables.child
                     ) AS url,
                     allowed_tables.parent || ' ' || allowed_tables.child AS search_text,
-                    CASE WHEN catalog_views.view_name IS NULL THEN 20 ELSE 25 END AS sort_key,
-                    'datasette' AS source,
                     NULL AS display_name
                 FROM allowed_tables
                 LEFT JOIN catalog_views
@@ -76,8 +72,6 @@ def jump_items_sql(datasette, actor, request):
                         'query', allowed_queries.child
                     ) AS url,
                     allowed_queries.parent || ' ' || allowed_queries.child AS search_text,
-                    30 AS sort_key,
-                    'datasette' AS source,
                     NULL AS display_name
                 FROM allowed_queries
                 """,

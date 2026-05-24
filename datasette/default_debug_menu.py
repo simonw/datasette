@@ -66,12 +66,10 @@ def jump_items_sql(datasette, actor, request):
                 label=label,
                 url=datasette.urls.path(path),
                 description=description,
-                source="datasette.default_debug_menu",
-                sort_key=70 + index,
                 search_text=f"debug {label} {description}",
                 item_type="debug",
             )
-            for index, (path, label, description) in enumerate(DEBUG_MENU_ITEMS)
+            for path, label, description in DEBUG_MENU_ITEMS
         ]
 
     return inner

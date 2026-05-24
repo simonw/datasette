@@ -17,8 +17,6 @@ class JumpSQL:
         label: str,
         url: str,
         description: str = "Menu item",
-        source: str = "datasette",
-        sort_key: int = 50,
         search_text: str | None = None,
         display_name: str | None = None,
         item_type: str = "menu",
@@ -35,8 +33,6 @@ class JumpSQL:
                 :description AS description,
                 :url AS url,
                 :search_text AS search_text,
-                :sort_key AS sort_key,
-                :source AS source,
                 :display_name AS display_name
             """,
             params={
@@ -45,8 +41,6 @@ class JumpSQL:
                 "description": description,
                 "url": url,
                 "search_text": search_text,
-                "sort_key": sort_key,
-                "source": source,
                 "display_name": display_name,
             },
         )

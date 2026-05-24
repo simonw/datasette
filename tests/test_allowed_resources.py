@@ -51,7 +51,7 @@ async def test_ds():
 
 
 @pytest.mark.asyncio
-async def test_tables_endpoint_global_access(test_ds):
+async def test_tables_allowed_resources_global_access(test_ds):
     """Test allowed_resources() with global access permissions"""
 
     def rules_callback(datasette, actor, action):

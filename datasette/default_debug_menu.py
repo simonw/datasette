@@ -2,16 +2,56 @@ from datasette import hookimpl
 from datasette.jump import JumpSQL
 
 DEBUG_MENU_ITEMS = (
-    ("/-/databases", "Databases"),
-    ("/-/plugins", "Installed plugins"),
-    ("/-/versions", "Version info"),
-    ("/-/settings", "Settings"),
-    ("/-/permissions", "Debug permissions"),
-    ("/-/messages", "Debug messages"),
-    ("/-/allow-debug", "Debug allow rules"),
-    ("/-/threads", "Debug threads"),
-    ("/-/actor", "Debug actor"),
-    ("/-/patterns", "Pattern portfolio"),
+    (
+        "/-/databases",
+        "Databases",
+        "List of databases known to this Datasette instance.",
+    ),
+    (
+        "/-/plugins",
+        "Installed plugins",
+        "Review loaded plugins, their versions and their registered hooks.",
+    ),
+    (
+        "/-/versions",
+        "Version info",
+        "Check the Python, SQLite and dependency versions used by this server.",
+    ),
+    (
+        "/-/settings",
+        "Settings",
+        "Inspect the active Datasette settings and configuration values.",
+    ),
+    (
+        "/-/permissions",
+        "Debug permissions",
+        "Test permission checks for actors, actions and resources.",
+    ),
+    (
+        "/-/messages",
+        "Debug messages",
+        "Try out temporary flash messages shown to users.",
+    ),
+    (
+        "/-/allow-debug",
+        "Debug allow rules",
+        "Explore how allow blocks match actors against permission rules.",
+    ),
+    (
+        "/-/threads",
+        "Debug threads",
+        "Inspect worker threads and database tasks.",
+    ),
+    (
+        "/-/actor",
+        "Debug actor",
+        "View the actor object for the current signed-in user.",
+    ),
+    (
+        "/-/patterns",
+        "Pattern portfolio",
+        "Browse Datasette UI patterns.",
+    ),
 )
 
 
@@ -25,12 +65,13 @@ def jump_items_sql(datasette, actor, request):
             JumpSQL.menu_item(
                 label=label,
                 url=datasette.urls.path(path),
-                description="Debug menu",
+                description=description,
                 source="datasette.default_debug_menu",
                 sort_key=70 + index,
+                search_text=f"debug {label} {description}",
                 item_type="debug",
             )
-            for index, (path, label) in enumerate(DEBUG_MENU_ITEMS)
+            for index, (path, label, description) in enumerate(DEBUG_MENU_ITEMS)
         ]
 
     return inner

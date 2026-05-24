@@ -1902,22 +1902,16 @@ Return a ``datasette.jump.JumpSQL`` object, or a list of ``JumpSQL`` objects. Ea
 The SQL query must return these columns:
 
 ``type``
-    A short type string for the result, for example ``"app"`` or ``"dashboard"``.
+    A short type string for the result, for example ``"app"`` or ``"dashboard"``. The jump menu displays this above the item as a category label.
 
 ``label``
     The stable name for the result. This is returned as ``name`` in the JSON API and is used for sorting.
 
 ``description``
-    A short description shown above the item in the jump menu.
+    Optional longer text describing this individual item, or ``NULL``. The jump menu displays this below the item's URL when it is present.
 
 ``url``
-    The URL to navigate to when the item is selected.
-
-``database_name``
-    The database name for Datasette resources, or ``NULL`` for custom plugin results.
-
-``resource_name``
-    The table, view or query name for Datasette resources, or ``NULL`` for custom plugin results.
+    The URL to navigate to when the item is selected. This can be either a string starting with ``/`` or a JSON object describing a call to one of the :ref:`internals_datasette_urls` methods. For example, ``json_object('method', 'table', 'database', 'fixtures', 'table', 'facetable')`` calls ``datasette.urls.table(database='fixtures', table='facetable')``. Unknown methods or invalid named arguments will result in an error.
 
 ``search_text``
     Text that should be searched by the ``?q=`` parameter.
@@ -1946,7 +1940,7 @@ This example adds a "Plugin dashboard" result for signed-in users:
         return JumpSQL.menu_item(
             item_type="dashboard",
             label="plugin-dashboard",
-            description="Dashboard",
+            description="Review plugin status and configuration.",
             url="/-/plugin-dashboard",
             search_text="plugin dashboard",
             sort_key=80,
@@ -1956,7 +1950,7 @@ This example adds a "Plugin dashboard" result for signed-in users:
 
 Use ``params=`` to pass SQL parameters. Datasette will automatically namespace those parameters before combining SQL fragments from different plugins.
 
-``JumpSQL.menu_item(...)`` is a shortcut for adding a single jump menu item that is not backed by a resource in Datasette's internal catalog tables. It returns ``NULL`` for ``database_name`` and ``resource_name`` and accepts the keyword arguments shown above.
+``JumpSQL.menu_item(...)`` is a shortcut for adding a single jump menu item from Python code. It accepts the keyword arguments shown above.
 
 .. _plugin_actions:
 

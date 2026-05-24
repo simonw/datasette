@@ -34,8 +34,6 @@ class JumpSQL:
                 :label AS label,
                 :description AS description,
                 :url AS url,
-                NULL AS database_name,
-                NULL AS resource_name,
                 :search_text AS search_text,
                 :sort_key AS sort_key,
                 :source AS source,

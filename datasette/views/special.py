@@ -944,16 +944,33 @@ class JumpView(BaseView):
                 raise TypeError("jump_items_sql must return JumpSQL instances")
         return fragments
 
-    def _url_for_row(self, row):
-        if row["url"]:
-            return row["url"]
-        if row["type"] == "database":
-            return self.ds.urls.database(row["database_name"])
-        if row["type"] in ("table", "view"):
-            return self.ds.urls.table(row["database_name"], row["resource_name"])
-        if row["type"] == "query":
-            return self.ds.urls.query(row["database_name"], row["resource_name"])
-        return ""
+    def _resolve_url(self, url):
+        if not url or url.startswith("/"):
+            return url
+
+        descriptor = json.loads(url)
+        if not isinstance(descriptor, dict):
+            raise TypeError("jump item url JSON must be an object")
+        method_name = descriptor.get("method")
+        if not isinstance(method_name, str) or not method_name:
+            raise TypeError("jump item url JSON must include a method")
+        if method_name.startswith("_"):
+            raise AttributeError(f"datasette.urls has no method named {method_name!r}")
+        try:
+            method = getattr(self.ds.urls, method_name)
+        except AttributeError as ex:
+            raise AttributeError(
+                f"datasette.urls has no method named {method_name!r}"
+            ) from ex
+        if not callable(method):
+            raise TypeError(f"datasette.urls.{method_name} is not callable")
+        kwargs = {key: value for key, value in descriptor.items() if key != "method"}
+        try:
+            return method(**kwargs)
+        except TypeError as ex:
+            raise TypeError(
+                f"Invalid arguments for datasette.urls.{method_name}(): {ex}"
+            ) from ex
 
     async def get(self, request):
         q = request.args.get("q", "").strip()
@@ -975,8 +992,6 @@ class JumpView(BaseView):
                     label,
                     description,
                     url,
-                    database_name,
-                    resource_name,
                     search_text,
                     sort_key,
                     source,
@@ -1016,7 +1031,7 @@ class JumpView(BaseView):
         for row in rows:
             match = {
                 "name": row["label"],
-                "url": self._url_for_row(row),
+                "url": self._resolve_url(row["url"]),
                 "type": row["type"],
                 "description": row["description"],
             }

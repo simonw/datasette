@@ -100,6 +100,11 @@ class NavigationSearch extends HTMLElement {
                     background-color: #dbeafe;
                 }
 
+                .result-item > div {
+                    flex: 1;
+                    min-width: 0;
+                }
+
                 .jump-start-content {
                     border-bottom: 1px solid #e5e7eb;
                     margin-bottom: 0.5rem;
@@ -120,7 +125,7 @@ class NavigationSearch extends HTMLElement {
                     color: #4b5563;
                 }
 
-                .result-description {
+                .result-type {
                     color: #4b5563;
                     font-size: 0.75rem;
                     font-weight: 600;
@@ -130,6 +135,17 @@ class NavigationSearch extends HTMLElement {
                 .result-url {
                     font-size: 0.875rem;
                     color: #6b7280;
+                }
+
+                .result-description {
+                    color: #374151;
+                    display: -webkit-box;
+                    font-size: 0.8125rem;
+                    line-height: 1.35;
+                    margin-top: 0.35rem;
+                    overflow: hidden;
+                    -webkit-box-orient: vertical;
+                    -webkit-line-clamp: 2;
                 }
 
                 .results-heading {
@@ -500,6 +516,9 @@ class NavigationSearch extends HTMLElement {
       match.display_name && match.display_name !== match.name
         ? `<div class="result-label">${this.escapeHtml(match.name)}</div>`
         : "";
+    const type = match.type
+      ? `<div class="result-type">${this.escapeHtml(match.type)}</div>`
+      : "";
     const description = match.description
       ? `<div class="result-description">${this.escapeHtml(
           match.description,
@@ -513,10 +532,11 @@ class NavigationSearch extends HTMLElement {
                 aria-selected="${index === this.selectedIndex}"
             >
                 <div>
-                    ${description}
+                    ${type}
                     <div class="result-name">${this.escapeHtml(displayName)}</div>
                     ${label}
                     <div class="result-url">${this.escapeHtml(match.url)}</div>
+                    ${description}
                 </div>
             </div>
         `;

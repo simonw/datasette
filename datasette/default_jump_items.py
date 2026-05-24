@@ -23,10 +23,11 @@ def jump_items_sql(datasette, actor, request):
                 SELECT
                     'database' AS type,
                     parent AS label,
-                    'Database' AS description,
-                    NULL AS url,
-                    parent AS database_name,
-                    NULL AS resource_name,
+                    NULL AS description,
+                    json_object(
+                        'method', 'database',
+                        'database', parent
+                    ) AS url,
                     parent AS search_text,
                     10 AS sort_key,
                     'datasette' AS source,
@@ -43,10 +44,12 @@ def jump_items_sql(datasette, actor, request):
                 SELECT
                     CASE WHEN catalog_views.view_name IS NULL THEN 'table' ELSE 'view' END AS type,
                     allowed_tables.parent || ': ' || allowed_tables.child AS label,
-                    CASE WHEN catalog_views.view_name IS NULL THEN 'Table' ELSE 'View' END AS description,
-                    NULL AS url,
-                    allowed_tables.parent AS database_name,
-                    allowed_tables.child AS resource_name,
+                    NULL AS description,
+                    json_object(
+                        'method', 'table',
+                        'database', allowed_tables.parent,
+                        'table', allowed_tables.child
+                    ) AS url,
                     allowed_tables.parent || ' ' || allowed_tables.child AS search_text,
                     CASE WHEN catalog_views.view_name IS NULL THEN 20 ELSE 25 END AS sort_key,
                     'datasette' AS source,
@@ -66,10 +69,12 @@ def jump_items_sql(datasette, actor, request):
                 SELECT
                     'query' AS type,
                     allowed_queries.parent || ': ' || allowed_queries.child AS label,
-                    'Canned query' AS description,
-                    NULL AS url,
-                    allowed_queries.parent AS database_name,
-                    allowed_queries.child AS resource_name,
+                    NULL AS description,
+                    json_object(
+                        'method', 'query',
+                        'database', allowed_queries.parent,
+                        'query', allowed_queries.child
+                    ) AS url,
                     allowed_queries.parent || ' ' || allowed_queries.child AS search_text,
                     30 AS sort_key,
                     'datasette' AS source,

@@ -217,6 +217,15 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             ]
         },
         {
+            "name": "datasette.default_debug_menu",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "jump_items_sql"
+            ]
+        },
+        {
             "name": "datasette.default_jump_items",
             "static": false,
             "templates": false,
@@ -232,15 +241,6 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "version": null,
             "hooks": [
                 "register_magic_parameters"
-            ]
-        },
-        {
-            "name": "datasette.default_debug_menu",
-            "static": false,
-            "templates": false,
-            "version": null,
-            "hooks": [
-                "jump_items_sql"
             ]
         },
         {

@@ -5,6 +5,7 @@ from datasette import hookimpl
 from datasette.app import Datasette
 from datasette.jump import JumpSQL
 from datasette.plugins import pm
+from datasette.views.special import JumpView
 
 
 @pytest_asyncio.fixture
@@ -113,7 +114,7 @@ async def test_jump_uses_canned_query_names_not_titles(ds_for_jump):
             "name": "content: release_notes",
             "url": "/content/release_notes",
             "type": "query",
-            "description": "Canned query",
+            "description": None,
         }
     ]
 
@@ -160,8 +161,6 @@ async def test_jump_sql_menu_item_helper(ds_for_jump):
         "label": "Plugin dashboard",
         "description": "Plugin tool",
         "url": "/-/plugin-dashboard",
-        "database_name": None,
-        "resource_name": None,
         "search_text": "dashboard plugin",
         "sort_key": 70,
         "source": "test-plugin",
@@ -196,7 +195,13 @@ async def test_debug_menu_items_are_in_jump_for_debug_menu_permission():
         "Debug actor": "/-/actor",
         "Pattern portfolio": "/-/patterns",
     }
-    assert {match["description"] for match in debug_matches} == {"Debug menu"}
+    descriptions_by_name = {
+        match["name"]: match["description"] for match in debug_matches
+    }
+    assert all(descriptions_by_name.values())
+    assert descriptions_by_name["Databases"] == (
+        "Inspect the databases, tables, views and columns known to this Datasette instance."
+    )
 
 
 @pytest.mark.asyncio
@@ -222,8 +227,6 @@ async def test_jump_uses_plugin_sql_with_namespaced_parameters(ds_for_jump):
                     'plugin-dashboard: ' || :actor_id AS label,
                     'Plugin supplied item' AS description,
                     '/-/plugin-dashboard' AS url,
-                    NULL AS database_name,
-                    NULL AS resource_name,
                     'plugin dashboard ' || :actor_id AS search_text,
                     80 AS sort_key,
                     'test-plugin' AS source,
@@ -254,6 +257,61 @@ async def test_jump_uses_plugin_sql_with_namespaced_parameters(ds_for_jump):
             "description": "Plugin supplied item",
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_jump_resolves_url_descriptors_from_sql(ds_for_jump):
+    class JumpPlugin:
+        @hookimpl
+        def jump_items_sql(self, datasette, actor, request):
+            return JumpSQL(sql="""
+                SELECT
+                    'plugin' AS type,
+                    'Table descriptor' AS label,
+                    NULL AS description,
+                    json_object(
+                        'method', 'table',
+                        'database', 'content',
+                        'table', 'comments'
+                    ) AS url,
+                    'table descriptor comments' AS search_text,
+                    80 AS sort_key,
+                    'test-plugin' AS source,
+                    NULL AS display_name
+                """)
+
+    plugin = JumpPlugin()
+    pm.register(plugin, name="test-jump-url-descriptor-plugin")
+    try:
+        response = await ds_for_jump.client.get(
+            "/-/jump.json?q=descriptor", actor={"id": "alice"}
+        )
+    finally:
+        pm.unregister(name="test-jump-url-descriptor-plugin")
+
+    assert response.status_code == 200
+    plugin_matches = [
+        match for match in response.json()["matches"] if match["type"] == "plugin"
+    ]
+    assert plugin_matches == [
+        {
+            "name": "Table descriptor",
+            "url": "/content/comments",
+            "type": "plugin",
+            "description": None,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_jump_url_descriptor_errors(ds_for_jump):
+    view = JumpView(ds_for_jump)
+    with pytest.raises(AttributeError):
+        view._resolve_url('{"method": "not_a_url_method"}')
+    with pytest.raises(TypeError):
+        view._resolve_url(
+            '{"method": "table", "database_name": "content", "table_name": "comments"}'
+        )
 
 
 @pytest.mark.asyncio

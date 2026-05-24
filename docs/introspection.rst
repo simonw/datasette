@@ -151,6 +151,8 @@ Shows currently attached databases. `Databases example <https://latest.datasette
 
 Returns a JSON list of items that the current actor has permission to view for Datasette's jump menu. By default this includes visible databases, tables, views and canned queries, and plugins can contribute additional items.
 
+Each item includes a ``type`` string used as a category label in the menu. Items can also include an optional ``description`` with longer text describing that individual result.
+
 The endpoint supports a ``?q=`` query parameter for filtering items by name.
 
 `Jump example <https://latest.datasette.io/-/jump>`_:
@@ -163,19 +165,19 @@ The endpoint supports a ``?q=`` query parameter for filtering items by name.
                 "name": "fixtures",
                 "url": "/fixtures",
                 "type": "database",
-                "description": "Database"
+                "description": null
             },
             {
                 "name": "fixtures: facetable",
                 "url": "/fixtures/facetable",
                 "type": "table",
-                "description": "Table"
+                "description": null
             },
             {
                 "name": "fixtures: recent_releases",
                 "url": "/fixtures/recent_releases",
                 "type": "query",
-                "description": "Canned query"
+                "description": null
             }
         ],
         "truncated": false
@@ -191,7 +193,7 @@ Search example with ``?q=facet`` returns only items matching ``.*facet.*``:
                 "name": "fixtures: facetable",
                 "url": "/fixtures/facetable",
                 "type": "table",
-                "description": "Table"
+                "description": null
             }
         ],
         "truncated": false

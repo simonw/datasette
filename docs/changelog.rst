@@ -4,21 +4,23 @@
 Changelog
 =========
 
-.. _unreleased:
+.. _v1_0_a30:
 
-Unreleased
-----------
+1.0a30 (2026-05-24)
+-------------------
 
-- Dropped Janus as a dependency, previously used to manage the write queue. This should not have any impact on plugin developers or end-users. (:issue:`1752`)
-- Fixed a bug where stale tables and other related resources were not removed from ``catalog_*`` tables when a database was removed. (:issue:`2723`)
-- Fixed a Safari bug with the table search mechanism triggered by pressing ``/``. (:issue:`2724`)
+The "Jump to" menu, activated by hitting ``/`` or through the application menu, can now be extended by plugins.
+
 - New "Jump to..." menu item, always visible, for triggering the previously undocumented ``/`` menu. (:issue:`2725`)
 - The ``/`` jump-to search interface now covers databases, views, canned queries and plugin-provided items in addition to tables. The endpoint backing it has been renamed from ``/-/tables`` to ``/-/jump``.
 - New :ref:`plugin_hook_jump_items_sql` plugin hook, allowing plugins to contribute additional items to the jump-to menu by returning SQL. ``JumpSQL`` queries run against Datasette's internal database by default, or can target another database using the optional ``database=`` argument.
 - ``datasette.jump.JumpSQL.menu_item()`` is a shortcut for adding individual jump menu items that are not backed by resources in the internal catalog.
 - New :ref:`javascript_plugins_makeJumpSections` JavaScript plugin hook, allowing plugins to add custom blank-state sections to the jump-to menu before the user has typed a query.
 - Debug menu links now appear in the jump-to menu instead of the top-right app menu, with descriptions for each debug item.
+- Dropped Janus as a dependency, previously used to manage the write queue. This should not have any impact on plugin developers or end-users. (:issue:`1752`)
+- Fixed a bug where stale tables and other related resources were not removed from ``catalog_*`` tables when a database was removed. (:issue:`2723`)
 - New documented :ref:`datasette.fixtures.populate_fixture_database(conn) <datasette_fixtures_populate_fixture_database>` helper for creating the fixture database tables used by Datasette's own tests, intended for plugin test suites.
+- Keyboard accessibility and ARIA roles for actions menus, thanks `pintaste <https://github.com/pintaste>`__. (:pr:`2727`)
 
 .. _v1_0_a29:
 

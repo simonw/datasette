@@ -392,7 +392,7 @@ The save form should call `POST /{database}/-/queries/-/insert` and default to `
 
 If the actor also has `publish-query`, include a publish control. The UI copy should make it clear that publishing allows people without arbitrary SQL permission to run this query.
 
-On `/{database}`, show a preview of the first 20 visible queries using `list_queries(..., limit=20)`. If the page has `has_more`, show a link to `/{database}/-/queries` rather than rendering hundreds or thousands of query links inline. The full `/{database}/-/queries` page provides search, filters, and cursor pagination.
+On `/{database}`, show a preview of the first 5 visible queries using `list_queries(..., limit=5)`. If the page has `has_more`, show a link to `/{database}/-/queries` rather than rendering hundreds or thousands of query links inline. The full `/{database}/-/queries` page provides search, filters, and cursor pagination.
 
 ## Dedicated create query UI
 

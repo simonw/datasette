@@ -248,10 +248,9 @@ def test_json_response(canned_write_client, headers, body, querystring):
 
 
 def test_canned_query_permissions_on_database_page(canned_write_client):
-    # Without auth only shows three queries
-    query_names = {
-        q["name"] for q in canned_write_client.get("/data.json").json["queries"]
-    }
+    # Without auth shows the five public queries
+    anon_response = canned_write_client.get("/data.json")
+    query_names = {q["name"] for q in anon_response.json["queries"]}
     assert query_names == {
         "add_name_specify_id_with_error_in_on_success_message_sql",
         "update_name",
@@ -259,10 +258,36 @@ def test_canned_query_permissions_on_database_page(canned_write_client):
         "canned_read",
         "add_name",
     }
+    assert anon_response.json["queries_more"] is False
 
-    # With auth shows four
+    # With auth the database page preview shows the first five queries
     response = canned_write_client.get(
         "/data.json",
+        cookies={"ds_actor": canned_write_client.actor_cookie({"id": "root"})},
+    )
+    assert response.status == 200
+    query_names_and_private = sorted(
+        [
+            {"name": q["name"], "private": q["private"]}
+            for q in response.json["queries"]
+        ],
+        key=lambda q: q["name"],
+    )
+    assert query_names_and_private == [
+        {"name": "add_name", "private": False},
+        {"name": "add_name_specify_id", "private": False},
+        {
+            "name": "add_name_specify_id_with_error_in_on_success_message_sql",
+            "private": False,
+        },
+        {"name": "canned_read", "private": False},
+        {"name": "delete_name", "private": True},
+    ]
+    assert response.json["queries_more"] is True
+
+    # The full query list endpoint includes the remaining query
+    response = canned_write_client.get(
+        "/data/-/queries.json?_size=10",
         cookies={"ds_actor": canned_write_client.actor_cookie({"id": "root"})},
     )
     assert response.status == 200

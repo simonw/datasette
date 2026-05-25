@@ -267,10 +267,10 @@ async def test_database_page_query_preview_is_limited():
     json_response = await ds.client.get("/data.json")
 
     assert html_response.status_code == 200
-    assert "Demo query 20" in html_response.text
-    assert "Demo query 21" not in html_response.text
+    assert "Demo query 05" in html_response.text
+    assert "Demo query 06" not in html_response.text
     assert 'href="/data/-/queries"' in html_response.text
-    assert len(json_response.json()["queries"]) == 20
+    assert len(json_response.json()["queries"]) == 5
     assert json_response.json()["queries_more"] is True
 
 

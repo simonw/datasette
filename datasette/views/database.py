@@ -95,7 +95,7 @@ class DatabaseView(View):
         queries_page = await datasette.list_queries(
             database,
             actor=request.actor,
-            limit=20,
+            limit=5,
             include_private=True,
         )
         canned_queries = queries_page["queries"]

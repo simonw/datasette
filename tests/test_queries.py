@@ -719,6 +719,7 @@ async def test_execute_write_get_prepopulates_without_executing():
     assert 'data-sql-template="insert"' in response.text
     assert 'data-sql-template="update"' in response.text
     assert 'data-sql-template="delete"' in response.text
+    assert 'addEventListener("paste"' in response.text
     assert '<table class="execute-write-analysis">' in response.text
     assert '<th scope="col">Required permission</th>' in response.text
     assert "<td><code>insert</code></td>" in response.text

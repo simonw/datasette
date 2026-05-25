@@ -74,6 +74,25 @@
     color: #b00020;
     font-weight: 700;
 }
+form.sql .execute-write-parameter-row textarea[data-parameter-control] {
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    box-sizing: content-box;
+    display: inline-block;
+    font-family: Helvetica, sans-serif;
+    font-size: 1em;
+    min-height: 7rem;
+    padding: 9px 4px;
+    vertical-align: top;
+    width: 60%;
+}
+form.sql.core button.execute-write-parameter-toggle[type=button] {
+    font-size: 0.72rem;
+    height: 1.8rem;
+    line-height: 1;
+    margin-left: 0.35rem;
+    padding: 0.25rem 0.45rem;
+}
 </style>
 {% endblock %}
 
@@ -118,7 +137,7 @@
     {% if parameter_names %}
         <h2>Parameters</h2>
         {% for parameter in parameter_names %}
-            <p><label for="qp{{ loop.index }}">{{ parameter }}</label> <input type="text" id="qp{{ loop.index }}" name="{{ parameter }}" value="{{ parameter_values.get(parameter, "") }}"></p>
+            <p class="execute-write-parameter-row"><label for="qp{{ loop.index }}">{{ parameter }}</label> <input type="text" id="qp{{ loop.index }}" name="{{ parameter }}" value="{{ parameter_values.get(parameter, "") }}" data-parameter-control> <button type="button" class="execute-write-parameter-toggle" data-parameter-toggle aria-controls="qp{{ loop.index }}" aria-expanded="false">Expand</button></p>
         {% endfor %}
     {% endif %}
 
@@ -163,6 +182,79 @@ if (executeWriteSqlInput && !executeWriteSqlInput.value) {
 </script>
 
 {% include "_codemirror_foot.html" %}
+
+<script>
+window.addEventListener("DOMContentLoaded", () => {
+  function replaceParameterControl(control, button, expand, value, selectionStart) {
+    const replacement = document.createElement(expand ? "textarea" : "input");
+    replacement.id = control.id;
+    replacement.name = control.name;
+    replacement.value = value === undefined ? control.value : value;
+    replacement.setAttribute("data-parameter-control", "");
+    if (expand) {
+      replacement.rows = 5;
+      button.textContent = "Collapse";
+      button.setAttribute("aria-expanded", "true");
+    } else {
+      replacement.type = "text";
+      button.textContent = "Expand";
+      button.setAttribute("aria-expanded", "false");
+    }
+    control.replaceWith(replacement);
+    replacement.focus();
+    if (selectionStart !== undefined && replacement.setSelectionRange) {
+      replacement.setSelectionRange(selectionStart, selectionStart);
+    }
+  }
+
+  document.querySelectorAll("[data-parameter-toggle]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const control = document.getElementById(button.getAttribute("aria-controls"));
+      if (!control) {
+        return;
+      }
+      const expanded = control.tagName.toLowerCase() === "textarea";
+      replaceParameterControl(control, button, !expanded);
+    });
+  });
+
+  document
+    .querySelector("form.sql.core")
+    .addEventListener("paste", (event) => {
+      const control = event.target;
+      if (
+        !(control instanceof HTMLInputElement) ||
+        !control.matches("[data-parameter-control]")
+      ) {
+        return;
+      }
+      const pasted = event.clipboardData ? event.clipboardData.getData("text") : "";
+      if (!/[\r\n]/.test(pasted)) {
+        return;
+      }
+      const button = document.querySelector(
+        `[data-parameter-toggle][aria-controls="${control.id}"]`
+      );
+      if (!button) {
+        return;
+      }
+      event.preventDefault();
+      const selectionStart = control.selectionStart ?? control.value.length;
+      const selectionEnd = control.selectionEnd ?? selectionStart;
+      const value =
+        control.value.slice(0, selectionStart) +
+        pasted +
+        control.value.slice(selectionEnd);
+      replaceParameterControl(
+        control,
+        button,
+        true,
+        value,
+        selectionStart + pasted.length
+      );
+    });
+});
+</script>
 
 {% if write_template_tables %}
 <script>

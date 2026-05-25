@@ -526,6 +526,15 @@ Creating saved queries
 
 ``POST /<database>/-/queries/-/insert`` creates a saved query. This requires ``execute-sql`` and ``insert-query`` for the database.
 
+.. _ExecuteWriteView:
+
+Executing write SQL
+~~~~~~~~~~~~~~~~~~~
+
+``GET /<database>/-/execute-write`` displays a form for executing writable SQL. A ``?sql=`` query string pre-populates the form without executing it.
+
+``POST /<database>/-/execute-write`` executes writable SQL. This requires ``execute-write-sql`` for the database plus the relevant table-level write permissions.
+
 .. _QueryDefinitionView:
 
 Getting a saved query definition

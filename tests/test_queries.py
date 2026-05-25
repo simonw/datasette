@@ -212,6 +212,7 @@ async def test_query_actions_are_registered():
     ds = Datasette()
     await ds.invoke_startup()
 
+    assert ds.get_action("execute-write-sql").resource_class is DatabaseResource
     assert ds.get_action("insert-query").resource_class is DatabaseResource
     assert ds.get_action("publish-query").resource_class is DatabaseResource
     assert ds.get_action("update-query").resource_class is QueryResource
@@ -490,6 +491,127 @@ async def test_create_query_ui_and_arbitrary_sql_save_link():
     assert query_response.status_code == 200
     assert "Save query" in query_response.text
     assert "/data/-/queries/-/create?sql=select+%2A+from+dogs" in query_response.text
+
+
+@pytest.mark.asyncio
+async def test_execute_write_get_prepopulates_without_executing():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_get", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    response = await ds.client.get(
+        "/data/-/execute-write?sql=insert+into+dogs+(name)+values+('Cleo')",
+        actor={"id": "root"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-security-policy"] == "frame-ancestors 'none'"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert "Execute write SQL" in response.text
+    assert 'action="/data/-/execute-write"' in response.text
+    assert "insert into dogs (name) values (&#39;Cleo&#39;)" in response.text
+    assert (await db.execute("select count(*) from dogs")).first()[0] == 0
+
+
+@pytest.mark.asyncio
+async def test_execute_write_post_requires_database_and_table_permissions():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    }
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database("execute_write_permissions", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    no_database_permission = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "outsider"},
+        json={
+            "sql": "insert into dogs (name) values (:name)",
+            "params": {"name": "Cleo"},
+        },
+    )
+    no_table_permission = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "writer"},
+        json={
+            "sql": "insert into dogs (name) values (:name)",
+            "params": {"name": "Cleo"},
+        },
+    )
+
+    assert no_database_permission.status_code == 403
+    assert no_database_permission.json()["errors"] == [
+        "Permission denied: need execute-write-sql"
+    ]
+    assert no_table_permission.status_code == 403
+    assert no_table_permission.json()["errors"] == [
+        "Permission denied: need insert-row on data/dogs"
+    ]
+
+    ds.config = {
+        "databases": {
+            "data": {
+                "permissions": {
+                    "view-database": {"id": "writer"},
+                    "execute-write-sql": {"id": "writer"},
+                },
+                "tables": {
+                    "dogs": {
+                        "permissions": {
+                            "insert-row": {"id": "writer"},
+                        }
+                    }
+                },
+            }
+        }
+    }
+    allowed = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "writer"},
+        json={
+            "sql": "insert into dogs (name) values (:name)",
+            "params": {"name": "Cleo"},
+        },
+    )
+
+    assert allowed.status_code == 200
+    assert allowed.json()["ok"] is True
+    assert allowed.json()["rowcount"] == 1
+    assert allowed.json()["analysis"][0]["operation"] == "insert"
+    assert (await db.execute("select name from dogs")).first()[0] == "Cleo"
+
+
+@pytest.mark.asyncio
+async def test_execute_write_post_rejects_read_only_sql():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_read_only", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        json={"sql": "select * from dogs"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["errors"] == [
+        "Use /-/query for read-only SQL; this endpoint only executes writes"
+    ]
 
 
 @pytest.mark.asyncio

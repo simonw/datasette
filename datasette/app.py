@@ -46,6 +46,7 @@ from .views import Context
 from .views.database import (
     database_download,
     DatabaseView,
+    ExecuteWriteView,
     TableCreateView,
     QueryView,
     QueryCreateView,
@@ -1249,18 +1250,22 @@ class Datasette:
         )
         return {row["name"]: self._query_row_to_dict(row) for row in rows}
 
-    async def ensure_query_write_permissions(self, database, sql, *, actor=None):
+    async def ensure_query_write_permissions(
+        self, database, sql, *, actor=None, params=None, analysis=None
+    ):
         write_actions = {
             "insert": "insert-row",
             "update": "update-row",
             "delete": "delete-row",
         }
         db = self.get_database(database)
-        params = {name: "" for name in named_parameters(sql)}
-        try:
-            analysis = await db.analyze_sql(sql, params)
-        except sqlite3.DatabaseError as ex:
-            raise Forbidden(f"Could not analyze query: {ex}") from ex
+        if analysis is None:
+            if params is None:
+                params = {name: "" for name in named_parameters(sql)}
+            try:
+                analysis = await db.analyze_sql(sql, params)
+            except sqlite3.DatabaseError as ex:
+                raise Forbidden(f"Could not analyze query: {ex}") from ex
 
         for access in analysis.table_accesses:
             action = write_actions.get(access.operation)
@@ -2546,6 +2551,10 @@ class Datasette:
         add_route(
             QueryInsertView.as_view(self),
             r"/(?P<database>[^\/\.]+)/-/queries/-/insert$",
+        )
+        add_route(
+            ExecuteWriteView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/execute-write$",
         )
         add_route(
             DatabaseSchemaView.as_view(self),

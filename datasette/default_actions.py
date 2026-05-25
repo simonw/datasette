@@ -49,6 +49,13 @@ def register_actions():
             also_requires="view-database",
         ),
         Action(
+            name="execute-write-sql",
+            abbr="ews",
+            description="Execute writable SQL queries",
+            resource_class=DatabaseResource,
+            also_requires="view-database",
+        ),
+        Action(
             name="create-table",
             abbr="ct",
             description="Create tables",

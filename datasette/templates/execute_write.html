@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Create query{% endblock %}
+{% block title %}Execute write SQL{% endblock %}
 
 {% block extra_head %}
 {{- super() -}}
 {% include "_codemirror.html" %}
 {% endblock %}
 
-{% block body_class %}query-create db-{{ database|to_css_class }}{% endblock %}
+{% block body_class %}execute-write db-{{ database|to_css_class }}{% endblock %}
 
 {% block crumbs %}
 {{ crumbs.nav(request=request, database=database) }}
@@ -15,23 +15,20 @@
 
 {% block content %}
 
-<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color }}">Create query</h1>
+<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color }}">Execute write SQL</h1>
 
-<form class="sql core" action="{{ urls.database(database) }}/-/queries/-/insert" method="post">
-    <p><label for="query-name">Name</label> <input id="query-name" name="name" type="text"></p>
-    <p><label for="query-title">Title</label> <input id="query-title" name="title" type="text"></p>
-    <p><label for="query-description">Description</label><br><textarea id="query-description" name="description" rows="3"></textarea></p>
-    <p>
-        <label><input type="radio" name="mode" value="read-only" checked> Read-only</label>
-        <label><input type="radio" name="mode" value="writable"> Writable</label>
-    </p>
+{% if execution_message %}
+    <p class="{% if execution_ok %}message-info{% else %}message-error{% endif %}">{{ execution_message }}</p>
+{% endif %}
+
+<form class="sql core" action="{{ urls.database(database) }}/-/execute-write" method="post">
     <p><textarea id="sql-editor" name="sql"{% if sql %} style="height: {{ sql.split("\n")|length + 2 }}em"{% endif %}>{{ sql }}</textarea></p>
-    <p><label for="query-parameters">Parameters</label> <input id="query-parameters" name="parameters" type="text" value="{{ parameter_names|join(', ') }}"></p>
-    {% if can_publish %}
-        <p><label><input type="checkbox" name="published" value="1"> Published</label></p>
-    {% endif %}
-    {% if sql and analysis_is_write %}
-        <p><a href="{{ urls.database(database) }}/-/execute-write?{{ {'sql': sql}|urlencode|safe }}">Execute write SQL</a></p>
+
+    {% if parameter_names %}
+        <h2>Parameters</h2>
+        {% for parameter in parameter_names %}
+            <p><label for="qp{{ loop.index }}">{{ parameter }}</label> <input type="text" id="qp{{ loop.index }}" name="{{ parameter }}" value="{{ parameter_values.get(parameter, "") }}"></p>
+        {% endfor %}
     {% endif %}
 
     <h2>Analysis</h2>
@@ -66,7 +63,7 @@
         <p>Analysis will show each affected table and required permission.</p>
     {% endif %}
 
-    <p><input type="submit" value="Save query"{% if save_disabled %} disabled{% endif %}></p>
+    <p><input type="submit" value="Execute"{% if execute_disabled %} disabled{% endif %}></p>
 </form>
 
 {% include "_codemirror_foot.html" %}

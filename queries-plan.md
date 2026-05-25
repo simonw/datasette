@@ -50,8 +50,7 @@ CREATE TABLE IF NOT EXISTS queries (
     owner_id TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (database_name, name),
-    CHECK (is_write = 0 OR is_published = 0)
+    PRIMARY KEY (database_name, name)
 );
 
 CREATE INDEX IF NOT EXISTS queries_owner_idx

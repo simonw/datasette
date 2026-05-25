@@ -2163,8 +2163,7 @@ The internal database schema is as follows:
         owner_id TEXT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (database_name, name),
-        CHECK (is_write = 0 OR is_published = 0)
+        PRIMARY KEY (database_name, name)
     );
     CREATE INDEX queries_owner_idx
         ON queries(owner_id);

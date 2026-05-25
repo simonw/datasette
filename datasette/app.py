@@ -56,6 +56,7 @@ from .views.database import (
     GlobalQueryListView,
     QueryInsertView,
     QueryListView,
+    QueryParametersView,
     QueryUpdateView,
 )
 from .views.index import IndexView
@@ -2757,6 +2758,10 @@ class Datasette:
         add_route(
             DatabaseSchemaView.as_view(self),
             r"/(?P<database>[^\/\.]+)/-/schema(\.(?P<format>json|md))?$",
+        )
+        add_route(
+            QueryParametersView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/query/-/parameters$",
         )
         add_route(
             wrap_view(QueryView, self),

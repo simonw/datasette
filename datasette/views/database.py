@@ -1061,7 +1061,7 @@ class ExecuteWriteAnalyzeView(BaseView):
     name = "execute-write-analyze"
     has_json_alternate = False
 
-    async def post(self, request):
+    async def get(self, request):
         db = await self.ds.resolve_database(request)
         if not await self.ds.allowed(
             action="execute-write-sql",
@@ -1072,13 +1072,7 @@ class ExecuteWriteAnalyzeView(BaseView):
                 _error(["Permission denied: need execute-write-sql"], 403)
             )
 
-        try:
-            data, _ = await _json_or_form_payload(request)
-        except QueryValidationError as ex:
-            return _block_framing(_error([ex.message], ex.status))
-        if not isinstance(data, dict):
-            return _block_framing(_error(["JSON must be a dictionary"], 400))
-        invalid_keys = set(data) - {"sql"}
+        invalid_keys = set(request.args) - {"sql"}
         if invalid_keys:
             return _block_framing(
                 _error(
@@ -1086,14 +1080,40 @@ class ExecuteWriteAnalyzeView(BaseView):
                     400,
                 )
             )
-        sql = data.get("sql") or ""
-        if not isinstance(sql, str):
-            return _block_framing(_error(["sql must be a string"], 400))
+        sql = request.args.get("sql") or ""
         return _block_framing(
             Response.json(
                 await _execute_write_analysis_data(self.ds, db, sql, request.actor)
             )
         )
+
+
+class QueryParametersView(BaseView):
+    name = "query-parameters"
+    has_json_alternate = False
+
+    async def get(self, request):
+        db = await self.ds.resolve_database(request)
+        if not await self.ds.allowed(
+            action="execute-sql",
+            resource=DatabaseResource(db.name),
+            actor=request.actor,
+        ):
+            return _block_framing(_error(["Permission denied: need execute-sql"], 403))
+
+        invalid_keys = set(request.args) - {"sql"}
+        if invalid_keys:
+            return _block_framing(
+                _error(
+                    ["Invalid keys: {}".format(", ".join(sorted(invalid_keys)))],
+                    400,
+                )
+            )
+        try:
+            parameters = _derived_query_parameters(request.args.get("sql") or "")
+        except QueryValidationError as ex:
+            return _block_framing(_error([ex.message], ex.status))
+        return _block_framing(Response.json({"ok": True, "parameters": parameters}))
 
 
 class QueryListView(BaseView):

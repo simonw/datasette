@@ -200,7 +200,10 @@ def test_error_in_on_success_message_sql(canned_write_client):
 
 def test_custom_params(canned_write_client):
     response = canned_write_client.get("/data/update_name?extra=foo")
-    assert '<input type="text" id="qp3" name="extra" value="foo">' in response.text
+    assert (
+        '<input type="text" id="qp3" name="extra" value="foo" data-parameter-control>'
+        in response.text
+    )
 
 
 def test_canned_query_pages_no_vary_header(canned_write_client):

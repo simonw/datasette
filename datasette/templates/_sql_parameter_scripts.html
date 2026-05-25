@@ -1,0 +1,286 @@
+<script>
+window.datasetteSqlParameters = (() => {
+  if (
+    window.datasetteSqlParameters &&
+    window.datasetteSqlParameters.setupSqlParameterRefresh
+  ) {
+    return window.datasetteSqlParameters;
+  }
+
+  function currentSql(form) {
+    if (window.editor) {
+      return window.editor.state.doc.toString();
+    }
+    const sqlInput = form.querySelector("textarea#sql-editor, input[name=sql]");
+    return sqlInput ? sqlInput.value : "";
+  }
+
+  function controlState(control) {
+    return {
+      value: control.value,
+      expanded: control.tagName.toLowerCase() === "textarea",
+    };
+  }
+
+  function syncParameterState(manager) {
+    manager.parameterState = new Map();
+    manager.section
+      .querySelectorAll("[data-parameter-control]")
+      .forEach((control) => {
+        manager.parameterState.set(control.name, controlState(control));
+      });
+  }
+
+  function createControl(parameter, id, state) {
+    const control = document.createElement(state.expanded ? "textarea" : "input");
+    control.id = id;
+    control.name = parameter;
+    control.value = state.value;
+    control.setAttribute("data-parameter-control", "");
+    if (state.expanded) {
+      control.rows = 5;
+    } else {
+      control.type = "text";
+    }
+    return control;
+  }
+
+  function replaceParameterControl(
+    manager,
+    control,
+    button,
+    expand,
+    value,
+    selectionStart
+  ) {
+    const replacement = createControl(control.name, control.id, {
+      value: value === undefined ? control.value : value,
+      expanded: expand,
+    });
+    button.textContent = expand ? "Collapse" : "Expand";
+    button.setAttribute("aria-expanded", expand ? "true" : "false");
+    control.replaceWith(replacement);
+    replacement.focus();
+    if (selectionStart !== undefined && replacement.setSelectionRange) {
+      replacement.setSelectionRange(selectionStart, selectionStart);
+    }
+    manager.parameterState.set(replacement.name, controlState(replacement));
+  }
+
+  function renderParameters(manager, parameters) {
+    syncParameterState(manager);
+    const previousState = manager.parameterState;
+    const nextState = new Map();
+    manager.section.replaceChildren();
+    if (!parameters.length) {
+      manager.parameterState = nextState;
+      return;
+    }
+
+    const heading = document.createElement("h2");
+    heading.textContent = "Parameters";
+    manager.section.appendChild(heading);
+
+    parameters.forEach((parameter, index) => {
+      const id = `qp${index + 1}`;
+      const state = previousState.get(parameter) || {
+        value: "",
+        expanded: false,
+      };
+      if (!manager.allowExpand) {
+        state.expanded = false;
+      }
+      nextState.set(parameter, state);
+
+      const row = document.createElement("p");
+      row.className = "sql-parameter-row";
+
+      const label = document.createElement("label");
+      label.htmlFor = id;
+      label.textContent = parameter;
+
+      const control = createControl(parameter, id, state);
+
+      row.append(label, control);
+      if (manager.allowExpand) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "sql-parameter-toggle";
+        button.setAttribute("data-parameter-toggle", "");
+        button.setAttribute("aria-controls", id);
+        button.setAttribute("aria-expanded", state.expanded ? "true" : "false");
+        button.textContent = state.expanded ? "Collapse" : "Expand";
+        row.append(" ", button);
+      }
+      manager.section.appendChild(row);
+    });
+
+    manager.parameterState = nextState;
+  }
+
+  function bindParameterControls(manager) {
+    manager.form.addEventListener("input", (event) => {
+      const control = event.target;
+      if (!control.matches || !control.matches("[data-parameter-control]")) {
+        return;
+      }
+      manager.parameterState.set(control.name, controlState(control));
+    });
+
+    if (!manager.allowExpand) {
+      return;
+    }
+
+    manager.form.addEventListener("click", (event) => {
+      const button = event.target.closest
+        ? event.target.closest("[data-parameter-toggle]")
+        : null;
+      if (!button || !manager.form.contains(button)) {
+        return;
+      }
+      const control = document.getElementById(button.getAttribute("aria-controls"));
+      if (!control) {
+        return;
+      }
+      const expanded = control.tagName.toLowerCase() === "textarea";
+      replaceParameterControl(manager, control, button, !expanded);
+    });
+
+    manager.form.addEventListener("paste", (event) => {
+      const control = event.target;
+      if (
+        !(control instanceof HTMLInputElement) ||
+        !control.matches("[data-parameter-control]")
+      ) {
+        return;
+      }
+      const pasted = event.clipboardData ? event.clipboardData.getData("text") : "";
+      if (!/[\r\n]/.test(pasted)) {
+        return;
+      }
+      const button = document.querySelector(
+        `[data-parameter-toggle][aria-controls="${control.id}"]`
+      );
+      if (!button) {
+        return;
+      }
+      event.preventDefault();
+      const selectionStart = control.selectionStart ?? control.value.length;
+      const selectionEnd = control.selectionEnd ?? selectionStart;
+      const value =
+        control.value.slice(0, selectionStart) +
+        pasted +
+        control.value.slice(selectionEnd);
+      replaceParameterControl(
+        manager,
+        control,
+        button,
+        true,
+        value,
+        selectionStart + pasted.length
+      );
+    });
+  }
+
+  function bindEditorChanges(form, callback) {
+    const editorElement = form.querySelector(".cm-content");
+    if (editorElement) {
+      editorElement.addEventListener("input", callback);
+    }
+    if (!window.editor) {
+      const sqlInput = form.querySelector("textarea#sql-editor");
+      if (sqlInput) {
+        sqlInput.addEventListener("input", callback);
+      }
+      return;
+    }
+    if (!window.editor.datasetteSqlParameterCallbacks) {
+      const editor = window.editor;
+      const originalDispatch = editor.dispatch.bind(editor);
+      editor.datasetteSqlParameterCallbacks = [];
+      editor.dispatch = (...transactions) => {
+        const before = editor.state.doc.toString();
+        originalDispatch(...transactions);
+        if (editor.state.doc.toString() !== before) {
+          editor.datasetteSqlParameterCallbacks.forEach((listener) => listener());
+        }
+      };
+    }
+    window.editor.datasetteSqlParameterCallbacks.push(callback);
+  }
+
+  function setupSqlParameterRefresh(options) {
+    const form =
+      options.form || document.querySelector("form.sql.core[data-parameters-url]");
+    if (!form) {
+      return null;
+    }
+    const section =
+      options.section || form.querySelector("[data-sql-parameters-section]");
+    if (!section) {
+      return null;
+    }
+    const manager = {
+      form,
+      section,
+      allowExpand:
+        options.allowExpand === undefined
+          ? section.dataset.allowExpand === "1"
+          : options.allowExpand,
+      parameterState: new Map(),
+    };
+    bindParameterControls(manager);
+    syncParameterState(manager);
+
+    const url = options.url || form.dataset.parametersUrl;
+    let refreshTimer = null;
+    let refreshSequence = 0;
+
+    async function refreshParameters() {
+      if (!url) {
+        return;
+      }
+      const sequence = ++refreshSequence;
+      try {
+        const requestUrl = new URL(url, window.location.href);
+        requestUrl.searchParams.set("sql", currentSql(form));
+        const response = await fetch(requestUrl, {
+          headers: { accept: "application/json" },
+        });
+        const data = await response.json();
+        if (sequence !== refreshSequence) {
+          return;
+        }
+        if (!response.ok) {
+          throw new Error((data.errors || [response.statusText]).join("; "));
+        }
+        renderParameters(manager, data.parameters || []);
+        if (options.onData) {
+          options.onData(data, manager);
+        }
+      } catch (error) {
+        if (sequence !== refreshSequence) {
+          return;
+        }
+        if (options.onError) {
+          options.onError(error, manager);
+        }
+      }
+    }
+
+    function scheduleRefresh() {
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(refreshParameters, options.debounceMs || 350);
+    }
+
+    bindEditorChanges(form, scheduleRefresh);
+    return {
+      currentSql: () => currentSql(form),
+      refreshParameters,
+      renderParameters: (parameters) => renderParameters(manager, parameters),
+    };
+  }
+
+  return { setupSqlParameterRefresh };
+})();
+</script>

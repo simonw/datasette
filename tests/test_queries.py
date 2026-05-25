@@ -721,7 +721,7 @@ async def test_execute_write_get_prepopulates_without_executing():
     assert 'data-sql-template="delete"' in response.text
     assert 'data-analyze-url="/data/-/execute-write/-/analyze"' in response.text
     assert 'addEventListener("paste"' in response.text
-    assert "refreshExecuteWriteAnalysis" in response.text
+    assert "setupSqlParameterRefresh" in response.text
     assert '<table class="execute-write-analysis">' in response.text
     assert '<th scope="col">Required permission</th>' in response.text
     assert "<td><code>insert</code></td>" in response.text
@@ -747,15 +747,15 @@ async def test_execute_write_analyze_endpoint_uses_sql_only():
     await db.execute_write("create table dogs (id integer primary key, name text)")
     await ds.invoke_startup()
 
-    response = await ds.client.post(
+    response = await ds.client.get(
         "/data/-/execute-write/-/analyze",
         actor={"id": "root"},
-        json={"sql": "insert into dogs (name) values (:name)"},
+        params={"sql": "insert into dogs (name) values (:name)"},
     )
-    read_only_response = await ds.client.post(
+    read_only_response = await ds.client.get(
         "/data/-/execute-write/-/analyze",
         actor={"id": "root"},
-        json={"sql": "select * from dogs where name = :name"},
+        params={"sql": "select * from dogs where name = :name"},
     )
 
     assert response.status_code == 200
@@ -784,6 +784,44 @@ async def test_execute_write_analyze_endpoint_uses_sql_only():
         "Use /-/query for read-only SQL; this endpoint only executes writes"
     )
     assert read_only_data["execute_disabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_query_parameters_endpoint_uses_get_sql_only():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("query_parameters", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    response = await ds.client.get(
+        "/data/-/query/-/parameters",
+        actor={"id": "root"},
+        params={
+            "sql": "select * from dogs where name = :name and id = :id",
+        },
+    )
+    permission_denied_response = await ds.client.get(
+        "/data/-/query/-/parameters",
+        actor={"id": "not-root"},
+        params={"sql": "select * from dogs where name = :name"},
+    )
+    magic_parameter_response = await ds.client.get(
+        "/data/-/query/-/parameters",
+        actor={"id": "root"},
+        params={"sql": "select :_actor_id"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "parameters": ["name", "id"]}
+    assert permission_denied_response.status_code == 403
+    assert permission_denied_response.json()["errors"] == [
+        "Permission denied: need execute-sql"
+    ]
+    assert magic_parameter_response.status_code == 400
+    assert magic_parameter_response.json()["errors"] == [
+        "Magic parameters are not allowed"
+    ]
 
 
 @pytest.mark.asyncio

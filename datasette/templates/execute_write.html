@@ -75,61 +75,8 @@
     color: #b00020;
     font-weight: 700;
 }
-form.sql .execute-write-parameter-row textarea[data-parameter-control] {
-    border: 1px solid #ccc;
-    border-radius: 3px;
-    box-sizing: border-box;
-    display: block;
-    font-family: Helvetica, sans-serif;
-    font-size: 1em;
-    min-height: 7rem;
-    padding: 9px 4px;
-    width: 100%;
-}
-form.sql .execute-write-parameter-row {
-    align-items: start;
-    column-gap: 0.6rem;
-    display: grid;
-    grid-template-columns: minmax(8rem, 11rem) minmax(16rem, 1fr) auto;
-    margin: 0 0 0.65rem;
-    max-width: 52rem;
-}
-form.sql .execute-write-parameter-row label {
-    overflow-wrap: anywhere;
-    padding-top: 0.55rem;
-    width: auto;
-}
-form.sql .execute-write-parameter-row input[data-parameter-control] {
-    box-sizing: border-box;
-    width: 100%;
-}
-form.sql.core button.execute-write-parameter-toggle[type=button] {
-    font-size: 0.72rem;
-    height: 1.8rem;
-    line-height: 1;
-    margin: 0.25rem 0 0;
-    padding: 0.25rem 0.45rem;
-}
-@media (max-width: 480px) {
-    form.sql .execute-write-parameter-row {
-        grid-template-columns: 1fr;
-        row-gap: 0.25rem;
-    }
-    form.sql .execute-write-parameter-row label {
-        padding-top: 0;
-    }
-    form.sql.core button.execute-write-parameter-toggle[type=button] {
-        justify-self: start;
-        margin-top: 0;
-    }
-}
-form.sql .execute-write-editor {
-    max-width: 52rem;
-}
-form.sql .execute-write-editor textarea#sql-editor {
-    width: 100%;
-}
 </style>
+{% include "_sql_parameter_styles.html" %}
 {% endblock %}
 
 {% block body_class %}execute-write db-{{ database|to_css_class }}{% endblock %}
@@ -168,16 +115,11 @@ form.sql .execute-write-editor textarea#sql-editor {
         </div>
     {% endif %}
 
-    <p class="execute-write-editor"><textarea id="sql-editor" name="sql"{% if sql %} style="height: {{ sql.split("\n")|length + 2 }}em"{% endif %}>{{ sql }}</textarea></p>
+    <p class="sql-editor"><textarea id="sql-editor" name="sql"{% if sql %} style="height: {{ sql.split("\n")|length + 2 }}em"{% endif %}>{{ sql }}</textarea></p>
 
-    <div id="execute-write-parameters-section">
-        {% if parameter_names %}
-            <h2>Parameters</h2>
-            {% for parameter in parameter_names %}
-                <p class="execute-write-parameter-row"><label for="qp{{ loop.index }}">{{ parameter }}</label> <input type="text" id="qp{{ loop.index }}" name="{{ parameter }}" value="{{ parameter_values.get(parameter, "") }}" data-parameter-control> <button type="button" class="execute-write-parameter-toggle" data-parameter-toggle aria-controls="qp{{ loop.index }}" aria-expanded="false">Expand</button></p>
-            {% endfor %}
-        {% endif %}
-    </div>
+    {% set sql_parameters_section_id = "execute-write-parameters-section" %}
+    {% set sql_parameters_allow_expand = true %}
+    {% include "_sql_parameters.html" %}
 
     <div id="execute-write-analysis-section">
         <h2>Query operations</h2>
@@ -222,128 +164,15 @@ if (executeWriteSqlInput && !executeWriteSqlInput.value) {
 </script>
 
 {% include "_codemirror_foot.html" %}
+{% include "_sql_parameter_scripts.html" %}
 
 <script>
 window.addEventListener("DOMContentLoaded", () => {
   const form = document.querySelector("form.sql.core");
-  const parametersSection = document.querySelector(
-    "#execute-write-parameters-section"
-  );
   const analysisSection = document.querySelector("#execute-write-analysis-section");
   const submitButton = form
     ? form.querySelector("[data-execute-write-submit]")
     : null;
-  const sqlInput = document.querySelector("textarea#sql-editor");
-  let parameterState = new Map();
-  let refreshTimer = null;
-  let refreshSequence = 0;
-
-  function currentSql() {
-    if (window.editor) {
-      return window.editor.state.doc.toString();
-    }
-    return sqlInput ? sqlInput.value : "";
-  }
-
-  function controlState(control) {
-    return {
-      value: control.value,
-      expanded: control.tagName.toLowerCase() === "textarea",
-    };
-  }
-
-  function syncParameterState() {
-    parameterState = new Map();
-    document.querySelectorAll("[data-parameter-control]").forEach((control) => {
-      parameterState.set(control.name, controlState(control));
-    });
-  }
-
-  function replaceParameterControl(control, button, expand, value, selectionStart) {
-    const replacement = document.createElement(expand ? "textarea" : "input");
-    replacement.id = control.id;
-    replacement.name = control.name;
-    replacement.value = value === undefined ? control.value : value;
-    replacement.setAttribute("data-parameter-control", "");
-    if (expand) {
-      replacement.rows = 5;
-      button.textContent = "Collapse";
-      button.setAttribute("aria-expanded", "true");
-    } else {
-      replacement.type = "text";
-      button.textContent = "Expand";
-      button.setAttribute("aria-expanded", "false");
-    }
-    control.replaceWith(replacement);
-    replacement.focus();
-    if (selectionStart !== undefined && replacement.setSelectionRange) {
-      replacement.setSelectionRange(selectionStart, selectionStart);
-    }
-    parameterState.set(replacement.name, controlState(replacement));
-  }
-
-  function createControl(parameter, id, state) {
-    const control = document.createElement(state.expanded ? "textarea" : "input");
-    control.id = id;
-    control.name = parameter;
-    control.value = state.value;
-    control.setAttribute("data-parameter-control", "");
-    if (state.expanded) {
-      control.rows = 5;
-    } else {
-      control.type = "text";
-    }
-    return control;
-  }
-
-  function renderExecuteWriteParameters(parameters) {
-    if (!parametersSection) {
-      return;
-    }
-    syncParameterState();
-    const previousState = parameterState;
-    const nextState = new Map();
-    parametersSection.replaceChildren();
-    if (!parameters.length) {
-      parameterState = nextState;
-      return;
-    }
-
-    const heading = document.createElement("h2");
-    heading.textContent = "Parameters";
-    parametersSection.appendChild(heading);
-
-    parameters.forEach((parameter, index) => {
-      const id = `qp${index + 1}`;
-      const state = previousState.get(parameter) || {
-        value: "",
-        expanded: false,
-      };
-      nextState.set(parameter, state);
-
-      const row = document.createElement("p");
-      row.className = "execute-write-parameter-row";
-
-      const label = document.createElement("label");
-      label.htmlFor = id;
-      label.textContent = parameter;
-
-      const control = createControl(parameter, id, state);
-
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "execute-write-parameter-toggle";
-      button.setAttribute("data-parameter-toggle", "");
-      button.setAttribute("aria-controls", id);
-      button.setAttribute("aria-expanded", state.expanded ? "true" : "false");
-      button.textContent = state.expanded ? "Collapse" : "Expand";
-
-      row.append(label, control, button);
-      parametersSection.appendChild(row);
-    });
-
-    parameterState = nextState;
-  }
 
   function appendCodeCell(row, value) {
     const cell = document.createElement("td");
@@ -428,36 +257,17 @@ window.addEventListener("DOMContentLoaded", () => {
     analysisSection.appendChild(wrapper);
   }
 
-  async function refreshExecuteWriteAnalysis() {
-    if (!form || !form.dataset.analyzeUrl) {
-      return;
-    }
-    const sequence = ++refreshSequence;
-    try {
-      const response = await fetch(form.dataset.analyzeUrl, {
-        method: "POST",
-        headers: {
-          accept: "application/json",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ sql: currentSql() }),
-      });
-      const data = await response.json();
-      if (sequence !== refreshSequence) {
-        return;
-      }
-      if (!response.ok) {
-        throw new Error((data.errors || [response.statusText]).join("; "));
-      }
-      renderExecuteWriteParameters(data.parameters || []);
+  window.datasetteSqlParameters.setupSqlParameterRefresh({
+    form,
+    url: form.dataset.analyzeUrl,
+    allowExpand: true,
+    onData(data) {
       renderExecuteWriteAnalysis(data);
       if (submitButton) {
         submitButton.disabled = data.execute_disabled;
       }
-    } catch (error) {
-      if (sequence !== refreshSequence) {
-        return;
-      }
+    },
+    onError(error) {
       renderExecuteWriteAnalysis({
         analysis_error: error.message,
         analysis_rows: [],
@@ -465,104 +275,8 @@ window.addEventListener("DOMContentLoaded", () => {
       if (submitButton) {
         submitButton.disabled = true;
       }
-    }
-  }
-
-  function scheduleExecuteWriteAnalysisRefresh() {
-    clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(refreshExecuteWriteAnalysis, 350);
-  }
-
-  function wrapEditorDispatch() {
-    if (!window.editor || window.editor.executeWriteRefreshWrapped) {
-      return false;
-    }
-    const editor = window.editor;
-    const originalDispatch = editor.dispatch.bind(editor);
-    editor.dispatch = (...transactions) => {
-      const before = editor.state.doc.toString();
-      originalDispatch(...transactions);
-      if (editor.state.doc.toString() !== before) {
-        scheduleExecuteWriteAnalysisRefresh();
-      }
-    };
-    editor.executeWriteRefreshWrapped = true;
-    return true;
-  }
-
-  if (!wrapEditorDispatch()) {
-    setTimeout(wrapEditorDispatch, 0);
-  }
-
-  const editorElement = document.querySelector(".execute-write-editor .cm-content");
-  if (editorElement) {
-    editorElement.addEventListener("input", scheduleExecuteWriteAnalysisRefresh);
-  } else if (sqlInput) {
-    sqlInput.addEventListener("input", scheduleExecuteWriteAnalysisRefresh);
-  }
-
-  if (!form) {
-    return;
-  }
-
-  form.addEventListener("click", (event) => {
-    const button = event.target.closest
-      ? event.target.closest("[data-parameter-toggle]")
-      : null;
-    if (!button || !form.contains(button)) {
-      return;
-    }
-    const control = document.getElementById(button.getAttribute("aria-controls"));
-    if (!control) {
-      return;
-    }
-    const expanded = control.tagName.toLowerCase() === "textarea";
-    replaceParameterControl(control, button, !expanded);
+    },
   });
-
-  form.addEventListener("input", (event) => {
-    const control = event.target;
-    if (!control.matches || !control.matches("[data-parameter-control]")) {
-      return;
-    }
-    parameterState.set(control.name, controlState(control));
-  });
-
-  form.addEventListener("paste", (event) => {
-    const control = event.target;
-    if (
-      !(control instanceof HTMLInputElement) ||
-      !control.matches("[data-parameter-control]")
-    ) {
-      return;
-    }
-    const pasted = event.clipboardData ? event.clipboardData.getData("text") : "";
-    if (!/[\r\n]/.test(pasted)) {
-      return;
-    }
-    const button = document.querySelector(
-      `[data-parameter-toggle][aria-controls="${control.id}"]`
-    );
-    if (!button) {
-      return;
-    }
-    event.preventDefault();
-    const selectionStart = control.selectionStart ?? control.value.length;
-    const selectionEnd = control.selectionEnd ?? selectionStart;
-    const value =
-      control.value.slice(0, selectionStart) +
-      pasted +
-      control.value.slice(selectionEnd);
-    replaceParameterControl(
-      control,
-      button,
-      true,
-      value,
-      selectionStart + pasted.length
-    );
-  });
-
-  syncParameterState();
 });
 </script>
 

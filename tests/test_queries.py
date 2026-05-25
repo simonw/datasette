@@ -179,9 +179,7 @@ async def test_query_resources_come_from_internal_table():
 
     page = await ds.allowed_resources("view-query", actor=None)
 
-    assert [(r.parent, r.child) for r in page.resources] == [
-        ("data", "internal_query")
-    ]
+    assert [(r.parent, r.child) for r in page.resources] == [("data", "internal_query")]
 
 
 @pytest.mark.asyncio
@@ -279,3 +277,216 @@ async def test_analyze_write_query_rejects_writes_to_attached_databases():
             "insert into extra.cats (id) values (1)",
             actor={"id": "writer"},
         )
+
+
+@pytest.mark.asyncio
+async def test_query_insert_api_creates_read_only_query():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("query_insert_api", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/data/-/queries/-/insert",
+        actor={"id": "root"},
+        json={
+            "query": {
+                "name": "by_name",
+                "sql": "select * from dogs where name = :name",
+                "title": "By name",
+            }
+        },
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["ok"] is True
+    assert data["query"]["name"] == "by_name"
+    assert data["query"]["parameters"] == ["name"]
+    assert data["query"]["is_write"] is False
+    assert data["query"]["source"] == "user"
+    assert data["query"]["owner_id"] == "root"
+
+
+@pytest.mark.asyncio
+async def test_query_list_and_definition_api():
+    ds = Datasette(memory=True)
+    ds.root_enabled = True
+    ds.add_memory_database("query_list_api", name="data")
+    await ds.invoke_startup()
+    await ds.add_query("data", "listed", "select 1", title="Listed", published=True)
+
+    list_response = await ds.client.get(
+        "/data/-/queries",
+        actor={"id": "root"},
+    )
+    definition_response = await ds.client.get(
+        "/data/listed/-/definition",
+        actor={"id": "root"},
+    )
+
+    assert list_response.status_code == 200
+    assert list_response.json()["queries"][0]["name"] == "listed"
+    assert definition_response.status_code == 200
+    assert definition_response.json()["query"]["title"] == "Listed"
+
+
+@pytest.mark.asyncio
+async def test_query_insert_api_publish_requires_publish_query():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "execute-sql": {"id": "writer"},
+                        "insert-query": {"id": "writer"},
+                    }
+                }
+            }
+        },
+    )
+    ds.add_memory_database("query_publish_api", name="data")
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/data/-/queries/-/insert",
+        actor={"id": "writer"},
+        json={"query": {"name": "public", "sql": "select 1", "published": True}},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["errors"] == ["Permission denied: need publish-query"]
+
+
+@pytest.mark.asyncio
+async def test_query_insert_api_creates_writable_query():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("query_write_api", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/data/-/queries/-/insert",
+        actor={"id": "root"},
+        json={
+            "query": {
+                "name": "insert_dog",
+                "sql": "insert into dogs (name) values (:name)",
+            }
+        },
+    )
+
+    assert response.status_code == 201
+    query = response.json()["query"]
+    assert query["is_write"] is True
+    assert query["published"] is False
+    assert query["parameters"] == ["name"]
+
+    bad_response = await ds.client.post(
+        "/data/-/queries/-/insert",
+        actor={"id": "root"},
+        json={
+            "query": {
+                "name": "published_insert",
+                "sql": "insert into dogs (name) values (:name)",
+                "published": True,
+            }
+        },
+    )
+
+    assert bad_response.status_code == 400
+    assert bad_response.json()["errors"] == ["Writable queries cannot be published"]
+
+
+@pytest.mark.asyncio
+async def test_query_update_and_delete_api():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    ds.add_memory_database("query_update_api", name="data")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "editable",
+        "select 1",
+        title="Original",
+        source="user",
+        owner_id="root",
+    )
+
+    update_response = await ds.client.post(
+        "/data/editable/-/update",
+        actor={"id": "root"},
+        json={
+            "update": {
+                "title": "Updated",
+                "description": "Fresh",
+                "on_success_redirect": None,
+            },
+            "return": True,
+        },
+    )
+
+    assert update_response.status_code == 200
+    updated = update_response.json()["query"]
+    assert updated["title"] == "Updated"
+    assert updated["description"] == "Fresh"
+    assert updated["on_success_redirect"] is None
+
+    delete_response = await ds.client.post(
+        "/data/editable/-/delete",
+        actor={"id": "root"},
+        json={},
+    )
+
+    assert delete_response.status_code == 200
+    assert delete_response.json() == {"ok": True}
+    assert await ds.get_query("data", "editable") is None
+
+
+@pytest.mark.asyncio
+async def test_query_insert_api_rejects_magic_parameters():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    ds.add_memory_database("query_magic_api", name="data")
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/data/-/queries/-/insert",
+        actor={"id": "root"},
+        json={"query": {"name": "magic", "sql": "select :_actor_id"}},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["errors"] == ["Magic parameters are not allowed"]
+
+
+@pytest.mark.asyncio
+async def test_create_query_ui_and_arbitrary_sql_save_link():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("query_create_ui", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    create_response = await ds.client.get(
+        "/data/-/queries/-/create?sql=select+*+from+dogs",
+        actor={"id": "root"},
+    )
+    query_response = await ds.client.get(
+        "/data/-/query?sql=select+*+from+dogs",
+        actor={"id": "root"},
+    )
+
+    assert create_response.status_code == 200
+    assert "Create query" in create_response.text
+    assert "Read-only" in create_response.text
+    assert "Writable" in create_response.text
+    assert "required permission" in create_response.text
+    assert query_response.status_code == 200
+    assert "Save query" in query_response.text
+    assert "/data/-/queries/-/create?sql=select+%2A+from+dogs" in query_response.text

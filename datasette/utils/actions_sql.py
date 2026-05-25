@@ -241,6 +241,14 @@ async def _build_single_action_sql(
                     "),",
                 ]
             )
+        else:
+            query_parts.extend(
+                [
+                    "anon_rules AS (",
+                    "  SELECT NULL AS parent, NULL AS child, 0 AS allow, NULL AS reason WHERE 0",
+                    "),",
+                ]
+            )
 
     # Continue with the cascading logic
     query_parts.extend(

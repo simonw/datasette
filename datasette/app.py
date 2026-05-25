@@ -43,7 +43,18 @@ from jinja2.exceptions import TemplateNotFound
 from .events import Event
 from .column_types import SQLiteType
 from .views import Context
-from .views.database import database_download, DatabaseView, TableCreateView, QueryView
+from .views.database import (
+    database_download,
+    DatabaseView,
+    TableCreateView,
+    QueryView,
+    QueryCreateView,
+    QueryDeleteView,
+    QueryDefinitionView,
+    QueryInsertView,
+    QueryListView,
+    QueryUpdateView,
+)
 from .views.index import IndexView
 from .views.special import (
     JsonDataView,
@@ -2525,12 +2536,36 @@ class Datasette:
         )
         add_route(TableCreateView.as_view(self), r"/(?P<database>[^\/\.]+)/-/create$")
         add_route(
+            QueryListView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/queries$",
+        )
+        add_route(
+            QueryCreateView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/queries/-/create$",
+        )
+        add_route(
+            QueryInsertView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/queries/-/insert$",
+        )
+        add_route(
             DatabaseSchemaView.as_view(self),
             r"/(?P<database>[^\/\.]+)/-/schema(\.(?P<format>json|md))?$",
         )
         add_route(
             wrap_view(QueryView, self),
             r"/(?P<database>[^\/\.]+)/-/query(\.(?P<format>\w+))?$",
+        )
+        add_route(
+            QueryDefinitionView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<query>[^\/\.]+)/-/definition$",
+        )
+        add_route(
+            QueryUpdateView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<query>[^\/\.]+)/-/update$",
+        )
+        add_route(
+            QueryDeleteView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<query>[^\/\.]+)/-/delete$",
         )
         add_route(
             wrap_view(table_view, self),

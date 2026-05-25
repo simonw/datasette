@@ -1285,12 +1285,56 @@ Actor is allowed to view a table (or view) page, e.g. https://latest.datasette.i
 view-query
 ----------
 
-Actor is allowed to view (and execute) a :ref:`canned query <canned_queries>` page, e.g. https://latest.datasette.io/fixtures/pragma_cache_size - this includes executing :ref:`canned_queries_writable`.
+Actor is allowed to view (and execute) a saved query page, e.g. https://latest.datasette.io/fixtures/pragma_cache_size - this includes executing :ref:`canned_queries_writable`.
 
 ``resource`` - ``datasette.resources.QueryResource(database, query)``
     ``database`` is the name of the database (string)
-    
-    ``query`` is the name of the canned query (string)
+
+    ``query`` is the name of the query (string)
+
+.. _actions_insert_query:
+
+insert-query
+------------
+
+Actor is allowed to create saved queries in a database.
+
+``resource`` - ``datasette.resources.DatabaseResource(database)``
+    ``database`` is the name of the database (string)
+
+.. _actions_publish_query:
+
+publish-query
+-------------
+
+Actor is allowed to publish a saved read-only query so actors without ``execute-sql`` can run it.
+
+``resource`` - ``datasette.resources.DatabaseResource(database)``
+    ``database`` is the name of the database (string)
+
+.. _actions_update_query:
+
+update-query
+------------
+
+Actor is allowed to update a saved query.
+
+``resource`` - ``datasette.resources.QueryResource(database, query)``
+    ``database`` is the name of the database (string)
+
+    ``query`` is the name of the query (string)
+
+.. _actions_delete_query:
+
+delete-query
+------------
+
+Actor is allowed to delete a saved query.
+
+``resource`` - ``datasette.resources.QueryResource(database, query)``
+    ``database`` is the name of the database (string)
+
+    ``query`` is the name of the query (string)
 
 .. _actions_insert_row:
 

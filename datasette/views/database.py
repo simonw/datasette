@@ -12,7 +12,7 @@ import textwrap
 
 from datasette.events import AlterTableEvent, CreateTableEvent, InsertRowsEvent
 from datasette.database import QueryInterrupted
-from datasette.resources import DatabaseResource, QueryResource
+from datasette.resources import DatabaseResource, QueryResource, TableResource
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
@@ -302,6 +302,9 @@ class QueryContext(Context):
     allow_execute_sql: bool = field(
         metadata={"help": "Boolean indicating if custom SQL can be executed"}
     )
+    save_query_url: str = field(
+        metadata={"help": "URL to save the current arbitrary SQL as a query"}
+    )
     tables: list = field(metadata={"help": "List of table objects in the database"})
     named_parameter_values: dict = field(
         metadata={"help": "Dictionary of parameter names/values"}
@@ -415,6 +418,510 @@ async def database_download(request, datasette):
         content_type="application/octet-stream",
         headers=headers,
     )
+
+
+_query_name_re = re.compile(r"^[^/\.\n]+$")
+
+_query_fields = {
+    "sql",
+    "title",
+    "description",
+    "description_html",
+    "hide_sql",
+    "fragment",
+    "parameters",
+    "params",
+    "published",
+    "on_success_message",
+    "on_success_message_sql",
+    "on_success_redirect",
+    "on_error_message",
+    "on_error_redirect",
+}
+
+_query_create_fields = _query_fields | {"name", "mode", "csrftoken"}
+_query_update_fields = _query_fields
+_query_write_fields = {
+    "on_success_message",
+    "on_success_message_sql",
+    "on_success_redirect",
+    "on_error_message",
+    "on_error_redirect",
+}
+
+
+class QueryValidationError(Exception):
+    def __init__(self, message, status=400):
+        self.message = message
+        self.status = status
+
+
+def _actor_id(actor):
+    if isinstance(actor, dict):
+        return actor.get("id")
+    return None
+
+
+def _as_bool(value):
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, int):
+        return bool(value)
+    if isinstance(value, str):
+        return value.lower() in {"1", "true", "t", "yes", "on"}
+    return bool(value)
+
+
+def _derived_query_parameters(sql):
+    parameters = []
+    seen = set()
+    for parameter in derive_named_parameters(sql):
+        if parameter.startswith("_"):
+            raise QueryValidationError("Magic parameters are not allowed")
+        if parameter not in seen:
+            parameters.append(parameter)
+            seen.add(parameter)
+    return parameters
+
+
+def _coerce_query_parameters(value, derived):
+    if value is None:
+        return derived
+    if isinstance(value, str):
+        parameters = [
+            parameter.strip()
+            for parameter in re.split(r"[\s,]+", value)
+            if parameter.strip()
+        ]
+    elif isinstance(value, list):
+        parameters = value
+    else:
+        raise QueryValidationError("parameters must be a list of strings")
+    if not all(isinstance(parameter, str) for parameter in parameters):
+        raise QueryValidationError("parameters must be a list of strings")
+    if any(parameter.startswith("_") for parameter in parameters):
+        raise QueryValidationError("Magic parameters are not allowed")
+    if set(parameters) != set(derived):
+        raise QueryValidationError("parameters must match SQL named parameters")
+    return parameters
+
+
+async def _json_or_form_payload(request):
+    content_type = request.headers.get("content-type", "")
+    if content_type.startswith("application/json"):
+        body = await request.post_body()
+        try:
+            return json.loads(body or b"{}"), True
+        except json.JSONDecodeError as e:
+            raise QueryValidationError("Invalid JSON: {}".format(e))
+    return await request.post_vars(), False
+
+
+async def _check_query_name(db, name, *, existing=False):
+    if not name or not isinstance(name, str):
+        raise QueryValidationError("Query name is required")
+    if not _query_name_re.match(name):
+        raise QueryValidationError("Invalid query name")
+    if not existing and (await db.table_exists(name) or await db.view_exists(name)):
+        raise QueryValidationError("Query name conflicts with a table or view")
+
+
+async def _analyze_user_query(datasette, db, sql, *, actor, published):
+    if not sql or not isinstance(sql, str):
+        raise QueryValidationError("SQL is required")
+    derived = _derived_query_parameters(sql)
+    params = {parameter: "" for parameter in derived}
+    try:
+        analysis = await db.analyze_sql(sql, params)
+    except sqlite3.DatabaseError as ex:
+        raise QueryValidationError("Could not analyze query: {}".format(ex)) from ex
+
+    is_write = any(
+        access.operation in {"insert", "update", "delete"}
+        for access in analysis.table_accesses
+    )
+    if is_write:
+        if published:
+            raise QueryValidationError("Writable queries cannot be published")
+        try:
+            await datasette.ensure_query_write_permissions(db.name, sql, actor=actor)
+        except Forbidden as ex:
+            raise QueryValidationError(str(ex), status=403) from ex
+    else:
+        try:
+            validate_sql_select(sql)
+        except InvalidSql as ex:
+            raise QueryValidationError(str(ex)) from ex
+    return is_write, derived, analysis
+
+
+def _analysis_rows(analysis):
+    write_actions = {
+        "insert": "insert-row",
+        "update": "update-row",
+        "delete": "delete-row",
+    }
+    return [
+        {
+            "operation": access.operation,
+            "database": access.database,
+            "table": access.table,
+            "required_permission": write_actions.get(access.operation, ""),
+            "source": access.source,
+        }
+        for access in analysis.table_accesses
+    ]
+
+
+def _apply_query_data_types(data):
+    typed = dict(data)
+    for key in ("hide_sql", "published"):
+        if key in typed:
+            typed[key] = _as_bool(typed[key])
+    return typed
+
+
+async def _prepare_query_create(datasette, request, db, data):
+    invalid_keys = set(data) - _query_create_fields
+    if invalid_keys:
+        raise QueryValidationError("Invalid keys: {}".format(", ".join(invalid_keys)))
+
+    data = _apply_query_data_types(data)
+    name = data.get("name")
+    await _check_query_name(db, name)
+    if await datasette.get_query(db.name, name) is not None:
+        raise QueryValidationError("Query already exists")
+
+    published = _as_bool(data.get("published"))
+    is_write, derived, analysis = await _analyze_user_query(
+        datasette,
+        db,
+        data.get("sql"),
+        actor=request.actor,
+        published=published,
+    )
+    if published and not await datasette.allowed(
+        action="publish-query",
+        resource=DatabaseResource(db.name),
+        actor=request.actor,
+    ):
+        raise QueryValidationError("Permission denied: need publish-query", status=403)
+    if not is_write and any(data.get(field) for field in _query_write_fields):
+        raise QueryValidationError("Writable query fields require writable SQL")
+
+    parameters = _coerce_query_parameters(
+        data.get("parameters", data.get("params")),
+        derived,
+    )
+    return {
+        "name": name,
+        "sql": data["sql"],
+        "title": data.get("title"),
+        "description": data.get("description"),
+        "description_html": data.get("description_html"),
+        "hide_sql": _as_bool(data.get("hide_sql")),
+        "fragment": data.get("fragment"),
+        "parameters": parameters,
+        "is_write": is_write,
+        "published": published,
+        "source": "user",
+        "owner_id": _actor_id(request.actor),
+        "on_success_message": data.get("on_success_message"),
+        "on_success_message_sql": data.get("on_success_message_sql"),
+        "on_success_redirect": data.get("on_success_redirect"),
+        "on_error_message": data.get("on_error_message"),
+        "on_error_redirect": data.get("on_error_redirect"),
+        "analysis": analysis,
+    }
+
+
+async def _prepare_query_update(datasette, request, db, existing, update):
+    invalid_keys = set(update) - _query_update_fields
+    if invalid_keys:
+        raise QueryValidationError("Invalid keys: {}".format(", ".join(invalid_keys)))
+
+    update = _apply_query_data_types(update)
+    sql = update.get("sql", existing["sql"])
+    published = update.get("published", existing["published"])
+    query_is_write = existing["is_write"]
+    derived = _derived_query_parameters(sql)
+    parameters = None
+
+    if "sql" in update:
+        query_is_write, derived, _ = await _analyze_user_query(
+            datasette,
+            db,
+            sql,
+            actor=request.actor,
+            published=published,
+        )
+    elif published and query_is_write:
+        raise QueryValidationError("Writable queries cannot be published")
+    if published and not existing["published"]:
+        if not await datasette.allowed(
+            action="publish-query",
+            resource=DatabaseResource(db.name),
+            actor=request.actor,
+        ):
+            raise QueryValidationError(
+                "Permission denied: need publish-query", status=403
+            )
+
+    if "parameters" in update or "params" in update:
+        parameters = _coerce_query_parameters(
+            update.get("parameters", update.get("params")),
+            derived,
+        )
+    elif "sql" in update:
+        parameters = derived
+
+    if not query_is_write and any(update.get(field) for field in _query_write_fields):
+        raise QueryValidationError("Writable query fields require writable SQL")
+
+    field_values = {
+        "sql": sql,
+        "title": update.get("title"),
+        "description": update.get("description"),
+        "description_html": update.get("description_html"),
+        "hide_sql": update.get("hide_sql"),
+        "fragment": update.get("fragment"),
+        "parameters": parameters,
+        "is_write": query_is_write,
+        "published": published,
+        "on_success_message": update.get("on_success_message"),
+        "on_success_message_sql": update.get("on_success_message_sql"),
+        "on_success_redirect": update.get("on_success_redirect"),
+        "on_error_message": update.get("on_error_message"),
+        "on_error_redirect": update.get("on_error_redirect"),
+    }
+    update_kwargs = {}
+    for field, value in field_values.items():
+        if field in update:
+            update_kwargs[field] = value
+    if parameters is not None:
+        update_kwargs["parameters"] = parameters
+    if "sql" in update:
+        update_kwargs["is_write"] = query_is_write
+    return update_kwargs
+
+
+class QueryListView(BaseView):
+    name = "query-list"
+
+    async def get(self, request):
+        db = await self.ds.resolve_database(request)
+        page = await self.ds.allowed_resources(
+            "view-query",
+            request.actor,
+            parent=db.name,
+            limit=1000,
+        )
+        all_queries = await self.ds.get_queries(db.name)
+        queries = [
+            all_queries[resource.child]
+            for resource in page.resources
+            if resource.child in all_queries
+        ]
+        return Response.json({"ok": True, "database": db.name, "queries": queries})
+
+
+class QueryCreateView(BaseView):
+    name = "query-create"
+    has_json_alternate = False
+
+    async def get(self, request):
+        db = await self.ds.resolve_database(request)
+        await self.ds.ensure_permission(
+            action="execute-sql",
+            resource=DatabaseResource(db.name),
+            actor=request.actor,
+        )
+        await self.ds.ensure_permission(
+            action="insert-query",
+            resource=DatabaseResource(db.name),
+            actor=request.actor,
+        )
+
+        sql = request.args.get("sql") or ""
+        analysis_error = None
+        analysis_rows = []
+        parameter_names = []
+        if sql:
+            try:
+                parameter_names = _derived_query_parameters(sql)
+                params = {parameter: "" for parameter in parameter_names}
+                analysis = await db.analyze_sql(sql, params)
+                rows = _analysis_rows(analysis)
+                for row in rows:
+                    permission = row["required_permission"]
+                    if permission:
+                        row["allowed"] = await self.ds.allowed(
+                            action=permission,
+                            resource=TableResource(row["database"], row["table"]),
+                            actor=request.actor,
+                        )
+                    else:
+                        row["allowed"] = None
+                analysis_rows = rows
+            except (QueryValidationError, sqlite3.DatabaseError) as ex:
+                analysis_error = getattr(ex, "message", str(ex))
+
+        return await self.render(
+            ["query_create.html"],
+            request,
+            {
+                "database": db.name,
+                "database_color": db.color,
+                "sql": sql,
+                "parameter_names": parameter_names,
+                "can_publish": await self.ds.allowed(
+                    action="publish-query",
+                    resource=DatabaseResource(db.name),
+                    actor=request.actor,
+                ),
+                "analysis_error": analysis_error,
+                "analysis_rows": analysis_rows,
+                "save_disabled": bool(
+                    analysis_error
+                    or any(row["allowed"] is False for row in analysis_rows)
+                ),
+            },
+        )
+
+
+class QueryInsertView(BaseView):
+    name = "query-insert"
+
+    async def post(self, request):
+        db = await self.ds.resolve_database(request)
+        if not await self.ds.allowed(
+            action="execute-sql",
+            resource=DatabaseResource(db.name),
+            actor=request.actor,
+        ):
+            return _error(["Permission denied: need execute-sql"], 403)
+        if not await self.ds.allowed(
+            action="insert-query",
+            resource=DatabaseResource(db.name),
+            actor=request.actor,
+        ):
+            return _error(["Permission denied: need insert-query"], 403)
+
+        try:
+            data, is_json = await _json_or_form_payload(request)
+            if not isinstance(data, dict):
+                raise QueryValidationError("JSON must be a dictionary")
+            query_data = data.get("query") if is_json else data
+            if not isinstance(query_data, dict):
+                raise QueryValidationError("JSON must contain a query dictionary")
+            prepared = await _prepare_query_create(self.ds, request, db, query_data)
+        except QueryValidationError as ex:
+            return _error([ex.message], ex.status)
+
+        prepared.pop("analysis")
+        name = prepared.pop("name")
+        try:
+            await self.ds.add_query(db.name, name, replace=False, **prepared)
+        except sqlite3.IntegrityError as ex:
+            return _error([str(ex)], 400)
+
+        query = await self.ds.get_query(db.name, name)
+        if is_json:
+            return Response.json({"ok": True, "query": query}, status=201)
+        self.ds.add_message(request, "Query saved", self.ds.INFO)
+        return Response.redirect(self.ds.urls.path(self.ds.urls.table(db.name, name)))
+
+
+class QueryDefinitionView(BaseView):
+    name = "query-definition"
+
+    async def get(self, request):
+        db = await self.ds.resolve_database(request)
+        query_name = tilde_decode(request.url_vars["query"])
+        query = await self.ds.get_query(db.name, query_name)
+        if query is None:
+            return _error(["Query not found: {}".format(query_name)], 404)
+        if not await self.ds.allowed(
+            action="view-query",
+            resource=QueryResource(db.name, query_name),
+            actor=request.actor,
+        ):
+            return _error(["Permission denied"], 403)
+        return Response.json({"ok": True, "query": query})
+
+
+class QueryUpdateView(BaseView):
+    name = "query-update"
+
+    async def post(self, request):
+        db = await self.ds.resolve_database(request)
+        query_name = tilde_decode(request.url_vars["query"])
+        existing = await self.ds.get_query(db.name, query_name)
+        if existing is None:
+            return _error(["Query not found: {}".format(query_name)], 404)
+        if not await self.ds.allowed(
+            action="update-query",
+            resource=QueryResource(db.name, query_name),
+            actor=request.actor,
+        ):
+            return _error(["Permission denied: need update-query"], 403)
+
+        try:
+            data, _ = await _json_or_form_payload(request)
+            if not isinstance(data, dict):
+                raise QueryValidationError("JSON must be a dictionary")
+            invalid_keys = set(data) - {"update", "return"}
+            if invalid_keys:
+                raise QueryValidationError(
+                    "Invalid keys: {}".format(", ".join(invalid_keys))
+                )
+            update = data.get("update")
+            if not isinstance(update, dict):
+                raise QueryValidationError("JSON must contain an update dictionary")
+            if "sql" in update and not await self.ds.allowed(
+                action="execute-sql",
+                resource=DatabaseResource(db.name),
+                actor=request.actor,
+            ):
+                raise QueryValidationError(
+                    "Permission denied: need execute-sql", status=403
+                )
+            update_kwargs = await _prepare_query_update(
+                self.ds, request, db, existing, update
+            )
+        except QueryValidationError as ex:
+            return _error([ex.message], ex.status)
+
+        await self.ds.update_query(db.name, query_name, **update_kwargs)
+        if data.get("return"):
+            return Response.json(
+                {
+                    "ok": True,
+                    "query": await self.ds.get_query(db.name, query_name),
+                }
+            )
+        return Response.json({"ok": True})
+
+
+class QueryDeleteView(BaseView):
+    name = "query-delete"
+
+    async def post(self, request):
+        db = await self.ds.resolve_database(request)
+        query_name = tilde_decode(request.url_vars["query"])
+        existing = await self.ds.get_query(db.name, query_name)
+        if existing is None:
+            return _error(["Query not found: {}".format(query_name)], 404)
+        if not await self.ds.allowed(
+            action="delete-query",
+            resource=QueryResource(db.name, query_name),
+            actor=request.actor,
+        ):
+            return _error(["Permission denied: need delete-query"], 403)
+        await self.ds.remove_query(db.name, query_name)
+        return Response.json({"ok": True})
 
 
 class QueryView(View):
@@ -741,6 +1248,11 @@ class QueryView(View):
                 resource=DatabaseResource(database=database),
                 actor=request.actor,
             )
+            allow_insert_query = await datasette.allowed(
+                action="insert-query",
+                resource=DatabaseResource(database=database),
+                actor=request.actor,
+            )
 
             show_hide_hidden = ""
             if canned_query and canned_query.get("hide_sql"):
@@ -790,6 +1302,19 @@ class QueryView(View):
                         }
                     )
                 )
+            save_query_url = None
+            if (
+                not canned_query
+                and allow_execute_sql
+                and allow_insert_query
+                and is_validated_sql
+                and ":_" not in sql
+            ):
+                save_query_url = (
+                    datasette.urls.database(database)
+                    + "/-/queries/-/create?"
+                    + urlencode({"sql": sql})
+                )
 
             async def query_actions():
                 query_actions = []
@@ -827,6 +1352,7 @@ class QueryView(View):
                         show_hide_text=show_hide_text,
                         editable=not canned_query,
                         allow_execute_sql=allow_execute_sql,
+                        save_query_url=save_query_url,
                         tables=await get_tables(datasette, request, db, allowed_dict),
                         named_parameter_values=named_parameter_values,
                         edit_sql_url=edit_sql_url,

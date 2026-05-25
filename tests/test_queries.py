@@ -859,6 +859,52 @@ async def test_database_action_menu_links_to_execute_write_for_permitted_actor()
 
 
 @pytest.mark.asyncio
+async def test_database_action_menu_hides_execute_write_for_immutable_database():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    }
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database("execute_write_menu_immutable", name="data")
+    db.is_mutable = False
+    await ds.invoke_startup()
+
+    response = await ds.client.get("/data", actor={"id": "writer"})
+
+    assert response.status_code == 200
+    assert "Execute write SQL" not in response.text
+    assert 'href="/data/-/execute-write"' not in response.text
+
+
+@pytest.mark.asyncio
+async def test_execute_write_get_rejects_immutable_database():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_get_immutable", name="data")
+    db.is_mutable = False
+    await ds.invoke_startup()
+
+    response = await ds.client.get(
+        "/data/-/execute-write?sql=insert+into+dogs+(name)+values+('Cleo')",
+        actor={"id": "root"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["errors"] == [
+        "Cannot execute write SQL because this database is immutable."
+    ]
+
+
+@pytest.mark.asyncio
 async def test_execute_write_post_requires_database_and_table_permissions():
     ds = Datasette(
         memory=True,

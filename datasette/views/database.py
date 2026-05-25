@@ -964,6 +964,13 @@ class ExecuteWriteView(BaseView):
             resource=DatabaseResource(db.name),
             actor=request.actor,
         )
+        if not db.is_mutable:
+            return _block_framing(
+                _error(
+                    ["Cannot execute write SQL because this database is immutable."],
+                    403,
+                )
+            )
         return await self._render_form(
             request,
             db,

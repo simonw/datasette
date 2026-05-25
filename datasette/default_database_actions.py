@@ -5,6 +5,8 @@ from datasette.resources import DatabaseResource
 @hookimpl
 def database_actions(datasette, actor, database, request):
     async def inner():
+        if not datasette.get_database(database).is_mutable:
+            return []
         if not await datasette.allowed(
             action="execute-write-sql",
             resource=DatabaseResource(database),

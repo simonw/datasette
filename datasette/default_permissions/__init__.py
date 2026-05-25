@@ -17,13 +17,6 @@ UNION/INTERSECT operations. The order of evaluation is:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from datasette.app import Datasette
-
-from datasette import hookimpl
-
 # Re-export all hooks and public utilities
 from .restrictions import (
     actor_restrictions_sql as actor_restrictions_sql,
@@ -38,12 +31,3 @@ from .defaults import (
     default_query_permissions_sql as default_query_permissions_sql,
     DEFAULT_ALLOW_ACTIONS as DEFAULT_ALLOW_ACTIONS,
 )
-
-
-@hookimpl
-def canned_queries(datasette: "Datasette", database: str, actor) -> dict:
-    """Return canned queries defined in datasette.yaml configuration."""
-    queries = (
-        ((datasette.config or {}).get("databases") or {}).get(database) or {}
-    ).get("queries") or {}
-    return queries

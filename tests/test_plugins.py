@@ -885,38 +885,25 @@ async def test_hook_startup_catalog_populated(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_hook_canned_queries(ds_client):
+async def test_plugin_startup_queries(ds_client):
     queries = (await ds_client.get("/fixtures.json")).json()["queries"]
     queries_by_name = {q["name"]: q for q in queries}
-    assert {
-        "sql": "select 2",
-        "name": "from_async_hook",
-        "private": False,
-    } == queries_by_name["from_async_hook"]
-    assert {
-        "sql": "select 1, 'null' as actor_id",
-        "name": "from_hook",
-        "private": False,
-    } == queries_by_name["from_hook"]
+    assert queries_by_name["from_async_hook"]["sql"] == "select 2"
+    assert queries_by_name["from_async_hook"]["private"] is False
+    assert queries_by_name["from_hook"]["sql"] == "select 1, 'null' as actor_id"
+    assert queries_by_name["from_hook"]["private"] is False
 
 
 @pytest.mark.asyncio
-async def test_hook_canned_queries_non_async(ds_client):
+async def test_plugin_startup_query_from_hook(ds_client):
     response = await ds_client.get("/fixtures/from_hook.json?_shape=array")
     assert [{"1": 1, "actor_id": "null"}] == response.json()
 
 
 @pytest.mark.asyncio
-async def test_hook_canned_queries_async(ds_client):
+async def test_plugin_startup_query_from_async_hook(ds_client):
     response = await ds_client.get("/fixtures/from_async_hook.json?_shape=array")
     assert [{"2": 2}] == response.json()
-
-
-@pytest.mark.asyncio
-async def test_hook_canned_queries_actor(ds_client):
-    assert (
-        await ds_client.get("/fixtures/from_hook.json?_bot=1&_shape=array")
-    ).json() == [{"1": 1, "actor_id": "bot"}]
 
 
 def test_hook_register_magic_parameters(restore_working_directory):

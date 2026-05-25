@@ -315,11 +315,6 @@ def startup(datasette):
 
 
 @hookimpl
-def canned_queries(datasette, database, actor):
-    return {"from_hook": f"select 1, '{actor['id'] if actor else 'null'}' as actor_id"}
-
-
-@hookimpl
 def register_magic_parameters():
     from uuid import uuid4
 

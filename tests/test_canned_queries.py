@@ -1,8 +1,14 @@
 from bs4 import BeautifulSoup as Soup
+from asgiref.sync import async_to_sync
 import json
 import pytest
 import re
 from .fixtures import make_app_client
+
+
+def update_query(client, name, **kwargs):
+    async_to_sync(client.ds.invoke_startup)()
+    async_to_sync(client.ds.update_query)("data", name, **kwargs)
 
 
 @pytest.fixture
@@ -153,9 +159,7 @@ def test_insert_error(canned_write_client):
     )
     assert [["UNIQUE constraint failed: names.rowid", 3]] == messages
     # How about with a custom error message?
-    canned_write_client.ds.config["databases"]["data"]["queries"][
-        "add_name_specify_id"
-    ]["on_error_message"] = "ERROR"
+    update_query(canned_write_client, "add_name_specify_id", on_error_message="ERROR")
     response = canned_write_client.post(
         "/data/add_name_specify_id",
         {"rowid": 1, "name": "Should fail"},
@@ -327,12 +331,16 @@ def magic_parameters_client():
     ],
 )
 def test_magic_parameters(magic_parameters_client, magic_parameter, expected_re):
-    magic_parameters_client.ds.config["databases"]["data"]["queries"]["runme_post"][
-        "sql"
-    ] = f"insert into logs (line) values (:{magic_parameter})"
-    magic_parameters_client.ds.config["databases"]["data"]["queries"]["runme_get"][
-        "sql"
-    ] = f"select :{magic_parameter} as result"
+    update_query(
+        magic_parameters_client,
+        "runme_post",
+        sql=f"insert into logs (line) values (:{magic_parameter})",
+    )
+    update_query(
+        magic_parameters_client,
+        "runme_get",
+        sql=f"select :{magic_parameter} as result",
+    )
     cookies = {
         "ds_actor": magic_parameters_client.actor_cookie({"id": "root"}),
         "foo": "bar",
@@ -366,9 +374,11 @@ def test_magic_parameters(magic_parameters_client, magic_parameter, expected_re)
 @pytest.mark.parametrize("use_csrf", [True, False])
 @pytest.mark.parametrize("return_json", [True, False])
 def test_magic_parameters_csrf_json(magic_parameters_client, use_csrf, return_json):
-    magic_parameters_client.ds.config["databases"]["data"]["queries"]["runme_post"][
-        "sql"
-    ] = "insert into logs (line) values (:_header_host)"
+    update_query(
+        magic_parameters_client,
+        "runme_post",
+        sql="insert into logs (line) values (:_header_host)",
+    )
     qs = ""
     if return_json:
         qs = "?_json=1"

@@ -74,6 +74,22 @@ async def default_query_permissions_sql(
     actor: Optional[dict],
     action: str,
 ) -> Optional[PermissionSQL]:
+    actor_id = actor.get("id") if isinstance(actor, dict) else None
+
+    if action in {"update-query", "delete-query"}:
+        if actor_id is None:
+            return None
+        return PermissionSQL(
+            sql="""
+            SELECT database_name AS parent, name AS child, 1 AS allow,
+              'query owner' AS reason
+            FROM queries
+            WHERE source = 'user'
+              AND owner_id = :query_owner_id
+            """,
+            params={"query_owner_id": actor_id},
+        )
+
     if action != "view-query":
         return None
 
@@ -98,6 +114,19 @@ async def default_query_permissions_sql(
               AND source IN ('config', 'plugin')
         """
 
+    user_writable_sql = ""
+    if actor_id is not None:
+        params["query_owner_id"] = actor_id
+        user_writable_sql = """
+            UNION ALL
+            SELECT database_name AS parent, name AS child, 1 AS allow,
+              'query owner' AS reason
+            FROM queries
+            WHERE is_write = 1
+              AND source = 'user'
+              AND owner_id = :query_owner_id
+        """
+
     return PermissionSQL(
         sql=f"""
         WITH execute_sql_allowed AS (
@@ -118,6 +147,7 @@ async def default_query_permissions_sql(
         WHERE q.is_write = 0
           AND q.published = 0
         {trusted_writable_sql}
+        {user_writable_sql}
         """,
         params=params,
     )

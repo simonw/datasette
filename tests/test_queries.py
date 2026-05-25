@@ -490,3 +490,87 @@ async def test_create_query_ui_and_arbitrary_sql_save_link():
     assert query_response.status_code == 200
     assert "Save query" in query_response.text
     assert "/data/-/queries/-/create?sql=select+%2A+from+dogs" in query_response.text
+
+
+@pytest.mark.asyncio
+async def test_query_owner_gets_update_delete_and_writable_view_defaults():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.add_memory_database("query_owner_defaults", name="data")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "insert_dog",
+        "insert into dogs (name) values (:name)",
+        is_write=True,
+        source="user",
+        owner_id="alice",
+    )
+
+    for action in ("view-query", "update-query", "delete-query"):
+        assert await ds.allowed(
+            action=action,
+            resource=QueryResource("data", "insert_dog"),
+            actor={"id": "alice"},
+        )
+        assert not await ds.allowed(
+            action=action,
+            resource=QueryResource("data", "insert_dog"),
+            actor={"id": "bob"},
+        )
+
+
+@pytest.mark.asyncio
+async def test_user_writable_query_execution_rechecks_table_permissions():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "dogs": {
+                            "permissions": {
+                                "insert-row": {"id": "alice"},
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database("query_write_execution", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "insert_dog",
+        "insert into dogs (name) values (:name)",
+        is_write=True,
+        source="user",
+        owner_id="alice",
+    )
+    await ds.add_query(
+        "data",
+        "insert_cat",
+        "insert into dogs (name) values (:name)",
+        is_write=True,
+        source="user",
+        owner_id="bob",
+    )
+
+    allowed_response = await ds.client.post(
+        "/data/insert_dog?_json=1",
+        actor={"id": "alice"},
+        data={"name": "Cleo"},
+    )
+    denied_response = await ds.client.post(
+        "/data/insert_cat?_json=1",
+        actor={"id": "bob"},
+        data={"name": "Milo"},
+    )
+
+    assert allowed_response.status_code == 200
+    assert allowed_response.json()["ok"] is True
+    assert denied_response.status_code == 403
+    rows = (await db.execute("select name from dogs")).dicts()
+    assert rows == [{"name": "Cleo"}]

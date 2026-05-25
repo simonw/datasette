@@ -945,6 +945,18 @@ class QueryView(View):
             # That should not have happened
             raise DatasetteError("Unexpected table found on POST", status=404)
 
+        if not await datasette.allowed(
+            action="view-query",
+            resource=QueryResource(database=db.name, query=canned_query["name"]),
+            actor=request.actor,
+        ):
+            raise Forbidden("You do not have permission to view this query")
+
+        if canned_query.get("write") and canned_query.get("source") == "user":
+            await datasette.ensure_query_write_permissions(
+                db.name, canned_query["sql"], actor=request.actor
+            )
+
         # If database is immutable, return an error
         if not db.is_mutable:
             raise Forbidden("Database is immutable")

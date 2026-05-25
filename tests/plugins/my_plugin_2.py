@@ -139,20 +139,20 @@ def startup(datasette):
         datasette._startup_catalog_databases = [
             row["database_name"] for row in catalog_rows
         ]
-
-    return inner
-
-
-@hookimpl
-def canned_queries(datasette, database):
-    async def inner():
-        return {
-            "from_async_hook": "select {}".format(
-                (
-                    await datasette.get_database(database).execute("select 1 + 1")
-                ).first()[0]
+        for database in datasette.databases:
+            await datasette.add_query(
+                database,
+                "from_hook",
+                "select 1, 'null' as actor_id",
+                source="plugin",
             )
-        }
+            result = await datasette.get_database(database).execute("select 1 + 1")
+            await datasette.add_query(
+                database,
+                "from_async_hook",
+                "select {}".format(result.first()[0]),
+                source="plugin",
+            )
 
     return inner
 

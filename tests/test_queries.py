@@ -850,6 +850,48 @@ async def test_execute_write_post_requires_database_and_table_permissions():
 
 
 @pytest.mark.asyncio
+async def test_execute_write_insert_links_to_inserted_row():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_insert_link", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await db.execute_write("create table log (id integer primary key, message text)")
+    await db.execute_write("insert into log (message) values ('existing')")
+    await db.execute_write("""
+        create trigger dogs_after_insert after insert on dogs begin
+            insert into log (message) values (new.name);
+        end
+    """)
+    await ds.invoke_startup()
+
+    insert_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        data={
+            "sql": "insert into dogs (name) values (:name)",
+            "name": "Cleo",
+        },
+    )
+    update_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        data={
+            "sql": "update dogs set name = :name where id = :id",
+            "name": "Cleo 2",
+            "id": "1",
+        },
+    )
+
+    assert insert_response.status_code == 200
+    assert "Query executed, 1 row affected" in insert_response.text
+    assert '<a href="/data/dogs/1">View row</a>' in insert_response.text
+    assert "/data/log/2" not in insert_response.text
+    assert update_response.status_code == 200
+    assert "Query executed, 1 row affected" in update_response.text
+    assert "View row" not in update_response.text
+
+
+@pytest.mark.asyncio
 async def test_execute_write_post_rejects_read_only_sql():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True

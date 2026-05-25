@@ -18,8 +18,10 @@ from datasette.utils import (
     await_me_maybe,
     call_with_supported_arguments,
     named_parameters as derive_named_parameters,
+    escape_sqlite,
     format_bytes,
     make_slot_function,
+    path_from_row_pks,
     tilde_decode,
     to_css_class,
     validate_sql_select,
@@ -678,6 +680,43 @@ async def _prepare_execute_write(datasette, db, sql, params, actor):
     return parameter_names, params, analysis
 
 
+async def _inserted_row_url(datasette, db, analysis, cursor):
+    if cursor.rowcount != 1:
+        return None
+    lastrowid = getattr(cursor, "lastrowid", None)
+    if lastrowid is None:
+        return None
+    direct_inserts = [
+        access
+        for access in analysis.table_accesses
+        if access.operation == "insert"
+        and access.source is None
+        and access.database == db.name
+    ]
+    if len(direct_inserts) != 1:
+        return None
+    table = direct_inserts[0].table
+    pks = await db.primary_keys(table)
+    use_rowid = not pks
+    select = (
+        "rowid"
+        if use_rowid
+        else ", ".join(escape_sqlite(primary_key) for primary_key in pks)
+    )
+    try:
+        result = await db.execute(
+            "select {} from {} where rowid = ?".format(select, escape_sqlite(table)),
+            [lastrowid],
+        )
+    except sqlite3.DatabaseError:
+        return None
+    row = result.first()
+    if row is None:
+        return None
+    row_path = path_from_row_pks(row, pks, use_rowid)
+    return datasette.urls.row(db.name, table, row_path)
+
+
 def _apply_query_data_types(data):
     typed = dict(data)
     for key in ("hide_sql", "is_published"):
@@ -824,10 +863,12 @@ class ExecuteWriteView(BaseView):
         analysis=None,
         analysis_error=None,
         execution_message=None,
+        execution_links=None,
         execution_ok=None,
         status=200,
     ):
         parameter_values = parameter_values or {}
+        execution_links = execution_links or []
         parameter_names = []
         analysis_rows = []
         table_columns = await _table_columns(self.ds, db.name)
@@ -869,6 +910,7 @@ class ExecuteWriteView(BaseView):
                     row for row in analysis_rows if row["operation"] != "read"
                 ],
                 "execution_message": execution_message,
+                "execution_links": execution_links,
                 "execution_ok": execution_ok,
                 "execute_disabled": bool(
                     (not sql)
@@ -964,6 +1006,12 @@ class ExecuteWriteView(BaseView):
                 )
             )
 
+        inserted_row_url = await _inserted_row_url(self.ds, db, analysis, cursor)
+        execution_links = (
+            [{"href": inserted_row_url, "label": "View row"}]
+            if inserted_row_url
+            else []
+        )
         return await self._render_form(
             request,
             db,
@@ -971,6 +1019,7 @@ class ExecuteWriteView(BaseView):
             parameter_values={name: params.get(name, "") for name in parameter_names},
             analysis=analysis,
             execution_message=message,
+            execution_links=execution_links,
             execution_ok=True,
         )
 

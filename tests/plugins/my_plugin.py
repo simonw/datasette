@@ -387,8 +387,8 @@ def view_actions(datasette, database, view, actor):
 
 @hookimpl
 def query_actions(datasette, database, query_name, sql):
-    # Don't explain an explain
-    if sql.lower().startswith("explain"):
+    # Don't explain an explain (or a missing query)
+    if not sql or sql.lower().startswith("explain"):
         return
     return [
         {

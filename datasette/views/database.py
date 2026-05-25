@@ -487,9 +487,9 @@ def _as_optional_bool(value, name):
     raise QueryValidationError("{} must be 0 or 1".format(name))
 
 
-def _query_list_limit(value):
+def _query_list_limit(value, default=50):
     if value in (None, ""):
-        return 50
+        return default
     try:
         return min(max(1, int(value)), 1000)
     except ValueError as ex:
@@ -1136,7 +1136,10 @@ class QueryListView(BaseView):
         database = await self.database_name(request)
         format_ = request.url_vars.get("format") or "html"
         try:
-            limit = _query_list_limit(request.args.get("_size"))
+            limit = _query_list_limit(
+                request.args.get("_size"),
+                default=20 if format_ == "html" else 50,
+            )
             is_write = _as_optional_bool(request.args.get("is_write"), "is_write")
             is_published = _as_optional_bool(
                 request.args.get("is_published"), "is_published"
@@ -1175,6 +1178,9 @@ class QueryListView(BaseView):
         data = {
             "ok": True,
             "database": database,
+            "database_color": (
+                self.ds.get_database(database).color if database is not None else None
+            ),
             "queries": page["queries"],
             "next": page["next"],
             "next_url": next_url,

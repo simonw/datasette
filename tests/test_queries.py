@@ -451,10 +451,32 @@ async def test_query_list_search_filter_and_html():
     assert html_response.status_code == 200
     assert "Demo query 02" in html_response.text
     assert "Demo query 01" not in html_response.text
+    assert 'class="query-list-results"' in html_response.text
+    assert "<legend>Mode</legend>" in html_response.text
+    assert 'type="radio" name="is_published" value="1"' in html_response.text
     assert json_response.json()["queries"][0]["name"] == "demo_query_02"
     assert [query["name"] for query in filtered_response.json()["queries"]] == [
         "private_query"
     ]
+
+
+@pytest.mark.asyncio
+async def test_query_list_html_defaults_to_twenty_and_shows_pagination():
+    ds = Datasette(memory=True)
+    ds.root_enabled = True
+    ds.add_memory_database("query_list_html_pagination", name="data")
+    await ds.invoke_startup()
+    await add_numbered_queries(ds, "data", 25)
+
+    response = await ds.client.get("/data/-/queries", actor={"id": "root"})
+    json_response = await ds.client.get("/data/-/queries.json", actor={"id": "root"})
+
+    assert response.status_code == 200
+    assert response.text.count('aria-label="Query pagination"') == 1
+    assert "Demo query 20" in response.text
+    assert "Demo query 21" not in response.text
+    assert 'href="/data/-/queries?_next=' in response.text
+    assert len(json_response.json()["queries"]) == 25
 
 
 @pytest.mark.asyncio
@@ -519,7 +541,8 @@ async def test_global_query_list_api_and_html():
         ("beta", "beta_first"),
     ]
     assert html_response.status_code == 200
-    assert 'href="/beta">beta</a>:' in html_response.text
+    assert '<th scope="col">Database</th>' in html_response.text
+    assert 'class="query-list-database" href="/beta">beta</a>' in html_response.text
     assert "Beta first" in html_response.text
     assert "Alpha first" not in html_response.text
 

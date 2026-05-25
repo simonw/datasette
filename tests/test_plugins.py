@@ -885,24 +885,61 @@ async def test_hook_startup_catalog_populated(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_plugin_startup_queries(ds_client):
-    queries = (await ds_client.get("/fixtures.json")).json()["queries"]
+async def test_plugin_startup_can_add_queries():
+    ds = Datasette(memory=True)
+    ds.add_memory_database("plugin_startup_queries", name="data")
+
+    class AddQueriesPlugin:
+        __name__ = "AddQueriesPlugin"
+
+        @hookimpl
+        def startup(self, datasette):
+            async def inner():
+                result = await datasette.get_database("data").execute("select 1 + 1")
+                await datasette.add_query(
+                    "data",
+                    "from_startup",
+                    "select {}".format(result.first()[0]),
+                    source="plugin",
+                )
+
+            return inner
+
+    ds.pm.register(AddQueriesPlugin(), name="add_queries_plugin")
+    try:
+        response = await ds.client.get("/data.json")
+    finally:
+        ds.pm.unregister(name="add_queries_plugin")
+
+    queries = response.json()["queries"]
     queries_by_name = {q["name"]: q for q in queries}
-    assert queries_by_name["from_async_hook"]["sql"] == "select 2"
-    assert queries_by_name["from_async_hook"]["private"] is False
-    assert queries_by_name["from_hook"]["sql"] == "select 1, 'null' as actor_id"
-    assert queries_by_name["from_hook"]["private"] is False
+    assert queries_by_name["from_startup"]["sql"] == "select 2"
+    assert queries_by_name["from_startup"]["private"] is False
 
 
 @pytest.mark.asyncio
-async def test_plugin_startup_query_from_hook(ds_client):
-    response = await ds_client.get("/fixtures/from_hook.json?_shape=array")
-    assert [{"1": 1, "actor_id": "null"}] == response.json()
+async def test_plugin_startup_query_can_execute():
+    ds = Datasette(memory=True)
+    ds.add_memory_database("plugin_startup_query_execute", name="data")
 
+    class AddQueryPlugin:
+        __name__ = "AddQueryPlugin"
 
-@pytest.mark.asyncio
-async def test_plugin_startup_query_from_async_hook(ds_client):
-    response = await ds_client.get("/fixtures/from_async_hook.json?_shape=array")
+        @hookimpl
+        def startup(self, datasette):
+            async def inner():
+                await datasette.add_query(
+                    "data", "from_startup", "select 2", source="plugin"
+                )
+
+            return inner
+
+    ds.pm.register(AddQueryPlugin(), name="add_query_plugin")
+    try:
+        response = await ds.client.get("/data/from_startup.json?_shape=array")
+    finally:
+        ds.pm.unregister(name="add_query_plugin")
+
     assert [{"2": 2}] == response.json()
 
 
@@ -1514,9 +1551,9 @@ async def test_hook_top_query(ds_client):
 async def test_hook_top_canned_query(ds_client):
     try:
         pm.register(SlotPlugin(), name="SlotPlugin")
-        response = await ds_client.get("/fixtures/from_hook?z=xyz")
+        response = await ds_client.get("/fixtures/magic_parameters?z=xyz")
         assert response.status_code == 200
-        assert "Xtop_query:fixtures:from_hook:xyz" in response.text
+        assert "Xtop_query:fixtures:magic_parameters:xyz" in response.text
     finally:
         pm.unregister(name="SlotPlugin")
 

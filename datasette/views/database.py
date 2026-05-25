@@ -697,9 +697,9 @@ async def _prepare_query_update(datasette, request, db, existing, update):
         "on_error_redirect": update.get("on_error_redirect"),
     }
     update_kwargs = {}
-    for field, value in field_values.items():
-        if field in update:
-            update_kwargs[field] = value
+    for field_name, value in field_values.items():
+        if field_name in update:
+            update_kwargs[field_name] = value
     if parameters is not None:
         update_kwargs["parameters"] = parameters
     if "sql" in update:

@@ -158,8 +158,6 @@ async def test_database_page(ds_client):
     queries_ul = soup.find("h2", string="Queries").find_next_sibling("ul")
     assert queries_ul is not None
     assert [
-        ("/fixtures/from_async_hook", "from_async_hook"),
-        ("/fixtures/from_hook", "from_hook"),
         ("/fixtures/magic_parameters", "magic_parameters"),
         ("/fixtures/neighborhood_search#fragment-goes-here", "Search neighborhoods"),
         ("/fixtures/pragma_cache_size", "pragma_cache_size"),

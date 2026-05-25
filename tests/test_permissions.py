@@ -622,7 +622,6 @@ def test_padlocks_on_database_page(cascade_app_client):
         assert ">123_starts_with_digits</a></h3>" in response.text
         assert ">Table With Space In Name</a> 🔒</h3>" in response.text
         # Queries
-        assert ">from_async_hook</a> 🔒</li>" in response.text
         assert ">query_two</a></li>" in response.text
         # Views
         assert ">paginated_view</a> 🔒</li>" in response.text

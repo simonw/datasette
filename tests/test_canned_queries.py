@@ -254,10 +254,8 @@ def test_canned_query_permissions_on_database_page(canned_write_client):
     }
     assert query_names == {
         "add_name_specify_id_with_error_in_on_success_message_sql",
-        "from_hook",
         "update_name",
         "add_name_specify_id",
-        "from_async_hook",
         "canned_read",
         "add_name",
     }
@@ -284,8 +282,6 @@ def test_canned_query_permissions_on_database_page(canned_write_client):
         },
         {"name": "canned_read", "private": False},
         {"name": "delete_name", "private": True},
-        {"name": "from_async_hook", "private": False},
-        {"name": "from_hook", "private": False},
         {"name": "update_name", "private": False},
     ]
 

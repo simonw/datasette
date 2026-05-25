@@ -505,6 +505,48 @@ The JSON write API
 
 Datasette provides a write API for JSON data. This is a POST-only API that requires an authenticated API token, see :ref:`CreateTokenView`. The token will need to have the specified :ref:`authentication_permissions`.
 
+.. _QueryListView:
+
+Listing saved queries
+~~~~~~~~~~~~~~~~~~~~~
+
+``GET /<database>/-/queries`` returns saved query definitions the actor can view.
+
+.. _QueryCreateView:
+
+Creating saved queries in the UI
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``GET /<database>/-/queries/-/create`` provides a form for creating saved queries.
+
+.. _QueryInsertView:
+
+Creating saved queries
+~~~~~~~~~~~~~~~~~~~~~~
+
+``POST /<database>/-/queries/-/insert`` creates a saved query. This requires ``execute-sql`` and ``insert-query`` for the database.
+
+.. _QueryDefinitionView:
+
+Getting a saved query definition
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``GET /<database>/<query>/-/definition`` returns a saved query definition without executing it.
+
+.. _QueryUpdateView:
+
+Updating saved queries
+~~~~~~~~~~~~~~~~~~~~~~
+
+``POST /<database>/<query>/-/update`` updates a saved query using a JSON body with an ``"update"`` object.
+
+.. _QueryDeleteView:
+
+Deleting saved queries
+~~~~~~~~~~~~~~~~~~~~~~
+
+``POST /<database>/<query>/-/delete`` deletes a saved query.
+
 .. _TableInsertView:
 
 Inserting rows

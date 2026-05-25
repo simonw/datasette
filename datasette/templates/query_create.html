@@ -17,7 +17,7 @@
 
 <h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color }}">Create query</h1>
 
-<form class="sql core" action="{{ urls.database(database) }}/-/queries/-/insert" method="post">
+<form class="sql core" action="{{ urls.database(database) }}/-/queries/insert" method="post">
     <p><label for="query-name">Name</label> <input id="query-name" name="name" type="text"></p>
     <p><label for="query-title">Title</label> <input id="query-title" name="title" type="text"></p>
     <p><label for="query-description">Description</label><br><textarea id="query-description" name="description" rows="3"></textarea></p>

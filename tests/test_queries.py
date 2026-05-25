@@ -356,7 +356,7 @@ async def test_query_insert_api_creates_read_only_query():
     await ds.invoke_startup()
 
     response = await ds.client.post(
-        "/data/-/queries/-/insert",
+        "/data/-/queries/insert",
         actor={"id": "root"},
         json={
             "query": {
@@ -568,7 +568,7 @@ async def test_query_insert_api_publish_requires_publish_query():
     await ds.invoke_startup()
 
     response = await ds.client.post(
-        "/data/-/queries/-/insert",
+        "/data/-/queries/insert",
         actor={"id": "writer"},
         json={"query": {"name": "public", "sql": "select 1", "is_published": True}},
     )
@@ -586,7 +586,7 @@ async def test_query_insert_api_creates_writable_query():
     await ds.invoke_startup()
 
     response = await ds.client.post(
-        "/data/-/queries/-/insert",
+        "/data/-/queries/insert",
         actor={"id": "root"},
         json={
             "query": {
@@ -603,7 +603,7 @@ async def test_query_insert_api_creates_writable_query():
     assert query["parameters"] == ["name"]
 
     bad_response = await ds.client.post(
-        "/data/-/queries/-/insert",
+        "/data/-/queries/insert",
         actor={"id": "root"},
         json={
             "query": {
@@ -671,7 +671,7 @@ async def test_query_insert_api_rejects_magic_parameters():
     await ds.invoke_startup()
 
     response = await ds.client.post(
-        "/data/-/queries/-/insert",
+        "/data/-/queries/insert",
         actor={"id": "root"},
         json={"query": {"name": "magic", "sql": "select :_actor_id"}},
     )
@@ -742,7 +742,7 @@ async def test_execute_write_get_prepopulates_without_executing():
     assert 'data-sql-template="insert"' in response.text
     assert 'data-sql-template="update"' in response.text
     assert 'data-sql-template="delete"' in response.text
-    assert 'data-analyze-url="/data/-/execute-write/-/analyze"' in response.text
+    assert 'data-analyze-url="/data/-/execute-write/analyze"' in response.text
     assert 'addEventListener("paste"' in response.text
     assert "setupSqlParameterRefresh" in response.text
     assert '<table class="execute-write-analysis">' in response.text
@@ -771,12 +771,12 @@ async def test_execute_write_analyze_endpoint_uses_sql_only():
     await ds.invoke_startup()
 
     response = await ds.client.get(
-        "/data/-/execute-write/-/analyze",
+        "/data/-/execute-write/analyze",
         actor={"id": "root"},
         params={"sql": "insert into dogs (name) values (:name)"},
     )
     read_only_response = await ds.client.get(
-        "/data/-/execute-write/-/analyze",
+        "/data/-/execute-write/analyze",
         actor={"id": "root"},
         params={"sql": "select * from dogs where name = :name"},
     )
@@ -818,19 +818,19 @@ async def test_query_parameters_endpoint_uses_get_sql_only():
     await ds.invoke_startup()
 
     response = await ds.client.get(
-        "/data/-/query/-/parameters",
+        "/data/-/query/parameters",
         actor={"id": "root"},
         params={
             "sql": "select * from dogs where name = :name and id = :id",
         },
     )
     permission_denied_response = await ds.client.get(
-        "/data/-/query/-/parameters",
+        "/data/-/query/parameters",
         actor={"id": "not-root"},
         params={"sql": "select * from dogs where name = :name"},
     )
     magic_parameter_response = await ds.client.get(
-        "/data/-/query/-/parameters",
+        "/data/-/query/parameters",
         actor={"id": "root"},
         params={"sql": "select :_actor_id"},
     )

@@ -26,7 +26,7 @@
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
 {% if allow_execute_sql %}
-    <form class="sql core" action="{{ urls.database(database) }}/-/query" method="get" data-parameters-url="{{ urls.database(database) }}/-/query/-/parameters">
+    <form class="sql core" action="{{ urls.database(database) }}/-/query" method="get" data-parameters-url="{{ urls.database(database) }}/-/query/parameters">
         <h3>Custom SQL query</h3>
         <p class="sql-editor"><textarea id="sql-editor" name="sql">{% if tables %}select * from {{ tables[0].name|escape_sqlite }}{% else %}select sqlite_version(){% endif %}</textarea></p>
         {% set parameter_names = [] %}

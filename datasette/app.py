@@ -2745,11 +2745,11 @@ class Datasette:
         )
         add_route(
             QueryInsertView.as_view(self),
-            r"/(?P<database>[^\/\.]+)/-/queries/-/insert$",
+            r"/(?P<database>[^\/\.]+)/-/queries/insert$",
         )
         add_route(
             ExecuteWriteAnalyzeView.as_view(self),
-            r"/(?P<database>[^\/\.]+)/-/execute-write/-/analyze$",
+            r"/(?P<database>[^\/\.]+)/-/execute-write/analyze$",
         )
         add_route(
             ExecuteWriteView.as_view(self),
@@ -2761,7 +2761,7 @@ class Datasette:
         )
         add_route(
             QueryParametersView.as_view(self),
-            r"/(?P<database>[^\/\.]+)/-/query/-/parameters$",
+            r"/(?P<database>[^\/\.]+)/-/query/parameters$",
         )
         add_route(
             wrap_view(QueryView, self),

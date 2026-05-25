@@ -525,7 +525,7 @@ Creating saved queries in the UI
 Creating saved queries
 ~~~~~~~~~~~~~~~~~~~~~~
 
-``POST /<database>/-/queries/-/insert`` creates a saved query. This requires ``execute-sql`` and ``insert-query`` for the database.
+``POST /<database>/-/queries/insert`` creates a saved query. This requires ``execute-sql`` and ``insert-query`` for the database.
 
 .. _QueryParametersView:
 .. _ExecuteWriteView:
@@ -534,13 +534,13 @@ Creating saved queries
 Executing write SQL
 ~~~~~~~~~~~~~~~~~~~
 
-``GET /<database>/-/query/-/parameters?sql=...`` returns the named parameters used by a SQL query. This requires ``execute-sql`` for the database.
+``GET /<database>/-/query/parameters?sql=...`` returns the named parameters used by a SQL query. This requires ``execute-sql`` for the database.
 
 ``GET /<database>/-/execute-write`` displays a form for executing writable SQL. A ``?sql=`` query string pre-populates the form without executing it.
 
 ``POST /<database>/-/execute-write`` executes writable SQL. This requires ``execute-write-sql`` for the database plus the relevant table-level write permissions.
 
-``GET /<database>/-/execute-write/-/analyze?sql=...`` returns the derived parameters plus the write operations that SQL would need in order to execute.
+``GET /<database>/-/execute-write/analyze?sql=...`` returns the derived parameters plus the write operations that SQL would need in order to execute.
 
 .. _QueryDefinitionView:
 

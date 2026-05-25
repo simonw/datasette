@@ -95,7 +95,7 @@
     <p class="{% if execution_ok %}message-info{% else %}message-error{% endif %}">{{ execution_message }}{% for link in execution_links %} <a href="{{ link.href }}">{{ link.label }}</a>{% endfor %}</p>
 {% endif %}
 
-<form class="sql core" action="{{ urls.database(database) }}/-/execute-write" method="post" data-analyze-url="{{ urls.database(database) }}/-/execute-write/-/analyze">
+<form class="sql core" action="{{ urls.database(database) }}/-/execute-write" method="post" data-analyze-url="{{ urls.database(database) }}/-/execute-write/analyze">
     {% if write_template_tables %}
         <div class="execute-write-template-menu">
             <details>

@@ -211,7 +211,7 @@ JSON endpoints should follow Datasette's existing write API style: use `POST` pl
 Endpoints:
 
 - `GET /-/queries` and `GET /{database}/-/queries` show searchable HTML query browsers. `GET /-/queries.json` lists query definitions across every database the actor can view; `GET /{database}/-/queries.json` scopes that list to one database. Both JSON endpoints use cursor pagination with `_next` and `_size`.
-- `POST /{database}/-/queries/-/insert` creates a query.
+- `POST /{database}/-/queries/insert` creates a query.
 - `GET /{database}/{query}/-/definition` returns one query definition without executing it.
 - `POST /{database}/{query}/-/update` updates one query.
 - `POST /{database}/{query}/-/delete` deletes one query.
@@ -388,7 +388,7 @@ The read methods should reconstruct the existing dictionary shape used by query 
 
 On `/{database}/-/query`, if the actor has both `execute-sql` and `insert-query`, show a save control for valid read-only SQL. That page already executes read-only arbitrary SQL, so the first UI can stay read-only even though the JSON API can accept writable SQL after `Database.analyze_sql()` validation.
 
-The save form should call `POST /{database}/-/queries/-/insert` and default to `is_published=false`.
+The save form should call `POST /{database}/-/queries/insert` and default to `is_published=false`.
 
 If the actor also has `publish-query`, include a publish control. The UI copy should make it clear that publishing allows people without arbitrary SQL permission to run this query.
 

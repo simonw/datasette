@@ -329,7 +329,7 @@ async def test_query_parameter_form_fields(ds_client):
         '<label for="qp1">name</label> <input type="text" id="qp1" name="name" value="" data-parameter-control>'
         in response.text
     )
-    assert 'data-parameters-url="/fixtures/-/query/-/parameters"' in response.text
+    assert 'data-parameters-url="/fixtures/-/query/parameters"' in response.text
     assert 'id="sql-parameters-section"' in response.text
     assert "setupSqlParameterRefresh" in response.text
     response2 = await ds_client.get("/fixtures/-/query?sql=select+:name&name=hello")
@@ -344,7 +344,7 @@ async def test_query_parameter_form_fields(ds_client):
 async def test_database_page_sql_parameter_refresh_markup(ds_client):
     response = await ds_client.get("/fixtures")
     assert response.status_code == 200
-    assert 'data-parameters-url="/fixtures/-/query/-/parameters"' in response.text
+    assert 'data-parameters-url="/fixtures/-/query/parameters"' in response.text
     assert 'id="sql-parameters-section"' in response.text
     assert "setupSqlParameterRefresh" in response.text
 

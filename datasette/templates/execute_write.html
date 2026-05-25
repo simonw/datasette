@@ -8,6 +8,7 @@
 <style>
 .execute-write-template-menu {
     margin: 0.9rem 0 0.8rem;
+    max-width: 52rem;
 }
 .execute-write-template-menu summary {
     cursor: pointer;
@@ -77,21 +78,56 @@
 form.sql .execute-write-parameter-row textarea[data-parameter-control] {
     border: 1px solid #ccc;
     border-radius: 3px;
-    box-sizing: content-box;
-    display: inline-block;
+    box-sizing: border-box;
+    display: block;
     font-family: Helvetica, sans-serif;
     font-size: 1em;
     min-height: 7rem;
     padding: 9px 4px;
-    vertical-align: top;
-    width: 60%;
+    width: 100%;
+}
+form.sql .execute-write-parameter-row {
+    align-items: start;
+    column-gap: 0.6rem;
+    display: grid;
+    grid-template-columns: minmax(8rem, 11rem) minmax(16rem, 1fr) auto;
+    margin: 0 0 0.65rem;
+    max-width: 52rem;
+}
+form.sql .execute-write-parameter-row label {
+    overflow-wrap: anywhere;
+    padding-top: 0.55rem;
+    width: auto;
+}
+form.sql .execute-write-parameter-row input[data-parameter-control] {
+    box-sizing: border-box;
+    width: 100%;
 }
 form.sql.core button.execute-write-parameter-toggle[type=button] {
     font-size: 0.72rem;
     height: 1.8rem;
     line-height: 1;
-    margin-left: 0.35rem;
+    margin: 0.25rem 0 0;
     padding: 0.25rem 0.45rem;
+}
+@media (max-width: 480px) {
+    form.sql .execute-write-parameter-row {
+        grid-template-columns: 1fr;
+        row-gap: 0.25rem;
+    }
+    form.sql .execute-write-parameter-row label {
+        padding-top: 0;
+    }
+    form.sql.core button.execute-write-parameter-toggle[type=button] {
+        justify-self: start;
+        margin-top: 0;
+    }
+}
+form.sql .execute-write-editor {
+    max-width: 52rem;
+}
+form.sql .execute-write-editor textarea#sql-editor {
+    width: 100%;
 }
 </style>
 {% endblock %}
@@ -132,7 +168,7 @@ form.sql.core button.execute-write-parameter-toggle[type=button] {
         </div>
     {% endif %}
 
-    <p><textarea id="sql-editor" name="sql"{% if sql %} style="height: {{ sql.split("\n")|length + 2 }}em"{% endif %}>{{ sql }}</textarea></p>
+    <p class="execute-write-editor"><textarea id="sql-editor" name="sql"{% if sql %} style="height: {{ sql.split("\n")|length + 2 }}em"{% endif %}>{{ sql }}</textarea></p>
 
     {% if parameter_names %}
         <h2>Parameters</h2>

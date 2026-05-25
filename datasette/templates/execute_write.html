@@ -148,7 +148,7 @@ form.sql .execute-write-editor textarea#sql-editor {
     <p class="{% if execution_ok %}message-info{% else %}message-error{% endif %}">{{ execution_message }}{% for link in execution_links %} <a href="{{ link.href }}">{{ link.label }}</a>{% endfor %}</p>
 {% endif %}
 
-<form class="sql core" action="{{ urls.database(database) }}/-/execute-write" method="post">
+<form class="sql core" action="{{ urls.database(database) }}/-/execute-write" method="post" data-analyze-url="{{ urls.database(database) }}/-/execute-write/-/analyze">
     {% if write_template_tables %}
         <div class="execute-write-template-menu">
             <details>
@@ -170,44 +170,48 @@ form.sql .execute-write-editor textarea#sql-editor {
 
     <p class="execute-write-editor"><textarea id="sql-editor" name="sql"{% if sql %} style="height: {{ sql.split("\n")|length + 2 }}em"{% endif %}>{{ sql }}</textarea></p>
 
-    {% if parameter_names %}
-        <h2>Parameters</h2>
-        {% for parameter in parameter_names %}
-            <p class="execute-write-parameter-row"><label for="qp{{ loop.index }}">{{ parameter }}</label> <input type="text" id="qp{{ loop.index }}" name="{{ parameter }}" value="{{ parameter_values.get(parameter, "") }}" data-parameter-control> <button type="button" class="execute-write-parameter-toggle" data-parameter-toggle aria-controls="qp{{ loop.index }}" aria-expanded="false">Expand</button></p>
-        {% endfor %}
-    {% endif %}
+    <div id="execute-write-parameters-section">
+        {% if parameter_names %}
+            <h2>Parameters</h2>
+            {% for parameter in parameter_names %}
+                <p class="execute-write-parameter-row"><label for="qp{{ loop.index }}">{{ parameter }}</label> <input type="text" id="qp{{ loop.index }}" name="{{ parameter }}" value="{{ parameter_values.get(parameter, "") }}" data-parameter-control> <button type="button" class="execute-write-parameter-toggle" data-parameter-toggle aria-controls="qp{{ loop.index }}" aria-expanded="false">Expand</button></p>
+            {% endfor %}
+        {% endif %}
+    </div>
 
-    <h2>Query operations</h2>
-    {% if analysis_error %}
-        <p class="message-error">{{ analysis_error }}</p>
-    {% elif analysis_rows %}
-        <div class="table-wrapper"><table class="execute-write-analysis">
-            <thead>
-                <tr>
-                    <th scope="col">Operation</th>
-                    <th scope="col">Database</th>
-                    <th scope="col">Table</th>
-                    <th scope="col">Required permission</th>
-                    <th scope="col">Allowed</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in analysis_rows %}
+    <div id="execute-write-analysis-section">
+        <h2>Query operations</h2>
+        {% if analysis_error %}
+            <p class="message-error">{{ analysis_error }}</p>
+        {% elif analysis_rows %}
+            <div class="table-wrapper"><table class="execute-write-analysis">
+                <thead>
                     <tr>
-                        <td><code>{{ row.operation }}</code></td>
-                        <td><code>{{ row.database }}</code></td>
-                        <td><code>{{ row.table }}</code></td>
-                        <td>{% if row.required_permission %}<code>{{ row.required_permission }}</code>{% endif %}</td>
-                        <td>{% if row.allowed is none %}{% elif row.allowed %}<span class="execute-write-analysis-allowed">yes</span>{% else %}<span class="execute-write-analysis-denied">no</span>{% endif %}</td>
+                        <th scope="col">Operation</th>
+                        <th scope="col">Database</th>
+                        <th scope="col">Table</th>
+                        <th scope="col">Required permission</th>
+                        <th scope="col">Allowed</th>
                     </tr>
-                {% endfor %}
-            </tbody>
-        </table></div>
-    {% else %}
-        <p>Analysis will show each affected table and required permission.</p>
-    {% endif %}
+                </thead>
+                <tbody>
+                    {% for row in analysis_rows %}
+                        <tr>
+                            <td><code>{{ row.operation }}</code></td>
+                            <td><code>{{ row.database }}</code></td>
+                            <td><code>{{ row.table }}</code></td>
+                            <td>{% if row.required_permission %}<code>{{ row.required_permission }}</code>{% endif %}</td>
+                            <td>{% if row.allowed is none %}{% elif row.allowed %}<span class="execute-write-analysis-allowed">yes</span>{% else %}<span class="execute-write-analysis-denied">no</span>{% endif %}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table></div>
+        {% else %}
+            <p>Analysis will show each affected table and required permission.</p>
+        {% endif %}
+    </div>
 
-    <p><input type="submit" value="Execute"{% if execute_disabled %} disabled{% endif %}></p>
+    <p><input type="submit" value="Execute" data-execute-write-submit{% if execute_disabled %} disabled{% endif %}></p>
 </form>
 
 <script>
@@ -221,6 +225,40 @@ if (executeWriteSqlInput && !executeWriteSqlInput.value) {
 
 <script>
 window.addEventListener("DOMContentLoaded", () => {
+  const form = document.querySelector("form.sql.core");
+  const parametersSection = document.querySelector(
+    "#execute-write-parameters-section"
+  );
+  const analysisSection = document.querySelector("#execute-write-analysis-section");
+  const submitButton = form
+    ? form.querySelector("[data-execute-write-submit]")
+    : null;
+  const sqlInput = document.querySelector("textarea#sql-editor");
+  let parameterState = new Map();
+  let refreshTimer = null;
+  let refreshSequence = 0;
+
+  function currentSql() {
+    if (window.editor) {
+      return window.editor.state.doc.toString();
+    }
+    return sqlInput ? sqlInput.value : "";
+  }
+
+  function controlState(control) {
+    return {
+      value: control.value,
+      expanded: control.tagName.toLowerCase() === "textarea",
+    };
+  }
+
+  function syncParameterState() {
+    parameterState = new Map();
+    document.querySelectorAll("[data-parameter-control]").forEach((control) => {
+      parameterState.set(control.name, controlState(control));
+    });
+  }
+
   function replaceParameterControl(control, button, expand, value, selectionStart) {
     const replacement = document.createElement(expand ? "textarea" : "input");
     replacement.id = control.id;
@@ -241,54 +279,290 @@ window.addEventListener("DOMContentLoaded", () => {
     if (selectionStart !== undefined && replacement.setSelectionRange) {
       replacement.setSelectionRange(selectionStart, selectionStart);
     }
+    parameterState.set(replacement.name, controlState(replacement));
   }
 
-  document.querySelectorAll("[data-parameter-toggle]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const control = document.getElementById(button.getAttribute("aria-controls"));
-      if (!control) {
+  function createControl(parameter, id, state) {
+    const control = document.createElement(state.expanded ? "textarea" : "input");
+    control.id = id;
+    control.name = parameter;
+    control.value = state.value;
+    control.setAttribute("data-parameter-control", "");
+    if (state.expanded) {
+      control.rows = 5;
+    } else {
+      control.type = "text";
+    }
+    return control;
+  }
+
+  function renderExecuteWriteParameters(parameters) {
+    if (!parametersSection) {
+      return;
+    }
+    syncParameterState();
+    const previousState = parameterState;
+    const nextState = new Map();
+    parametersSection.replaceChildren();
+    if (!parameters.length) {
+      parameterState = nextState;
+      return;
+    }
+
+    const heading = document.createElement("h2");
+    heading.textContent = "Parameters";
+    parametersSection.appendChild(heading);
+
+    parameters.forEach((parameter, index) => {
+      const id = `qp${index + 1}`;
+      const state = previousState.get(parameter) || {
+        value: "",
+        expanded: false,
+      };
+      nextState.set(parameter, state);
+
+      const row = document.createElement("p");
+      row.className = "execute-write-parameter-row";
+
+      const label = document.createElement("label");
+      label.htmlFor = id;
+      label.textContent = parameter;
+
+      const control = createControl(parameter, id, state);
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "execute-write-parameter-toggle";
+      button.setAttribute("data-parameter-toggle", "");
+      button.setAttribute("aria-controls", id);
+      button.setAttribute("aria-expanded", state.expanded ? "true" : "false");
+      button.textContent = state.expanded ? "Collapse" : "Expand";
+
+      row.append(label, control, button);
+      parametersSection.appendChild(row);
+    });
+
+    parameterState = nextState;
+  }
+
+  function appendCodeCell(row, value) {
+    const cell = document.createElement("td");
+    if (value) {
+      const code = document.createElement("code");
+      code.textContent = value;
+      cell.appendChild(code);
+    }
+    row.appendChild(cell);
+  }
+
+  function renderExecuteWriteAnalysis(data) {
+    if (!analysisSection) {
+      return;
+    }
+    analysisSection.replaceChildren();
+
+    const heading = document.createElement("h2");
+    heading.textContent = "Query operations";
+    analysisSection.appendChild(heading);
+
+    if (data.analysis_error) {
+      const error = document.createElement("p");
+      error.className = "message-error";
+      error.textContent = data.analysis_error;
+      analysisSection.appendChild(error);
+      return;
+    }
+
+    const rows = data.analysis_rows || [];
+    if (!rows.length) {
+      const empty = document.createElement("p");
+      empty.textContent =
+        "Analysis will show each affected table and required permission.";
+      analysisSection.appendChild(empty);
+      return;
+    }
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "table-wrapper";
+    const table = document.createElement("table");
+    table.className = "execute-write-analysis";
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    [
+      "Operation",
+      "Database",
+      "Table",
+      "Required permission",
+      "Allowed",
+    ].forEach((label) => {
+      const th = document.createElement("th");
+      th.scope = "col";
+      th.textContent = label;
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    rows.forEach((analysisRow) => {
+      const row = document.createElement("tr");
+      appendCodeCell(row, analysisRow.operation);
+      appendCodeCell(row, analysisRow.database);
+      appendCodeCell(row, analysisRow.table);
+      appendCodeCell(row, analysisRow.required_permission);
+
+      const allowedCell = document.createElement("td");
+      if (analysisRow.allowed !== null && analysisRow.allowed !== undefined) {
+        const allowed = document.createElement("span");
+        allowed.className = analysisRow.allowed
+          ? "execute-write-analysis-allowed"
+          : "execute-write-analysis-denied";
+        allowed.textContent = analysisRow.allowed ? "yes" : "no";
+        allowedCell.appendChild(allowed);
+      }
+      row.appendChild(allowedCell);
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+    wrapper.appendChild(table);
+    analysisSection.appendChild(wrapper);
+  }
+
+  async function refreshExecuteWriteAnalysis() {
+    if (!form || !form.dataset.analyzeUrl) {
+      return;
+    }
+    const sequence = ++refreshSequence;
+    try {
+      const response = await fetch(form.dataset.analyzeUrl, {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ sql: currentSql() }),
+      });
+      const data = await response.json();
+      if (sequence !== refreshSequence) {
         return;
       }
-      const expanded = control.tagName.toLowerCase() === "textarea";
-      replaceParameterControl(control, button, !expanded);
-    });
+      if (!response.ok) {
+        throw new Error((data.errors || [response.statusText]).join("; "));
+      }
+      renderExecuteWriteParameters(data.parameters || []);
+      renderExecuteWriteAnalysis(data);
+      if (submitButton) {
+        submitButton.disabled = data.execute_disabled;
+      }
+    } catch (error) {
+      if (sequence !== refreshSequence) {
+        return;
+      }
+      renderExecuteWriteAnalysis({
+        analysis_error: error.message,
+        analysis_rows: [],
+      });
+      if (submitButton) {
+        submitButton.disabled = true;
+      }
+    }
+  }
+
+  function scheduleExecuteWriteAnalysisRefresh() {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(refreshExecuteWriteAnalysis, 350);
+  }
+
+  function wrapEditorDispatch() {
+    if (!window.editor || window.editor.executeWriteRefreshWrapped) {
+      return false;
+    }
+    const editor = window.editor;
+    const originalDispatch = editor.dispatch.bind(editor);
+    editor.dispatch = (...transactions) => {
+      const before = editor.state.doc.toString();
+      originalDispatch(...transactions);
+      if (editor.state.doc.toString() !== before) {
+        scheduleExecuteWriteAnalysisRefresh();
+      }
+    };
+    editor.executeWriteRefreshWrapped = true;
+    return true;
+  }
+
+  if (!wrapEditorDispatch()) {
+    setTimeout(wrapEditorDispatch, 0);
+  }
+
+  const editorElement = document.querySelector(".execute-write-editor .cm-content");
+  if (editorElement) {
+    editorElement.addEventListener("input", scheduleExecuteWriteAnalysisRefresh);
+  } else if (sqlInput) {
+    sqlInput.addEventListener("input", scheduleExecuteWriteAnalysisRefresh);
+  }
+
+  if (!form) {
+    return;
+  }
+
+  form.addEventListener("click", (event) => {
+    const button = event.target.closest
+      ? event.target.closest("[data-parameter-toggle]")
+      : null;
+    if (!button || !form.contains(button)) {
+      return;
+    }
+    const control = document.getElementById(button.getAttribute("aria-controls"));
+    if (!control) {
+      return;
+    }
+    const expanded = control.tagName.toLowerCase() === "textarea";
+    replaceParameterControl(control, button, !expanded);
   });
 
-  document
-    .querySelector("form.sql.core")
-    .addEventListener("paste", (event) => {
-      const control = event.target;
-      if (
-        !(control instanceof HTMLInputElement) ||
-        !control.matches("[data-parameter-control]")
-      ) {
-        return;
-      }
-      const pasted = event.clipboardData ? event.clipboardData.getData("text") : "";
-      if (!/[\r\n]/.test(pasted)) {
-        return;
-      }
-      const button = document.querySelector(
-        `[data-parameter-toggle][aria-controls="${control.id}"]`
-      );
-      if (!button) {
-        return;
-      }
-      event.preventDefault();
-      const selectionStart = control.selectionStart ?? control.value.length;
-      const selectionEnd = control.selectionEnd ?? selectionStart;
-      const value =
-        control.value.slice(0, selectionStart) +
-        pasted +
-        control.value.slice(selectionEnd);
-      replaceParameterControl(
-        control,
-        button,
-        true,
-        value,
-        selectionStart + pasted.length
-      );
-    });
+  form.addEventListener("input", (event) => {
+    const control = event.target;
+    if (!control.matches || !control.matches("[data-parameter-control]")) {
+      return;
+    }
+    parameterState.set(control.name, controlState(control));
+  });
+
+  form.addEventListener("paste", (event) => {
+    const control = event.target;
+    if (
+      !(control instanceof HTMLInputElement) ||
+      !control.matches("[data-parameter-control]")
+    ) {
+      return;
+    }
+    const pasted = event.clipboardData ? event.clipboardData.getData("text") : "";
+    if (!/[\r\n]/.test(pasted)) {
+      return;
+    }
+    const button = document.querySelector(
+      `[data-parameter-toggle][aria-controls="${control.id}"]`
+    );
+    if (!button) {
+      return;
+    }
+    event.preventDefault();
+    const selectionStart = control.selectionStart ?? control.value.length;
+    const selectionEnd = control.selectionEnd ?? selectionStart;
+    const value =
+      control.value.slice(0, selectionStart) +
+      pasted +
+      control.value.slice(selectionEnd);
+    replaceParameterControl(
+      control,
+      button,
+      true,
+      value,
+      selectionStart + pasted.length
+    );
+  });
+
+  syncParameterState();
 });
 </script>
 

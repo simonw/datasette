@@ -46,6 +46,7 @@ from .views import Context
 from .views.database import (
     database_download,
     DatabaseView,
+    ExecuteWriteAnalyzeView,
     ExecuteWriteView,
     TableCreateView,
     QueryView,
@@ -2744,6 +2745,10 @@ class Datasette:
         add_route(
             QueryInsertView.as_view(self),
             r"/(?P<database>[^\/\.]+)/-/queries/-/insert$",
+        )
+        add_route(
+            ExecuteWriteAnalyzeView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/execute-write/-/analyze$",
         )
         add_route(
             ExecuteWriteView.as_view(self),

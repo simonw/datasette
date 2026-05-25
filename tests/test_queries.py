@@ -719,7 +719,9 @@ async def test_execute_write_get_prepopulates_without_executing():
     assert 'data-sql-template="insert"' in response.text
     assert 'data-sql-template="update"' in response.text
     assert 'data-sql-template="delete"' in response.text
+    assert 'data-analyze-url="/data/-/execute-write/-/analyze"' in response.text
     assert 'addEventListener("paste"' in response.text
+    assert "refreshExecuteWriteAnalysis" in response.text
     assert '<table class="execute-write-analysis">' in response.text
     assert '<th scope="col">Required permission</th>' in response.text
     assert "<td><code>insert</code></td>" in response.text
@@ -735,6 +737,53 @@ async def test_execute_write_get_prepopulates_without_executing():
     )
     assert '<textarea id="sql-editor" name="sql"></textarea>' in empty_response.text
     assert 'executeWriteSqlInput.value = "\\n\\n\\n";' in empty_response.text
+
+
+@pytest.mark.asyncio
+async def test_execute_write_analyze_endpoint_uses_sql_only():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_analyze", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/data/-/execute-write/-/analyze",
+        actor={"id": "root"},
+        json={"sql": "insert into dogs (name) values (:name)"},
+    )
+    read_only_response = await ds.client.post(
+        "/data/-/execute-write/-/analyze",
+        actor={"id": "root"},
+        json={"sql": "select * from dogs where name = :name"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["parameters"] == ["name"]
+    assert data["analysis_error"] is None
+    assert data["execute_disabled"] is False
+    assert data["analysis_rows"] == [
+        {
+            "operation": "insert",
+            "database": "data",
+            "table": "dogs",
+            "required_permission": "insert-row",
+            "source": None,
+            "allowed": True,
+        }
+    ]
+    assert "params" not in data
+
+    assert read_only_response.status_code == 200
+    read_only_data = read_only_response.json()
+    assert read_only_data["ok"] is False
+    assert read_only_data["parameters"] == ["name"]
+    assert read_only_data["analysis_error"] == (
+        "Use /-/query for read-only SQL; this endpoint only executes writes"
+    )
+    assert read_only_data["execute_disabled"] is True
 
 
 @pytest.mark.asyncio

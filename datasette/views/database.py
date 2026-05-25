@@ -680,6 +680,39 @@ async def _prepare_execute_write(datasette, db, sql, params, actor):
     return parameter_names, params, analysis
 
 
+async def _execute_write_analysis_data(datasette, db, sql, actor):
+    parameter_names = []
+    analysis_rows = []
+    analysis_error = None
+    if sql:
+        try:
+            parameter_names = _derived_query_parameters(sql)
+            params = {parameter: "" for parameter in parameter_names}
+            analysis = await db.analyze_sql(sql, params)
+            if _analysis_is_write(analysis):
+                analysis_rows = await _analysis_rows_with_permissions(
+                    datasette, analysis, actor
+                )
+            else:
+                analysis_error = (
+                    "Use /-/query for read-only SQL; "
+                    "this endpoint only executes writes"
+                )
+        except (QueryValidationError, sqlite3.DatabaseError) as ex:
+            analysis_error = getattr(ex, "message", str(ex))
+    return {
+        "ok": analysis_error is None,
+        "parameters": parameter_names,
+        "analysis_error": analysis_error,
+        "analysis_rows": [row for row in analysis_rows if row["operation"] != "read"],
+        "execute_disabled": bool(
+            (not sql)
+            or analysis_error
+            or any(row["allowed"] is False for row in analysis_rows)
+        ),
+    }
+
+
 async def _inserted_row_url(datasette, db, analysis, cursor):
     if cursor.rowcount != 1:
         return None
@@ -1021,6 +1054,45 @@ class ExecuteWriteView(BaseView):
             execution_message=message,
             execution_links=execution_links,
             execution_ok=True,
+        )
+
+
+class ExecuteWriteAnalyzeView(BaseView):
+    name = "execute-write-analyze"
+    has_json_alternate = False
+
+    async def post(self, request):
+        db = await self.ds.resolve_database(request)
+        if not await self.ds.allowed(
+            action="execute-write-sql",
+            resource=DatabaseResource(db.name),
+            actor=request.actor,
+        ):
+            return _block_framing(
+                _error(["Permission denied: need execute-write-sql"], 403)
+            )
+
+        try:
+            data, _ = await _json_or_form_payload(request)
+        except QueryValidationError as ex:
+            return _block_framing(_error([ex.message], ex.status))
+        if not isinstance(data, dict):
+            return _block_framing(_error(["JSON must be a dictionary"], 400))
+        invalid_keys = set(data) - {"sql"}
+        if invalid_keys:
+            return _block_framing(
+                _error(
+                    ["Invalid keys: {}".format(", ".join(sorted(invalid_keys)))],
+                    400,
+                )
+            )
+        sql = data.get("sql") or ""
+        if not isinstance(sql, str):
+            return _block_framing(_error(["sql must be a string"], 400))
+        return _block_framing(
+            Response.json(
+                await _execute_write_analysis_data(self.ds, db, sql, request.actor)
+            )
         )
 
 

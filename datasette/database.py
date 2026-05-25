@@ -25,6 +25,7 @@ from .utils import (
     table_columns,
     table_column_details,
 )
+from .utils.sql_analysis import SQLAnalysis, analyze_sql_tables
 from .utils.sqlite import sqlite_version
 from .inspect import inspect_hash
 
@@ -300,6 +301,13 @@ class Database:
         else:
             # Threaded mode - send to write thread
             return await self._send_to_write_thread(fn, isolated_connection=True)
+
+    async def analyze_sql(self, sql, params=None) -> SQLAnalysis:
+        self._check_not_closed()
+
+        return await self.execute_isolated_fn(
+            lambda conn: analyze_sql_tables(conn, sql, params, database_name=self.name)
+        )
 
     async def execute_write_fn(self, fn, block=True, transaction=True, request=None):
         self._check_not_closed()

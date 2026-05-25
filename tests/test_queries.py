@@ -2,6 +2,7 @@ import pytest
 
 from datasette.app import Datasette
 from datasette.resources import DatabaseResource, QueryResource
+from datasette.utils.asgi import Forbidden
 
 
 @pytest.mark.asyncio
@@ -206,3 +207,75 @@ async def test_unpublished_query_requires_execute_sql_but_published_does_not():
         resource=QueryResource("data", "published"),
         actor=None,
     )
+
+
+@pytest.mark.asyncio
+async def test_query_actions_are_registered():
+    ds = Datasette()
+    await ds.invoke_startup()
+
+    assert ds.get_action("insert-query").resource_class is DatabaseResource
+    assert ds.get_action("publish-query").resource_class is DatabaseResource
+    assert ds.get_action("update-query").resource_class is QueryResource
+    assert ds.get_action("delete-query").resource_class is QueryResource
+
+
+@pytest.mark.asyncio
+async def test_analyze_write_query_requires_table_permissions():
+    ds = Datasette(memory=True, default_deny=True)
+    db = ds.add_memory_database("query_write_permissions", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    actor = {"id": "writer"}
+    await ds.add_query(
+        "data",
+        "write_dog",
+        "insert into dogs (name) values (:name)",
+        is_write=True,
+        source="user",
+        owner_id="writer",
+    )
+
+    with pytest.raises(Forbidden):
+        await ds.ensure_query_write_permissions(
+            "data",
+            "insert into dogs (name) values (:name)",
+            actor=actor,
+        )
+
+    ds.config = {
+        "databases": {
+            "data": {
+                "tables": {
+                    "dogs": {
+                        "permissions": {
+                            "insert-row": {"id": "writer"},
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    await ds.ensure_query_write_permissions(
+        "data",
+        "insert into dogs (name) values (:name)",
+        actor=actor,
+    )
+
+
+@pytest.mark.asyncio
+async def test_analyze_write_query_rejects_writes_to_attached_databases():
+    ds = Datasette(memory=True, default_deny=True)
+    db = ds.add_memory_database("query_attached_writes", name="data")
+    await db.execute_write("attach database ':memory:' as extra")
+    await db.execute_write("create table extra.cats (id integer primary key)")
+    await ds.invoke_startup()
+
+    with pytest.raises(Forbidden):
+        await ds.ensure_query_write_permissions(
+            "data",
+            "insert into extra.cats (id) values (1)",
+            actor={"id": "writer"},
+        )

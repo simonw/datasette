@@ -54,6 +54,20 @@ def register_actions():
             description="Create tables",
             resource_class=DatabaseResource,
         ),
+        Action(
+            name="insert-query",
+            abbr="iq",
+            description="Create saved queries",
+            resource_class=DatabaseResource,
+            also_requires="execute-sql",
+        ),
+        Action(
+            name="publish-query",
+            abbr="pq",
+            description="Publish saved queries for actors without execute-sql",
+            resource_class=DatabaseResource,
+            also_requires="insert-query",
+        ),
         # Table-level actions (child-level)
         Action(
             name="view-table",
@@ -102,6 +116,18 @@ def register_actions():
             name="view-query",
             abbr="vq",
             description="View named query results",
+            resource_class=QueryResource,
+        ),
+        Action(
+            name="update-query",
+            abbr="uq",
+            description="Update saved queries",
+            resource_class=QueryResource,
+        ),
+        Action(
+            name="delete-query",
+            abbr="dq",
+            description="Delete saved queries",
             resource_class=QueryResource,
         ),
     )

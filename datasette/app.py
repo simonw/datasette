@@ -93,6 +93,7 @@ from .utils import (
     module_from_path,
     move_plugins_and_allow,
     move_table_config,
+    named_parameters,
     parse_metadata,
     resolve_env_secrets,
     resolve_routes,
@@ -1236,6 +1237,35 @@ class Datasette:
             [database],
         )
         return {row["name"]: self._query_row_to_dict(row) for row in rows}
+
+    async def ensure_query_write_permissions(self, database, sql, *, actor=None):
+        write_actions = {
+            "insert": "insert-row",
+            "update": "update-row",
+            "delete": "delete-row",
+        }
+        db = self.get_database(database)
+        params = {name: "" for name in named_parameters(sql)}
+        try:
+            analysis = await db.analyze_sql(sql, params)
+        except sqlite3.DatabaseError as ex:
+            raise Forbidden(f"Could not analyze query: {ex}") from ex
+
+        for access in analysis.table_accesses:
+            action = write_actions.get(access.operation)
+            if action is None:
+                continue
+            if access.database != database:
+                raise Forbidden("Writable queries may not write to attached databases")
+            if not await self.allowed(
+                action=action,
+                resource=TableResource(database=access.database, table=access.table),
+                actor=actor,
+            ):
+                raise Forbidden(
+                    f"Permission denied: need {action} on {access.database}/{access.table}"
+                )
+        return analysis
 
     # Column types API
 

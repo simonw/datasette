@@ -268,6 +268,7 @@ DEFAULT_SETTINGS = {option.name: option.default for option in SETTINGS}
 FAVICON_PATH = app_root / "datasette" / "static" / "favicon.png"
 
 DEFAULT_NOT_SET = object()
+UNCHANGED = object()
 
 
 ResourcesSQL = collections.namedtuple("ResourcesSQL", ("sql", "params"))
@@ -1006,6 +1007,205 @@ class Datasette:
             """,
             [database_name, resource_name, column_name, key, value],
         )
+
+    @staticmethod
+    def _query_row_to_dict(row):
+        if row is None:
+            return None
+        parameters = json.loads(row["parameters"] or "[]")
+        is_write = bool(row["is_write"])
+        return {
+            "database": row["database_name"],
+            "name": row["name"],
+            "sql": row["sql"],
+            "title": row["title"],
+            "description": row["description"],
+            "description_html": row["description_html"],
+            "hide_sql": bool(row["hide_sql"]),
+            "fragment": row["fragment"],
+            "params": parameters,
+            "parameters": parameters,
+            "is_write": is_write,
+            "write": is_write,
+            "published": bool(row["published"]),
+            "source": row["source"],
+            "owner_id": row["owner_id"],
+            "on_success_message": row["on_success_message"],
+            "on_success_message_sql": row["on_success_message_sql"],
+            "on_success_redirect": row["on_success_redirect"],
+            "on_error_message": row["on_error_message"],
+            "on_error_redirect": row["on_error_redirect"],
+        }
+
+    async def add_query(
+        self,
+        database,
+        name,
+        sql,
+        *,
+        title=None,
+        description=None,
+        description_html=None,
+        hide_sql=False,
+        fragment=None,
+        parameters=None,
+        is_write=False,
+        published=False,
+        source="plugin",
+        owner_id=None,
+        on_success_message=None,
+        on_success_message_sql=None,
+        on_success_redirect=None,
+        on_error_message=None,
+        on_error_redirect=None,
+        replace=True,
+    ):
+        parameters_json = json.dumps(list(parameters or []))
+        sql_statement = """
+            INSERT INTO queries (
+                database_name, name, sql, title, description, description_html,
+                hide_sql, fragment, parameters, is_write, published, source,
+                owner_id, on_success_message, on_success_message_sql,
+                on_success_redirect, on_error_message, on_error_redirect
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        if replace:
+            sql_statement += """
+                ON CONFLICT(database_name, name) DO UPDATE SET
+                    sql = excluded.sql,
+                    title = excluded.title,
+                    description = excluded.description,
+                    description_html = excluded.description_html,
+                    hide_sql = excluded.hide_sql,
+                    fragment = excluded.fragment,
+                    parameters = excluded.parameters,
+                    is_write = excluded.is_write,
+                    published = excluded.published,
+                    source = excluded.source,
+                    owner_id = excluded.owner_id,
+                    on_success_message = excluded.on_success_message,
+                    on_success_message_sql = excluded.on_success_message_sql,
+                    on_success_redirect = excluded.on_success_redirect,
+                    on_error_message = excluded.on_error_message,
+                    on_error_redirect = excluded.on_error_redirect,
+                    updated_at = CURRENT_TIMESTAMP
+            """
+        await self.get_internal_database().execute_write(
+            sql_statement,
+            [
+                database,
+                name,
+                sql,
+                title,
+                description,
+                description_html,
+                int(bool(hide_sql)),
+                fragment,
+                parameters_json,
+                int(bool(is_write)),
+                int(bool(published)),
+                source,
+                owner_id,
+                on_success_message,
+                on_success_message_sql,
+                on_success_redirect,
+                on_error_message,
+                on_error_redirect,
+            ],
+        )
+
+    async def update_query(
+        self,
+        database,
+        name,
+        *,
+        sql=UNCHANGED,
+        title=UNCHANGED,
+        description=UNCHANGED,
+        description_html=UNCHANGED,
+        hide_sql=UNCHANGED,
+        fragment=UNCHANGED,
+        parameters=UNCHANGED,
+        is_write=UNCHANGED,
+        published=UNCHANGED,
+        source=UNCHANGED,
+        owner_id=UNCHANGED,
+        on_success_message=UNCHANGED,
+        on_success_message_sql=UNCHANGED,
+        on_success_redirect=UNCHANGED,
+        on_error_message=UNCHANGED,
+        on_error_redirect=UNCHANGED,
+    ):
+        fields = {
+            "sql": sql,
+            "title": title,
+            "description": description,
+            "description_html": description_html,
+            "hide_sql": hide_sql,
+            "fragment": fragment,
+            "parameters": parameters,
+            "is_write": is_write,
+            "published": published,
+            "source": source,
+            "owner_id": owner_id,
+            "on_success_message": on_success_message,
+            "on_success_message_sql": on_success_message_sql,
+            "on_success_redirect": on_success_redirect,
+            "on_error_message": on_error_message,
+            "on_error_redirect": on_error_redirect,
+        }
+        updates = []
+        params = []
+        for field, value in fields.items():
+            if value is UNCHANGED:
+                continue
+            if field in {"hide_sql", "is_write", "published"}:
+                value = int(bool(value))
+            elif field == "parameters":
+                value = json.dumps(list(value or []))
+            updates.append(f"{field} = ?")
+            params.append(value)
+        if not updates:
+            return
+        updates.append("updated_at = CURRENT_TIMESTAMP")
+        params.extend([database, name])
+        await self.get_internal_database().execute_write(
+            """
+            UPDATE queries
+            SET {}
+            WHERE database_name = ? AND name = ?
+            """.format(", ".join(updates)),
+            params,
+        )
+
+    async def remove_query(self, database, name, source=None):
+        sql = "DELETE FROM queries WHERE database_name = ? AND name = ?"
+        params = [database, name]
+        if source is not None:
+            sql += " AND source = ?"
+            params.append(source)
+        await self.get_internal_database().execute_write(sql, params)
+
+    async def get_query(self, database, name):
+        rows = await self.get_internal_database().execute(
+            """
+            SELECT * FROM queries
+            WHERE database_name = ? AND name = ?
+            """,
+            [database, name],
+        )
+        return self._query_row_to_dict(rows.first())
+
+    async def get_queries(self, database):
+        rows = await self.get_internal_database().execute(
+            """
+            SELECT * FROM queries
+            WHERE database_name = ?
+            ORDER BY name
+            """,
+            [database],
+        )
+        return {row["name"]: self._query_row_to_dict(row) for row in rows}
 
     # Column types API
 

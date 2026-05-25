@@ -112,6 +112,34 @@ async def initialize_metadata_tables(db):
             config TEXT,
             PRIMARY KEY (database_name, resource_name, column_name)
         );
+
+        CREATE TABLE IF NOT EXISTS queries (
+            database_name TEXT NOT NULL,
+            name TEXT NOT NULL,
+            sql TEXT NOT NULL,
+            title TEXT,
+            description TEXT,
+            description_html TEXT,
+            hide_sql INTEGER NOT NULL DEFAULT 0 CHECK (hide_sql IN (0, 1)),
+            fragment TEXT,
+            parameters TEXT NOT NULL DEFAULT '[]',
+            is_write INTEGER NOT NULL DEFAULT 0 CHECK (is_write IN (0, 1)),
+            published INTEGER NOT NULL DEFAULT 0 CHECK (published IN (0, 1)),
+            source TEXT NOT NULL DEFAULT 'user',
+            owner_id TEXT,
+            on_success_message TEXT,
+            on_success_message_sql TEXT,
+            on_success_redirect TEXT,
+            on_error_message TEXT,
+            on_error_redirect TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (database_name, name),
+            CHECK (is_write = 0 OR published = 0)
+        );
+
+        CREATE INDEX IF NOT EXISTS queries_owner_idx
+            ON queries(owner_id);
             """))
 
 

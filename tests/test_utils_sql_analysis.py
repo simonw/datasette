@@ -169,13 +169,6 @@ def test_analyze_attached_database_tables(conn):
     }
 
 
-def test_analyze_invalid_sql_cleans_up_authorizer(conn):
-    with pytest.raises(sqlite3.OperationalError):
-        analyze_sql_tables(conn, "insert into missing_table values (1)")
-
-    conn.execute("select name from dogs").fetchall()
-
-
 def test_analyze_clears_authorizer_on_error():
     class FakeConnection:
         def __init__(self):

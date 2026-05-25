@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}{{ database }}: queries{% endblock %}
+
+{% block body_class %}query-list db-{{ database|to_css_class }}{% endblock %}
+
+{% block crumbs %}
+{{ crumbs.nav(request=request, database=database) }}
+{% endblock %}
+
+{% block content %}
+
+<h1>Queries</h1>
+
+<form action="{{ urls.database(database) }}/-/queries" method="get">
+    <p>
+        <label for="query-search">Search</label>
+        <input id="query-search" type="search" name="q" value="{{ filters.q }}">
+        <button type="submit">Search</button>
+    </p>
+    <p>
+        <label for="query-is-write">Mode</label>
+        <select id="query-is-write" name="is_write">
+            <option value=""{% if not filters.is_write %} selected{% endif %}>Any</option>
+            <option value="0"{% if filters.is_write == "0" %} selected{% endif %}>Read-only</option>
+            <option value="1"{% if filters.is_write == "1" %} selected{% endif %}>Writable</option>
+        </select>
+        <label for="query-is-published">Publication</label>
+        <select id="query-is-published" name="is_published">
+            <option value=""{% if not filters.is_published %} selected{% endif %}>Any</option>
+            <option value="1"{% if filters.is_published == "1" %} selected{% endif %}>Published</option>
+            <option value="0"{% if filters.is_published == "0" %} selected{% endif %}>Unpublished</option>
+        </select>
+    </p>
+</form>
+
+{% if queries %}
+    <ul class="bullets">
+        {% for query in queries %}
+            <li>
+                <a href="{{ urls.query(database, query.name) }}{% if query.fragment %}#{{ query.fragment }}{% endif %}" title="{{ query.description or query.sql }}">{{ query.title or query.name }}</a>{% if query.private %} 🔒{% endif %}
+                {% if query.is_write %}<span>Writable</span>{% endif %}
+                {% if query.is_published %}<span>Published</span>{% endif %}
+            </li>
+        {% endfor %}
+    </ul>
+{% else %}
+    <p>No queries found.</p>
+{% endif %}
+
+{% if next_url %}
+    <p><a href="{{ next_url }}">Next page</a></p>
+{% endif %}
+
+{% endblock %}

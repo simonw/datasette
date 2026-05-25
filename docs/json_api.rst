@@ -510,7 +510,7 @@ Datasette provides a write API for JSON data. This is a POST-only API that requi
 Listing saved queries
 ~~~~~~~~~~~~~~~~~~~~~
 
-``GET /<database>/-/queries`` returns saved query definitions the actor can view.
+``GET /<database>/-/queries.json`` returns saved query definitions the actor can view. Use ``?_size=50`` to set the page size and ``?_next=...`` with the cursor returned by the previous page to fetch the next page.
 
 .. _QueryCreateView:
 

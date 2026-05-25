@@ -7,6 +7,20 @@ from datasette.resources import DatabaseResource, QueryResource
 from datasette.utils.asgi import Forbidden
 
 
+async def add_numbered_queries(ds, database, count):
+    for i in range(1, count + 1):
+        await ds.add_query(
+            database,
+            "demo_query_{:02d}".format(i),
+            "select {} as query_number".format(i),
+            title="Demo query {:02d}".format(i),
+            description="Seeded demo query number {:02d}".format(i),
+            is_published=True,
+            source="user",
+            owner_id="root",
+        )
+
+
 @pytest.mark.asyncio
 async def test_queries_internal_table_schema():
     ds = Datasette(memory=True)
@@ -96,11 +110,15 @@ async def test_add_get_and_remove_query():
         "on_error_redirect": None,
     }
 
-    assert await ds.get_queries("data") == {"top_customers": query}
+    queries_page = await ds.list_queries("data", actor=None)
+    assert queries_page["queries"] == [query]
+    assert queries_page["next"] is None
 
     await ds.remove_query("data", "top_customers")
     assert await ds.get_query("data", "top_customers") is None
-    assert await ds.get_queries("data") == {}
+    queries_page = await ds.list_queries("data", actor=None)
+    assert queries_page["queries"] == []
+    assert queries_page["next"] is None
 
 
 @pytest.mark.asyncio
@@ -239,6 +257,24 @@ async def test_unpublished_query_requires_execute_sql_but_published_does_not():
 
 
 @pytest.mark.asyncio
+async def test_database_page_query_preview_is_limited():
+    ds = Datasette(memory=True)
+    ds.add_memory_database("query_preview", name="data")
+    await ds.invoke_startup()
+    await add_numbered_queries(ds, "data", 25)
+
+    html_response = await ds.client.get("/data")
+    json_response = await ds.client.get("/data.json")
+
+    assert html_response.status_code == 200
+    assert "Demo query 20" in html_response.text
+    assert "Demo query 21" not in html_response.text
+    assert 'href="/data/-/queries"' in html_response.text
+    assert len(json_response.json()["queries"]) == 20
+    assert json_response.json()["queries_more"] is True
+
+
+@pytest.mark.asyncio
 async def test_query_actions_are_registered():
     ds = Datasette()
     await ds.invoke_startup()
@@ -347,21 +383,78 @@ async def test_query_list_and_definition_api():
     ds.root_enabled = True
     ds.add_memory_database("query_list_api", name="data")
     await ds.invoke_startup()
-    await ds.add_query("data", "listed", "select 1", title="Listed", is_published=True)
+    await add_numbered_queries(ds, "data", 12)
 
     list_response = await ds.client.get(
-        "/data/-/queries",
+        "/data/-/queries.json?_size=5",
+        actor={"id": "root"},
+    )
+    next_response = await ds.client.get(
+        "/data/-/queries.json?_size=5&_next={}".format(list_response.json()["next"]),
         actor={"id": "root"},
     )
     definition_response = await ds.client.get(
-        "/data/listed/-/definition",
+        "/data/demo_query_01/-/definition",
         actor={"id": "root"},
     )
 
     assert list_response.status_code == 200
-    assert list_response.json()["queries"][0]["name"] == "listed"
+    assert [query["name"] for query in list_response.json()["queries"]] == [
+        "demo_query_01",
+        "demo_query_02",
+        "demo_query_03",
+        "demo_query_04",
+        "demo_query_05",
+    ]
+    assert list_response.json()["next"]
+    assert [query["name"] for query in next_response.json()["queries"]] == [
+        "demo_query_06",
+        "demo_query_07",
+        "demo_query_08",
+        "demo_query_09",
+        "demo_query_10",
+    ]
     assert definition_response.status_code == 200
-    assert definition_response.json()["query"]["title"] == "Listed"
+    assert definition_response.json()["query"]["title"] == "Demo query 01"
+
+
+@pytest.mark.asyncio
+async def test_query_list_search_filter_and_html():
+    ds = Datasette(memory=True)
+    ds.root_enabled = True
+    ds.add_memory_database("query_list_html", name="data")
+    await ds.invoke_startup()
+    await add_numbered_queries(ds, "data", 3)
+    await ds.add_query(
+        "data",
+        "private_query",
+        "select 'private'",
+        title="Private query",
+        is_published=False,
+        source="user",
+        owner_id="root",
+    )
+
+    html_response = await ds.client.get(
+        "/data/-/queries?q=02",
+        actor={"id": "root"},
+    )
+    json_response = await ds.client.get(
+        "/data/-/queries.json?q=02",
+        actor={"id": "root"},
+    )
+    filtered_response = await ds.client.get(
+        "/data/-/queries.json?is_published=0",
+        actor={"id": "root"},
+    )
+
+    assert html_response.status_code == 200
+    assert "Demo query 02" in html_response.text
+    assert "Demo query 01" not in html_response.text
+    assert json_response.json()["queries"][0]["name"] == "demo_query_02"
+    assert [query["name"] for query in filtered_response.json()["queries"]] == [
+        "private_query"
+    ]
 
 
 @pytest.mark.asyncio

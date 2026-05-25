@@ -1288,16 +1288,122 @@ class Datasette:
         )
         return self._query_row_to_dict(rows.first())
 
-    async def get_queries(self, database):
-        rows = await self.get_internal_database().execute(
-            """
-            SELECT * FROM queries
-            WHERE database_name = ?
-            ORDER BY name
-            """,
-            [database],
+    async def list_queries(
+        self,
+        database,
+        *,
+        actor=None,
+        limit=50,
+        cursor=None,
+        q=None,
+        is_write=None,
+        is_published=None,
+        source=None,
+        owner_id=None,
+        include_private=False,
+    ):
+        limit = min(max(1, int(limit)), 1000)
+        allowed_sql, allowed_params = await self.allowed_resources_sql(
+            action="view-query",
+            actor=actor,
+            parent=database,
+            include_is_private=include_private,
         )
-        return {row["name"]: self._query_row_to_dict(row) for row in rows}
+        params = dict(allowed_params)
+        params.update({"query_database": database, "limit": limit + 1})
+        sort_key_sql = "lower(coalesce(nullif(q.title, ''), q.name))"
+        where_clauses = ["q.database_name = :query_database"]
+
+        if cursor:
+            try:
+                components = urlsafe_components(cursor)
+            except ValueError:
+                components = []
+            if len(components) == 2:
+                where_clauses.append("""
+                    (
+                        {sort_key_sql} > :cursor_sort_key
+                        OR (
+                            {sort_key_sql} = :cursor_sort_key
+                            AND q.name > :cursor_name
+                        )
+                    )
+                    """.format(sort_key_sql=sort_key_sql))
+                params["cursor_sort_key"] = components[0]
+                params["cursor_name"] = components[1]
+
+        if q:
+            where_clauses.append("""
+                (
+                    q.name LIKE :query_search
+                    OR q.title LIKE :query_search
+                    OR q.description LIKE :query_search
+                    OR q.sql LIKE :query_search
+                )
+                """)
+            params["query_search"] = "%{}%".format(q)
+        if is_write is not None:
+            where_clauses.append("q.is_write = :query_is_write")
+            params["query_is_write"] = int(bool(is_write))
+        if is_published is not None:
+            where_clauses.append("q.is_published = :query_is_published")
+            params["query_is_published"] = int(bool(is_published))
+        if source is not None:
+            where_clauses.append("q.source = :query_source")
+            params["query_source"] = source
+        if owner_id is not None:
+            where_clauses.append("q.owner_id = :query_owner_id")
+            params["query_owner_id"] = owner_id
+
+        private_select = ", allowed.is_private AS private" if include_private else ""
+        rows = list(
+            (
+                await self.get_internal_database().execute(
+                    """
+                    SELECT q.*, {sort_key_sql} AS sort_key{private_select}
+                    FROM queries q
+                    JOIN (
+                        {allowed_sql}
+                    ) allowed
+                      ON allowed.parent = q.database_name
+                     AND allowed.child = q.name
+                    WHERE {where}
+                    ORDER BY sort_key, q.name
+                    LIMIT :limit
+                    """.format(
+                        allowed_sql=allowed_sql,
+                        private_select=private_select,
+                        sort_key_sql=sort_key_sql,
+                        where=" AND ".join(where_clauses),
+                    ),
+                    params,
+                )
+            ).rows
+        )
+        has_more = len(rows) > limit
+        if has_more:
+            rows = rows[:limit]
+
+        queries = []
+        for row in rows:
+            query = self._query_row_to_dict(row)
+            if include_private:
+                query["private"] = bool(row["private"])
+            queries.append(query)
+
+        next_token = None
+        if has_more and rows:
+            last_row = rows[-1]
+            next_token = "{},{}".format(
+                tilde_encode(last_row["sort_key"]),
+                tilde_encode(last_row["name"]),
+            )
+        return {
+            "queries": queries,
+            "next": next_token,
+            "has_more": has_more,
+            "limit": limit,
+        }
 
     async def ensure_query_write_permissions(
         self, database, sql, *, actor=None, params=None, analysis=None
@@ -1564,7 +1670,8 @@ class Datasette:
         return self.static_hash("app.css")
 
     async def get_canned_queries(self, database_name, actor):
-        return await self.get_queries(database_name)
+        page = await self.list_queries(database_name, actor=actor, limit=1000)
+        return {query["name"]: query for query in page["queries"]}
 
     async def get_canned_query(self, database_name, query_name, actor):
         return await self.get_query(database_name, query_name)
@@ -2591,7 +2698,7 @@ class Datasette:
         add_route(TableCreateView.as_view(self), r"/(?P<database>[^\/\.]+)/-/create$")
         add_route(
             QueryListView.as_view(self),
-            r"/(?P<database>[^\/\.]+)/-/queries$",
+            r"/(?P<database>[^\/\.]+)/-/queries(\.(?P<format>json))?$",
         )
         add_route(
             QueryCreateView.as_view(self),

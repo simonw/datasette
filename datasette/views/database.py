@@ -92,24 +92,14 @@ class DatabaseView(View):
 
         tables = await get_tables(datasette, request, db, allowed_dict)
 
-        # Get allowed queries using the new permission system
-        allowed_query_page = await datasette.allowed_resources(
-            "view-query",
-            request.actor,
-            parent=database,
-            include_is_private=True,
-            limit=1000,
+        queries_page = await datasette.list_queries(
+            database,
+            actor=request.actor,
+            limit=20,
+            include_private=True,
         )
-
-        # Build canned_queries list by looking up each allowed query
-        all_queries = await datasette.get_canned_queries(database, request.actor)
-        canned_queries = []
-        for query_resource in allowed_query_page.resources:
-            query_name = query_resource.child
-            if query_name in all_queries:
-                canned_queries.append(
-                    dict(all_queries[query_name], private=query_resource.private)
-                )
+        canned_queries = queries_page["queries"]
+        queries_more = queries_page["has_more"]
 
         async def database_actions():
             links = []
@@ -141,6 +131,7 @@ class DatabaseView(View):
             "hidden_count": len([t for t in tables if t["hidden"]]),
             "views": sql_views,
             "queries": canned_queries,
+            "queries_more": queries_more,
             "allow_execute_sql": allow_execute_sql,
             "table_columns": (
                 await _table_columns(datasette, database) if allow_execute_sql else {}
@@ -174,6 +165,7 @@ class DatabaseView(View):
                     hidden_count=len([t for t in tables if t["hidden"]]),
                     views=sql_views,
                     queries=canned_queries,
+                    queries_more=queries_more,
                     allow_execute_sql=allow_execute_sql,
                     table_columns=(
                         await _table_columns(datasette, database)
@@ -222,6 +214,9 @@ class DatabaseContext(Context):
     hidden_count: int = field(metadata={"help": "Count of hidden tables"})
     views: list = field(metadata={"help": "List of view objects in the database"})
     queries: list = field(metadata={"help": "List of canned query objects"})
+    queries_more: bool = field(
+        metadata={"help": "Boolean indicating if more saved queries are available"}
+    )
     allow_execute_sql: bool = field(
         metadata={"help": "Boolean indicating if custom SQL can be executed"}
     )
@@ -472,6 +467,31 @@ def _as_bool(value):
     if isinstance(value, str):
         return value.lower() in {"1", "true", "t", "yes", "on"}
     return bool(value)
+
+
+def _as_optional_bool(value, name):
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return bool(value)
+    if isinstance(value, str):
+        lowered = value.lower()
+        if lowered in {"1", "true", "t", "yes", "on"}:
+            return True
+        if lowered in {"0", "false", "f", "no", "off"}:
+            return False
+    raise QueryValidationError("{} must be 0 or 1".format(name))
+
+
+def _query_list_limit(value):
+    if value in (None, ""):
+        return 50
+    try:
+        return min(max(1, int(value)), 1000)
+    except ValueError as ex:
+        raise QueryValidationError("_size must be an integer") from ex
 
 
 def _derived_query_parameters(sql):
@@ -949,19 +969,66 @@ class QueryListView(BaseView):
 
     async def get(self, request):
         db = await self.ds.resolve_database(request)
-        page = await self.ds.allowed_resources(
-            "view-query",
-            request.actor,
-            parent=db.name,
-            limit=1000,
+        format_ = request.url_vars.get("format") or "html"
+        try:
+            limit = _query_list_limit(request.args.get("_size"))
+            is_write = _as_optional_bool(request.args.get("is_write"), "is_write")
+            is_published = _as_optional_bool(
+                request.args.get("is_published"), "is_published"
+            )
+        except QueryValidationError as ex:
+            return _error([ex.message], ex.status)
+
+        page = await self.ds.list_queries(
+            db.name,
+            actor=request.actor,
+            limit=limit,
+            cursor=request.args.get("_next"),
+            q=request.args.get("q") or None,
+            is_write=is_write,
+            is_published=is_published,
+            source=request.args.get("source") or None,
+            owner_id=request.args.get("owner_id") or None,
+            include_private=True,
         )
-        all_queries = await self.ds.get_queries(db.name)
-        queries = [
-            all_queries[resource.child]
-            for resource in page.resources
-            if resource.child in all_queries
-        ]
-        return Response.json({"ok": True, "database": db.name, "queries": queries})
+        next_url = None
+        if page["next"]:
+            pairs = [
+                (key, value)
+                for key, value in parse_qsl(
+                    request.query_string, keep_blank_values=True
+                )
+                if key != "_next"
+            ]
+            pairs.append(("_next", page["next"]))
+            next_url = "{}?{}".format(
+                self.ds.urls.database(db.name) + "/-/queries",
+                urlencode(pairs),
+            )
+
+        data = {
+            "ok": True,
+            "database": db.name,
+            "queries": page["queries"],
+            "next": page["next"],
+            "next_url": next_url,
+            "has_more": page["has_more"],
+            "limit": page["limit"],
+            "filters": {
+                "q": request.args.get("q") or "",
+                "is_write": request.args.get("is_write") or "",
+                "is_published": request.args.get("is_published") or "",
+                "source": request.args.get("source") or "",
+                "owner_id": request.args.get("owner_id") or "",
+            },
+        }
+        if format_ == "json":
+            return Response.json(data)
+        return await self.render(
+            ["query_list.html"],
+            request,
+            data,
+        )
 
 
 class QueryCreateView(BaseView):

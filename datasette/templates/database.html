@@ -53,6 +53,9 @@
             <li><a href="{{ urls.query(database, query.name) }}{% if query.fragment %}#{{ query.fragment }}{% endif %}" title="{{ query.description or query.sql }}">{{ query.title or query.name }}</a>{% if query.private %} 🔒{% endif %}</li>
         {% endfor %}
     </ul>
+    {% if queries_more %}
+        <p><a href="{{ urls.database(database) }}/-/queries">View all queries</a></p>
+    {% endif %}
 {% endif %}
 
 {% if tables %}

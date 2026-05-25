@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from datasette.app import Datasette
@@ -25,18 +27,12 @@ async def test_queries_internal_table_schema():
         "title",
         "description",
         "description_html",
-        "hide_sql",
-        "fragment",
+        "options",
         "parameters",
         "is_write",
         "published",
         "source",
         "owner_id",
-        "on_success_message",
-        "on_success_message_sql",
-        "on_success_redirect",
-        "on_error_message",
-        "on_error_redirect",
         "created_at",
         "updated_at",
     ]
@@ -61,6 +57,20 @@ async def test_add_get_and_remove_query():
         source="user",
         owner_id="alice",
     )
+
+    options_row = (
+        await ds.get_internal_database().execute(
+            """
+            SELECT options FROM queries
+            WHERE database_name = ? AND name = ?
+            """,
+            ["data", "top_customers"],
+        )
+    ).first()
+    assert json.loads(options_row["options"]) == {
+        "fragment": "chart",
+        "hide_sql": True,
+    }
 
     query = await ds.get_query("data", "top_customers")
     assert query == {
@@ -108,6 +118,17 @@ async def test_update_query_only_updates_provided_fields():
         parameters=["one"],
     )
 
+    options_row = (
+        await ds.get_internal_database().execute(
+            """
+            SELECT options FROM queries
+            WHERE database_name = ? AND name = ?
+            """,
+            ["data", "redirect"],
+        )
+    ).first()
+    assert json.loads(options_row["options"]) == {"on_success_redirect": "/original"}
+
     await ds.update_query(
         "data",
         "redirect",
@@ -123,6 +144,16 @@ async def test_update_query_only_updates_provided_fields():
     assert query["on_success_redirect"] is None
     assert query["sql"] == "select 1"
     assert query["published"] is False
+    options_row = (
+        await ds.get_internal_database().execute(
+            """
+            SELECT options FROM queries
+            WHERE database_name = ? AND name = ?
+            """,
+            ["data", "redirect"],
+        )
+    ).first()
+    assert json.loads(options_row["options"]) == {}
 
 
 @pytest.mark.asyncio

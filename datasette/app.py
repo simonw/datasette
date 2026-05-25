@@ -283,6 +283,16 @@ FAVICON_PATH = app_root / "datasette" / "static" / "favicon.png"
 DEFAULT_NOT_SET = object()
 UNCHANGED = object()
 
+QUERY_OPTION_FIELDS = (
+    "hide_sql",
+    "fragment",
+    "on_success_message",
+    "on_success_message_sql",
+    "on_success_redirect",
+    "on_error_message",
+    "on_error_redirect",
+)
+
 
 ResourcesSQL = collections.namedtuple("ResourcesSQL", ("sql", "params"))
 
@@ -1056,6 +1066,7 @@ class Datasette:
         if row is None:
             return None
         parameters = json.loads(row["parameters"] or "[]")
+        options = json.loads(row["options"] or "{}")
         is_write = bool(row["is_write"])
         return {
             "database": row["database_name"],
@@ -1064,8 +1075,8 @@ class Datasette:
             "title": row["title"],
             "description": row["description"],
             "description_html": row["description_html"],
-            "hide_sql": bool(row["hide_sql"]),
-            "fragment": row["fragment"],
+            "hide_sql": bool(options.get("hide_sql")),
+            "fragment": options.get("fragment"),
             "params": parameters,
             "parameters": parameters,
             "is_write": is_write,
@@ -1073,12 +1084,24 @@ class Datasette:
             "published": bool(row["published"]),
             "source": row["source"],
             "owner_id": row["owner_id"],
-            "on_success_message": row["on_success_message"],
-            "on_success_message_sql": row["on_success_message_sql"],
-            "on_success_redirect": row["on_success_redirect"],
-            "on_error_message": row["on_error_message"],
-            "on_error_redirect": row["on_error_redirect"],
+            "on_success_message": options.get("on_success_message"),
+            "on_success_message_sql": options.get("on_success_message_sql"),
+            "on_success_redirect": options.get("on_success_redirect"),
+            "on_error_message": options.get("on_error_message"),
+            "on_error_redirect": options.get("on_error_redirect"),
         }
+
+    @staticmethod
+    def _query_options_json(options):
+        options_dict = {}
+        for field in QUERY_OPTION_FIELDS:
+            value = options.get(field)
+            if field == "hide_sql":
+                if value:
+                    options_dict[field] = True
+            elif value is not None:
+                options_dict[field] = value
+        return json.dumps(options_dict, sort_keys=True)
 
     async def add_query(
         self,
@@ -1104,13 +1127,22 @@ class Datasette:
         replace=True,
     ):
         parameters_json = json.dumps(list(parameters or []))
+        options_json = self._query_options_json(
+            {
+                "hide_sql": hide_sql,
+                "fragment": fragment,
+                "on_success_message": on_success_message,
+                "on_success_message_sql": on_success_message_sql,
+                "on_success_redirect": on_success_redirect,
+                "on_error_message": on_error_message,
+                "on_error_redirect": on_error_redirect,
+            }
+        )
         sql_statement = """
             INSERT INTO queries (
                 database_name, name, sql, title, description, description_html,
-                hide_sql, fragment, parameters, is_write, published, source,
-                owner_id, on_success_message, on_success_message_sql,
-                on_success_redirect, on_error_message, on_error_redirect
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                options, parameters, is_write, published, source, owner_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         if replace:
             sql_statement += """
@@ -1119,18 +1151,12 @@ class Datasette:
                     title = excluded.title,
                     description = excluded.description,
                     description_html = excluded.description_html,
-                    hide_sql = excluded.hide_sql,
-                    fragment = excluded.fragment,
+                    options = excluded.options,
                     parameters = excluded.parameters,
                     is_write = excluded.is_write,
                     published = excluded.published,
                     source = excluded.source,
                     owner_id = excluded.owner_id,
-                    on_success_message = excluded.on_success_message,
-                    on_success_message_sql = excluded.on_success_message_sql,
-                    on_success_redirect = excluded.on_success_redirect,
-                    on_error_message = excluded.on_error_message,
-                    on_error_redirect = excluded.on_error_redirect,
                     updated_at = CURRENT_TIMESTAMP
             """
         await self.get_internal_database().execute_write(
@@ -1142,18 +1168,12 @@ class Datasette:
                 title,
                 description,
                 description_html,
-                int(bool(hide_sql)),
-                fragment,
+                options_json,
                 parameters_json,
                 int(bool(is_write)),
                 int(bool(published)),
                 source,
                 owner_id,
-                on_success_message,
-                on_success_message_sql,
-                on_success_redirect,
-                on_error_message,
-                on_error_redirect,
             ],
         )
 
@@ -1184,13 +1204,15 @@ class Datasette:
             "title": title,
             "description": description,
             "description_html": description_html,
-            "hide_sql": hide_sql,
-            "fragment": fragment,
             "parameters": parameters,
             "is_write": is_write,
             "published": published,
             "source": source,
             "owner_id": owner_id,
+        }
+        option_fields = {
+            "hide_sql": hide_sql,
+            "fragment": fragment,
             "on_success_message": on_success_message,
             "on_success_message_sql": on_success_message_sql,
             "on_success_redirect": on_success_redirect,
@@ -1202,12 +1224,39 @@ class Datasette:
         for field, value in fields.items():
             if value is UNCHANGED:
                 continue
-            if field in {"hide_sql", "is_write", "published"}:
+            if field in {"is_write", "published"}:
                 value = int(bool(value))
             elif field == "parameters":
                 value = json.dumps(list(value or []))
             updates.append(f"{field} = ?")
             params.append(value)
+        changed_options = {
+            field: value
+            for field, value in option_fields.items()
+            if value is not UNCHANGED
+        }
+        if changed_options:
+            rows = await self.get_internal_database().execute(
+                """
+                SELECT options FROM queries
+                WHERE database_name = ? AND name = ?
+                """,
+                [database, name],
+            )
+            row = rows.first()
+            options = json.loads(row["options"] or "{}") if row is not None else {}
+            for field, value in changed_options.items():
+                if field == "hide_sql":
+                    if value:
+                        options[field] = True
+                    else:
+                        options.pop(field, None)
+                elif value is None:
+                    options.pop(field, None)
+                else:
+                    options[field] = value
+            updates.append("options = ?")
+            params.append(json.dumps(options, sort_keys=True))
         if not updates:
             return
         updates.append("updated_at = CURRENT_TIMESTAMP")

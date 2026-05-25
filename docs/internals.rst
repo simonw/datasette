@@ -2148,6 +2148,26 @@ The internal database schema is as follows:
         config TEXT,
         PRIMARY KEY (database_name, resource_name, column_name)
     );
+    CREATE TABLE queries (
+        database_name TEXT NOT NULL,
+        name TEXT NOT NULL,
+        sql TEXT NOT NULL,
+        title TEXT,
+        description TEXT,
+        description_html TEXT,
+        options TEXT NOT NULL DEFAULT '{}',
+        parameters TEXT NOT NULL DEFAULT '[]',
+        is_write INTEGER NOT NULL DEFAULT 0 CHECK (is_write IN (0, 1)),
+        published INTEGER NOT NULL DEFAULT 0 CHECK (published IN (0, 1)),
+        source TEXT NOT NULL DEFAULT 'user',
+        owner_id TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (database_name, name),
+        CHECK (is_write = 0 OR published = 0)
+    );
+    CREATE INDEX queries_owner_idx
+        ON queries(owner_id);
 
 .. [[[end]]]
 

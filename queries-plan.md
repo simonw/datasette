@@ -42,18 +42,12 @@ CREATE TABLE IF NOT EXISTS queries (
     title TEXT,
     description TEXT,
     description_html TEXT,
-    hide_sql INTEGER NOT NULL DEFAULT 0 CHECK (hide_sql IN (0, 1)),
-    fragment TEXT,
+    options TEXT NOT NULL DEFAULT '{}',
     parameters TEXT NOT NULL DEFAULT '[]',
     is_write INTEGER NOT NULL DEFAULT 0 CHECK (is_write IN (0, 1)),
     published INTEGER NOT NULL DEFAULT 0 CHECK (published IN (0, 1)),
     source TEXT NOT NULL DEFAULT 'user',
     owner_id TEXT,
-    on_success_message TEXT,
-    on_success_message_sql TEXT,
-    on_success_redirect TEXT,
-    on_error_message TEXT,
-    on_error_redirect TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (database_name, name),
@@ -67,9 +61,10 @@ CREATE INDEX IF NOT EXISTS queries_owner_idx
 Column notes:
 
 - `database_name`, `name`, and `sql` are the routing and execution core.
-- Display fields become columns: `title`, `description`, `description_html`, `hide_sql`, and `fragment`.
+- Display fields become columns: `title`, `description`, and `description_html`.
+- Less common presentation and writable-query behavior lives in `options`, stored as a JSON object. That covers `hide_sql`, `fragment`, `on_success_message`, `on_success_message_sql`, `on_success_redirect`, `on_error_message`, and `on_error_redirect`.
 - `parameters` is a JSON array of parameter names, stored as text. This preserves explicit parameter order, but does not support labels or default values.
-- Existing writable query behavior gets columns too: `is_write`, success/error messages, success/error redirects, and `on_success_message_sql`.
+- Existing writable query behavior gets `is_write` as a column. Success/error messages, success/error redirects, and `on_success_message_sql` are stored in `options`.
 - `published` only applies to read-only queries. A writable query can still be public through explicit `view-query` permissions, but the "publish for users without execute-sql" shortcut should be read-only.
 - `source` distinguishes `user`, `config`, and `plugin` rows.
 - `owner_id` is the actor id for user-created rows. It is `NULL` for config/plugin rows.
@@ -372,11 +367,11 @@ await datasette.update_query(
 )
 ```
 
-That call should set `on_success_redirect` to SQL `NULL`; omitting `on_success_redirect` should leave the existing value unchanged.
+For column-backed fields, `None` should write SQL `NULL`. For option fields, `None` should remove that key from the JSON object so `get_query()` returns `None`; omitting the field should leave the existing option unchanged.
 
 Implementation detail: build the `UPDATE` statement dynamically from fields whose value is not `UNCHANGED`, validate non-nullable fields before writing, and update `updated_at` whenever at least one field changes.
 
-The read methods should reconstruct the existing dictionary shape used by query execution and templates, with `name`, `sql`, display fields, write fields, `params`, `published`, `owner_id`, and `source`. `parameters` should be returned as the decoded JSON array and exposed as `params` where existing query execution code expects that key.
+The read methods should reconstruct the existing dictionary shape used by query execution and templates, with `name`, `sql`, display fields, write fields, `params`, `published`, `owner_id`, and `source`. `parameters` should be returned as the decoded JSON array and exposed as `params` where existing query execution code expects that key. Option values should be unpacked from the `options` JSON object and returned as the same top-level keys accepted by `add_query()` and `update_query()`.
 
 ## Query page save UI
 
@@ -430,7 +425,7 @@ The existing edit-SQL flow from query pages can continue to point back to arbitr
 - Query update uses `POST /{database}/{query}/-/update` with an `{"update": {...}}` body.
 - Query delete uses `POST /{database}/{query}/-/delete`.
 - There are no `PATCH` or HTTP `DELETE` routes for query management.
-- `datasette.update_query(..., field=None)` writes `NULL`, while omitted fields are left unchanged.
+- `datasette.update_query(..., field=None)` writes `NULL` for column-backed fields and removes JSON keys for option fields, while omitted fields are left unchanged.
 - Owner gets default `update-query` and `delete-query` for their own user-created rows.
 - Admin can manage other users' queries with `update-query` and `delete-query`.
 - User API rejects magic parameters.

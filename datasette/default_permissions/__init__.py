@@ -35,6 +35,7 @@ from .config import config_permissions_sql as config_permissions_sql
 from .defaults import (
     default_allow_sql_check as default_allow_sql_check,
     default_action_permissions_sql as default_action_permissions_sql,
+    default_query_permissions_sql as default_query_permissions_sql,
     DEFAULT_ALLOW_ACTIONS as DEFAULT_ALLOW_ACTIONS,
 )
 

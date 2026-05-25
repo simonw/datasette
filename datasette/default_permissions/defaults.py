@@ -21,7 +21,6 @@ DEFAULT_ALLOW_ACTIONS = frozenset(
         "view-database",
         "view-database-download",
         "view-table",
-        "view-query",
         "execute-sql",
     }
 )
@@ -67,3 +66,58 @@ async def default_action_permissions_sql(
         return PermissionSQL.allow(reason=reason)
 
     return None
+
+
+@hookimpl(specname="permission_resources_sql")
+async def default_query_permissions_sql(
+    datasette: "Datasette",
+    actor: Optional[dict],
+    action: str,
+) -> Optional[PermissionSQL]:
+    if action != "view-query":
+        return None
+
+    execute_sql = await datasette.allowed_resources_sql(
+        action="execute-sql", actor=actor
+    )
+    sql = execute_sql.sql
+    params = {}
+    for key, value in execute_sql.params.items():
+        new_key = f"query_execute_sql_{key}"
+        sql = sql.replace(f":{key}", f":{new_key}")
+        params[new_key] = value
+
+    trusted_writable_sql = ""
+    if not datasette.default_deny:
+        trusted_writable_sql = """
+            UNION ALL
+            SELECT database_name AS parent, name AS child, 1 AS allow,
+              'trusted writable query' AS reason
+            FROM queries
+            WHERE is_write = 1
+              AND source IN ('config', 'plugin')
+        """
+
+    return PermissionSQL(
+        sql=f"""
+        WITH execute_sql_allowed AS (
+            {sql}
+        )
+        SELECT database_name AS parent, name AS child, 1 AS allow,
+          'published query' AS reason
+        FROM queries
+        WHERE is_write = 0
+          AND published = 1
+        UNION ALL
+        SELECT q.database_name AS parent, q.name AS child, 1 AS allow,
+          'execute-sql allows query' AS reason
+        FROM queries q
+        JOIN execute_sql_allowed es
+          ON es.parent = q.database_name
+         AND es.child IS NULL
+        WHERE q.is_write = 0
+          AND q.published = 0
+        {trusted_writable_sql}
+        """,
+        params=params,
+    )

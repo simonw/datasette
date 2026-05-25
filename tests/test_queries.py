@@ -1,6 +1,7 @@
 import pytest
 
 from datasette.app import Datasette
+from datasette.resources import DatabaseResource, QueryResource
 
 
 @pytest.mark.asyncio
@@ -121,3 +122,87 @@ async def test_update_query_only_updates_provided_fields():
     assert query["on_success_redirect"] is None
     assert query["sql"] == "select 1"
     assert query["published"] is False
+
+
+@pytest.mark.asyncio
+async def test_config_queries_imported_to_internal_table():
+    ds = Datasette(
+        memory=True,
+        config={
+            "databases": {
+                "data": {
+                    "queries": {
+                        "configured": {
+                            "sql": "select :name as name",
+                            "title": "Configured query",
+                            "params": ["name"],
+                        }
+                    }
+                }
+            }
+        },
+    )
+    ds.add_memory_database("query_config", name="data")
+    await ds.invoke_startup()
+
+    assert await ds.get_query("data", "configured") == {
+        "database": "data",
+        "name": "configured",
+        "sql": "select :name as name",
+        "title": "Configured query",
+        "description": None,
+        "description_html": None,
+        "hide_sql": False,
+        "fragment": None,
+        "params": ["name"],
+        "parameters": ["name"],
+        "is_write": False,
+        "write": False,
+        "published": False,
+        "source": "config",
+        "owner_id": None,
+        "on_success_message": None,
+        "on_success_message_sql": None,
+        "on_success_redirect": None,
+        "on_error_message": None,
+        "on_error_redirect": None,
+    }
+
+
+@pytest.mark.asyncio
+async def test_query_resources_come_from_internal_table():
+    ds = Datasette(memory=True)
+    ds.add_memory_database("query_resources", name="data")
+    await ds.invoke_startup()
+    await ds.add_query("data", "internal_query", "select 1", source="user")
+
+    page = await ds.allowed_resources("view-query", actor=None)
+
+    assert [(r.parent, r.child) for r in page.resources] == [
+        ("data", "internal_query")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_unpublished_query_requires_execute_sql_but_published_does_not():
+    ds = Datasette(memory=True, settings={"default_allow_sql": False})
+    ds.add_memory_database("query_permissions", name="data")
+    await ds.invoke_startup()
+    await ds.add_query("data", "unpublished", "select 1", published=False)
+    await ds.add_query("data", "published", "select 1", published=True)
+
+    assert not await ds.allowed(
+        action="execute-sql",
+        resource=DatabaseResource("data"),
+        actor=None,
+    )
+    assert not await ds.allowed(
+        action="view-query",
+        resource=QueryResource("data", "unpublished"),
+        actor=None,
+    )
+    assert await ds.allowed(
+        action="view-query",
+        resource=QueryResource("data", "published"),
+        actor=None,
+    )

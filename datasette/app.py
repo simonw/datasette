@@ -572,6 +572,35 @@ class Datasette:
             # TODO(alex) is metadata.json was loaded in, and --internal is not memory, then log
             # a warning to user that they should delete their metadata.json file
 
+    async def apply_queries_config(self):
+        # Apply configured query entries from datasette.yaml to the internal table.
+        await self.get_internal_database().execute_write(
+            "DELETE FROM queries WHERE source = 'config'"
+        )
+        for dbname, db_config in ((self.config or {}).get("databases") or {}).items():
+            for query_name, query_config in (db_config.get("queries") or {}).items():
+                if not isinstance(query_config, dict):
+                    query_config = {"sql": query_config}
+                await self.add_query(
+                    dbname,
+                    query_name,
+                    query_config["sql"],
+                    title=query_config.get("title"),
+                    description=query_config.get("description"),
+                    description_html=query_config.get("description_html"),
+                    hide_sql=bool(query_config.get("hide_sql")),
+                    fragment=query_config.get("fragment"),
+                    parameters=query_config.get("params"),
+                    is_write=bool(query_config.get("write")),
+                    published=bool(query_config.get("published")),
+                    source="config",
+                    on_success_message=query_config.get("on_success_message"),
+                    on_success_message_sql=query_config.get("on_success_message_sql"),
+                    on_success_redirect=query_config.get("on_success_redirect"),
+                    on_error_message=query_config.get("on_error_message"),
+                    on_error_redirect=query_config.get("on_error_redirect"),
+                )
+
     def get_jinja_environment(self, request: Request = None) -> Environment:
         environment = self._jinja_env
         if request:
@@ -732,6 +761,7 @@ class Datasette:
             await await_me_maybe(hook)
         # Ensure internal tables and metadata are populated before startup hooks
         await self._refresh_schemas()
+        await self.apply_queries_config()
         # Load column_types from config into internal DB
         await self._apply_column_types_config()
         for hook in pm.hook.startup(datasette=self):
@@ -1439,27 +1469,10 @@ class Datasette:
         return self.static_hash("app.css")
 
     async def get_canned_queries(self, database_name, actor):
-        queries = {}
-        for more_queries in pm.hook.canned_queries(
-            datasette=self,
-            database=database_name,
-            actor=actor,
-        ):
-            more_queries = await await_me_maybe(more_queries)
-            queries.update(more_queries or {})
-        # Fix any {"name": "select ..."} queries to be {"name": {"sql": "select ..."}}
-        for key in queries:
-            if not isinstance(queries[key], dict):
-                queries[key] = {"sql": queries[key]}
-            # Also make sure "name" is available:
-            queries[key]["name"] = key
-        return queries
+        return await self.get_queries(database_name)
 
     async def get_canned_query(self, database_name, query_name, actor):
-        queries = await self.get_canned_queries(database_name, actor)
-        query = queries.get(query_name)
-        if query:
-            return query
+        return await self.get_query(database_name, query_name)
 
     def _prepare_connection(self, conn, database):
         conn.row_factory = sqlite3.Row

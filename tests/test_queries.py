@@ -690,6 +690,14 @@ async def test_execute_write_get_prepopulates_without_executing():
     ds.root_enabled = True
     db = ds.add_memory_database("execute_write_get", name="data")
     await db.execute_write("create table dogs (id integer primary key, name text)")
+    await db.execute_write("create table cats (id integer primary key, name text)")
+    await db.execute_write("create table log (message text)")
+    await db.execute_write("""
+        create trigger dogs_after_insert after insert on dogs begin
+            update cats set name = new.name where id = new.id;
+            insert into log (message) values (new.name);
+        end
+    """)
     await ds.invoke_startup()
 
     response = await ds.client.get(
@@ -700,10 +708,32 @@ async def test_execute_write_get_prepopulates_without_executing():
     assert response.status_code == 200
     assert response.headers["content-security-policy"] == "frame-ancestors 'none'"
     assert response.headers["x-frame-options"] == "DENY"
-    assert "Execute write SQL" in response.text
+    assert "Write to this database" in response.text
+    assert (
+        "Execute SQL to insert, update or delete rows in this database."
+        in response.text
+    )
+    assert "<h2>Query operations</h2>" in response.text
+    assert "<summary>Start with a template</summary>" in response.text
+    assert '<option value="dogs">dogs</option>' in response.text
+    assert 'data-sql-template="insert"' in response.text
+    assert 'data-sql-template="update"' in response.text
+    assert 'data-sql-template="delete"' in response.text
+    assert '<table class="execute-write-analysis">' in response.text
+    assert '<th scope="col">Required permission</th>' in response.text
+    assert "<td><code>insert</code></td>" in response.text
+    assert "<td><code>update</code></td>" in response.text
+    assert "<td><code>read</code></td>" not in response.text
     assert 'action="/data/-/execute-write"' in response.text
     assert "insert into dogs (name) values (&#39;Cleo&#39;)" in response.text
     assert (await db.execute("select count(*) from dogs")).first()[0] == 0
+
+    empty_response = await ds.client.get(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+    )
+    assert '<textarea id="sql-editor" name="sql"></textarea>' in empty_response.text
+    assert 'executeWriteSqlInput.value = "\\n\\n\\n";' in empty_response.text
 
 
 @pytest.mark.asyncio

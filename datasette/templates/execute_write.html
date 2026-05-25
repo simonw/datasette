@@ -1,10 +1,80 @@
 {% extends "base.html" %}
 
-{% block title %}Execute write SQL{% endblock %}
+{% block title %}Write to this database{% endblock %}
 
 {% block extra_head %}
 {{- super() -}}
 {% include "_codemirror.html" %}
+<style>
+.execute-write-template-menu {
+    margin: 0.9rem 0 0.8rem;
+}
+.execute-write-template-menu summary {
+    cursor: pointer;
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+}
+.execute-write-template-controls {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0.4rem 0 0.7rem;
+}
+.execute-write-template-menu .execute-write-template-controls label {
+    margin-right: 0.25rem;
+    width: auto;
+}
+.execute-write-template-controls select,
+.execute-write-template-controls button[type=button] {
+    box-sizing: border-box;
+    font-size: 0.78rem;
+    height: 2rem;
+    line-height: 1.1;
+    padding: 0.35rem 0.55rem;
+}
+.execute-write-template-controls select {
+    background-color: #fff;
+    border: 1px solid #777;
+    border-radius: 0.25rem;
+    min-width: 13rem;
+}
+.execute-write-analysis {
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    margin: 0.25rem 0 1rem;
+    min-width: 44rem;
+}
+.execute-write-analysis th,
+.execute-write-analysis td {
+    border-bottom: 1px solid #d7dde5;
+    padding: 0.45rem 0.7rem;
+    text-align: left;
+    vertical-align: top;
+}
+.execute-write-analysis th {
+    background-color: #edf6fb;
+    border-top: 1px solid #d7dde5;
+    color: #39445a;
+    font-weight: 700;
+}
+.execute-write-analysis tbody tr:nth-child(even) {
+    background-color: rgba(39, 104, 144, 0.05);
+}
+.execute-write-analysis code {
+    background: transparent;
+    font-size: 0.9em;
+    white-space: nowrap;
+}
+.execute-write-analysis-allowed {
+    color: #267a3e;
+    font-weight: 700;
+}
+.execute-write-analysis-denied {
+    color: #b00020;
+    font-weight: 700;
+}
+</style>
 {% endblock %}
 
 {% block body_class %}execute-write db-{{ database|to_css_class }}{% endblock %}
@@ -15,13 +85,34 @@
 
 {% block content %}
 
-<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color }}">Execute write SQL</h1>
+<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color }}">Write to this database</h1>
+
+<p>Execute SQL to insert, update or delete rows in this database.</p>
 
 {% if execution_message %}
     <p class="{% if execution_ok %}message-info{% else %}message-error{% endif %}">{{ execution_message }}</p>
 {% endif %}
 
 <form class="sql core" action="{{ urls.database(database) }}/-/execute-write" method="post">
+    {% if write_template_tables %}
+        <div class="execute-write-template-menu">
+            <details>
+                <summary>Start with a template</summary>
+                <p class="execute-write-template-controls">
+                    <label for="execute-write-template-table">Table</label>
+                    <select id="execute-write-template-table">
+                        {% for table_name, columns in write_template_tables|dictsort %}
+                            <option value="{{ table_name }}">{{ table_name }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="button" data-sql-template="insert">Insert row</button>
+                    <button type="button" data-sql-template="update">Update rows</button>
+                    <button type="button" data-sql-template="delete">Delete rows</button>
+                </p>
+            </details>
+        </div>
+    {% endif %}
+
     <p><textarea id="sql-editor" name="sql"{% if sql %} style="height: {{ sql.split("\n")|length + 2 }}em"{% endif %}>{{ sql }}</textarea></p>
 
     {% if parameter_names %}
@@ -31,30 +122,28 @@
         {% endfor %}
     {% endif %}
 
-    <h2>Analysis</h2>
+    <h2>Query operations</h2>
     {% if analysis_error %}
         <p class="message-error">{{ analysis_error }}</p>
     {% elif analysis_rows %}
-        <div class="table-wrapper"><table>
+        <div class="table-wrapper"><table class="execute-write-analysis">
             <thead>
                 <tr>
                     <th scope="col">Operation</th>
                     <th scope="col">Database</th>
                     <th scope="col">Table</th>
-                    <th scope="col">required permission</th>
+                    <th scope="col">Required permission</th>
                     <th scope="col">Allowed</th>
-                    <th scope="col">Source</th>
                 </tr>
             </thead>
             <tbody>
                 {% for row in analysis_rows %}
                     <tr>
-                        <td>{{ row.operation }}</td>
-                        <td>{{ row.database }}</td>
-                        <td>{{ row.table }}</td>
-                        <td>{{ row.required_permission }}</td>
-                        <td>{% if row.allowed is none %}{% elif row.allowed %}yes{% else %}no{% endif %}</td>
-                        <td>{{ row.source or "" }}</td>
+                        <td><code>{{ row.operation }}</code></td>
+                        <td><code>{{ row.database }}</code></td>
+                        <td><code>{{ row.table }}</code></td>
+                        <td>{% if row.required_permission %}<code>{{ row.required_permission }}</code>{% endif %}</td>
+                        <td>{% if row.allowed is none %}{% elif row.allowed %}<span class="execute-write-analysis-allowed">yes</span>{% else %}<span class="execute-write-analysis-denied">no</span>{% endif %}</td>
                     </tr>
                 {% endfor %}
             </tbody>
@@ -66,6 +155,133 @@
     <p><input type="submit" value="Execute"{% if execute_disabled %} disabled{% endif %}></p>
 </form>
 
+<script>
+const executeWriteSqlInput = document.querySelector("textarea#sql-editor");
+if (executeWriteSqlInput && !executeWriteSqlInput.value) {
+  executeWriteSqlInput.value = "\n\n\n";
+}
+</script>
+
 {% include "_codemirror_foot.html" %}
+
+{% if write_template_tables %}
+<script>
+window.addEventListener("DOMContentLoaded", () => {
+  const tableColumns = {{ write_template_tables|tojson(2) }};
+  const tableSelect = document.querySelector("#execute-write-template-table");
+  const templateButtons = document.querySelectorAll("[data-sql-template]");
+
+  function quoteIdentifier(identifier) {
+    return `"${identifier.replace(/"/g, '""')}"`;
+  }
+
+  function parameterNames(columns) {
+    const seen = new Set();
+    const names = {};
+    columns.forEach((column) => {
+      let base = column
+        .toLowerCase()
+        .replace(/[^a-z0-9_]+/g, "_")
+        .replace(/^_+|_+$/g, "");
+      if (!base) {
+        base = "value";
+      }
+      if (/^[0-9]/.test(base)) {
+        base = `p_${base}`;
+      }
+      let name = base;
+      let index = 2;
+      while (seen.has(name)) {
+        name = `${base}_${index}`;
+        index += 1;
+      }
+      seen.add(name);
+      names[column] = name;
+    });
+    return names;
+  }
+
+  function preferredWhereColumn(table, columns) {
+    const lowerTableId = `${table.toLowerCase()}_id`;
+    return (
+      columns.find((column) => column.toLowerCase() === "id") ||
+      columns.find((column) => column.toLowerCase() === lowerTableId) ||
+      columns[0]
+    );
+  }
+
+  function insertSql(table, columns) {
+    const names = parameterNames(columns);
+    return [
+      `insert into ${quoteIdentifier(table)} (`,
+      columns.map((column) => `  ${quoteIdentifier(column)}`).join(",\n"),
+      ")",
+      "values (",
+      columns.map((column) => `  :${names[column]}`).join(",\n"),
+      ")",
+    ].join("\n");
+  }
+
+  function updateSql(table, columns) {
+    const names = parameterNames(columns);
+    const whereColumn = preferredWhereColumn(table, columns);
+    const setColumns = columns.filter((column) => column !== whereColumn);
+    if (!setColumns.length) {
+      return [
+        `update ${quoteIdentifier(table)}`,
+        `set ${quoteIdentifier(whereColumn)} = :new_${names[whereColumn]}`,
+        `where ${quoteIdentifier(whereColumn)} = :${names[whereColumn]}`,
+      ].join("\n");
+    }
+    return [
+      `update ${quoteIdentifier(table)}`,
+      "set " +
+        setColumns
+          .map((column, index) => {
+            const indent = index ? "    " : "";
+            return `${indent}${quoteIdentifier(column)} = :${names[column]}`;
+          })
+          .join(",\n"),
+      `where ${quoteIdentifier(whereColumn)} = :${names[whereColumn]}`,
+    ].join("\n");
+  }
+
+  function deleteSql(table, columns) {
+    const names = parameterNames(columns);
+    const whereColumn = preferredWhereColumn(table, columns);
+    return [
+      `delete from ${quoteIdentifier(table)}`,
+      `where ${quoteIdentifier(whereColumn)} = :${names[whereColumn]}`,
+    ].join("\n");
+  }
+
+  function templateSql(operation, table, columns) {
+    if (operation === "insert") {
+      return insertSql(table, columns);
+    }
+    if (operation === "update") {
+      return updateSql(table, columns);
+    }
+    return deleteSql(table, columns);
+  }
+
+  templateButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const table = tableSelect.value;
+      const columns = tableColumns[table] || [];
+      if (!columns.length) {
+        return;
+      }
+      const url = new URL(window.location.href);
+      url.searchParams.set(
+        "sql",
+        templateSql(button.dataset.sqlTemplate, table, columns)
+      );
+      window.location.href = url.toString();
+    });
+  });
+});
+</script>
+{% endif %}
 
 {% endblock %}

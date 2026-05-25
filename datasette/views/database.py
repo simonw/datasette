@@ -830,6 +830,13 @@ class ExecuteWriteView(BaseView):
         parameter_values = parameter_values or {}
         parameter_names = []
         analysis_rows = []
+        table_columns = await _table_columns(self.ds, db.name)
+        hidden_table_names = set(await db.hidden_table_names())
+        write_template_tables = {
+            table: columns
+            for table, columns in table_columns.items()
+            if columns and table not in hidden_table_names
+        }
         if sql and analysis_error is None:
             try:
                 parameter_names = _derived_query_parameters(sql)
@@ -858,7 +865,9 @@ class ExecuteWriteView(BaseView):
                 "parameter_names": parameter_names,
                 "parameter_values": parameter_values,
                 "analysis_error": analysis_error,
-                "analysis_rows": analysis_rows,
+                "analysis_rows": [
+                    row for row in analysis_rows if row["operation"] != "read"
+                ],
                 "execution_message": execution_message,
                 "execution_ok": execution_ok,
                 "execute_disabled": bool(
@@ -866,6 +875,8 @@ class ExecuteWriteView(BaseView):
                     or analysis_error
                     or any(row["allowed"] is False for row in analysis_rows)
                 ),
+                "table_columns": table_columns,
+                "write_template_tables": write_template_tables,
             },
         )
         response.status = status

@@ -30,7 +30,7 @@ async def test_queries_internal_table_schema():
         "options",
         "parameters",
         "is_write",
-        "published",
+        "is_published",
         "source",
         "owner_id",
         "created_at",
@@ -53,7 +53,7 @@ async def test_add_get_and_remove_query():
         hide_sql=True,
         fragment="chart",
         parameters=["region"],
-        published=True,
+        is_published=True,
         source="user",
         owner_id="alice",
     )
@@ -86,7 +86,7 @@ async def test_add_get_and_remove_query():
         "parameters": ["region"],
         "is_write": False,
         "write": False,
-        "published": True,
+        "is_published": True,
         "source": "user",
         "owner_id": "alice",
         "on_success_message": None,
@@ -143,7 +143,7 @@ async def test_update_query_only_updates_provided_fields():
     assert query["params"] == []
     assert query["on_success_redirect"] is None
     assert query["sql"] == "select 1"
-    assert query["published"] is False
+    assert query["is_published"] is False
     options_row = (
         await ds.get_internal_database().execute(
             """
@@ -190,7 +190,7 @@ async def test_config_queries_imported_to_internal_table():
         "parameters": ["name"],
         "is_write": False,
         "write": False,
-        "published": False,
+        "is_published": False,
         "source": "config",
         "owner_id": None,
         "on_success_message": None,
@@ -218,8 +218,8 @@ async def test_unpublished_query_requires_execute_sql_but_published_does_not():
     ds = Datasette(memory=True, settings={"default_allow_sql": False})
     ds.add_memory_database("query_permissions", name="data")
     await ds.invoke_startup()
-    await ds.add_query("data", "unpublished", "select 1", published=False)
-    await ds.add_query("data", "published", "select 1", published=True)
+    await ds.add_query("data", "unpublished", "select 1", is_published=False)
+    await ds.add_query("data", "published", "select 1", is_published=True)
 
     assert not await ds.allowed(
         action="execute-sql",
@@ -347,7 +347,7 @@ async def test_query_list_and_definition_api():
     ds.root_enabled = True
     ds.add_memory_database("query_list_api", name="data")
     await ds.invoke_startup()
-    await ds.add_query("data", "listed", "select 1", title="Listed", published=True)
+    await ds.add_query("data", "listed", "select 1", title="Listed", is_published=True)
 
     list_response = await ds.client.get(
         "/data/-/queries",
@@ -387,7 +387,7 @@ async def test_query_insert_api_publish_requires_publish_query():
     response = await ds.client.post(
         "/data/-/queries/-/insert",
         actor={"id": "writer"},
-        json={"query": {"name": "public", "sql": "select 1", "published": True}},
+        json={"query": {"name": "public", "sql": "select 1", "is_published": True}},
     )
 
     assert response.status_code == 403
@@ -416,7 +416,7 @@ async def test_query_insert_api_creates_writable_query():
     assert response.status_code == 201
     query = response.json()["query"]
     assert query["is_write"] is True
-    assert query["published"] is False
+    assert query["is_published"] is False
     assert query["parameters"] == ["name"]
 
     bad_response = await ds.client.post(
@@ -426,7 +426,7 @@ async def test_query_insert_api_creates_writable_query():
             "query": {
                 "name": "published_insert",
                 "sql": "insert into dogs (name) values (:name)",
-                "published": True,
+                "is_published": True,
             }
         },
     )

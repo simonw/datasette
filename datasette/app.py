@@ -615,7 +615,7 @@ class Datasette:
                     fragment=query_config.get("fragment"),
                     parameters=query_config.get("params"),
                     is_write=bool(query_config.get("write")),
-                    published=bool(query_config.get("published")),
+                    is_published=bool(query_config.get("is_published")),
                     source="config",
                     on_success_message=query_config.get("on_success_message"),
                     on_success_message_sql=query_config.get("on_success_message_sql"),
@@ -1081,7 +1081,7 @@ class Datasette:
             "parameters": parameters,
             "is_write": is_write,
             "write": is_write,
-            "published": bool(row["published"]),
+            "is_published": bool(row["is_published"]),
             "source": row["source"],
             "owner_id": row["owner_id"],
             "on_success_message": options.get("on_success_message"),
@@ -1116,7 +1116,7 @@ class Datasette:
         fragment=None,
         parameters=None,
         is_write=False,
-        published=False,
+        is_published=False,
         source="plugin",
         owner_id=None,
         on_success_message=None,
@@ -1141,7 +1141,7 @@ class Datasette:
         sql_statement = """
             INSERT INTO queries (
                 database_name, name, sql, title, description, description_html,
-                options, parameters, is_write, published, source, owner_id
+                options, parameters, is_write, is_published, source, owner_id
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         if replace:
@@ -1154,7 +1154,7 @@ class Datasette:
                     options = excluded.options,
                     parameters = excluded.parameters,
                     is_write = excluded.is_write,
-                    published = excluded.published,
+                    is_published = excluded.is_published,
                     source = excluded.source,
                     owner_id = excluded.owner_id,
                     updated_at = CURRENT_TIMESTAMP
@@ -1171,7 +1171,7 @@ class Datasette:
                 options_json,
                 parameters_json,
                 int(bool(is_write)),
-                int(bool(published)),
+                int(bool(is_published)),
                 source,
                 owner_id,
             ],
@@ -1190,7 +1190,7 @@ class Datasette:
         fragment=UNCHANGED,
         parameters=UNCHANGED,
         is_write=UNCHANGED,
-        published=UNCHANGED,
+        is_published=UNCHANGED,
         source=UNCHANGED,
         owner_id=UNCHANGED,
         on_success_message=UNCHANGED,
@@ -1206,7 +1206,7 @@ class Datasette:
             "description_html": description_html,
             "parameters": parameters,
             "is_write": is_write,
-            "published": published,
+            "is_published": is_published,
             "source": source,
             "owner_id": owner_id,
         }
@@ -1224,7 +1224,7 @@ class Datasette:
         for field, value in fields.items():
             if value is UNCHANGED:
                 continue
-            if field in {"is_write", "published"}:
+            if field in {"is_write", "is_published"}:
                 value = int(bool(value))
             elif field == "parameters":
                 value = json.dumps(list(value or []))

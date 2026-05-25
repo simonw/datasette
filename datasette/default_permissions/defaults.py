@@ -136,7 +136,7 @@ async def default_query_permissions_sql(
           'published query' AS reason
         FROM queries
         WHERE is_write = 0
-          AND published = 1
+          AND is_published = 1
         UNION ALL
         SELECT q.database_name AS parent, q.name AS child, 1 AS allow,
           'execute-sql allows query' AS reason
@@ -145,7 +145,7 @@ async def default_query_permissions_sql(
           ON es.parent = q.database_name
          AND es.child IS NULL
         WHERE q.is_write = 0
-          AND q.published = 0
+          AND q.is_published = 0
         {trusted_writable_sql}
         {user_writable_sql}
         """,

@@ -123,13 +123,13 @@ async def initialize_metadata_tables(db):
             options TEXT NOT NULL DEFAULT '{}',
             parameters TEXT NOT NULL DEFAULT '[]',
             is_write INTEGER NOT NULL DEFAULT 0 CHECK (is_write IN (0, 1)),
-            published INTEGER NOT NULL DEFAULT 0 CHECK (published IN (0, 1)),
+            is_published INTEGER NOT NULL DEFAULT 0 CHECK (is_published IN (0, 1)),
             source TEXT NOT NULL DEFAULT 'user',
             owner_id TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (database_name, name),
-            CHECK (is_write = 0 OR published = 0)
+            CHECK (is_write = 0 OR is_published = 0)
         );
 
         CREATE INDEX IF NOT EXISTS queries_owner_idx

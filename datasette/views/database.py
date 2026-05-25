@@ -431,7 +431,7 @@ _query_fields = {
     "fragment",
     "parameters",
     "params",
-    "published",
+    "is_published",
     "on_success_message",
     "on_success_message_sql",
     "on_success_redirect",
@@ -549,7 +549,7 @@ async def _check_query_name(db, name, *, existing=False):
         raise QueryValidationError("Query name conflicts with a table or view")
 
 
-async def _analyze_user_query(datasette, db, sql, *, actor, published):
+async def _analyze_user_query(datasette, db, sql, *, actor, is_published):
     if not sql or not isinstance(sql, str):
         raise QueryValidationError("SQL is required")
     derived = _derived_query_parameters(sql)
@@ -561,7 +561,7 @@ async def _analyze_user_query(datasette, db, sql, *, actor, published):
 
     is_write = _analysis_is_write(analysis)
     if is_write:
-        if published:
+        if is_published:
             raise QueryValidationError("Writable queries cannot be published")
         try:
             await datasette.ensure_query_write_permissions(
@@ -660,7 +660,7 @@ async def _prepare_execute_write(datasette, db, sql, params, actor):
 
 def _apply_query_data_types(data):
     typed = dict(data)
-    for key in ("hide_sql", "published"):
+    for key in ("hide_sql", "is_published"):
         if key in typed:
             typed[key] = _as_bool(typed[key])
     return typed
@@ -677,15 +677,15 @@ async def _prepare_query_create(datasette, request, db, data):
     if await datasette.get_query(db.name, name) is not None:
         raise QueryValidationError("Query already exists")
 
-    published = _as_bool(data.get("published"))
+    is_published = _as_bool(data.get("is_published"))
     is_write, derived, analysis = await _analyze_user_query(
         datasette,
         db,
         data.get("sql"),
         actor=request.actor,
-        published=published,
+        is_published=is_published,
     )
-    if published and not await datasette.allowed(
+    if is_published and not await datasette.allowed(
         action="publish-query",
         resource=DatabaseResource(db.name),
         actor=request.actor,
@@ -708,7 +708,7 @@ async def _prepare_query_create(datasette, request, db, data):
         "fragment": data.get("fragment"),
         "parameters": parameters,
         "is_write": is_write,
-        "published": published,
+        "is_published": is_published,
         "source": "user",
         "owner_id": _actor_id(request.actor),
         "on_success_message": data.get("on_success_message"),
@@ -727,7 +727,7 @@ async def _prepare_query_update(datasette, request, db, existing, update):
 
     update = _apply_query_data_types(update)
     sql = update.get("sql", existing["sql"])
-    published = update.get("published", existing["published"])
+    is_published = update.get("is_published", existing["is_published"])
     query_is_write = existing["is_write"]
     derived = _derived_query_parameters(sql)
     parameters = None
@@ -738,11 +738,11 @@ async def _prepare_query_update(datasette, request, db, existing, update):
             db,
             sql,
             actor=request.actor,
-            published=published,
+            is_published=is_published,
         )
-    elif published and query_is_write:
+    elif is_published and query_is_write:
         raise QueryValidationError("Writable queries cannot be published")
-    if published and not existing["published"]:
+    if is_published and not existing["is_published"]:
         if not await datasette.allowed(
             action="publish-query",
             resource=DatabaseResource(db.name),
@@ -772,7 +772,7 @@ async def _prepare_query_update(datasette, request, db, existing, update):
         "fragment": update.get("fragment"),
         "parameters": parameters,
         "is_write": query_is_write,
-        "published": published,
+        "is_published": is_published,
         "on_success_message": update.get("on_success_message"),
         "on_success_message_sql": update.get("on_success_message_sql"),
         "on_success_redirect": update.get("on_success_redirect"),

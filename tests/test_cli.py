@@ -46,6 +46,21 @@ def test_inspect_cli_writes_to_file(app_client):
     assert ["fixtures"] == list(data.keys())
 
 
+def test_inspect_cli_returns_exact_counts_for_large_tables(tmp_path):
+    db_path = tmp_path / "large.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("create table t(id integer primary key)")
+    conn.executemany("insert into t(id) values (?)", [(i,) for i in range(10002)])
+    conn.commit()
+    conn.close()
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["inspect", str(db_path)])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert data["large"]["tables"]["t"]["count"] == 10002
+
+
 def test_serve_with_inspect_file_prepopulates_table_counts_cache():
     inspect_data = {"fixtures": {"tables": {"hithere": {"count": 44}}}}
     with make_app_client(inspect_data=inspect_data, is_immutable=True) as client:

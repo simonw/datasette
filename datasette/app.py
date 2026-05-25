@@ -52,6 +52,7 @@ from .views.database import (
     QueryCreateView,
     QueryDeleteView,
     QueryDefinitionView,
+    GlobalQueryListView,
     QueryInsertView,
     QueryListView,
     QueryUpdateView,
@@ -1290,7 +1291,7 @@ class Datasette:
 
     async def list_queries(
         self,
-        database,
+        database=None,
         *,
         actor=None,
         limit=50,
@@ -1310,16 +1311,40 @@ class Datasette:
             include_is_private=include_private,
         )
         params = dict(allowed_params)
-        params.update({"query_database": database, "limit": limit + 1})
+        params.update({"limit": limit + 1})
         sort_key_sql = "lower(coalesce(nullif(q.title, ''), q.name))"
-        where_clauses = ["q.database_name = :query_database"]
+        where_clauses = []
+        order_by = "q.database_name, sort_key, q.name"
+        if database is not None:
+            params["query_database"] = database
+            where_clauses.append("q.database_name = :query_database")
+            order_by = "sort_key, q.name"
 
         if cursor:
             try:
                 components = urlsafe_components(cursor)
             except ValueError:
                 components = []
-            if len(components) == 2:
+            if database is None and len(components) == 3:
+                where_clauses.append("""
+                    (
+                        q.database_name > :cursor_database
+                        OR (
+                            q.database_name = :cursor_database
+                            AND (
+                                {sort_key_sql} > :cursor_sort_key
+                                OR (
+                                    {sort_key_sql} = :cursor_sort_key
+                                    AND q.name > :cursor_name
+                                )
+                            )
+                        )
+                    )
+                    """.format(sort_key_sql=sort_key_sql))
+                params["cursor_database"] = components[0]
+                params["cursor_sort_key"] = components[1]
+                params["cursor_name"] = components[2]
+            elif database is not None and len(components) == 2:
                 where_clauses.append("""
                     (
                         {sort_key_sql} > :cursor_sort_key
@@ -1368,13 +1393,14 @@ class Datasette:
                       ON allowed.parent = q.database_name
                      AND allowed.child = q.name
                     WHERE {where}
-                    ORDER BY sort_key, q.name
+                    ORDER BY {order_by}
                     LIMIT :limit
                     """.format(
                         allowed_sql=allowed_sql,
                         private_select=private_select,
                         sort_key_sql=sort_key_sql,
-                        where=" AND ".join(where_clauses),
+                        where=" AND ".join(where_clauses) or "1 = 1",
+                        order_by=order_by,
                     ),
                     params,
                 )
@@ -1394,10 +1420,17 @@ class Datasette:
         next_token = None
         if has_more and rows:
             last_row = rows[-1]
-            next_token = "{},{}".format(
-                tilde_encode(last_row["sort_key"]),
-                tilde_encode(last_row["name"]),
-            )
+            if database is None:
+                next_token = "{},{},{}".format(
+                    tilde_encode(last_row["database_name"]),
+                    tilde_encode(last_row["sort_key"]),
+                    tilde_encode(last_row["name"]),
+                )
+            else:
+                next_token = "{},{}".format(
+                    tilde_encode(last_row["sort_key"]),
+                    tilde_encode(last_row["name"]),
+                )
         return {
             "queries": queries,
             "next": next_token,
@@ -2650,6 +2683,10 @@ class Datasette:
         add_route(
             JumpView.as_view(self),
             r"/-/jump(\.(?P<format>json))?$",
+        )
+        add_route(
+            GlobalQueryListView.as_view(self),
+            r"/-/queries(\.(?P<format>json))?$",
         )
         add_route(
             InstanceSchemaView.as_view(self),

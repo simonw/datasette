@@ -505,12 +505,13 @@ The JSON write API
 
 Datasette provides a write API for JSON data. This is a POST-only API that requires an authenticated API token, see :ref:`CreateTokenView`. The token will need to have the specified :ref:`authentication_permissions`.
 
+.. _GlobalQueryListView:
 .. _QueryListView:
 
 Listing saved queries
 ~~~~~~~~~~~~~~~~~~~~~
 
-``GET /<database>/-/queries.json`` returns saved query definitions the actor can view. Use ``?_size=50`` to set the page size and ``?_next=...`` with the cursor returned by the previous page to fetch the next page.
+``GET /-/queries.json`` returns saved query definitions across every database that the actor can view. ``GET /<database>/-/queries.json`` returns saved query definitions for a specific database. Use ``?_size=50`` to set the page size and ``?_next=...`` with the cursor returned by the previous page to fetch the next page.
 
 .. _QueryCreateView:
 

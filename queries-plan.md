@@ -210,7 +210,7 @@ JSON endpoints should follow Datasette's existing write API style: use `POST` pl
 
 Endpoints:
 
-- `GET /{database}/-/queries` shows a searchable HTML query browser. `GET /{database}/-/queries.json` returns query definitions the actor can view, using cursor pagination with `_next` and `_size`.
+- `GET /-/queries` and `GET /{database}/-/queries` show searchable HTML query browsers. `GET /-/queries.json` lists query definitions across every database the actor can view; `GET /{database}/-/queries.json` scopes that list to one database. Both JSON endpoints use cursor pagination with `_next` and `_size`.
 - `POST /{database}/-/queries/-/insert` creates a query.
 - `GET /{database}/{query}/-/definition` returns one query definition without executing it.
 - `POST /{database}/{query}/-/update` updates one query.
@@ -366,7 +366,7 @@ await datasette.list_queries(
 )
 ```
 
-`list_queries()` should return a bounded page shaped like `{"queries": [...], "next": "...", "has_more": true, "limit": 50}`. The `next` value is an opaque cursor token, not an offset.
+`list_queries()` should return a bounded page shaped like `{"queries": [...], "next": "...", "has_more": true, "limit": 50}`. The `next` value is an opaque cursor token, not an offset. Passing `database=None` lists visible queries across all live databases, still filtered through `view-query` permission SQL.
 
 `update_query()` should use an internal sentinel default such as `UNCHANGED = object()` so callers can distinguish "leave this column alone" from "set this column to `NULL`":
 
@@ -392,7 +392,7 @@ The save form should call `POST /{database}/-/queries/-/insert` and default to `
 
 If the actor also has `publish-query`, include a publish control. The UI copy should make it clear that publishing allows people without arbitrary SQL permission to run this query.
 
-On `/{database}`, show a preview of the first 5 visible queries using `list_queries(..., limit=5)`. If the page has `has_more`, show a link to `/{database}/-/queries` rather than rendering hundreds or thousands of query links inline. The full `/{database}/-/queries` page provides search, filters, and cursor pagination.
+On `/{database}`, show a preview of the first 5 visible queries using `list_queries(..., limit=5)`. If the page has `has_more`, show a link to `/{database}/-/queries` rather than rendering hundreds or thousands of query links inline. The full `/{database}/-/queries` page provides search, filters, and cursor pagination. The global `/-/queries` page reuses the same interface and shows the database for each query.
 
 ## Dedicated create query UI
 

@@ -967,8 +967,14 @@ class ExecuteWriteView(BaseView):
 class QueryListView(BaseView):
     name = "query-list"
 
+    async def database_name(self, request):
+        return (await self.ds.resolve_database(request)).name
+
+    def query_list_path(self, database):
+        return self.ds.urls.database(database) + "/-/queries"
+
     async def get(self, request):
-        db = await self.ds.resolve_database(request)
+        database = await self.database_name(request)
         format_ = request.url_vars.get("format") or "html"
         try:
             limit = _query_list_limit(request.args.get("_size"))
@@ -980,7 +986,7 @@ class QueryListView(BaseView):
             return _error([ex.message], ex.status)
 
         page = await self.ds.list_queries(
-            db.name,
+            database,
             actor=request.actor,
             limit=limit,
             cursor=request.args.get("_next"),
@@ -991,6 +997,7 @@ class QueryListView(BaseView):
             owner_id=request.args.get("owner_id") or None,
             include_private=True,
         )
+        query_list_path = self.query_list_path(database)
         next_url = None
         if page["next"]:
             pairs = [
@@ -1002,18 +1009,20 @@ class QueryListView(BaseView):
             ]
             pairs.append(("_next", page["next"]))
             next_url = "{}?{}".format(
-                self.ds.urls.database(db.name) + "/-/queries",
+                query_list_path,
                 urlencode(pairs),
             )
 
         data = {
             "ok": True,
-            "database": db.name,
+            "database": database,
             "queries": page["queries"],
             "next": page["next"],
             "next_url": next_url,
             "has_more": page["has_more"],
             "limit": page["limit"],
+            "query_list_path": query_list_path,
+            "show_database": database is None,
             "filters": {
                 "q": request.args.get("q") or "",
                 "is_write": request.args.get("is_write") or "",
@@ -1029,6 +1038,16 @@ class QueryListView(BaseView):
             request,
             data,
         )
+
+
+class GlobalQueryListView(QueryListView):
+    name = "global-query-list"
+
+    async def database_name(self, request):
+        return None
+
+    def query_list_path(self, database):
+        return self.ds.urls.path("/-/queries")
 
 
 class QueryCreateView(BaseView):

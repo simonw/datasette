@@ -458,6 +458,73 @@ async def test_query_list_search_filter_and_html():
 
 
 @pytest.mark.asyncio
+async def test_global_query_list_api_and_html():
+    ds = Datasette(memory=True)
+    ds.root_enabled = True
+    ds.add_memory_database("query_list_global_alpha", name="alpha")
+    ds.add_memory_database("query_list_global_beta", name="beta")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "alpha",
+        "alpha_first",
+        "select 1",
+        title="Alpha first",
+        is_published=True,
+        source="user",
+        owner_id="root",
+    )
+    await ds.add_query(
+        "alpha",
+        "alpha_second",
+        "select 2",
+        title="Alpha second",
+        is_published=True,
+        source="user",
+        owner_id="root",
+    )
+    await ds.add_query(
+        "beta",
+        "beta_first",
+        "select 3",
+        title="Beta first",
+        is_published=True,
+        source="user",
+        owner_id="root",
+    )
+
+    list_response = await ds.client.get(
+        "/-/queries.json?_size=2",
+        actor={"id": "root"},
+    )
+    next_response = await ds.client.get(
+        "/-/queries.json?_size=2&_next={}".format(list_response.json()["next"]),
+        actor={"id": "root"},
+    )
+    html_response = await ds.client.get(
+        "/-/queries?q=Beta",
+        actor={"id": "root"},
+    )
+
+    assert list_response.status_code == 200
+    assert [
+        (query["database"], query["name"]) for query in list_response.json()["queries"]
+    ] == [
+        ("alpha", "alpha_first"),
+        ("alpha", "alpha_second"),
+    ]
+    assert list_response.json()["next"]
+    assert [
+        (query["database"], query["name"]) for query in next_response.json()["queries"]
+    ] == [
+        ("beta", "beta_first"),
+    ]
+    assert html_response.status_code == 200
+    assert 'href="/beta">beta</a>:' in html_response.text
+    assert "Beta first" in html_response.text
+    assert "Alpha first" not in html_response.text
+
+
+@pytest.mark.asyncio
 async def test_query_insert_api_publish_requires_publish_query():
     ds = Datasette(
         memory=True,

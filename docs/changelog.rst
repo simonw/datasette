@@ -9,7 +9,7 @@ Changelog
 Unreleased
 ----------
 
-- Fixed a bug where visiting ``/<database>/-/query`` without a ``?sql=`` parameter returned a 500 error instead of rendering the empty SQL editor form. (:issue:`2743`)
+- Fixed a bug where visiting ``/<database>/-/query`` without a ``?sql=`` parameter returned a 500 error. (:issue:`2743`)
 
 .. _v1_0_a30:
 

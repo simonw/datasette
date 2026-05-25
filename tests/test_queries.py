@@ -516,6 +516,40 @@ async def test_execute_write_get_prepopulates_without_executing():
 
 
 @pytest.mark.asyncio
+async def test_database_action_menu_links_to_execute_write_for_permitted_actor():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {
+                            "id": ["writer", "viewer"],
+                        },
+                        "execute-write-sql": {"id": "writer"},
+                    }
+                }
+            }
+        },
+    )
+    ds.add_memory_database("execute_write_menu", name="data")
+    await ds.invoke_startup()
+
+    anonymous_response = await ds.client.get("/data")
+    viewer_response = await ds.client.get("/data", actor={"id": "viewer"})
+    writer_response = await ds.client.get("/data", actor={"id": "writer"})
+
+    assert anonymous_response.status_code == 403
+    assert viewer_response.status_code == 200
+    assert "Execute write SQL" not in viewer_response.text
+    assert writer_response.status_code == 200
+    assert "Database actions" in writer_response.text
+    assert 'href="/data/-/execute-write"' in writer_response.text
+    assert "Execute write SQL" in writer_response.text
+
+
+@pytest.mark.asyncio
 async def test_execute_write_post_requires_database_and_table_permissions():
     ds = Datasette(
         memory=True,

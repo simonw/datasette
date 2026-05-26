@@ -25,7 +25,7 @@ Terminology change: these are now "queries", not "canned queries". Legacy code a
 - Query definitions currently come from `datasette.yaml` or the `canned_queries()` plugin hook.
 - `Datasette.get_canned_queries(database_name, actor)` calls that hook every time it needs query definitions.
 - `QueryResource.resources_sql()` currently enumerates databases and calls the hook for each one, because permissions and `/-/jump` need query resources.
-- Query pages execute if the actor has `view-query` for `QueryResource(database, query)`.
+- Query pages are visible if the actor has `view-query` for `QueryResource(database, query)`. Executing an untrusted stored query also checks `execute-sql` or the relevant write permissions.
 - Arbitrary SQL executes if the actor has `execute-sql` for `DatabaseResource(database)`.
 
 The main performance and architecture win is making query resource enumeration a direct SQL query against the internal database.
@@ -145,9 +145,7 @@ Default execution rule for user-created writable queries:
 
 Implementation:
 
-- Remove `view-query` from the broad `DEFAULT_ALLOW_ACTIONS` set.
-- Replace it with query-aware default `view-query` permission SQL.
-- Emit default `view-query` allows for non-private rows when Datasette is not running with `--default-deny`.
+- Keep `view-query` in the broad `DEFAULT_ALLOW_ACTIONS` set, so saved queries remain visible by default in all-public Datasette.
 - Emit default `view-query` allows for the owning actor.
 - Use `restriction_sql` to limit private rows to their owner even when broader `view-query` permissions exist.
 - Have `QueryView` perform the fresh `execute-sql` or table-permission check before execution unless the row has `is_trusted=1`.
@@ -424,7 +422,7 @@ The existing edit-SQL flow from query pages can continue to point back to arbitr
 - The old `canned_queries()` hook is no longer called by core.
 - `QueryResource.resources_sql()` returns rows from `queries`.
 - Database page and `/-/jump` list queries from the internal DB.
-- `view-query` is no longer globally default-allowed; default query permissions come from the query-aware hook.
+- `view-query` remains globally default-allowed, with `restriction_sql` narrowing private queries to their owner.
 - Private query is only visible to its owner, even when a broader `view-query` rule applies.
 - Non-trusted read-only query requires `execute-sql` to execute.
 - Trusted read-only query can be executed without `execute-sql` after `view-query` passes.

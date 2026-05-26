@@ -395,8 +395,16 @@ async def test_untrusted_shared_query_execution_requires_execute_sql():
         owner_id="alice",
     )
 
-    denied = await ds.client.get("/data/shared_report.json", actor={"id": "viewer"})
-    assert denied.status_code == 403
+    denied_get = await ds.client.get(
+        "/data/shared_report.json", actor={"id": "viewer"}
+    )
+    denied_post = await ds.client.post(
+        "/data/shared_report",
+        actor={"id": "viewer"},
+        data={},
+    )
+    assert denied_get.status_code == 403
+    assert denied_post.status_code == 403
 
     ds.config["databases"]["data"]["permissions"]["execute-sql"] = {"id": "viewer"}
     allowed = await ds.client.get("/data/shared_report.json", actor={"id": "viewer"})

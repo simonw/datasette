@@ -1285,7 +1285,7 @@ Actor is allowed to view a table (or view) page, e.g. https://latest.datasette.i
 view-query
 ----------
 
-Actor is allowed to view (and execute) a saved query page, e.g. https://latest.datasette.io/fixtures/pragma_cache_size - this includes executing :ref:`canned_queries_writable`.
+Actor is allowed to view a saved query page, e.g. https://latest.datasette.io/fixtures/pragma_cache_size. Executing an untrusted saved query also requires ``execute-sql`` or the relevant write permissions; trusted saved queries can execute with ``view-query`` alone.
 
 ``resource`` - ``datasette.resources.QueryResource(database, query)``
     ``database`` is the name of the database (string)

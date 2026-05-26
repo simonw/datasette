@@ -1430,10 +1430,9 @@ class QueryView(View):
         ):
             raise Forbidden("You do not have permission to view this query")
 
-        if canned_query.get("write"):
-            await _ensure_stored_query_execution_permissions(
-                datasette, db, canned_query, request.actor
-            )
+        await _ensure_stored_query_execution_permissions(
+            datasette, db, canned_query, request.actor
+        )
 
         # If database is immutable, return an error
         if not db.is_mutable:

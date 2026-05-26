@@ -1298,7 +1298,7 @@ Actor is allowed to view a stored query page, e.g. https://latest.datasette.io/f
 store-query
 -----------
 
-Actor is allowed to create stored queries in a database.
+Actor is allowed to create stored queries against a database.
 
 ``resource`` - ``datasette.resources.DatabaseResource(database)``
     ``database`` is the name of the database (string)

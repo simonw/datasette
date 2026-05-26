@@ -9,10 +9,32 @@ Changelog
 Unreleased
 ----------
 
-- Fixed a bug where visiting ``/<database>/-/query`` without a ``?sql=`` parameter returned a 500 error. (:issue:`2743`)
+Stored queries
+~~~~~~~~~~~~~~
+
+- The previous "canned queries" feature has been renamed and expanded into :ref:`stored queries <stored_queries>`. Queries configured in ``datasette.yaml`` are now loaded into a new ``queries`` table in Datasette's :ref:`internal database <internals_internal_schema>`, alongside user-created stored queries. (:issue:`2735`)
+- New stored query management APIs: ``datasette.add_query()``, ``datasette.update_query()``, ``datasette.remove_query()``, ``datasette.get_query()``, ``datasette.list_queries()`` and ``datasette.count_queries()``. These replace the removed ``datasette.get_canned_query()`` and ``datasette.get_canned_queries()`` methods. (:issue:`2735`)
+- Users with :ref:`store-query <actions_store_query>` and :ref:`execute-sql <actions_execute_sql>` permission can create stored queries from the SQL query page or the new ``GET /<database>/-/queries/store`` form. (:issue:`2735`)
+- The database page now shows a count and preview of stored queries, capped at five, and links to new paginated query browsers at ``/-/queries`` and ``/<database>/-/queries``. Those browsers support search. (:issue:`2735`)
+- Stored queries created by users default to private and untrusted. Private stored queries can only be viewed, updated or deleted by their owner, even if another actor has broad ``view-query``, ``update-query`` or ``delete-query`` permission. Untrusted stored queries execute using the permissions of the actor running them. See :ref:`stored_queries` and :ref:`trusted_stored_queries` for details. (:issue:`2735`)
+- New ``store-query``, ``update-query`` and ``delete-query`` permissions, plus updated semantics for :ref:`view-query <actions_view_query>`. Trusted stored queries can still execute with ``view-query`` alone; untrusted read queries also require :ref:`execute-sql <actions_execute_sql>` and untrusted writable queries require :ref:`execute-write-sql <actions_execute_write_sql>` plus the relevant table-level write permissions. (:issue:`2735`)
+
+Write SQL UI
+~~~~~~~~~~~~
+
+- New "Write to this database" interface at ``/<database>/-/execute-write`` for running arbitrary writable SQL against mutable databases. The form extracts named parameters, analyzes the SQL, shows the table operations that will be attempted and links to a newly inserted row when a single-row insert succeeds. (:issue:`2742`)
+- Added the new :ref:`execute-write-sql <actions_execute_write_sql>` permission for running arbitrary writable SQL. Execution is also gated by table-level permissions such as :ref:`insert-row <actions_insert_row>`, :ref:`update-row <actions_update_row>` and :ref:`delete-row <actions_delete_row>`, and writes to attached databases are rejected. (:issue:`2742`)
+
+Plugin API changes
+~~~~~~~~~~~~~~~~~~
+
 - The ``top_canned_query()`` plugin hook has been renamed to :ref:`top_stored_query() <plugin_hook_top_stored_query>`. (:issue:`2747`)
-- The ``canned_queries()`` plugin hook has been removed. Plugins can use the new ``datasette.add_query()``, ``datasette.update_query()`` and ``datasette.remove_query()`` methods to manage stored queries instead.
-- The ``datasette.get_canned_query()`` and ``datasette.get_canned_queries()`` methods have been removed. Plugins can use ``datasette.get_query()`` and ``datasette.list_queries()`` instead.
+- The ``canned_queries()`` plugin hook has been removed. Plugins can use the new stored query methods together with :ref:`startup() <plugin_hook_startup>` to register queries. (:issue:`2735`)
+
+Bug fixes
+~~~~~~~~~
+
+- Fixed a bug where visiting ``/<database>/-/query`` without a ``?sql=`` parameter returned a 500 error. (:issue:`2743`)
 
 .. _v1_0_a30:
 

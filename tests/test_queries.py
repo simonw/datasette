@@ -1582,6 +1582,87 @@ async def test_query_owner_gets_update_delete_and_writable_view_defaults():
 
 
 @pytest.mark.asyncio
+async def test_private_query_restricts_broad_update_delete_permissions():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "update-query": {"id": "bob"},
+                        "delete-query": {"id": "bob"},
+                    },
+                },
+            },
+        },
+    )
+    ds.add_memory_database("query_broad_update_delete", name="data")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "alice_private",
+        "select 1",
+        is_private=True,
+        source="user",
+        owner_id="alice",
+    )
+    await ds.add_query(
+        "data",
+        "alice_public",
+        "select 2",
+        is_private=False,
+        source="user",
+        owner_id="alice",
+    )
+
+    for action in ("update-query", "delete-query"):
+        assert await ds.allowed(
+            action=action,
+            resource=QueryResource("data", "alice_private"),
+            actor={"id": "alice"},
+        )
+        assert not await ds.allowed(
+            action=action,
+            resource=QueryResource("data", "alice_private"),
+            actor={"id": "bob"},
+        )
+        assert await ds.allowed(
+            action=action,
+            resource=QueryResource("data", "alice_public"),
+            actor={"id": "bob"},
+        )
+
+    private_update_response = await ds.client.post(
+        "/data/alice_private/-/update",
+        actor={"id": "bob"},
+        json={"update": {"title": "Nope"}},
+    )
+    private_delete_response = await ds.client.post(
+        "/data/alice_private/-/delete",
+        actor={"id": "bob"},
+        json={},
+    )
+    public_update_response = await ds.client.post(
+        "/data/alice_public/-/update",
+        actor={"id": "bob"},
+        json={"update": {"title": "Bob can edit public queries"}},
+    )
+    public_delete_response = await ds.client.post(
+        "/data/alice_public/-/delete",
+        actor={"id": "bob"},
+        json={},
+    )
+
+    assert private_update_response.status_code == 403
+    assert private_delete_response.status_code == 403
+    assert public_update_response.status_code == 200
+    assert public_delete_response.status_code == 200
+    assert await ds.get_query("data", "alice_private") is not None
+    assert await ds.get_query("data", "alice_public") is None
+
+
+@pytest.mark.asyncio
 async def test_user_writable_query_execution_rechecks_table_permissions():
     ds = Datasette(
         memory=True,

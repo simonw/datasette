@@ -77,36 +77,31 @@ async def default_query_permissions_sql(
 ) -> Optional[PermissionSQL]:
     actor_id = actor.get("id") if isinstance(actor, dict) else None
 
-    if action in {"update-query", "delete-query"}:
-        if actor_id is None:
-            return None
-        # Query owner can update/delete query
-        return PermissionSQL(
-            sql="""
-            SELECT database_name AS parent, name AS child, 1 AS allow,
-              'query owner' AS reason
-            FROM queries
-            WHERE source = 'user'
-              AND owner_id = :query_owner_id
-            """,
-            params={"query_owner_id": actor_id},
-        )
-
-    if action != "view-query":
+    if action not in {"view-query", "update-query", "delete-query"}:
         return None
 
     params = {"query_owner_id": actor_id}
     rule_sqls = []
     if actor_id is not None:
-        # Query owner can view-query
-        rule_sqls.append("""
+        if action in {"update-query", "delete-query"}:
+            # Query owner can update/delete query
+            rule_sqls.append("""
+            SELECT database_name AS parent, name AS child, 1 AS allow,
+              'query owner' AS reason
+            FROM queries
+            WHERE source = 'user'
+              AND owner_id = :query_owner_id
+            """)
+        else:
+            # Query owner can view-query
+            rule_sqls.append("""
             SELECT database_name AS parent, name AS child, 1 AS allow,
               'query owner' AS reason
             FROM queries
             WHERE owner_id = :query_owner_id
             """)
 
-    # restriction_sql enforces private queries ONLY visible to owner
+    # restriction_sql enforces private queries ONLY visible/mutable by owner
     return PermissionSQL(
         sql="\nUNION ALL\n".join(rule_sqls) if rule_sqls else None,
         restriction_sql="""

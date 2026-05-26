@@ -1409,10 +1409,14 @@ svg.dropdown-menu-icon {
     border-bottom: 5px solid #666;
 }
 
-.canned-query-edit-sql {
+.stored-query-edit-sql {
     padding-left: 0.5em;
     position: relative;
     top: 1px;
+}
+.save-query {
+    display: inline-block;
+    margin-left: 0.45em;
 }
 
 .blob-download {

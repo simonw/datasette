@@ -76,7 +76,7 @@ async def ds_for_jump():
 
 
 @pytest.mark.asyncio
-async def test_jump_searches_tables_databases_views_and_canned_queries(ds_for_jump):
+async def test_jump_searches_tables_databases_views_and_stored_queries(ds_for_jump):
     response = await ds_for_jump.client.get(
         "/-/jump.json?q=content", actor={"id": "user"}
     )
@@ -98,7 +98,7 @@ async def test_jump_searches_tables_databases_views_and_canned_queries(ds_for_ju
 
 
 @pytest.mark.asyncio
-async def test_jump_uses_canned_query_names_not_titles(ds_for_jump):
+async def test_jump_uses_stored_query_names_not_titles(ds_for_jump):
     response = await ds_for_jump.client.get(
         "/-/jump.json?q=datasette", actor={"id": "user"}
     )

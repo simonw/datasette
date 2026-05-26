@@ -28,7 +28,7 @@ The index page can also be accessed at ``/-/``, useful for if the default index 
 Database
 ========
 
-Each database has a page listing the tables, views and canned queries available for that database. If the :ref:`actions_execute_sql` permission is enabled (it's on by default) there will also be an interface for executing arbitrary SQL select queries against the data.
+Each database has a page listing the tables, views and stored queries available for that database. If the :ref:`actions_execute_sql` permission is enabled (it's on by default) there will also be an interface for executing arbitrary SQL select queries against the data.
 
 Examples:
 
@@ -68,7 +68,7 @@ This means you can link directly to a query by constructing the following URL:
 
 ``/database-name/-/query?sql=SELECT+*+FROM+table_name``
 
-Each configured :ref:`canned query <canned_queries>` has its own page, at ``/database-name/query-name``. Viewing this page will execute the query and display the results.
+Each configured :ref:`stored query <stored_queries>` has its own page, at ``/database-name/query-name``. Viewing this page will execute the query and display the results.
 
 In both cases adding a ``.json`` extension to the URL will return the results as JSON.
 

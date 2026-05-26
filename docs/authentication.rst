@@ -121,7 +121,7 @@ This configuration will deny access to everyone except the user with ``id`` of `
 How permissions are resolved
 ----------------------------
 
-Datasette performs permission checks using the internal :ref:`datasette_allowed`, method which accepts keyword arguments for ``action``, ``resource`` and an optional ``actor``. 
+Datasette performs permission checks using the internal :ref:`datasette_allowed`, method which accepts keyword arguments for ``action``, ``resource`` and an optional ``actor``.
 
 ``resource`` should be an instance of the appropriate ``Resource`` subclass from :mod:`datasette.resources`—for example ``InstanceResource()``, ``DatabaseResource(database="...``)`` or ``TableResource(database="...", table="...")``. This defaults to ``InstanceResource()`` if not specified.
 
@@ -468,7 +468,7 @@ You can control the following:
 * Access to the entire Datasette instance
 * Access to specific databases
 * Access to specific tables and views
-* Access to specific :ref:`canned_queries`
+* Access to specific :ref:`queries <queries>`
 
 If a user has permission to view a table they will be able to view that table, independent of if they have permission to view the database or instance that the table exists within.
 
@@ -641,12 +641,12 @@ This works for SQL views as well - you can list their names in the ``"tables"`` 
 
 .. _authentication_permissions_query:
 
-Access to specific canned queries
----------------------------------
+Access to specific queries
+--------------------------
 
-:ref:`canned_queries` allow you to configure named SQL queries in your ``datasette.yaml`` that can be executed by users. These queries can be set up to both read and write to the database, so controlling who can execute them can be important.
+:ref:`Queries <queries>` allow you to configure named SQL queries in your ``datasette.yaml`` that can be executed by users. These queries can be set up to both read and write to the database, so controlling who can execute them can be important.
 
-To limit access to the ``add_name`` canned query in your ``dogs.db`` database to just the :ref:`root user<authentication_root>`:
+To limit access to the ``add_name`` query in your ``dogs.db`` database to just the :ref:`root user<authentication_root>`:
 
 .. [[[cog
     config_example(cog, """
@@ -1020,7 +1020,7 @@ You can also restrict permissions such that they can only be used within specifi
 
 The resulting token will only be able to insert rows, and only to tables in the ``mydatabase`` database.
 
-Finally, you can restrict permissions to individual resources - tables, SQL views and :ref:`named queries <canned_queries>` - within a specific database::
+Finally, you can restrict permissions to individual resources - tables, SQL views and :ref:`named queries <queries>` - within a specific database::
 
     datasette create-token root --resource mydatabase mytable insert-row
 
@@ -1285,12 +1285,46 @@ Actor is allowed to view a table (or view) page, e.g. https://latest.datasette.i
 view-query
 ----------
 
-Actor is allowed to view (and execute) a :ref:`canned query <canned_queries>` page, e.g. https://latest.datasette.io/fixtures/pragma_cache_size - this includes executing :ref:`canned_queries_writable`.
+Actor is allowed to view a stored query page, e.g. https://latest.datasette.io/fixtures/pragma_cache_size. Executing an untrusted stored query also requires ``execute-sql`` or the relevant write permissions; :ref:`trusted stored queries <trusted_stored_queries>` can execute with ``view-query`` alone.
 
 ``resource`` - ``datasette.resources.QueryResource(database, query)``
     ``database`` is the name of the database (string)
-    
-    ``query`` is the name of the canned query (string)
+
+    ``query`` is the name of the query (string)
+
+.. _actions_store_query:
+
+store-query
+-----------
+
+Actor is allowed to create stored queries against a database.
+
+``resource`` - ``datasette.resources.DatabaseResource(database)``
+    ``database`` is the name of the database (string)
+
+.. _actions_update_query:
+
+update-query
+------------
+
+Actor is allowed to update a stored query.
+
+``resource`` - ``datasette.resources.QueryResource(database, query)``
+    ``database`` is the name of the database (string)
+
+    ``query`` is the name of the query (string)
+
+.. _actions_delete_query:
+
+delete-query
+------------
+
+Actor is allowed to delete a stored query.
+
+``resource`` - ``datasette.resources.QueryResource(database, query)``
+    ``database`` is the name of the database (string)
+
+    ``query`` is the name of the query (string)
 
 .. _actions_insert_row:
 
@@ -1379,12 +1413,22 @@ Actor is allowed to drop a database table.
 execute-sql
 -----------
 
-Actor is allowed to run arbitrary SQL queries against a specific database, e.g. https://latest.datasette.io/fixtures/-/query?sql=select+100
+Actor is allowed to run arbitrary read-only SQL queries against a specific database, e.g. https://latest.datasette.io/fixtures/-/query?sql=select+100
 
 ``resource`` - ``datasette.resources.DatabaseResource(database)``
     ``database`` is the name of the database (string)
 
 See also :ref:`the default_allow_sql setting <setting_default_allow_sql>`.
+
+.. _actions_execute_write_sql:
+
+execute-write-sql
+-----------------
+
+Actor is allowed to run arbitrary writable SQL queries against a specific database, subject to table-level write permissions such as ``insert-row``, ``update-row`` and ``delete-row``.
+
+``resource`` - ``datasette.resources.DatabaseResource(database)``
+    ``database`` is the name of the database (string)
 
 .. _actions_permissions_debug:
 

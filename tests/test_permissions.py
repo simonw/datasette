@@ -1,4 +1,5 @@
 import collections
+from asgiref.sync import async_to_sync
 from datasette.app import Datasette
 from datasette.cli import cli
 from datasette.default_permissions import restrictions_allow_action
@@ -609,6 +610,10 @@ def test_padlocks_on_database_page(cascade_app_client):
     previous_config = cascade_app_client.ds.config
     try:
         cascade_app_client.ds.config = config
+        async_to_sync(cascade_app_client.ds.invoke_startup)()
+        async_to_sync(cascade_app_client.ds.add_query)(
+            "fixtures", "query_two", "select 2", source="config"
+        )
         response = cascade_app_client.get(
             "/fixtures",
             cookies={"ds_actor": cascade_app_client.actor_cookie({"id": "test"})},
@@ -617,13 +622,13 @@ def test_padlocks_on_database_page(cascade_app_client):
         assert ">123_starts_with_digits</a></h3>" in response.text
         assert ">Table With Space In Name</a> 🔒</h3>" in response.text
         # Queries
-        assert ">from_async_hook</a> 🔒</li>" in response.text
         assert ">query_two</a></li>" in response.text
         # Views
         assert ">paginated_view</a> 🔒</li>" in response.text
         assert ">simple_view</a></li>" in response.text
     finally:
         cascade_app_client.ds.config = previous_config
+        async_to_sync(cascade_app_client.ds.remove_query)("fixtures", "query_two")
 
 
 @pytest.mark.asyncio
@@ -885,7 +890,7 @@ PermConfigTestCase = collections.namedtuple(
             resource=("perms_ds_one", "t1"),
             expected_result=True,
         ),
-        # view-query on canned query, wrong actor
+        # view-query on stored query, wrong actor
         PermConfigTestCase(
             config={
                 "databases": {
@@ -904,7 +909,7 @@ PermConfigTestCase = collections.namedtuple(
             resource=("perms_ds_one", "q1"),
             expected_result=False,
         ),
-        # view-query on canned query, right actor
+        # view-query on stored query, right actor
         PermConfigTestCase(
             config={
                 "databases": {
@@ -932,16 +937,24 @@ async def test_permissions_in_config(
     updated_config = copy.deepcopy(previous_config)
     updated_config.update(config)
     perms_ds.config = updated_config
+    await perms_ds._save_queries_from_config()
     try:
         # Convert old-style resource to Resource object
-        from datasette.resources import DatabaseResource, TableResource
+        from datasette.resources import DatabaseResource, QueryResource, TableResource
 
         resource_obj = None
         if resource:
             if isinstance(resource, str):
                 resource_obj = DatabaseResource(database=resource)
             elif isinstance(resource, tuple) and len(resource) == 2:
-                resource_obj = TableResource(database=resource[0], table=resource[1])
+                if action == "view-query":
+                    resource_obj = QueryResource(
+                        database=resource[0], query=resource[1]
+                    )
+                else:
+                    resource_obj = TableResource(
+                        database=resource[0], table=resource[1]
+                    )
 
         result = await perms_ds.allowed(
             action=action, resource=resource_obj, actor=actor
@@ -951,42 +964,24 @@ async def test_permissions_in_config(
             assert result == expected_result
     finally:
         perms_ds.config = previous_config
+        await perms_ds._save_queries_from_config()
 
 
 @pytest.mark.asyncio
-async def test_allowed_resources_view_query_includes_actor_specific_canned_queries():
-    """
-    Actor-specific canned queries should be listed by allowed_resources("view-query").
-
-    This test is intentionally explicit about the previous bug:
-    - the canned query only exists for actor "alice"
-    - the permission rule only allows actor "alice" to view it
-    - allowed() succeeds for that specific query resource
-    - allowed_resources("view-query", actor) must include the same query
-
-    Before the fix, QueryResource.resources_sql() called canned_queries(..., actor=None),
-    so the query was omitted from resource enumeration and allowed_resources() returned
-    an empty list even though allowed() returned True.
-    """
+async def test_allowed_resources_view_query_includes_actor_specific_query_permissions():
     from datasette import hookimpl
     from datasette.permissions import PermissionSQL
     from datasette.resources import QueryResource
 
-    class ActorSpecificQueryPlugin:
-        __name__ = "ActorSpecificQueryPlugin"
-
-        @hookimpl
-        def canned_queries(self, datasette, database, actor):
-            if database == "testdb" and actor and actor.get("id") == "alice":
-                return {"user_only": {"sql": "select 1 as n"}}
-            return {}
+    class ActorSpecificQueryPermissionPlugin:
+        __name__ = "ActorSpecificQueryPermissionPlugin"
 
         @hookimpl
         def permission_resources_sql(self, datasette, actor, action):
             if action == "view-query" and actor and actor.get("id") == "alice":
                 return PermissionSQL(sql="""
                         SELECT 'testdb' AS parent, 'user_only' AS child, 1 AS allow,
-                               'alice can view her actor-specific canned query' AS reason
+                               'alice can view this query' AS reason
                     """)
             return None
 
@@ -994,9 +989,10 @@ async def test_allowed_resources_view_query_includes_actor_specific_canned_queri
     await ds.invoke_startup()
     ds.add_memory_database("testdb")
     await ds._refresh_schemas()
+    await ds.add_query("testdb", "user_only", "select 1 as n")
 
-    plugin = ActorSpecificQueryPlugin()
-    ds.pm.register(plugin, name="actor_specific_query_plugin")
+    plugin = ActorSpecificQueryPermissionPlugin()
+    ds.pm.register(plugin, name="actor_specific_query_permission_plugin")
 
     try:
         actor = {"id": "alice"}
@@ -1012,7 +1008,7 @@ async def test_allowed_resources_view_query_includes_actor_specific_canned_queri
             ("testdb", "user_only")
         ]
     finally:
-        ds.pm.unregister(name="actor_specific_query_plugin")
+        ds.pm.unregister(name="actor_specific_query_permission_plugin")
 
 
 @pytest.mark.asyncio

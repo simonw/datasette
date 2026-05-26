@@ -689,6 +689,54 @@ async def test_execute_isolated(db, disable_threads):
 
 
 @pytest.mark.asyncio
+async def test_analyze_sql():
+    ds = Datasette(memory=True)
+    db = ds.add_memory_database("test_analyze_sql", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+
+    analysis = await db.analyze_sql("select name from dogs where id = ?", (1,))
+
+    assert [
+        (
+            access.operation,
+            access.database,
+            access.sqlite_schema,
+            access.table,
+            access.columns,
+            access.source,
+        )
+        for access in analysis.table_accesses
+    ] == [
+        ("read", "data", "main", "dogs", ("id", "name"), None),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_analyze_sql_insert_select():
+    ds = Datasette(memory=True)
+    db = ds.add_memory_database("test_analyze_sql_insert_select", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await db.execute_write("create table cats (id integer primary key, name text)")
+
+    analysis = await db.analyze_sql("insert into dogs (name) select name from cats")
+
+    assert {
+        (
+            access.operation,
+            access.database,
+            access.sqlite_schema,
+            access.table,
+            access.columns,
+            access.source,
+        )
+        for access in analysis.table_accesses
+    } == {
+        ("insert", "data", "main", "dogs", (), None),
+        ("read", "data", "main", "cats", ("name",), None),
+    }
+
+
+@pytest.mark.asyncio
 async def test_mtime_ns(db):
     assert isinstance(db.mtime_ns, int)
 

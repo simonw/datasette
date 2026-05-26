@@ -1,0 +1,314 @@
+{% extends "base.html" %}
+
+{% block title %}Write to this database{% endblock %}
+
+{% block extra_head %}
+{{- super() -}}
+{% include "_codemirror.html" %}
+<style>
+.execute-write-template-menu {
+    margin: 0.9rem 0 0.8rem;
+    max-width: 52rem;
+}
+.execute-write-template-menu summary {
+    cursor: pointer;
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+}
+.execute-write-template-controls {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0.4rem 0 0.7rem;
+}
+.execute-write-template-menu .execute-write-template-controls label {
+    margin-right: 0.25rem;
+    width: auto;
+}
+.execute-write-template-controls select,
+.execute-write-template-controls button[type=button] {
+    box-sizing: border-box;
+    font-size: 0.78rem;
+    height: 2rem;
+    line-height: 1.1;
+    padding: 0.35rem 0.55rem;
+}
+.execute-write-template-controls select {
+    background-color: #fff;
+    border: 1px solid #777;
+    border-radius: 0.25rem;
+    min-width: 13rem;
+}
+</style>
+{% include "_execute_write_analysis_styles.html" %}
+{% include "_sql_parameter_styles.html" %}
+{% endblock %}
+
+{% block body_class %}execute-write db-{{ database|to_css_class }}{% endblock %}
+
+{% block crumbs %}
+{{ crumbs.nav(request=request, database=database) }}
+{% endblock %}
+
+{% block content %}
+
+<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color }}">Write to this database</h1>
+
+<p>Execute SQL to insert, update or delete rows in this database.</p>
+
+{% if execution_message %}
+    <p class="{% if execution_ok %}message-info{% else %}message-error{% endif %}">{{ execution_message }}{% for link in execution_links %} <a href="{{ link.href }}">{{ link.label }}</a>{% endfor %}</p>
+{% endif %}
+
+<form class="sql core" action="{{ urls.database(database) }}/-/execute-write" method="post" data-analyze-url="{{ urls.database(database) }}/-/execute-write/analyze">
+    {% if write_template_tables %}
+        <div class="execute-write-template-menu">
+            <details>
+                <summary>Start with a template</summary>
+                <p class="execute-write-template-controls">
+                    <label for="execute-write-template-table">Table</label>
+                    <select id="execute-write-template-table">
+                        {% for table_name, columns in write_template_tables|dictsort %}
+                            <option value="{{ table_name }}">{{ table_name }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="button" data-sql-template="insert">Insert row</button>
+                    <button type="button" data-sql-template="update">Update rows</button>
+                    <button type="button" data-sql-template="delete">Delete rows</button>
+                </p>
+            </details>
+        </div>
+    {% endif %}
+
+    <p class="sql-editor"><textarea id="sql-editor" name="sql"{% if sql %} style="height: {{ sql.split("\n")|length + 2 }}em"{% endif %}>{{ sql }}</textarea></p>
+
+    {% set sql_parameters_section_id = "execute-write-parameters-section" %}
+    {% set sql_parameters_allow_expand = true %}
+    {% include "_sql_parameters.html" %}
+
+    <div id="execute-write-analysis-section">
+        <h2>Query operations</h2>
+        {% if analysis_error %}
+            <p class="message-error">{{ analysis_error }}</p>
+        {% elif analysis_rows %}
+            <div class="table-wrapper"><table class="execute-write-analysis">
+                <thead>
+                    <tr>
+                        <th scope="col">Operation</th>
+                        <th scope="col">Database</th>
+                        <th scope="col">Table</th>
+                        <th scope="col">Required permission</th>
+                        <th scope="col">Allowed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in analysis_rows %}
+                        <tr>
+                            <td><code>{{ row.operation }}</code></td>
+                            <td><code>{{ row.database }}</code></td>
+                            <td><code>{{ row.table }}</code></td>
+                            <td>{% if row.required_permission %}<code>{{ row.required_permission }}</code>{% endif %}</td>
+                            <td>{% if row.allowed is none %}{% elif row.allowed %}<span class="execute-write-analysis-allowed">yes</span>{% else %}<span class="execute-write-analysis-denied">no</span>{% endif %}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table></div>
+        {% else %}
+            <p>Analysis will show each affected table and required permission.</p>
+        {% endif %}
+    </div>
+
+    <p>
+        <input type="submit" value="Execute" data-execute-write-submit{% if execute_disabled %} disabled{% endif %}>
+        {% if save_query_base_url %}<a href="{{ save_query_url or save_query_base_url }}" class="save-query" data-save-query-link data-save-query-base-url="{{ save_query_base_url }}"{% if not save_query_url %} hidden{% endif %}>Save this query</a>{% endif %}
+    </p>
+</form>
+
+<script>
+const executeWriteSqlInput = document.querySelector("textarea#sql-editor");
+if (executeWriteSqlInput && !executeWriteSqlInput.value) {
+  executeWriteSqlInput.value = "\n\n\n";
+}
+</script>
+
+{% include "_codemirror_foot.html" %}
+{% include "_sql_parameter_scripts.html" %}
+{% include "_execute_write_analysis_scripts.html" %}
+
+<script>
+window.addEventListener("DOMContentLoaded", () => {
+  const form = document.querySelector("form.sql.core");
+  const analysisSection = document.querySelector("#execute-write-analysis-section");
+  const submitButton = form
+    ? form.querySelector("[data-execute-write-submit]")
+    : null;
+  const saveQueryLink = form
+    ? form.querySelector("[data-save-query-link]")
+    : null;
+
+  function updateSaveQueryLink(data) {
+    if (!saveQueryLink) {
+      return;
+    }
+    const sql = window.editor
+      ? window.editor.state.doc.toString()
+      : executeWriteSqlInput.value;
+    if (!sql.trim() || !data.ok || data.execute_disabled) {
+      saveQueryLink.hidden = true;
+      return;
+    }
+    const url = new URL(saveQueryLink.dataset.saveQueryBaseUrl, window.location.href);
+    url.searchParams.set("sql", sql);
+    saveQueryLink.href = url.pathname + url.search + url.hash;
+    saveQueryLink.hidden = false;
+  }
+
+  window.datasetteSqlParameters.setupSqlParameterRefresh({
+    form,
+    url: form.dataset.analyzeUrl,
+    allowExpand: true,
+    onData(data) {
+      window.datasetteSqlAnalysis.renderAnalysis(analysisSection, data);
+      if (submitButton) {
+        submitButton.disabled = data.execute_disabled;
+      }
+      updateSaveQueryLink(data);
+    },
+    onError(error) {
+      window.datasetteSqlAnalysis.renderAnalysis(analysisSection, {
+        analysis_error: error.message,
+        analysis_rows: [],
+      });
+      if (submitButton) {
+        submitButton.disabled = true;
+      }
+      if (saveQueryLink) {
+        saveQueryLink.hidden = true;
+      }
+    },
+  });
+});
+</script>
+
+{% if write_template_tables %}
+<script>
+window.addEventListener("DOMContentLoaded", () => {
+  const tableColumns = {{ write_template_tables|tojson(2) }};
+  const tableSelect = document.querySelector("#execute-write-template-table");
+  const templateButtons = document.querySelectorAll("[data-sql-template]");
+
+  function quoteIdentifier(identifier) {
+    return `"${identifier.replace(/"/g, '""')}"`;
+  }
+
+  function parameterNames(columns) {
+    const seen = new Set();
+    const names = {};
+    columns.forEach((column) => {
+      let base = column
+        .toLowerCase()
+        .replace(/[^a-z0-9_]+/g, "_")
+        .replace(/^_+|_+$/g, "");
+      if (!base) {
+        base = "value";
+      }
+      if (/^[0-9]/.test(base)) {
+        base = `p_${base}`;
+      }
+      let name = base;
+      let index = 2;
+      while (seen.has(name)) {
+        name = `${base}_${index}`;
+        index += 1;
+      }
+      seen.add(name);
+      names[column] = name;
+    });
+    return names;
+  }
+
+  function preferredWhereColumn(table, columns) {
+    const lowerTableId = `${table.toLowerCase()}_id`;
+    return (
+      columns.find((column) => column.toLowerCase() === "id") ||
+      columns.find((column) => column.toLowerCase() === lowerTableId) ||
+      columns[0]
+    );
+  }
+
+  function insertSql(table, columns) {
+    const names = parameterNames(columns);
+    return [
+      `insert into ${quoteIdentifier(table)} (`,
+      columns.map((column) => `  ${quoteIdentifier(column)}`).join(",\n"),
+      ")",
+      "values (",
+      columns.map((column) => `  :${names[column]}`).join(",\n"),
+      ")",
+    ].join("\n");
+  }
+
+  function updateSql(table, columns) {
+    const names = parameterNames(columns);
+    const whereColumn = preferredWhereColumn(table, columns);
+    const setColumns = columns.filter((column) => column !== whereColumn);
+    if (!setColumns.length) {
+      return [
+        `update ${quoteIdentifier(table)}`,
+        `set ${quoteIdentifier(whereColumn)} = :new_${names[whereColumn]}`,
+        `where ${quoteIdentifier(whereColumn)} = :${names[whereColumn]}`,
+      ].join("\n");
+    }
+    return [
+      `update ${quoteIdentifier(table)}`,
+      "set " +
+        setColumns
+          .map((column, index) => {
+            const indent = index ? "    " : "";
+            return `${indent}${quoteIdentifier(column)} = :${names[column]}`;
+          })
+          .join(",\n"),
+      `where ${quoteIdentifier(whereColumn)} = :${names[whereColumn]}`,
+    ].join("\n");
+  }
+
+  function deleteSql(table, columns) {
+    const names = parameterNames(columns);
+    const whereColumn = preferredWhereColumn(table, columns);
+    return [
+      `delete from ${quoteIdentifier(table)}`,
+      `where ${quoteIdentifier(whereColumn)} = :${names[whereColumn]}`,
+    ].join("\n");
+  }
+
+  function templateSql(operation, table, columns) {
+    if (operation === "insert") {
+      return insertSql(table, columns);
+    }
+    if (operation === "update") {
+      return updateSql(table, columns);
+    }
+    return deleteSql(table, columns);
+  }
+
+  templateButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const table = tableSelect.value;
+      const columns = tableColumns[table] || [];
+      if (!columns.length) {
+        return;
+      }
+      const url = new URL(window.location.href);
+      url.searchParams.set(
+        "sql",
+        templateSql(button.dataset.sqlTemplate, table, columns)
+      );
+      window.location.href = url.toString();
+    });
+  });
+});
+</script>
+{% endif %}
+
+{% endblock %}

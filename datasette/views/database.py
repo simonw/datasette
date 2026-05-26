@@ -13,6 +13,7 @@ import textwrap
 from datasette.events import AlterTableEvent, CreateTableEvent, InsertRowsEvent
 from datasette.database import QueryInterrupted
 from datasette.resources import DatabaseResource, QueryResource
+from datasette.stored_queries import stored_query_to_dict
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
@@ -35,6 +36,7 @@ from datasette.utils.asgi import AsgiFileDownload, NotFound, Response, Forbidden
 from datasette.plugins import pm
 
 from .base import BaseView, DatasetteError, View, _error, stream_csv
+from .query_helpers import _ensure_stored_query_execution_permissions, _table_columns
 from . import Context
 
 
@@ -92,24 +94,19 @@ class DatabaseView(View):
 
         tables = await get_tables(datasette, request, db, allowed_dict)
 
-        # Get allowed queries using the new permission system
-        allowed_query_page = await datasette.allowed_resources(
-            "view-query",
-            request.actor,
-            parent=database,
-            include_is_private=True,
-            limit=1000,
+        queries_page = await datasette.list_queries(
+            database,
+            actor=request.actor,
+            limit=5,
+            include_private=True,
         )
-
-        # Build canned_queries list by looking up each allowed query
-        all_queries = await datasette.get_canned_queries(database, request.actor)
-        canned_queries = []
-        for query_resource in allowed_query_page.resources:
-            query_name = query_resource.child
-            if query_name in all_queries:
-                canned_queries.append(
-                    dict(all_queries[query_name], private=query_resource.private)
-                )
+        stored_queries = queries_page.queries
+        queries_more = queries_page.has_more
+        queries_count = (
+            await datasette.count_queries(database, actor=request.actor)
+            if queries_more
+            else len(stored_queries)
+        )
 
         async def database_actions():
             links = []
@@ -140,7 +137,9 @@ class DatabaseView(View):
             "tables": tables,
             "hidden_count": len([t for t in tables if t["hidden"]]),
             "views": sql_views,
-            "queries": canned_queries,
+            "queries": [stored_query_to_dict(query) for query in stored_queries],
+            "queries_more": queries_more,
+            "queries_count": queries_count,
             "allow_execute_sql": allow_execute_sql,
             "table_columns": (
                 await _table_columns(datasette, database) if allow_execute_sql else {}
@@ -173,7 +172,9 @@ class DatabaseView(View):
                     tables=tables,
                     hidden_count=len([t for t in tables if t["hidden"]]),
                     views=sql_views,
-                    queries=canned_queries,
+                    queries=stored_queries,
+                    queries_more=queries_more,
+                    queries_count=queries_count,
                     allow_execute_sql=allow_execute_sql,
                     table_columns=(
                         await _table_columns(datasette, database)
@@ -221,7 +222,11 @@ class DatabaseContext(Context):
     tables: list = field(metadata={"help": "List of table objects in the database"})
     hidden_count: int = field(metadata={"help": "Count of hidden tables"})
     views: list = field(metadata={"help": "List of view objects in the database"})
-    queries: list = field(metadata={"help": "List of canned query objects"})
+    queries: list = field(metadata={"help": "List of stored query objects"})
+    queries_more: bool = field(
+        metadata={"help": "Boolean indicating if more stored queries are available"}
+    )
+    queries_count: int = field(metadata={"help": "Count of visible stored queries"})
     allow_execute_sql: bool = field(
         metadata={"help": "Boolean indicating if custom SQL can be executed"}
     )
@@ -266,8 +271,8 @@ class QueryContext(Context):
     query: dict = field(
         metadata={"help": "The SQL query object containing the `sql` string"}
     )
-    canned_query: str = field(
-        metadata={"help": "The name of the canned query if this is a canned query"}
+    stored_query: str = field(
+        metadata={"help": "The name of the stored query if this is a stored query"}
     )
     private: bool = field(
         metadata={"help": "Boolean indicating if this is a private database"}
@@ -275,13 +280,13 @@ class QueryContext(Context):
     # urls: dict = field(
     #     metadata={"help": "Object containing URL helpers like `database()`"}
     # )
-    canned_query_write: bool = field(
+    stored_query_write: bool = field(
         metadata={
-            "help": "Boolean indicating if this is a canned query that allows writes"
+            "help": "Boolean indicating if this is a stored query that allows writes"
         }
     )
     metadata: dict = field(
-        metadata={"help": "Metadata about the database or the canned query"}
+        metadata={"help": "Metadata about the database or the stored query"}
     )
     db_is_immutable: bool = field(
         metadata={"help": "Boolean indicating if this database is immutable"}
@@ -302,12 +307,15 @@ class QueryContext(Context):
     allow_execute_sql: bool = field(
         metadata={"help": "Boolean indicating if custom SQL can be executed"}
     )
+    save_query_url: str = field(
+        metadata={"help": "URL to save the current arbitrary SQL as a query"}
+    )
     tables: list = field(metadata={"help": "List of table objects in the database"})
     named_parameter_values: dict = field(
         metadata={"help": "Dictionary of parameter names/values"}
     )
     edit_sql_url: str = field(
-        metadata={"help": "URL to edit the SQL for a canned query"}
+        metadata={"help": "URL to edit the SQL for a stored query"}
     )
     display_rows: list = field(metadata={"help": "List of result rows to display"})
     columns: list = field(metadata={"help": "List of column names"})
@@ -331,8 +339,8 @@ class QueryContext(Context):
     top_query: callable = field(
         metadata={"help": "Callable to render the top_query slot"}
     )
-    top_canned_query: callable = field(
-        metadata={"help": "Callable to render the top_canned_query slot"}
+    top_stored_query: callable = field(
+        metadata={"help": "Callable to render the top_stored_query slot"}
     )
     query_actions: callable = field(
         metadata={
@@ -423,20 +431,31 @@ class QueryView(View):
 
         db = await datasette.resolve_database(request)
 
-        # We must be a canned query
+        # We must be a stored query
         table_found = False
         try:
             await datasette.resolve_table(request)
             table_found = True
         except TableNotFound as table_not_found:
-            canned_query = await datasette.get_canned_query(
-                table_not_found.database_name, table_not_found.table, request.actor
+            stored_query = await datasette.get_query(
+                table_not_found.database_name, table_not_found.table
             )
-            if canned_query is None:
+            if stored_query is None:
                 raise
         if table_found:
             # That should not have happened
             raise DatasetteError("Unexpected table found on POST", status=404)
+
+        if not await datasette.allowed(
+            action="view-query",
+            resource=QueryResource(database=db.name, query=stored_query.name),
+            actor=request.actor,
+        ):
+            raise Forbidden("You do not have permission to view this query")
+
+        await _ensure_stored_query_execution_permissions(
+            datasette, db, stored_query, request.actor
+        )
 
         # If database is immutable, return an error
         if not db.is_mutable:
@@ -462,20 +481,18 @@ class QueryView(View):
             or request.args.get("_json")
             or params.get("_json")
         )
-        params_for_query = MagicParameters(
-            canned_query["sql"], params, request, datasette
-        )
+        params_for_query = MagicParameters(stored_query.sql, params, request, datasette)
         await params_for_query.execute_params()
         ok = None
         redirect_url = None
         try:
             cursor = await db.execute_write(
-                canned_query["sql"], params_for_query, request=request
+                stored_query.sql, params_for_query, request=request
             )
             # success message can come from on_success_message or on_success_message_sql
             message = None
             message_type = datasette.INFO
-            on_success_message_sql = canned_query.get("on_success_message_sql")
+            on_success_message_sql = stored_query.on_success_message_sql
             if on_success_message_sql:
                 try:
                     message_result = (
@@ -487,18 +504,19 @@ class QueryView(View):
                     message = "Error running on_success_message_sql: {}".format(ex)
                     message_type = datasette.ERROR
             if not message:
-                message = canned_query.get(
-                    "on_success_message"
-                ) or "Query executed, {} row{} affected".format(
-                    cursor.rowcount, "" if cursor.rowcount == 1 else "s"
+                message = (
+                    stored_query.on_success_message
+                    or "Query executed, {} row{} affected".format(
+                        cursor.rowcount, "" if cursor.rowcount == 1 else "s"
+                    )
                 )
 
-            redirect_url = canned_query.get("on_success_redirect")
+            redirect_url = stored_query.on_success_redirect
             ok = True
         except Exception as ex:
-            message = canned_query.get("on_error_message") or str(ex)
+            message = stored_query.on_error_message or str(ex)
             message_type = datasette.ERROR
-            redirect_url = canned_query.get("on_error_redirect")
+            redirect_url = stored_query.on_error_redirect
             ok = False
         if should_return_json:
             return Response.json(
@@ -531,31 +549,35 @@ class QueryView(View):
         # Create lookup dict for quick access
         allowed_dict = {r.child: r for r in allowed_tables_page.resources}
 
-        # Are we a canned query?
-        canned_query = None
-        canned_query_write = False
+        # Are we a stored query?
+        stored_query = None
+        stored_query_write = False
         if "table" in request.url_vars:
             try:
                 await datasette.resolve_table(request)
             except TableNotFound as table_not_found:
-                # Was this actually a canned query?
-                canned_query = await datasette.get_canned_query(
-                    table_not_found.database_name, table_not_found.table, request.actor
+                # Was this actually a stored query?
+                stored_query = await datasette.get_query(
+                    table_not_found.database_name, table_not_found.table
                 )
-                if canned_query is None:
+                if stored_query is None:
                     raise
-                canned_query_write = bool(canned_query.get("write"))
+                stored_query_write = stored_query.is_write
 
         private = False
-        if canned_query:
-            # Respect canned query permissions
+        if stored_query:
+            # Respect stored query permissions
             visible, private = await datasette.check_visibility(
                 request.actor,
                 action="view-query",
-                resource=QueryResource(database=database, query=canned_query["name"]),
+                resource=QueryResource(database=database, query=stored_query.name),
             )
             if not visible:
                 raise Forbidden("You do not have permission to view this query")
+            if not stored_query_write:
+                await _ensure_stored_query_execution_permissions(
+                    datasette, db, stored_query, request.actor
+                )
 
         else:
             await datasette.ensure_permission(
@@ -568,15 +590,15 @@ class QueryView(View):
         params = {key: request.args.get(key) for key in request.args}
         sql = None
 
-        if canned_query:
-            sql = canned_query["sql"]
+        if stored_query:
+            sql = stored_query.sql
         elif "sql" in params:
             sql = params.pop("sql")
 
         # Extract any :named parameters
         named_parameters = []
-        if canned_query and canned_query.get("params"):
-            named_parameters = canned_query["params"]
+        if stored_query and stored_query.parameters:
+            named_parameters = stored_query.parameters
         if not named_parameters and sql:
             named_parameters = derive_named_parameters(sql)
         named_parameter_values = {
@@ -602,13 +624,13 @@ class QueryView(View):
 
         params_for_query = params
 
-        if sql and not canned_query_write:
+        if sql and not stored_query_write:
             try:
-                if not canned_query:
+                if not stored_query:
                     # For regular queries we only allow SELECT, plus other rules
                     validate_sql_select(sql)
                 else:
-                    # Canned queries can run magic parameters
+                    # Stored queries can run magic parameters
                     params_for_query = MagicParameters(sql, params, request, datasette)
                     await params_for_query.execute_params()
                 results = await datasette.execute(
@@ -664,7 +686,7 @@ class QueryView(View):
                 columns=columns,
                 rows=rows,
                 sql=sql,
-                query_name=canned_query["name"] if canned_query else None,
+                query_name=stored_query.name if stored_query else None,
                 database=database,
                 table=None,
                 request=request,
@@ -696,10 +718,10 @@ class QueryView(View):
         elif format_ == "html":
             headers = {}
             templates = [f"query-{to_css_class(database)}.html", "query.html"]
-            if canned_query:
+            if stored_query:
                 templates.insert(
                     0,
-                    f"query-{to_css_class(database)}-{to_css_class(canned_query['name'])}.html",
+                    f"query-{to_css_class(database)}-{to_css_class(stored_query.name)}.html",
                 )
 
             environment = datasette.get_jinja_environment(request)
@@ -717,6 +739,9 @@ class QueryView(View):
                 }
             )
             metadata = await datasette.get_database_metadata(database)
+            if stored_query:
+                metadata = stored_query_to_dict(stored_query)
+                metadata.pop("source", None)
 
             renderers = {}
             for key, (_, can_render) in datasette.renderers.items():
@@ -743,9 +768,14 @@ class QueryView(View):
                 resource=DatabaseResource(database=database),
                 actor=request.actor,
             )
+            allow_store_query = await datasette.allowed(
+                action="store-query",
+                resource=DatabaseResource(database=database),
+                actor=request.actor,
+            )
 
             show_hide_hidden = ""
-            if canned_query and canned_query.get("hide_sql"):
+            if stored_query and stored_query.hide_sql:
                 if bool(params.get("_show_sql")):
                     show_hide_link = path_with_removed_args(request, {"_show_sql"})
                     show_hide_text = "hide"
@@ -793,6 +823,19 @@ class QueryView(View):
                             }
                         )
                     )
+            save_query_url = None
+            if (
+                not stored_query
+                and allow_execute_sql
+                and allow_store_query
+                and is_validated_sql
+                and ":_" not in sql
+            ):
+                save_query_url = (
+                    datasette.urls.database(database)
+                    + "/-/queries/store?"
+                    + urlencode({"sql": sql})
+                )
 
             async def query_actions():
                 query_actions = []
@@ -800,7 +843,7 @@ class QueryView(View):
                     datasette=datasette,
                     actor=request.actor,
                     database=database,
-                    query_name=canned_query["name"] if canned_query else None,
+                    query_name=stored_query.name if stored_query else None,
                     request=request,
                     sql=sql,
                     params=params,
@@ -820,16 +863,17 @@ class QueryView(View):
                             "sql": sql,
                             "params": params,
                         },
-                        canned_query=canned_query["name"] if canned_query else None,
+                        stored_query=stored_query.name if stored_query else None,
                         private=private,
-                        canned_query_write=canned_query_write,
+                        stored_query_write=stored_query_write,
                         db_is_immutable=not db.is_mutable,
                         error=query_error,
                         hide_sql=hide_sql,
                         show_hide_link=datasette.urls.path(show_hide_link),
                         show_hide_text=show_hide_text,
-                        editable=not canned_query,
+                        editable=not stored_query,
                         allow_execute_sql=allow_execute_sql,
+                        save_query_url=save_query_url,
                         tables=await get_tables(datasette, request, db, allowed_dict),
                         named_parameter_values=named_parameter_values,
                         edit_sql_url=edit_sql_url,
@@ -849,7 +893,7 @@ class QueryView(View):
                             )
                         ),
                         show_hide_hidden=markupsafe.Markup(show_hide_hidden),
-                        metadata=canned_query or metadata,
+                        metadata=metadata,
                         alternate_url_json=alternate_url_json,
                         select_templates=[
                             f"{'*' if template_name == template.name else ''}{template_name}"
@@ -858,12 +902,12 @@ class QueryView(View):
                         top_query=make_slot_function(
                             "top_query", datasette, request, database=database, sql=sql
                         ),
-                        top_canned_query=make_slot_function(
-                            "top_canned_query",
+                        top_stored_query=make_slot_function(
+                            "top_stored_query",
                             datasette,
                             request,
                             database=database,
-                            query_name=canned_query["name"] if canned_query else None,
+                            query_name=stored_query.name if stored_query else None,
                         ),
                         query_actions=query_actions,
                     ),
@@ -1174,22 +1218,6 @@ class TableCreateView(BaseView):
                 )
             )
         return Response.json(details, status=201)
-
-
-async def _table_columns(datasette, database_name):
-    internal_db = datasette.get_internal_database()
-    result = await internal_db.execute(
-        "select table_name, name from catalog_columns where database_name = ?",
-        [database_name],
-    )
-    table_columns = {}
-    for row in result.rows:
-        table_columns.setdefault(row["table_name"], []).append(row["name"])
-    # Add views
-    db = datasette.get_database(database_name)
-    for view_name in await db.view_names():
-        table_columns[view_name] = []
-    return table_columns
 
 
 async def display_rows(datasette, database, request, rows, columns):

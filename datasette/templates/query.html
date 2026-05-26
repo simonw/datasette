@@ -14,9 +14,10 @@
 </style>
 {% endif %}
 {% include "_codemirror.html" %}
+{% include "_sql_parameter_styles.html" %}
 {% endblock %}
 
-{% block body_class %}query db-{{ database|to_css_class }}{% if canned_query %} query-{{ canned_query|to_css_class }}{% endif %}{% endblock %}
+{% block body_class %}query db-{{ database|to_css_class }}{% if stored_query %} query-{{ stored_query|to_css_class }}{% endif %}{% endblock %}
 
 {% block crumbs %}
 {{ crumbs.nav(request=request, database=database) }}
@@ -24,19 +25,19 @@
 
 {% block content %}
 
-{% if canned_query_write and db_is_immutable %}
+{% if stored_query_write and db_is_immutable %}
     <p class="message-error">This query cannot be executed because the database is immutable.</p>
 {% endif %}
 
-<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color }}">{{ metadata.title or database }}{% if canned_query and not metadata.title %}: {{ canned_query }}{% endif %}{% if private %} 🔒{% endif %}</h1>
+<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color }}">{{ metadata.title or database }}{% if stored_query and not metadata.title %}: {{ stored_query }}{% endif %}{% if private %} 🔒{% endif %}</h1>
 {% set action_links, action_title = query_actions(), "Query actions" %}
 {% include "_action_menu.html" %}
 
-{% if canned_query %}{{ top_canned_query() }}{% else %}{{ top_query() }}{% endif %}
+{% if stored_query %}{{ top_stored_query() }}{% else %}{{ top_query() }}{% endif %}
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
-<form class="sql core" action="{{ urls.database(database) }}{% if canned_query %}/{{ canned_query }}{% endif %}" method="{% if canned_query_write %}post{% else %}get{% endif %}">
+<form class="sql core" action="{{ urls.database(database) }}{% if stored_query %}/{{ stored_query }}{% endif %}" method="{% if stored_query_write %}post{% else %}get{% endif %}" data-parameters-url="{{ urls.database(database) }}/-/query/parameters">
     <h3>Custom SQL query{% if display_rows %} returning {% if truncated %}more than {% endif %}{{ "{:,}".format(display_rows|length) }} row{% if display_rows|length == 1 %}{% else %}s{% endif %}{% endif %}{% if not query_error %}
         <span class="show-hide-sql">(<a href="{{ show_hide_link }}">{{ show_hide_text }}</a>)</span>
     {% endif %}</h3>
@@ -45,29 +46,28 @@
     {% endif %}
     {% if not hide_sql %}
         {% if editable and allow_execute_sql %}
-            <p><textarea id="sql-editor" name="sql"{% if query and query.sql %} style="height: {{ query.sql.split("\n")|length + 2 }}em"{% endif %}
+            <p class="sql-editor"><textarea id="sql-editor" name="sql"{% if query and query.sql %} style="height: {{ query.sql.split("\n")|length + 2 }}em"{% endif %}
             >{% if query and query.sql %}{{ query.sql }}{% elif tables %}select * from {{ tables[0].name|escape_sqlite }}{% endif %}</textarea></p>
         {% else %}
             <pre id="sql-query">{% if query %}{{ query.sql }}{% endif %}</pre>
         {% endif %}
     {% else %}
-        {% if not canned_query %}
+        {% if not stored_query %}
             <input type="hidden" name="sql"
                 value="{% if query and query.sql %}{{ query.sql }}{% elif tables %}select * from {{ tables[0].name|escape_sqlite }}{% endif %}"
             >
         {% endif %}
     {% endif %}
-    {% if named_parameter_values %}
-        <h3>Query parameters</h3>
-        {% for name, value in named_parameter_values.items() %}
-            <p><label for="qp{{ loop.index }}">{{ name }}</label> <input type="text" id="qp{{ loop.index }}" name="{{ name }}" value="{{ value }}"></p>
-        {% endfor %}
-    {% endif %}
+    {% set parameter_names = named_parameter_values.keys()|list %}
+    {% set parameter_values = named_parameter_values %}
+    {% set sql_parameters_allow_expand = false %}
+    {% include "_sql_parameters.html" %}
     <p>
         {% if not hide_sql %}<button id="sql-format" type="button" hidden>Format SQL</button>{% endif %}
-        <input type="submit" value="Run SQL"{% if canned_query_write and db_is_immutable %} disabled{% endif %}>
+        <input type="submit" value="Run SQL"{% if stored_query_write and db_is_immutable %} disabled{% endif %}>
         {{ show_hide_hidden }}
-        {% if canned_query and edit_sql_url %}<a href="{{ edit_sql_url }}" class="canned-query-edit-sql">Edit SQL</a>{% endif %}
+        {% if save_query_url %}<a href="{{ save_query_url }}" class="save-query">Save this query</a>{% endif %}
+        {% if stored_query and edit_sql_url %}<a href="{{ edit_sql_url }}" class="stored-query-edit-sql">Edit SQL</a>{% endif %}
     </p>
 </form>
 
@@ -90,11 +90,17 @@
     </tbody>
 </table></div>
 {% else %}
-    {% if not canned_query_write and not error %}
+    {% if not stored_query_write and not error %}
         <p class="zero-results">0 results</p>
     {% endif %}
 {% endif %}
 
 {% include "_codemirror_foot.html" %}
+{% include "_sql_parameter_scripts.html" %}
+<script>
+window.addEventListener("DOMContentLoaded", () => {
+  window.datasetteSqlParameters.setupSqlParameterRefresh({});
+});
+</script>
 
 {% endblock %}

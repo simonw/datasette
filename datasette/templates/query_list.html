@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+
+{% block title %}{% if database %}{{ database }}: {% endif %}queries{% endblock %}
+
+{% block extra_head %}
+{{- super() -}}
+<style>
+.query-list-page {
+    max-width: 64rem;
+}
+.query-list-filters {
+    margin: 0.5rem 0 0.75rem;
+}
+.query-list-search {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin: 0 0 0.75rem;
+}
+.query-list-search label {
+    width: auto;
+}
+.query-list-search input[type=search] {
+    box-sizing: border-box;
+    flex: 1 1 18rem;
+    max-width: 24rem;
+}
+.query-list-search button[type=submit] {
+    font-size: 0.78rem;
+    height: 2rem;
+    line-height: 1.1;
+    padding: 0.35rem 0.65rem;
+}
+.query-list-facets {
+    align-items: flex-start;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem 1.6rem;
+    margin: 0 0 1rem;
+}
+.query-list-facet {
+    margin: 0;
+}
+.query-list-facet h2 {
+    font-size: 0.9rem;
+    line-height: 1.2;
+    margin: 0 0 0.35rem;
+}
+.query-list-facet ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.query-list-facet-link,
+.query-list-facet-link:link,
+.query-list-facet-link:visited,
+.query-list-facet-link:hover,
+.query-list-facet-link:focus,
+.query-list-facet-link:active {
+    align-items: center;
+    border: 1px solid #c8d1dc;
+    border-radius: 0.25rem;
+    color: #39445a;
+    display: inline-flex;
+    font-size: 0.82rem;
+    gap: 0.4rem;
+    line-height: 1.1;
+    padding: 0.35rem 0.55rem;
+    text-decoration: none;
+}
+.query-list-facet-link:hover {
+    border-color: #7ca5c8;
+    color: #1f5d85;
+}
+.query-list-facet-link-active {
+    background-color: #edf6fb;
+    border-color: #6d9fc0;
+    font-weight: 700;
+}
+.query-list-facet-disabled {
+    color: #7b8794;
+    cursor: default;
+}
+.query-list-facet-count {
+    color: #4f5b6d;
+    font-variant-numeric: tabular-nums;
+}
+.query-list-results {
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    margin: 0.25rem 0 1rem;
+    min-width: 42rem;
+    width: 100%;
+}
+.query-list-results th,
+.query-list-results td {
+    border-bottom: 1px solid #d7dde5;
+    padding: 0.45rem 0.7rem;
+    text-align: left;
+    vertical-align: top;
+}
+.query-list-results th {
+    background-color: #edf6fb;
+    border-top: 1px solid #d7dde5;
+    color: #39445a;
+    font-weight: 700;
+}
+.query-list-results tbody tr:nth-child(even) {
+    background-color: rgba(39, 104, 144, 0.05);
+}
+.query-list-results a.query-list-title {
+    font-weight: 700;
+}
+.query-list-description {
+    color: #4f5b6d;
+    font-size: 0.78rem;
+    margin: 0.15rem 0 0;
+}
+.query-list-owner {
+    color: #39445a;
+    font-family: var(--font-monospace, monospace);
+    white-space: nowrap;
+}
+.query-list-flags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+.query-list-pill {
+    background-color: #eef1f5;
+    border: 1px solid #d7dde5;
+    border-radius: 0.25rem;
+    color: #39445a;
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1;
+    padding: 0.25rem 0.4rem;
+    white-space: nowrap;
+}
+.query-list-pill-write {
+    background-color: #fff4db;
+    border-color: #e2b64e;
+}
+.query-list-pill-public {
+    background-color: #e7f5ec;
+    border-color: #9ecfab;
+    color: #267a3e;
+}
+.query-list-pill-private {
+    background-color: #f7edf0;
+    border-color: #dbb8c1;
+}
+.query-list-pill-trusted {
+    background-color: #e7f5ec;
+    border-color: #9ecfab;
+    color: #267a3e;
+}
+.query-list-empty {
+    color: #6b7280;
+}
+.query-list-footnotes {
+    border-top: 1px solid #d7dde5;
+    color: #4f5b6d;
+    font-size: 0.82rem;
+    margin: 0.35rem 0 1rem;
+    padding-top: 0.55rem;
+}
+.query-list-footnotes p {
+    margin: 0.25rem 0;
+}
+.query-list-footnotes .query-list-pill {
+    margin-right: 0.35rem;
+}
+.query-list-pagination a {
+    border: 1px solid #007bff;
+    border-radius: 0.25rem;
+    display: inline-block;
+    padding: 0.45rem 0.7rem;
+}
+.query-list-pagination-bottom {
+    margin-top: 0.75rem;
+}
+@media (max-width: 700px) {
+    .query-list-search input[type=search] {
+        max-width: none;
+    }
+}
+</style>
+{% endblock %}
+
+{% block body_class %}query-list{% if database %} db-{{ database|to_css_class }}{% endif %}{% endblock %}
+
+{% block crumbs %}
+{{ crumbs.nav(request=request, database=database) }}
+{% endblock %}
+
+{% block content %}
+
+<div class="query-list-page">
+
+<h1 style="padding-left: 10px; border-left: 10px solid #{% if database_color %}{{ database_color }}{% else %}666{% endif %}">Queries</h1>
+
+<form class="query-list-filters core" action="{{ query_list_path }}" method="get">
+    <p class="query-list-search">
+        <label for="query-search">Search</label>
+        <input id="query-search" type="search" name="q" value="{{ filters.q }}">
+        {% if filters.is_write %}<input type="hidden" name="is_write" value="{{ filters.is_write }}">{% endif %}
+        {% if filters.is_private %}<input type="hidden" name="is_private" value="{{ filters.is_private }}">{% endif %}
+        {% if filters.source %}<input type="hidden" name="source" value="{{ filters.source }}">{% endif %}
+        {% if filters.owner_id %}<input type="hidden" name="owner_id" value="{{ filters.owner_id }}">{% endif %}
+        <button type="submit">Search</button>
+    </p>
+</form>
+
+<nav class="query-list-facets" aria-label="Query filters">
+    {% for facet in facets %}
+        <section class="query-list-facet">
+            <h2>{{ facet.title }}</h2>
+            <ul>
+                {% for item in facet["items"] %}
+                    <li>{% if item.href %}<a class="query-list-facet-link{% if item.active %} query-list-facet-link-active{% endif %}" href="{{ item.href }}"{% if item.active %} aria-current="true"{% endif %}>{% else %}<span class="query-list-facet-link query-list-facet-disabled">{% endif %}<span>{{ item.label }}</span><span class="query-list-facet-count">{{ item.count }}</span>{% if item.href %}</a>{% else %}</span>{% endif %}</li>
+                {% endfor %}
+            </ul>
+        </section>
+    {% endfor %}
+</nav>
+
+{% if queries %}
+    <div class="table-wrapper"><table class="query-list-results">
+        <thead>
+            <tr>
+                {% if show_database %}<th scope="col">Database</th>{% endif %}
+                <th scope="col">Query</th>
+                <th scope="col">Owner</th>
+                <th scope="col">Flags</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for query in queries %}
+                <tr>
+                    {% if show_database %}
+                        <td><a class="query-list-database" href="{{ urls.database(query.database) }}">{{ query.database }}</a></td>
+                    {% endif %}
+                    <td>
+                        <a class="query-list-title" href="{{ urls.query(query.database, query.name) }}{% if query.fragment %}#{{ query.fragment }}{% endif %}" title="{{ query.description or query.sql }}">{{ query.title or query.name }}</a>{% if query.private %} 🔒{% endif %}
+                        {% if query.description %}<p class="query-list-description">{{ query.description }}</p>{% endif %}
+                    </td>
+                    <td class="query-list-owner">{% if query.owner_id is not none %}{{ query.owner_id }}{% else %}<span class="query-list-empty">-</span>{% endif %}</td>
+                    <td>
+                        <span class="query-list-flags">
+                            {% if query.is_write %}<span class="query-list-pill query-list-pill-write">Writable</span>{% else %}<span class="query-list-pill">Read-only</span>{% endif %}
+                            {% if query.is_private %}<span class="query-list-pill query-list-pill-private">Private</span>{% endif %}
+                            {% if query.is_trusted %}<span class="query-list-pill query-list-pill-trusted">Trusted</span>{% endif %}
+                        </span>
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table></div>
+    {% if show_private_note or show_trusted_note %}
+        <div class="query-list-footnotes">
+            {% if show_private_note %}<p><span class="query-list-pill query-list-pill-private">Private</span>Only the owning actor can view this query.</p>{% endif %}
+            {% if show_trusted_note %}<p><span class="query-list-pill query-list-pill-trusted">Trusted</span>Execution skips the usual SQL and write permission checks after view-query allows access.</p>{% endif %}
+        </div>
+    {% endif %}
+{% else %}
+    <p>No queries found.</p>
+{% endif %}
+
+{% if next_url %}
+    <nav class="query-list-pagination query-list-pagination-bottom" aria-label="Query pagination"><a href="{{ next_url }}">Next page</a></nav>
+{% endif %}
+
+</div>
+
+{% endblock %}

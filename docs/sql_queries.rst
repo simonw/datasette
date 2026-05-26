@@ -66,12 +66,12 @@ You can also use the `sqlite-utils <https://sqlite-utils.datasette.io/>`__ tool 
 
     sqlite-utils create-view sf-trees.db demo_view "select qSpecies from Street_Tree_List"
 
-.. _canned_queries:
+.. _queries:
 
-Canned queries
---------------
+Queries
+-------
 
-As an alternative to adding views to your database, you can define canned queries inside your ``datasette.yaml`` file. Here's an example:
+As an alternative to adding views to your database, you can define named queries inside your ``datasette.yaml`` file. Here's an example:
 
 .. [[[cog
     from metadata_doc import config_example, config_example
@@ -120,24 +120,67 @@ Then run Datasette like this::
 
     datasette sf-trees.db -m metadata.json
 
-Each canned query will be listed on the database index page, and will also get its own URL at::
+Each configured query will be listed on the database index page, and will also get its own URL at::
 
-    /database-name/canned-query-name
+    /database-name/query-name
 
 For the above example, that URL would be::
 
     /sf-trees/just_species
 
-You can optionally include ``"title"`` and ``"description"`` keys to show a title and description on the canned query page. As with regular table metadata you can alternatively specify ``"description_html"`` to have your description rendered as HTML (rather than having HTML special characters escaped).
+You can optionally include ``"title"`` and ``"description"`` keys to show a title and description on the query page. As with regular table metadata you can alternatively specify ``"description_html"`` to have your description rendered as HTML (rather than having HTML special characters escaped).
 
-.. _canned_queries_named_parameters:
+.. _stored_queries:
+.. _saved_queries:
 
-Canned query parameters
-~~~~~~~~~~~~~~~~~~~~~~~
+Stored queries
+~~~~~~~~~~~~~~
 
-Canned queries support named parameters, so if you include those in the SQL you will then be able to enter them using the form fields on the canned query page or by adding them to the URL. This means canned queries can be used to create custom JSON APIs based on a carefully designed SQL statement.
+Datasette stores both configured queries and user-created queries in the ``queries`` table in the :ref:`internal database <internals_internal>`. Configured queries come from the ``queries`` section of ``datasette.yaml``. User-created stored queries can be created from the SQL query page by actors with the :ref:`actions_store_query` and :ref:`actions_execute_sql` permissions. Writable stored queries also require the permissions needed for the writes they perform.
 
-Here's an example of a canned query with a named parameter:
+Stored queries created by users default to private. Private stored queries can only be viewed, updated or deleted by the actor that created them. Broad ``view-query``, ``update-query`` or ``delete-query`` permission grants still do not allow other actors to access another actor's private stored queries.
+
+Stored queries created by users are untrusted. This means they execute using the permissions of the actor who runs them, as if that actor had pasted the SQL into the regular custom SQL interface or write SQL interface. Read-only stored queries require ``execute-sql``. Writable stored queries require ``execute-write-sql`` plus the relevant table-level write permissions.
+
+.. _trusted_stored_queries:
+.. _trusted_saved_queries:
+
+Trusted stored queries
+++++++++++++++++++++++
+
+A trusted stored query can execute with ``view-query`` permission alone. It skips the additional ``execute-sql`` and write permission checks that are applied to untrusted stored queries.
+
+Trusted stored queries should only be used for SQL that has been reviewed by someone trusted to configure the Datasette instance. For that reason, trusted stored queries can only be added using configuration. Users cannot create trusted stored queries through the web interface or the stored query JSON API.
+
+Queries defined in ``datasette.yaml`` are trusted by default:
+
+.. code-block:: yaml
+
+    databases:
+      mydatabase:
+        queries:
+          report:
+            sql: select * from report
+
+You can opt out of this behavior for a configured query using ``is_trusted: false``:
+
+.. code-block:: yaml
+
+    databases:
+      mydatabase:
+        queries:
+          report:
+            sql: select * from report
+            is_trusted: false
+
+.. _queries_named_parameters:
+
+Query parameters
+~~~~~~~~~~~~~~~~
+
+Configured queries support named parameters, so if you include those in the SQL you will then be able to enter them using the form fields on the query page or by adding them to the URL. This means configured queries can be used to create custom JSON APIs based on a carefully designed SQL statement.
+
+Here's an example of a configured query with a named parameter:
 
 .. code-block:: sql
 
@@ -147,7 +190,7 @@ Here's an example of a canned query with a named parameter:
     where neighborhood like '%' || :text || '%'
     order by neighborhood;
 
-In the canned query configuration looks like this:
+The query configuration looks like this:
 
 
 .. [[[cog
@@ -204,7 +247,7 @@ In the canned query configuration looks like this:
 
 Note that we are using SQLite string concatenation here - the ``||`` operator - to add wildcard ``%`` characters to the string provided by the user.
 
-You can try this canned query out here:
+You can try this query out here:
 https://latest.datasette.io/fixtures/neighborhood_search?text=town
 
 In this example the ``:text`` named parameter is automatically extracted from the query using a regular expression.
@@ -270,17 +313,17 @@ You can alternatively provide an explicit list of named parameters using the ``"
         }
 .. [[[end]]]
 
-.. _canned_queries_options:
+.. _queries_options:
 
-Additional canned query options
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Additional query options
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-Additional options can be specified for canned queries in the YAML or JSON configuration.
+Additional options can be specified for configured queries in the YAML or JSON configuration.
 
 hide_sql
 ++++++++
 
-Canned queries default to displaying their SQL query at the top of the page. If the query is extremely long you may want to hide it by default, with a "show" link that can be used to make it visible.
+Configured queries default to displaying their SQL query at the top of the page. If the query is extremely long you may want to hide it by default, with a "show" link that can be used to make it visible.
 
 Add the ``"hide_sql": true`` option to hide the SQL query by default.
 
@@ -289,7 +332,7 @@ fragment
 
 Some plugins, such as `datasette-vega <https://github.com/simonw/datasette-vega>`__, can be configured by including additional data in the fragment hash of the URL - the bit that comes after a ``#`` symbol.
 
-You can set a default fragment hash that will be included in the link to the canned query from the database index page using the ``"fragment"`` key.
+You can set a default fragment hash that will be included in the link to the query from the database index page using the ``"fragment"`` key.
 
 This example demonstrates both ``fragment`` and ``hide_sql``:
 
@@ -346,14 +389,14 @@ This example demonstrates both ``fragment`` and ``hide_sql``:
 
 `See here <https://latest.datasette.io/fixtures#queries>`__ for a demo of this in action.
 
-.. _canned_queries_writable:
+.. _queries_writable:
 
-Writable canned queries
-~~~~~~~~~~~~~~~~~~~~~~~
+Writable queries
+~~~~~~~~~~~~~~~~
 
-Canned queries by default are read-only. You can use the ``"write": true`` key to indicate that a canned query can write to the database.
+Configured queries are read-only by default. You can use the ``"write": true`` key to indicate that a query can write to the database.
 
-See :ref:`authentication_permissions_query` for details on how to add permission checks to canned queries, using the ``"allow"`` key.
+See :ref:`authentication_permissions_query` for details on how to add permission checks to queries, using the ``"allow"`` key.
 
 .. [[[cog
     config_example(cog, {
@@ -481,14 +524,14 @@ You can pre-populate form fields when the page first loads using a query string,
 
 If you specify a query in ``"on_success_message_sql"``, that query will be executed after the main query. The first column of the first row return by that query will be displayed as a success message. Named parameters from the main query will be made available to the success message query as well.
 
-.. _canned_queries_magic_parameters:
+.. _queries_magic_parameters:
 
 Magic parameters
 ~~~~~~~~~~~~~~~~
 
 Named parameters that start with an underscore are special: they can be used to automatically add values created by Datasette that are not contained in the incoming form fields or query string.
 
-These magic parameters are only supported for canned queries: to avoid security issues (such as queries that extract the user's private cookies) they are not available to SQL that is executed by the user as a custom SQL query.
+These magic parameters are only supported for configured queries: to avoid security issues (such as queries that extract the user's private cookies) they are not available to SQL that is executed by the user as a custom SQL query.
 
 Available magic parameters are:
 
@@ -578,14 +621,14 @@ The form presented at ``/mydatabase/add_message`` will have just a field for ``m
 
 Additional custom magic parameters can be added by plugins using the :ref:`plugin_hook_register_magic_parameters` hook.
 
-.. _canned_queries_json_api:
+.. _queries_json_api:
 
-JSON API for writable canned queries
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+JSON API for writable queries
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Writable canned queries can also be accessed using a JSON API. You can POST data to them using JSON, and you can request that their response is returned to you as JSON.
+Writable queries can also be accessed using a JSON API. You can POST data to them using JSON, and you can request that their response is returned to you as JSON.
 
-To submit JSON to a writable canned query, encode key/value parameters as a JSON document::
+To submit JSON to a writable query, encode key/value parameters as a JSON document::
 
     POST /mydatabase/add_message
 

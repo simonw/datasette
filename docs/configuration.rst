@@ -87,6 +87,7 @@ This is equivalent to a ``datasette.yaml`` file containing the following:
         }
 .. [[[end]]]
 
+
 .. _configuration_reference:
 
 ``datasette.yaml`` reference
@@ -433,12 +434,12 @@ Here is a simple example:
 
 :ref:`authentication_permissions_config` has the full details.
 
-.. _configuration_reference_canned_queries:
+.. _configuration_reference_queries:
 
-Canned queries configuration
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Queries configuration
+~~~~~~~~~~~~~~~~~~~~~
 
-:ref:`Canned queries <canned_queries>` are named SQL queries that appear in the Datasette interface. They can be configured in ``datasette.yaml`` using the ``queries`` key at the database level:
+:ref:`Queries <queries>` are named SQL queries that appear in the Datasette interface. They can be configured in ``datasette.yaml`` using the ``queries`` key at the database level:
 
 .. [[[cog
     from metadata_doc import config_example, config_example
@@ -483,7 +484,7 @@ Canned queries configuration
         }
 .. [[[end]]]
 
-See the :ref:`canned queries documentation <canned_queries>` for more, including how to configure :ref:`writable canned queries <canned_queries_writable>`.
+See the :ref:`queries documentation <queries>` for more, including how to configure :ref:`writable queries <queries_writable>`.
 
 .. _configuration_reference_css_js:
 
@@ -1211,4 +1212,3 @@ For column types that accept additional configuration, use an object with ``type
           }
         }
 .. [[[end]]]
-

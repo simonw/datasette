@@ -149,7 +149,7 @@ Shows currently attached databases. `Databases example <https://latest.datasette
 /-/jump
 -------
 
-Returns a JSON list of items that the current actor has permission to view for Datasette's jump menu. By default this includes visible databases, tables, views and canned queries, and plugins can contribute additional items.
+Returns a JSON list of items that the current actor has permission to view for Datasette's jump menu. By default this includes visible databases, tables, views and stored queries, and plugins can contribute additional items.
 
 Each item includes a ``type`` string used as a category label in the menu. Items can also include an optional ``description`` with longer text describing that individual result.
 

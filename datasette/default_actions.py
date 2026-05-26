@@ -49,10 +49,24 @@ def register_actions():
             also_requires="view-database",
         ),
         Action(
+            name="execute-write-sql",
+            abbr="ews",
+            description="Execute writable SQL queries",
+            resource_class=DatabaseResource,
+            also_requires="view-database",
+        ),
+        Action(
             name="create-table",
             abbr="ct",
             description="Create tables",
             resource_class=DatabaseResource,
+        ),
+        Action(
+            name="store-query",
+            abbr="sq",
+            description="Create stored queries",
+            resource_class=DatabaseResource,
+            also_requires="execute-sql",
         ),
         # Table-level actions (child-level)
         Action(
@@ -102,6 +116,18 @@ def register_actions():
             name="view-query",
             abbr="vq",
             description="View named query results",
+            resource_class=QueryResource,
+        ),
+        Action(
+            name="update-query",
+            abbr="uq",
+            description="Update stored queries",
+            resource_class=QueryResource,
+        ),
+        Action(
+            name="delete-query",
+            abbr="dq",
+            description="Delete stored queries",
             resource_class=QueryResource,
         ),
     )

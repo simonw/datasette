@@ -143,20 +143,6 @@ def startup(datasette):
     return inner
 
 
-@hookimpl
-def canned_queries(datasette, database):
-    async def inner():
-        return {
-            "from_async_hook": "select {}".format(
-                (
-                    await datasette.get_database(database).execute("select 1 + 1")
-                ).first()[0]
-            )
-        }
-
-    return inner
-
-
 @hookimpl(trylast=True)
 def menu_links(datasette, actor):
     async def inner():

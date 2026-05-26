@@ -42,8 +42,25 @@ from jinja2.exceptions import TemplateNotFound
 
 from .events import Event
 from .column_types import SQLiteType
+from . import stored_queries
 from .views import Context
-from .views.database import database_download, DatabaseView, TableCreateView, QueryView
+from .views.database import (
+    database_download,
+    DatabaseView,
+    TableCreateView,
+    QueryView,
+)
+from .views.execute_write import ExecuteWriteAnalyzeView, ExecuteWriteView
+from .views.stored_queries import (
+    QueryCreateAnalyzeView,
+    QueryDeleteView,
+    QueryDefinitionView,
+    GlobalQueryListView,
+    QueryListView,
+    QueryParametersView,
+    QueryStoreView,
+    QueryUpdateView,
+)
 from .views.index import IndexView
 from .views.special import (
     JsonDataView,
@@ -571,6 +588,9 @@ class Datasette:
             # TODO(alex) is metadata.json was loaded in, and --internal is not memory, then log
             # a warning to user that they should delete their metadata.json file
 
+    async def _save_queries_from_config(self):
+        await stored_queries.save_queries_from_config(self)
+
     def get_jinja_environment(self, request: Request = None) -> Environment:
         environment = self._jinja_env
         if request:
@@ -731,6 +751,7 @@ class Datasette:
             await await_me_maybe(hook)
         # Ensure internal tables and metadata are populated before startup hooks
         await self._refresh_schemas()
+        await self._save_queries_from_config()
         # Load column_types from config into internal DB
         await self._apply_column_types_config()
         for hook in pm.hook.startup(datasette=self):
@@ -1007,6 +1028,179 @@ class Datasette:
             [database_name, resource_name, column_name, key, value],
         )
 
+    @staticmethod
+    def _query_row_to_stored_query(row) -> stored_queries.StoredQuery | None:
+        return stored_queries.query_row_to_stored_query(row)
+
+    @staticmethod
+    def _query_options_json(options):
+        return stored_queries.query_options_json(options)
+
+    async def add_query(
+        self,
+        database: str,
+        name: str,
+        sql: str,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        description_html: str | None = None,
+        hide_sql: bool = False,
+        fragment: str | None = None,
+        parameters: Iterable[str] | None = None,
+        is_write: bool = False,
+        is_private: bool = False,
+        is_trusted: bool = False,
+        source: str = "plugin",
+        owner_id: str | None = None,
+        on_success_message: str | None = None,
+        on_success_message_sql: str | None = None,
+        on_success_redirect: str | None = None,
+        on_error_message: str | None = None,
+        on_error_redirect: str | None = None,
+        replace: bool = True,
+    ) -> None:
+        return await stored_queries.add_query(
+            self,
+            database,
+            name,
+            sql,
+            title=title,
+            description=description,
+            description_html=description_html,
+            hide_sql=hide_sql,
+            fragment=fragment,
+            parameters=parameters,
+            is_write=is_write,
+            is_private=is_private,
+            is_trusted=is_trusted,
+            source=source,
+            owner_id=owner_id,
+            on_success_message=on_success_message,
+            on_success_message_sql=on_success_message_sql,
+            on_success_redirect=on_success_redirect,
+            on_error_message=on_error_message,
+            on_error_redirect=on_error_redirect,
+            replace=replace,
+        )
+
+    async def update_query(
+        self,
+        database: str,
+        name: str,
+        *,
+        sql=stored_queries.UNCHANGED,
+        title=stored_queries.UNCHANGED,
+        description=stored_queries.UNCHANGED,
+        description_html=stored_queries.UNCHANGED,
+        hide_sql=stored_queries.UNCHANGED,
+        fragment=stored_queries.UNCHANGED,
+        parameters=stored_queries.UNCHANGED,
+        is_write=stored_queries.UNCHANGED,
+        is_private=stored_queries.UNCHANGED,
+        is_trusted=stored_queries.UNCHANGED,
+        source=stored_queries.UNCHANGED,
+        owner_id=stored_queries.UNCHANGED,
+        on_success_message=stored_queries.UNCHANGED,
+        on_success_message_sql=stored_queries.UNCHANGED,
+        on_success_redirect=stored_queries.UNCHANGED,
+        on_error_message=stored_queries.UNCHANGED,
+        on_error_redirect=stored_queries.UNCHANGED,
+    ) -> None:
+        return await stored_queries.update_query(
+            self,
+            database,
+            name,
+            sql=sql,
+            title=title,
+            description=description,
+            description_html=description_html,
+            hide_sql=hide_sql,
+            fragment=fragment,
+            parameters=parameters,
+            is_write=is_write,
+            is_private=is_private,
+            is_trusted=is_trusted,
+            source=source,
+            owner_id=owner_id,
+            on_success_message=on_success_message,
+            on_success_message_sql=on_success_message_sql,
+            on_success_redirect=on_success_redirect,
+            on_error_message=on_error_message,
+            on_error_redirect=on_error_redirect,
+        )
+
+    async def remove_query(
+        self, database: str, name: str, source: str | None = None
+    ) -> None:
+        return await stored_queries.remove_query(self, database, name, source=source)
+
+    async def get_query(
+        self, database: str, name: str
+    ) -> stored_queries.StoredQuery | None:
+        return await stored_queries.get_query(self, database, name)
+
+    async def count_queries(
+        self,
+        database: str | None = None,
+        *,
+        actor: dict[str, Any] | None = None,
+        q: str | None = None,
+        is_write: bool | None = None,
+        is_private: bool | None = None,
+        is_trusted: bool | None = None,
+        source: str | None = None,
+        owner_id: str | None = None,
+    ) -> int:
+        return await stored_queries.count_queries(
+            self,
+            database,
+            actor=actor,
+            q=q,
+            is_write=is_write,
+            is_private=is_private,
+            is_trusted=is_trusted,
+            source=source,
+            owner_id=owner_id,
+        )
+
+    async def list_queries(
+        self,
+        database: str | None = None,
+        *,
+        actor: dict[str, Any] | None = None,
+        limit: int = 50,
+        cursor: str | None = None,
+        q: str | None = None,
+        is_write: bool | None = None,
+        is_private: bool | None = None,
+        is_trusted: bool | None = None,
+        source: str | None = None,
+        owner_id: str | None = None,
+        include_private: bool = False,
+    ) -> stored_queries.StoredQueryPage:
+        return await stored_queries.list_queries(
+            self,
+            database,
+            actor=actor,
+            limit=limit,
+            cursor=cursor,
+            q=q,
+            is_write=is_write,
+            is_private=is_private,
+            is_trusted=is_trusted,
+            source=source,
+            owner_id=owner_id,
+            include_private=include_private,
+        )
+
+    async def ensure_query_write_permissions(
+        self, database, sql, *, actor=None, params=None, analysis=None
+    ):
+        return await stored_queries.ensure_query_write_permissions(
+            self, database, sql, actor=actor, params=params, analysis=analysis
+        )
+
     # Column types API
 
     async def _get_resource_column_details(self, database: str, resource: str):
@@ -1237,29 +1431,6 @@ class Datasette:
 
     def app_css_hash(self):
         return self.static_hash("app.css")
-
-    async def get_canned_queries(self, database_name, actor):
-        queries = {}
-        for more_queries in pm.hook.canned_queries(
-            datasette=self,
-            database=database_name,
-            actor=actor,
-        ):
-            more_queries = await await_me_maybe(more_queries)
-            queries.update(more_queries or {})
-        # Fix any {"name": "select ..."} queries to be {"name": {"sql": "select ..."}}
-        for key in queries:
-            if not isinstance(queries[key], dict):
-                queries[key] = {"sql": queries[key]}
-            # Also make sure "name" is available:
-            queries[key]["name"] = key
-        return queries
-
-    async def get_canned_query(self, database_name, query_name, actor):
-        queries = await self.get_canned_queries(database_name, actor)
-        query = queries.get(query_name)
-        if query:
-            return query
 
     def _prepare_connection(self, conn, database):
         conn.row_factory = sqlite3.Row
@@ -2237,6 +2408,10 @@ class Datasette:
             r"/-/jump(\.(?P<format>json))?$",
         )
         add_route(
+            GlobalQueryListView.as_view(self),
+            r"/-/queries(\.(?P<format>json))?$",
+        )
+        add_route(
             InstanceSchemaView.as_view(self),
             r"/-/schema(\.(?P<format>json|md))?$",
         )
@@ -2282,12 +2457,48 @@ class Datasette:
         )
         add_route(TableCreateView.as_view(self), r"/(?P<database>[^\/\.]+)/-/create$")
         add_route(
+            QueryListView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/queries(\.(?P<format>json))?$",
+        )
+        add_route(
+            QueryCreateAnalyzeView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/queries/analyze$",
+        )
+        add_route(
+            QueryStoreView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/queries/store$",
+        )
+        add_route(
+            ExecuteWriteAnalyzeView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/execute-write/analyze$",
+        )
+        add_route(
+            ExecuteWriteView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/execute-write$",
+        )
+        add_route(
             DatabaseSchemaView.as_view(self),
             r"/(?P<database>[^\/\.]+)/-/schema(\.(?P<format>json|md))?$",
         )
         add_route(
+            QueryParametersView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/query/parameters$",
+        )
+        add_route(
             wrap_view(QueryView, self),
             r"/(?P<database>[^\/\.]+)/-/query(\.(?P<format>\w+))?$",
+        )
+        add_route(
+            QueryDefinitionView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<query>[^\/\.]+)/-/definition$",
+        )
+        add_route(
+            QueryUpdateView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<query>[^\/\.]+)/-/update$",
+        )
+        add_route(
+            QueryDeleteView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<query>[^\/\.]+)/-/delete$",
         )
         add_route(
             wrap_view(table_view, self),

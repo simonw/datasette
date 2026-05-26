@@ -29,7 +29,7 @@ The custom SQL template (``/dbname?sql=...``) gets this:
 
     <body class="query db-dbname">
 
-A canned query template (``/dbname/queryname``) gets this:
+A stored query template (``/dbname/queryname``) gets this:
 
 .. code-block:: html
 
@@ -193,8 +193,8 @@ The lookup rules Datasette uses are as follows::
         query-mydatabase.html
         query.html
 
-    Canned query page (/mydatabase/canned-query):
-        query-mydatabase-canned-query.html
+    Stored query page (/mydatabase/query-name):
+        query-mydatabase-query-name.html
         query-mydatabase.html
         query.html
 
@@ -230,7 +230,7 @@ will look something like this::
 
     <!-- Templates considered: *query-mydb-tz.html, query-mydb.html, query.html -->
 
-This example is from the canned query page for a query called "tz" in the
+This example is from the stored query page for a query called "tz" in the
 database called "mydb". The asterisk shows which template was selected - so in
 this case, Datasette found a template file called ``query-mydb-tz.html`` and
 used that - but if that template had not been found, it would have tried for

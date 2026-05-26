@@ -609,7 +609,7 @@ When a request is received, the ``"render"`` callback function is called with ze
     The SQL query that was executed.
 
 ``query_name`` - string or None
-    If this was the execution of a :ref:`canned query <canned_queries>`, the name of that query.
+    If this was the execution of a :ref:`stored query <stored_queries>`, the name of that query.
 
 ``database`` - string
     The name of the database.
@@ -1207,85 +1207,6 @@ Potential use-cases:
 
 Examples: `datasette-saved-queries <https://datasette.io/plugins/datasette-saved-queries>`__, `datasette-init <https://datasette.io/plugins/datasette-init>`__
 
-.. _plugin_hook_canned_queries:
-
-canned_queries(datasette, database, actor)
-------------------------------------------
-
-``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
-
-``database`` - string
-    The name of the database.
-
-``actor`` - dictionary or None
-    The currently authenticated :ref:`actor <authentication_actor>`.
-
-Use this hook to return a dictionary of additional :ref:`canned query <canned_queries>` definitions for the specified database. The return value should be the same shape as the JSON described in the :ref:`canned query <canned_queries>` documentation.
-
-.. code-block:: python
-
-    from datasette import hookimpl
-
-
-    @hookimpl
-    def canned_queries(datasette, database):
-        if database == "mydb":
-            return {
-                "my_query": {
-                    "sql": "select * from my_table where id > :min_id"
-                }
-            }
-
-The hook can alternatively return an awaitable function that returns a list. Here's an example that returns queries that have been stored in the ``saved_queries`` database table, if one exists:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-
-
-    @hookimpl
-    def canned_queries(datasette, database):
-        async def inner():
-            db = datasette.get_database(database)
-            if await db.table_exists("saved_queries"):
-                results = await db.execute(
-                    "select name, sql from saved_queries"
-                )
-                return {
-                    result["name"]: {"sql": result["sql"]}
-                    for result in results
-                }
-
-        return inner
-
-The actor parameter can be used to include the currently authenticated actor in your decision. Here's an example that returns saved queries that were saved by that actor:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-
-
-    @hookimpl
-    def canned_queries(datasette, database, actor):
-        async def inner():
-            db = datasette.get_database(database)
-            if actor is not None and await db.table_exists(
-                "saved_queries"
-            ):
-                results = await db.execute(
-                    "select name, sql from saved_queries where actor_id = :id",
-                    {"id": actor["id"]},
-                )
-                return {
-                    result["name"]: {"sql": result["sql"]}
-                    for result in results
-                }
-
-        return inner
-
-Example: `datasette-saved-queries <https://datasette.io/plugins/datasette-saved-queries>`__
-
 .. _plugin_hook_actor_from_request:
 
 actor_from_request(datasette, request)
@@ -1704,7 +1625,7 @@ register_magic_parameters(datasette)
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
 
-:ref:`canned_queries_magic_parameters` can be used to add automatic parameters to :ref:`canned queries <canned_queries>`. This plugin hook allows additional magic parameters to be defined by plugins.
+:ref:`queries_magic_parameters` can be used to add automatic parameters to :ref:`configured queries <queries>`. This plugin hook allows additional magic parameters to be defined by plugins.
 
 Magic parameters all take this format: ``_prefix_rest_of_parameter``. The prefix indicates which magic parameter function should be called - the rest of the parameter is passed as an argument to that function.
 
@@ -1897,7 +1818,7 @@ jump_items_sql(datasette, actor, request)
 
 This hook allows plugins to add extra results to Datasette's ``/`` jump menu, which is powered by the ``/-/jump`` JSON endpoint.
 
-Return a ``datasette.jump.JumpSQL`` object, or a list of ``JumpSQL`` objects. Each ``JumpSQL`` object wraps a SQL query to be searched alongside Datasette's own databases, tables, views and canned query results. The hook can also be an ``async def`` function, or return an awaitable that resolves to one of these values.
+Return a ``datasette.jump.JumpSQL`` object, or a list of ``JumpSQL`` objects. Each ``JumpSQL`` object wraps a SQL query to be searched alongside Datasette's own databases, tables, views and stored query results. The hook can also be an ``async def`` function, or return an awaitable that resolves to one of these values.
 
 ``JumpSQL`` queries run against Datasette's internal database by default. To run a query against another database, pass its name as the optional ``database=`` argument. For example, ``JumpSQL(database="content", sql="...")`` runs against the ``content`` database.
 
@@ -2073,7 +1994,7 @@ query_actions(datasette, actor, database, query_name, request, sql, params)
     The name of the database.
 
 ``query_name`` - string or None
-    The name of the canned query, or ``None`` if this is an arbitrary SQL query.
+    The name of the stored query, or ``None`` if this is an arbitrary SQL query.
 
 ``request`` - :ref:`internals_request`
     The current HTTP request.
@@ -2084,7 +2005,7 @@ query_actions(datasette, actor, database, query_name, request, sql, params)
 ``params`` - dictionary
     The parameters passed to the SQL query, if any.
 
-Populates a "Query actions" menu on the canned query and arbitrary SQL query pages.
+Populates a "Query actions" menu on the stored query and arbitrary SQL query pages.
 
 This example adds a new query action linking to a page for explaining a query:
 
@@ -2348,9 +2269,9 @@ top_query(datasette, request, database, sql)
 
 Returns HTML to be displayed at the top of the query results page.
 
-.. _plugin_hook_top_canned_query:
+.. _plugin_hook_top_stored_query:
 
-top_canned_query(datasette, request, database, query_name)
+top_stored_query(datasette, request, database, query_name)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``datasette`` - :ref:`internals_datasette`
@@ -2363,9 +2284,9 @@ top_canned_query(datasette, request, database, query_name)
     The name of the database.
 
 ``query_name`` - string
-    The name of the canned query.
+    The name of the stored query.
 
-Returns HTML to be displayed at the top of the canned query page.
+Returns HTML to be displayed at the top of the stored query page.
 
 .. _plugin_event_tracking:
 

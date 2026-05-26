@@ -725,7 +725,7 @@ The builder methods are:
 
 - ``allow_all(action)`` - allow an action across all databases and resources
 - ``allow_database(database, action)`` - allow an action on a specific database
-- ``allow_resource(database, resource, action)`` - allow an action on a specific resource (table, SQL view or :ref:`canned query <canned_queries>`) within a database
+- ``allow_resource(database, resource, action)`` - allow an action on a specific resource (table, SQL view or :ref:`stored query <stored_queries>`) within a database
 
 Each method returns the ``TokenRestrictions`` instance so calls can be chained.
 
@@ -837,10 +837,10 @@ await .get_resource_metadata(self, database_name, resource_name)
 ``database_name`` - string
     The name of the database to query.
 ``resource_name`` - string
-    The name of the resource (table, view, or canned query) inside ``database_name`` to query.
+    The name of the resource (table, view, or stored query) inside ``database_name`` to query.
 
 Returns metadata keys and values for the specified "resource" as a dictionary.
-A "resource" in this context can be a table, view, or canned query.
+A "resource" in this context can be a table, view, or stored query.
 Internally queries the ``metadata_resources`` table inside the :ref:`internal database <internals_internal>`.
 
 .. _datasette_get_column_metadata:
@@ -851,7 +851,7 @@ await .get_column_metadata(self, database_name, resource_name, column_name)
 ``database_name`` - string
     The name of the database to query.
 ``resource_name`` - string
-    The name of the resource (table, view, or canned query) inside ``database_name`` to query.
+    The name of the resource (table, view, or stored query) inside ``database_name`` to query.
 ``column_name`` - string
     The name of the column inside ``resource_name`` to query.
 
@@ -897,7 +897,7 @@ await .set_resource_metadata(self, database_name, resource_name, key, value)
 ``database_name`` - string
     The database the metadata entry belongs to.
 ``resource_name`` - string
-    The resource (table, view, or canned query) the metadata entry belongs to.
+    The resource (table, view, or stored query) the metadata entry belongs to.
 ``key`` - string
     The metadata entry key to insert (ex ``title``, ``description``, etc.)
 ``value`` - string
@@ -915,7 +915,7 @@ await .set_column_metadata(self, database_name, resource_name, column_name, key,
 ``database_name`` - string
     The database the metadata entry belongs to.
 ``resource_name`` - string
-    The resource (table, view, or canned query) the metadata entry belongs to.
+    The resource (table, view, or stored query) the metadata entry belongs to.
 ``column-name`` - string
     The column the metadata entry belongs to.
 ``key`` - string
@@ -926,6 +926,200 @@ await .set_column_metadata(self, database_name, resource_name, column_name, key,
 Adds a new metadata entry for the specified column.
 Any previous column-level metadata entry with the same ``key`` will be overwritten.
 Internally upserts the value into the  the ``metadata_columns`` table inside the :ref:`internal database <internals_internal>`.
+
+.. _datasette_stored_queries:
+
+Stored queries
+--------------
+
+:ref:`Stored queries <stored_queries>` are stored in the ``queries`` table in the :ref:`internal database <internals_internal>`. Plugins can use the following methods to add, update, list and remove stored queries.
+
+.. _datasette_add_query:
+
+await .add_query(database, name, sql, ...)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Adds a stored query.
+
+.. code-block:: python
+
+    async def add_query(
+        self,
+        database,
+        name,
+        sql,
+        *,
+        title=None,
+        description=None,
+        description_html=None,
+        hide_sql=False,
+        fragment=None,
+        parameters=None,
+        is_write=False,
+        is_private=False,
+        is_trusted=False,
+        source="plugin",
+        owner_id=None,
+        on_success_message=None,
+        on_success_message_sql=None,
+        on_success_redirect=None,
+        on_error_message=None,
+        on_error_redirect=None,
+        replace=True,
+    ): ...
+
+``database`` - string
+    The name of the database this query should belong to.
+``name`` - string
+    The name of the stored query, used in the URL for that query.
+``sql`` - string
+    The SQL for the stored query.
+``title`` - string, optional
+    A display title for the query.
+``description`` - string, optional
+    A plain text description.
+``description_html`` - string, optional
+    An HTML description.
+``hide_sql`` - boolean, optional
+    Set to ``True`` to hide the SQL by default on the query page.
+``fragment`` - string, optional
+    A URL fragment to append to query links, for example ``"chart"``.
+``parameters`` - list of strings, optional
+    Explicit parameter names for the query form. If omitted, Datasette derives parameters from the SQL.
+``is_write`` - boolean, optional
+    Set to ``True`` for writable queries. They will the run against the SQLite write connection for the database.
+``is_private`` - boolean, optional
+    Set to ``True`` for private queries. Private queries can only be viewed, updated or deleted by their owner.
+``is_trusted`` - boolean, optional
+    Set to ``True`` for :ref:`trusted stored queries <trusted_stored_queries>`.
+``source`` - string, optional
+    Identifies where the query came from. Defaults to ``"plugin"``.
+``owner_id`` - string, optional
+    Actor ID of the query owner, used by private query permissions.
+``on_success_message``, ``on_success_message_sql``, ``on_success_redirect``, ``on_error_message``, ``on_error_redirect`` - strings, optional
+    Options for :ref:`writable queries <queries_writable>`.
+``replace`` - boolean, optional
+    Defaults to ``True``, which replaces any existing stored query with the same ``database`` and ``name``. Set this to ``False`` to raise a SQLite integrity error if the query already exists.
+
+Example:
+
+.. code-block:: python
+
+    await datasette.add_query(
+        database="fixtures",
+        name="recent_rows",
+        sql="select * from facetable order by created desc limit 10",
+        title="Recent rows",
+        source="my-plugin",
+    )
+
+.. _datasette_update_query:
+
+await .update_query(database, name, ...)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Updates fields for an existing stored query. Only keyword arguments that are provided will be changed.
+
+The available keyword arguments are the same as those for :ref:`datasette_add_query`, except for ``replace``. Pass ``None`` to clear optional text fields and options such as ``on_success_redirect``. Passing ``hide_sql=False`` removes the ``hide_sql`` option.
+
+Example:
+
+.. code-block:: python
+
+    await datasette.update_query(
+        database="fixtures",
+        name="recent_rows",
+        title="Latest rows",
+        is_private=True,
+        owner_id="alice",
+    )
+
+.. _datasette_get_query:
+
+await .get_query(database, name)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Returns a ``StoredQuery`` dataclass instance, or ``None`` if the query does not exist.
+
+``StoredQuery`` has the following attributes: ``database``, ``name``, ``sql``, ``title``, ``description``, ``description_html``, ``hide_sql``, ``fragment``, ``parameters``, ``is_write``, ``is_private``, ``is_trusted``, ``source``, ``owner_id``, ``on_success_message``, ``on_success_message_sql``, ``on_success_redirect``, ``on_error_message`` and ``on_error_redirect``.
+
+``parameters`` is a list of explicit parameter names.
+
+.. _datasette_list_queries:
+
+await .list_queries(database=None, ...)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Lists stored queries visible to the specified actor.
+
+.. code-block:: python
+
+    async def list_queries(
+        self,
+        database=None,
+        *,
+        actor=None,
+        limit=50,
+        cursor=None,
+        q=None,
+        is_write=None,
+        is_private=None,
+        is_trusted=None,
+        source=None,
+        owner_id=None,
+        include_private=False,
+    ): ...
+
+``database`` - string, optional
+    Restrict results to a specific database. Omit this to list queries across all databases.
+``actor`` - dictionary, optional
+    The authenticated actor. Results are filtered using that actor's ``view-query`` permission.
+``limit`` - integer, optional
+    Number of queries to return. Values are clamped to the range 1-1000.
+``cursor`` - string, optional
+    Pagination cursor from the previous page's ``next`` value.
+``q`` - string, optional
+    Search string matched against query name, title, description and SQL.
+``is_write``, ``is_private``, ``is_trusted`` - boolean, optional
+    Filter by those stored query flags.
+``source`` - string, optional
+    Filter by query source.
+``owner_id`` - string, optional
+    Filter by owner actor ID.
+``include_private`` - boolean, optional
+    Set to ``True`` to populate a ``private`` boolean on each returned ``StoredQuery`` indicating if anonymous users would be unable to view that query.
+
+The return value is a ``StoredQueryPage`` dataclass instance with these attributes:
+
+``queries`` - list of StoredQuery instances
+    Stored queries in the same format returned by :ref:`datasette_get_query`.
+``next`` - string or None
+    Pagination cursor for the next page, if one exists.
+``has_more`` - boolean
+    ``True`` if another page of results is available.
+``limit`` - integer
+    The limit used for this page.
+
+.. _datasette_count_queries:
+
+await .count_queries(database=None, ...)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Counts stored queries visible to the specified actor. This accepts the same filtering keyword arguments as :ref:`datasette_list_queries`, except for ``limit``, ``cursor`` and ``include_private``.
+
+.. _datasette_remove_query:
+
+await .remove_query(database, name, source=None)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Removes a stored query.
+
+``database`` - string
+    The database the query belongs to.
+``name`` - string
+    The query name.
+``source`` - string, optional
+    If provided, only a query with this source will be removed.
 
 .. _datasette_column_types:
 
@@ -2148,6 +2342,26 @@ The internal database schema is as follows:
         config TEXT,
         PRIMARY KEY (database_name, resource_name, column_name)
     );
+    CREATE TABLE queries (
+        database_name TEXT NOT NULL,
+        name TEXT NOT NULL,
+        sql TEXT NOT NULL,
+        title TEXT,
+        description TEXT,
+        description_html TEXT,
+        options TEXT NOT NULL DEFAULT '{}',
+        parameters TEXT NOT NULL DEFAULT '[]',
+        is_write INTEGER NOT NULL DEFAULT 0 CHECK (is_write IN (0, 1)),
+        is_private INTEGER NOT NULL DEFAULT 0 CHECK (is_private IN (0, 1)),
+        is_trusted INTEGER NOT NULL DEFAULT 0 CHECK (is_trusted IN (0, 1)),
+        source TEXT NOT NULL DEFAULT 'user',
+        owner_id TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (database_name, name)
+    );
+    CREATE INDEX queries_owner_idx
+        ON queries(owner_id);
 
 .. [[[end]]]
 
@@ -2219,8 +2433,8 @@ Note that the space character is a special case: it will be replaced with a ``+`
 
 .. _internals_utils_call_with_supported_arguments:
 
-call_with_supported_arguments(fn, **kwargs)
--------------------------------------------
+call_with_supported_arguments(fn, \*\*kwargs)
+---------------------------------------------
 
 Call ``fn``, passing it only those keyword arguments that match its function signature. This implements a dependency injection pattern - the caller provides all available arguments, and the function receives only the ones it declares as parameters.
 
@@ -2247,8 +2461,8 @@ This is useful in plugins that want to define callback functions that only decla
 
 .. _internals_utils_async_call_with_supported_arguments:
 
-await async_call_with_supported_arguments(fn, **kwargs)
--------------------------------------------------------
+await async_call_with_supported_arguments(fn, \*\*kwargs)
+---------------------------------------------------------
 
 Async version of :ref:`call_with_supported_arguments <internals_utils_call_with_supported_arguments>`. Use this for ``async def`` callback functions.
 

@@ -138,11 +138,6 @@ def permission_resources_sql(datasette, actor, action):
 
 
 @hookspec
-def canned_queries(datasette, database, actor):
-    """Return a dictionary of canned query definitions or an awaitable function that returns them"""
-
-
-@hookspec
 def register_magic_parameters(datasette):
     """Return a list of (name, function) magic parameter functions"""
 
@@ -179,7 +174,7 @@ def view_actions(datasette, actor, database, view, request):
 
 @hookspec
 def query_actions(datasette, actor, database, query_name, request, sql, params):
-    """Links for the query and canned query actions menu"""
+    """Links for the query and stored query actions menu"""
 
 
 @hookspec
@@ -233,8 +228,8 @@ def top_query(datasette, request, database, sql):
 
 
 @hookspec
-def top_canned_query(datasette, request, database, query_name):
-    """HTML to include at the top of the canned query page"""
+def top_stored_query(datasette, request, database, query_name):
+    """HTML to include at the top of the stored query page"""
 
 
 @hookspec

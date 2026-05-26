@@ -244,7 +244,7 @@ except (KeyError, TypeError):
 New code:
 ```python
 try:
-    query_info = await datasette.get_canned_query(database, query_name, request.actor)
+    query_info = await datasette.get_query(database, query_name)
     if query_info and "title" in query_info:
         title = query_info["title"]
 except (KeyError, TypeError):
@@ -253,7 +253,7 @@ except (KeyError, TypeError):
 
 ### Update render functions to async
 
-If your plugin's render function needs to call `datasette.get_canned_query()` or other async Datasette methods, it must be declared as async:
+If your plugin's render function needs to call `datasette.get_query()` or other async Datasette methods, it must be declared as async:
 
 Old code:
 ```python
@@ -268,7 +268,7 @@ New code:
 async def render_atom(datasette, request, sql, columns, rows, database, table, query_name, view_name, data):
     # ...
     if query_name:
-        query_info = await datasette.get_canned_query(database, query_name, request.actor)
+        query_info = await datasette.get_query(database, query_name)
         if query_info and "title" in query_info:
             title = query_info["title"]
 ```

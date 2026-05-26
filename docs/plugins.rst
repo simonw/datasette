@@ -217,6 +217,15 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             ]
         },
         {
+            "name": "datasette.default_database_actions",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "database_actions"
+            ]
+        },
+        {
             "name": "datasette.default_debug_menu",
             "static": false,
             "templates": false,
@@ -249,7 +258,6 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "templates": false,
             "version": null,
             "hooks": [
-                "canned_queries",
                 "permission_resources_sql"
             ]
         },

@@ -9,7 +9,7 @@
     max-width: 64rem;
 }
 .query-list-filters {
-    margin: 0.5rem 0 1rem;
+    margin: 0.5rem 0 0.75rem;
 }
 .query-list-search {
     align-items: center;
@@ -32,42 +32,62 @@
     line-height: 1.1;
     padding: 0.35rem 0.65rem;
 }
-.query-list-filter-groups {
+.query-list-facets {
     align-items: flex-start;
     display: flex;
     flex-wrap: wrap;
-    gap: 0.8rem 1.4rem;
+    gap: 1rem 1.6rem;
+    margin: 0 0 1rem;
 }
-.query-list-filter-group {
-    border: 0;
+.query-list-facet {
+    margin: 0;
+}
+.query-list-facet h2 {
+    font-size: 0.9rem;
+    line-height: 1.2;
+    margin: 0 0 0.35rem;
+}
+.query-list-facet ul {
     display: flex;
     flex-wrap: wrap;
     gap: 0.35rem;
     margin: 0;
-    min-width: 0;
     padding: 0;
+    list-style: none;
 }
-.query-list-filter-group legend {
-    font-weight: 700;
-    margin: 0 0.45rem 0 0;
-    padding: 0;
-}
-.query-list-filter-group label {
+.query-list-facet-link,
+.query-list-facet-link:link,
+.query-list-facet-link:visited,
+.query-list-facet-link:hover,
+.query-list-facet-link:focus,
+.query-list-facet-link:active {
     align-items: center;
     border: 1px solid #c8d1dc;
     border-radius: 0.25rem;
-    cursor: pointer;
+    color: #39445a;
     display: inline-flex;
     font-size: 0.82rem;
-    gap: 0.3rem;
+    gap: 0.4rem;
     line-height: 1.1;
     padding: 0.35rem 0.55rem;
+    text-decoration: none;
 }
-.query-list-filter-group input {
-    margin: 0;
+.query-list-facet-link:hover {
+    border-color: #7ca5c8;
+    color: #1f5d85;
 }
-.query-list-filter-group input:checked + span {
+.query-list-facet-link-active {
+    background-color: #edf6fb;
+    border-color: #6d9fc0;
     font-weight: 700;
+}
+.query-list-facet-disabled {
+    color: #7b8794;
+    cursor: default;
+}
+.query-list-facet-count {
+    color: #4f5b6d;
+    font-variant-numeric: tabular-nums;
 }
 .query-list-results {
     border-collapse: collapse;
@@ -169,15 +189,6 @@
     .query-list-search input[type=search] {
         max-width: none;
     }
-    .query-list-filter-group {
-        display: block;
-    }
-    .query-list-filter-group legend {
-        margin-bottom: 0.3rem;
-    }
-    .query-list-filter-group label {
-        margin: 0 0.25rem 0.35rem 0;
-    }
 }
 </style>
 {% endblock %}
@@ -198,23 +209,26 @@
     <p class="query-list-search">
         <label for="query-search">Search</label>
         <input id="query-search" type="search" name="q" value="{{ filters.q }}">
+        {% if filters.is_write %}<input type="hidden" name="is_write" value="{{ filters.is_write }}">{% endif %}
+        {% if filters.is_private %}<input type="hidden" name="is_private" value="{{ filters.is_private }}">{% endif %}
+        {% if filters.source %}<input type="hidden" name="source" value="{{ filters.source }}">{% endif %}
+        {% if filters.owner_id %}<input type="hidden" name="owner_id" value="{{ filters.owner_id }}">{% endif %}
         <button type="submit">Search</button>
     </p>
-    <div class="query-list-filter-groups">
-        <fieldset class="query-list-filter-group">
-            <legend>Mode</legend>
-            <label><input type="radio" name="is_write" value=""{% if not filters.is_write %} checked{% endif %}> <span>Any</span></label>
-            <label><input type="radio" name="is_write" value="0"{% if filters.is_write == "0" %} checked{% endif %}> <span>Read-only</span></label>
-            <label><input type="radio" name="is_write" value="1"{% if filters.is_write == "1" %} checked{% endif %}> <span>Writable</span></label>
-        </fieldset>
-        <fieldset class="query-list-filter-group">
-            <legend>Visibility</legend>
-            <label><input type="radio" name="is_private" value=""{% if not filters.is_private %} checked{% endif %}> <span>Any</span></label>
-            <label><input type="radio" name="is_private" value="0"{% if filters.is_private == "0" %} checked{% endif %}> <span>Normal</span></label>
-            <label><input type="radio" name="is_private" value="1"{% if filters.is_private == "1" %} checked{% endif %}> <span>Private</span></label>
-        </fieldset>
-    </div>
 </form>
+
+<nav class="query-list-facets" aria-label="Query filters">
+    {% for facet in facets %}
+        <section class="query-list-facet">
+            <h2>{{ facet.title }}</h2>
+            <ul>
+                {% for item in facet["items"] %}
+                    <li>{% if item.href %}<a class="query-list-facet-link{% if item.active %} query-list-facet-link-active{% endif %}" href="{{ item.href }}"{% if item.active %} aria-current="true"{% endif %}>{% else %}<span class="query-list-facet-link query-list-facet-disabled">{% endif %}<span>{{ item.label }}</span><span class="query-list-facet-count">{{ item.count }}</span>{% if item.href %}</a>{% else %}</span>{% endif %}</li>
+                {% endfor %}
+            </ul>
+        </section>
+    {% endfor %}
+</nav>
 
 {% if queries %}
     <div class="table-wrapper"><table class="query-list-results">

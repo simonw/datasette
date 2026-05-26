@@ -395,9 +395,7 @@ async def test_untrusted_shared_query_execution_requires_execute_sql():
         owner_id="alice",
     )
 
-    denied_get = await ds.client.get(
-        "/data/shared_report.json", actor={"id": "viewer"}
-    )
+    denied_get = await ds.client.get("/data/shared_report.json", actor={"id": "viewer"})
     denied_post = await ds.client.post(
         "/data/shared_report",
         actor={"id": "viewer"},
@@ -609,6 +607,27 @@ async def test_query_list_and_definition_api():
 
 
 @pytest.mark.asyncio
+async def test_query_page_does_not_show_internal_source():
+    ds = Datasette(memory=True)
+    ds.add_memory_database("query_page_source", name="data")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "stored_report",
+        "select 1 as one",
+        title="Stored report",
+        source="user",
+        owner_id="root",
+    )
+
+    response = await ds.client.get("/data/stored_report", actor={"id": "root"})
+
+    assert response.status_code == 200
+    assert "Stored report" in response.text
+    assert "Data source:" not in response.text
+
+
+@pytest.mark.asyncio
 async def test_query_list_search_filter_and_html():
     ds = Datasette(memory=True)
     ds.root_enabled = True
@@ -632,6 +651,15 @@ async def test_query_list_search_filter_and_html():
         is_trusted=True,
         source="config",
     )
+    await ds.add_query(
+        "data",
+        "writable_query",
+        "insert into dogs (name) values (:name)",
+        title="Writable query",
+        is_write=True,
+        source="user",
+        owner_id="root",
+    )
 
     html_response = await ds.client.get(
         "/data/-/queries?q=02",
@@ -649,13 +677,21 @@ async def test_query_list_search_filter_and_html():
         "/data/-/queries.json?is_private=1",
         actor={"id": "root"},
     )
+    filtered_write_response = await ds.client.get(
+        "/data/-/queries?is_write=1",
+        actor={"id": "root"},
+    )
+    filtered_private_response = await ds.client.get(
+        "/data/-/queries?is_private=1",
+        actor={"id": "root"},
+    )
 
     assert html_response.status_code == 200
     assert "Demo query 02" in html_response.text
     assert "Demo query 01" not in html_response.text
     assert 'class="query-list-results"' in html_response.text
-    assert "<legend>Mode</legend>" in html_response.text
-    assert 'type="radio" name="is_private" value="1"' in html_response.text
+    assert 'class="query-list-facets"' in html_response.text
+    assert 'type="radio"' not in html_response.text
     assert "Only the owning actor can view this query." not in html_response.text
     assert (
         "Execution skips the usual SQL and write permission checks"
@@ -667,14 +703,75 @@ async def test_query_list_search_filter_and_html():
     assert '<th scope="col">Mode</th>' not in flags_response.text
     assert 'class="query-list-owner">root</td>' in flags_response.text
     assert 'class="query-list-pill">Read-only</span>' in flags_response.text
-    assert 'class="query-list-pill query-list-pill-private">Private</span>' in flags_response.text
-    assert 'class="query-list-pill query-list-pill-trusted">Trusted</span>' in flags_response.text
+    assert (
+        'class="query-list-pill query-list-pill-write">Writable</span>'
+        in flags_response.text
+    )
+    assert (
+        'class="query-list-pill query-list-pill-private">Private</span>'
+        in flags_response.text
+    )
+    assert (
+        'class="query-list-pill query-list-pill-trusted">Trusted</span>'
+        in flags_response.text
+    )
+    assert (
+        'href="/data/-/queries?is_write=0"><span>Read-only</span><span class="query-list-facet-count">5</span>'
+        in flags_response.text
+    )
+    assert (
+        'href="/data/-/queries?is_write=1"><span>Writable</span><span class="query-list-facet-count">1</span>'
+        in flags_response.text
+    )
+    assert (
+        'href="/data/-/queries?is_private=0"><span>Not private</span><span class="query-list-facet-count">5</span>'
+        in flags_response.text
+    )
+    assert (
+        'href="/data/-/queries?is_private=1"><span>Private</span><span class="query-list-facet-count">1</span>'
+        in flags_response.text
+    )
     assert "Only the owning actor can view this query." in flags_response.text
-    assert "Execution skips the usual SQL and write permission checks" in flags_response.text
+    assert (
+        "Execution skips the usual SQL and write permission checks"
+        in flags_response.text
+    )
     assert json_response.json()["queries"][0]["name"] == "demo_query_02"
     assert [query["name"] for query in filtered_response.json()["queries"]] == [
         "private_query"
     ]
+    assert "Writable query" in filtered_write_response.text
+    assert "Demo query 01" not in filtered_write_response.text
+    assert (
+        'query-list-facet-link query-list-facet-link-active" href="/data/-/queries"'
+        in filtered_write_response.text
+    )
+    assert (
+        '<span class="query-list-facet-link query-list-facet-disabled"><span>Read-only</span><span class="query-list-facet-count">0</span></span>'
+        not in filtered_write_response.text
+    )
+    assert (
+        'href="/data/-/queries?is_write=1&amp;is_private=0"><span>Not private</span><span class="query-list-facet-count">1</span>'
+        in filtered_write_response.text
+    )
+    assert (
+        '<span class="query-list-facet-link query-list-facet-disabled"><span>Private</span><span class="query-list-facet-count">0</span></span>'
+        not in filtered_write_response.text
+    )
+    assert "Private query" in filtered_private_response.text
+    assert "Demo query 01" not in filtered_private_response.text
+    assert (
+        'href="/data/-/queries?is_private=1&amp;is_write=0"><span>Read-only</span><span class="query-list-facet-count">1</span>'
+        in filtered_private_response.text
+    )
+    assert (
+        '<span class="query-list-facet-link query-list-facet-disabled"><span>Writable</span><span class="query-list-facet-count">0</span></span>'
+        not in filtered_private_response.text
+    )
+    assert (
+        '<span class="query-list-facet-link query-list-facet-disabled"><span>Not private</span><span class="query-list-facet-count">0</span></span>'
+        not in filtered_private_response.text
+    )
 
 
 @pytest.mark.asyncio
@@ -1313,7 +1410,7 @@ async def test_user_writable_query_execution_rechecks_table_permissions():
                                 "insert-row": {"id": "alice"},
                             }
                         }
-                    }
+                    },
                 }
             }
         },

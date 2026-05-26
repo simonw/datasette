@@ -1298,6 +1298,75 @@ class Datasette:
         )
         return self._query_row_to_dict(rows.first())
 
+    async def count_queries(
+        self,
+        database=None,
+        *,
+        actor=None,
+        q=None,
+        is_write=None,
+        is_private=None,
+        is_trusted=None,
+        source=None,
+        owner_id=None,
+    ):
+        allowed_sql, allowed_params = await self.allowed_resources_sql(
+            action="view-query",
+            actor=actor,
+            parent=database,
+        )
+        params = dict(allowed_params)
+        where_clauses = []
+        if database is not None:
+            params["query_database"] = database
+            where_clauses.append("q.database_name = :query_database")
+
+        if q:
+            where_clauses.append("""
+                (
+                    q.name LIKE :query_search
+                    OR q.title LIKE :query_search
+                    OR q.description LIKE :query_search
+                    OR q.sql LIKE :query_search
+                )
+                """)
+            params["query_search"] = "%{}%".format(q)
+        if is_write is not None:
+            where_clauses.append("q.is_write = :query_is_write")
+            params["query_is_write"] = int(bool(is_write))
+        if is_private is not None:
+            where_clauses.append("q.is_private = :query_is_private")
+            params["query_is_private"] = int(bool(is_private))
+        if is_trusted is not None:
+            where_clauses.append("q.is_trusted = :query_is_trusted")
+            params["query_is_trusted"] = int(bool(is_trusted))
+        if source is not None:
+            where_clauses.append("q.source = :query_source")
+            params["query_source"] = source
+        if owner_id is not None:
+            where_clauses.append("q.owner_id = :query_owner_id")
+            params["query_owner_id"] = owner_id
+
+        row = (
+            await self.get_internal_database().execute(
+                """
+                SELECT count(*) AS count
+                FROM queries q
+                JOIN (
+                    {allowed_sql}
+                ) allowed
+                  ON allowed.parent = q.database_name
+                 AND allowed.child = q.name
+                WHERE {where}
+                """.format(
+                    allowed_sql=allowed_sql,
+                    where=" AND ".join(where_clauses) or "1 = 1",
+                ),
+                params,
+            )
+        ).first()
+        return row["count"]
+
     async def list_queries(
         self,
         database=None,

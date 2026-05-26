@@ -1121,6 +1121,21 @@ class QueryParametersView(BaseView):
         return _block_framing(Response.json({"ok": True, "parameters": parameters}))
 
 
+def _query_list_url(path, query_string, *, set_args=None, remove_args=None):
+    set_args = set_args or {}
+    remove_args = set(remove_args or ())
+    skip = set(set_args) | remove_args | {"_next"}
+    pairs = [
+        (key, value)
+        for key, value in parse_qsl(query_string, keep_blank_values=True)
+        if key not in skip
+    ]
+    for key, value in set_args.items():
+        if value not in (None, ""):
+            pairs.append((key, value))
+    return path + (("?" + urlencode(pairs)) if pairs else "")
+
+
 class QueryListView(BaseView):
     name = "query-list"
 
@@ -1139,9 +1154,7 @@ class QueryListView(BaseView):
                 default=20 if format_ == "html" else 50,
             )
             is_write = _as_optional_bool(request.args.get("is_write"), "is_write")
-            is_private = _as_optional_bool(
-                request.args.get("is_private"), "is_private"
-            )
+            is_private = _as_optional_bool(request.args.get("is_private"), "is_private")
         except QueryValidationError as ex:
             return _error([ex.message], ex.status)
 
@@ -1173,6 +1186,80 @@ class QueryListView(BaseView):
                 urlencode(pairs),
             )
 
+        current_filters = {
+            "actor": request.actor,
+            "q": request.args.get("q") or None,
+            "is_write": is_write,
+            "is_private": is_private,
+            "source": request.args.get("source") or None,
+            "owner_id": request.args.get("owner_id") or None,
+        }
+
+        async def facet_count(field, value):
+            if current_filters[field] is not None and current_filters[field] != value:
+                return 0
+            filters = dict(current_filters)
+            filters[field] = value
+            return await self.ds.count_queries(database, **filters)
+
+        def facet_href(field, value):
+            if current_filters[field] == value:
+                return _query_list_url(
+                    query_list_path,
+                    request.query_string,
+                    remove_args=[field],
+                )
+            if current_filters[field] is not None:
+                return None
+            return _query_list_url(
+                query_list_path,
+                request.query_string,
+                set_args={field: str(int(value))},
+            )
+
+        async def facet_item(label, field, value):
+            count = await facet_count(field, value)
+            active = current_filters[field] == value
+            if not active and not count:
+                return None
+            return {
+                "label": label,
+                "count": count,
+                "href": facet_href(field, value) if active or count else None,
+                "active": active,
+            }
+
+        async def facet_items(items):
+            return [
+                item
+                for item in [
+                    await facet_item(label, field, value)
+                    for label, field, value in items
+                ]
+                if item is not None
+            ]
+
+        facets = [
+            {
+                "title": "Mode",
+                "items": await facet_items(
+                    [
+                        ("Read-only", "is_write", False),
+                        ("Writable", "is_write", True),
+                    ]
+                ),
+            },
+            {
+                "title": "Visibility",
+                "items": await facet_items(
+                    [
+                        ("Not private", "is_private", False),
+                        ("Private", "is_private", True),
+                    ]
+                ),
+            },
+        ]
+
         data = {
             "ok": True,
             "database": database,
@@ -1188,6 +1275,7 @@ class QueryListView(BaseView):
             "show_trusted_note": any(query["is_trusted"] for query in page["queries"]),
             "query_list_path": query_list_path,
             "show_database": database is None,
+            "facets": facets,
             "filters": {
                 "q": request.args.get("q") or "",
                 "is_write": request.args.get("is_write") or "",
@@ -1715,6 +1803,9 @@ class QueryView(View):
                 }
             )
             metadata = await datasette.get_database_metadata(database)
+            if canned_query:
+                metadata = dict(canned_query)
+                metadata.pop("source", None)
 
             renderers = {}
             for key, (_, can_render) in datasette.renderers.items():
@@ -1865,7 +1956,7 @@ class QueryView(View):
                             )
                         ),
                         show_hide_hidden=markupsafe.Markup(show_hide_hidden),
-                        metadata=canned_query or metadata,
+                        metadata=metadata,
                         alternate_url_json=alternate_url_json,
                         select_templates=[
                             f"{'*' if template_name == template.name else ''}{template_name}"

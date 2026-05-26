@@ -948,9 +948,13 @@ async def test_permissions_in_config(
                 resource_obj = DatabaseResource(database=resource)
             elif isinstance(resource, tuple) and len(resource) == 2:
                 if action == "view-query":
-                    resource_obj = QueryResource(database=resource[0], query=resource[1])
+                    resource_obj = QueryResource(
+                        database=resource[0], query=resource[1]
+                    )
                 else:
-                    resource_obj = TableResource(database=resource[0], table=resource[1])
+                    resource_obj = TableResource(
+                        database=resource[0], table=resource[1]
+                    )
 
         result = await perms_ds.allowed(
             action=action, resource=resource_obj, actor=actor

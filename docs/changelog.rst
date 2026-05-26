@@ -11,6 +11,7 @@ Unreleased
 
 - Fixed a bug where visiting ``/<database>/-/query`` without a ``?sql=`` parameter returned a 500 error. (:issue:`2743`)
 - The ``top_canned_query()`` plugin hook has been renamed to :ref:`top_stored_query() <plugin_hook_top_stored_query>`. (:issue:`2747`)
+- The ``canned_queries()`` plugin hook has been removed. Plugins can use the new ``datasette.add_query()``, ``datasette.update_query()`` and ``datasette.remove_query()`` methods to managed stored queries instead.
 
 .. _v1_0_a30:
 

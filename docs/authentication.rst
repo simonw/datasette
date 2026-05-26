@@ -496,7 +496,7 @@ Here's how to restrict access to your entire Datasette instance to just the ``"i
             title: My private Datasette instance
             allow:
               id: root
-
+  
 
 .. tab:: datasette.json
 

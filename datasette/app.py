@@ -47,10 +47,11 @@ from .views import Context
 from .views.database import (
     database_download,
     DatabaseView,
-    ExecuteWriteAnalyzeView,
-    ExecuteWriteView,
     TableCreateView,
     QueryView,
+)
+from .views.execute_write import ExecuteWriteAnalyzeView, ExecuteWriteView
+from .views.stored_queries import (
     QueryCreateAnalyzeView,
     QueryDeleteView,
     QueryDefinitionView,

@@ -2279,9 +2279,9 @@ top_query(datasette, request, database, sql)
 
 Returns HTML to be displayed at the top of the query results page.
 
-.. _plugin_hook_top_canned_query:
+.. _plugin_hook_top_stored_query:
 
-top_canned_query(datasette, request, database, query_name)
+top_stored_query(datasette, request, database, query_name)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``datasette`` - :ref:`internals_datasette`

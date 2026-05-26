@@ -228,7 +228,7 @@ def top_query(datasette, request, database, sql):
 
 
 @hookspec
-def top_canned_query(datasette, request, database, query_name):
+def top_stored_query(datasette, request, database, query_name):
     """HTML to include at the top of the stored query page"""
 
 

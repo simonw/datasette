@@ -339,8 +339,8 @@ class QueryContext(Context):
     top_query: callable = field(
         metadata={"help": "Callable to render the top_query slot"}
     )
-    top_canned_query: callable = field(
-        metadata={"help": "Callable to render the top_canned_query slot"}
+    top_stored_query: callable = field(
+        metadata={"help": "Callable to render the top_stored_query slot"}
     )
     query_actions: callable = field(
         metadata={
@@ -2095,8 +2095,8 @@ class QueryView(View):
                         top_query=make_slot_function(
                             "top_query", datasette, request, database=database, sql=sql
                         ),
-                        top_canned_query=make_slot_function(
-                            "top_canned_query",
+                        top_stored_query=make_slot_function(
+                            "top_stored_query",
                             datasette,
                             request,
                             database=database,

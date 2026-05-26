@@ -1486,8 +1486,10 @@ class SlotPlugin:
         return "Xtop_query:{}:{}:{}".format(database, sql, request.args["z"])
 
     @hookimpl
-    def top_canned_query(self, request, database, query_name):
-        return "Xtop_query:{}:{}:{}".format(database, query_name, request.args["z"])
+    def top_stored_query(self, request, database, query_name):
+        return "Xtop_stored_query:{}:{}:{}".format(
+            database, query_name, request.args["z"]
+        )
 
 
 @pytest.mark.asyncio
@@ -1548,12 +1550,12 @@ async def test_hook_top_query(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_hook_top_canned_query(ds_client):
+async def test_hook_top_stored_query(ds_client):
     try:
         pm.register(SlotPlugin(), name="SlotPlugin")
         response = await ds_client.get("/fixtures/magic_parameters?z=xyz")
         assert response.status_code == 200
-        assert "Xtop_query:fixtures:magic_parameters:xyz" in response.text
+        assert "Xtop_stored_query:fixtures:magic_parameters:xyz" in response.text
     finally:
         pm.unregister(name="SlotPlugin")
 

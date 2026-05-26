@@ -33,7 +33,7 @@
 {% set action_links, action_title = query_actions(), "Query actions" %}
 {% include "_action_menu.html" %}
 
-{% if canned_query %}{{ top_canned_query() }}{% else %}{{ top_query() }}{% endif %}
+{% if canned_query %}{{ top_stored_query() }}{% else %}{{ top_query() }}{% endif %}
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 

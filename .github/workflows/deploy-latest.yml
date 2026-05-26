@@ -76,6 +76,7 @@ jobs:
                         "update counters set value = value + 1 where name = '{}'".format(name),
                         on_success_message_sql="select 'Counter {name} incremented to ' || value from counters where name = '{name}'".format(name=name),
                         is_write=True,
+                        is_trusted=True,
                     )
                     await datasette.add_query(
                         "counters",
@@ -83,6 +84,7 @@ jobs:
                         "update counters set value = value - 1 where name = '{}'".format(name),
                         on_success_message_sql="select 'Counter {name} decremented to ' || value from counters where name = '{name}'".format(name=name),
                         is_write=True,
+                        is_trusted=True,
                     )
             return inner
         EOF

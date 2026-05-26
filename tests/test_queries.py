@@ -4,6 +4,7 @@ import pytest
 
 from datasette.app import Datasette
 from datasette.resources import DatabaseResource, QueryResource
+from datasette.stored_queries import StoredQuery, StoredQueryPage
 from datasette.utils.asgi import Forbidden
 
 
@@ -87,38 +88,41 @@ async def test_add_get_and_remove_query():
     }
 
     query = await ds.get_query("data", "top_customers")
-    assert query == {
-        "database": "data",
-        "name": "top_customers",
-        "sql": "select * from customers where region = :region",
-        "title": "Top customers",
-        "description": "Customers by region",
-        "description_html": None,
-        "hide_sql": True,
-        "fragment": "chart",
-        "params": ["region"],
-        "parameters": ["region"],
-        "is_write": False,
-        "is_private": False,
-        "is_trusted": True,
-        "source": "user",
-        "owner_id": "alice",
-        "on_success_message": None,
-        "on_success_message_sql": None,
-        "on_success_redirect": None,
-        "on_error_message": None,
-        "on_error_redirect": None,
-    }
+    assert query == StoredQuery(
+        database="data",
+        name="top_customers",
+        sql="select * from customers where region = :region",
+        title="Top customers",
+        description="Customers by region",
+        description_html=None,
+        hide_sql=True,
+        fragment="chart",
+        parameters=["region"],
+        is_write=False,
+        is_private=False,
+        is_trusted=True,
+        source="user",
+        owner_id="alice",
+        on_success_message=None,
+        on_success_message_sql=None,
+        on_success_redirect=None,
+        on_error_message=None,
+        on_error_redirect=None,
+    )
 
     queries_page = await ds.list_queries("data", actor=None)
-    assert queries_page["queries"] == [query]
-    assert queries_page["next"] is None
+    assert queries_page == StoredQueryPage(
+        queries=[query],
+        next=None,
+        has_more=False,
+        limit=50,
+    )
 
     await ds.remove_query("data", "top_customers")
     assert await ds.get_query("data", "top_customers") is None
     queries_page = await ds.list_queries("data", actor=None)
-    assert queries_page["queries"] == []
-    assert queries_page["next"] is None
+    assert queries_page.queries == []
+    assert queries_page.next is None
 
 
 @pytest.mark.asyncio
@@ -156,13 +160,12 @@ async def test_update_query_only_updates_provided_fields():
     )
 
     query = await ds.get_query("data", "redirect")
-    assert query["title"] == "Updated"
-    assert query["parameters"] == []
-    assert query["params"] == []
-    assert query["on_success_redirect"] is None
-    assert query["sql"] == "select 1"
-    assert query["is_private"] is False
-    assert query["is_trusted"] is False
+    assert query.title == "Updated"
+    assert query.parameters == []
+    assert query.on_success_redirect is None
+    assert query.sql == "select 1"
+    assert query.is_private is False
+    assert query.is_trusted is False
     options_row = (
         await ds.get_internal_database().execute(
             """
@@ -198,28 +201,27 @@ async def test_config_queries_imported_to_internal_table():
     ds.add_memory_database("query_config", name="data")
     await ds.invoke_startup()
 
-    assert await ds.get_query("data", "configured") == {
-        "database": "data",
-        "name": "configured",
-        "sql": "select :name as name",
-        "title": "Configured query",
-        "description": None,
-        "description_html": "<p>Configured HTML</p>",
-        "hide_sql": False,
-        "fragment": None,
-        "params": ["name"],
-        "parameters": ["name"],
-        "is_write": False,
-        "is_private": False,
-        "is_trusted": True,
-        "source": "config",
-        "owner_id": None,
-        "on_success_message": None,
-        "on_success_message_sql": "select 'Hello ' || :name",
-        "on_success_redirect": None,
-        "on_error_message": None,
-        "on_error_redirect": None,
-    }
+    assert await ds.get_query("data", "configured") == StoredQuery(
+        database="data",
+        name="configured",
+        sql="select :name as name",
+        title="Configured query",
+        description=None,
+        description_html="<p>Configured HTML</p>",
+        hide_sql=False,
+        fragment=None,
+        parameters=["name"],
+        is_write=False,
+        is_private=False,
+        is_trusted=True,
+        source="config",
+        owner_id=None,
+        on_success_message=None,
+        on_success_message_sql="select 'Hello ' || :name",
+        on_success_redirect=None,
+        on_error_message=None,
+        on_error_redirect=None,
+    )
 
 
 @pytest.mark.asyncio
@@ -1032,8 +1034,8 @@ async def test_query_update_api_rejects_config_only_fields():
         "Invalid keys: description_html, on_success_message_sql"
     ]
     query = await ds.get_query("data", "editable")
-    assert query["description_html"] is None
-    assert query["on_success_message_sql"] is None
+    assert query.description_html is None
+    assert query.on_success_message_sql is None
 
 
 @pytest.mark.asyncio
@@ -1072,9 +1074,9 @@ async def test_query_update_api_rejects_trusted_queries_but_internal_update_allo
         "Trusted queries cannot be updated using the API"
     ]
     query = await ds.get_query("data", "trusted_report")
-    assert query["is_trusted"] is True
-    assert query["sql"] == "select 1 as one"
-    assert query["title"] == "Original"
+    assert query.is_trusted is True
+    assert query.sql == "select 1 as one"
+    assert query.title == "Original"
 
     await ds.update_query(
         "data",
@@ -1083,9 +1085,9 @@ async def test_query_update_api_rejects_trusted_queries_but_internal_update_allo
         title="Internal",
     )
     query = await ds.get_query("data", "trusted_report")
-    assert query["is_trusted"] is True
-    assert query["sql"] == "select 3 as three"
-    assert query["title"] == "Internal"
+    assert query.is_trusted is True
+    assert query.sql == "select 3 as three"
+    assert query.title == "Internal"
 
 
 @pytest.mark.asyncio

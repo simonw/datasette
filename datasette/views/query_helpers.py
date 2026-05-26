@@ -2,6 +2,7 @@ import json
 import re
 
 from datasette.resources import DatabaseResource, TableResource
+from datasette.stored_queries import StoredQuery
 from datasette.utils import (
     named_parameters as derive_named_parameters,
     escape_sqlite,
@@ -281,18 +282,18 @@ async def _prepare_execute_write(datasette, db, sql, params, actor):
     return parameter_names, params, analysis
 
 
-async def _ensure_stored_query_execution_permissions(datasette, db, query, actor):
-    if query.get("is_trusted"):
+async def _ensure_stored_query_execution_permissions(
+    datasette, db, query: StoredQuery, actor
+):
+    if query.is_trusted:
         return
-    if query.get("is_write"):
+    if query.is_write:
         await datasette.ensure_permission(
             action="execute-write-sql",
             resource=DatabaseResource(db.name),
             actor=actor,
         )
-        await datasette.ensure_query_write_permissions(
-            db.name, query["sql"], actor=actor
-        )
+        await datasette.ensure_query_write_permissions(db.name, query.sql, actor=actor)
     else:
         await datasette.ensure_permission(
             action="execute-sql",
@@ -482,7 +483,7 @@ async def _prepare_query_create(datasette, request, db, data):
     }
 
 
-async def _prepare_query_update(datasette, request, db, existing, update):
+async def _prepare_query_update(datasette, request, db, existing: StoredQuery, update):
     invalid_keys = set(update) - _query_update_fields
     if invalid_keys:
         raise QueryValidationError(
@@ -490,8 +491,8 @@ async def _prepare_query_update(datasette, request, db, existing, update):
         )
 
     update = _apply_query_data_types(update)
-    sql = update.get("sql", existing["sql"])
-    query_is_write = existing["is_write"]
+    sql = update.get("sql", existing.sql)
+    query_is_write = existing.is_write
     derived = _derived_query_parameters(sql)
     parameters = None
 

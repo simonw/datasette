@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
+from typing import Any, Iterable
 
 from .resources import TableResource
 from .utils import named_parameters, sqlite3, tilde_encode, urlsafe_components
@@ -19,7 +21,76 @@ QUERY_OPTION_FIELDS = (
 )
 
 
-async def save_queries_from_config(datasette):
+@dataclass
+class StoredQuery:
+    database: str
+    name: str
+    sql: str
+    title: str | None
+    description: str | None
+    description_html: str | None
+    hide_sql: bool
+    fragment: str | None
+    parameters: list[str]
+    is_write: bool
+    is_private: bool
+    is_trusted: bool
+    source: str
+    owner_id: str | None
+    on_success_message: str | None
+    on_success_message_sql: str | None
+    on_success_redirect: str | None
+    on_error_message: str | None
+    on_error_redirect: str | None
+    private: bool | None = None
+
+
+@dataclass
+class StoredQueryPage:
+    queries: list[StoredQuery]
+    next: str | None
+    has_more: bool
+    limit: int
+
+
+def stored_query_to_dict(query: StoredQuery) -> dict[str, Any]:
+    data = {
+        "database": query.database,
+        "name": query.name,
+        "sql": query.sql,
+        "title": query.title,
+        "description": query.description,
+        "description_html": query.description_html,
+        "hide_sql": query.hide_sql,
+        "fragment": query.fragment,
+        "params": list(query.parameters),
+        "parameters": list(query.parameters),
+        "is_write": query.is_write,
+        "is_private": query.is_private,
+        "is_trusted": query.is_trusted,
+        "source": query.source,
+        "owner_id": query.owner_id,
+        "on_success_message": query.on_success_message,
+        "on_success_message_sql": query.on_success_message_sql,
+        "on_success_redirect": query.on_success_redirect,
+        "on_error_message": query.on_error_message,
+        "on_error_redirect": query.on_error_redirect,
+    }
+    if query.private is not None:
+        data["private"] = query.private
+    return data
+
+
+def stored_query_page_to_dict(page: StoredQueryPage) -> dict[str, Any]:
+    return {
+        "queries": [stored_query_to_dict(query) for query in page.queries],
+        "next": page.next,
+        "has_more": page.has_more,
+        "limit": page.limit,
+    }
+
+
+async def save_queries_from_config(datasette: Any) -> None:
     # Apply configured query entries from datasette.yaml to the internal table.
     await datasette.get_internal_database().execute_write(
         "DELETE FROM queries WHERE source = 'config'"
@@ -50,36 +121,38 @@ async def save_queries_from_config(datasette):
             )
 
 
-def query_row_to_dict(row):
+def query_row_to_stored_query(
+    row: Any, private: bool | None = None
+) -> StoredQuery | None:
     if row is None:
         return None
     parameters = json.loads(row["parameters"] or "[]")
     options = json.loads(row["options"] or "{}")
-    return {
-        "database": row["database_name"],
-        "name": row["name"],
-        "sql": row["sql"],
-        "title": row["title"],
-        "description": row["description"],
-        "description_html": row["description_html"],
-        "hide_sql": bool(options.get("hide_sql")),
-        "fragment": options.get("fragment"),
-        "params": parameters,
-        "parameters": parameters,
-        "is_write": bool(row["is_write"]),
-        "is_private": bool(row["is_private"]),
-        "is_trusted": bool(row["is_trusted"]),
-        "source": row["source"],
-        "owner_id": row["owner_id"],
-        "on_success_message": options.get("on_success_message"),
-        "on_success_message_sql": options.get("on_success_message_sql"),
-        "on_success_redirect": options.get("on_success_redirect"),
-        "on_error_message": options.get("on_error_message"),
-        "on_error_redirect": options.get("on_error_redirect"),
-    }
+    return StoredQuery(
+        database=row["database_name"],
+        name=row["name"],
+        sql=row["sql"],
+        title=row["title"],
+        description=row["description"],
+        description_html=row["description_html"],
+        hide_sql=bool(options.get("hide_sql")),
+        fragment=options.get("fragment"),
+        parameters=parameters,
+        is_write=bool(row["is_write"]),
+        is_private=bool(row["is_private"]),
+        is_trusted=bool(row["is_trusted"]),
+        source=row["source"],
+        owner_id=row["owner_id"],
+        on_success_message=options.get("on_success_message"),
+        on_success_message_sql=options.get("on_success_message_sql"),
+        on_success_redirect=options.get("on_success_redirect"),
+        on_error_message=options.get("on_error_message"),
+        on_error_redirect=options.get("on_error_redirect"),
+        private=private,
+    )
 
 
-def query_options_json(options):
+def query_options_json(options: dict[str, Any]) -> str:
     options_dict = {}
     for field in QUERY_OPTION_FIELDS:
         value = options.get(field)
@@ -92,29 +165,29 @@ def query_options_json(options):
 
 
 async def add_query(
-    datasette,
-    database,
-    name,
-    sql,
+    datasette: Any,
+    database: str,
+    name: str,
+    sql: str,
     *,
-    title=None,
-    description=None,
-    description_html=None,
-    hide_sql=False,
-    fragment=None,
-    parameters=None,
-    is_write=False,
-    is_private=False,
-    is_trusted=False,
-    source="plugin",
-    owner_id=None,
-    on_success_message=None,
-    on_success_message_sql=None,
-    on_success_redirect=None,
-    on_error_message=None,
-    on_error_redirect=None,
-    replace=True,
-):
+    title: str | None = None,
+    description: str | None = None,
+    description_html: str | None = None,
+    hide_sql: bool = False,
+    fragment: str | None = None,
+    parameters: Iterable[str] | None = None,
+    is_write: bool = False,
+    is_private: bool = False,
+    is_trusted: bool = False,
+    source: str = "plugin",
+    owner_id: str | None = None,
+    on_success_message: str | None = None,
+    on_success_message_sql: str | None = None,
+    on_success_redirect: str | None = None,
+    on_error_message: str | None = None,
+    on_error_redirect: str | None = None,
+    replace: bool = True,
+) -> None:
     parameters_json = json.dumps(list(parameters or []))
     options_json = query_options_json(
         {
@@ -170,9 +243,9 @@ async def add_query(
 
 
 async def update_query(
-    datasette,
-    database,
-    name,
+    datasette: Any,
+    database: str,
+    name: str,
     *,
     sql=UNCHANGED,
     title=UNCHANGED,
@@ -191,7 +264,7 @@ async def update_query(
     on_success_redirect=UNCHANGED,
     on_error_message=UNCHANGED,
     on_error_redirect=UNCHANGED,
-):
+) -> None:
     fields = {
         "sql": sql,
         "title": title,
@@ -263,7 +336,9 @@ async def update_query(
     )
 
 
-async def remove_query(datasette, database, name, source=None):
+async def remove_query(
+    datasette: Any, database: str, name: str, source: str | None = None
+) -> None:
     sql = "DELETE FROM queries WHERE database_name = ? AND name = ?"
     params = [database, name]
     if source is not None:
@@ -272,7 +347,7 @@ async def remove_query(datasette, database, name, source=None):
     await datasette.get_internal_database().execute_write(sql, params)
 
 
-async def get_query(datasette, database, name):
+async def get_query(datasette: Any, database: str, name: str) -> StoredQuery | None:
     rows = await datasette.get_internal_database().execute(
         """
         SELECT * FROM queries
@@ -280,21 +355,21 @@ async def get_query(datasette, database, name):
         """,
         [database, name],
     )
-    return query_row_to_dict(rows.first())
+    return query_row_to_stored_query(rows.first())
 
 
 async def count_queries(
-    datasette,
-    database=None,
+    datasette: Any,
+    database: str | None = None,
     *,
-    actor=None,
-    q=None,
-    is_write=None,
-    is_private=None,
-    is_trusted=None,
-    source=None,
-    owner_id=None,
-):
+    actor: dict[str, Any] | None = None,
+    q: str | None = None,
+    is_write: bool | None = None,
+    is_private: bool | None = None,
+    is_trusted: bool | None = None,
+    source: str | None = None,
+    owner_id: str | None = None,
+) -> int:
     allowed_sql, allowed_params = await datasette.allowed_resources_sql(
         action="view-query",
         actor=actor,
@@ -354,20 +429,20 @@ async def count_queries(
 
 
 async def list_queries(
-    datasette,
-    database=None,
+    datasette: Any,
+    database: str | None = None,
     *,
-    actor=None,
-    limit=50,
-    cursor=None,
-    q=None,
-    is_write=None,
-    is_private=None,
-    is_trusted=None,
-    source=None,
-    owner_id=None,
-    include_private=False,
-):
+    actor: dict[str, Any] | None = None,
+    limit: int = 50,
+    cursor: str | None = None,
+    q: str | None = None,
+    is_write: bool | None = None,
+    is_private: bool | None = None,
+    is_trusted: bool | None = None,
+    source: str | None = None,
+    owner_id: str | None = None,
+    include_private: bool = False,
+) -> StoredQueryPage:
     limit = min(max(1, int(limit)), 1000)
     allowed_sql, allowed_params = await datasette.allowed_resources_sql(
         action="view-query",
@@ -480,9 +555,10 @@ async def list_queries(
 
     queries = []
     for row in rows:
-        query = query_row_to_dict(row)
-        if include_private:
-            query["private"] = bool(row["private"])
+        query = query_row_to_stored_query(
+            row, private=bool(row["private"]) if include_private else None
+        )
+        assert query is not None
         queries.append(query)
 
     next_token = None
@@ -499,17 +575,23 @@ async def list_queries(
                 tilde_encode(last_row["sort_key"]),
                 tilde_encode(last_row["name"]),
             )
-    return {
-        "queries": queries,
-        "next": next_token,
-        "has_more": has_more,
-        "limit": limit,
-    }
+    return StoredQueryPage(
+        queries=queries,
+        next=next_token,
+        has_more=has_more,
+        limit=limit,
+    )
 
 
 async def ensure_query_write_permissions(
-    datasette, database, sql, *, actor=None, params=None, analysis=None
-):
+    datasette: Any,
+    database: str,
+    sql: str,
+    *,
+    actor: dict[str, Any] | None = None,
+    params: dict[str, Any] | None = None,
+    analysis: Any = None,
+) -> Any:
     write_actions = {
         "insert": "insert-row",
         "update": "update-row",

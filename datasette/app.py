@@ -1029,8 +1029,8 @@ class Datasette:
         )
 
     @staticmethod
-    def _query_row_to_dict(row):
-        return stored_queries.query_row_to_dict(row)
+    def _query_row_to_stored_query(row) -> stored_queries.StoredQuery | None:
+        return stored_queries.query_row_to_stored_query(row)
 
     @staticmethod
     def _query_options_json(options):
@@ -1038,28 +1038,28 @@ class Datasette:
 
     async def add_query(
         self,
-        database,
-        name,
-        sql,
+        database: str,
+        name: str,
+        sql: str,
         *,
-        title=None,
-        description=None,
-        description_html=None,
-        hide_sql=False,
-        fragment=None,
-        parameters=None,
-        is_write=False,
-        is_private=False,
-        is_trusted=False,
-        source="plugin",
-        owner_id=None,
-        on_success_message=None,
-        on_success_message_sql=None,
-        on_success_redirect=None,
-        on_error_message=None,
-        on_error_redirect=None,
-        replace=True,
-    ):
+        title: str | None = None,
+        description: str | None = None,
+        description_html: str | None = None,
+        hide_sql: bool = False,
+        fragment: str | None = None,
+        parameters: Iterable[str] | None = None,
+        is_write: bool = False,
+        is_private: bool = False,
+        is_trusted: bool = False,
+        source: str = "plugin",
+        owner_id: str | None = None,
+        on_success_message: str | None = None,
+        on_success_message_sql: str | None = None,
+        on_success_redirect: str | None = None,
+        on_error_message: str | None = None,
+        on_error_redirect: str | None = None,
+        replace: bool = True,
+    ) -> None:
         return await stored_queries.add_query(
             self,
             database,
@@ -1086,8 +1086,8 @@ class Datasette:
 
     async def update_query(
         self,
-        database,
-        name,
+        database: str,
+        name: str,
         *,
         sql=stored_queries.UNCHANGED,
         title=stored_queries.UNCHANGED,
@@ -1106,7 +1106,7 @@ class Datasette:
         on_success_redirect=stored_queries.UNCHANGED,
         on_error_message=stored_queries.UNCHANGED,
         on_error_redirect=stored_queries.UNCHANGED,
-    ):
+    ) -> None:
         return await stored_queries.update_query(
             self,
             database,
@@ -1130,24 +1130,28 @@ class Datasette:
             on_error_redirect=on_error_redirect,
         )
 
-    async def remove_query(self, database, name, source=None):
+    async def remove_query(
+        self, database: str, name: str, source: str | None = None
+    ) -> None:
         return await stored_queries.remove_query(self, database, name, source=source)
 
-    async def get_query(self, database, name):
+    async def get_query(
+        self, database: str, name: str
+    ) -> stored_queries.StoredQuery | None:
         return await stored_queries.get_query(self, database, name)
 
     async def count_queries(
         self,
-        database=None,
+        database: str | None = None,
         *,
-        actor=None,
-        q=None,
-        is_write=None,
-        is_private=None,
-        is_trusted=None,
-        source=None,
-        owner_id=None,
-    ):
+        actor: dict[str, Any] | None = None,
+        q: str | None = None,
+        is_write: bool | None = None,
+        is_private: bool | None = None,
+        is_trusted: bool | None = None,
+        source: str | None = None,
+        owner_id: str | None = None,
+    ) -> int:
         return await stored_queries.count_queries(
             self,
             database,
@@ -1162,19 +1166,19 @@ class Datasette:
 
     async def list_queries(
         self,
-        database=None,
+        database: str | None = None,
         *,
-        actor=None,
-        limit=50,
-        cursor=None,
-        q=None,
-        is_write=None,
-        is_private=None,
-        is_trusted=None,
-        source=None,
-        owner_id=None,
-        include_private=False,
-    ):
+        actor: dict[str, Any] | None = None,
+        limit: int = 50,
+        cursor: str | None = None,
+        q: str | None = None,
+        is_write: bool | None = None,
+        is_private: bool | None = None,
+        is_trusted: bool | None = None,
+        source: str | None = None,
+        owner_id: str | None = None,
+        include_private: bool = False,
+    ) -> stored_queries.StoredQueryPage:
         return await stored_queries.list_queries(
             self,
             database,

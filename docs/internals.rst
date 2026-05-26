@@ -1039,11 +1039,11 @@ Example:
 await .get_query(database, name)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Returns a stored query dictionary, or ``None`` if the query does not exist.
+Returns a ``StoredQuery`` dataclass instance, or ``None`` if the query does not exist.
 
-The dictionary contains ``database``, ``name``, ``sql``, ``title``, ``description``, ``description_html``, ``hide_sql``, ``fragment``, ``parameters``, ``params``, ``is_write``, ``is_private``, ``is_trusted``, ``source``, ``owner_id``, ``on_success_message``, ``on_success_message_sql``, ``on_success_redirect``, ``on_error_message`` and ``on_error_redirect``.
+``StoredQuery`` has the following attributes: ``database``, ``name``, ``sql``, ``title``, ``description``, ``description_html``, ``hide_sql``, ``fragment``, ``parameters``, ``is_write``, ``is_private``, ``is_trusted``, ``source``, ``owner_id``, ``on_success_message``, ``on_success_message_sql``, ``on_success_redirect``, ``on_error_message`` and ``on_error_redirect``.
 
-``parameters`` and ``params`` contain the same list of explicit parameter names.
+``parameters`` is a list of explicit parameter names.
 
 .. _datasette_list_queries:
 
@@ -1087,12 +1087,12 @@ Lists stored queries visible to the specified actor.
 ``owner_id`` - string, optional
     Filter by owner actor ID.
 ``include_private`` - boolean, optional
-    Set to ``True`` to include a ``private`` boolean in each returned query dictionary indicating if anonymous users would be unable to view that query.
+    Set to ``True`` to populate a ``private`` boolean on each returned ``StoredQuery`` indicating if anonymous users would be unable to view that query.
 
-The return value is a dictionary with these keys:
+The return value is a ``StoredQueryPage`` dataclass instance with these attributes:
 
-``queries`` - list of dictionaries
-    Stored query dictionaries, in the same format returned by :ref:`datasette_get_query`.
+``queries`` - list of StoredQuery instances
+    Stored queries in the same format returned by :ref:`datasette_get_query`.
 ``next`` - string or None
     Pagination cursor for the next page, if one exists.
 ``has_more`` - boolean

@@ -1,6 +1,7 @@
 from urllib.parse import parse_qsl, urlencode
 
 from datasette.resources import DatabaseResource, QueryResource
+from datasette.stored_queries import stored_query_to_dict
 from datasette.utils import sqlite3, tilde_decode
 from datasette.utils.asgi import Response
 
@@ -100,7 +101,7 @@ class QueryListView(BaseView):
         )
         query_list_path = self.query_list_path(database)
         next_url = None
-        if page["next"]:
+        if page.next:
             pairs = [
                 (key, value)
                 for key, value in parse_qsl(
@@ -108,7 +109,7 @@ class QueryListView(BaseView):
                 )
                 if key != "_next"
             ]
-            pairs.append(("_next", page["next"]))
+            pairs.append(("_next", page.next))
             next_url = "{}?{}".format(
                 query_list_path,
                 urlencode(pairs),
@@ -194,13 +195,13 @@ class QueryListView(BaseView):
             "database_color": (
                 self.ds.get_database(database).color if database is not None else None
             ),
-            "queries": page["queries"],
-            "next": page["next"],
+            "queries": page.queries,
+            "next": page.next,
             "next_url": next_url,
-            "has_more": page["has_more"],
-            "limit": page["limit"],
-            "show_private_note": any(query["is_private"] for query in page["queries"]),
-            "show_trusted_note": any(query["is_trusted"] for query in page["queries"]),
+            "has_more": page.has_more,
+            "limit": page.limit,
+            "show_private_note": any(query.is_private for query in page.queries),
+            "show_trusted_note": any(query.is_trusted for query in page.queries),
             "query_list_path": query_list_path,
             "show_database": database is None,
             "facets": facets,
@@ -213,7 +214,12 @@ class QueryListView(BaseView):
             },
         }
         if format_ == "json":
-            return Response.json(data)
+            return Response.json(
+                {
+                    **data,
+                    "queries": [stored_query_to_dict(query) for query in page.queries],
+                }
+            )
         return await self.render(
             ["query_list.html"],
             request,
@@ -374,8 +380,11 @@ class QueryStoreView(QueryCreateView):
             return _error([str(ex)], 400)
 
         query = await self.ds.get_query(db.name, name)
+        assert query is not None
         if is_json:
-            return Response.json({"ok": True, "query": query}, status=201)
+            return Response.json(
+                {"ok": True, "query": stored_query_to_dict(query)}, status=201
+            )
         self.ds.add_message(request, "Query saved", self.ds.INFO)
         return Response.redirect(self.ds.urls.path(self.ds.urls.table(db.name, name)))
 
@@ -395,7 +404,7 @@ class QueryDefinitionView(BaseView):
             actor=request.actor,
         ):
             return _error(["Permission denied"], 403)
-        return Response.json({"ok": True, "query": query})
+        return Response.json({"ok": True, "query": stored_query_to_dict(query)})
 
 
 class QueryUpdateView(BaseView):
@@ -413,7 +422,7 @@ class QueryUpdateView(BaseView):
             actor=request.actor,
         ):
             return _error(["Permission denied: need update-query"], 403)
-        if existing.get("is_trusted"):
+        if existing.is_trusted:
             return _error(["Trusted queries cannot be updated using the API"], 403)
 
         try:
@@ -444,10 +453,12 @@ class QueryUpdateView(BaseView):
 
         await self.ds.update_query(db.name, query_name, **update_kwargs)
         if data.get("return"):
+            query = await self.ds.get_query(db.name, query_name)
+            assert query is not None
             return Response.json(
                 {
                     "ok": True,
-                    "query": await self.ds.get_query(db.name, query_name),
+                    "query": stored_query_to_dict(query),
                 }
             )
         return Response.json({"ok": True})

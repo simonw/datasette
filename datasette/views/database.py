@@ -13,6 +13,7 @@ import textwrap
 from datasette.events import AlterTableEvent, CreateTableEvent, InsertRowsEvent
 from datasette.database import QueryInterrupted
 from datasette.resources import DatabaseResource, QueryResource
+from datasette.stored_queries import stored_query_to_dict
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
@@ -99,8 +100,8 @@ class DatabaseView(View):
             limit=5,
             include_private=True,
         )
-        stored_queries = queries_page["queries"]
-        queries_more = queries_page["has_more"]
+        stored_queries = queries_page.queries
+        queries_more = queries_page.has_more
         queries_count = (
             await datasette.count_queries(database, actor=request.actor)
             if queries_more
@@ -136,7 +137,7 @@ class DatabaseView(View):
             "tables": tables,
             "hidden_count": len([t for t in tables if t["hidden"]]),
             "views": sql_views,
-            "queries": stored_queries,
+            "queries": [stored_query_to_dict(query) for query in stored_queries],
             "queries_more": queries_more,
             "queries_count": queries_count,
             "allow_execute_sql": allow_execute_sql,
@@ -447,7 +448,7 @@ class QueryView(View):
 
         if not await datasette.allowed(
             action="view-query",
-            resource=QueryResource(database=db.name, query=stored_query["name"]),
+            resource=QueryResource(database=db.name, query=stored_query.name),
             actor=request.actor,
         ):
             raise Forbidden("You do not have permission to view this query")
@@ -480,20 +481,18 @@ class QueryView(View):
             or request.args.get("_json")
             or params.get("_json")
         )
-        params_for_query = MagicParameters(
-            stored_query["sql"], params, request, datasette
-        )
+        params_for_query = MagicParameters(stored_query.sql, params, request, datasette)
         await params_for_query.execute_params()
         ok = None
         redirect_url = None
         try:
             cursor = await db.execute_write(
-                stored_query["sql"], params_for_query, request=request
+                stored_query.sql, params_for_query, request=request
             )
             # success message can come from on_success_message or on_success_message_sql
             message = None
             message_type = datasette.INFO
-            on_success_message_sql = stored_query.get("on_success_message_sql")
+            on_success_message_sql = stored_query.on_success_message_sql
             if on_success_message_sql:
                 try:
                     message_result = (
@@ -505,18 +504,19 @@ class QueryView(View):
                     message = "Error running on_success_message_sql: {}".format(ex)
                     message_type = datasette.ERROR
             if not message:
-                message = stored_query.get(
-                    "on_success_message"
-                ) or "Query executed, {} row{} affected".format(
-                    cursor.rowcount, "" if cursor.rowcount == 1 else "s"
+                message = (
+                    stored_query.on_success_message
+                    or "Query executed, {} row{} affected".format(
+                        cursor.rowcount, "" if cursor.rowcount == 1 else "s"
+                    )
                 )
 
-            redirect_url = stored_query.get("on_success_redirect")
+            redirect_url = stored_query.on_success_redirect
             ok = True
         except Exception as ex:
-            message = stored_query.get("on_error_message") or str(ex)
+            message = stored_query.on_error_message or str(ex)
             message_type = datasette.ERROR
-            redirect_url = stored_query.get("on_error_redirect")
+            redirect_url = stored_query.on_error_redirect
             ok = False
         if should_return_json:
             return Response.json(
@@ -562,7 +562,7 @@ class QueryView(View):
                 )
                 if stored_query is None:
                     raise
-                stored_query_write = bool(stored_query.get("is_write"))
+                stored_query_write = stored_query.is_write
 
         private = False
         if stored_query:
@@ -570,7 +570,7 @@ class QueryView(View):
             visible, private = await datasette.check_visibility(
                 request.actor,
                 action="view-query",
-                resource=QueryResource(database=database, query=stored_query["name"]),
+                resource=QueryResource(database=database, query=stored_query.name),
             )
             if not visible:
                 raise Forbidden("You do not have permission to view this query")
@@ -591,14 +591,14 @@ class QueryView(View):
         sql = None
 
         if stored_query:
-            sql = stored_query["sql"]
+            sql = stored_query.sql
         elif "sql" in params:
             sql = params.pop("sql")
 
         # Extract any :named parameters
         named_parameters = []
-        if stored_query and stored_query.get("params"):
-            named_parameters = stored_query["params"]
+        if stored_query and stored_query.parameters:
+            named_parameters = stored_query.parameters
         if not named_parameters and sql:
             named_parameters = derive_named_parameters(sql)
         named_parameter_values = {
@@ -686,7 +686,7 @@ class QueryView(View):
                 columns=columns,
                 rows=rows,
                 sql=sql,
-                query_name=stored_query["name"] if stored_query else None,
+                query_name=stored_query.name if stored_query else None,
                 database=database,
                 table=None,
                 request=request,
@@ -721,7 +721,7 @@ class QueryView(View):
             if stored_query:
                 templates.insert(
                     0,
-                    f"query-{to_css_class(database)}-{to_css_class(stored_query['name'])}.html",
+                    f"query-{to_css_class(database)}-{to_css_class(stored_query.name)}.html",
                 )
 
             environment = datasette.get_jinja_environment(request)
@@ -740,7 +740,7 @@ class QueryView(View):
             )
             metadata = await datasette.get_database_metadata(database)
             if stored_query:
-                metadata = dict(stored_query)
+                metadata = stored_query_to_dict(stored_query)
                 metadata.pop("source", None)
 
             renderers = {}
@@ -775,7 +775,7 @@ class QueryView(View):
             )
 
             show_hide_hidden = ""
-            if stored_query and stored_query.get("hide_sql"):
+            if stored_query and stored_query.hide_sql:
                 if bool(params.get("_show_sql")):
                     show_hide_link = path_with_removed_args(request, {"_show_sql"})
                     show_hide_text = "hide"
@@ -843,7 +843,7 @@ class QueryView(View):
                     datasette=datasette,
                     actor=request.actor,
                     database=database,
-                    query_name=stored_query["name"] if stored_query else None,
+                    query_name=stored_query.name if stored_query else None,
                     request=request,
                     sql=sql,
                     params=params,
@@ -863,7 +863,7 @@ class QueryView(View):
                             "sql": sql,
                             "params": params,
                         },
-                        stored_query=stored_query["name"] if stored_query else None,
+                        stored_query=stored_query.name if stored_query else None,
                         private=private,
                         stored_query_write=stored_query_write,
                         db_is_immutable=not db.is_mutable,
@@ -907,7 +907,7 @@ class QueryView(View):
                             datasette,
                             request,
                             database=database,
-                            query_name=stored_query["name"] if stored_query else None,
+                            query_name=stored_query.name if stored_query else None,
                         ),
                         query_actions=query_actions,
                     ),

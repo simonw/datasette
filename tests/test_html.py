@@ -633,7 +633,7 @@ async def test_404_content_type(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_canned_query_default_title(ds_client):
+async def test_stored_query_default_title(ds_client):
     response = await ds_client.get("/fixtures/magic_parameters")
     assert response.status_code == 200
     soup = Soup(response.content, "html.parser")
@@ -641,7 +641,7 @@ async def test_canned_query_default_title(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_canned_query_with_custom_metadata(ds_client):
+async def test_stored_query_with_custom_metadata(ds_client):
     response = await ds_client.get("/fixtures/neighborhood_search?text=town")
     assert response.status_code == 200
     soup = Soup(response.content, "html.parser")
@@ -700,7 +700,7 @@ async def test_show_hide_sql_query(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_canned_query_with_hide_has_no_hidden_sql(ds_client):
+async def test_stored_query_with_hide_has_no_hidden_sql(ds_client):
     # For a stored query the show/hide should NOT have a hidden SQL field
     # https://github.com/simonw/datasette/issues/1411
     response = await ds_client.get("/fixtures/pragma_cache_size?_hide_sql=1")
@@ -720,7 +720,7 @@ async def test_canned_query_with_hide_has_no_hidden_sql(ds_client):
         (True, "?_show_sql=1", "_show_sql", "/_memory/one", "hide"),
     ),
 )
-def test_canned_query_show_hide_metadata_option(
+def test_stored_query_show_hide_metadata_option(
     hide_sql,
     querystring,
     expected_hidden,
@@ -981,10 +981,10 @@ def test_base_url_affects_metadata_extra_css_urls(app_client_base_url_prefix):
         ("/fixtures/magic_parameters", None),
     ],
 )
-async def test_edit_sql_link_on_canned_queries(ds_client, path, expected):
+async def test_edit_sql_link_on_stored_queries(ds_client, path, expected):
     response = await ds_client.get(path)
     assert response.status_code == 200
-    expected_link = f'<a href="{expected}" class="canned-query-edit-sql">Edit SQL</a>'
+    expected_link = f'<a href="{expected}" class="stored-query-edit-sql">Edit SQL</a>'
     if expected:
         assert expected_link in response.text
     else:

@@ -1784,13 +1784,6 @@ class Datasette:
     def app_css_hash(self):
         return self.static_hash("app.css")
 
-    async def get_canned_queries(self, database_name, actor):
-        page = await self.list_queries(database_name, actor=actor, limit=1000)
-        return {query["name"]: query for query in page["queries"]}
-
-    async def get_canned_query(self, database_name, query_name, actor):
-        return await self.get_query(database_name, query_name)
-
     def _prepare_connection(self, conn, database):
         conn.row_factory = sqlite3.Row
         conn.text_factory = lambda x: str(x, "utf-8", "replace")

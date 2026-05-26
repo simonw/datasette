@@ -964,11 +964,11 @@ async def table_view_traced(datasette, request):
         resolved = await datasette.resolve_table(request)
     except TableNotFound as not_found:
         # Was this actually a stored query?
-        canned_query = await datasette.get_canned_query(
-            not_found.database_name, not_found.table, request.actor
+        stored_query = await datasette.get_query(
+            not_found.database_name, not_found.table
         )
         # If this is a stored query, not a table, then dispatch to QueryView instead
-        if canned_query:
+        if stored_query:
             return await QueryView()(request, datasette)
         else:
             raise

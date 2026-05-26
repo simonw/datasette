@@ -434,12 +434,12 @@ Here is a simple example:
 
 :ref:`authentication_permissions_config` has the full details.
 
-.. _configuration_reference_canned_queries:
+.. _configuration_reference_queries:
 
 Queries configuration
 ~~~~~~~~~~~~~~~~~~~~~
 
-:ref:`Queries <canned_queries>` are named SQL queries that appear in the Datasette interface. They can be configured in ``datasette.yaml`` using the ``queries`` key at the database level:
+:ref:`Queries <queries>` are named SQL queries that appear in the Datasette interface. They can be configured in ``datasette.yaml`` using the ``queries`` key at the database level:
 
 .. [[[cog
     from metadata_doc import config_example, config_example
@@ -484,7 +484,7 @@ Queries configuration
         }
 .. [[[end]]]
 
-See the :ref:`queries documentation <canned_queries>` for more, including how to configure :ref:`writable queries <canned_queries_writable>`.
+See the :ref:`queries documentation <queries>` for more, including how to configure :ref:`writable queries <queries_writable>`.
 
 .. _configuration_reference_css_js:
 

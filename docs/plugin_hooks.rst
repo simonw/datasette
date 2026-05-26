@@ -1207,16 +1207,6 @@ Potential use-cases:
 
 Examples: `datasette-saved-queries <https://datasette.io/plugins/datasette-saved-queries>`__, `datasette-init <https://datasette.io/plugins/datasette-init>`__
 
-.. _plugin_hook_canned_queries:
-
-canned_queries(datasette, database, actor)
-------------------------------------------
-
-This hook has been removed. Plugins that need to add stored queries should use
-the :ref:`plugin_hook_startup` hook and call ``await datasette.add_query(...)``.
-
-Example: `datasette-saved-queries <https://datasette.io/plugins/datasette-saved-queries>`__
-
 .. _plugin_hook_actor_from_request:
 
 actor_from_request(datasette, request)
@@ -1635,7 +1625,7 @@ register_magic_parameters(datasette)
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
 
-:ref:`canned_queries_magic_parameters` can be used to add automatic parameters to :ref:`configured queries <canned_queries>`. This plugin hook allows additional magic parameters to be defined by plugins.
+:ref:`queries_magic_parameters` can be used to add automatic parameters to :ref:`configured queries <queries>`. This plugin hook allows additional magic parameters to be defined by plugins.
 
 Magic parameters all take this format: ``_prefix_rest_of_parameter``. The prefix indicates which magic parameter function should be called - the rest of the parameter is passed as an argument to that function.
 

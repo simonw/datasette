@@ -1409,7 +1409,7 @@ svg.dropdown-menu-icon {
     border-bottom: 5px solid #666;
 }
 
-.canned-query-edit-sql {
+.stored-query-edit-sql {
     padding-left: 0.5em;
     position: relative;
     top: 1px;

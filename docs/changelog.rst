@@ -11,7 +11,8 @@ Unreleased
 
 - Fixed a bug where visiting ``/<database>/-/query`` without a ``?sql=`` parameter returned a 500 error. (:issue:`2743`)
 - The ``top_canned_query()`` plugin hook has been renamed to :ref:`top_stored_query() <plugin_hook_top_stored_query>`. (:issue:`2747`)
-- The ``canned_queries()`` plugin hook has been removed. Plugins can use the new ``datasette.add_query()``, ``datasette.update_query()`` and ``datasette.remove_query()`` methods to managed stored queries instead.
+- The ``canned_queries()`` plugin hook has been removed. Plugins can use the new ``datasette.add_query()``, ``datasette.update_query()`` and ``datasette.remove_query()`` methods to manage stored queries instead.
+- The ``datasette.get_canned_query()`` and ``datasette.get_canned_queries()`` methods have been removed. Plugins can use ``datasette.get_query()`` and ``datasette.list_queries()`` instead.
 
 .. _v1_0_a30:
 
@@ -658,7 +659,7 @@ For more information and workarounds, read `the security advisory <https://githu
 Also in this alpha:
 
 - The new ``datasette plugins --requirements`` option outputs a list of currently installed plugins in Python ``requirements.txt`` format, useful for duplicating that installation elsewhere. (:issue:`2133`)
-- :ref:`canned_queries_writable` can now define a ``on_success_message_sql`` field in their configuration, containing a SQL query that should be executed upon successful completion of the write operation in order to generate a message to be shown to the user. (:issue:`2138`)
+- :ref:`queries_writable` can now define a ``on_success_message_sql`` field in their configuration, containing a SQL query that should be executed upon successful completion of the write operation in order to generate a message to be shown to the user. (:issue:`2138`)
 - The automatically generated border color for a database is now shown in more places around the application. (:issue:`2119`)
 - Every instance of example shell script code in the documentation should now include a working copy button, free from additional syntax. (:issue:`2140`)
 
@@ -1052,7 +1053,7 @@ Other small fixes
 - The ``base.html`` template now wraps everything other than the ``<footer>`` in a ``<div class="not-footer">`` element, to help with advanced CSS customization. (:issue:`1446`)
 - The :ref:`render_cell() <plugin_hook_render_cell>` plugin hook can now return an awaitable function. This means the hook can execute SQL queries. (:issue:`1425`)
 - :ref:`plugin_register_routes` plugin hook now accepts an optional ``datasette`` argument. (:issue:`1404`)
-- New ``hide_sql`` canned query option for defaulting to hiding the SQL query used by a canned query, see :ref:`canned_queries_options`. (:issue:`1422`)
+- New ``hide_sql`` canned query option for defaulting to hiding the SQL query used by a canned query, see :ref:`queries_options`. (:issue:`1422`)
 - New ``--cpu`` option for :ref:`datasette publish cloudrun <publish_cloud_run>`. (:issue:`1420`)
 - If `Rich <https://github.com/willmcgugan/rich>`__ is installed in the same virtual environment as Datasette, it will be used to provide enhanced display of error tracebacks on the console. (:issue:`1416`)
 - ``datasette.utils`` :ref:`internals_utils_parse_metadata` function, used by the new `datasette-remote-metadata plugin <https://datasette.io/plugins/datasette-remote-metadata>`__, is now a documented API. (:issue:`1405`)
@@ -1426,7 +1427,7 @@ See also `Datasette 0.50: The annotated release notes <https://simonwillison.net
 
 See also `Datasette 0.49: The annotated release notes <https://simonwillison.net/2020/Sep/15/datasette-0-49/>`__.
 
-- Writable canned queries now expose a JSON API, see :ref:`canned_queries_json_api`. (:issue:`880`)
+- Writable canned queries now expose a JSON API, see :ref:`queries_json_api`. (:issue:`880`)
 - New mechanism for defining page templates with custom path parameters - a template file called ``pages/about/{slug}.html`` will be used to render any requests to ``/about/something``. See :ref:`custom_pages_parameters`. (:issue:`944`)
 - ``register_output_renderer()`` render functions can now return a ``Response``. (:issue:`953`)
 - New ``--upgrade`` option for ``datasette install``. (:issue:`945`)
@@ -1518,7 +1519,7 @@ Magic parameters for canned queries, a log out feature, improved plugin document
 Magic parameters for canned queries
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Canned queries now support :ref:`canned_queries_magic_parameters`, which can be used to insert or select automatically generated values. For example::
+Canned queries now support :ref:`queries_magic_parameters`, which can be used to insert or select automatically generated values. For example::
 
     insert into logs
       (user_id, timestamp)
@@ -1549,7 +1550,7 @@ New plugin hooks
 
 - :ref:`plugin_hook_register_magic_parameters` can be used to define new types of magic canned query parameters.
 - :ref:`plugin_hook_startup` can run custom code when Datasette first starts up. `datasette-init <https://github.com/simonw/datasette-init>`__ is a new plugin that uses this hook to create database tables and views on startup if they have not yet been created. (:issue:`834`)
-- :ref:`plugin_hook_canned_queries` lets plugins provide additional canned queries beyond those defined in Datasette's metadata. See `datasette-saved-queries <https://github.com/simonw/datasette-saved-queries>`__ for an example of this hook in action. (:issue:`852`)
+- ``canned_queries()`` lets plugins provide additional canned queries beyond those defined in Datasette's metadata. See `datasette-saved-queries <https://github.com/simonw/datasette-saved-queries>`__ for an example of this hook in action. (:issue:`852`)
 - :ref:`plugin_hook_forbidden` is a hook for customizing how Datasette responds to 403 forbidden errors. (:issue:`812`)
 
 Smaller changes
@@ -1624,7 +1625,7 @@ A new debug page at ``/-/permissions`` shows recent permission checks, to help a
 Writable canned queries
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-Datasette's :ref:`canned_queries` feature lets you define SQL queries in ``metadata.json`` which can then be executed by users visiting a specific URL. https://latest.datasette.io/fixtures/neighborhood_search for example.
+Datasette's :ref:`queries` feature lets you define SQL queries in ``metadata.json`` which can then be executed by users visiting a specific URL. https://latest.datasette.io/fixtures/neighborhood_search for example.
 
 Canned queries were previously restricted to ``SELECT``, but Datasette 0.44 introduces the ability for canned queries to execute ``INSERT`` or ``UPDATE`` queries as well, using the new ``"write": true`` property (:issue:`800`):
 
@@ -1643,7 +1644,7 @@ Canned queries were previously restricted to ``SELECT``, but Datasette 0.44 intr
         }
     }
 
-See :ref:`canned_queries_writable` for more details.
+See :ref:`queries_writable` for more details.
 
 Flash messages
 ~~~~~~~~~~~~~~
@@ -1698,7 +1699,7 @@ Smaller changes
 - New ``request.cookies`` property.
 - ``/-/plugins`` endpoint now shows a list of hooks implemented by each plugin, e.g. https://latest.datasette.io/-/plugins?all=1
 - ``request.post_vars()`` method no longer discards empty values.
-- New "params" canned query key for explicitly setting named parameters, see :ref:`canned_queries_named_parameters`. (:issue:`797`)
+- New "params" canned query key for explicitly setting named parameters, see :ref:`queries_named_parameters`. (:issue:`797`)
 - ``request.args`` is now a :ref:`MultiParams <internals_multiparams>` object.
 - Fixed a bug with the ``datasette plugins`` command. (:issue:`802`)
 - Nicer pattern for using ``make_app_client()`` in tests. (:issue:`395`)
@@ -1732,7 +1733,7 @@ The main focus of this release is a major upgrade to the :ref:`plugin_register_o
 * Visually distinguish float and integer columns - useful for figuring out why order-by-column might be returning unexpected results. (:issue:`729`)
 * The :ref:`internals_request`, which is passed to several plugin hooks, is now documented. (:issue:`706`)
 * New ``metadata.json`` option for setting a custom default page size for specific tables and views, see :ref:`table_configuration_size`. (:issue:`751`)
-* Canned queries can now be configured with a default URL fragment hash, useful when working with plugins such as `datasette-vega <https://github.com/simonw/datasette-vega>`__, see :ref:`canned_queries_options`. (:issue:`706`)
+* Canned queries can now be configured with a default URL fragment hash, useful when working with plugins such as `datasette-vega <https://github.com/simonw/datasette-vega>`__, see :ref:`queries_options`. (:issue:`706`)
 * Fixed a bug in ``datasette publish`` when running on operating systems where the ``/tmp`` directory lives in a different volume, using a backport of the Python 3.8 ``shutil.copytree()`` function. (:issue:`744`)
 * Every plugin hook is now covered by the unit tests, and a new unit test checks that each plugin hook has at least one corresponding test. (:issue:`771`, :issue:`773`)
 
@@ -2249,7 +2250,7 @@ A number of small new features:
 - Documentation for :ref:`datasette publish and datasette package <publishing>`, closes `#337 <https://github.com/simonw/datasette/issues/337>`_
 - Fixed compatibility with Python 3.7
 - ``datasette publish heroku`` now supports app names via the ``-n`` option, which can also be used to overwrite an existing application [Russ Garrett]
-- Title and description metadata can now be set for :ref:`canned SQL queries <canned_queries>`, closes `#342 <https://github.com/simonw/datasette/issues/342>`_
+- Title and description metadata can now be set for :ref:`canned SQL queries <queries>`, closes `#342 <https://github.com/simonw/datasette/issues/342>`_
 - New ``force_https_on`` config option, fixes ``https://`` API URLs when deploying to Zeit Now - closes `#333 <https://github.com/simonw/datasette/issues/333>`_
 - ``?_json_infinity=1`` query string argument for handling Infinity/-Infinity values in JSON, closes `#332 <https://github.com/simonw/datasette/issues/332>`_
 - URLs displayed in the results of custom SQL queries are now URLified, closes `#298 <https://github.com/simonw/datasette/issues/298>`_

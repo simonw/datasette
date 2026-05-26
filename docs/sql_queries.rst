@@ -66,7 +66,7 @@ You can also use the `sqlite-utils <https://sqlite-utils.datasette.io/>`__ tool 
 
     sqlite-utils create-view sf-trees.db demo_view "select qSpecies from Street_Tree_List"
 
-.. _canned_queries:
+.. _queries:
 
 Queries
 -------
@@ -173,7 +173,7 @@ You can opt out of this behavior for a configured query using ``is_trusted: fals
             sql: select * from report
             is_trusted: false
 
-.. _canned_queries_named_parameters:
+.. _queries_named_parameters:
 
 Query parameters
 ~~~~~~~~~~~~~~~~
@@ -313,7 +313,7 @@ You can alternatively provide an explicit list of named parameters using the ``"
         }
 .. [[[end]]]
 
-.. _canned_queries_options:
+.. _queries_options:
 
 Additional query options
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -389,7 +389,7 @@ This example demonstrates both ``fragment`` and ``hide_sql``:
 
 `See here <https://latest.datasette.io/fixtures#queries>`__ for a demo of this in action.
 
-.. _canned_queries_writable:
+.. _queries_writable:
 
 Writable queries
 ~~~~~~~~~~~~~~~~
@@ -524,7 +524,7 @@ You can pre-populate form fields when the page first loads using a query string,
 
 If you specify a query in ``"on_success_message_sql"``, that query will be executed after the main query. The first column of the first row return by that query will be displayed as a success message. Named parameters from the main query will be made available to the success message query as well.
 
-.. _canned_queries_magic_parameters:
+.. _queries_magic_parameters:
 
 Magic parameters
 ~~~~~~~~~~~~~~~~
@@ -621,7 +621,7 @@ The form presented at ``/mydatabase/add_message`` will have just a field for ``m
 
 Additional custom magic parameters can be added by plugins using the :ref:`plugin_hook_register_magic_parameters` hook.
 
-.. _canned_queries_json_api:
+.. _queries_json_api:
 
 JSON API for writable queries
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

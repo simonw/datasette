@@ -30,7 +30,7 @@ Warning
     The following steps are recommended:
 
     - Disable arbitrary SQL queries by untrusted users. See :ref:`authentication_permissions_execute_sql` for ways to do this. The easiest is to start Datasette with the ``datasette --setting default_allow_sql off`` option.
-    - Define :ref:`queries <canned_queries>` with the SQL queries that use SpatiaLite functions that you want people to be able to execute.
+    - Define :ref:`queries <queries>` with the SQL queries that use SpatiaLite functions that you want people to be able to execute.
 
     The `Datasette SpatiaLite tutorial <https://datasette.io/tutorials/spatialite>`__ includes detailed instructions for running SpatiaLite safely using these techniques
 

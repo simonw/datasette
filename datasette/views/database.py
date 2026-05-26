@@ -1002,6 +1002,26 @@ class ExecuteWriteView(BaseView):
             except (QueryValidationError, sqlite3.DatabaseError) as ex:
                 analysis_error = getattr(ex, "message", str(ex))
 
+        allow_save_query = await self.ds.allowed(
+            action="execute-sql",
+            resource=DatabaseResource(db.name),
+            actor=request.actor,
+        ) and await self.ds.allowed(
+            action="store-query",
+            resource=DatabaseResource(db.name),
+            actor=request.actor,
+        )
+        save_query_base_url = None
+        save_query_url = None
+        if allow_save_query:
+            save_query_base_url = self.ds.urls.database(db.name) + "/-/queries/store"
+            if (
+                sql
+                and analysis_error is None
+                and not any(row["allowed"] is False for row in analysis_rows)
+            ):
+                save_query_url = save_query_base_url + "?" + urlencode({"sql": sql})
+
         response = await self.render(
             ["execute_write.html"],
             request,
@@ -1025,6 +1045,8 @@ class ExecuteWriteView(BaseView):
                 ),
                 "table_columns": table_columns,
                 "write_template_tables": write_template_tables,
+                "save_query_url": save_query_url,
+                "save_query_base_url": save_query_base_url,
             },
         )
         response.status = status

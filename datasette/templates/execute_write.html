@@ -119,7 +119,10 @@
         {% endif %}
     </div>
 
-    <p><input type="submit" value="Execute" data-execute-write-submit{% if execute_disabled %} disabled{% endif %}></p>
+    <p>
+        <input type="submit" value="Execute" data-execute-write-submit{% if execute_disabled %} disabled{% endif %}>
+        {% if save_query_base_url %}<a href="{{ save_query_url or save_query_base_url }}" class="save-query" data-save-query-link data-save-query-base-url="{{ save_query_base_url }}"{% if not save_query_url %} hidden{% endif %}>Save this query</a>{% endif %}
+    </p>
 </form>
 
 <script>
@@ -140,6 +143,26 @@ window.addEventListener("DOMContentLoaded", () => {
   const submitButton = form
     ? form.querySelector("[data-execute-write-submit]")
     : null;
+  const saveQueryLink = form
+    ? form.querySelector("[data-save-query-link]")
+    : null;
+
+  function updateSaveQueryLink(data) {
+    if (!saveQueryLink) {
+      return;
+    }
+    const sql = window.editor
+      ? window.editor.state.doc.toString()
+      : executeWriteSqlInput.value;
+    if (!sql.trim() || !data.ok || data.execute_disabled) {
+      saveQueryLink.hidden = true;
+      return;
+    }
+    const url = new URL(saveQueryLink.dataset.saveQueryBaseUrl, window.location.href);
+    url.searchParams.set("sql", sql);
+    saveQueryLink.href = url.pathname + url.search + url.hash;
+    saveQueryLink.hidden = false;
+  }
 
   window.datasetteSqlParameters.setupSqlParameterRefresh({
     form,
@@ -150,6 +173,7 @@ window.addEventListener("DOMContentLoaded", () => {
       if (submitButton) {
         submitButton.disabled = data.execute_disabled;
       }
+      updateSaveQueryLink(data);
     },
     onError(error) {
       window.datasetteSqlAnalysis.renderAnalysis(analysisSection, {
@@ -158,6 +182,9 @@ window.addEventListener("DOMContentLoaded", () => {
       });
       if (submitButton) {
         submitButton.disabled = true;
+      }
+      if (saveQueryLink) {
+        saveQueryLink.hidden = true;
       }
     },
   });

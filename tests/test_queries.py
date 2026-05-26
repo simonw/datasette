@@ -1233,6 +1233,12 @@ async def test_execute_write_get_prepopulates_without_executing():
     assert 'data-sql-template="update"' in response.text
     assert 'data-sql-template="delete"' in response.text
     assert 'data-analyze-url="/data/-/execute-write/analyze"' in response.text
+    assert 'data-save-query-base-url="/data/-/queries/store"' in response.text
+    assert "Save this query" in response.text
+    assert (
+        "/data/-/queries/store?sql=insert+into+dogs+%28name%29+values+%28%27Cleo%27%29"
+        in response.text
+    )
     assert 'addEventListener("paste"' in response.text
     assert "setupSqlParameterRefresh" in response.text
     assert "datasetteSqlAnalysis.renderAnalysis" in response.text
@@ -1251,6 +1257,17 @@ async def test_execute_write_get_prepopulates_without_executing():
     )
     assert '<textarea id="sql-editor" name="sql"></textarea>' in empty_response.text
     assert 'executeWriteSqlInput.value = "\\n\\n\\n";' in empty_response.text
+    assert "hidden>Save this query</a>" in empty_response.text
+
+    read_only_response = await ds.client.get(
+        "/data/-/execute-write?sql=select+*+from+dogs",
+        actor={"id": "root"},
+    )
+    assert (
+        "Use /-/query for read-only SQL; this endpoint only executes writes"
+        in read_only_response.text
+    )
+    assert "hidden>Save this query</a>" in read_only_response.text
 
 
 @pytest.mark.asyncio

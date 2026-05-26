@@ -5,6 +5,7 @@
 {% block extra_head %}
 {{- super() -}}
 {% include "_codemirror.html" %}
+{% include "_execute_write_analysis_styles.html" %}
 {% endblock %}
 
 {% block body_class %}query-create db-{{ database|to_css_class }}{% endblock %}
@@ -32,30 +33,28 @@
         <p><a href="{{ urls.database(database) }}/-/execute-write?{{ {'sql': sql}|urlencode|safe }}">Execute write SQL</a></p>
     {% endif %}
 
-    <h2>Analysis</h2>
+    <h2>Query operations</h2>
     {% if analysis_error %}
         <p class="message-error">{{ analysis_error }}</p>
     {% elif analysis_rows %}
-        <div class="table-wrapper"><table>
+        <div class="table-wrapper"><table class="execute-write-analysis">
             <thead>
                 <tr>
                     <th scope="col">Operation</th>
                     <th scope="col">Database</th>
                     <th scope="col">Table</th>
-                    <th scope="col">required permission</th>
+                    <th scope="col">Required permission</th>
                     <th scope="col">Allowed</th>
-                    <th scope="col">Source</th>
                 </tr>
             </thead>
             <tbody>
                 {% for row in analysis_rows %}
                     <tr>
-                        <td>{{ row.operation }}</td>
-                        <td>{{ row.database }}</td>
-                        <td>{{ row.table }}</td>
-                        <td>{{ row.required_permission }}</td>
-                        <td>{% if row.allowed is none %}{% elif row.allowed %}yes{% else %}no{% endif %}</td>
-                        <td>{{ row.source or "" }}</td>
+                        <td><code>{{ row.operation }}</code></td>
+                        <td><code>{{ row.database }}</code></td>
+                        <td><code>{{ row.table }}</code></td>
+                        <td>{% if row.required_permission %}<code>{{ row.required_permission }}</code>{% endif %}</td>
+                        <td>{% if row.allowed is none %}{% elif row.allowed %}<span class="execute-write-analysis-allowed">yes</span>{% else %}<span class="execute-write-analysis-denied">no</span>{% endif %}</td>
                     </tr>
                 {% endfor %}
             </tbody>

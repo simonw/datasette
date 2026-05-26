@@ -998,7 +998,11 @@ async def test_create_query_ui_and_arbitrary_sql_save_link():
     assert "Create query" in create_response.text
     assert "Read-only" in create_response.text
     assert "Writable" in create_response.text
-    assert "required permission" in create_response.text
+    assert "<h2>Query operations</h2>" in create_response.text
+    assert '<table class="execute-write-analysis">' in create_response.text
+    assert '<th scope="col">Required permission</th>' in create_response.text
+    assert '<th scope="col">Source</th>' not in create_response.text
+    assert "<td><code>read</code></td>" in create_response.text
     assert query_response.status_code == 200
     assert "Save query" in query_response.text
     assert "/data/-/queries/-/create?sql=select+%2A+from+dogs" in query_response.text

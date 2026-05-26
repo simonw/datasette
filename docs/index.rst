@@ -68,3 +68,4 @@ Contents
    upgrade_guide
    contributing
    changelog
+   glossary

@@ -4,9 +4,9 @@
 
 {% block extra_head %}
 {{- super() -}}
-<script src="{{ urls.static('column-chooser.js') }}" defer></script>
-<script src="{{ urls.static('table.js') }}" defer></script>
-<script src="{{ urls.static('mobile-column-actions.js') }}" defer></script>
+<script src="{{ urls.static('column-chooser.js') }}?{{ static_hash('column-chooser.js') }}" defer></script>
+<script src="{{ urls.static('table.js') }}?{{ static_hash('table.js') }}" defer></script>
+<script src="{{ urls.static('mobile-column-actions.js') }}?{{ static_hash('mobile-column-actions.js') }}" defer></script>
 <script>DATASETTE_ALLOW_FACET = {{ datasette_allow_facet }};</script>
 <style>
 @media only screen and (max-width: 576px) {

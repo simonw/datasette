@@ -606,6 +606,26 @@ async def test_404(ds_client, path):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    "filename,template_path",
+    [
+        ("datasette-manager.js", "/"),
+        ("navigation-search.js", "/"),
+        ("table.js", "/fixtures/facetable"),
+        ("column-chooser.js", "/fixtures/facetable"),
+        ("mobile-column-actions.js", "/fixtures/facetable"),
+    ],
+)
+async def test_js_content_hash(ds_client, filename, template_path):
+    response = await ds_client.get(template_path)
+    assert response.status_code == 200
+    expected = (
+        f'<script src="/-/static/{filename}?{ds_client.ds.static_hash(filename)}"'
+    )
+    assert expected in response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     "path,expected_redirect",
     [("/fixtures/", "/fixtures"), ("/fixtures/simple_view/", "/fixtures/simple_view")],
 )
@@ -1038,7 +1058,9 @@ async def test_navigation_menu_links(
     navigation_search_script = soup.find(
         "script", {"src": re.compile(r"navigation-search\.js")}
     )
-    assert navigation_search_script["src"] == "/-/static/navigation-search.js"
+    assert navigation_search_script["src"] == (
+        f"/-/static/navigation-search.js?{ds_client.ds.static_hash('navigation-search.js')}"
+    )
     assert details.find("li").find("button") == search_button
     if not actor_id:
         # The app menu is always visible, but anonymous users do not see logout

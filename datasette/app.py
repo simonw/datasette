@@ -2052,6 +2052,7 @@ class Datasette:
                 and "ds_actor" in request.cookies
                 and request.actor,
                 "app_css_hash": self.app_css_hash(),
+                "static_hash": self.static_hash,
                 "zip": zip,
                 "body_scripts": body_scripts,
                 "format_bytes": format_bytes,

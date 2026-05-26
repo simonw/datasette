@@ -67,6 +67,7 @@ def handle_exception(datasette, request, exception):
                         info,
                         urls=datasette.urls,
                         app_css_hash=datasette.app_css_hash(),
+                        static_hash=datasette.static_hash,
                         menu_links=lambda: [],
                     )
                 ),

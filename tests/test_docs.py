@@ -71,7 +71,16 @@ def documented_views():
             "PatternPortfolioView",
             "AuthTokenView",
             "ApiExplorerView",
+            "ExecuteWriteAnalyzeView",
+            "ExecuteWriteView",
+            "GlobalQueryListView",
             "QueryCreateAnalyzeView",
+            "QueryDeleteView",
+            "QueryDefinitionView",
+            "QueryListView",
+            "QueryParametersView",
+            "QueryStoreView",
+            "QueryUpdateView",
         )
     )
     return view_labels

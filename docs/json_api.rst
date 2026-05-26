@@ -505,65 +505,6 @@ The JSON write API
 
 Datasette provides a write API for JSON data. This is a POST-only API that requires an authenticated API token, see :ref:`CreateTokenView`. The token will need to have the specified :ref:`authentication_permissions`.
 
-.. _GlobalQueryListView:
-.. _QueryListView:
-
-Listing stored queries
-~~~~~~~~~~~~~~~~~~~~~~
-
-``GET /-/queries.json`` returns stored query definitions across every database that the actor can view. ``GET /<database>/-/queries.json`` returns stored query definitions for a specific database. Use ``?_size=50`` to set the page size and ``?_next=...`` with the cursor returned by the previous page to fetch the next page.
-
-.. _QueryCreateView:
-
-Creating stored queries in the UI
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-``GET /<database>/-/queries/store`` provides a form for creating stored queries.
-
-.. _QueryStoreView:
-.. _QueryInsertView:
-
-Creating stored queries
-~~~~~~~~~~~~~~~~~~~~~~~
-
-``POST /<database>/-/queries/store`` creates a stored query. This requires ``execute-sql`` and ``store-query`` for the database.
-
-.. _QueryParametersView:
-.. _ExecuteWriteView:
-.. _ExecuteWriteAnalyzeView:
-
-Executing write SQL
-~~~~~~~~~~~~~~~~~~~
-
-``GET /<database>/-/query/parameters?sql=...`` returns the named parameters used by a SQL query. This requires ``execute-sql`` for the database.
-
-``GET /<database>/-/execute-write`` displays a form for executing writable SQL. A ``?sql=`` query string pre-populates the form without executing it.
-
-``POST /<database>/-/execute-write`` executes writable SQL. This requires ``execute-write-sql`` for the database plus the relevant table-level write permissions.
-
-``GET /<database>/-/execute-write/analyze?sql=...`` returns the derived parameters plus the write operations that SQL would need in order to execute.
-
-.. _QueryDefinitionView:
-
-Getting a stored query definition
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-``GET /<database>/<query>/-/definition`` returns a stored query definition without executing it.
-
-.. _QueryUpdateView:
-
-Updating stored queries
-~~~~~~~~~~~~~~~~~~~~~~~
-
-``POST /<database>/<query>/-/update`` updates a stored query using a JSON body with an ``"update"`` object.
-
-.. _QueryDeleteView:
-
-Deleting stored queries
-~~~~~~~~~~~~~~~~~~~~~~~
-
-``POST /<database>/<query>/-/delete`` deletes a stored query.
-
 .. _TableInsertView:
 
 Inserting rows

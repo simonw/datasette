@@ -962,6 +962,58 @@ async def test_query_update_and_delete_api():
 
 
 @pytest.mark.asyncio
+async def test_query_update_api_rejects_trusted_queries_but_internal_update_allowed():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "execute-sql": {"id": "editor"},
+                        "update-query": {"id": "editor"},
+                    },
+                    "queries": {
+                        "trusted_report": {
+                            "sql": "select 1 as one",
+                            "title": "Original",
+                        },
+                    },
+                }
+            }
+        },
+    )
+    ds.add_memory_database("query_update_trusted_api", name="data")
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/data/trusted_report/-/update",
+        actor={"id": "editor"},
+        json={"update": {"sql": "select 2 as two", "title": "Edited"}},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["errors"] == [
+        "Trusted queries cannot be updated using the API"
+    ]
+    query = await ds.get_query("data", "trusted_report")
+    assert query["is_trusted"] is True
+    assert query["sql"] == "select 1 as one"
+    assert query["title"] == "Original"
+
+    await ds.update_query(
+        "data",
+        "trusted_report",
+        sql="select 3 as three",
+        title="Internal",
+    )
+    query = await ds.get_query("data", "trusted_report")
+    assert query["is_trusted"] is True
+    assert query["sql"] == "select 3 as three"
+    assert query["title"] == "Internal"
+
+
+@pytest.mark.asyncio
 async def test_query_store_api_rejects_magic_parameters():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True

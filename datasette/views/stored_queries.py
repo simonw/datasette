@@ -413,6 +413,8 @@ class QueryUpdateView(BaseView):
             actor=request.actor,
         ):
             return _error(["Permission denied: need update-query"], 403)
+        if existing.get("is_trusted"):
+            return _error(["Trusted queries cannot be updated using the API"], 403)
 
         try:
             data, _ = await _json_or_form_payload(request)

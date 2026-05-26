@@ -174,7 +174,7 @@ def view_actions(datasette, actor, database, view, request):
 
 @hookspec
 def query_actions(datasette, actor, database, query_name, request, sql, params):
-    """Links for the query and canned query actions menu"""
+    """Links for the query and stored query actions menu"""
 
 
 @hookspec
@@ -229,7 +229,7 @@ def top_query(datasette, request, database, sql):
 
 @hookspec
 def top_canned_query(datasette, request, database, query_name):
-    """HTML to include at the top of the canned query page"""
+    """HTML to include at the top of the stored query page"""
 
 
 @hookspec

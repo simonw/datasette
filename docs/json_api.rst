@@ -508,23 +508,23 @@ Datasette provides a write API for JSON data. This is a POST-only API that requi
 .. _GlobalQueryListView:
 .. _QueryListView:
 
-Listing saved queries
-~~~~~~~~~~~~~~~~~~~~~
+Listing stored queries
+~~~~~~~~~~~~~~~~~~~~~~
 
-``GET /-/queries.json`` returns saved query definitions across every database that the actor can view. ``GET /<database>/-/queries.json`` returns saved query definitions for a specific database. Use ``?_size=50`` to set the page size and ``?_next=...`` with the cursor returned by the previous page to fetch the next page.
+``GET /-/queries.json`` returns stored query definitions across every database that the actor can view. ``GET /<database>/-/queries.json`` returns stored query definitions for a specific database. Use ``?_size=50`` to set the page size and ``?_next=...`` with the cursor returned by the previous page to fetch the next page.
 
 .. _QueryCreateView:
 
-Creating saved queries in the UI
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Creating stored queries in the UI
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``GET /<database>/-/queries/store`` provides a form for creating stored queries.
 
 .. _QueryStoreView:
 .. _QueryInsertView:
 
-Creating saved queries
-~~~~~~~~~~~~~~~~~~~~~~
+Creating stored queries
+~~~~~~~~~~~~~~~~~~~~~~~
 
 ``POST /<database>/-/queries/store`` creates a stored query. This requires ``execute-sql`` and ``store-query`` for the database.
 
@@ -545,24 +545,24 @@ Executing write SQL
 
 .. _QueryDefinitionView:
 
-Getting a saved query definition
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Getting a stored query definition
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``GET /<database>/<query>/-/definition`` returns a saved query definition without executing it.
+``GET /<database>/<query>/-/definition`` returns a stored query definition without executing it.
 
 .. _QueryUpdateView:
 
-Updating saved queries
-~~~~~~~~~~~~~~~~~~~~~~
+Updating stored queries
+~~~~~~~~~~~~~~~~~~~~~~~
 
-``POST /<database>/<query>/-/update`` updates a saved query using a JSON body with an ``"update"`` object.
+``POST /<database>/<query>/-/update`` updates a stored query using a JSON body with an ``"update"`` object.
 
 .. _QueryDeleteView:
 
-Deleting saved queries
-~~~~~~~~~~~~~~~~~~~~~~
+Deleting stored queries
+~~~~~~~~~~~~~~~~~~~~~~~
 
-``POST /<database>/<query>/-/delete`` deletes a saved query.
+``POST /<database>/<query>/-/delete`` deletes a stored query.
 
 .. _TableInsertView:
 

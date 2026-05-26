@@ -468,7 +468,7 @@ You can control the following:
 * Access to the entire Datasette instance
 * Access to specific databases
 * Access to specific tables and views
-* Access to specific :ref:`canned_queries`
+* Access to specific :ref:`queries <canned_queries>`
 
 If a user has permission to view a table they will be able to view that table, independent of if they have permission to view the database or instance that the table exists within.
 
@@ -641,12 +641,12 @@ This works for SQL views as well - you can list their names in the ``"tables"`` 
 
 .. _authentication_permissions_query:
 
-Access to specific canned queries
----------------------------------
+Access to specific queries
+--------------------------
 
-:ref:`canned_queries` allow you to configure named SQL queries in your ``datasette.yaml`` that can be executed by users. These queries can be set up to both read and write to the database, so controlling who can execute them can be important.
+:ref:`Queries <canned_queries>` allow you to configure named SQL queries in your ``datasette.yaml`` that can be executed by users. These queries can be set up to both read and write to the database, so controlling who can execute them can be important.
 
-To limit access to the ``add_name`` canned query in your ``dogs.db`` database to just the :ref:`root user<authentication_root>`:
+To limit access to the ``add_name`` query in your ``dogs.db`` database to just the :ref:`root user<authentication_root>`:
 
 .. [[[cog
     config_example(cog, """
@@ -1285,7 +1285,7 @@ Actor is allowed to view a table (or view) page, e.g. https://latest.datasette.i
 view-query
 ----------
 
-Actor is allowed to view a saved query page, e.g. https://latest.datasette.io/fixtures/pragma_cache_size. Executing an untrusted saved query also requires ``execute-sql`` or the relevant write permissions; trusted saved queries can execute with ``view-query`` alone.
+Actor is allowed to view a stored query page, e.g. https://latest.datasette.io/fixtures/pragma_cache_size. Executing an untrusted stored query also requires ``execute-sql`` or the relevant write permissions; :ref:`trusted stored queries <trusted_stored_queries>` can execute with ``view-query`` alone.
 
 ``resource`` - ``datasette.resources.QueryResource(database, query)``
     ``database`` is the name of the database (string)
@@ -1308,7 +1308,7 @@ Actor is allowed to create stored queries in a database.
 update-query
 ------------
 
-Actor is allowed to update a saved query.
+Actor is allowed to update a stored query.
 
 ``resource`` - ``datasette.resources.QueryResource(database, query)``
     ``database`` is the name of the database (string)
@@ -1320,7 +1320,7 @@ Actor is allowed to update a saved query.
 delete-query
 ------------
 
-Actor is allowed to delete a saved query.
+Actor is allowed to delete a stored query.
 
 ``resource`` - ``datasette.resources.QueryResource(database, query)``
     ``database`` is the name of the database (string)

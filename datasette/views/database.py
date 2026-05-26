@@ -222,11 +222,11 @@ class DatabaseContext(Context):
     tables: list = field(metadata={"help": "List of table objects in the database"})
     hidden_count: int = field(metadata={"help": "Count of hidden tables"})
     views: list = field(metadata={"help": "List of view objects in the database"})
-    queries: list = field(metadata={"help": "List of canned query objects"})
+    queries: list = field(metadata={"help": "List of stored query objects"})
     queries_more: bool = field(
-        metadata={"help": "Boolean indicating if more saved queries are available"}
+        metadata={"help": "Boolean indicating if more stored queries are available"}
     )
-    queries_count: int = field(metadata={"help": "Count of visible saved queries"})
+    queries_count: int = field(metadata={"help": "Count of visible stored queries"})
     allow_execute_sql: bool = field(
         metadata={"help": "Boolean indicating if custom SQL can be executed"}
     )
@@ -272,7 +272,7 @@ class QueryContext(Context):
         metadata={"help": "The SQL query object containing the `sql` string"}
     )
     canned_query: str = field(
-        metadata={"help": "The name of the canned query if this is a canned query"}
+        metadata={"help": "The name of the stored query if this is a stored query"}
     )
     private: bool = field(
         metadata={"help": "Boolean indicating if this is a private database"}
@@ -282,11 +282,11 @@ class QueryContext(Context):
     # )
     canned_query_write: bool = field(
         metadata={
-            "help": "Boolean indicating if this is a canned query that allows writes"
+            "help": "Boolean indicating if this is a stored query that allows writes"
         }
     )
     metadata: dict = field(
-        metadata={"help": "Metadata about the database or the canned query"}
+        metadata={"help": "Metadata about the database or the stored query"}
     )
     db_is_immutable: bool = field(
         metadata={"help": "Boolean indicating if this database is immutable"}
@@ -315,7 +315,7 @@ class QueryContext(Context):
         metadata={"help": "Dictionary of parameter names/values"}
     )
     edit_sql_url: str = field(
-        metadata={"help": "URL to edit the SQL for a canned query"}
+        metadata={"help": "URL to edit the SQL for a stored query"}
     )
     display_rows: list = field(metadata={"help": "List of result rows to display"})
     columns: list = field(metadata={"help": "List of column names"})
@@ -1623,7 +1623,7 @@ class QueryView(View):
 
         db = await datasette.resolve_database(request)
 
-        # We must be a canned query
+        # We must be a stored query
         table_found = False
         try:
             await datasette.resolve_table(request)
@@ -1742,14 +1742,14 @@ class QueryView(View):
         # Create lookup dict for quick access
         allowed_dict = {r.child: r for r in allowed_tables_page.resources}
 
-        # Are we a canned query?
+        # Are we a stored query?
         canned_query = None
         canned_query_write = False
         if "table" in request.url_vars:
             try:
                 await datasette.resolve_table(request)
             except TableNotFound as table_not_found:
-                # Was this actually a canned query?
+                # Was this actually a stored query?
                 canned_query = await datasette.get_canned_query(
                     table_not_found.database_name, table_not_found.table, request.actor
                 )
@@ -1759,7 +1759,7 @@ class QueryView(View):
 
         private = False
         if canned_query:
-            # Respect canned query permissions
+            # Respect stored query permissions
             visible, private = await datasette.check_visibility(
                 request.actor,
                 action="view-query",
@@ -1823,7 +1823,7 @@ class QueryView(View):
                     # For regular queries we only allow SELECT, plus other rules
                     validate_sql_select(sql)
                 else:
-                    # Canned queries can run magic parameters
+                    # Stored queries can run magic parameters
                     params_for_query = MagicParameters(sql, params, request, datasette)
                     await params_for_query.execute_params()
                 results = await datasette.execute(

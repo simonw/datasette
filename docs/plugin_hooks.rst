@@ -609,7 +609,7 @@ When a request is received, the ``"render"`` callback function is called with ze
     The SQL query that was executed.
 
 ``query_name`` - string or None
-    If this was the execution of a :ref:`canned query <canned_queries>`, the name of that query.
+    If this was the execution of a :ref:`stored query <stored_queries>`, the name of that query.
 
 ``database`` - string
     The name of the database.
@@ -1212,7 +1212,7 @@ Examples: `datasette-saved-queries <https://datasette.io/plugins/datasette-saved
 canned_queries(datasette, database, actor)
 ------------------------------------------
 
-This hook has been removed. Plugins that need to add saved queries should use
+This hook has been removed. Plugins that need to add stored queries should use
 the :ref:`plugin_hook_startup` hook and call ``await datasette.add_query(...)``.
 
 Example: `datasette-saved-queries <https://datasette.io/plugins/datasette-saved-queries>`__
@@ -1635,7 +1635,7 @@ register_magic_parameters(datasette)
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
 
-:ref:`canned_queries_magic_parameters` can be used to add automatic parameters to :ref:`canned queries <canned_queries>`. This plugin hook allows additional magic parameters to be defined by plugins.
+:ref:`canned_queries_magic_parameters` can be used to add automatic parameters to :ref:`configured queries <canned_queries>`. This plugin hook allows additional magic parameters to be defined by plugins.
 
 Magic parameters all take this format: ``_prefix_rest_of_parameter``. The prefix indicates which magic parameter function should be called - the rest of the parameter is passed as an argument to that function.
 
@@ -1828,7 +1828,7 @@ jump_items_sql(datasette, actor, request)
 
 This hook allows plugins to add extra results to Datasette's ``/`` jump menu, which is powered by the ``/-/jump`` JSON endpoint.
 
-Return a ``datasette.jump.JumpSQL`` object, or a list of ``JumpSQL`` objects. Each ``JumpSQL`` object wraps a SQL query to be searched alongside Datasette's own databases, tables, views and canned query results. The hook can also be an ``async def`` function, or return an awaitable that resolves to one of these values.
+Return a ``datasette.jump.JumpSQL`` object, or a list of ``JumpSQL`` objects. Each ``JumpSQL`` object wraps a SQL query to be searched alongside Datasette's own databases, tables, views and stored query results. The hook can also be an ``async def`` function, or return an awaitable that resolves to one of these values.
 
 ``JumpSQL`` queries run against Datasette's internal database by default. To run a query against another database, pass its name as the optional ``database=`` argument. For example, ``JumpSQL(database="content", sql="...")`` runs against the ``content`` database.
 
@@ -2004,7 +2004,7 @@ query_actions(datasette, actor, database, query_name, request, sql, params)
     The name of the database.
 
 ``query_name`` - string or None
-    The name of the canned query, or ``None`` if this is an arbitrary SQL query.
+    The name of the stored query, or ``None`` if this is an arbitrary SQL query.
 
 ``request`` - :ref:`internals_request`
     The current HTTP request.
@@ -2015,7 +2015,7 @@ query_actions(datasette, actor, database, query_name, request, sql, params)
 ``params`` - dictionary
     The parameters passed to the SQL query, if any.
 
-Populates a "Query actions" menu on the canned query and arbitrary SQL query pages.
+Populates a "Query actions" menu on the stored query and arbitrary SQL query pages.
 
 This example adds a new query action linking to a page for explaining a query:
 
@@ -2294,9 +2294,9 @@ top_canned_query(datasette, request, database, query_name)
     The name of the database.
 
 ``query_name`` - string
-    The name of the canned query.
+    The name of the stored query.
 
-Returns HTML to be displayed at the top of the canned query page.
+Returns HTML to be displayed at the top of the stored query page.
 
 .. _plugin_event_tracking:
 

@@ -121,13 +121,13 @@ def register_actions():
         Action(
             name="update-query",
             abbr="uq",
-            description="Update saved queries",
+            description="Update stored queries",
             resource_class=QueryResource,
         ),
         Action(
             name="delete-query",
             abbr="dq",
-            description="Delete saved queries",
+            description="Delete stored queries",
             resource_class=QueryResource,
         ),
     )

@@ -725,7 +725,7 @@ The builder methods are:
 
 - ``allow_all(action)`` - allow an action across all databases and resources
 - ``allow_database(database, action)`` - allow an action on a specific database
-- ``allow_resource(database, resource, action)`` - allow an action on a specific resource (table, SQL view or :ref:`canned query <canned_queries>`) within a database
+- ``allow_resource(database, resource, action)`` - allow an action on a specific resource (table, SQL view or :ref:`stored query <stored_queries>`) within a database
 
 Each method returns the ``TokenRestrictions`` instance so calls can be chained.
 
@@ -837,10 +837,10 @@ await .get_resource_metadata(self, database_name, resource_name)
 ``database_name`` - string
     The name of the database to query.
 ``resource_name`` - string
-    The name of the resource (table, view, or canned query) inside ``database_name`` to query.
+    The name of the resource (table, view, or stored query) inside ``database_name`` to query.
 
 Returns metadata keys and values for the specified "resource" as a dictionary.
-A "resource" in this context can be a table, view, or canned query.
+A "resource" in this context can be a table, view, or stored query.
 Internally queries the ``metadata_resources`` table inside the :ref:`internal database <internals_internal>`.
 
 .. _datasette_get_column_metadata:
@@ -851,7 +851,7 @@ await .get_column_metadata(self, database_name, resource_name, column_name)
 ``database_name`` - string
     The name of the database to query.
 ``resource_name`` - string
-    The name of the resource (table, view, or canned query) inside ``database_name`` to query.
+    The name of the resource (table, view, or stored query) inside ``database_name`` to query.
 ``column_name`` - string
     The name of the column inside ``resource_name`` to query.
 
@@ -897,7 +897,7 @@ await .set_resource_metadata(self, database_name, resource_name, key, value)
 ``database_name`` - string
     The database the metadata entry belongs to.
 ``resource_name`` - string
-    The resource (table, view, or canned query) the metadata entry belongs to.
+    The resource (table, view, or stored query) the metadata entry belongs to.
 ``key`` - string
     The metadata entry key to insert (ex ``title``, ``description``, etc.)
 ``value`` - string
@@ -915,7 +915,7 @@ await .set_column_metadata(self, database_name, resource_name, column_name, key,
 ``database_name`` - string
     The database the metadata entry belongs to.
 ``resource_name`` - string
-    The resource (table, view, or canned query) the metadata entry belongs to.
+    The resource (table, view, or stored query) the metadata entry belongs to.
 ``column-name`` - string
     The column the metadata entry belongs to.
 ``key`` - string

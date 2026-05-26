@@ -890,7 +890,7 @@ PermConfigTestCase = collections.namedtuple(
             resource=("perms_ds_one", "t1"),
             expected_result=True,
         ),
-        # view-query on canned query, wrong actor
+        # view-query on stored query, wrong actor
         PermConfigTestCase(
             config={
                 "databases": {
@@ -909,7 +909,7 @@ PermConfigTestCase = collections.namedtuple(
             resource=("perms_ds_one", "q1"),
             expected_result=False,
         ),
-        # view-query on canned query, right actor
+        # view-query on stored query, right actor
         PermConfigTestCase(
             config={
                 "databases": {

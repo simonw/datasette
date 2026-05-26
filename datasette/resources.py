@@ -41,7 +41,7 @@ class TableResource(Resource):
 
 
 class QueryResource(Resource):
-    """A saved query in a database."""
+    """A stored query in a database."""
 
     name = "query"
     parent_class = DatabaseResource

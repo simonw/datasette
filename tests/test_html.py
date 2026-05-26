@@ -154,7 +154,7 @@ async def test_database_page(ds_client):
         ("/fixtures/simple_view", "simple_view"),
     ] == sorted([(a["href"], a.text) for a in views_ul.find_all("a")])
 
-    # And a list of canned queries
+    # And a list of stored queries
     queries_ul = soup.find("h2", string="Queries").find_next_sibling("ul")
     assert queries_ul is not None
     assert [
@@ -701,7 +701,7 @@ async def test_show_hide_sql_query(ds_client):
 
 @pytest.mark.asyncio
 async def test_canned_query_with_hide_has_no_hidden_sql(ds_client):
-    # For a canned query the show/hide should NOT have a hidden SQL field
+    # For a stored query the show/hide should NOT have a hidden SQL field
     # https://github.com/simonw/datasette/issues/1411
     response = await ds_client.get("/fixtures/pragma_cache_size?_hide_sql=1")
     soup = Soup(response.content, "html.parser")
@@ -1106,7 +1106,7 @@ async def test_trace_correctly_escaped(ds_client):
             "/fixtures/-/query?sql=select+*+from+facetable",
             "http://localhost/fixtures/-/query.json?sql=select+*+from+facetable",
         ),
-        # Canned query page
+        # Stored query page
         (
             "/fixtures/neighborhood_search?text=town",
             "http://localhost/fixtures/neighborhood_search.json?text=town",

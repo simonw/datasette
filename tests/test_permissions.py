@@ -937,7 +937,7 @@ async def test_permissions_in_config(
     updated_config = copy.deepcopy(previous_config)
     updated_config.update(config)
     perms_ds.config = updated_config
-    await perms_ds.apply_queries_config()
+    await perms_ds._save_queries_from_config()
     try:
         # Convert old-style resource to Resource object
         from datasette.resources import DatabaseResource, QueryResource, TableResource
@@ -964,7 +964,7 @@ async def test_permissions_in_config(
             assert result == expected_result
     finally:
         perms_ds.config = previous_config
-        await perms_ds.apply_queries_config()
+        await perms_ds._save_queries_from_config()
 
 
 @pytest.mark.asyncio

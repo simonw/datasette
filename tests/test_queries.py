@@ -986,6 +986,14 @@ async def test_create_query_ui_and_arbitrary_sql_save_link():
     await ds.invoke_startup()
 
     create_response = await ds.client.get(
+        "/data/-/queries/insert?sql=select+*+from+dogs",
+        actor={"id": "root"},
+    )
+    blank_create_response = await ds.client.get(
+        "/data/-/queries/insert",
+        actor={"id": "root"},
+    )
+    old_create_response = await ds.client.get(
         "/data/-/queries/-/create?sql=select+*+from+dogs",
         actor={"id": "root"},
     )
@@ -996,16 +1004,171 @@ async def test_create_query_ui_and_arbitrary_sql_save_link():
 
     assert create_response.status_code == 200
     assert "Create query" in create_response.text
-    assert "Read-only" in create_response.text
     assert "Writable" in create_response.text
+    assert 'type="radio"' not in create_response.text
+    assert 'name="parameters"' not in create_response.text
+    assert 'id="query-parameters"' not in create_response.text
+    assert 'class="query-create-field"' in create_response.text
+    assert '<label for="query-name">Name</label>' not in create_response.text
+    assert '<label for="query-title">Title</label>' in create_response.text
+    assert '<label for="query-url-slug">URL</label>' in create_response.text
+    assert '<span class="query-create-url-prefix">/data/</span>' in create_response.text
+    assert (
+        '<input id="query-url-slug" name="name" type="text" value="">'
+        in create_response.text
+    )
+    assert 'function slugify(value)' in create_response.text
+    assert 'data-analyze-url="/data/-/queries/analyze"' in create_response.text
+    assert "setupSqlParameterRefresh" in create_response.text
+    assert "renderParameters: false" in create_response.text
+    assert "datasetteSqlAnalysis.renderAnalysis" in create_response.text
+    assert "data-query-create-submit" in create_response.text
+    assert "data-query-create-writable" in create_response.text
+    assert (
+        "Queries marked private can only be seen by you, their creator."
+        in create_response.text
+    )
     assert "<h2>Query operations</h2>" in create_response.text
     assert '<table class="execute-write-analysis">' in create_response.text
     assert '<th scope="col">Required permission</th>' in create_response.text
     assert '<th scope="col">Source</th>' not in create_response.text
     assert "<td><code>read</code></td>" in create_response.text
+    assert (
+        create_response.text.count(
+            '<td><span class="execute-write-analysis-na">n/a</span></td>'
+        )
+        == 2
+    )
+    assert create_response.text.index('value="Save query"') < create_response.text.index(
+        "<h2>Query operations</h2>"
+    )
+    assert blank_create_response.status_code == 200
+    assert (
+        '<div class="query-create-analysis" id="query-create-analysis-section" hidden>'
+        in blank_create_response.text
+    )
+    assert "<h2>Query operations</h2>" not in blank_create_response.text
+    assert (
+        "<p>Analysis will show each affected table and required permission.</p>"
+        not in blank_create_response.text
+    )
     assert query_response.status_code == 200
-    assert "Save query" in query_response.text
-    assert "/data/-/queries/-/create?sql=select+%2A+from+dogs" in query_response.text
+    assert "Save this query" in query_response.text
+    assert "/data/-/queries/insert?sql=select+%2A+from+dogs" in query_response.text
+    assert old_create_response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_query_analyze_endpoint_uses_sql_only():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("query_create_analyze", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    response = await ds.client.get(
+        "/data/-/queries/analyze",
+        actor={"id": "root"},
+        params={"sql": "select * from dogs where name = :name"},
+    )
+    write_response = await ds.client.get(
+        "/data/-/queries/analyze",
+        actor={"id": "root"},
+        params={"sql": "insert into dogs (name) values (:name)"},
+    )
+    blank_response = await ds.client.get(
+        "/data/-/queries/analyze",
+        actor={"id": "root"},
+        params={"sql": ""},
+    )
+    old_analyze_response = await ds.client.get(
+        "/data/-/queries/-/create/analyze",
+        actor={"id": "root"},
+        params={"sql": "select * from dogs"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["parameters"] == ["name"]
+    assert data["analysis_error"] is None
+    assert data["has_sql"] is True
+    assert data["analysis_is_write"] is False
+    assert data["save_disabled"] is False
+    assert data["analysis_rows"] == [
+        {
+            "operation": "read",
+            "database": "data",
+            "table": "dogs",
+            "required_permission": "",
+            "source": None,
+            "allowed": None,
+        }
+    ]
+
+    assert write_response.status_code == 200
+    write_data = write_response.json()
+    assert write_data["parameters"] == ["name"]
+    assert write_data["has_sql"] is True
+    assert write_data["analysis_is_write"] is True
+    assert write_data["save_disabled"] is False
+    assert write_data["analysis_rows"][0]["operation"] == "insert"
+
+    assert blank_response.status_code == 200
+    blank_data = blank_response.json()
+    assert blank_data["has_sql"] is False
+    assert blank_data["parameters"] == []
+    assert blank_data["analysis_rows"] == []
+    assert blank_data["save_disabled"] is True
+    assert old_analyze_response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_query_form_error_redisplays_form_with_values():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("query_create_form_error", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/data/-/queries/insert",
+        actor={"id": "root"},
+        data={
+            "name": "dogs",
+            "title": "Dog lookup",
+            "description": "Find dogs by name",
+            "sql": "select * from dogs where name = :name",
+            "is_private": "1",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.headers["content-type"].startswith("text/html")
+    assert "URL conflicts with an existing table or view" in response.text
+    assert "Query name conflicts with a table or view" not in response.text
+    assert '{"ok": false' not in response.text
+    assert 'value="Dog lookup"' in response.text
+    assert 'value="dogs"' in response.text
+    assert ">Find dogs by name</textarea>" in response.text
+    assert "select * from dogs where name = :name" in response.text
+    assert 'name="is_private" value="1" checked' in response.text
+
+    public_response = await ds.client.post(
+        "/data/-/queries/insert",
+        actor={"id": "root"},
+        data={
+            "name": "dogs",
+            "title": "Public dog lookup",
+            "description": "Keep this public setting",
+            "sql": "select * from dogs",
+            "is_private": "0",
+        },
+    )
+
+    assert public_response.status_code == 400
+    assert 'name="is_private" value="1" checked' not in public_response.text
+    assert 'name="is_private" value="0"' in public_response.text
 
 
 @pytest.mark.asyncio
@@ -1046,6 +1209,7 @@ async def test_execute_write_get_prepopulates_without_executing():
     assert 'data-analyze-url="/data/-/execute-write/analyze"' in response.text
     assert 'addEventListener("paste"' in response.text
     assert "setupSqlParameterRefresh" in response.text
+    assert "datasetteSqlAnalysis.renderAnalysis" in response.text
     assert '<table class="execute-write-analysis">' in response.text
     assert '<th scope="col">Required permission</th>' in response.text
     assert "<td><code>insert</code></td>" in response.text

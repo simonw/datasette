@@ -131,6 +131,7 @@ if (executeWriteSqlInput && !executeWriteSqlInput.value) {
 
 {% include "_codemirror_foot.html" %}
 {% include "_sql_parameter_scripts.html" %}
+{% include "_execute_write_analysis_scripts.html" %}
 
 <script>
 window.addEventListener("DOMContentLoaded", () => {
@@ -140,101 +141,18 @@ window.addEventListener("DOMContentLoaded", () => {
     ? form.querySelector("[data-execute-write-submit]")
     : null;
 
-  function appendCodeCell(row, value) {
-    const cell = document.createElement("td");
-    if (value) {
-      const code = document.createElement("code");
-      code.textContent = value;
-      cell.appendChild(code);
-    }
-    row.appendChild(cell);
-  }
-
-  function renderExecuteWriteAnalysis(data) {
-    if (!analysisSection) {
-      return;
-    }
-    analysisSection.replaceChildren();
-
-    const heading = document.createElement("h2");
-    heading.textContent = "Query operations";
-    analysisSection.appendChild(heading);
-
-    if (data.analysis_error) {
-      const error = document.createElement("p");
-      error.className = "message-error";
-      error.textContent = data.analysis_error;
-      analysisSection.appendChild(error);
-      return;
-    }
-
-    const rows = data.analysis_rows || [];
-    if (!rows.length) {
-      const empty = document.createElement("p");
-      empty.textContent =
-        "Analysis will show each affected table and required permission.";
-      analysisSection.appendChild(empty);
-      return;
-    }
-
-    const wrapper = document.createElement("div");
-    wrapper.className = "table-wrapper";
-    const table = document.createElement("table");
-    table.className = "execute-write-analysis";
-    const thead = document.createElement("thead");
-    const headerRow = document.createElement("tr");
-    [
-      "Operation",
-      "Database",
-      "Table",
-      "Required permission",
-      "Allowed",
-    ].forEach((label) => {
-      const th = document.createElement("th");
-      th.scope = "col";
-      th.textContent = label;
-      headerRow.appendChild(th);
-    });
-    thead.appendChild(headerRow);
-    table.appendChild(thead);
-
-    const tbody = document.createElement("tbody");
-    rows.forEach((analysisRow) => {
-      const row = document.createElement("tr");
-      appendCodeCell(row, analysisRow.operation);
-      appendCodeCell(row, analysisRow.database);
-      appendCodeCell(row, analysisRow.table);
-      appendCodeCell(row, analysisRow.required_permission);
-
-      const allowedCell = document.createElement("td");
-      if (analysisRow.allowed !== null && analysisRow.allowed !== undefined) {
-        const allowed = document.createElement("span");
-        allowed.className = analysisRow.allowed
-          ? "execute-write-analysis-allowed"
-          : "execute-write-analysis-denied";
-        allowed.textContent = analysisRow.allowed ? "yes" : "no";
-        allowedCell.appendChild(allowed);
-      }
-      row.appendChild(allowedCell);
-      tbody.appendChild(row);
-    });
-    table.appendChild(tbody);
-    wrapper.appendChild(table);
-    analysisSection.appendChild(wrapper);
-  }
-
   window.datasetteSqlParameters.setupSqlParameterRefresh({
     form,
     url: form.dataset.analyzeUrl,
     allowExpand: true,
     onData(data) {
-      renderExecuteWriteAnalysis(data);
+      window.datasetteSqlAnalysis.renderAnalysis(analysisSection, data);
       if (submitButton) {
         submitButton.disabled = data.execute_disabled;
       }
     },
     onError(error) {
-      renderExecuteWriteAnalysis({
+      window.datasetteSqlAnalysis.renderAnalysis(analysisSection, {
         analysis_error: error.message,
         analysis_rows: [],
       });

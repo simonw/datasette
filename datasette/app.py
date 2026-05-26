@@ -50,7 +50,7 @@ from .views.database import (
     ExecuteWriteView,
     TableCreateView,
     QueryView,
-    QueryCreateView,
+    QueryCreateAnalyzeView,
     QueryDeleteView,
     QueryDefinitionView,
     GlobalQueryListView,
@@ -2820,8 +2820,8 @@ class Datasette:
             r"/(?P<database>[^\/\.]+)/-/queries(\.(?P<format>json))?$",
         )
         add_route(
-            QueryCreateView.as_view(self),
-            r"/(?P<database>[^\/\.]+)/-/queries/-/create$",
+            QueryCreateAnalyzeView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/queries/analyze$",
         )
         add_route(
             QueryInsertView.as_view(self),

@@ -215,9 +215,10 @@ window.datasetteSqlParameters = (() => {
     if (!form) {
       return null;
     }
+    const shouldRenderParameters = options.renderParameters !== false;
     const section =
       options.section || form.querySelector("[data-sql-parameters-section]");
-    if (!section) {
+    if (shouldRenderParameters && !section) {
       return null;
     }
     const manager = {
@@ -225,12 +226,16 @@ window.datasetteSqlParameters = (() => {
       section,
       allowExpand:
         options.allowExpand === undefined
-          ? section.dataset.allowExpand === "1"
+          ? section
+            ? section.dataset.allowExpand === "1"
+            : false
           : options.allowExpand,
       parameterState: new Map(),
     };
-    bindParameterControls(manager);
-    syncParameterState(manager);
+    if (section) {
+      bindParameterControls(manager);
+      syncParameterState(manager);
+    }
 
     const url = options.url || form.dataset.parametersUrl;
     let refreshTimer = null;
@@ -254,7 +259,9 @@ window.datasetteSqlParameters = (() => {
         if (!response.ok) {
           throw new Error((data.errors || [response.statusText]).join("; "));
         }
-        renderParameters(manager, data.parameters || []);
+        if (shouldRenderParameters) {
+          renderParameters(manager, data.parameters || []);
+        }
         if (options.onData) {
           options.onData(data, manager);
         }

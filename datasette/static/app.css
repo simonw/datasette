@@ -1414,6 +1414,10 @@ svg.dropdown-menu-icon {
     position: relative;
     top: 1px;
 }
+.save-query {
+    display: inline-block;
+    margin-left: 0.45em;
+}
 
 .blob-download {
     display: block;

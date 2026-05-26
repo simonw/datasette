@@ -551,6 +551,17 @@ def _wants_json(request, is_json, data):
     )
 
 
+def _query_create_form_error_message(message):
+    return {
+        "Query name is required": "URL is required",
+        "Invalid query name": "Invalid URL",
+        "Query name conflicts with a table or view": (
+            "URL conflicts with an existing table or view"
+        ),
+        "Query already exists": "A query already exists at that URL",
+    }.get(message, message)
+
+
 async def _json_or_form_payload(request):
     content_type = request.headers.get("content-type", "")
     if content_type.startswith("application/json"):
@@ -728,6 +739,54 @@ async def _execute_write_analysis_data(datasette, db, sql, actor):
             or analysis_error
             or any(row["allowed"] is False for row in analysis_rows)
         ),
+    }
+
+
+async def _query_create_analysis_data(datasette, db, sql, actor):
+    has_sql = bool(sql and sql.strip())
+    parameter_names = []
+    analysis_rows = []
+    analysis_error = None
+    if has_sql:
+        try:
+            parameter_names = _derived_query_parameters(sql)
+            params = {parameter: "" for parameter in parameter_names}
+            analysis = await db.analyze_sql(sql, params)
+            analysis_rows = await _analysis_rows_with_permissions(
+                datasette, analysis, actor
+            )
+        except (QueryValidationError, sqlite3.DatabaseError) as ex:
+            analysis_error = getattr(ex, "message", str(ex))
+    return {
+        "ok": analysis_error is None,
+        "parameters": parameter_names,
+        "analysis_error": analysis_error,
+        "analysis_rows": analysis_rows,
+        "has_sql": has_sql,
+        "analysis_is_write": bool(
+            analysis_rows and any(row["required_permission"] for row in analysis_rows)
+        ),
+        "save_disabled": bool(
+            (not has_sql)
+            or analysis_error
+            or any(row["allowed"] is False for row in analysis_rows)
+        ),
+    }
+
+
+async def _query_create_form_context(
+    datasette, request, db, *, sql="", name="", title="", description="", is_private=True
+):
+    analysis_data = await _query_create_analysis_data(datasette, db, sql, request.actor)
+    return {
+        "database": db.name,
+        "database_color": db.color,
+        "sql": sql,
+        "name": name,
+        "title": title,
+        "description": description,
+        "is_private": is_private,
+        **analysis_data,
     }
 
 
@@ -1307,6 +1366,35 @@ class QueryCreateView(BaseView):
     name = "query-create"
     has_json_alternate = False
 
+    async def _render_form(
+        self,
+        request,
+        db,
+        *,
+        sql="",
+        name="",
+        title="",
+        description="",
+        is_private=True,
+        status=200,
+    ):
+        response = await self.render(
+            ["query_create.html"],
+            request,
+            await _query_create_form_context(
+                self.ds,
+                request,
+                db,
+                sql=sql,
+                name=name,
+                title=title,
+                description=description,
+                is_private=is_private,
+            ),
+        )
+        response.status = status
+        return response
+
     async def get(self, request):
         db = await self.ds.resolve_database(request)
         await self.ds.ensure_permission(
@@ -1320,45 +1408,60 @@ class QueryCreateView(BaseView):
             actor=request.actor,
         )
 
-        sql = request.args.get("sql") or ""
-        analysis_error = None
-        analysis_rows = []
-        parameter_names = []
-        if sql:
-            try:
-                parameter_names = _derived_query_parameters(sql)
-                params = {parameter: "" for parameter in parameter_names}
-                analysis = await db.analyze_sql(sql, params)
-                analysis_rows = await _analysis_rows_with_permissions(
-                    self.ds, analysis, request.actor
-                )
-            except (QueryValidationError, sqlite3.DatabaseError) as ex:
-                analysis_error = getattr(ex, "message", str(ex))
+        return await self._render_form(request, db, sql=request.args.get("sql") or "")
 
-        return await self.render(
-            ["query_create.html"],
-            request,
-            {
-                "database": db.name,
-                "database_color": db.color,
-                "sql": sql,
-                "parameter_names": parameter_names,
-                "analysis_error": analysis_error,
-                "analysis_rows": analysis_rows,
-                "analysis_is_write": bool(
-                    analysis_rows
-                    and any(row["required_permission"] for row in analysis_rows)
-                ),
-                "save_disabled": bool(
-                    analysis_error
-                    or any(row["allowed"] is False for row in analysis_rows)
-                ),
-            },
+
+class QueryCreateAnalyzeView(BaseView):
+    name = "query-create-analyze"
+    has_json_alternate = False
+
+    async def get(self, request):
+        db = await self.ds.resolve_database(request)
+        if not await self.ds.allowed(
+            action="execute-sql",
+            resource=DatabaseResource(db.name),
+            actor=request.actor,
+        ):
+            return _block_framing(_error(["Permission denied: need execute-sql"], 403))
+        if not await self.ds.allowed(
+            action="insert-query",
+            resource=DatabaseResource(db.name),
+            actor=request.actor,
+        ):
+            return _block_framing(_error(["Permission denied: need insert-query"], 403))
+
+        invalid_keys = set(request.args) - {"sql"}
+        if invalid_keys:
+            return _block_framing(
+                _error(
+                    ["Invalid keys: {}".format(", ".join(sorted(invalid_keys)))],
+                    400,
+                )
+            )
+        sql = request.args.get("sql") or ""
+        return _block_framing(
+            Response.json(
+                await _query_create_analysis_data(self.ds, db, sql, request.actor)
+            )
         )
 
 
-class QueryInsertView(BaseView):
+class QueryInsertView(QueryCreateView):
     name = "query-insert"
+
+    async def _error_response(self, request, db, query_data, message, status):
+        message = _query_create_form_error_message(message)
+        self.ds.add_message(request, message, self.ds.ERROR)
+        return await self._render_form(
+            request,
+            db,
+            sql=query_data.get("sql") or "",
+            name=query_data.get("name") or "",
+            title=query_data.get("title") or "",
+            description=query_data.get("description") or "",
+            is_private=_as_bool(query_data.get("is_private", True)),
+            status=status,
+        )
 
     async def post(self, request):
         db = await self.ds.resolve_database(request)
@@ -1375,6 +1478,8 @@ class QueryInsertView(BaseView):
         ):
             return _error(["Permission denied: need insert-query"], 403)
 
+        is_json = False
+        query_data = {}
         try:
             data, is_json = await _json_or_form_payload(request)
             if not isinstance(data, dict):
@@ -1384,6 +1489,10 @@ class QueryInsertView(BaseView):
                 raise QueryValidationError("JSON must contain a query dictionary")
             prepared = await _prepare_query_create(self.ds, request, db, query_data)
         except QueryValidationError as ex:
+            if not is_json and isinstance(query_data, dict):
+                return await self._error_response(
+                    request, db, query_data, ex.message, ex.status
+                )
             return _error([ex.message], ex.status)
 
         prepared.pop("analysis")
@@ -1391,6 +1500,8 @@ class QueryInsertView(BaseView):
         try:
             await self.ds.add_query(db.name, name, replace=False, **prepared)
         except sqlite3.IntegrityError as ex:
+            if not is_json and isinstance(query_data, dict):
+                return await self._error_response(request, db, query_data, str(ex), 400)
             return _error([str(ex)], 400)
 
         query = await self.ds.get_query(db.name, name)
@@ -1896,7 +2007,7 @@ class QueryView(View):
             ):
                 save_query_url = (
                     datasette.urls.database(database)
-                    + "/-/queries/-/create?"
+                    + "/-/queries/insert?"
                     + urlencode({"sql": sql})
                 )
 

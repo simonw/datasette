@@ -80,6 +80,7 @@ async def default_query_permissions_sql(
     if action in {"update-query", "delete-query"}:
         if actor_id is None:
             return None
+        # Query owner can update/delete query
         return PermissionSQL(
             sql="""
             SELECT database_name AS parent, name AS child, 1 AS allow,
@@ -97,15 +98,15 @@ async def default_query_permissions_sql(
     params = {"query_owner_id": actor_id}
     rule_sqls = []
     if actor_id is not None:
-        rule_sqls.append(
-            """
+        # Query owner can view-query
+        rule_sqls.append("""
             SELECT database_name AS parent, name AS child, 1 AS allow,
               'query owner' AS reason
             FROM queries
             WHERE owner_id = :query_owner_id
-            """
-        )
+            """)
 
+    # restriction_sql enforces private queries ONLY visible to owner
     return PermissionSQL(
         sql="\nUNION ALL\n".join(rule_sqls) if rule_sqls else None,
         restriction_sql="""

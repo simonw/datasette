@@ -94,11 +94,17 @@ form.sql .query-create-sql textarea#sql-editor {
 .query-create-options input[type=checkbox] {
     margin: 0;
 }
-.query-create-option-note {
+.query-create-option-note,
+.query-create-analysis-note {
     color: #4f5b6d;
     flex-basis: 100%;
     font-size: 0.82rem;
+}
+.query-create-option-note {
     margin: -0.45rem 0 0;
+}
+.query-create-analysis-note {
+    margin: 0;
 }
 .query-create-action {
     margin: 0.35rem 0 1rem;
@@ -160,9 +166,9 @@ form.sql .query-create-sql textarea#sql-editor {
     <p class="query-create-sql sql-editor"><textarea id="sql-editor" name="sql"{% if sql %} style="height: {{ sql.split("\n")|length + 2 }}em"{% endif %}>{{ sql }}</textarea></p>
 
     <p class="query-create-options">
+        <span class="query-create-analysis-note" data-query-create-analysis-note aria-live="polite">{% if analysis_error %}This query cannot be saved until the SQL is valid.{% elif not has_sql %}Enter SQL to analyze this query.{% elif analysis_is_write %}This query updates data in the database.{% else %}This is a read-only query.{% endif %}</span>
         <input type="hidden" name="is_private" value="0">
         <label><input type="checkbox" name="is_private" value="1"{% if is_private %} checked{% endif %}> Private</label>
-        <label><input type="checkbox" data-query-create-writable{% if analysis_is_write %} checked{% endif %} disabled> Writable</label>
         <span class="query-create-option-note">Queries marked private can only be seen by you, their creator.</span>
     </p>
     {% if sql and analysis_is_write %}
@@ -249,9 +255,24 @@ window.addEventListener("DOMContentLoaded", () => {
   const submitButton = form
     ? form.querySelector("[data-query-create-submit]")
     : null;
-  const writableCheckbox = form
-    ? form.querySelector("[data-query-create-writable]")
+  const analysisNote = form
+    ? form.querySelector("[data-query-create-analysis-note]")
     : null;
+
+  function updateAnalysisNote(data) {
+    if (!analysisNote) {
+      return;
+    }
+    if (data.analysis_error) {
+      analysisNote.textContent = "This query cannot be saved until the SQL is valid.";
+    } else if (data.has_sql === false) {
+      analysisNote.textContent = "Enter SQL to analyze this query.";
+    } else if (data.analysis_is_write) {
+      analysisNote.textContent = "This query updates data in the database.";
+    } else {
+      analysisNote.textContent = "This is a read-only query.";
+    }
+  }
 
   window.datasetteSqlParameters.setupSqlParameterRefresh({
     form,
@@ -262,9 +283,7 @@ window.addEventListener("DOMContentLoaded", () => {
       if (submitButton) {
         submitButton.disabled = data.save_disabled;
       }
-      if (writableCheckbox) {
-        writableCheckbox.checked = data.analysis_is_write;
-      }
+      updateAnalysisNote(data);
     },
     onError(error) {
       window.datasetteSqlAnalysis.renderAnalysis(analysisSection, {
@@ -274,9 +293,7 @@ window.addEventListener("DOMContentLoaded", () => {
       if (submitButton) {
         submitButton.disabled = true;
       }
-      if (writableCheckbox) {
-        writableCheckbox.checked = false;
-      }
+      updateAnalysisNote({ analysis_error: error.message });
     },
   });
 });

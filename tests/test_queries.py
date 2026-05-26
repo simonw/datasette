@@ -990,6 +990,10 @@ async def test_create_query_ui_and_arbitrary_sql_save_link():
         "/data/-/queries/insert?sql=select+*+from+dogs",
         actor={"id": "root"},
     )
+    write_create_response = await ds.client.get(
+        "/data/-/queries/insert?sql=insert+into+dogs+(name)+values+('Cleo')",
+        actor={"id": "root"},
+    )
     blank_create_response = await ds.client.get(
         "/data/-/queries/insert",
         actor={"id": "root"},
@@ -1005,7 +1009,6 @@ async def test_create_query_ui_and_arbitrary_sql_save_link():
 
     assert create_response.status_code == 200
     assert "Create query" in create_response.text
-    assert "Writable" in create_response.text
     assert 'type="radio"' not in create_response.text
     assert 'name="parameters"' not in create_response.text
     assert 'id="query-parameters"' not in create_response.text
@@ -1024,11 +1027,22 @@ async def test_create_query_ui_and_arbitrary_sql_save_link():
     assert "renderParameters: false" in create_response.text
     assert "datasetteSqlAnalysis.renderAnalysis" in create_response.text
     assert "data-query-create-submit" in create_response.text
-    assert "data-query-create-writable" in create_response.text
+    assert "data-query-create-writable" not in create_response.text
+    assert "data-query-create-sql-type" not in create_response.text
+    assert "data-query-create-analysis-note" in create_response.text
+    assert "SQL type:" not in create_response.text
+    assert (
+        '<span class="query-create-analysis-note" data-query-create-analysis-note aria-live="polite">This is a read-only query.</span>'
+        in create_response.text
+    )
+    assert "disabled> Writable</label>" not in create_response.text
     assert (
         "Queries marked private can only be seen by you, their creator."
         in create_response.text
     )
+    assert create_response.text.index(
+        "This is a read-only query."
+    ) < create_response.text.index('<input type="hidden" name="is_private" value="0">')
     assert "<h2>Query operations</h2>" in create_response.text
     assert '<table class="execute-write-analysis">' in create_response.text
     assert '<th scope="col">Required permission</th>' in create_response.text
@@ -1052,6 +1066,12 @@ async def test_create_query_ui_and_arbitrary_sql_save_link():
     assert (
         "<p>Analysis will show each affected table and required permission.</p>"
         not in blank_create_response.text
+    )
+    assert "Enter SQL to analyze this query." in blank_create_response.text
+    assert write_create_response.status_code == 200
+    assert (
+        '<span class="query-create-analysis-note" data-query-create-analysis-note aria-live="polite">This query updates data in the database.</span>'
+        in write_create_response.text
     )
     assert query_response.status_code == 200
     assert "Save this query" in query_response.text

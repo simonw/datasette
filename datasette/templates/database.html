@@ -59,7 +59,7 @@
         {% endfor %}
     </ul>
     {% if queries_more %}
-        <p><a href="{{ urls.database(database) }}/-/queries">View all queries</a></p>
+        <p><a href="{{ urls.database(database) }}/-/queries">View {{ "{:,}".format(queries_count) }} quer{% if queries_count == 1 %}y{% else %}ies{% endif %}</a></p>
     {% endif %}
 {% endif %}
 

@@ -102,6 +102,11 @@ class DatabaseView(View):
         )
         canned_queries = queries_page["queries"]
         queries_more = queries_page["has_more"]
+        queries_count = (
+            await datasette.count_queries(database, actor=request.actor)
+            if queries_more
+            else len(canned_queries)
+        )
 
         async def database_actions():
             links = []
@@ -134,6 +139,7 @@ class DatabaseView(View):
             "views": sql_views,
             "queries": canned_queries,
             "queries_more": queries_more,
+            "queries_count": queries_count,
             "allow_execute_sql": allow_execute_sql,
             "table_columns": (
                 await _table_columns(datasette, database) if allow_execute_sql else {}
@@ -168,6 +174,7 @@ class DatabaseView(View):
                     views=sql_views,
                     queries=canned_queries,
                     queries_more=queries_more,
+                    queries_count=queries_count,
                     allow_execute_sql=allow_execute_sql,
                     table_columns=(
                         await _table_columns(datasette, database)
@@ -219,6 +226,7 @@ class DatabaseContext(Context):
     queries_more: bool = field(
         metadata={"help": "Boolean indicating if more saved queries are available"}
     )
+    queries_count: int = field(metadata={"help": "Count of visible saved queries"})
     allow_execute_sql: bool = field(
         metadata={"help": "Boolean indicating if custom SQL can be executed"}
     )
@@ -775,7 +783,15 @@ async def _query_create_analysis_data(datasette, db, sql, actor):
 
 
 async def _query_create_form_context(
-    datasette, request, db, *, sql="", name="", title="", description="", is_private=True
+    datasette,
+    request,
+    db,
+    *,
+    sql="",
+    name="",
+    title="",
+    description="",
+    is_private=True,
 ):
     analysis_data = await _query_create_analysis_data(datasette, db, sql, request.actor)
     return {

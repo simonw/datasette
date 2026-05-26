@@ -66,7 +66,7 @@
         {% if not hide_sql %}<button id="sql-format" type="button" hidden>Format SQL</button>{% endif %}
         <input type="submit" value="Run SQL"{% if canned_query_write and db_is_immutable %} disabled{% endif %}>
         {{ show_hide_hidden }}
-        {% if save_query_url %}<a href="{{ save_query_url }}" class="save-query">Save query</a>{% endif %}
+        {% if save_query_url %}<a href="{{ save_query_url }}" class="save-query">Save this query</a>{% endif %}
         {% if canned_query and edit_sql_url %}<a href="{{ edit_sql_url }}" class="canned-query-edit-sql">Edit SQL</a>{% endif %}
     </p>
 </form>

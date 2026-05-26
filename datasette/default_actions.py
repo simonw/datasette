@@ -68,13 +68,6 @@ def register_actions():
             resource_class=DatabaseResource,
             also_requires="execute-sql",
         ),
-        Action(
-            name="publish-query",
-            abbr="pq",
-            description="Publish saved queries for actors without execute-sql",
-            resource_class=DatabaseResource,
-            also_requires="insert-query",
-        ),
         # Table-level actions (child-level)
         Action(
             name="view-table",

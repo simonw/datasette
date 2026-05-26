@@ -13,9 +13,9 @@ Terminology change: these are now "queries", not "canned queries". Legacy code a
 - Internal table name: `queries`.
 - Query definitions should use real columns, not a JSON blob for all options.
 - Query parameter names live in a `parameters` text column as a JSON array. No default values for parameters in this pass.
-- No `queries_database_is_published_idx` index.
-- User-created queries require `execute-sql` and `insert-query` on the database. Writable queries additionally require matching table write permissions discovered by `Database.analyze_sql()`.
-- `publish-query` is the permission for creating or updating a query so users without `execute-sql` can execute it.
+- No separate index is needed for the privacy/trust flags yet.
+- User-created queries require `execute-sql` and `insert-query` on the database. They default to private, and writable queries additionally require matching table write permissions discovered by `Database.analyze_sql()`.
+- Configured queries default to trusted, which means actors who can view them can execute them without also holding `execute-sql` or the relevant write permissions. Config can opt out with `is_trusted: false`.
 - Add `update-query` and `delete-query`, so administrators can manage queries created by other users.
 - Remove the old `canned_queries()` hook from core. If we want compatibility later, build a separate `datasette-old-canned-queries` plugin.
 - Writable user-created queries can be supported using `Database.analyze_sql()`, provided we fail closed when analysis cannot prove the required permissions.
@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS queries (
     options TEXT NOT NULL DEFAULT '{}',
     parameters TEXT NOT NULL DEFAULT '[]',
     is_write INTEGER NOT NULL DEFAULT 0 CHECK (is_write IN (0, 1)),
-    is_published INTEGER NOT NULL DEFAULT 0 CHECK (is_published IN (0, 1)),
+    is_private INTEGER NOT NULL DEFAULT 0 CHECK (is_private IN (0, 1)),
+    is_trusted INTEGER NOT NULL DEFAULT 0 CHECK (is_trusted IN (0, 1)),
     source TEXT NOT NULL DEFAULT 'user',
     owner_id TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -64,11 +65,12 @@ Column notes:
 - Less common presentation and writable-query behavior lives in `options`, stored as a JSON object. That covers `hide_sql`, `fragment`, `on_success_message`, `on_success_message_sql`, `on_success_redirect`, `on_error_message`, and `on_error_redirect`.
 - `parameters` is a JSON array of parameter names, stored as text. This preserves explicit parameter order, but does not support labels or default values.
 - Existing writable query behavior gets `is_write` as a column. Success/error messages, success/error redirects, and `on_success_message_sql` are stored in `options`.
-- `is_published` only applies to read-only queries. A writable query can still be public through explicit `view-query` permissions, but the "publish for users without execute-sql" shortcut should be read-only.
+- `is_private` means the query is only visible to its owning actor. This is enforced as a permission restriction, so broader `view-query` grants do not expose private rows.
+- `is_trusted` means execution skips the usual `execute-sql` or write-permission checks after `view-query` has allowed access.
 - `source` distinguishes `user`, `config`, and `plugin` rows.
 - `owner_id` is the actor id for user-created rows. It is `NULL` for config/plugin rows.
 
-No separate index is needed on `(database_name, name)` because the primary key already creates one. Do not add a `queries_database_is_published_idx` index for now.
+No separate index is needed on `(database_name, name)` because the primary key already creates one.
 
 `QueryResource.resources_sql()` can become:
 
@@ -104,7 +106,6 @@ Remove the old `canned_queries()` hookspec and all core calls to it. If compatib
 Add core actions:
 
 - `insert-query`, database-level, for creating queries in a database.
-- `publish-query`, database-level, for marking read-only queries as executable by actors who lack `execute-sql`.
 - `update-query`, query-level, for modifying existing query definitions.
 - `delete-query`, query-level, for deleting existing query definitions.
 
@@ -114,17 +115,11 @@ User-created query creation requires:
 - `insert-query` on `DatabaseResource(database)`
 - If analysis shows the query is writable, the table-level write permissions described in the writable query section.
 
-Setting `is_published=1` requires:
-
-- `publish-query` on `DatabaseResource(database)`
-- The query must be read-only according to `Database.analyze_sql()`.
-
 Updating an existing query requires:
 
 - `update-query` on `QueryResource(database, query)` or default owner permission for a user-owned row.
 - If the SQL changes, also require `execute-sql` on the database.
 - If the changed SQL is writable, also require the table-level write permissions described in the writable query section.
-- If `is_published` changes from `0` to `1`, also require `publish-query` on the database.
 
 Deleting an existing query requires:
 
@@ -133,18 +128,18 @@ Deleting an existing query requires:
 Default owner permissions:
 
 - For `source='user' AND owner_id = actor.id`, grant `update-query` and `delete-query`.
-- Do not automatically grant execution if the user no longer has the execution permission described below.
+- For `source='user' AND owner_id = actor.id`, grant `view-query`. If the query is private, restriction SQL ensures no other actor sees it through a broader grant.
 
 ## Executing queries
 
 Default execution rule for read-only queries:
 
-- If `is_published=0`, the actor needs `execute-sql` on the database.
-- If `is_published=1`, the actor can execute the query without `execute-sql`.
+- If `is_trusted=0`, the actor needs `execute-sql` on the database.
+- If `is_trusted=1`, the actor can execute the query without `execute-sql`, provided `view-query` allows access.
 
 Default execution rule for user-created writable queries:
 
-- `is_published` must be `0`.
+- `is_trusted` must be `0`.
 - The actor must have `view-query`.
 - The actor must currently have every write permission required by fresh `Database.analyze_sql()` results for the query SQL.
 
@@ -152,14 +147,14 @@ Implementation:
 
 - Remove `view-query` from the broad `DEFAULT_ALLOW_ACTIONS` set.
 - Replace it with query-aware default `view-query` permission SQL.
-- For `is_published=1 AND is_write=0`, emit a child-level `view-query` allow.
-- For `is_published=0 AND is_write=0`, emit child-level `view-query` allows for queries whose parent database is in the actor's `execute-sql` allowed resources.
-- For `is_write=1 AND source='user'`, emit `view-query` only for the owner or actors with explicit `view-query` permission, then have `QueryView` perform the fresh analysis/table-permission check before execution.
-- For trusted writable queries, preserve current behavior by emitting child-level `view-query` allows for `is_write=1 AND source IN ('config', 'plugin')` when Datasette is not running with `--default-deny`.
+- Emit default `view-query` allows for non-private rows when Datasette is not running with `--default-deny`.
+- Emit default `view-query` allows for the owning actor.
+- Use `restriction_sql` to limit private rows to their owner even when broader `view-query` permissions exist.
+- Have `QueryView` perform the fresh `execute-sql` or table-permission check before execution unless the row has `is_trusted=1`.
 
-For read-only queries this keeps `QueryView` simple: it checks `view-query` for the query resource, and the default permission hook encodes the relationship with `execute-sql`. User-created writable queries need one additional runtime permission check because their required table permissions are derived from fresh SQL analysis.
+For read-only queries this keeps `QueryView` explicit: it checks `view-query` for the query resource, then checks `execute-sql` unless the row is trusted. User-created writable queries need one additional runtime permission check because their required table permissions are derived from fresh SQL analysis.
 
-Explicit deny rules should still be able to block a published query.
+Explicit deny rules should still be able to block a query, and `--default-deny` still blocks trusted queries unless something grants `view-query`.
 
 ## Writable queries
 
@@ -180,7 +175,7 @@ Validation flow for user-created queries:
 1. Derive named parameters from the SQL and pass harmless placeholder values into `db.analyze_sql()` so SQLite can prepare statements with bindings.
 2. If analysis raises a SQLite error, reject the query.
 3. If every table access is `read`, treat the query as read-only and require `execute-sql` plus `insert-query`/`update-query` as described above.
-4. If any table access is `insert`, `update`, or `delete`, treat the query as writable and force `is_published=0`.
+4. If any table access is `insert`, `update`, or `delete`, treat the query as writable and force `is_trusted=0`.
 5. Reject writable user-created queries that access a database other than the database they are being saved against, until `analyze_sql()` can reliably map attached SQLite schemas back to Datasette database names.
 6. For every write access returned by analysis, require the corresponding permission on `TableResource(access.database, access.table)`:
    - `insert` -> `insert-row`
@@ -200,7 +195,7 @@ Fail closed cases for user-created writable queries:
 - Analysis reports any write operation that cannot be mapped to a Datasette table resource.
 - Analysis reports writes outside the target database.
 - The actor lacks any required table write permission.
-- `is_published=1` is requested.
+- `is_trusted=1` is requested through the user-facing API.
 
 This gives us writable user-created queries without letting `execute-sql` alone become a path to create arbitrary write endpoints.
 
@@ -225,7 +220,7 @@ Create request:
     "sql": "select * from customers order by revenue desc limit 20",
     "title": "Top customers",
     "description": "Highest revenue customers",
-    "is_published": false,
+    "is_private": true,
     "parameters": ["region"]
   }
 }
@@ -242,7 +237,8 @@ Successful create returns `201` and the created query definition:
     "sql": "select * from customers order by revenue desc limit 20",
     "title": "Top customers",
     "description": "Highest revenue customers",
-    "is_published": false,
+    "is_private": true,
+    "is_trusted": false,
     "parameters": ["region"]
   }
 }
@@ -254,7 +250,7 @@ Update request, imitating `RowUpdateView`:
 {
   "update": {
     "title": "Top customers by revenue",
-    "is_published": true
+    "is_private": false
   },
   "return": true
 }
@@ -270,7 +266,8 @@ Successful update returns `{"ok": true}` by default. With `"return": true`, retu
     "name": "top_customers",
     "sql": "select * from customers order by revenue desc limit 20",
     "title": "Top customers by revenue",
-    "is_published": true
+    "is_private": false,
+    "is_trusted": false
   }
 }
 ```
@@ -317,7 +314,8 @@ await datasette.add_query(
     fragment=None,
     parameters=None,
     is_write=False,
-    is_published=False,
+    is_private=False,
+    is_trusted=False,
     source="plugin",
     owner_id=None,
     on_success_message=None,
@@ -340,7 +338,8 @@ await datasette.update_query(
     fragment=UNCHANGED,
     parameters=UNCHANGED,
     is_write=UNCHANGED,
-    is_published=UNCHANGED,
+    is_private=UNCHANGED,
+    is_trusted=UNCHANGED,
     source=UNCHANGED,
     owner_id=UNCHANGED,
     on_success_message=UNCHANGED,
@@ -360,7 +359,8 @@ await datasette.list_queries(
     cursor=None,
     q=None,
     is_write=None,
-    is_published=None,
+    is_private=None,
+    is_trusted=None,
     source=None,
     owner_id=None,
 )
@@ -382,15 +382,13 @@ For column-backed fields, `None` should write SQL `NULL`. For option fields, `No
 
 Implementation detail: build the `UPDATE` statement dynamically from fields whose value is not `UNCHANGED`, validate non-nullable fields before writing, and update `updated_at` whenever at least one field changes.
 
-The read methods should reconstruct the existing dictionary shape used by query execution and templates, with `name`, `sql`, display fields, write fields, `params`, `is_published`, `owner_id`, and `source`. `parameters` should be returned as the decoded JSON array and exposed as `params` where existing query execution code expects that key. Option values should be unpacked from the `options` JSON object and returned as the same top-level keys accepted by `add_query()` and `update_query()`.
+The read methods should reconstruct the existing dictionary shape used by query execution and templates, with `name`, `sql`, display fields, write fields, `params`, `is_private`, `is_trusted`, `owner_id`, and `source`. `parameters` should be returned as the decoded JSON array and exposed as `params` where existing query execution code expects that key. Option values should be unpacked from the `options` JSON object and returned as the same top-level keys accepted by `add_query()` and `update_query()`.
 
 ## Query page save UI
 
 On `/{database}/-/query`, if the actor has both `execute-sql` and `insert-query`, show a save control for valid read-only SQL. That page already executes read-only arbitrary SQL, so the first UI can stay read-only even though the JSON API can accept writable SQL after `Database.analyze_sql()` validation.
 
-The save form should call `POST /{database}/-/queries/insert` and default to `is_published=false`.
-
-If the actor also has `publish-query`, include a publish control. The UI copy should make it clear that publishing allows people without arbitrary SQL permission to run this query.
+The save form should call `POST /{database}/-/queries/insert` and default to `is_private=true`.
 
 On `/{database}`, show a preview of the first 5 visible queries using `list_queries(..., limit=5)`. If the page has `has_more`, show a link to `/{database}/-/queries` rather than rendering hundreds or thousands of query links inline. The full `/{database}/-/queries` page provides search, filters, and cursor pagination. The global `/-/queries` page reuses the same interface and shows the database for each query.
 
@@ -403,7 +401,7 @@ This page should require `execute-sql` and `insert-query` to access. It should p
 - Read-only
 - Writable
 
-Read-only mode can share the same fields as the arbitrary SQL save flow: name, title, description, parameters, and optional published status if the actor has `publish-query`.
+Read-only mode can share the same fields as the arbitrary SQL save flow: name, title, description, parameters, and privacy status.
 
 Writable mode should always run `Database.analyze_sql()` and show an analysis panel before saving:
 
@@ -413,7 +411,7 @@ Writable mode should always run `Database.analyze_sql()` and show an analysis pa
 - whether the actor has that permission
 - source, when the operation comes from a trigger or view
 
-The Save button should be disabled until analysis succeeds and every required table write permission is allowed. Writable mode should not show a publish control, because user-created writable queries cannot be published.
+The Save button should be disabled until analysis succeeds and every required table write permission is allowed.
 
 The existing edit-SQL flow from query pages can continue to point back to arbitrary SQL. A later enhancement can add "update this query" when the actor owns it or has `update-query`.
 
@@ -427,14 +425,16 @@ The existing edit-SQL flow from query pages can continue to point back to arbitr
 - `QueryResource.resources_sql()` returns rows from `queries`.
 - Database page and `/-/jump` list queries from the internal DB.
 - `view-query` is no longer globally default-allowed; default query permissions come from the query-aware hook.
-- Unpublished read-only query requires `execute-sql` to execute.
-- Published read-only query can be executed without `execute-sql`.
-- Setting `is_published=true` requires `publish-query`.
+- Private query is only visible to its owner, even when a broader `view-query` rule applies.
+- Non-trusted read-only query requires `execute-sql` to execute.
+- Trusted read-only query can be executed without `execute-sql` after `view-query` passes.
+- Config queries default to trusted and can opt out with `is_trusted: false`.
+- User API rejects client-supplied `is_trusted`.
 - User-created query requires both `execute-sql` and `insert-query`.
 - User-created writable query creation uses `Database.analyze_sql()` and requires matching `insert-row`, `update-row`, and/or `delete-row` permissions for every reported write access.
 - `/{database}/-/queries/-/create` provides the writable-query authoring UI with an analysis panel and disabled save until all required write permissions pass.
 - User-created writable query execution re-runs `Database.analyze_sql()` and re-checks table write permissions.
-- User-created writable query cannot be published.
+- User-created writable query cannot be trusted through the user API.
 - Query update uses `POST /{database}/{query}/-/update` with an `{"update": {...}}` body.
 - Query delete uses `POST /{database}/{query}/-/delete`.
 - There are no `PATCH` or HTTP `DELETE` routes for query management.

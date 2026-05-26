@@ -26,6 +26,32 @@ DEFAULT_ALLOW_ACTIONS = frozenset(
 )
 
 
+def _configured_query_restriction_selects(datasette: "Datasette") -> tuple[list[str], dict]:
+    selects = []
+    params = {}
+    for index, (database_name, db_config) in enumerate(
+        ((datasette.config or {}).get("databases") or {}).items()
+    ):
+        for query_name, query_config in (db_config.get("queries") or {}).items():
+            if isinstance(query_config, dict) and query_config.get("is_private"):
+                continue
+            parent_param = f"query_config_parent_{index}_{len(selects)}"
+            child_param = f"query_config_child_{index}_{len(selects)}"
+            selects.append(
+                f"""
+                SELECT :{parent_param} AS parent, :{child_param} AS child
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM queries
+                    WHERE database_name = :{parent_param}
+                      AND name = :{child_param}
+                )
+                """
+            )
+            params[parent_param] = database_name
+            params[child_param] = query_name
+    return selects, params
+
+
 @hookimpl(specname="permission_resources_sql")
 async def default_allow_sql_check(
     datasette: "Datasette",
@@ -93,61 +119,45 @@ async def default_query_permissions_sql(
     if action != "view-query":
         return None
 
-    execute_sql = await datasette.allowed_resources_sql(
-        action="execute-sql", actor=actor
-    )
-    sql = execute_sql.sql
-    params = {}
-    for key, value in execute_sql.params.items():
-        new_key = f"query_execute_sql_{key}"
-        sql = sql.replace(f":{key}", f":{new_key}")
-        params[new_key] = value
-
-    trusted_writable_sql = ""
+    params = {"query_owner_id": actor_id}
+    rule_sqls = []
     if not datasette.default_deny:
-        trusted_writable_sql = """
-            UNION ALL
+        rule_sqls.append(
+            """
             SELECT database_name AS parent, name AS child, 1 AS allow,
-              'trusted writable query' AS reason
+              'non-private query' AS reason
             FROM queries
-            WHERE is_write = 1
-              AND source IN ('config', 'plugin')
-        """
+            WHERE is_private = 0
+            """
+        )
 
-    user_writable_sql = ""
     if actor_id is not None:
-        params["query_owner_id"] = actor_id
-        user_writable_sql = """
-            UNION ALL
+        rule_sqls.append(
+            """
             SELECT database_name AS parent, name AS child, 1 AS allow,
               'query owner' AS reason
             FROM queries
-            WHERE is_write = 1
-              AND source = 'user'
-              AND owner_id = :query_owner_id
+            WHERE owner_id = :query_owner_id
+            """
+        )
+
+    config_restriction_selects, config_restriction_params = (
+        _configured_query_restriction_selects(datasette)
+    )
+
+    restriction_sqls = [
         """
+        SELECT database_name AS parent, name AS child
+        FROM queries
+        WHERE is_private = 0
+           OR owner_id = :query_owner_id
+        """
+    ]
+    restriction_sqls.extend(config_restriction_selects)
+    params.update(config_restriction_params)
 
     return PermissionSQL(
-        sql=f"""
-        WITH execute_sql_allowed AS (
-            {sql}
-        )
-        SELECT database_name AS parent, name AS child, 1 AS allow,
-          'published query' AS reason
-        FROM queries
-        WHERE is_write = 0
-          AND is_published = 1
-        UNION ALL
-        SELECT q.database_name AS parent, q.name AS child, 1 AS allow,
-          'execute-sql allows query' AS reason
-        FROM queries q
-        JOIN execute_sql_allowed es
-          ON es.parent = q.database_name
-         AND es.child IS NULL
-        WHERE q.is_write = 0
-          AND q.is_published = 0
-        {trusted_writable_sql}
-        {user_writable_sql}
-        """,
+        sql="\nUNION ALL\n".join(rule_sqls) if rule_sqls else None,
+        restriction_sql="\nUNION ALL\n".join(restriction_sqls),
         params=params,
     )

@@ -1302,16 +1302,6 @@ Actor is allowed to create saved queries in a database.
 ``resource`` - ``datasette.resources.DatabaseResource(database)``
     ``database`` is the name of the database (string)
 
-.. _actions_publish_query:
-
-publish-query
--------------
-
-Actor is allowed to publish a saved read-only query so actors without ``execute-sql`` can run it.
-
-``resource`` - ``datasette.resources.DatabaseResource(database)``
-    ``database`` is the name of the database (string)
-
 .. _actions_update_query:
 
 update-query

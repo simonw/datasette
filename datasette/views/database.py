@@ -428,7 +428,7 @@ _query_fields = {
     "fragment",
     "parameters",
     "params",
-    "is_published",
+    "is_private",
     "on_success_message",
     "on_success_message_sql",
     "on_success_redirect",
@@ -571,7 +571,7 @@ async def _check_query_name(db, name, *, existing=False):
         raise QueryValidationError("Query name conflicts with a table or view")
 
 
-async def _analyze_user_query(datasette, db, sql, *, actor, is_published):
+async def _analyze_user_query(datasette, db, sql, *, actor):
     if not sql or not isinstance(sql, str):
         raise QueryValidationError("SQL is required")
     derived = _derived_query_parameters(sql)
@@ -583,8 +583,6 @@ async def _analyze_user_query(datasette, db, sql, *, actor, is_published):
 
     is_write = _analysis_is_write(analysis)
     if is_write:
-        if is_published:
-            raise QueryValidationError("Writable queries cannot be published")
         try:
             await datasette.ensure_query_write_permissions(
                 db.name, sql, actor=actor, analysis=analysis
@@ -680,6 +678,26 @@ async def _prepare_execute_write(datasette, db, sql, params, actor):
     return parameter_names, params, analysis
 
 
+async def _ensure_stored_query_execution_permissions(datasette, db, query, actor):
+    if query.get("is_trusted"):
+        return
+    if query.get("write"):
+        await datasette.ensure_permission(
+            action="execute-write-sql",
+            resource=DatabaseResource(db.name),
+            actor=actor,
+        )
+        await datasette.ensure_query_write_permissions(
+            db.name, query["sql"], actor=actor
+        )
+    else:
+        await datasette.ensure_permission(
+            action="execute-sql",
+            resource=DatabaseResource(db.name),
+            actor=actor,
+        )
+
+
 async def _execute_write_analysis_data(datasette, db, sql, actor):
     parameter_names = []
     analysis_rows = []
@@ -752,7 +770,7 @@ async def _inserted_row_url(datasette, db, analysis, cursor):
 
 def _apply_query_data_types(data):
     typed = dict(data)
-    for key in ("hide_sql", "is_published"):
+    for key in ("hide_sql", "is_private"):
         if key in typed:
             typed[key] = _as_bool(typed[key])
     return typed
@@ -769,20 +787,12 @@ async def _prepare_query_create(datasette, request, db, data):
     if await datasette.get_query(db.name, name) is not None:
         raise QueryValidationError("Query already exists")
 
-    is_published = _as_bool(data.get("is_published"))
     is_write, derived, analysis = await _analyze_user_query(
         datasette,
         db,
         data.get("sql"),
         actor=request.actor,
-        is_published=is_published,
     )
-    if is_published and not await datasette.allowed(
-        action="publish-query",
-        resource=DatabaseResource(db.name),
-        actor=request.actor,
-    ):
-        raise QueryValidationError("Permission denied: need publish-query", status=403)
     if not is_write and any(data.get(field) for field in _query_write_fields):
         raise QueryValidationError("Writable query fields require writable SQL")
 
@@ -800,7 +810,8 @@ async def _prepare_query_create(datasette, request, db, data):
         "fragment": data.get("fragment"),
         "parameters": parameters,
         "is_write": is_write,
-        "is_published": is_published,
+        "is_private": _as_bool(data.get("is_private", True)),
+        "is_trusted": False,
         "source": "user",
         "owner_id": _actor_id(request.actor),
         "on_success_message": data.get("on_success_message"),
@@ -819,7 +830,6 @@ async def _prepare_query_update(datasette, request, db, existing, update):
 
     update = _apply_query_data_types(update)
     sql = update.get("sql", existing["sql"])
-    is_published = update.get("is_published", existing["is_published"])
     query_is_write = existing["is_write"]
     derived = _derived_query_parameters(sql)
     parameters = None
@@ -830,19 +840,7 @@ async def _prepare_query_update(datasette, request, db, existing, update):
             db,
             sql,
             actor=request.actor,
-            is_published=is_published,
         )
-    elif is_published and query_is_write:
-        raise QueryValidationError("Writable queries cannot be published")
-    if is_published and not existing["is_published"]:
-        if not await datasette.allowed(
-            action="publish-query",
-            resource=DatabaseResource(db.name),
-            actor=request.actor,
-        ):
-            raise QueryValidationError(
-                "Permission denied: need publish-query", status=403
-            )
 
     if "parameters" in update or "params" in update:
         parameters = _coerce_query_parameters(
@@ -864,7 +862,7 @@ async def _prepare_query_update(datasette, request, db, existing, update):
         "fragment": update.get("fragment"),
         "parameters": parameters,
         "is_write": query_is_write,
-        "is_published": is_published,
+        "is_private": update.get("is_private"),
         "on_success_message": update.get("on_success_message"),
         "on_success_message_sql": update.get("on_success_message_sql"),
         "on_success_redirect": update.get("on_success_redirect"),
@@ -1141,8 +1139,8 @@ class QueryListView(BaseView):
                 default=20 if format_ == "html" else 50,
             )
             is_write = _as_optional_bool(request.args.get("is_write"), "is_write")
-            is_published = _as_optional_bool(
-                request.args.get("is_published"), "is_published"
+            is_private = _as_optional_bool(
+                request.args.get("is_private"), "is_private"
             )
         except QueryValidationError as ex:
             return _error([ex.message], ex.status)
@@ -1154,7 +1152,7 @@ class QueryListView(BaseView):
             cursor=request.args.get("_next"),
             q=request.args.get("q") or None,
             is_write=is_write,
-            is_published=is_published,
+            is_private=is_private,
             source=request.args.get("source") or None,
             owner_id=request.args.get("owner_id") or None,
             include_private=True,
@@ -1186,12 +1184,14 @@ class QueryListView(BaseView):
             "next_url": next_url,
             "has_more": page["has_more"],
             "limit": page["limit"],
+            "show_private_note": any(query["is_private"] for query in page["queries"]),
+            "show_trusted_note": any(query["is_trusted"] for query in page["queries"]),
             "query_list_path": query_list_path,
             "show_database": database is None,
             "filters": {
                 "q": request.args.get("q") or "",
                 "is_write": request.args.get("is_write") or "",
-                "is_published": request.args.get("is_published") or "",
+                "is_private": request.args.get("is_private") or "",
                 "source": request.args.get("source") or "",
                 "owner_id": request.args.get("owner_id") or "",
             },
@@ -1255,11 +1255,6 @@ class QueryCreateView(BaseView):
                 "database_color": db.color,
                 "sql": sql,
                 "parameter_names": parameter_names,
-                "can_publish": await self.ds.allowed(
-                    action="publish-query",
-                    resource=DatabaseResource(db.name),
-                    actor=request.actor,
-                ),
                 "analysis_error": analysis_error,
                 "analysis_rows": analysis_rows,
                 "analysis_is_write": bool(
@@ -1435,9 +1430,9 @@ class QueryView(View):
         ):
             raise Forbidden("You do not have permission to view this query")
 
-        if canned_query.get("write") and canned_query.get("source") == "user":
-            await datasette.ensure_query_write_permissions(
-                db.name, canned_query["sql"], actor=request.actor
+        if canned_query.get("write"):
+            await _ensure_stored_query_execution_permissions(
+                datasette, db, canned_query, request.actor
             )
 
         # If database is immutable, return an error
@@ -1558,6 +1553,10 @@ class QueryView(View):
             )
             if not visible:
                 raise Forbidden("You do not have permission to view this query")
+            if not canned_query_write:
+                await _ensure_stored_query_execution_permissions(
+                    datasette, db, canned_query, request.actor
+                )
 
         else:
             await datasette.ensure_permission(

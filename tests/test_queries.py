@@ -15,7 +15,6 @@ async def add_numbered_queries(ds, database, count):
             "select {} as query_number".format(i),
             title="Demo query {:02d}".format(i),
             description="Seeded demo query number {:02d}".format(i),
-            is_published=True,
             source="user",
             owner_id="root",
         )
@@ -44,7 +43,8 @@ async def test_queries_internal_table_schema():
         "options",
         "parameters",
         "is_write",
-        "is_published",
+        "is_private",
+        "is_trusted",
         "source",
         "owner_id",
         "created_at",
@@ -67,7 +67,7 @@ async def test_add_get_and_remove_query():
         hide_sql=True,
         fragment="chart",
         parameters=["region"],
-        is_published=True,
+        is_trusted=True,
         source="user",
         owner_id="alice",
     )
@@ -100,7 +100,8 @@ async def test_add_get_and_remove_query():
         "parameters": ["region"],
         "is_write": False,
         "write": False,
-        "is_published": True,
+        "is_private": False,
+        "is_trusted": True,
         "source": "user",
         "owner_id": "alice",
         "on_success_message": None,
@@ -161,7 +162,8 @@ async def test_update_query_only_updates_provided_fields():
     assert query["params"] == []
     assert query["on_success_redirect"] is None
     assert query["sql"] == "select 1"
-    assert query["is_published"] is False
+    assert query["is_private"] is False
+    assert query["is_trusted"] is False
     options_row = (
         await ds.get_internal_database().execute(
             """
@@ -208,7 +210,8 @@ async def test_config_queries_imported_to_internal_table():
         "parameters": ["name"],
         "is_write": False,
         "write": False,
-        "is_published": False,
+        "is_private": False,
+        "is_trusted": True,
         "source": "config",
         "owner_id": None,
         "on_success_message": None,
@@ -232,28 +235,169 @@ async def test_query_resources_come_from_internal_table():
 
 
 @pytest.mark.asyncio
-async def test_unpublished_query_requires_execute_sql_but_published_does_not():
-    ds = Datasette(memory=True, settings={"default_allow_sql": False})
+async def test_default_deny_blocks_view_query_even_for_trusted_query():
+    ds = Datasette(memory=True, default_deny=True)
     ds.add_memory_database("query_permissions", name="data")
     await ds.invoke_startup()
-    await ds.add_query("data", "unpublished", "select 1", is_published=False)
-    await ds.add_query("data", "published", "select 1", is_published=True)
+    await ds.add_query("data", "trusted", "select 1", is_trusted=True)
 
     assert not await ds.allowed(
-        action="execute-sql",
-        resource=DatabaseResource("data"),
+        action="view-query",
+        resource=QueryResource("data", "trusted"),
         actor=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_private_query_restriction_blocks_broad_view_query_permission():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-query": {"id": "*"},
+                    }
+                }
+            }
+        },
+    )
+    ds.add_memory_database("private_query_permissions", name="data")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "private_report",
+        "select 1",
+        is_private=True,
+        source="user",
+        owner_id="alice",
+    )
+    await ds.add_query(
+        "data",
+        "shared_report",
+        "select 2",
+        is_private=False,
+        source="user",
+        owner_id="alice",
+    )
+
+    assert await ds.allowed(
+        action="view-query",
+        resource=QueryResource("data", "private_report"),
+        actor={"id": "alice"},
     )
     assert not await ds.allowed(
         action="view-query",
-        resource=QueryResource("data", "unpublished"),
-        actor=None,
+        resource=QueryResource("data", "private_report"),
+        actor={"id": "bob"},
     )
     assert await ds.allowed(
         action="view-query",
-        resource=QueryResource("data", "published"),
-        actor=None,
+        resource=QueryResource("data", "shared_report"),
+        actor={"id": "bob"},
     )
+
+
+@pytest.mark.asyncio
+async def test_config_query_restriction_does_not_override_private_internal_query():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.add_memory_database("private_query_with_config_name", name="data")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "private_report",
+        "select 1",
+        is_private=True,
+        source="user",
+        owner_id="alice",
+    )
+    ds.config = {
+        "databases": {
+            "data": {
+                "permissions": {"view-query": {"id": "*"}},
+                "queries": {"private_report": {"sql": "select 2"}},
+            }
+        }
+    }
+
+    assert not await ds.allowed(
+        action="view-query",
+        resource=QueryResource("data", "private_report"),
+        actor={"id": "bob"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_untrusted_shared_query_execution_requires_execute_sql():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "viewer"},
+                        "view-query": {"id": "viewer"},
+                    }
+                }
+            }
+        },
+    )
+    ds.add_memory_database("untrusted_query_execution", name="data")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "shared_report",
+        "select 1 as one",
+        is_private=False,
+        is_trusted=False,
+        source="user",
+        owner_id="alice",
+    )
+
+    denied = await ds.client.get("/data/shared_report.json", actor={"id": "viewer"})
+    assert denied.status_code == 403
+
+    ds.config["databases"]["data"]["permissions"]["execute-sql"] = {"id": "viewer"}
+    allowed = await ds.client.get("/data/shared_report.json", actor={"id": "viewer"})
+    assert allowed.status_code == 200
+    assert allowed.json()["rows"] == [{"one": 1}]
+
+
+@pytest.mark.asyncio
+async def test_config_queries_are_trusted_by_default_but_can_opt_out():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-query": {"id": "viewer"},
+                    },
+                    "queries": {
+                        "trusted_report": {"sql": "select 1 as one"},
+                        "untrusted_report": {
+                            "sql": "select 2 as two",
+                            "is_trusted": False,
+                        },
+                    },
+                }
+            }
+        },
+    )
+    ds.add_memory_database("trusted_query_config", name="data")
+    await ds.invoke_startup()
+
+    trusted = await ds.client.get("/data/trusted_report.json", actor={"id": "viewer"})
+    untrusted = await ds.client.get(
+        "/data/untrusted_report.json", actor={"id": "viewer"}
+    )
+
+    assert trusted.status_code == 200
+    assert trusted.json()["rows"] == [{"one": 1}]
+    assert untrusted.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -281,7 +425,6 @@ async def test_query_actions_are_registered():
 
     assert ds.get_action("execute-write-sql").resource_class is DatabaseResource
     assert ds.get_action("insert-query").resource_class is DatabaseResource
-    assert ds.get_action("publish-query").resource_class is DatabaseResource
     assert ds.get_action("update-query").resource_class is QueryResource
     assert ds.get_action("delete-query").resource_class is QueryResource
 
@@ -430,13 +573,25 @@ async def test_query_list_search_filter_and_html():
         "private_query",
         "select 'private'",
         title="Private query",
-        is_published=False,
+        is_private=True,
         source="user",
         owner_id="root",
+    )
+    await ds.add_query(
+        "data",
+        "trusted_query",
+        "select 'trusted'",
+        title="Trusted query",
+        is_trusted=True,
+        source="config",
     )
 
     html_response = await ds.client.get(
         "/data/-/queries?q=02",
+        actor={"id": "root"},
+    )
+    flags_response = await ds.client.get(
+        "/data/-/queries",
         actor={"id": "root"},
     )
     json_response = await ds.client.get(
@@ -444,7 +599,7 @@ async def test_query_list_search_filter_and_html():
         actor={"id": "root"},
     )
     filtered_response = await ds.client.get(
-        "/data/-/queries.json?is_published=0",
+        "/data/-/queries.json?is_private=1",
         actor={"id": "root"},
     )
 
@@ -453,7 +608,22 @@ async def test_query_list_search_filter_and_html():
     assert "Demo query 01" not in html_response.text
     assert 'class="query-list-results"' in html_response.text
     assert "<legend>Mode</legend>" in html_response.text
-    assert 'type="radio" name="is_published" value="1"' in html_response.text
+    assert 'type="radio" name="is_private" value="1"' in html_response.text
+    assert "Only the owning actor can view this query." not in html_response.text
+    assert (
+        "Execution skips the usual SQL and write permission checks"
+        not in html_response.text
+    )
+    assert flags_response.status_code == 200
+    assert '<th scope="col">Owner</th>' in flags_response.text
+    assert '<th scope="col">Flags</th>' in flags_response.text
+    assert '<th scope="col">Mode</th>' not in flags_response.text
+    assert 'class="query-list-owner">root</td>' in flags_response.text
+    assert 'class="query-list-pill">Read-only</span>' in flags_response.text
+    assert 'class="query-list-pill query-list-pill-private">Private</span>' in flags_response.text
+    assert 'class="query-list-pill query-list-pill-trusted">Trusted</span>' in flags_response.text
+    assert "Only the owning actor can view this query." in flags_response.text
+    assert "Execution skips the usual SQL and write permission checks" in flags_response.text
     assert json_response.json()["queries"][0]["name"] == "demo_query_02"
     assert [query["name"] for query in filtered_response.json()["queries"]] == [
         "private_query"
@@ -491,7 +661,6 @@ async def test_global_query_list_api_and_html():
         "alpha_first",
         "select 1",
         title="Alpha first",
-        is_published=True,
         source="user",
         owner_id="root",
     )
@@ -500,7 +669,6 @@ async def test_global_query_list_api_and_html():
         "alpha_second",
         "select 2",
         title="Alpha second",
-        is_published=True,
         source="user",
         owner_id="root",
     )
@@ -509,7 +677,6 @@ async def test_global_query_list_api_and_html():
         "beta_first",
         "select 3",
         title="Beta first",
-        is_published=True,
         source="user",
         owner_id="root",
     )
@@ -548,7 +715,7 @@ async def test_global_query_list_api_and_html():
 
 
 @pytest.mark.asyncio
-async def test_query_insert_api_publish_requires_publish_query():
+async def test_query_insert_api_rejects_is_trusted():
     ds = Datasette(
         memory=True,
         default_deny=True,
@@ -564,17 +731,17 @@ async def test_query_insert_api_publish_requires_publish_query():
             }
         },
     )
-    ds.add_memory_database("query_publish_api", name="data")
+    ds.add_memory_database("query_trusted_api", name="data")
     await ds.invoke_startup()
 
     response = await ds.client.post(
         "/data/-/queries/insert",
         actor={"id": "writer"},
-        json={"query": {"name": "public", "sql": "select 1", "is_published": True}},
+        json={"query": {"name": "trusted", "sql": "select 1", "is_trusted": True}},
     )
 
-    assert response.status_code == 403
-    assert response.json()["errors"] == ["Permission denied: need publish-query"]
+    assert response.status_code == 400
+    assert response.json()["errors"] == ["Invalid keys: is_trusted"]
 
 
 @pytest.mark.asyncio
@@ -599,23 +766,9 @@ async def test_query_insert_api_creates_writable_query():
     assert response.status_code == 201
     query = response.json()["query"]
     assert query["is_write"] is True
-    assert query["is_published"] is False
+    assert query["is_private"] is True
+    assert query["is_trusted"] is False
     assert query["parameters"] == ["name"]
-
-    bad_response = await ds.client.post(
-        "/data/-/queries/insert",
-        actor={"id": "root"},
-        json={
-            "query": {
-                "name": "published_insert",
-                "sql": "insert into dogs (name) values (:name)",
-                "is_published": True,
-            }
-        },
-    )
-
-    assert bad_response.status_code == 400
-    assert bad_response.json()["errors"] == ["Writable queries cannot be published"]
 
 
 @pytest.mark.asyncio
@@ -1103,6 +1256,10 @@ async def test_user_writable_query_execution_rechecks_table_permissions():
         config={
             "databases": {
                 "data": {
+                    "permissions": {
+                        "view-database": {"id": ["alice", "bob"]},
+                        "execute-write-sql": {"id": ["alice", "bob"]},
+                    },
                     "tables": {
                         "dogs": {
                             "permissions": {

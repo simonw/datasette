@@ -27,9 +27,7 @@
     </p>
     <p><textarea id="sql-editor" name="sql"{% if sql %} style="height: {{ sql.split("\n")|length + 2 }}em"{% endif %}>{{ sql }}</textarea></p>
     <p><label for="query-parameters">Parameters</label> <input id="query-parameters" name="parameters" type="text" value="{{ parameter_names|join(', ') }}"></p>
-    {% if can_publish %}
-        <p><label><input type="checkbox" name="is_published" value="1"> Published</label></p>
-    {% endif %}
+    <p><label><input type="checkbox" name="is_private" value="1" checked> Private</label></p>
     {% if sql and analysis_is_write %}
         <p><a href="{{ urls.database(database) }}/-/execute-write?{{ {'sql': sql}|urlencode|safe }}">Execute write SQL</a></p>
     {% endif %}

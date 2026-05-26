@@ -73,7 +73,7 @@
     border-collapse: collapse;
     font-size: 0.9rem;
     margin: 0.25rem 0 1rem;
-    min-width: 36rem;
+    min-width: 42rem;
     width: 100%;
 }
 .query-list-results th,
@@ -100,6 +100,16 @@
     font-size: 0.78rem;
     margin: 0.15rem 0 0;
 }
+.query-list-owner {
+    color: #39445a;
+    font-family: var(--font-monospace, monospace);
+    white-space: nowrap;
+}
+.query-list-flags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
 .query-list-pill {
     background-color: #eef1f5;
     border: 1px solid #d7dde5;
@@ -116,14 +126,35 @@
     background-color: #fff4db;
     border-color: #e2b64e;
 }
-.query-list-pill-published {
+.query-list-pill-public {
     background-color: #e7f5ec;
     border-color: #9ecfab;
     color: #267a3e;
 }
-.query-list-pill-unpublished {
+.query-list-pill-private {
     background-color: #f7edf0;
     border-color: #dbb8c1;
+}
+.query-list-pill-trusted {
+    background-color: #e7f5ec;
+    border-color: #9ecfab;
+    color: #267a3e;
+}
+.query-list-empty {
+    color: #6b7280;
+}
+.query-list-footnotes {
+    border-top: 1px solid #d7dde5;
+    color: #4f5b6d;
+    font-size: 0.82rem;
+    margin: 0.35rem 0 1rem;
+    padding-top: 0.55rem;
+}
+.query-list-footnotes p {
+    margin: 0.25rem 0;
+}
+.query-list-footnotes .query-list-pill {
+    margin-right: 0.35rem;
 }
 .query-list-pagination a {
     border: 1px solid #007bff;
@@ -177,10 +208,10 @@
             <label><input type="radio" name="is_write" value="1"{% if filters.is_write == "1" %} checked{% endif %}> <span>Writable</span></label>
         </fieldset>
         <fieldset class="query-list-filter-group">
-            <legend>Publication</legend>
-            <label><input type="radio" name="is_published" value=""{% if not filters.is_published %} checked{% endif %}> <span>Any</span></label>
-            <label><input type="radio" name="is_published" value="1"{% if filters.is_published == "1" %} checked{% endif %}> <span>Published</span></label>
-            <label><input type="radio" name="is_published" value="0"{% if filters.is_published == "0" %} checked{% endif %}> <span>Unpublished</span></label>
+            <legend>Visibility</legend>
+            <label><input type="radio" name="is_private" value=""{% if not filters.is_private %} checked{% endif %}> <span>Any</span></label>
+            <label><input type="radio" name="is_private" value="0"{% if filters.is_private == "0" %} checked{% endif %}> <span>Normal</span></label>
+            <label><input type="radio" name="is_private" value="1"{% if filters.is_private == "1" %} checked{% endif %}> <span>Private</span></label>
         </fieldset>
     </div>
 </form>
@@ -191,8 +222,8 @@
             <tr>
                 {% if show_database %}<th scope="col">Database</th>{% endif %}
                 <th scope="col">Query</th>
-                <th scope="col">Mode</th>
-                <th scope="col">Publication</th>
+                <th scope="col">Owner</th>
+                <th scope="col">Flags</th>
             </tr>
         </thead>
         <tbody>
@@ -205,12 +236,24 @@
                         <a class="query-list-title" href="{{ urls.query(query.database, query.name) }}{% if query.fragment %}#{{ query.fragment }}{% endif %}" title="{{ query.description or query.sql }}">{{ query.title or query.name }}</a>{% if query.private %} 🔒{% endif %}
                         {% if query.description %}<p class="query-list-description">{{ query.description }}</p>{% endif %}
                     </td>
-                    <td>{% if query.is_write %}<span class="query-list-pill query-list-pill-write">Writable</span>{% else %}<span class="query-list-pill">Read-only</span>{% endif %}</td>
-                    <td>{% if query.is_published %}<span class="query-list-pill query-list-pill-published">Published</span>{% else %}<span class="query-list-pill query-list-pill-unpublished">Unpublished</span>{% endif %}</td>
+                    <td class="query-list-owner">{% if query.owner_id is not none %}{{ query.owner_id }}{% else %}<span class="query-list-empty">-</span>{% endif %}</td>
+                    <td>
+                        <span class="query-list-flags">
+                            {% if query.is_write %}<span class="query-list-pill query-list-pill-write">Writable</span>{% else %}<span class="query-list-pill">Read-only</span>{% endif %}
+                            {% if query.is_private %}<span class="query-list-pill query-list-pill-private">Private</span>{% endif %}
+                            {% if query.is_trusted %}<span class="query-list-pill query-list-pill-trusted">Trusted</span>{% endif %}
+                        </span>
+                    </td>
                 </tr>
             {% endfor %}
         </tbody>
     </table></div>
+    {% if show_private_note or show_trusted_note %}
+        <div class="query-list-footnotes">
+            {% if show_private_note %}<p><span class="query-list-pill query-list-pill-private">Private</span>Only the owning actor can view this query.</p>{% endif %}
+            {% if show_trusted_note %}<p><span class="query-list-pill query-list-pill-trusted">Trusted</span>Execution skips the usual SQL and write permission checks after view-query allows access.</p>{% endif %}
+        </div>
+    {% endif %}
 {% else %}
     <p>No queries found.</p>
 {% endif %}

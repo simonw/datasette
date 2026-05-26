@@ -618,7 +618,8 @@ class Datasette:
                     fragment=query_config.get("fragment"),
                     parameters=query_config.get("params"),
                     is_write=bool(query_config.get("write")),
-                    is_published=bool(query_config.get("is_published")),
+                    is_private=bool(query_config.get("is_private")),
+                    is_trusted=bool(query_config.get("is_trusted", True)),
                     source="config",
                     on_success_message=query_config.get("on_success_message"),
                     on_success_message_sql=query_config.get("on_success_message_sql"),
@@ -1084,7 +1085,8 @@ class Datasette:
             "parameters": parameters,
             "is_write": is_write,
             "write": is_write,
-            "is_published": bool(row["is_published"]),
+            "is_private": bool(row["is_private"]),
+            "is_trusted": bool(row["is_trusted"]),
             "source": row["source"],
             "owner_id": row["owner_id"],
             "on_success_message": options.get("on_success_message"),
@@ -1119,7 +1121,8 @@ class Datasette:
         fragment=None,
         parameters=None,
         is_write=False,
-        is_published=False,
+        is_private=False,
+        is_trusted=False,
         source="plugin",
         owner_id=None,
         on_success_message=None,
@@ -1144,8 +1147,8 @@ class Datasette:
         sql_statement = """
             INSERT INTO queries (
                 database_name, name, sql, title, description, description_html,
-                options, parameters, is_write, is_published, source, owner_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                options, parameters, is_write, is_private, is_trusted, source, owner_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         if replace:
             sql_statement += """
@@ -1157,7 +1160,8 @@ class Datasette:
                     options = excluded.options,
                     parameters = excluded.parameters,
                     is_write = excluded.is_write,
-                    is_published = excluded.is_published,
+                    is_private = excluded.is_private,
+                    is_trusted = excluded.is_trusted,
                     source = excluded.source,
                     owner_id = excluded.owner_id,
                     updated_at = CURRENT_TIMESTAMP
@@ -1174,7 +1178,8 @@ class Datasette:
                 options_json,
                 parameters_json,
                 int(bool(is_write)),
-                int(bool(is_published)),
+                int(bool(is_private)),
+                int(bool(is_trusted)),
                 source,
                 owner_id,
             ],
@@ -1193,7 +1198,8 @@ class Datasette:
         fragment=UNCHANGED,
         parameters=UNCHANGED,
         is_write=UNCHANGED,
-        is_published=UNCHANGED,
+        is_private=UNCHANGED,
+        is_trusted=UNCHANGED,
         source=UNCHANGED,
         owner_id=UNCHANGED,
         on_success_message=UNCHANGED,
@@ -1209,7 +1215,8 @@ class Datasette:
             "description_html": description_html,
             "parameters": parameters,
             "is_write": is_write,
-            "is_published": is_published,
+            "is_private": is_private,
+            "is_trusted": is_trusted,
             "source": source,
             "owner_id": owner_id,
         }
@@ -1227,7 +1234,7 @@ class Datasette:
         for field, value in fields.items():
             if value is UNCHANGED:
                 continue
-            if field in {"is_write", "is_published"}:
+            if field in {"is_write", "is_private", "is_trusted"}:
                 value = int(bool(value))
             elif field == "parameters":
                 value = json.dumps(list(value or []))
@@ -1300,7 +1307,8 @@ class Datasette:
         cursor=None,
         q=None,
         is_write=None,
-        is_published=None,
+        is_private=None,
+        is_trusted=None,
         source=None,
         owner_id=None,
         include_private=False,
@@ -1372,9 +1380,12 @@ class Datasette:
         if is_write is not None:
             where_clauses.append("q.is_write = :query_is_write")
             params["query_is_write"] = int(bool(is_write))
-        if is_published is not None:
-            where_clauses.append("q.is_published = :query_is_published")
-            params["query_is_published"] = int(bool(is_published))
+        if is_private is not None:
+            where_clauses.append("q.is_private = :query_is_private")
+            params["query_is_private"] = int(bool(is_private))
+        if is_trusted is not None:
+            where_clauses.append("q.is_trusted = :query_is_trusted")
+            params["query_is_trusted"] = int(bool(is_trusted))
         if source is not None:
             where_clauses.append("q.source = :query_source")
             params["query_source"] = source

@@ -29,7 +29,7 @@ Plugin API changes
 ~~~~~~~~~~~~~~~~~~
 
 - The ``top_canned_query()`` plugin hook has been renamed to :ref:`top_stored_query() <plugin_hook_top_stored_query>`. (:issue:`2747`)
-- The ``canned_queries()`` plugin hook has been removed. Plugins can use the new stored query methods together with :ref:`startup() <plugin_hook_startup>` to register queries. (:issue:`2735`)
+- The ``canned_queries()`` plugin hook has been removed. Plugins can use the new :ref:`stored query management methods <datasette_stored_queries>` together with :ref:`startup() <plugin_hook_startup>` to register queries. (:issue:`2735`)
 
 Bug fixes
 ~~~~~~~~~

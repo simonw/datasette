@@ -249,6 +249,45 @@ async def test_default_deny_blocks_view_query_even_for_trusted_query():
 
 
 @pytest.mark.asyncio
+async def test_view_query_default_allow_still_respects_private_restriction():
+    ds = Datasette(memory=True)
+    ds.add_memory_database("default_view_query_permissions", name="data")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "private_report",
+        "select 1",
+        is_private=True,
+        source="user",
+        owner_id="alice",
+    )
+    await ds.add_query(
+        "data",
+        "shared_report",
+        "select 2",
+        is_private=False,
+        source="user",
+        owner_id="alice",
+    )
+
+    assert await ds.allowed(
+        action="view-query",
+        resource=QueryResource("data", "shared_report"),
+        actor=None,
+    )
+    assert await ds.allowed(
+        action="view-query",
+        resource=QueryResource("data", "private_report"),
+        actor={"id": "alice"},
+    )
+    assert not await ds.allowed(
+        action="view-query",
+        resource=QueryResource("data", "private_report"),
+        actor={"id": "bob"},
+    )
+
+
+@pytest.mark.asyncio
 async def test_private_query_restriction_blocks_broad_view_query_permission():
     ds = Datasette(
         memory=True,

@@ -21,35 +21,10 @@ DEFAULT_ALLOW_ACTIONS = frozenset(
         "view-database",
         "view-database-download",
         "view-table",
+        "view-query",
         "execute-sql",
     }
 )
-
-
-def _configured_query_restriction_selects(datasette: "Datasette") -> tuple[list[str], dict]:
-    selects = []
-    params = {}
-    for index, (database_name, db_config) in enumerate(
-        ((datasette.config or {}).get("databases") or {}).items()
-    ):
-        for query_name, query_config in (db_config.get("queries") or {}).items():
-            if isinstance(query_config, dict) and query_config.get("is_private"):
-                continue
-            parent_param = f"query_config_parent_{index}_{len(selects)}"
-            child_param = f"query_config_child_{index}_{len(selects)}"
-            selects.append(
-                f"""
-                SELECT :{parent_param} AS parent, :{child_param} AS child
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM queries
-                    WHERE database_name = :{parent_param}
-                      AND name = :{child_param}
-                )
-                """
-            )
-            params[parent_param] = database_name
-            params[child_param] = query_name
-    return selects, params
 
 
 @hookimpl(specname="permission_resources_sql")
@@ -121,16 +96,6 @@ async def default_query_permissions_sql(
 
     params = {"query_owner_id": actor_id}
     rule_sqls = []
-    if not datasette.default_deny:
-        rule_sqls.append(
-            """
-            SELECT database_name AS parent, name AS child, 1 AS allow,
-              'non-private query' AS reason
-            FROM queries
-            WHERE is_private = 0
-            """
-        )
-
     if actor_id is not None:
         rule_sqls.append(
             """
@@ -141,23 +106,13 @@ async def default_query_permissions_sql(
             """
         )
 
-    config_restriction_selects, config_restriction_params = (
-        _configured_query_restriction_selects(datasette)
-    )
-
-    restriction_sqls = [
-        """
+    return PermissionSQL(
+        sql="\nUNION ALL\n".join(rule_sqls) if rule_sqls else None,
+        restriction_sql="""
         SELECT database_name AS parent, name AS child
         FROM queries
         WHERE is_private = 0
            OR owner_id = :query_owner_id
-        """
-    ]
-    restriction_sqls.extend(config_restriction_selects)
-    params.update(config_restriction_params)
-
-    return PermissionSQL(
-        sql="\nUNION ALL\n".join(rule_sqls) if rule_sqls else None,
-        restriction_sql="\nUNION ALL\n".join(restriction_sqls),
+        """,
         params=params,
     )

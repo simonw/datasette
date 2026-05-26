@@ -937,16 +937,20 @@ async def test_permissions_in_config(
     updated_config = copy.deepcopy(previous_config)
     updated_config.update(config)
     perms_ds.config = updated_config
+    await perms_ds.apply_queries_config()
     try:
         # Convert old-style resource to Resource object
-        from datasette.resources import DatabaseResource, TableResource
+        from datasette.resources import DatabaseResource, QueryResource, TableResource
 
         resource_obj = None
         if resource:
             if isinstance(resource, str):
                 resource_obj = DatabaseResource(database=resource)
             elif isinstance(resource, tuple) and len(resource) == 2:
-                resource_obj = TableResource(database=resource[0], table=resource[1])
+                if action == "view-query":
+                    resource_obj = QueryResource(database=resource[0], query=resource[1])
+                else:
+                    resource_obj = TableResource(database=resource[0], table=resource[1])
 
         result = await perms_ds.allowed(
             action=action, resource=resource_obj, actor=actor
@@ -956,6 +960,7 @@ async def test_permissions_in_config(
             assert result == expected_result
     finally:
         perms_ds.config = previous_config
+        await perms_ds.apply_queries_config()
 
 
 @pytest.mark.asyncio

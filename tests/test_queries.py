@@ -186,7 +186,9 @@ async def test_config_queries_imported_to_internal_table():
                         "configured": {
                             "sql": "select :name as name",
                             "title": "Configured query",
+                            "description_html": "<p>Configured HTML</p>",
                             "params": ["name"],
+                            "on_success_message_sql": "select 'Hello ' || :name",
                         }
                     }
                 }
@@ -202,7 +204,7 @@ async def test_config_queries_imported_to_internal_table():
         "sql": "select :name as name",
         "title": "Configured query",
         "description": None,
-        "description_html": None,
+        "description_html": "<p>Configured HTML</p>",
         "hide_sql": False,
         "fragment": None,
         "params": ["name"],
@@ -213,7 +215,7 @@ async def test_config_queries_imported_to_internal_table():
         "source": "config",
         "owner_id": None,
         "on_success_message": None,
-        "on_success_message_sql": None,
+        "on_success_message_sql": "select 'Hello ' || :name",
         "on_success_redirect": None,
         "on_error_message": None,
         "on_error_redirect": None,
@@ -888,6 +890,45 @@ async def test_query_store_api_rejects_is_trusted():
 
 
 @pytest.mark.asyncio
+async def test_query_store_rejects_config_only_fields():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    ds.add_memory_database("query_config_only_fields_api", name="data")
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/data/-/queries/store",
+        actor={"id": "root"},
+        json={
+            "query": {
+                "name": "unsafe",
+                "sql": "select 1",
+                "description_html": "<script>window.XSS=1</script>",
+                "on_success_message_sql": "select 'secret'",
+            }
+        },
+    )
+    form_response = await ds.client.post(
+        "/data/-/queries/store",
+        actor={"id": "root"},
+        data={
+            "name": "unsafe_form",
+            "sql": "select 1",
+            "description_html": "<script>window.XSS=1</script>",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["errors"] == [
+        "Invalid keys: description_html, on_success_message_sql"
+    ]
+    assert form_response.status_code == 400
+    assert "Invalid keys: description_html" in form_response.text
+    assert await ds.get_query("data", "unsafe") is None
+    assert await ds.get_query("data", "unsafe_form") is None
+
+
+@pytest.mark.asyncio
 async def test_query_store_api_creates_writable_query():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -957,6 +998,42 @@ async def test_query_update_and_delete_api():
     assert delete_response.status_code == 200
     assert delete_response.json() == {"ok": True}
     assert await ds.get_query("data", "editable") is None
+
+
+@pytest.mark.asyncio
+async def test_query_update_api_rejects_config_only_fields():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("query_update_config_only_fields", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "editable",
+        "insert into dogs (name) values (:name)",
+        is_write=True,
+        source="user",
+        owner_id="root",
+    )
+
+    response = await ds.client.post(
+        "/data/editable/-/update",
+        actor={"id": "root"},
+        json={
+            "update": {
+                "description_html": "<script>window.XSS=1</script>",
+                "on_success_message_sql": "select 'secret'",
+            }
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["errors"] == [
+        "Invalid keys: description_html, on_success_message_sql"
+    ]
+    query = await ds.get_query("data", "editable")
+    assert query["description_html"] is None
+    assert query["on_success_message_sql"] is None
 
 
 @pytest.mark.asyncio

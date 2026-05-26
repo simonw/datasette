@@ -18,14 +18,12 @@ _query_fields = {
     "sql",
     "title",
     "description",
-    "description_html",
     "hide_sql",
     "fragment",
     "parameters",
     "params",
     "is_private",
     "on_success_message",
-    "on_success_message_sql",
     "on_success_redirect",
     "on_error_message",
     "on_error_redirect",
@@ -35,7 +33,6 @@ _query_create_fields = _query_fields | {"name", "mode", "csrftoken"}
 _query_update_fields = _query_fields
 _query_write_fields = {
     "on_success_message",
-    "on_success_message_sql",
     "on_success_redirect",
     "on_error_message",
     "on_error_redirect",
@@ -441,7 +438,9 @@ def _apply_query_data_types(data):
 async def _prepare_query_create(datasette, request, db, data):
     invalid_keys = set(data) - _query_create_fields
     if invalid_keys:
-        raise QueryValidationError("Invalid keys: {}".format(", ".join(invalid_keys)))
+        raise QueryValidationError(
+            "Invalid keys: {}".format(", ".join(sorted(invalid_keys)))
+        )
 
     data = _apply_query_data_types(data)
     name = data.get("name")
@@ -467,7 +466,6 @@ async def _prepare_query_create(datasette, request, db, data):
         "sql": data["sql"],
         "title": data.get("title"),
         "description": data.get("description"),
-        "description_html": data.get("description_html"),
         "hide_sql": _as_bool(data.get("hide_sql")),
         "fragment": data.get("fragment"),
         "parameters": parameters,
@@ -477,7 +475,6 @@ async def _prepare_query_create(datasette, request, db, data):
         "source": "user",
         "owner_id": _actor_id(request.actor),
         "on_success_message": data.get("on_success_message"),
-        "on_success_message_sql": data.get("on_success_message_sql"),
         "on_success_redirect": data.get("on_success_redirect"),
         "on_error_message": data.get("on_error_message"),
         "on_error_redirect": data.get("on_error_redirect"),
@@ -488,7 +485,9 @@ async def _prepare_query_create(datasette, request, db, data):
 async def _prepare_query_update(datasette, request, db, existing, update):
     invalid_keys = set(update) - _query_update_fields
     if invalid_keys:
-        raise QueryValidationError("Invalid keys: {}".format(", ".join(invalid_keys)))
+        raise QueryValidationError(
+            "Invalid keys: {}".format(", ".join(sorted(invalid_keys)))
+        )
 
     update = _apply_query_data_types(update)
     sql = update.get("sql", existing["sql"])
@@ -519,14 +518,12 @@ async def _prepare_query_update(datasette, request, db, existing, update):
         "sql": sql,
         "title": update.get("title"),
         "description": update.get("description"),
-        "description_html": update.get("description_html"),
         "hide_sql": update.get("hide_sql"),
         "fragment": update.get("fragment"),
         "parameters": parameters,
         "is_write": query_is_write,
         "is_private": update.get("is_private"),
         "on_success_message": update.get("on_success_message"),
-        "on_success_message_sql": update.get("on_success_message_sql"),
         "on_success_redirect": update.get("on_success_redirect"),
         "on_error_message": update.get("on_error_message"),
         "on_error_redirect": update.get("on_error_redirect"),

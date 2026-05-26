@@ -518,14 +518,15 @@ Listing saved queries
 Creating saved queries in the UI
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``GET /<database>/-/queries/-/create`` provides a form for creating saved queries.
+``GET /<database>/-/queries/store`` provides a form for creating stored queries.
 
+.. _QueryStoreView:
 .. _QueryInsertView:
 
 Creating saved queries
 ~~~~~~~~~~~~~~~~~~~~~~
 
-``POST /<database>/-/queries/insert`` creates a saved query. This requires ``execute-sql`` and ``insert-query`` for the database.
+``POST /<database>/-/queries/store`` creates a stored query. This requires ``execute-sql`` and ``store-query`` for the database.
 
 .. _QueryParametersView:
 .. _ExecuteWriteView:

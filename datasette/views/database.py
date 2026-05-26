@@ -1419,7 +1419,7 @@ class QueryCreateView(BaseView):
             actor=request.actor,
         )
         await self.ds.ensure_permission(
-            action="insert-query",
+            action="store-query",
             resource=DatabaseResource(db.name),
             actor=request.actor,
         )
@@ -1440,11 +1440,11 @@ class QueryCreateAnalyzeView(BaseView):
         ):
             return _block_framing(_error(["Permission denied: need execute-sql"], 403))
         if not await self.ds.allowed(
-            action="insert-query",
+            action="store-query",
             resource=DatabaseResource(db.name),
             actor=request.actor,
         ):
-            return _block_framing(_error(["Permission denied: need insert-query"], 403))
+            return _block_framing(_error(["Permission denied: need store-query"], 403))
 
         invalid_keys = set(request.args) - {"sql"}
         if invalid_keys:
@@ -1462,8 +1462,8 @@ class QueryCreateAnalyzeView(BaseView):
         )
 
 
-class QueryInsertView(QueryCreateView):
-    name = "query-insert"
+class QueryStoreView(QueryCreateView):
+    name = "query-store"
 
     async def _error_response(self, request, db, query_data, message, status):
         message = _query_create_form_error_message(message)
@@ -1488,11 +1488,11 @@ class QueryInsertView(QueryCreateView):
         ):
             return _error(["Permission denied: need execute-sql"], 403)
         if not await self.ds.allowed(
-            action="insert-query",
+            action="store-query",
             resource=DatabaseResource(db.name),
             actor=request.actor,
         ):
-            return _error(["Permission denied: need insert-query"], 403)
+            return _error(["Permission denied: need store-query"], 403)
 
         is_json = False
         query_data = {}
@@ -1961,8 +1961,8 @@ class QueryView(View):
                 resource=DatabaseResource(database=database),
                 actor=request.actor,
             )
-            allow_insert_query = await datasette.allowed(
-                action="insert-query",
+            allow_store_query = await datasette.allowed(
+                action="store-query",
                 resource=DatabaseResource(database=database),
                 actor=request.actor,
             )
@@ -2020,13 +2020,13 @@ class QueryView(View):
             if (
                 not canned_query
                 and allow_execute_sql
-                and allow_insert_query
+                and allow_store_query
                 and is_validated_sql
                 and ":_" not in sql
             ):
                 save_query_url = (
                     datasette.urls.database(database)
-                    + "/-/queries/insert?"
+                    + "/-/queries/store?"
                     + urlencode({"sql": sql})
                 )
 

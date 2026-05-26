@@ -1293,11 +1293,12 @@ Actor is allowed to view a saved query page, e.g. https://latest.datasette.io/fi
     ``query`` is the name of the query (string)
 
 .. _actions_insert_query:
+.. _actions_store_query:
 
-insert-query
-------------
+store-query
+-----------
 
-Actor is allowed to create saved queries in a database.
+Actor is allowed to create stored queries in a database.
 
 ``resource`` - ``datasette.resources.DatabaseResource(database)``
     ``database`` is the name of the database (string)

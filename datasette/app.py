@@ -54,9 +54,9 @@ from .views.database import (
     QueryDeleteView,
     QueryDefinitionView,
     GlobalQueryListView,
-    QueryInsertView,
     QueryListView,
     QueryParametersView,
+    QueryStoreView,
     QueryUpdateView,
 )
 from .views.index import IndexView
@@ -2824,8 +2824,8 @@ class Datasette:
             r"/(?P<database>[^\/\.]+)/-/queries/analyze$",
         )
         add_route(
-            QueryInsertView.as_view(self),
-            r"/(?P<database>[^\/\.]+)/-/queries/insert$",
+            QueryStoreView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/queries/store$",
         )
         add_route(
             ExecuteWriteAnalyzeView.as_view(self),

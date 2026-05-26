@@ -62,9 +62,9 @@ def register_actions():
             resource_class=DatabaseResource,
         ),
         Action(
-            name="insert-query",
-            abbr="iq",
-            description="Create saved queries",
+            name="store-query",
+            abbr="sq",
+            description="Create stored queries",
             resource_class=DatabaseResource,
             also_requires="execute-sql",
         ),

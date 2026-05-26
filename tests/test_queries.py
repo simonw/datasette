@@ -470,7 +470,7 @@ async def test_query_actions_are_registered():
     await ds.invoke_startup()
 
     assert ds.get_action("execute-write-sql").resource_class is DatabaseResource
-    assert ds.get_action("insert-query").resource_class is DatabaseResource
+    assert ds.get_action("store-query").resource_class is DatabaseResource
     assert ds.get_action("update-query").resource_class is QueryResource
     assert ds.get_action("delete-query").resource_class is QueryResource
 
@@ -537,15 +537,15 @@ async def test_analyze_write_query_rejects_writes_to_attached_databases():
 
 
 @pytest.mark.asyncio
-async def test_query_insert_api_creates_read_only_query():
+async def test_query_store_api_creates_read_only_query():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
-    db = ds.add_memory_database("query_insert_api", name="data")
+    db = ds.add_memory_database("query_store_api", name="data")
     await db.execute_write("create table dogs (id integer primary key, name text)")
     await ds.invoke_startup()
 
     response = await ds.client.post(
-        "/data/-/queries/insert",
+        "/data/-/queries/store",
         actor={"id": "root"},
         json={
             "query": {
@@ -860,7 +860,7 @@ async def test_global_query_list_api_and_html():
 
 
 @pytest.mark.asyncio
-async def test_query_insert_api_rejects_is_trusted():
+async def test_query_store_api_rejects_is_trusted():
     ds = Datasette(
         memory=True,
         default_deny=True,
@@ -870,7 +870,7 @@ async def test_query_insert_api_rejects_is_trusted():
                     "permissions": {
                         "view-database": {"id": "writer"},
                         "execute-sql": {"id": "writer"},
-                        "insert-query": {"id": "writer"},
+                        "store-query": {"id": "writer"},
                     }
                 }
             }
@@ -880,7 +880,7 @@ async def test_query_insert_api_rejects_is_trusted():
     await ds.invoke_startup()
 
     response = await ds.client.post(
-        "/data/-/queries/insert",
+        "/data/-/queries/store",
         actor={"id": "writer"},
         json={"query": {"name": "trusted", "sql": "select 1", "is_trusted": True}},
     )
@@ -890,7 +890,7 @@ async def test_query_insert_api_rejects_is_trusted():
 
 
 @pytest.mark.asyncio
-async def test_query_insert_api_creates_writable_query():
+async def test_query_store_api_creates_writable_query():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
     db = ds.add_memory_database("query_write_api", name="data")
@@ -898,7 +898,7 @@ async def test_query_insert_api_creates_writable_query():
     await ds.invoke_startup()
 
     response = await ds.client.post(
-        "/data/-/queries/insert",
+        "/data/-/queries/store",
         actor={"id": "root"},
         json={
             "query": {
@@ -962,14 +962,14 @@ async def test_query_update_and_delete_api():
 
 
 @pytest.mark.asyncio
-async def test_query_insert_api_rejects_magic_parameters():
+async def test_query_store_api_rejects_magic_parameters():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
     ds.add_memory_database("query_magic_api", name="data")
     await ds.invoke_startup()
 
     response = await ds.client.post(
-        "/data/-/queries/insert",
+        "/data/-/queries/store",
         actor={"id": "root"},
         json={"query": {"name": "magic", "sql": "select :_actor_id"}},
     )
@@ -987,15 +987,19 @@ async def test_create_query_ui_and_arbitrary_sql_save_link():
     await ds.invoke_startup()
 
     create_response = await ds.client.get(
-        "/data/-/queries/insert?sql=select+*+from+dogs",
+        "/data/-/queries/store?sql=select+*+from+dogs",
         actor={"id": "root"},
     )
     write_create_response = await ds.client.get(
-        "/data/-/queries/insert?sql=insert+into+dogs+(name)+values+('Cleo')",
+        "/data/-/queries/store?sql=insert+into+dogs+(name)+values+('Cleo')",
         actor={"id": "root"},
     )
     blank_create_response = await ds.client.get(
-        "/data/-/queries/insert",
+        "/data/-/queries/store",
+        actor={"id": "root"},
+    )
+    old_insert_response = await ds.client.get(
+        "/data/-/queries/insert?sql=select+*+from+dogs",
         actor={"id": "root"},
     )
     old_create_response = await ds.client.get(
@@ -1075,7 +1079,8 @@ async def test_create_query_ui_and_arbitrary_sql_save_link():
     )
     assert query_response.status_code == 200
     assert "Save this query" in query_response.text
-    assert "/data/-/queries/insert?sql=select+%2A+from+dogs" in query_response.text
+    assert "/data/-/queries/store?sql=select+%2A+from+dogs" in query_response.text
+    assert old_insert_response.status_code == 404
     assert old_create_response.status_code == 404
 
 
@@ -1153,7 +1158,7 @@ async def test_create_query_form_error_redisplays_form_with_values():
     await ds.invoke_startup()
 
     response = await ds.client.post(
-        "/data/-/queries/insert",
+        "/data/-/queries/store",
         actor={"id": "root"},
         data={
             "name": "dogs",
@@ -1176,7 +1181,7 @@ async def test_create_query_form_error_redisplays_form_with_values():
     assert 'name="is_private" value="1" checked' in response.text
 
     public_response = await ds.client.post(
-        "/data/-/queries/insert",
+        "/data/-/queries/store",
         actor={"id": "root"},
         data={
             "name": "dogs",

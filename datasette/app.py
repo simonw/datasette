@@ -598,7 +598,7 @@ class Datasette:
             # TODO(alex) is metadata.json was loaded in, and --internal is not memory, then log
             # a warning to user that they should delete their metadata.json file
 
-    async def apply_queries_config(self):
+    async def _save_queries_from_config(self):
         # Apply configured query entries from datasette.yaml to the internal table.
         await self.get_internal_database().execute_write(
             "DELETE FROM queries WHERE source = 'config'"
@@ -788,7 +788,7 @@ class Datasette:
             await await_me_maybe(hook)
         # Ensure internal tables and metadata are populated before startup hooks
         await self._refresh_schemas()
-        await self.apply_queries_config()
+        await self._save_queries_from_config()
         # Load column_types from config into internal DB
         await self._apply_column_types_config()
         for hook in pm.hook.startup(datasette=self):

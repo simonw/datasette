@@ -1776,7 +1776,7 @@ class QueryView(View):
         named_parameters = []
         if canned_query and canned_query.get("params"):
             named_parameters = canned_query["params"]
-        if not named_parameters:
+        if not named_parameters and sql:
             named_parameters = derive_named_parameters(sql)
         named_parameter_values = {
             named_parameter: params.get(named_parameter) or ""
@@ -1801,7 +1801,7 @@ class QueryView(View):
 
         params_for_query = params
 
-        if not canned_query_write:
+        if sql and not canned_query_write:
             try:
                 if not canned_query:
                     # For regular queries we only allow SELECT, plus other rules
@@ -1845,6 +1845,8 @@ class QueryView(View):
 
         # Handle formats from plugins
         if format_ == "csv":
+            if not sql:
+                raise DatasetteError("?sql= is required", status=400)
 
             async def fetch_data_for_csv(request, _next=None):
                 results = await db.execute(sql, params, truncate=True)
@@ -1978,25 +1980,26 @@ class QueryView(View):
             # - No magic parameters, so no :_ in the SQL string
             edit_sql_url = None
             is_validated_sql = False
-            try:
-                validate_sql_select(sql)
-                is_validated_sql = True
-            except InvalidSql:
-                pass
-            if allow_execute_sql and is_validated_sql and ":_" not in sql:
-                edit_sql_url = (
-                    datasette.urls.database(database)
-                    + "/-/query"
-                    + "?"
-                    + urlencode(
-                        {
-                            **{
-                                "sql": sql,
-                            },
-                            **named_parameter_values,
-                        }
+            if sql:
+                try:
+                    validate_sql_select(sql)
+                    is_validated_sql = True
+                except InvalidSql:
+                    pass
+                if allow_execute_sql and is_validated_sql and ":_" not in sql:
+                    edit_sql_url = (
+                        datasette.urls.database(database)
+                        + "/-/query"
+                        + "?"
+                        + urlencode(
+                            {
+                                **{
+                                    "sql": sql,
+                                },
+                                **named_parameter_values,
+                            }
+                        )
                     )
-                )
             save_query_url = None
             if (
                 not canned_query

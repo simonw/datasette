@@ -240,6 +240,22 @@ def test_query_page_truncates():
 
 
 @pytest.mark.asyncio
+async def test_query_page_with_no_sql(ds_client):
+    # https://github.com/simonw/datasette/issues/2743
+    response = await ds_client.get("/fixtures/-/query")
+    assert response.status_code == 200
+    assert '<textarea id="sql-editor" name="sql"' in response.text
+    assert 'class="rows-and-columns"' not in response.text
+
+
+@pytest.mark.asyncio
+async def test_query_csv_with_no_sql_is_400(ds_client):
+    # https://github.com/simonw/datasette/issues/2743
+    response = await ds_client.get("/fixtures/-/query.csv")
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_classes",
     [

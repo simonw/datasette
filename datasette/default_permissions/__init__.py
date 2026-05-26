@@ -26,6 +26,7 @@ from .restrictions import (
 from .root import root_user_permissions_sql as root_user_permissions_sql
 from .config import config_permissions_sql as config_permissions_sql
 from .defaults import (
+    # Avoid "datasette.default_permissions" does not explicitly export attribute
     default_allow_sql_check as default_allow_sql_check,
     default_action_permissions_sql as default_action_permissions_sql,
     default_query_permissions_sql as default_query_permissions_sql,

@@ -562,7 +562,7 @@ class QueryView(View):
                 )
                 if stored_query is None:
                     raise
-                stored_query_write = bool(stored_query.get("write"))
+                stored_query_write = bool(stored_query.get("is_write"))
 
         private = False
         if stored_query:

@@ -287,7 +287,7 @@ async def _prepare_execute_write(datasette, db, sql, params, actor):
 async def _ensure_stored_query_execution_permissions(datasette, db, query, actor):
     if query.get("is_trusted"):
         return
-    if query.get("write"):
+    if query.get("is_write"):
         await datasette.ensure_permission(
             action="execute-write-sql",
             resource=DatabaseResource(db.name),

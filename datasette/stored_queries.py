@@ -55,7 +55,6 @@ def query_row_to_dict(row):
         return None
     parameters = json.loads(row["parameters"] or "[]")
     options = json.loads(row["options"] or "{}")
-    is_write = bool(row["is_write"])
     return {
         "database": row["database_name"],
         "name": row["name"],
@@ -67,8 +66,7 @@ def query_row_to_dict(row):
         "fragment": options.get("fragment"),
         "params": parameters,
         "parameters": parameters,
-        "is_write": is_write,
-        "write": is_write,
+        "is_write": bool(row["is_write"]),
         "is_private": bool(row["is_private"]),
         "is_trusted": bool(row["is_trusted"]),
         "source": row["source"],

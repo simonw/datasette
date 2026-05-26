@@ -6,7 +6,6 @@ from .resources import TableResource
 from .utils import named_parameters, sqlite3, tilde_encode, urlsafe_components
 from .utils.asgi import Forbidden
 
-
 UNCHANGED = object()
 
 QUERY_OPTION_FIELDS = (

@@ -496,7 +496,7 @@ Here's how to restrict access to your entire Datasette instance to just the ``"i
             title: My private Datasette instance
             allow:
               id: root
-  
+
 
 .. tab:: datasette.json
 
@@ -1292,7 +1292,6 @@ Actor is allowed to view a stored query page, e.g. https://latest.datasette.io/f
 
     ``query`` is the name of the query (string)
 
-.. _actions_insert_query:
 .. _actions_store_query:
 
 store-query

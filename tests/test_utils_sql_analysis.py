@@ -129,6 +129,50 @@ def test_analyze_create_table_operation():
     ]
 
 
+def test_analyze_vacuum_operation():
+    conn = sqlite3.connect(":memory:")
+    try:
+        analysis = analyze_sql_tables(conn, "vacuum", database_name="data")
+    finally:
+        conn.close()
+
+    assert [operation_dict(operation) for operation in analysis.operations] == [
+        {
+            "operation": "vacuum",
+            "target_type": "database",
+            "database": "data",
+            "sqlite_schema": "main",
+            "table": None,
+            "target": "data",
+            "columns": (),
+            "source": None,
+            "internal": False,
+        }
+    ]
+
+
+def test_analyze_statement_with_no_authorizer_callbacks_is_unknown():
+    conn = sqlite3.connect(":memory:")
+    try:
+        analysis = analyze_sql_tables(conn, "reindex", database_name="data")
+    finally:
+        conn.close()
+
+    assert [operation_dict(operation) for operation in analysis.operations] == [
+        {
+            "operation": "unknown",
+            "target_type": "statement",
+            "database": "data",
+            "sqlite_schema": None,
+            "table": None,
+            "target": None,
+            "columns": (),
+            "source": None,
+            "internal": False,
+        }
+    ]
+
+
 def test_analyze_transaction_operation(conn):
     analysis = analyze_sql_tables(conn, "commit", database_name="data")
 

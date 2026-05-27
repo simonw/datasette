@@ -720,6 +720,7 @@ def operation_is_write(operation: Operation) -> bool:
         "pragma",
         "analyze",
         "reindex",
+        "vacuum",
         "unknown",
     }
 

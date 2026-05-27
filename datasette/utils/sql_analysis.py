@@ -22,6 +22,7 @@ SQLOperation = Literal[
     "pragma",
     "analyze",
     "reindex",
+    "vacuum",
     "unknown",
 ]
 SQLTargetType = Literal[
@@ -423,9 +424,39 @@ def analyze_sql_tables(
 
     conn.set_authorizer(authorizer)
     try:
-        conn.execute("EXPLAIN " + sql, params if params is not None else {}).fetchall()
+        explain_rows = conn.execute(
+            "EXPLAIN " + sql, params if params is not None else {}
+        ).fetchall()
     finally:
         conn.set_authorizer(None)
+
+    if not operations:
+        vacuum_row = next((row for row in explain_rows if row[1] == "Vacuum"), None)
+        if vacuum_row is not None:
+            schema_by_index = {
+                row[0]: row[1] for row in conn.execute("PRAGMA database_list")
+            }
+            sqlite_schema = schema_by_index.get(vacuum_row[2])
+            database = database_for_schema(sqlite_schema)
+            record(
+                "vacuum",
+                "database",
+                database=database,
+                table=None,
+                sqlite_schema=sqlite_schema,
+                target=database,
+                source=None,
+            )
+        else:
+            record(
+                "unknown",
+                "statement",
+                database=database_name,
+                table=None,
+                sqlite_schema=None,
+                target=None,
+                source=None,
+            )
 
     has_schema_operation = any(
         key.target_type in {"table", "index", "view", "trigger", "virtual-table"}

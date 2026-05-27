@@ -2012,6 +2012,37 @@ async def test_execute_write_rejects_function_operations():
 
 
 @pytest.mark.asyncio
+async def test_execute_write_rejects_vacuum_operation():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    }
+                }
+            }
+        },
+    )
+    ds.add_memory_database("execute_write_vacuum_operation", name="data")
+    await ds.invoke_startup()
+
+    denied_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "writer"},
+        json={"sql": "vacuum"},
+    )
+
+    assert denied_response.status_code == 403
+    assert denied_response.json()["errors"] == [
+        "Unsupported SQL operation: vacuum database"
+    ]
+
+
+@pytest.mark.asyncio
 async def test_execute_write_create_table_uses_create_table_permission():
     ds = Datasette(
         memory=True,

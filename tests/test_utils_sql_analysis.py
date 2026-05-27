@@ -127,6 +127,100 @@ def test_analyze_transaction_operation(conn):
     ]
 
 
+def test_analyze_savepoint_operation(conn):
+    analysis = analyze_sql_tables(conn, "savepoint s", database_name="data")
+
+    assert [operation_dict(operation) for operation in analysis.operations] == [
+        {
+            "operation": "savepoint",
+            "target_type": "transaction",
+            "database": None,
+            "sqlite_schema": None,
+            "table": None,
+            "target": "BEGIN s",
+            "columns": (),
+            "source": None,
+            "internal": False,
+        }
+    ]
+
+
+def test_analyze_function_operation(conn):
+    analysis = analyze_sql_tables(
+        conn,
+        "insert into dogs (name) values (upper(:name))",
+        {"name": "Cleo"},
+        database_name="data",
+    )
+
+    assert {
+        (
+            operation.operation,
+            operation.target_type,
+            operation.target,
+            operation.database,
+            operation.table,
+        )
+        for operation in analysis.operations
+    } == {
+        ("insert", "table", "dogs", "data", "dogs"),
+        ("function", "function", "upper", None, None),
+        ("read", "table", "dogs", "data", "dogs"),
+        ("update", "table", "cats", "data", "cats"),
+        ("read", "table", "cats", "data", "cats"),
+        ("insert", "table", "log", "data", "log"),
+    }
+
+
+def test_analyze_create_virtual_table_operation():
+    conn = sqlite3.connect(":memory:")
+    try:
+        analysis = analyze_sql_tables(
+            conn,
+            "create virtual table docs using fts5(body)",
+            database_name="data",
+        )
+    finally:
+        conn.close()
+
+    assert {
+        "operation": "create",
+        "target_type": "virtual-table",
+        "database": "data",
+        "sqlite_schema": "main",
+        "table": "docs",
+        "target": "docs",
+        "columns": (),
+        "source": None,
+        "internal": False,
+    } in [operation_dict(operation) for operation in analysis.operations]
+
+
+def test_analyze_create_table_as_select_function_is_not_internal():
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.execute("create table secret(value text)")
+        analysis = analyze_sql_tables(
+            conn,
+            "create table copied as select substr(value, 1, 1) from secret",
+            database_name="data",
+        )
+    finally:
+        conn.close()
+
+    assert {
+        "operation": "function",
+        "target_type": "function",
+        "database": None,
+        "sqlite_schema": None,
+        "table": None,
+        "target": "substr",
+        "columns": (),
+        "source": None,
+        "internal": False,
+    } in [operation_dict(operation) for operation in analysis.operations]
+
+
 def test_analyze_insert_tables(conn):
     analysis = analyze_sql_tables(
         conn,

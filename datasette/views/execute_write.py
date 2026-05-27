@@ -99,9 +99,7 @@ class ExecuteWriteView(BaseView):
                 "parameter_names": parameter_names,
                 "parameter_values": parameter_values,
                 "analysis_error": analysis_error,
-                "analysis_rows": [
-                    row for row in analysis_rows if row["operation"] != "read"
-                ],
+                "analysis_rows": analysis_rows,
                 "execution_message": execution_message,
                 "execution_links": execution_links,
                 "execution_ok": execution_ok,

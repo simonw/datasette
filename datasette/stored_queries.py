@@ -592,6 +592,16 @@ PermissionRequirement = tuple[str, Resource]
 
 
 def permission_for_operation(operation: Operation) -> PermissionRequirement | None:
+    if (
+        operation.operation == "read"
+        and operation.target_type == "table"
+        and operation.database is not None
+        and operation.table is not None
+    ):
+        return (
+            "view-table",
+            TableResource(database=operation.database, table=operation.table),
+        )
     write_actions = {
         "insert": "insert-row",
         "update": "update-row",
@@ -648,6 +658,10 @@ def permission_for_operation(operation: Operation) -> PermissionRequirement | No
     return None
 
 
+def operation_should_be_ignored(operation: Operation) -> bool:
+    return operation.internal or operation.operation == "select"
+
+
 def operation_is_write(operation: Operation) -> bool:
     return operation.operation in {
         "insert",
@@ -659,11 +673,13 @@ def operation_is_write(operation: Operation) -> bool:
         "begin",
         "commit",
         "rollback",
+        "savepoint",
         "attach",
         "detach",
         "pragma",
         "analyze",
         "reindex",
+        "unknown",
     }
 
 
@@ -685,34 +701,19 @@ async def ensure_query_write_permissions(
         except sqlite3.DatabaseError as ex:
             raise Forbidden(f"Could not analyze query: {ex}") from ex
 
-    has_semantic_schema_operation = any(
-        operation.operation in {"create", "alter", "drop"}
-        and operation.target_type in {"table", "index", "view", "trigger"}
-        for operation in analysis.operations
-    )
     for operation in analysis.operations:
-        if operation.internal and has_semantic_schema_operation:
-            continue
-        if has_semantic_schema_operation and operation.operation in {
-            "read",
-            "insert",
-            "update",
-            "delete",
-            "reindex",
-        }:
+        if operation_should_be_ignored(operation):
             continue
         permission = permission_for_operation(operation)
         if permission is None:
-            if operation_is_write(operation):
-                raise Forbidden(
-                    "Unsupported SQL operation: {} {}".format(
-                        operation.operation, operation.target_type
-                    )
+            raise Forbidden(
+                "Unsupported SQL operation: {} {}".format(
+                    operation.operation, operation.target_type
                 )
-            continue
+            )
         action, resource = permission
         if operation.database != database:
-            raise Forbidden("Writable queries may not write to attached databases")
+            raise Forbidden("Writable queries may not access attached databases")
         if not await datasette.allowed(
             action=action,
             resource=resource,

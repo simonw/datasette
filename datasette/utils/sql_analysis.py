@@ -8,30 +8,39 @@ SQLOperation = Literal[
     "insert",
     "update",
     "delete",
+    "select",
+    "function",
     "create",
     "alter",
     "drop",
     "begin",
     "commit",
     "rollback",
+    "savepoint",
     "attach",
     "detach",
     "pragma",
     "analyze",
     "reindex",
+    "unknown",
 ]
 SQLTargetType = Literal[
     "table",
     "index",
     "view",
     "trigger",
+    "virtual-table",
     "schema",
+    "statement",
     "transaction",
     "database",
     "pragma",
+    "function",
     "unknown",
 ]
 SQLTableOperation = Literal["read", "insert", "update", "delete"]
+SQLSchemaOperation = Literal["create", "drop"]
+SQLSchemaTargetType = Literal["index", "table", "trigger", "view", "virtual-table"]
 
 
 @dataclass(frozen=True)
@@ -73,19 +82,34 @@ _ACTION_TO_OPERATION: dict[int, SQLTableOperation] = {
 }
 
 # Values are (operation, target_type) pairs used to construct Operation objects.
-_CREATE_ACTIONS = {
+_CREATE_ACTIONS: dict[int, tuple[SQLSchemaOperation, SQLSchemaTargetType]] = {
     sqlite3.SQLITE_CREATE_INDEX: ("create", "index"),
     sqlite3.SQLITE_CREATE_TABLE: ("create", "table"),
     sqlite3.SQLITE_CREATE_TRIGGER: ("create", "trigger"),
     sqlite3.SQLITE_CREATE_VIEW: ("create", "view"),
 }
-_DROP_ACTIONS = {
+_DROP_ACTIONS: dict[int, tuple[SQLSchemaOperation, SQLSchemaTargetType]] = {
     sqlite3.SQLITE_DROP_INDEX: ("drop", "index"),
     sqlite3.SQLITE_DROP_TABLE: ("drop", "table"),
     sqlite3.SQLITE_DROP_TRIGGER: ("drop", "trigger"),
     sqlite3.SQLITE_DROP_VIEW: ("drop", "view"),
 }
-for action_name, operation, target_type in (
+
+
+def _add_schema_action(
+    action_name: str,
+    operation: SQLSchemaOperation,
+    target_type: SQLSchemaTargetType,
+) -> None:
+    action_value = getattr(sqlite3, action_name, None)
+    if action_value is not None:
+        actions = _CREATE_ACTIONS if operation == "create" else _DROP_ACTIONS
+        actions[action_value] = (operation, target_type)
+
+
+_TEMP_SCHEMA_ACTIONS: tuple[
+    tuple[str, SQLSchemaOperation, SQLSchemaTargetType], ...
+] = (
     ("SQLITE_CREATE_TEMP_INDEX", "create", "index"),
     ("SQLITE_CREATE_TEMP_TABLE", "create", "table"),
     ("SQLITE_CREATE_TEMP_TRIGGER", "create", "trigger"),
@@ -94,13 +118,76 @@ for action_name, operation, target_type in (
     ("SQLITE_DROP_TEMP_TABLE", "drop", "table"),
     ("SQLITE_DROP_TEMP_TRIGGER", "drop", "trigger"),
     ("SQLITE_DROP_TEMP_VIEW", "drop", "view"),
-):
-    action_value = getattr(sqlite3, action_name, None)
-    if action_value is not None:
-        actions = _CREATE_ACTIONS if operation == "create" else _DROP_ACTIONS
-        actions[action_value] = (operation, target_type)
+)
+for schema_action in _TEMP_SCHEMA_ACTIONS:
+    _add_schema_action(*schema_action)
 
-_SQLITE_SCHEMA_TABLES = {"sqlite_master", "sqlite_schema"}
+_VTABLE_SCHEMA_ACTIONS: tuple[
+    tuple[str, SQLSchemaOperation, SQLSchemaTargetType], ...
+] = (
+    ("SQLITE_CREATE_VTABLE", "create", "virtual-table"),
+    ("SQLITE_DROP_VTABLE", "drop", "virtual-table"),
+)
+for schema_action in _VTABLE_SCHEMA_ACTIONS:
+    _add_schema_action(*schema_action)
+
+_SQLITE_SCHEMA_TABLES = {
+    "sqlite_master",
+    "sqlite_schema",
+    "sqlite_temp_master",
+    "sqlite_temp_schema",
+}
+_SQLITE_INTERNAL_SCHEMA_FUNCTIONS = {
+    "length",
+    "like",
+    "printf",
+    "sqlite_drop_column",
+    "sqlite_rename_column",
+    "sqlite_rename_quotefix",
+    "sqlite_rename_table",
+    "sqlite_rename_test",
+    "substr",
+}
+
+_AUTHORIZER_ACTION_NAMES = {
+    getattr(sqlite3, name): name
+    for name in (
+        "SQLITE_CREATE_INDEX",
+        "SQLITE_CREATE_TABLE",
+        "SQLITE_CREATE_TEMP_INDEX",
+        "SQLITE_CREATE_TEMP_TABLE",
+        "SQLITE_CREATE_TEMP_TRIGGER",
+        "SQLITE_CREATE_TEMP_VIEW",
+        "SQLITE_CREATE_TRIGGER",
+        "SQLITE_CREATE_VIEW",
+        "SQLITE_DELETE",
+        "SQLITE_DROP_INDEX",
+        "SQLITE_DROP_TABLE",
+        "SQLITE_DROP_TEMP_INDEX",
+        "SQLITE_DROP_TEMP_TABLE",
+        "SQLITE_DROP_TEMP_TRIGGER",
+        "SQLITE_DROP_TEMP_VIEW",
+        "SQLITE_DROP_TRIGGER",
+        "SQLITE_DROP_VIEW",
+        "SQLITE_INSERT",
+        "SQLITE_PRAGMA",
+        "SQLITE_READ",
+        "SQLITE_SELECT",
+        "SQLITE_TRANSACTION",
+        "SQLITE_UPDATE",
+        "SQLITE_ATTACH",
+        "SQLITE_DETACH",
+        "SQLITE_ALTER_TABLE",
+        "SQLITE_REINDEX",
+        "SQLITE_ANALYZE",
+        "SQLITE_CREATE_VTABLE",
+        "SQLITE_DROP_VTABLE",
+        "SQLITE_FUNCTION",
+        "SQLITE_SAVEPOINT",
+        "SQLITE_RECURSIVE",
+    )
+    if hasattr(sqlite3, name)
+}
 
 
 def analyze_sql_tables(
@@ -287,6 +374,52 @@ def analyze_sql_tables(
             )
             return sqlite3.SQLITE_OK
 
+        if action == sqlite3.SQLITE_SELECT:
+            record(
+                "select",
+                "statement",
+                database=None,
+                table=None,
+                sqlite_schema=sqlite_schema,
+                target=None,
+                source=source,
+            )
+            return sqlite3.SQLITE_OK
+
+        if action == sqlite3.SQLITE_FUNCTION and arg2 is not None:
+            record(
+                "function",
+                "function",
+                database=None,
+                table=None,
+                sqlite_schema=sqlite_schema,
+                target=arg2,
+                source=source,
+            )
+            return sqlite3.SQLITE_OK
+
+        if action == sqlite3.SQLITE_SAVEPOINT and arg1 is not None:
+            record(
+                "savepoint",
+                "transaction",
+                database=None,
+                table=None,
+                sqlite_schema=sqlite_schema,
+                target="{} {}".format(arg1, arg2) if arg2 is not None else arg1,
+                source=source,
+            )
+            return sqlite3.SQLITE_OK
+
+        action_name = _AUTHORIZER_ACTION_NAMES.get(action, "SQLITE_{}".format(action))
+        record(
+            "unknown",
+            "unknown",
+            database=database_for_schema(sqlite_schema),
+            table=None,
+            sqlite_schema=sqlite_schema,
+            target=action_name,
+            source=source,
+        )
         return sqlite3.SQLITE_OK
 
     conn.set_authorizer(authorizer)
@@ -296,10 +429,46 @@ def analyze_sql_tables(
         conn.set_authorizer(None)
 
     has_schema_operation = any(
-        key.target_type in {"table", "index", "view", "trigger"}
+        key.target_type in {"table", "index", "view", "trigger", "virtual-table"}
         and key.operation in {"create", "alter", "drop"}
         for key in operations
     )
+    dropped_tables = {
+        (key.database, key.table)
+        for key in operations
+        if key.operation == "drop" and key.target_type == "table"
+    }
+
+    def key_is_drop_table_delete(key: OperationKey) -> bool:
+        return (
+            key.operation == "delete"
+            and key.target_type == "table"
+            and (key.database, key.table) in dropped_tables
+        )
+
+    has_user_table_access_in_schema_operation = any(
+        key.operation in {"read", "insert", "update", "delete"}
+        and key.target_type == "table"
+        and not key.internal
+        and not key_is_drop_table_delete(key)
+        for key in operations
+    )
+
+    def operation_is_internal(key: OperationKey) -> bool:
+        if key.internal or (has_schema_operation and key.target_type == "schema"):
+            return True
+        if has_schema_operation and key.operation == "reindex":
+            return True
+        if (
+            has_schema_operation
+            and not has_user_table_access_in_schema_operation
+            and key.operation == "function"
+            and key.target in _SQLITE_INTERNAL_SCHEMA_FUNCTIONS
+        ):
+            return True
+        if key_is_drop_table_delete(key):
+            return True
+        return False
 
     return SQLAnalysis(
         operations=tuple(
@@ -312,8 +481,7 @@ def analyze_sql_tables(
                 target=key.target,
                 columns=tuple(sorted(columns)),
                 source=key.source,
-                internal=key.internal
-                or (has_schema_operation and key.target_type == "schema"),
+                internal=operation_is_internal(key),
             )
             for key, columns in operations.items()
         )

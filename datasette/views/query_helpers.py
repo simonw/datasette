@@ -5,6 +5,7 @@ from datasette.resources import DatabaseResource
 from datasette.stored_queries import (
     StoredQuery,
     operation_is_write,
+    operation_should_be_ignored,
     permission_for_operation,
 )
 from datasette.utils import (
@@ -203,29 +204,10 @@ async def _analyze_user_query(datasette, db, sql, *, actor):
     return is_write, derived, analysis
 
 
-def _semantic_schema_operation_is_present(operations: tuple[Operation, ...]) -> bool:
-    return any(
-        operation.operation in {"create", "alter", "drop"}
-        and operation.target_type in {"table", "index", "view", "trigger"}
-        for operation in operations
-    )
-
-
 def _display_operations(analysis: SQLAnalysis) -> list[Operation]:
-    has_semantic_schema_operation = _semantic_schema_operation_is_present(
-        analysis.operations
-    )
     operations = []
     for operation in analysis.operations:
-        if operation.internal and has_semantic_schema_operation:
-            continue
-        if has_semantic_schema_operation and operation.operation in {
-            "read",
-            "insert",
-            "update",
-            "delete",
-            "reindex",
-        }:
+        if operation_should_be_ignored(operation):
             continue
         operations.append(operation)
     return operations
@@ -252,6 +234,7 @@ async def _analysis_rows_with_permissions(
     datasette, analysis: SQLAnalysis, actor
 ) -> list[dict[str, object]]:
     rows = _analysis_rows(analysis)
+    is_write = _analysis_is_write(analysis)
     for row, operation in zip(rows, _display_operations(analysis)):
         permission = permission_for_operation(operation)
         if permission:
@@ -261,7 +244,7 @@ async def _analysis_rows_with_permissions(
                 resource=resource,
                 actor=actor,
             )
-        elif operation_is_write(operation):
+        elif is_write:
             row["allowed"] = False
         else:
             row["allowed"] = None
@@ -360,7 +343,7 @@ async def _execute_write_analysis_data(datasette, db, sql, actor):
         "ok": analysis_error is None,
         "parameters": parameter_names,
         "analysis_error": analysis_error,
-        "analysis_rows": [row for row in analysis_rows if row["operation"] != "read"],
+        "analysis_rows": analysis_rows,
         "execute_disabled": bool(
             (not sql)
             or analysis_error
@@ -374,6 +357,7 @@ async def _query_create_analysis_data(datasette, db, sql, actor):
     parameter_names = []
     analysis_rows = []
     analysis_error = None
+    analysis: SQLAnalysis | None = None
     if has_sql:
         try:
             parameter_names = _derived_query_parameters(sql)
@@ -390,9 +374,7 @@ async def _query_create_analysis_data(datasette, db, sql, actor):
         "analysis_error": analysis_error,
         "analysis_rows": analysis_rows,
         "has_sql": has_sql,
-        "analysis_is_write": bool(
-            analysis_rows and any(row["required_permission"] for row in analysis_rows)
-        ),
+        "analysis_is_write": _analysis_is_write(analysis) if analysis else False,
         "save_disabled": bool(
             (not has_sql)
             or analysis_error

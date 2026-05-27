@@ -2,11 +2,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-from typing import Any, Iterable
+from typing import Any, Iterable, TYPE_CHECKING
 
-from .resources import TableResource
+from .resources import DatabaseResource, TableResource
+from .permissions import Resource
 from .utils import named_parameters, sqlite3, tilde_encode, urlsafe_components
 from .utils.asgi import Forbidden
+from .utils.sql_analysis import Operation, SQLAnalysis
+
+if TYPE_CHECKING:
+    from .app import Datasette
 
 UNCHANGED = object()
 
@@ -583,20 +588,94 @@ async def list_queries(
     )
 
 
-async def ensure_query_write_permissions(
-    datasette: Any,
-    database: str,
-    sql: str,
-    *,
-    actor: dict[str, Any] | None = None,
-    params: dict[str, Any] | None = None,
-    analysis: Any = None,
-) -> Any:
+PermissionRequirement = tuple[str, Resource]
+
+
+def permission_for_operation(operation: Operation) -> PermissionRequirement | None:
     write_actions = {
         "insert": "insert-row",
         "update": "update-row",
         "delete": "delete-row",
     }
+    action = write_actions.get(operation.operation)
+    if (
+        action
+        and operation.target_type == "table"
+        and operation.database is not None
+        and operation.table is not None
+    ):
+        return (
+            action,
+            TableResource(database=operation.database, table=operation.table),
+        )
+    if operation.operation == "create" and operation.target_type == "table":
+        if operation.database is None:
+            return None
+        return (
+            "create-table",
+            DatabaseResource(database=operation.database),
+        )
+    if (
+        operation.operation == "alter"
+        and operation.target_type == "table"
+        and operation.database is not None
+        and operation.table is not None
+    ):
+        return (
+            "alter-table",
+            TableResource(database=operation.database, table=operation.table),
+        )
+    if (
+        operation.operation == "drop"
+        and operation.target_type == "table"
+        and operation.database is not None
+        and operation.table is not None
+    ):
+        return (
+            "drop-table",
+            TableResource(database=operation.database, table=operation.table),
+        )
+    if (
+        operation.operation in {"create", "drop"}
+        and operation.target_type == "index"
+        and operation.database is not None
+        and operation.table is not None
+    ):
+        return (
+            "alter-table",
+            TableResource(database=operation.database, table=operation.table),
+        )
+    return None
+
+
+def operation_is_write(operation: Operation) -> bool:
+    return operation.operation in {
+        "insert",
+        "update",
+        "delete",
+        "create",
+        "alter",
+        "drop",
+        "begin",
+        "commit",
+        "rollback",
+        "attach",
+        "detach",
+        "pragma",
+        "analyze",
+        "reindex",
+    }
+
+
+async def ensure_query_write_permissions(
+    datasette: Datasette,
+    database: str,
+    sql: str,
+    *,
+    actor: dict[str, object] | None = None,
+    params: dict[str, object] | None = None,
+    analysis: SQLAnalysis | None = None,
+) -> SQLAnalysis:
     db = datasette.get_database(database)
     if analysis is None:
         if params is None:
@@ -606,18 +685,38 @@ async def ensure_query_write_permissions(
         except sqlite3.DatabaseError as ex:
             raise Forbidden(f"Could not analyze query: {ex}") from ex
 
-    for access in analysis.table_accesses:
-        action = write_actions.get(access.operation)
-        if action is None:
+    has_semantic_schema_operation = any(
+        operation.operation in {"create", "alter", "drop"}
+        and operation.target_type in {"table", "index", "view", "trigger"}
+        for operation in analysis.operations
+    )
+    for operation in analysis.operations:
+        if operation.internal and has_semantic_schema_operation:
             continue
-        if access.database != database:
+        if has_semantic_schema_operation and operation.operation in {
+            "read",
+            "insert",
+            "update",
+            "delete",
+            "reindex",
+        }:
+            continue
+        permission = permission_for_operation(operation)
+        if permission is None:
+            if operation_is_write(operation):
+                raise Forbidden(
+                    "Unsupported SQL operation: {} {}".format(
+                        operation.operation, operation.target_type
+                    )
+                )
+            continue
+        action, resource = permission
+        if operation.database != database:
             raise Forbidden("Writable queries may not write to attached databases")
         if not await datasette.allowed(
             action=action,
-            resource=TableResource(database=access.database, table=access.table),
+            resource=resource,
             actor=actor,
         ):
-            raise Forbidden(
-                f"Permission denied: need {action} on {access.database}/{access.table}"
-            )
+            raise Forbidden(f"Permission denied: need {action} on {resource}")
     return analysis

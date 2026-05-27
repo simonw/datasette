@@ -1,8 +1,12 @@
 import json
 import re
 
-from datasette.resources import DatabaseResource, TableResource
-from datasette.stored_queries import StoredQuery
+from datasette.resources import DatabaseResource
+from datasette.stored_queries import (
+    StoredQuery,
+    operation_is_write,
+    permission_for_operation,
+)
 from datasette.utils import (
     named_parameters as derive_named_parameters,
     escape_sqlite,
@@ -12,6 +16,7 @@ from datasette.utils import (
     InvalidSql,
 )
 from datasette.utils.asgi import Forbidden
+from datasette.utils.sql_analysis import Operation, SQLAnalysis
 
 _query_name_re = re.compile(r"^[^/\.\n]+$")
 
@@ -123,11 +128,8 @@ def _coerce_query_parameters(value, derived):
     return parameters
 
 
-def _analysis_is_write(analysis):
-    return any(
-        access.operation in {"insert", "update", "delete"}
-        for access in analysis.table_accesses
-    )
+def _analysis_is_write(analysis: SQLAnalysis) -> bool:
+    return any(operation_is_write(operation) for operation in analysis.operations)
 
 
 def _block_framing(response):
@@ -201,34 +203,66 @@ async def _analyze_user_query(datasette, db, sql, *, actor):
     return is_write, derived, analysis
 
 
-def _analysis_rows(analysis):
-    write_actions = {
-        "insert": "insert-row",
-        "update": "update-row",
-        "delete": "delete-row",
-    }
-    return [
-        {
-            "operation": access.operation,
-            "database": access.database,
-            "table": access.table,
-            "required_permission": write_actions.get(access.operation, ""),
-            "source": access.source,
-        }
-        for access in analysis.table_accesses
-    ]
+def _semantic_schema_operation_is_present(operations: tuple[Operation, ...]) -> bool:
+    return any(
+        operation.operation in {"create", "alter", "drop"}
+        and operation.target_type in {"table", "index", "view", "trigger"}
+        for operation in operations
+    )
 
 
-async def _analysis_rows_with_permissions(datasette, analysis, actor):
+def _display_operations(analysis: SQLAnalysis) -> list[Operation]:
+    has_semantic_schema_operation = _semantic_schema_operation_is_present(
+        analysis.operations
+    )
+    operations = []
+    for operation in analysis.operations:
+        if operation.internal and has_semantic_schema_operation:
+            continue
+        if has_semantic_schema_operation and operation.operation in {
+            "read",
+            "insert",
+            "update",
+            "delete",
+            "reindex",
+        }:
+            continue
+        operations.append(operation)
+    return operations
+
+
+def _analysis_rows(analysis: SQLAnalysis) -> list[dict[str, object]]:
+    rows = []
+    for operation in _display_operations(analysis):
+        permission = permission_for_operation(operation)
+        required_permission = permission[0] if permission else ""
+        rows.append(
+            {
+                "operation": operation.operation,
+                "database": operation.database,
+                "table": operation.table or operation.target,
+                "required_permission": required_permission,
+                "source": operation.source,
+            }
+        )
+    return rows
+
+
+async def _analysis_rows_with_permissions(
+    datasette, analysis: SQLAnalysis, actor
+) -> list[dict[str, object]]:
     rows = _analysis_rows(analysis)
-    for row in rows:
-        permission = row["required_permission"]
+    for row, operation in zip(rows, _display_operations(analysis)):
+        permission = permission_for_operation(operation)
         if permission:
+            action, resource = permission
             row["allowed"] = await datasette.allowed(
-                action=permission,
-                resource=TableResource(row["database"], row["table"]),
+                action=action,
+                resource=resource,
                 actor=actor,
             )
+        elif operation_is_write(operation):
+            row["allowed"] = False
         else:
             row["allowed"] = None
     return rows
@@ -398,15 +432,19 @@ async def _inserted_row_url(datasette, db, analysis, cursor):
     if lastrowid is None:
         return None
     direct_inserts = [
-        access
-        for access in analysis.table_accesses
-        if access.operation == "insert"
-        and access.source is None
-        and access.database == db.name
+        operation
+        for operation in analysis.operations
+        if operation.operation == "insert"
+        and operation.target_type == "table"
+        and not operation.internal
+        and operation.source is None
+        and operation.database == db.name
     ]
     if len(direct_inserts) != 1:
         return None
     table = direct_inserts[0].table
+    if table is None:
+        return None
     pks = await db.primary_keys(table)
     use_rowid = not pks
     select = (

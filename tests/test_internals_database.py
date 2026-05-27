@@ -698,14 +698,17 @@ async def test_analyze_sql():
 
     assert [
         (
-            access.operation,
-            access.database,
-            access.sqlite_schema,
-            access.table,
-            access.columns,
-            access.source,
+            operation.operation,
+            operation.database,
+            operation.sqlite_schema,
+            operation.table,
+            operation.columns,
+            operation.source,
         )
-        for access in analysis.table_accesses
+        for operation in analysis.operations
+        if operation.target_type == "table"
+        and operation.operation in {"read", "insert", "update", "delete"}
+        and not operation.internal
     ] == [
         ("read", "data", "main", "dogs", ("id", "name"), None),
     ]
@@ -722,14 +725,17 @@ async def test_analyze_sql_insert_select():
 
     assert {
         (
-            access.operation,
-            access.database,
-            access.sqlite_schema,
-            access.table,
-            access.columns,
-            access.source,
+            operation.operation,
+            operation.database,
+            operation.sqlite_schema,
+            operation.table,
+            operation.columns,
+            operation.source,
         )
-        for access in analysis.table_accesses
+        for operation in analysis.operations
+        if operation.target_type == "table"
+        and operation.operation in {"read", "insert", "update", "delete"}
+        and not operation.internal
     } == {
         ("insert", "data", "main", "dogs", (), None),
         ("read", "data", "main", "cats", ("name",), None),

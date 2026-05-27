@@ -193,9 +193,12 @@ class ExecuteWriteView(BaseView):
                 status=400,
             )
 
-        message = "Query executed, {} row{} affected".format(
-            cursor.rowcount, "" if cursor.rowcount == 1 else "s"
-        )
+        if cursor.rowcount == -1:
+            message = "Query executed"
+        else:
+            message = "Query executed, {} row{} affected".format(
+                cursor.rowcount, "" if cursor.rowcount == 1 else "s"
+            )
         if _wants_json(request, is_json, data):
             return _block_framing(
                 Response.json(

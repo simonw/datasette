@@ -26,17 +26,20 @@ def conn():
         conn.close()
 
 
-def as_tuples(analysis):
+def table_operation_tuples(analysis):
     return [
         (
-            access.operation,
-            access.database,
-            access.sqlite_schema,
-            access.table,
-            access.columns,
-            access.source,
+            operation.operation,
+            operation.database,
+            operation.sqlite_schema,
+            operation.table,
+            operation.columns,
+            operation.source,
         )
-        for access in analysis.table_accesses
+        for operation in analysis.operations
+        if operation.target_type == "table"
+        and operation.operation in {"read", "insert", "update", "delete"}
+        and not operation.internal
     ]
 
 
@@ -48,7 +51,7 @@ def test_analyze_select_tables(conn):
         database_name="data",
     )
 
-    assert set(as_tuples(analysis)) == {
+    assert set(table_operation_tuples(analysis)) == {
         ("read", "data", "main", "cats", ("id", "name"), None),
         ("read", "data", "main", "dogs", ("age", "id", "name"), None),
     }
@@ -57,9 +60,71 @@ def test_analyze_select_tables(conn):
 def test_analyze_uses_sqlite_schema_as_default_database(conn):
     analysis = analyze_sql_tables(conn, "select name from dogs")
 
-    assert set(as_tuples(analysis)) == {
+    assert set(table_operation_tuples(analysis)) == {
         ("read", "main", "main", "dogs", ("name",), None),
     }
+
+
+def operation_dict(operation):
+    return {
+        "operation": operation.operation,
+        "target_type": operation.target_type,
+        "database": operation.database,
+        "sqlite_schema": operation.sqlite_schema,
+        "table": operation.table,
+        "target": operation.target,
+        "columns": operation.columns,
+        "source": operation.source,
+        "internal": operation.internal,
+    }
+
+
+def test_analyze_create_table_operation():
+    conn = sqlite3.connect(":memory:")
+    try:
+        analysis = analyze_sql_tables(
+            conn,
+            "create table foobar (id integer primary key, name text)",
+            database_name="data",
+        )
+    finally:
+        conn.close()
+
+    assert {
+        "operation": "create",
+        "target_type": "table",
+        "database": "data",
+        "sqlite_schema": "main",
+        "table": "foobar",
+        "target": "foobar",
+        "columns": (),
+        "source": None,
+        "internal": False,
+    } in [operation_dict(operation) for operation in analysis.operations]
+    assert not [
+        operation
+        for operation in analysis.operations
+        if operation.table in {"sqlite_master", "sqlite_schema"}
+        and not operation.internal
+    ]
+
+
+def test_analyze_transaction_operation(conn):
+    analysis = analyze_sql_tables(conn, "commit", database_name="data")
+
+    assert [operation_dict(operation) for operation in analysis.operations] == [
+        {
+            "operation": "commit",
+            "target_type": "transaction",
+            "database": None,
+            "sqlite_schema": None,
+            "table": None,
+            "target": "COMMIT",
+            "columns": (),
+            "source": None,
+            "internal": False,
+        }
+    ]
 
 
 def test_analyze_insert_tables(conn):
@@ -70,7 +135,7 @@ def test_analyze_insert_tables(conn):
         database_name="data",
     )
 
-    assert set(as_tuples(analysis)) == {
+    assert set(table_operation_tuples(analysis)) == {
         ("insert", "data", "main", "dogs", (), None),
         ("read", "data", "main", "dogs", ("id", "name"), "dogs_after_insert"),
         ("update", "data", "main", "cats", ("name",), "dogs_after_insert"),
@@ -87,7 +152,7 @@ def test_analyze_update_tables(conn):
         database_name="data",
     )
 
-    assert set(as_tuples(analysis)) == {
+    assert set(table_operation_tuples(analysis)) == {
         ("update", "data", "main", "dogs", ("age",), None),
         ("read", "data", "main", "dogs", ("age", "name"), None),
     }
@@ -101,7 +166,7 @@ def test_analyze_delete_tables(conn):
         database_name="data",
     )
 
-    assert set(as_tuples(analysis)) == {
+    assert set(table_operation_tuples(analysis)) == {
         ("delete", "data", "main", "dogs", (), None),
         ("read", "data", "main", "dogs", ("name",), None),
     }
@@ -121,7 +186,7 @@ def test_analyze_insert_select_with_cte(conn):
         database_name="data",
     )
 
-    assert set(as_tuples(analysis)) == {
+    assert set(table_operation_tuples(analysis)) == {
         ("insert", "data", "main", "cats", (), None),
         ("read", "data", "main", "dogs", ("age", "name"), "old_dogs"),
     }
@@ -135,7 +200,7 @@ def test_analyze_view_with_instead_of_trigger(conn):
         database_name="data",
     )
 
-    assert set(as_tuples(analysis)) == {
+    assert set(table_operation_tuples(analysis)) == {
         ("update", "data", "main", "dog_names", ("name",), None),
         ("read", "data", "main", "dogs", ("id", "name"), "dog_names"),
         ("read", "data", "main", "dog_names", ("id", "name"), "dog_names"),
@@ -163,7 +228,7 @@ def test_analyze_attached_database_tables(conn):
         schema_to_database={"extra": "extra_db"},
     )
 
-    assert set(as_tuples(analysis)) == {
+    assert set(table_operation_tuples(analysis)) == {
         ("insert", "extra_db", "extra", "people", (), None),
         ("read", "data", "main", "dogs", ("name",), None),
     }

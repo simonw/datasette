@@ -58,6 +58,16 @@ class Resource(ABC):
         self.child = child
         self._private = None  # Sentinel to track if private was set
 
+    def __str__(self) -> str:
+        return "/".join(
+            str(part) for part in (self.parent, self.child) if part is not None
+        )
+
+    def __repr__(self) -> str:
+        return "{}(parent={!r}, child={!r})".format(
+            self.__class__.__name__, self.parent, self.child
+        )
+
     @property
     def private(self) -> bool:
         """

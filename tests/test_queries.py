@@ -1644,6 +1644,172 @@ async def test_execute_write_post_requires_database_and_table_permissions():
 
 
 @pytest.mark.asyncio
+async def test_execute_write_create_table_uses_create_table_permission():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "permissions": {
+                "insert-row": {"id": "row-writer"},
+                "update-row": {"id": "row-writer"},
+            },
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": ["creator", "row-writer"]},
+                        "execute-write-sql": {"id": ["creator", "row-writer"]},
+                        "create-table": {"id": "creator"},
+                    }
+                }
+            },
+        },
+    )
+    db = ds.add_memory_database("execute_write_create_table", name="data")
+    await ds.invoke_startup()
+
+    analysis_response = await ds.client.get(
+        "/data/-/execute-write/analyze",
+        actor={"id": "creator"},
+        params={"sql": "create table foobar (id integer primary key, name text)"},
+    )
+    allowed_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "creator"},
+        json={"sql": "create table foobar (id integer primary key, name text)"},
+    )
+    row_permission_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "row-writer"},
+        json={"sql": "create table should_not_exist (id integer primary key)"},
+    )
+
+    assert analysis_response.status_code == 200
+    analysis_data = analysis_response.json()
+    assert analysis_data["ok"] is True
+    assert analysis_data["execute_disabled"] is False
+    assert analysis_data["analysis_rows"] == [
+        {
+            "operation": "create",
+            "database": "data",
+            "table": "foobar",
+            "required_permission": "create-table",
+            "source": None,
+            "allowed": True,
+        }
+    ]
+
+    assert allowed_response.status_code == 200
+    assert allowed_response.json()["ok"] is True
+    assert allowed_response.json()["message"] == "Query executed"
+    assert await db.table_exists("foobar")
+
+    assert row_permission_response.status_code == 403
+    assert row_permission_response.json()["errors"] == [
+        "Permission denied: need create-table on data"
+    ]
+    assert not await db.table_exists("should_not_exist")
+
+
+@pytest.mark.asyncio
+async def test_execute_write_alter_and_drop_table_use_schema_permissions():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "permissions": {
+                "delete-row": {"id": "row-writer"},
+                "update-row": {"id": "row-writer"},
+            },
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": ["alterer", "dropper", "row-writer"]},
+                        "execute-write-sql": {
+                            "id": ["alterer", "dropper", "row-writer"]
+                        },
+                    },
+                    "tables": {
+                        "dogs": {
+                            "permissions": {
+                                "alter-table": {"id": "alterer"},
+                                "drop-table": {"id": "dropper"},
+                            }
+                        }
+                    },
+                }
+            },
+        },
+    )
+    db = ds.add_memory_database("execute_write_alter_drop_table", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await db.execute_write("create table cats (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    alter_allowed_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "alterer"},
+        json={"sql": "alter table dogs add column age integer"},
+    )
+    alter_row_permission_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "row-writer"},
+        json={"sql": "alter table cats add column age integer"},
+    )
+
+    assert alter_allowed_response.status_code == 200
+    assert "age" in [column.name for column in await db.table_column_details("dogs")]
+    assert alter_row_permission_response.status_code == 403
+    assert alter_row_permission_response.json()["errors"] == [
+        "Permission denied: need alter-table on data/cats"
+    ]
+    assert "age" not in [
+        column.name for column in await db.table_column_details("cats")
+    ]
+
+    create_index_allowed_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "alterer"},
+        json={"sql": "create index idx_dogs_name on dogs(name)"},
+    )
+    create_index_row_permission_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "row-writer"},
+        json={"sql": "create index idx_cats_name on cats(name)"},
+    )
+    drop_index_allowed_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "alterer"},
+        json={"sql": "drop index idx_dogs_name"},
+    )
+
+    assert create_index_allowed_response.status_code == 200
+    assert create_index_row_permission_response.status_code == 403
+    assert create_index_row_permission_response.json()["errors"] == [
+        "Permission denied: need alter-table on data/cats"
+    ]
+    assert drop_index_allowed_response.status_code == 200
+
+    drop_allowed_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "dropper"},
+        json={"sql": "drop table dogs"},
+    )
+    drop_row_permission_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "row-writer"},
+        json={"sql": "drop table cats"},
+    )
+
+    assert drop_allowed_response.status_code == 200
+    assert not await db.table_exists("dogs")
+    assert drop_row_permission_response.status_code == 403
+    assert drop_row_permission_response.json()["errors"] == [
+        "Permission denied: need drop-table on data/cats"
+    ]
+    assert await db.table_exists("cats")
+
+
+@pytest.mark.asyncio
 async def test_execute_write_insert_links_to_inserted_row():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True

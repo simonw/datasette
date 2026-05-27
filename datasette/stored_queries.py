@@ -588,10 +588,25 @@ async def list_queries(
     )
 
 
-PermissionRequirement = tuple[str, Resource]
+@dataclass(frozen=True)
+class PermissionRequirement:
+    action: str
+    resource: Resource
 
 
-def permission_for_operation(operation: Operation) -> PermissionRequirement | None:
+def row_mutation_requirements(
+    database: str, table: str
+) -> tuple[PermissionRequirement, ...]:
+    resource = TableResource(database=database, table=table)
+    return tuple(
+        PermissionRequirement(action=action, resource=resource)
+        for action in ("insert-row", "update-row", "delete-row")
+    )
+
+
+def permission_requirements_for_operation(
+    operation: Operation,
+) -> tuple[PermissionRequirement, ...]:
     if (
         operation.operation == "read"
         and operation.target_type == "table"
@@ -599,31 +614,45 @@ def permission_for_operation(operation: Operation) -> PermissionRequirement | No
         and operation.table is not None
     ):
         return (
-            "view-table",
-            TableResource(database=operation.database, table=operation.table),
+            PermissionRequirement(
+                action="view-table",
+                resource=TableResource(
+                    database=operation.database, table=operation.table
+                ),
+            ),
         )
-    write_actions = {
-        "insert": "insert-row",
-        "update": "update-row",
-        "delete": "delete-row",
-    }
-    action = write_actions.get(operation.operation)
     if (
-        action
+        operation.operation in {"insert", "update"}
+        and operation.target_type == "table"
+        and operation.database is not None
+        and operation.table is not None
+    ):
+        return row_mutation_requirements(
+            database=operation.database,
+            table=operation.table,
+        )
+    if (
+        operation.operation == "delete"
         and operation.target_type == "table"
         and operation.database is not None
         and operation.table is not None
     ):
         return (
-            action,
-            TableResource(database=operation.database, table=operation.table),
+            PermissionRequirement(
+                action="delete-row",
+                resource=TableResource(
+                    database=operation.database, table=operation.table
+                ),
+            ),
         )
     if operation.operation == "create" and operation.target_type == "table":
         if operation.database is None:
-            return None
+            return ()
         return (
-            "create-table",
-            DatabaseResource(database=operation.database),
+            PermissionRequirement(
+                action="create-table",
+                resource=DatabaseResource(database=operation.database),
+            ),
         )
     if (
         operation.operation == "alter"
@@ -632,8 +661,12 @@ def permission_for_operation(operation: Operation) -> PermissionRequirement | No
         and operation.table is not None
     ):
         return (
-            "alter-table",
-            TableResource(database=operation.database, table=operation.table),
+            PermissionRequirement(
+                action="alter-table",
+                resource=TableResource(
+                    database=operation.database, table=operation.table
+                ),
+            ),
         )
     if (
         operation.operation == "drop"
@@ -642,8 +675,12 @@ def permission_for_operation(operation: Operation) -> PermissionRequirement | No
         and operation.table is not None
     ):
         return (
-            "drop-table",
-            TableResource(database=operation.database, table=operation.table),
+            PermissionRequirement(
+                action="drop-table",
+                resource=TableResource(
+                    database=operation.database, table=operation.table
+                ),
+            ),
         )
     if (
         operation.operation in {"create", "drop"}
@@ -652,10 +689,14 @@ def permission_for_operation(operation: Operation) -> PermissionRequirement | No
         and operation.table is not None
     ):
         return (
-            "alter-table",
-            TableResource(database=operation.database, table=operation.table),
+            PermissionRequirement(
+                action="alter-table",
+                resource=TableResource(
+                    database=operation.database, table=operation.table
+                ),
+            ),
         )
-    return None
+    return ()
 
 
 def operation_should_be_ignored(operation: Operation) -> bool:
@@ -704,20 +745,23 @@ async def ensure_query_write_permissions(
     for operation in analysis.operations:
         if operation_should_be_ignored(operation):
             continue
-        permission = permission_for_operation(operation)
-        if permission is None:
+        permissions = permission_requirements_for_operation(operation)
+        if not permissions:
             raise Forbidden(
                 "Unsupported SQL operation: {} {}".format(
                     operation.operation, operation.target_type
                 )
             )
-        action, resource = permission
         if operation.database != database:
             raise Forbidden("Writable queries may not access attached databases")
-        if not await datasette.allowed(
-            action=action,
-            resource=resource,
-            actor=actor,
-        ):
-            raise Forbidden(f"Permission denied: need {action} on {resource}")
+        for permission in permissions:
+            if not await datasette.allowed(
+                action=permission.action,
+                resource=permission.resource,
+                actor=actor,
+            ):
+                raise Forbidden(
+                    f"Permission denied: need {permission.action} "
+                    f"on {permission.resource}"
+                )
     return analysis

@@ -508,6 +508,8 @@ async def test_analyze_write_query_requires_table_permissions():
                     "dogs": {
                         "permissions": {
                             "insert-row": {"id": "writer"},
+                            "update-row": {"id": "writer"},
+                            "delete-row": {"id": "writer"},
                         }
                     }
                 }
@@ -1429,7 +1431,7 @@ async def test_execute_write_analyze_endpoint_uses_sql_only():
             "operation": "insert",
             "database": "data",
             "table": "dogs",
-            "required_permission": "insert-row",
+            "required_permission": "insert-row, update-row, delete-row",
             "source": None,
             "allowed": True,
         }
@@ -1627,6 +1629,40 @@ async def test_execute_write_post_requires_database_and_table_permissions():
             }
         }
     }
+    missing_update_permission = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "writer"},
+        json={
+            "sql": "insert into dogs (name) values (:name)",
+            "params": {"name": "Cleo"},
+        },
+    )
+
+    assert missing_update_permission.status_code == 403
+    assert missing_update_permission.json()["errors"] == [
+        "Permission denied: need update-row on data/dogs"
+    ]
+
+    ds.config["databases"]["data"]["tables"]["dogs"]["permissions"][
+        "update-row"
+    ] = {"id": "writer"}
+    missing_delete_permission = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "writer"},
+        json={
+            "sql": "insert into dogs (name) values (:name)",
+            "params": {"name": "Cleo"},
+        },
+    )
+
+    assert missing_delete_permission.status_code == 403
+    assert missing_delete_permission.json()["errors"] == [
+        "Permission denied: need delete-row on data/dogs"
+    ]
+
+    ds.config["databases"]["data"]["tables"]["dogs"]["permissions"][
+        "delete-row"
+    ] = {"id": "writer"}
     allowed = await ds.client.post(
         "/data/-/execute-write",
         actor={"id": "writer"},
@@ -1641,6 +1677,156 @@ async def test_execute_write_post_requires_database_and_table_permissions():
     assert allowed.json()["rowcount"] == 1
     assert allowed.json()["analysis"][0]["operation"] == "insert"
     assert (await db.execute("select name from dogs")).first()[0] == "Cleo"
+
+
+@pytest.mark.asyncio
+async def test_execute_write_insert_or_replace_requires_delete_row_permission():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    },
+                    "tables": {
+                        "users": {
+                            "permissions": {
+                                "insert-row": {"id": "writer"},
+                                "update-row": {"id": "writer"},
+                                "view-table": {"id": "writer"},
+                            }
+                        }
+                    },
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database("execute_write_insert_or_replace", name="data")
+    await db.execute_write(
+        "create table users (id integer primary key, email text unique)"
+    )
+    await db.execute_write(
+        "insert into users (id, email) values "
+        "(1, 'a@example.com'), (2, 'b@example.com')"
+    )
+    await ds.invoke_startup()
+
+    denied_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "writer"},
+        json={
+            "sql": (
+                "insert or replace into users(id, email) "
+                "values (3, 'b@example.com')"
+            )
+        },
+    )
+
+    assert denied_response.status_code == 403
+    assert denied_response.json()["errors"] == [
+        "Permission denied: need delete-row on data/users"
+    ]
+    assert (await db.execute("select id, email from users order by id")).dicts() == [
+        {"id": 1, "email": "a@example.com"},
+        {"id": 2, "email": "b@example.com"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_execute_write_update_or_replace_requires_delete_row_permission():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    },
+                    "tables": {
+                        "users": {
+                            "permissions": {
+                                "insert-row": {"id": "writer"},
+                                "update-row": {"id": "writer"},
+                                "view-table": {"id": "writer"},
+                            }
+                        }
+                    },
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database("execute_write_update_or_replace", name="data")
+    await db.execute_write(
+        "create table users (id integer primary key, email text unique)"
+    )
+    await db.execute_write(
+        "insert into users (id, email) values "
+        "(1, 'a@example.com'), (2, 'b@example.com')"
+    )
+    await ds.invoke_startup()
+
+    denied_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "writer"},
+        json={"sql": "update or replace users set email = 'b@example.com' where id = 1"},
+    )
+
+    assert denied_response.status_code == 403
+    assert denied_response.json()["errors"] == [
+        "Permission denied: need delete-row on data/users"
+    ]
+    assert (await db.execute("select id, email from users order by id")).dicts() == [
+        {"id": 1, "email": "a@example.com"},
+        {"id": 2, "email": "b@example.com"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_execute_write_update_requires_insert_row_permission():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    },
+                    "tables": {
+                        "users": {
+                            "permissions": {
+                                "update-row": {"id": "writer"},
+                                "delete-row": {"id": "writer"},
+                                "view-table": {"id": "writer"},
+                            }
+                        }
+                    },
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database("execute_write_update_requires_insert", name="data")
+    await db.execute_write("create table users (id integer primary key, name text)")
+    await db.execute_write("insert into users (id, name) values (1, 'Alice')")
+    await ds.invoke_startup()
+
+    denied_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "writer"},
+        json={"sql": "update users set name = 'Alicia' where id = 1"},
+    )
+
+    assert denied_response.status_code == 403
+    assert denied_response.json()["errors"] == [
+        "Permission denied: need insert-row on data/users"
+    ]
+    assert (await db.execute("select name from users where id = 1")).first()[0] == "Alice"
 
 
 @pytest.mark.asyncio
@@ -1659,7 +1845,13 @@ async def test_execute_write_insert_select_requires_view_table_on_source():
                         "secret": {
                             "permissions": {"view-table": {"id": "someone-else"}}
                         },
-                        "public_log": {"permissions": {"insert-row": {"id": "writer"}}},
+                        "public_log": {
+                            "permissions": {
+                                "insert-row": {"id": "writer"},
+                                "update-row": {"id": "writer"},
+                                "delete-row": {"id": "writer"},
+                            }
+                        },
                     },
                 }
             }
@@ -1740,6 +1932,8 @@ async def test_execute_write_rejects_function_operations():
                         "dogs": {
                             "permissions": {
                                 "insert-row": {"id": "writer"},
+                                "update-row": {"id": "writer"},
+                                "delete-row": {"id": "writer"},
                             }
                         }
                     },
@@ -2117,6 +2311,8 @@ async def test_user_writable_query_execution_rechecks_table_permissions():
                         "dogs": {
                             "permissions": {
                                 "insert-row": {"id": "alice"},
+                                "update-row": {"id": "alice"},
+                                "delete-row": {"id": "alice"},
                             }
                         }
                     },

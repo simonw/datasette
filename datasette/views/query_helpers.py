@@ -6,7 +6,7 @@ from datasette.stored_queries import (
     StoredQuery,
     operation_is_write,
     operation_should_be_ignored,
-    permission_for_operation,
+    permission_requirements_for_operation,
 )
 from datasette.utils import (
     named_parameters as derive_named_parameters,
@@ -216,8 +216,10 @@ def _display_operations(analysis: SQLAnalysis) -> list[Operation]:
 def _analysis_rows(analysis: SQLAnalysis) -> list[dict[str, object]]:
     rows = []
     for operation in _display_operations(analysis):
-        permission = permission_for_operation(operation)
-        required_permission = permission[0] if permission else ""
+        permissions = permission_requirements_for_operation(operation)
+        required_permission = ", ".join(
+            permission.action for permission in permissions
+        )
         rows.append(
             {
                 "operation": operation.operation,
@@ -236,14 +238,17 @@ async def _analysis_rows_with_permissions(
     rows = _analysis_rows(analysis)
     is_write = _analysis_is_write(analysis)
     for row, operation in zip(rows, _display_operations(analysis)):
-        permission = permission_for_operation(operation)
-        if permission:
-            action, resource = permission
-            row["allowed"] = await datasette.allowed(
-                action=action,
-                resource=resource,
-                actor=actor,
-            )
+        permissions = permission_requirements_for_operation(operation)
+        if permissions:
+            row["allowed"] = True
+            for permission in permissions:
+                if not await datasette.allowed(
+                    action=permission.action,
+                    resource=permission.resource,
+                    actor=actor,
+                ):
+                    row["allowed"] = False
+                    break
         elif is_write:
             row["allowed"] = False
         else:

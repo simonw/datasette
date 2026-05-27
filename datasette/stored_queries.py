@@ -15,6 +15,13 @@ if TYPE_CHECKING:
 
 UNCHANGED = object()
 
+
+class QueryWriteRejected(Exception):
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(message)
+
+
 QUERY_OPTION_FIELDS = (
     "hide_sql",
     "fragment",
@@ -703,6 +710,12 @@ def operation_should_be_ignored(operation: Operation) -> bool:
     return operation.internal or operation.operation == "select"
 
 
+def operation_forbidden_message(operation: Operation) -> str | None:
+    if operation.operation == "vacuum":
+        return "VACUUM is not allowed in user-supplied SQL"
+    return None
+
+
 def operation_is_write(operation: Operation) -> bool:
     return operation.operation in {
         "insert",
@@ -746,6 +759,9 @@ async def ensure_query_write_permissions(
     for operation in analysis.operations:
         if operation_should_be_ignored(operation):
             continue
+        forbidden_message = operation_forbidden_message(operation)
+        if forbidden_message is not None:
+            raise QueryWriteRejected(forbidden_message)
         permissions = permission_requirements_for_operation(operation)
         if not permissions:
             raise Forbidden(

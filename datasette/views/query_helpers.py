@@ -3,6 +3,7 @@ import re
 
 from datasette.resources import DatabaseResource
 from datasette.stored_queries import (
+    QueryWriteRejected,
     StoredQuery,
     operation_is_write,
     operation_should_be_ignored,
@@ -47,9 +48,11 @@ _query_write_fields = {
 
 
 class QueryValidationError(Exception):
-    def __init__(self, message, status=400):
+    def __init__(self, message, status=400, *, flash=False):
         self.message = message
         self.status = status
+        self.flash = flash
+        super().__init__(message)
 
 
 def _actor_id(actor):
@@ -194,6 +197,8 @@ async def _analyze_user_query(datasette, db, sql, *, actor):
             await datasette.ensure_query_write_permissions(
                 db.name, sql, actor=actor, analysis=analysis
             )
+        except QueryWriteRejected as ex:
+            raise QueryValidationError(ex.message, status=403, flash=True) from ex
         except Forbidden as ex:
             raise QueryValidationError(str(ex), status=403) from ex
     else:
@@ -297,6 +302,8 @@ async def _prepare_execute_write(datasette, db, sql, params, actor):
         await datasette.ensure_query_write_permissions(
             db.name, sql, actor=actor, analysis=analysis
         )
+    except QueryWriteRejected as ex:
+        raise QueryValidationError(ex.message, status=403, flash=True) from ex
     except Forbidden as ex:
         raise QueryValidationError(str(ex), status=403) from ex
     return parameter_names, params, analysis

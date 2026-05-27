@@ -2038,8 +2038,159 @@ async def test_execute_write_rejects_vacuum_operation():
 
     assert denied_response.status_code == 403
     assert denied_response.json()["errors"] == [
-        "Unsupported SQL operation: vacuum database"
+        "VACUUM is not allowed in user-supplied SQL"
     ]
+
+
+@pytest.mark.asyncio
+async def test_execute_write_form_rejects_vacuum_operation_with_flash_error():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    }
+                }
+            }
+        },
+    )
+    ds.add_memory_database("execute_write_vacuum_operation_form", name="data")
+    await ds.invoke_startup()
+
+    denied_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "writer"},
+        data={"sql": "vacuum"},
+    )
+
+    assert denied_response.status_code == 403
+    assert (
+        '<p class="message-error">VACUUM is not allowed in user-supplied SQL</p>'
+        in denied_response.text
+    )
+    assert denied_response.text.count("VACUUM is not allowed in user-supplied SQL") == 1
+
+
+@pytest.mark.asyncio
+async def test_untrusted_stored_write_query_rejects_vacuum_operation():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "view-query": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    }
+                }
+            }
+        },
+    )
+    ds.add_memory_database("stored_query_vacuum_operation", name="data")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "vacuum_db",
+        "vacuum",
+        is_write=True,
+        is_trusted=False,
+        source="user",
+        owner_id="writer",
+    )
+
+    denied_response = await ds.client.post(
+        "/data/vacuum_db?_json=1",
+        actor={"id": "writer"},
+        data={},
+    )
+
+    assert denied_response.status_code == 403
+    assert "VACUUM is not allowed in user-supplied SQL" in denied_response.text
+
+
+@pytest.mark.asyncio
+async def test_untrusted_stored_write_query_rejects_vacuum_operation_with_flash_error():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "view-query": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    }
+                }
+            }
+        },
+    )
+    ds.add_memory_database("stored_query_vacuum_operation_form", name="data")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "vacuum_db",
+        "vacuum",
+        is_write=True,
+        is_trusted=False,
+        source="user",
+        owner_id="writer",
+    )
+
+    denied_response = await ds.client.post(
+        "/data/vacuum_db",
+        actor={"id": "writer"},
+        data={},
+    )
+
+    assert denied_response.status_code == 302
+    assert denied_response.headers["location"] == "/data/vacuum_db"
+    assert ds.unsign(denied_response.cookies["ds_messages"], "messages") == [
+        ["VACUUM is not allowed in user-supplied SQL", ds.ERROR]
+    ]
+
+
+@pytest.mark.asyncio
+async def test_trusted_stored_write_query_skips_vacuum_filtering():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "view-query": {"id": "writer"},
+                    }
+                }
+            }
+        },
+    )
+    ds.add_memory_database("trusted_stored_query_vacuum", name="data")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "trusted_vacuum",
+        "vacuum",
+        is_write=True,
+        is_trusted=True,
+        source="config",
+    )
+
+    response = await ds.client.post(
+        "/data/trusted_vacuum?_json=1",
+        actor={"id": "writer"},
+        data={},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
 
 
 @pytest.mark.asyncio

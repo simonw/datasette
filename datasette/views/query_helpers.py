@@ -217,9 +217,7 @@ def _analysis_rows(analysis: SQLAnalysis) -> list[dict[str, object]]:
     rows = []
     for operation in _display_operations(analysis):
         permissions = permission_requirements_for_operation(operation)
-        required_permission = ", ".join(
-            permission.action for permission in permissions
-        )
+        required_permission = ", ".join(permission.action for permission in permissions)
         rows.append(
             {
                 "operation": operation.operation,

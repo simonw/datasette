@@ -1643,9 +1643,9 @@ async def test_execute_write_post_requires_database_and_table_permissions():
         "Permission denied: need update-row on data/dogs"
     ]
 
-    ds.config["databases"]["data"]["tables"]["dogs"]["permissions"][
-        "update-row"
-    ] = {"id": "writer"}
+    ds.config["databases"]["data"]["tables"]["dogs"]["permissions"]["update-row"] = {
+        "id": "writer"
+    }
     missing_delete_permission = await ds.client.post(
         "/data/-/execute-write",
         actor={"id": "writer"},
@@ -1660,9 +1660,9 @@ async def test_execute_write_post_requires_database_and_table_permissions():
         "Permission denied: need delete-row on data/dogs"
     ]
 
-    ds.config["databases"]["data"]["tables"]["dogs"]["permissions"][
-        "delete-row"
-    ] = {"id": "writer"}
+    ds.config["databases"]["data"]["tables"]["dogs"]["permissions"]["delete-row"] = {
+        "id": "writer"
+    }
     allowed = await ds.client.post(
         "/data/-/execute-write",
         actor={"id": "writer"},
@@ -1719,8 +1719,7 @@ async def test_execute_write_insert_or_replace_requires_delete_row_permission():
         actor={"id": "writer"},
         json={
             "sql": (
-                "insert or replace into users(id, email) "
-                "values (3, 'b@example.com')"
+                "insert or replace into users(id, email) " "values (3, 'b@example.com')"
             )
         },
     )
@@ -1773,7 +1772,9 @@ async def test_execute_write_update_or_replace_requires_delete_row_permission():
     denied_response = await ds.client.post(
         "/data/-/execute-write",
         actor={"id": "writer"},
-        json={"sql": "update or replace users set email = 'b@example.com' where id = 1"},
+        json={
+            "sql": "update or replace users set email = 'b@example.com' where id = 1"
+        },
     )
 
     assert denied_response.status_code == 403
@@ -1826,7 +1827,9 @@ async def test_execute_write_update_requires_insert_row_permission():
     assert denied_response.json()["errors"] == [
         "Permission denied: need insert-row on data/users"
     ]
-    assert (await db.execute("select name from users where id = 1")).first()[0] == "Alice"
+    assert (await db.execute("select name from users where id = 1")).first()[
+        0
+    ] == "Alice"
 
 
 @pytest.mark.asyncio
@@ -1874,6 +1877,56 @@ async def test_execute_write_insert_select_requires_view_table_on_source():
         "Permission denied: need view-table on data/secret"
     ]
     assert (await db.execute("select value from public_log")).dicts() == []
+
+
+@pytest.mark.asyncio
+async def test_execute_write_rejects_sqlite_master_reads():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    },
+                    "tables": {
+                        "secret": {
+                            "permissions": {"view-table": {"id": "someone-else"}}
+                        },
+                        "log": {
+                            "permissions": {
+                                "insert-row": {"id": "writer"},
+                                "update-row": {"id": "writer"},
+                                "delete-row": {"id": "writer"},
+                            }
+                        },
+                    },
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database("execute_write_sqlite_master_read", name="data")
+    await db.execute_write("create table secret (value text)")
+    await db.execute_write("create table log (value text)")
+    await ds.invoke_startup()
+
+    denied_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "writer"},
+        json={
+            "sql": (
+                "insert into log " "select sql from sqlite_master where name = 'secret'"
+            )
+        },
+    )
+
+    assert denied_response.status_code == 403
+    assert denied_response.json()["errors"] == [
+        "Unsupported SQL operation: read schema"
+    ]
+    assert (await db.execute("select value from log")).dicts() == []
 
 
 @pytest.mark.asyncio

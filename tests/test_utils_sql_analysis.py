@@ -65,6 +65,26 @@ def test_analyze_uses_sqlite_schema_as_default_database(conn):
     }
 
 
+def test_analyze_user_schema_table_read_is_not_internal(conn):
+    analysis = analyze_sql_tables(
+        conn,
+        "insert into log select sql from sqlite_master where name = 'dogs'",
+        database_name="data",
+    )
+
+    assert {
+        "operation": "read",
+        "target_type": "schema",
+        "database": "data",
+        "sqlite_schema": "main",
+        "table": None,
+        "target": "sqlite_master",
+        "columns": ("name", "sql"),
+        "source": None,
+        "internal": False,
+    } in [operation_dict(operation) for operation in analysis.operations]
+
+
 def operation_dict(operation):
     return {
         "operation": operation.operation,

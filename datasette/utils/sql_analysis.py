@@ -256,7 +256,6 @@ def analyze_sql_tables(
                 target=arg1,
                 source=source,
                 column=column,
-                internal=target_type == "schema",
             )
             return sqlite3.SQLITE_OK
 

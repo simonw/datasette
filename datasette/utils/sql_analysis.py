@@ -42,7 +42,6 @@ SQLTargetType = Literal[
 SQLTableOperation = Literal["read", "insert", "update", "delete"]
 SQLSchemaOperation = Literal["create", "drop"]
 SQLSchemaTargetType = Literal["index", "table", "trigger", "view", "virtual-table"]
-SQLTableKind = SQLiteTableType
 
 
 @dataclass(frozen=True)
@@ -52,7 +51,7 @@ class Operation:
     database: str | None
     table: str | None
     sqlite_schema: str | None
-    table_kind: SQLTableKind | None = None
+    table_kind: SQLiteTableType | None = None
     target: str | None = None
     columns: tuple[str, ...] = ()
     source: str | None = None
@@ -428,7 +427,7 @@ def analyze_sql_tables(
         )
         return sqlite3.SQLITE_OK
 
-    table_kind_cache: dict[tuple[str | None, str], SQLTableKind | None] = {}
+    table_kind_cache: dict[tuple[str | None, str], SQLiteTableType | None] = {}
 
     conn.set_authorizer(authorizer)
     try:
@@ -523,7 +522,7 @@ def analyze_sql_tables(
             return True
         return False
 
-    def table_kind_for(key: OperationKey) -> SQLTableKind | None:
+    def table_kind_for(key: OperationKey) -> SQLiteTableType | None:
         if (
             key.target_type != "table"
             or key.operation not in {"read", "insert", "update", "delete"}

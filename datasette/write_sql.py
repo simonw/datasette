@@ -82,9 +82,7 @@ def decision_for_write_sql_operation(
                 "Writes to shadow tables are not allowed in user-supplied SQL"
             )
     if operation.operation == "function":
-        # SQL functions currently have no Datasette permission mapping. They are
-        # rejected by the user-supplied write SQL allow-list as unsupported.
-        return UnsupportedWriteSqlOperation(unsupported_message)
+        return IgnoreWriteSqlOperation("SQL function")
     if (
         operation.operation == "read"
         and operation.target_type == "table"

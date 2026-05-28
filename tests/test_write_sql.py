@@ -50,10 +50,19 @@ def test_decision_for_write_sql_operation_rejects_vacuum():
     assert decision.message == "VACUUM is not allowed in user-supplied SQL"
 
 
-def test_decision_for_write_sql_operation_reports_unsupported_functions():
+def test_decision_for_write_sql_operation_ignores_functions():
     decision = decision_for_write_sql_operation(
         Operation("function", "function", None, None, None, target="upper")
     )
 
+    assert isinstance(decision, IgnoreWriteSqlOperation)
+    assert decision.reason == "SQL function"
+
+
+def test_decision_for_write_sql_operation_reports_unsupported_operations():
+    decision = decision_for_write_sql_operation(
+        Operation("unknown", "unknown", None, None, None)
+    )
+
     assert isinstance(decision, UnsupportedWriteSqlOperation)
-    assert decision.message == "Unsupported SQL operation: function function"
+    assert decision.message == "Unsupported SQL operation: unknown unknown"

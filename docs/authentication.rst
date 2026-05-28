@@ -1425,7 +1425,7 @@ See also :ref:`the default_allow_sql setting <setting_default_allow_sql>`.
 execute-write-sql
 -----------------
 
-Actor is allowed to run arbitrary writable SQL queries against a specific database, subject to table-level write permissions such as ``insert-row``, ``update-row`` and ``delete-row``.
+Actor is allowed to run arbitrary writable SQL queries against a specific database, subject to table-level write permissions such as ``insert-row``, ``update-row`` and ``delete-row``. SQL functions are allowed and are not separately restricted by Datasette permissions.
 
 ``resource`` - ``datasette.resources.DatabaseResource(database)``
     ``database`` is the name of the database (string)

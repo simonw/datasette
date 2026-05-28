@@ -1414,6 +1414,11 @@ async def test_execute_write_analyze_endpoint_uses_sql_only():
         actor={"id": "root"},
         params={"sql": "insert into dogs (name) values (:name)"},
     )
+    function_response = await ds.client.get(
+        "/data/-/execute-write/analyze",
+        actor={"id": "root"},
+        params={"sql": "insert into dogs (name) values (upper(:name))"},
+    )
     read_only_response = await ds.client.get(
         "/data/-/execute-write/analyze",
         actor={"id": "root"},
@@ -1437,6 +1442,22 @@ async def test_execute_write_analyze_endpoint_uses_sql_only():
         }
     ]
     assert "params" not in data
+
+    assert function_response.status_code == 200
+    function_data = function_response.json()
+    assert function_data["ok"] is True
+    assert function_data["parameters"] == ["name"]
+    assert function_data["execute_disabled"] is False
+    assert function_data["analysis_rows"] == [
+        {
+            "operation": "insert",
+            "database": "data",
+            "table": "dogs",
+            "required_permission": "insert-row, update-row, delete-row",
+            "source": None,
+            "allowed": True,
+        }
+    ]
 
     assert read_only_response.status_code == 200
     read_only_data = read_only_response.json()
@@ -1970,7 +1991,7 @@ async def test_execute_write_create_table_as_select_requires_view_table_on_sourc
 
 
 @pytest.mark.asyncio
-async def test_execute_write_rejects_function_operations():
+async def test_execute_write_allows_function_operations():
     ds = Datasette(
         memory=True,
         default_deny=True,
@@ -1998,17 +2019,65 @@ async def test_execute_write_rejects_function_operations():
     await db.execute_write("create table dogs (id integer primary key, name text)")
     await ds.invoke_startup()
 
-    denied_response = await ds.client.post(
+    response = await ds.client.post(
         "/data/-/execute-write",
         actor={"id": "writer"},
         json={"sql": "insert into dogs (name) values (upper('cleo'))"},
     )
 
-    assert denied_response.status_code == 403
-    assert denied_response.json()["errors"] == [
-        "Unsupported SQL operation: function function"
-    ]
-    assert (await db.execute("select name from dogs")).dicts() == []
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert (await db.execute("select name from dogs")).dicts() == [{"name": "CLEO"}]
+
+
+@pytest.mark.asyncio
+async def test_untrusted_stored_write_query_allows_function_operations():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "view-query": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    },
+                    "tables": {
+                        "dogs": {
+                            "permissions": {
+                                "insert-row": {"id": "writer"},
+                                "update-row": {"id": "writer"},
+                                "delete-row": {"id": "writer"},
+                            }
+                        }
+                    },
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database("stored_query_function_operation", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "insert_dog",
+        "insert into dogs (name) values (upper(:name))",
+        is_write=True,
+        is_trusted=False,
+        source="user",
+        owner_id="writer",
+    )
+
+    response = await ds.client.post(
+        "/data/insert_dog?_json=1",
+        actor={"id": "writer"},
+        data={"name": "cleo"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert (await db.execute("select name from dogs")).dicts() == [{"name": "CLEO"}]
 
 
 @pytest.mark.asyncio

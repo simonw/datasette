@@ -4,23 +4,26 @@ from datasette.write_sql import (
     RejectWriteSqlOperation,
     RequireWriteSqlPermissions,
     UnsupportedWriteSqlOperation,
-    WriteSqlOperationDecision,
     decision_for_write_sql_operation,
 )
 
 
-def test_decision_for_write_sql_operation_ignores_internal_and_select_operations():
-    internal_decision = decision_for_write_sql_operation(
+def test_decision_for_write_sql_operation_ignores_internal_operations():
+    decision = decision_for_write_sql_operation(
         Operation("read", "schema", None, None, "main", internal=True)
     )
-    select_decision = decision_for_write_sql_operation(
+
+    assert isinstance(decision, IgnoreWriteSqlOperation)
+    assert decision.reason == "internal SQLite operation"
+
+
+def test_decision_for_write_sql_operation_ignores_select_statement_operations():
+    decision = decision_for_write_sql_operation(
         Operation("select", "statement", None, None, None)
     )
 
-    assert isinstance(internal_decision, IgnoreWriteSqlOperation)
-    assert isinstance(internal_decision, WriteSqlOperationDecision)
-    assert isinstance(select_decision, IgnoreWriteSqlOperation)
-    assert isinstance(select_decision, WriteSqlOperationDecision)
+    assert isinstance(decision, IgnoreWriteSqlOperation)
+    assert decision.reason == "select statement"
 
 
 def test_decision_for_write_sql_operation_requires_table_write_permissions():

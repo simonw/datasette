@@ -14,6 +14,7 @@ from .query_helpers import (
     _coerce_execute_write_payload,
     _derived_query_parameters,
     _execute_write_analysis_data,
+    _execute_write_disabled_reason,
     _inserted_row_url,
     _json_or_form_payload,
     _prepare_execute_write,
@@ -80,13 +81,12 @@ class ExecuteWriteView(BaseView):
         )
         save_query_base_url = None
         save_query_url = None
+        execute_disabled_reason = _execute_write_disabled_reason(
+            sql, analysis_error, analysis_rows
+        )
         if allow_save_query:
             save_query_base_url = self.ds.urls.database(db.name) + "/-/queries/store"
-            if (
-                sql
-                and analysis_error is None
-                and not any(row["allowed"] is False for row in analysis_rows)
-            ):
+            if not execute_disabled_reason:
                 save_query_url = save_query_base_url + "?" + urlencode({"sql": sql})
 
         response = await self.render(
@@ -103,11 +103,8 @@ class ExecuteWriteView(BaseView):
                 "execution_message": execution_message,
                 "execution_links": execution_links,
                 "execution_ok": execution_ok,
-                "execute_disabled": bool(
-                    (not sql)
-                    or analysis_error
-                    or any(row["allowed"] is False for row in analysis_rows)
-                ),
+                "execute_disabled": bool(execute_disabled_reason),
+                "execute_disabled_reason": execute_disabled_reason,
                 "table_columns": table_columns,
                 "write_template_tables": write_template_tables,
                 "save_query_url": save_query_url,

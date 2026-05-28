@@ -40,6 +40,26 @@
     border-radius: 0.25rem;
     min-width: 13rem;
 }
+.execute-write-submit-row {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem 0.75rem;
+}
+.execute-write-submit-row [hidden] {
+    display: none;
+}
+form.sql.core input[data-execute-write-submit]:disabled {
+    background: #d0d7de;
+    border-color: #b6c0cc;
+    color: #5f6975;
+    cursor: not-allowed;
+    opacity: 1;
+}
+.execute-write-disabled-reason {
+    color: #4f5b6d;
+    font-size: 0.85rem;
+}
 </style>
 {% include "_execute_write_analysis_styles.html" %}
 {% include "_sql_parameter_styles.html" %}
@@ -119,9 +139,10 @@
         {% endif %}
     </div>
 
-    <p>
-        <input type="submit" value="Execute" data-execute-write-submit{% if execute_disabled %} disabled{% endif %}>
-        {% if save_query_base_url %}<a href="{{ save_query_url or save_query_base_url }}" class="save-query" data-save-query-link data-save-query-base-url="{{ save_query_base_url }}"{% if not save_query_url %} hidden{% endif %}>Save this query</a>{% endif %}
+    <p class="execute-write-submit-row"{% if save_query_base_url %} data-save-query-base-url="{{ save_query_base_url }}"{% endif %}>
+        <input type="submit" value="Execute" data-execute-write-submit aria-describedby="execute-write-disabled-reason"{% if execute_disabled %} disabled{% endif %}>
+        <span id="execute-write-disabled-reason" class="execute-write-disabled-reason" data-execute-write-disabled-reason aria-live="polite"{% if not execute_disabled_reason %} hidden{% endif %}>{{ execute_disabled_reason or "" }}</span>
+        {% if save_query_url %}<a href="{{ save_query_url }}" class="save-query" data-save-query-link>Save this query</a>{% endif %}
     </p>
 </form>
 
@@ -143,25 +164,55 @@ window.addEventListener("DOMContentLoaded", () => {
   const submitButton = form
     ? form.querySelector("[data-execute-write-submit]")
     : null;
-  const saveQueryLink = form
+  const submitDisabledReason = form
+    ? form.querySelector("[data-execute-write-disabled-reason]")
+    : null;
+  const submitRow = form
+    ? form.querySelector(".execute-write-submit-row")
+    : null;
+  let saveQueryLink = form
     ? form.querySelector("[data-save-query-link]")
     : null;
 
+  function updateSubmitState(data) {
+    if (submitButton) {
+      submitButton.disabled = data.execute_disabled;
+    }
+    if (!submitDisabledReason) {
+      return;
+    }
+    const reason = data.execute_disabled_reason || "";
+    submitDisabledReason.textContent = reason;
+    submitDisabledReason.hidden = !reason;
+  }
+
   function updateSaveQueryLink(data) {
-    if (!saveQueryLink) {
+    if (!submitRow || !submitRow.dataset.saveQueryBaseUrl) {
       return;
     }
     const sql = window.editor
       ? window.editor.state.doc.toString()
       : executeWriteSqlInput.value;
     if (!sql.trim() || !data.ok || data.execute_disabled) {
-      saveQueryLink.hidden = true;
+      if (saveQueryLink) {
+        saveQueryLink.remove();
+        saveQueryLink = null;
+      }
       return;
     }
-    const url = new URL(saveQueryLink.dataset.saveQueryBaseUrl, window.location.href);
+    if (!saveQueryLink) {
+      saveQueryLink = document.createElement("a");
+      saveQueryLink.className = "save-query";
+      saveQueryLink.setAttribute("data-save-query-link", "");
+      saveQueryLink.textContent = "Save this query";
+      submitRow.appendChild(saveQueryLink);
+    }
+    const url = new URL(
+      submitRow.dataset.saveQueryBaseUrl,
+      window.location.href
+    );
     url.searchParams.set("sql", sql);
     saveQueryLink.href = url.pathname + url.search + url.hash;
-    saveQueryLink.hidden = false;
   }
 
   window.datasetteSqlParameters.setupSqlParameterRefresh({
@@ -170,9 +221,7 @@ window.addEventListener("DOMContentLoaded", () => {
     allowExpand: true,
     onData(data) {
       window.datasetteSqlAnalysis.renderAnalysis(analysisSection, data);
-      if (submitButton) {
-        submitButton.disabled = data.execute_disabled;
-      }
+      updateSubmitState(data);
       updateSaveQueryLink(data);
     },
     onError(error) {
@@ -180,12 +229,11 @@ window.addEventListener("DOMContentLoaded", () => {
         analysis_error: error.message,
         analysis_rows: [],
       });
-      if (submitButton) {
-        submitButton.disabled = true;
-      }
-      if (saveQueryLink) {
-        saveQueryLink.hidden = true;
-      }
+      updateSubmitState({
+        execute_disabled: true,
+        execute_disabled_reason: error.message,
+      });
+      updateSaveQueryLink({ ok: false, execute_disabled: true });
     },
   });
 });

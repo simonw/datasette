@@ -1374,6 +1374,10 @@ async def test_execute_write_get_prepopulates_without_executing():
     assert 'addEventListener("paste"' in response.text
     assert "setupSqlParameterRefresh" in response.text
     assert "datasetteSqlAnalysis.renderAnalysis" in response.text
+    assert "input[data-execute-write-submit]:disabled" in response.text
+    assert (
+        'data-execute-write-disabled-reason aria-live="polite" hidden' in response.text
+    )
     assert '<table class="execute-write-analysis">' in response.text
     assert '<th scope="col">Required permission</th>' in response.text
     assert "<td><code>insert</code></td>" in response.text
@@ -1390,7 +1394,9 @@ async def test_execute_write_get_prepopulates_without_executing():
     )
     assert '<textarea id="sql-editor" name="sql"></textarea>' in empty_response.text
     assert 'executeWriteSqlInput.value = "\\n\\n\\n";' in empty_response.text
-    assert "hidden>Save this query</a>" in empty_response.text
+    assert "Enter writable SQL before executing." in empty_response.text
+    assert 'data-save-query-base-url="/data/-/queries/store"' in empty_response.text
+    assert '<a href="/data/-/queries/store' not in empty_response.text
 
     read_only_response = await ds.client.get(
         "/data/-/execute-write?sql=select+*+from+dogs",
@@ -1400,7 +1406,67 @@ async def test_execute_write_get_prepopulates_without_executing():
         "Use /-/query for read-only SQL; this endpoint only executes writes"
         in read_only_response.text
     )
-    assert "hidden>Save this query</a>" in read_only_response.text
+    assert (
+        '<input type="submit" value="Execute" data-execute-write-submit '
+        'aria-describedby="execute-write-disabled-reason" disabled>'
+    ) in read_only_response.text
+    assert 'data-save-query-base-url="/data/-/queries/store"' in read_only_response.text
+    assert '<a href="/data/-/queries/store' not in read_only_response.text
+
+
+@pytest.mark.asyncio
+async def test_execute_write_disabled_submit_explains_denied_operations():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "execute-sql": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                        "store-query": {"id": "writer"},
+                    }
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database("execute_write_denied_submit", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    response = await ds.client.get(
+        "/data/-/execute-write?sql=insert+into+dogs+(name)+values+('Cleo')",
+        actor={"id": "writer"},
+    )
+    analysis_response = await ds.client.get(
+        "/data/-/execute-write/analyze",
+        actor={"id": "writer"},
+        params={"sql": "insert into dogs (name) values ('Cleo')"},
+    )
+
+    assert response.status_code == 200
+    assert (
+        '<input type="submit" value="Execute" data-execute-write-submit '
+        'aria-describedby="execute-write-disabled-reason" disabled>'
+    ) in response.text
+    assert (
+        '<span id="execute-write-disabled-reason" '
+        'class="execute-write-disabled-reason" '
+        'data-execute-write-disabled-reason aria-live="polite">'
+        "You do not have permission for every operation listed above.</span>"
+    ) in response.text
+    assert '<span class="execute-write-analysis-denied">no</span>' in response.text
+    assert 'data-save-query-base-url="/data/-/queries/store"' in response.text
+    assert '<a href="/data/-/queries/store' not in response.text
+
+    assert analysis_response.status_code == 200
+    data = analysis_response.json()
+    assert data["execute_disabled"] is True
+    assert data["execute_disabled_reason"] == (
+        "You do not have permission for every operation listed above."
+    )
 
 
 @pytest.mark.asyncio
@@ -1433,6 +1499,7 @@ async def test_execute_write_analyze_endpoint_uses_sql_only():
     assert data["parameters"] == ["name"]
     assert data["analysis_error"] is None
     assert data["execute_disabled"] is False
+    assert data["execute_disabled_reason"] is None
     assert data["analysis_rows"] == [
         {
             "operation": "insert",
@@ -1450,6 +1517,7 @@ async def test_execute_write_analyze_endpoint_uses_sql_only():
     assert function_data["ok"] is True
     assert function_data["parameters"] == ["name"]
     assert function_data["execute_disabled"] is False
+    assert function_data["execute_disabled_reason"] is None
     assert function_data["analysis_rows"] == [
         {
             "operation": "insert",
@@ -1469,6 +1537,9 @@ async def test_execute_write_analyze_endpoint_uses_sql_only():
         "Use /-/query for read-only SQL; this endpoint only executes writes"
     )
     assert read_only_data["execute_disabled"] is True
+    assert read_only_data["execute_disabled_reason"] == (
+        "Use /-/query for read-only SQL; this endpoint only executes writes"
+    )
 
 
 @pytest.mark.asyncio

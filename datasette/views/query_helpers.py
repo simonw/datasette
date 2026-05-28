@@ -268,6 +268,16 @@ async def _analysis_rows_with_permissions(
     return rows
 
 
+def _execute_write_disabled_reason(sql, analysis_error, analysis_rows):
+    if not (sql and sql.strip()):
+        return "Enter writable SQL before executing."
+    if analysis_error:
+        return analysis_error
+    if any(row.get("allowed") is False for row in analysis_rows):
+        return "You do not have permission for every operation listed above."
+    return None
+
+
 def _coerce_execute_write_payload(data, is_json):
     if not isinstance(data, dict):
         raise QueryValidationError("JSON must be a dictionary")
@@ -358,16 +368,16 @@ async def _execute_write_analysis_data(datasette, db, sql, actor):
                 )
         except (QueryValidationError, sqlite3.DatabaseError) as ex:
             analysis_error = getattr(ex, "message", str(ex))
+    execute_disabled_reason = _execute_write_disabled_reason(
+        sql, analysis_error, analysis_rows
+    )
     return {
         "ok": analysis_error is None,
         "parameters": parameter_names,
         "analysis_error": analysis_error,
         "analysis_rows": analysis_rows,
-        "execute_disabled": bool(
-            (not sql)
-            or analysis_error
-            or any(row["allowed"] is False for row in analysis_rows)
-        ),
+        "execute_disabled": bool(execute_disabled_reason),
+        "execute_disabled_reason": execute_disabled_reason,
     }
 
 

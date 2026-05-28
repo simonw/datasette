@@ -21,6 +21,7 @@ from .app import (
     SQLITE_LIMIT_ATTACHED,
     pm,
 )
+from .inspect import inspect_tables
 from .utils import (
     LoadExtension,
     StartupError,
@@ -154,14 +155,14 @@ async def inspect_(files, sqlite_extensions):
     app = Datasette([], immutables=files, sqlite_extensions=sqlite_extensions)
     data = {}
     for name, database in app.databases.items():
-        counts = await database.table_counts(limit=3600 * 1000)
+        tables = await database.execute_fn(lambda conn: inspect_tables(conn, {}))
         data[name] = {
             "hash": database.hash,
             "size": database.size,
             "file": database.path,
             "tables": {
-                table_name: {"count": table_count}
-                for table_name, table_count in counts.items()
+                table_name: {"count": table["count"]}
+                for table_name, table in tables.items()
             },
         }
     return data

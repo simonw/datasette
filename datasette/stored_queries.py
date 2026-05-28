@@ -4,11 +4,10 @@ from dataclasses import dataclass
 import json
 from typing import Any, Iterable
 
-from .resources import TableResource
-from .utils import named_parameters, sqlite3, tilde_encode, urlsafe_components
-from .utils.asgi import Forbidden
+from .utils import tilde_encode, urlsafe_components
 
 UNCHANGED = object()
+
 
 QUERY_OPTION_FIELDS = (
     "hide_sql",
@@ -581,43 +580,3 @@ async def list_queries(
         has_more=has_more,
         limit=limit,
     )
-
-
-async def ensure_query_write_permissions(
-    datasette: Any,
-    database: str,
-    sql: str,
-    *,
-    actor: dict[str, Any] | None = None,
-    params: dict[str, Any] | None = None,
-    analysis: Any = None,
-) -> Any:
-    write_actions = {
-        "insert": "insert-row",
-        "update": "update-row",
-        "delete": "delete-row",
-    }
-    db = datasette.get_database(database)
-    if analysis is None:
-        if params is None:
-            params = {name: "" for name in named_parameters(sql)}
-        try:
-            analysis = await db.analyze_sql(sql, params)
-        except sqlite3.DatabaseError as ex:
-            raise Forbidden(f"Could not analyze query: {ex}") from ex
-
-    for access in analysis.table_accesses:
-        action = write_actions.get(access.operation)
-        if action is None:
-            continue
-        if access.database != database:
-            raise Forbidden("Writable queries may not write to attached databases")
-        if not await datasette.allowed(
-            action=action,
-            resource=TableResource(database=access.database, table=access.table),
-            actor=actor,
-        ):
-            raise Forbidden(
-                f"Permission denied: need {action} on {access.database}/{access.table}"
-            )
-    return analysis

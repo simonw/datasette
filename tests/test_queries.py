@@ -508,6 +508,8 @@ async def test_analyze_write_query_requires_table_permissions():
                     "dogs": {
                         "permissions": {
                             "insert-row": {"id": "writer"},
+                            "update-row": {"id": "writer"},
+                            "delete-row": {"id": "writer"},
                         }
                     }
                 }
@@ -1181,11 +1183,10 @@ async def test_create_query_ui_and_arbitrary_sql_save_link():
     assert '<th scope="col">Required permission</th>' in create_response.text
     assert '<th scope="col">Source</th>' not in create_response.text
     assert "<td><code>read</code></td>" in create_response.text
+    assert "<td><code>view-table</code></td>" in create_response.text
     assert (
-        create_response.text.count(
-            '<td><span class="execute-write-analysis-na">n/a</span></td>'
-        )
-        == 2
+        '<td><span class="execute-write-analysis-na">n/a</span></td>'
+        not in create_response.text
     )
     assert create_response.text.index(
         'value="Save query"'
@@ -1255,9 +1256,9 @@ async def test_create_query_analyze_endpoint_uses_sql_only():
             "operation": "read",
             "database": "data",
             "table": "dogs",
-            "required_permission": "",
+            "required_permission": "view-table",
             "source": None,
-            "allowed": None,
+            "allowed": True,
         }
     ]
 
@@ -1375,7 +1376,8 @@ async def test_execute_write_get_prepopulates_without_executing():
     assert '<th scope="col">Required permission</th>' in response.text
     assert "<td><code>insert</code></td>" in response.text
     assert "<td><code>update</code></td>" in response.text
-    assert "<td><code>read</code></td>" not in response.text
+    assert "<td><code>read</code></td>" in response.text
+    assert "<td><code>view-table</code></td>" in response.text
     assert 'action="/data/-/execute-write"' in response.text
     assert "insert into dogs (name) values (&#39;Cleo&#39;)" in response.text
     assert (await db.execute("select count(*) from dogs")).first()[0] == 0
@@ -1412,6 +1414,11 @@ async def test_execute_write_analyze_endpoint_uses_sql_only():
         actor={"id": "root"},
         params={"sql": "insert into dogs (name) values (:name)"},
     )
+    function_response = await ds.client.get(
+        "/data/-/execute-write/analyze",
+        actor={"id": "root"},
+        params={"sql": "insert into dogs (name) values (upper(:name))"},
+    )
     read_only_response = await ds.client.get(
         "/data/-/execute-write/analyze",
         actor={"id": "root"},
@@ -1429,12 +1436,28 @@ async def test_execute_write_analyze_endpoint_uses_sql_only():
             "operation": "insert",
             "database": "data",
             "table": "dogs",
-            "required_permission": "insert-row",
+            "required_permission": "insert-row, update-row, delete-row",
             "source": None,
             "allowed": True,
         }
     ]
     assert "params" not in data
+
+    assert function_response.status_code == 200
+    function_data = function_response.json()
+    assert function_data["ok"] is True
+    assert function_data["parameters"] == ["name"]
+    assert function_data["execute_disabled"] is False
+    assert function_data["analysis_rows"] == [
+        {
+            "operation": "insert",
+            "database": "data",
+            "table": "dogs",
+            "required_permission": "insert-row, update-row, delete-row",
+            "source": None,
+            "allowed": True,
+        }
+    ]
 
     assert read_only_response.status_code == 200
     read_only_data = read_only_response.json()
@@ -1627,6 +1650,40 @@ async def test_execute_write_post_requires_database_and_table_permissions():
             }
         }
     }
+    missing_update_permission = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "writer"},
+        json={
+            "sql": "insert into dogs (name) values (:name)",
+            "params": {"name": "Cleo"},
+        },
+    )
+
+    assert missing_update_permission.status_code == 403
+    assert missing_update_permission.json()["errors"] == [
+        "Permission denied: need update-row on data/dogs"
+    ]
+
+    ds.config["databases"]["data"]["tables"]["dogs"]["permissions"]["update-row"] = {
+        "id": "writer"
+    }
+    missing_delete_permission = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "writer"},
+        json={
+            "sql": "insert into dogs (name) values (:name)",
+            "params": {"name": "Cleo"},
+        },
+    )
+
+    assert missing_delete_permission.status_code == 403
+    assert missing_delete_permission.json()["errors"] == [
+        "Permission denied: need delete-row on data/dogs"
+    ]
+
+    ds.config["databases"]["data"]["tables"]["dogs"]["permissions"]["delete-row"] = {
+        "id": "writer"
+    }
     allowed = await ds.client.post(
         "/data/-/execute-write",
         actor={"id": "writer"},
@@ -1641,6 +1698,883 @@ async def test_execute_write_post_requires_database_and_table_permissions():
     assert allowed.json()["rowcount"] == 1
     assert allowed.json()["analysis"][0]["operation"] == "insert"
     assert (await db.execute("select name from dogs")).first()[0] == "Cleo"
+
+
+@pytest.mark.parametrize(
+    "database_name, sql",
+    (
+        (
+            "execute_write_insert_or_replace",
+            "insert or replace into users(id, email) values (3, 'b@example.com')",
+        ),
+        (
+            "execute_write_update_or_replace",
+            "update or replace users set email = 'b@example.com' where id = 1",
+        ),
+    ),
+    ids=("insert-or-replace", "update-or-replace"),
+)
+@pytest.mark.asyncio
+async def test_execute_write_replace_requires_delete_row_permission(database_name, sql):
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    },
+                    "tables": {
+                        "users": {
+                            "permissions": {
+                                "insert-row": {"id": "writer"},
+                                "update-row": {"id": "writer"},
+                                "view-table": {"id": "writer"},
+                            }
+                        }
+                    },
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database(database_name, name="data")
+    await db.execute_write(
+        "create table users (id integer primary key, email text unique)"
+    )
+    await db.execute_write(
+        "insert into users (id, email) values "
+        "(1, 'a@example.com'), (2, 'b@example.com')"
+    )
+    await ds.invoke_startup()
+
+    denied_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "writer"},
+        json={"sql": sql},
+    )
+
+    assert denied_response.status_code == 403
+    assert denied_response.json()["errors"] == [
+        "Permission denied: need delete-row on data/users"
+    ]
+    assert (await db.execute("select id, email from users order by id")).dicts() == [
+        {"id": 1, "email": "a@example.com"},
+        {"id": 2, "email": "b@example.com"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_execute_write_update_requires_insert_row_permission():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    },
+                    "tables": {
+                        "users": {
+                            "permissions": {
+                                "update-row": {"id": "writer"},
+                                "delete-row": {"id": "writer"},
+                                "view-table": {"id": "writer"},
+                            }
+                        }
+                    },
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database("execute_write_update_requires_insert", name="data")
+    await db.execute_write("create table users (id integer primary key, name text)")
+    await db.execute_write("insert into users (id, name) values (1, 'Alice')")
+    await ds.invoke_startup()
+
+    denied_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "writer"},
+        json={"sql": "update users set name = 'Alicia' where id = 1"},
+    )
+
+    assert denied_response.status_code == 403
+    assert denied_response.json()["errors"] == [
+        "Permission denied: need insert-row on data/users"
+    ]
+    assert (await db.execute("select name from users where id = 1")).first()[
+        0
+    ] == "Alice"
+
+
+@pytest.mark.asyncio
+async def test_execute_write_insert_select_requires_view_table_on_source():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    },
+                    "tables": {
+                        "secret": {
+                            "permissions": {"view-table": {"id": "someone-else"}}
+                        },
+                        "public_log": {
+                            "permissions": {
+                                "insert-row": {"id": "writer"},
+                                "update-row": {"id": "writer"},
+                                "delete-row": {"id": "writer"},
+                            }
+                        },
+                    },
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database("execute_write_insert_select_source", name="data")
+    await db.execute_write("create table secret (value text)")
+    await db.execute_write("create table public_log (value text)")
+    await db.execute_write("insert into secret values ('sensitive')")
+    await ds.invoke_startup()
+
+    denied_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "writer"},
+        json={"sql": "insert into public_log(value) select value from secret"},
+    )
+
+    assert denied_response.status_code == 403
+    assert denied_response.json()["errors"] == [
+        "Permission denied: need view-table on data/secret"
+    ]
+    assert (await db.execute("select value from public_log")).dicts() == []
+
+
+@pytest.mark.asyncio
+async def test_execute_write_rejects_sqlite_master_reads():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    },
+                    "tables": {
+                        "secret": {
+                            "permissions": {"view-table": {"id": "someone-else"}}
+                        },
+                        "log": {
+                            "permissions": {
+                                "insert-row": {"id": "writer"},
+                                "update-row": {"id": "writer"},
+                                "delete-row": {"id": "writer"},
+                            }
+                        },
+                    },
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database("execute_write_sqlite_master_read", name="data")
+    await db.execute_write("create table secret (value text)")
+    await db.execute_write("create table log (value text)")
+    await ds.invoke_startup()
+
+    denied_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "writer"},
+        json={
+            "sql": (
+                "insert into log " "select sql from sqlite_master where name = 'secret'"
+            )
+        },
+    )
+
+    assert denied_response.status_code == 403
+    assert denied_response.json()["errors"] == [
+        "Unsupported SQL operation: read schema"
+    ]
+    assert (await db.execute("select value from log")).dicts() == []
+
+
+@pytest.mark.asyncio
+async def test_execute_write_create_table_as_select_requires_view_table_on_source():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "creator"},
+                        "execute-write-sql": {"id": "creator"},
+                        "create-table": {"id": "creator"},
+                    },
+                    "tables": {
+                        "secret": {
+                            "permissions": {"view-table": {"id": "someone-else"}}
+                        }
+                    },
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database("execute_write_create_as_select_source", name="data")
+    await db.execute_write("create table secret (value text)")
+    await db.execute_write("insert into secret values ('sensitive')")
+    await ds.invoke_startup()
+
+    denied_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "creator"},
+        json={"sql": "create table copied_secret as select value from secret"},
+    )
+
+    assert denied_response.status_code == 403
+    assert denied_response.json()["errors"] == [
+        "Permission denied: need view-table on data/secret"
+    ]
+    assert not await db.table_exists("copied_secret")
+
+
+@pytest.mark.asyncio
+async def test_execute_write_allows_function_operations():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    },
+                    "tables": {
+                        "dogs": {
+                            "permissions": {
+                                "insert-row": {"id": "writer"},
+                                "update-row": {"id": "writer"},
+                                "delete-row": {"id": "writer"},
+                            }
+                        }
+                    },
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database("execute_write_function_operation", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "writer"},
+        json={"sql": "insert into dogs (name) values (upper('cleo'))"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert (await db.execute("select name from dogs")).dicts() == [{"name": "CLEO"}]
+
+
+@pytest.mark.asyncio
+async def test_untrusted_stored_write_query_allows_function_operations():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "view-query": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    },
+                    "tables": {
+                        "dogs": {
+                            "permissions": {
+                                "insert-row": {"id": "writer"},
+                                "update-row": {"id": "writer"},
+                                "delete-row": {"id": "writer"},
+                            }
+                        }
+                    },
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database("stored_query_function_operation", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "insert_dog",
+        "insert into dogs (name) values (upper(:name))",
+        is_write=True,
+        is_trusted=False,
+        source="user",
+        owner_id="writer",
+    )
+
+    response = await ds.client.post(
+        "/data/insert_dog?_json=1",
+        actor={"id": "writer"},
+        data={"name": "cleo"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert (await db.execute("select name from dogs")).dicts() == [{"name": "CLEO"}]
+
+
+@pytest.mark.asyncio
+async def test_execute_write_rejects_vacuum_operation():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    }
+                }
+            }
+        },
+    )
+    ds.add_memory_database("execute_write_vacuum_operation", name="data")
+    await ds.invoke_startup()
+
+    denied_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "writer"},
+        json={"sql": "vacuum"},
+    )
+
+    assert denied_response.status_code == 403
+    assert denied_response.json()["errors"] == [
+        "VACUUM is not allowed in user-supplied SQL"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_execute_write_form_rejects_vacuum_operation_with_flash_error():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    }
+                }
+            }
+        },
+    )
+    ds.add_memory_database("execute_write_vacuum_operation_form", name="data")
+    await ds.invoke_startup()
+
+    denied_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "writer"},
+        data={"sql": "vacuum"},
+    )
+
+    assert denied_response.status_code == 403
+    assert (
+        '<p class="message-error">VACUUM is not allowed in user-supplied SQL</p>'
+        in denied_response.text
+    )
+    assert denied_response.text.count("VACUUM is not allowed in user-supplied SQL") == 1
+
+
+@pytest.mark.asyncio
+async def test_untrusted_stored_write_query_rejects_vacuum_operation():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "view-query": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    }
+                }
+            }
+        },
+    )
+    ds.add_memory_database("stored_query_vacuum_operation", name="data")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "vacuum_db",
+        "vacuum",
+        is_write=True,
+        is_trusted=False,
+        source="user",
+        owner_id="writer",
+    )
+
+    denied_response = await ds.client.post(
+        "/data/vacuum_db?_json=1",
+        actor={"id": "writer"},
+        data={},
+    )
+
+    assert denied_response.status_code == 403
+    assert "VACUUM is not allowed in user-supplied SQL" in denied_response.text
+
+
+@pytest.mark.asyncio
+async def test_untrusted_stored_write_query_rejects_vacuum_operation_with_flash_error():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "view-query": {"id": "writer"},
+                        "execute-write-sql": {"id": "writer"},
+                    }
+                }
+            }
+        },
+    )
+    ds.add_memory_database("stored_query_vacuum_operation_form", name="data")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "vacuum_db",
+        "vacuum",
+        is_write=True,
+        is_trusted=False,
+        source="user",
+        owner_id="writer",
+    )
+
+    denied_response = await ds.client.post(
+        "/data/vacuum_db",
+        actor={"id": "writer"},
+        data={},
+    )
+
+    assert denied_response.status_code == 302
+    assert denied_response.headers["location"] == "/data/vacuum_db"
+    assert ds.unsign(denied_response.cookies["ds_messages"], "messages") == [
+        ["VACUUM is not allowed in user-supplied SQL", ds.ERROR]
+    ]
+
+
+@pytest.mark.asyncio
+async def test_trusted_stored_write_query_skips_vacuum_filtering():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "view-query": {"id": "writer"},
+                    }
+                }
+            }
+        },
+    )
+    ds.add_memory_database("trusted_stored_query_vacuum", name="data")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "trusted_vacuum",
+        "vacuum",
+        is_write=True,
+        is_trusted=True,
+        source="config",
+    )
+
+    response = await ds.client.post(
+        "/data/trusted_vacuum?_json=1",
+        actor={"id": "writer"},
+        data={},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+
+
+@pytest.mark.parametrize(
+    (
+        "database_name",
+        "setup_sqls",
+        "write_sql",
+        "expected_error",
+        "verification_sql",
+        "expected_count",
+    ),
+    (
+        (
+            "execute_write_virtual_table_control",
+            (
+                "create virtual table docs using fts5(title, body, content='')",
+                "insert into docs(rowid, title, body) values (1, 'hello', 'world')",
+            ),
+            "insert into docs(docs) values('delete-all')",
+            "Writes to virtual tables are not allowed in user-supplied SQL",
+            "select count(*) from docs where docs match 'hello'",
+            1,
+        ),
+        (
+            "execute_write_virtual_table_insert",
+            ("create virtual table docs using fts5(title, body)",),
+            "insert into docs(rowid, title, body) values (1, 'a', 'b')",
+            "Writes to virtual tables are not allowed in user-supplied SQL",
+            "select count(*) from docs",
+            0,
+        ),
+        (
+            "execute_write_shadow_table_insert",
+            ("create virtual table docs using fts5(title, body)",),
+            "insert into docs_config(k, v) values ('x', 1)",
+            "Writes to shadow tables are not allowed in user-supplied SQL",
+            "select count(*) from docs_config",
+            1,
+        ),
+    ),
+    ids=("control-insert", "virtual-table", "shadow-table"),
+)
+@pytest.mark.asyncio
+async def test_execute_write_rejects_virtual_and_shadow_table_writes(
+    database_name,
+    setup_sqls,
+    write_sql,
+    expected_error,
+    verification_sql,
+    expected_count,
+):
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database(database_name, name="data")
+    for setup_sql in setup_sqls:
+        await db.execute_write(setup_sql)
+    await ds.invoke_startup()
+
+    denied_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        json={"sql": write_sql},
+    )
+
+    assert denied_response.status_code == 403
+    assert denied_response.json()["errors"] == [expected_error]
+    assert (await db.execute(verification_sql)).first()[0] == expected_count
+
+
+@pytest.mark.asyncio
+async def test_untrusted_stored_write_query_rejects_virtual_table_control_insert():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("stored_query_virtual_table_control", name="data")
+    await db.execute_write("""
+        create virtual table docs using fts5(title, body, content='')
+    """)
+    await db.execute_write("""
+        insert into docs(rowid, title, body) values (1, 'hello', 'world')
+    """)
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "delete_all_docs",
+        "insert into docs(docs) values('delete-all')",
+        is_write=True,
+        is_trusted=False,
+        source="user",
+        owner_id="root",
+    )
+
+    denied_response = await ds.client.post(
+        "/data/delete_all_docs?_json=1",
+        actor={"id": "root"},
+        data={},
+    )
+
+    assert denied_response.status_code == 403
+    assert denied_response.json()["message"] == (
+        "Writes to virtual tables are not allowed in user-supplied SQL"
+    )
+    assert (
+        await db.execute("select count(*) from docs where docs match 'hello'")
+    ).first()[0] == 1
+
+
+@pytest.mark.asyncio
+async def test_trusted_stored_write_query_can_write_virtual_table():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "view-query": {"id": "writer"},
+                    }
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database("trusted_stored_query_virtual_table", name="data")
+    await db.execute_write("""
+        create virtual table docs using fts5(title, body, content='')
+    """)
+    await db.execute_write("""
+        insert into docs(rowid, title, body) values (1, 'hello', 'world')
+    """)
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "trusted_delete_all",
+        "insert into docs(docs) values('delete-all')",
+        is_write=True,
+        is_trusted=True,
+        source="config",
+    )
+
+    response = await ds.client.post(
+        "/data/trusted_delete_all?_json=1",
+        actor={"id": "writer"},
+        data={},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert (
+        await db.execute("select count(*) from docs where docs match 'hello'")
+    ).first()[0] == 0
+
+
+@pytest.mark.asyncio
+async def test_execute_write_create_table_uses_create_table_permission():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "permissions": {
+                "insert-row": {"id": "row-writer"},
+                "update-row": {"id": "row-writer"},
+            },
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": ["creator", "row-writer"]},
+                        "execute-write-sql": {"id": ["creator", "row-writer"]},
+                        "create-table": {"id": "creator"},
+                    }
+                }
+            },
+        },
+    )
+    db = ds.add_memory_database("execute_write_create_table", name="data")
+    await ds.invoke_startup()
+
+    analysis_response = await ds.client.get(
+        "/data/-/execute-write/analyze",
+        actor={"id": "creator"},
+        params={"sql": "create table foobar (id integer primary key, name text)"},
+    )
+    allowed_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "creator"},
+        json={"sql": "create table foobar (id integer primary key, name text)"},
+    )
+    row_permission_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "row-writer"},
+        json={"sql": "create table should_not_exist (id integer primary key)"},
+    )
+
+    assert analysis_response.status_code == 200
+    analysis_data = analysis_response.json()
+    assert analysis_data["ok"] is True
+    assert analysis_data["execute_disabled"] is False
+    assert analysis_data["analysis_rows"] == [
+        {
+            "operation": "create",
+            "database": "data",
+            "table": "foobar",
+            "required_permission": "create-table",
+            "source": None,
+            "allowed": True,
+        }
+    ]
+
+    assert allowed_response.status_code == 200
+    assert allowed_response.json()["ok"] is True
+    assert allowed_response.json()["message"] == "Query executed"
+    assert await db.table_exists("foobar")
+
+    assert row_permission_response.status_code == 403
+    assert row_permission_response.json()["errors"] == [
+        "Permission denied: need create-table on data"
+    ]
+    assert not await db.table_exists("should_not_exist")
+
+
+@pytest.mark.parametrize(
+    (
+        "database_name",
+        "allowed_actor",
+        "allowed_sql",
+        "denied_sql",
+        "expected_error",
+        "setup_sqls",
+        "expected_state",
+    ),
+    (
+        (
+            "execute_write_alter_table",
+            "alterer",
+            "alter table dogs add column age integer",
+            "alter table cats add column age integer",
+            "Permission denied: need alter-table on data/cats",
+            (),
+            "alter-table",
+        ),
+        (
+            "execute_write_create_index",
+            "alterer",
+            "create index idx_dogs_name on dogs(name)",
+            "create index idx_cats_name on cats(name)",
+            "Permission denied: need alter-table on data/cats",
+            (),
+            "create-index",
+        ),
+        (
+            "execute_write_drop_index",
+            "alterer",
+            "drop index idx_dogs_name",
+            "drop index idx_cats_name",
+            "Permission denied: need alter-table on data/cats",
+            (
+                "create index idx_dogs_name on dogs(name)",
+                "create index idx_cats_name on cats(name)",
+            ),
+            "drop-index",
+        ),
+        (
+            "execute_write_drop_table",
+            "dropper",
+            "drop table dogs",
+            "drop table cats",
+            "Permission denied: need drop-table on data/cats",
+            (),
+            "drop-table",
+        ),
+    ),
+    ids=("alter-table", "create-index", "drop-index", "drop-table"),
+)
+@pytest.mark.asyncio
+async def test_execute_write_schema_operations_use_schema_permissions(
+    database_name,
+    allowed_actor,
+    allowed_sql,
+    denied_sql,
+    expected_error,
+    setup_sqls,
+    expected_state,
+):
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "permissions": {
+                "delete-row": {"id": "row-writer"},
+                "update-row": {"id": "row-writer"},
+            },
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": ["alterer", "dropper", "row-writer"]},
+                        "execute-write-sql": {
+                            "id": ["alterer", "dropper", "row-writer"]
+                        },
+                    },
+                    "tables": {
+                        "dogs": {
+                            "permissions": {
+                                "alter-table": {"id": "alterer"},
+                                "drop-table": {"id": "dropper"},
+                                "view-table": {"id": "alterer"},
+                            }
+                        }
+                    },
+                }
+            },
+        },
+    )
+    db = ds.add_memory_database(database_name, name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await db.execute_write("create table cats (id integer primary key, name text)")
+    for setup_sql in setup_sqls:
+        await db.execute_write(setup_sql)
+    await ds.invoke_startup()
+
+    async def index_exists(index_name):
+        row = (
+            await db.execute(
+                "select 1 from sqlite_master where type = 'index' and name = ?",
+                [index_name],
+            )
+        ).first()
+        return row is not None
+
+    allowed_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": allowed_actor},
+        json={"sql": allowed_sql},
+    )
+    denied_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "row-writer"},
+        json={"sql": denied_sql},
+    )
+
+    assert allowed_response.status_code == 200
+    assert denied_response.status_code == 403
+    assert denied_response.json()["errors"] == [expected_error]
+
+    if expected_state == "alter-table":
+        assert "age" in [
+            column.name for column in await db.table_column_details("dogs")
+        ]
+        assert "age" not in [
+            column.name for column in await db.table_column_details("cats")
+        ]
+    elif expected_state == "create-index":
+        assert await index_exists("idx_dogs_name")
+        assert not await index_exists("idx_cats_name")
+    elif expected_state == "drop-index":
+        assert not await index_exists("idx_dogs_name")
+        assert await index_exists("idx_cats_name")
+    elif expected_state == "drop-table":
+        assert not await db.table_exists("dogs")
+        assert await db.table_exists("cats")
 
 
 @pytest.mark.asyncio
@@ -1705,8 +2639,9 @@ async def test_execute_write_post_rejects_read_only_sql():
     ]
 
 
+@pytest.mark.parametrize("action", ("view-query", "update-query", "delete-query"))
 @pytest.mark.asyncio
-async def test_query_owner_gets_update_delete_and_writable_view_defaults():
+async def test_query_owner_gets_update_delete_and_writable_view_defaults(action):
     ds = Datasette(memory=True, default_deny=True)
     ds.add_memory_database("query_owner_defaults", name="data")
     await ds.invoke_startup()
@@ -1719,21 +2654,35 @@ async def test_query_owner_gets_update_delete_and_writable_view_defaults():
         owner_id="alice",
     )
 
-    for action in ("view-query", "update-query", "delete-query"):
-        assert await ds.allowed(
-            action=action,
-            resource=QueryResource("data", "insert_dog"),
-            actor={"id": "alice"},
-        )
-        assert not await ds.allowed(
-            action=action,
-            resource=QueryResource("data", "insert_dog"),
-            actor={"id": "bob"},
-        )
+    assert await ds.allowed(
+        action=action,
+        resource=QueryResource("data", "insert_dog"),
+        actor={"id": "alice"},
+    )
+    assert not await ds.allowed(
+        action=action,
+        resource=QueryResource("data", "insert_dog"),
+        actor={"id": "bob"},
+    )
 
 
+@pytest.mark.parametrize(
+    "action, path_suffix, request_json, expected_public_title",
+    (
+        (
+            "update-query",
+            "-/update",
+            {"update": {"title": "Bob can edit public queries"}},
+            "Bob can edit public queries",
+        ),
+        ("delete-query", "-/delete", {}, None),
+    ),
+    ids=("update-query", "delete-query"),
+)
 @pytest.mark.asyncio
-async def test_private_query_restricts_broad_update_delete_permissions():
+async def test_private_query_restricts_broad_update_delete_permissions(
+    action, path_suffix, request_json, expected_public_title
+):
     ds = Datasette(
         memory=True,
         default_deny=True,
@@ -1767,50 +2716,41 @@ async def test_private_query_restricts_broad_update_delete_permissions():
         owner_id="alice",
     )
 
-    for action in ("update-query", "delete-query"):
-        assert await ds.allowed(
-            action=action,
-            resource=QueryResource("data", "alice_private"),
-            actor={"id": "alice"},
-        )
-        assert not await ds.allowed(
-            action=action,
-            resource=QueryResource("data", "alice_private"),
-            actor={"id": "bob"},
-        )
-        assert await ds.allowed(
-            action=action,
-            resource=QueryResource("data", "alice_public"),
-            actor={"id": "bob"},
-        )
-
-    private_update_response = await ds.client.post(
-        "/data/alice_private/-/update",
-        actor={"id": "bob"},
-        json={"update": {"title": "Nope"}},
+    assert await ds.allowed(
+        action=action,
+        resource=QueryResource("data", "alice_private"),
+        actor={"id": "alice"},
     )
-    private_delete_response = await ds.client.post(
-        "/data/alice_private/-/delete",
+    assert not await ds.allowed(
+        action=action,
+        resource=QueryResource("data", "alice_private"),
         actor={"id": "bob"},
-        json={},
     )
-    public_update_response = await ds.client.post(
-        "/data/alice_public/-/update",
+    assert await ds.allowed(
+        action=action,
+        resource=QueryResource("data", "alice_public"),
         actor={"id": "bob"},
-        json={"update": {"title": "Bob can edit public queries"}},
-    )
-    public_delete_response = await ds.client.post(
-        "/data/alice_public/-/delete",
-        actor={"id": "bob"},
-        json={},
     )
 
-    assert private_update_response.status_code == 403
-    assert private_delete_response.status_code == 403
-    assert public_update_response.status_code == 200
-    assert public_delete_response.status_code == 200
+    private_response = await ds.client.post(
+        "/data/alice_private/{}".format(path_suffix),
+        actor={"id": "bob"},
+        json=request_json,
+    )
+    public_response = await ds.client.post(
+        "/data/alice_public/{}".format(path_suffix),
+        actor={"id": "bob"},
+        json=request_json,
+    )
+
+    assert private_response.status_code == 403
+    assert public_response.status_code == 200
     assert await ds.get_query("data", "alice_private") is not None
-    assert await ds.get_query("data", "alice_public") is None
+    public_query = await ds.get_query("data", "alice_public")
+    if expected_public_title is None:
+        assert public_query is None
+    else:
+        assert public_query.title == expected_public_title
 
 
 @pytest.mark.asyncio
@@ -1829,6 +2769,8 @@ async def test_user_writable_query_execution_rechecks_table_permissions():
                         "dogs": {
                             "permissions": {
                                 "insert-row": {"id": "alice"},
+                                "update-row": {"id": "alice"},
+                                "delete-row": {"id": "alice"},
                             }
                         }
                     },

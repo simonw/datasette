@@ -99,9 +99,7 @@ class ExecuteWriteView(BaseView):
                 "parameter_names": parameter_names,
                 "parameter_values": parameter_values,
                 "analysis_error": analysis_error,
-                "analysis_rows": [
-                    row for row in analysis_rows if row["operation"] != "read"
-                ],
+                "analysis_rows": analysis_rows,
                 "execution_message": execution_message,
                 "execution_links": execution_links,
                 "execution_ok": execution_ok,
@@ -165,13 +163,15 @@ class ExecuteWriteView(BaseView):
         except QueryValidationError as ex:
             if _wants_json(request, is_json, data):
                 return _block_framing(_error([ex.message], ex.status))
+            if ex.flash:
+                self.ds.add_message(request, ex.message, self.ds.ERROR)
             return await self._render_form(
                 request,
                 db,
                 sql=sql or "",
                 parameter_values=provided_params,
-                analysis_error=ex.message,
-                execution_message=ex.message,
+                analysis_error=None if ex.flash else ex.message,
+                execution_message=None if ex.flash else ex.message,
                 execution_ok=False,
                 status=ex.status,
             )
@@ -193,9 +193,12 @@ class ExecuteWriteView(BaseView):
                 status=400,
             )
 
-        message = "Query executed, {} row{} affected".format(
-            cursor.rowcount, "" if cursor.rowcount == 1 else "s"
-        )
+        if cursor.rowcount == -1:
+            message = "Query executed"
+        else:
+            message = "Query executed, {} row{} affected".format(
+                cursor.rowcount, "" if cursor.rowcount == 1 else "s"
+            )
         if _wants_json(request, is_json, data):
             return _block_framing(
                 Response.json(

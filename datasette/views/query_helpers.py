@@ -1,8 +1,17 @@
 import json
 import re
 
-from datasette.resources import DatabaseResource, TableResource
-from datasette.stored_queries import StoredQuery
+from datasette.resources import DatabaseResource
+from datasette.stored_queries import (
+    StoredQuery,
+)
+from datasette.write_sql import (
+    IgnoreWriteSqlOperation,
+    QueryWriteRejected,
+    RequireWriteSqlPermissions,
+    decision_for_write_sql_operation,
+    operation_is_write,
+)
 from datasette.utils import (
     named_parameters as derive_named_parameters,
     escape_sqlite,
@@ -12,6 +21,7 @@ from datasette.utils import (
     InvalidSql,
 )
 from datasette.utils.asgi import Forbidden
+from datasette.utils.sql_analysis import Operation, SQLAnalysis
 
 _query_name_re = re.compile(r"^[^/\.\n]+$")
 
@@ -41,9 +51,11 @@ _query_write_fields = {
 
 
 class QueryValidationError(Exception):
-    def __init__(self, message, status=400):
+    def __init__(self, message, status=400, *, flash=False):
         self.message = message
         self.status = status
+        self.flash = flash
+        super().__init__(message)
 
 
 def _actor_id(actor):
@@ -123,11 +135,8 @@ def _coerce_query_parameters(value, derived):
     return parameters
 
 
-def _analysis_is_write(analysis):
-    return any(
-        access.operation in {"insert", "update", "delete"}
-        for access in analysis.table_accesses
-    )
+def _analysis_is_write(analysis: SQLAnalysis) -> bool:
+    return any(operation_is_write(operation) for operation in analysis.operations)
 
 
 def _block_framing(response):
@@ -191,6 +200,8 @@ async def _analyze_user_query(datasette, db, sql, *, actor):
             await datasette.ensure_query_write_permissions(
                 db.name, sql, actor=actor, analysis=analysis
             )
+        except QueryWriteRejected as ex:
+            raise QueryValidationError(ex.message, status=403, flash=True) from ex
         except Forbidden as ex:
             raise QueryValidationError(str(ex), status=403) from ex
     else:
@@ -201,34 +212,57 @@ async def _analyze_user_query(datasette, db, sql, *, actor):
     return is_write, derived, analysis
 
 
-def _analysis_rows(analysis):
-    write_actions = {
-        "insert": "insert-row",
-        "update": "update-row",
-        "delete": "delete-row",
-    }
-    return [
-        {
-            "operation": access.operation,
-            "database": access.database,
-            "table": access.table,
-            "required_permission": write_actions.get(access.operation, ""),
-            "source": access.source,
-        }
-        for access in analysis.table_accesses
-    ]
+def _display_operations(analysis: SQLAnalysis) -> list[Operation]:
+    operations = []
+    for operation in analysis.operations:
+        if isinstance(
+            decision_for_write_sql_operation(operation), IgnoreWriteSqlOperation
+        ):
+            continue
+        operations.append(operation)
+    return operations
 
 
-async def _analysis_rows_with_permissions(datasette, analysis, actor):
+def _analysis_rows(analysis: SQLAnalysis) -> list[dict[str, object]]:
+    rows = []
+    for operation in _display_operations(analysis):
+        decision = decision_for_write_sql_operation(operation)
+        required_permission = (
+            ", ".join(permission.action for permission in decision.permissions)
+            if isinstance(decision, RequireWriteSqlPermissions)
+            else ""
+        )
+        rows.append(
+            {
+                "operation": operation.operation,
+                "database": operation.database,
+                "table": operation.table or operation.target,
+                "required_permission": required_permission,
+                "source": operation.source,
+            }
+        )
+    return rows
+
+
+async def _analysis_rows_with_permissions(
+    datasette, analysis: SQLAnalysis, actor
+) -> list[dict[str, object]]:
     rows = _analysis_rows(analysis)
-    for row in rows:
-        permission = row["required_permission"]
-        if permission:
-            row["allowed"] = await datasette.allowed(
-                action=permission,
-                resource=TableResource(row["database"], row["table"]),
-                actor=actor,
-            )
+    is_write = _analysis_is_write(analysis)
+    for row, operation in zip(rows, _display_operations(analysis)):
+        decision = decision_for_write_sql_operation(operation)
+        if isinstance(decision, RequireWriteSqlPermissions):
+            row["allowed"] = True
+            for permission in decision.permissions:
+                if not await datasette.allowed(
+                    action=permission.action,
+                    resource=permission.resource,
+                    actor=actor,
+                ):
+                    row["allowed"] = False
+                    break
+        elif is_write:
+            row["allowed"] = False
         else:
             row["allowed"] = None
     return rows
@@ -277,6 +311,8 @@ async def _prepare_execute_write(datasette, db, sql, params, actor):
         await datasette.ensure_query_write_permissions(
             db.name, sql, actor=actor, analysis=analysis
         )
+    except QueryWriteRejected as ex:
+        raise QueryValidationError(ex.message, status=403, flash=True) from ex
     except Forbidden as ex:
         raise QueryValidationError(str(ex), status=403) from ex
     return parameter_names, params, analysis
@@ -326,7 +362,7 @@ async def _execute_write_analysis_data(datasette, db, sql, actor):
         "ok": analysis_error is None,
         "parameters": parameter_names,
         "analysis_error": analysis_error,
-        "analysis_rows": [row for row in analysis_rows if row["operation"] != "read"],
+        "analysis_rows": analysis_rows,
         "execute_disabled": bool(
             (not sql)
             or analysis_error
@@ -340,6 +376,7 @@ async def _query_create_analysis_data(datasette, db, sql, actor):
     parameter_names = []
     analysis_rows = []
     analysis_error = None
+    analysis: SQLAnalysis | None = None
     if has_sql:
         try:
             parameter_names = _derived_query_parameters(sql)
@@ -356,9 +393,7 @@ async def _query_create_analysis_data(datasette, db, sql, actor):
         "analysis_error": analysis_error,
         "analysis_rows": analysis_rows,
         "has_sql": has_sql,
-        "analysis_is_write": bool(
-            analysis_rows and any(row["required_permission"] for row in analysis_rows)
-        ),
+        "analysis_is_write": _analysis_is_write(analysis) if analysis else False,
         "save_disabled": bool(
             (not has_sql)
             or analysis_error
@@ -398,15 +433,19 @@ async def _inserted_row_url(datasette, db, analysis, cursor):
     if lastrowid is None:
         return None
     direct_inserts = [
-        access
-        for access in analysis.table_accesses
-        if access.operation == "insert"
-        and access.source is None
-        and access.database == db.name
+        operation
+        for operation in analysis.operations
+        if operation.operation == "insert"
+        and operation.target_type == "table"
+        and not operation.internal
+        and operation.source is None
+        and operation.database == db.name
     ]
     if len(direct_inserts) != 1:
         return None
     table = direct_inserts[0].table
+    if table is None:
+        return None
     pks = await db.primary_keys(table)
     use_rowid = not pks
     select = (

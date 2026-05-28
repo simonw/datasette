@@ -14,6 +14,7 @@ from datasette.events import AlterTableEvent, CreateTableEvent, InsertRowsEvent
 from datasette.database import QueryInterrupted
 from datasette.resources import DatabaseResource, QueryResource
 from datasette.stored_queries import stored_query_to_dict
+from datasette.write_sql import QueryWriteRejected
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
@@ -453,9 +454,24 @@ class QueryView(View):
         ):
             raise Forbidden("You do not have permission to view this query")
 
-        await _ensure_stored_query_execution_permissions(
-            datasette, db, stored_query, request.actor
-        )
+        try:
+            await _ensure_stored_query_execution_permissions(
+                datasette, db, stored_query, request.actor
+            )
+        except QueryWriteRejected as ex:
+            if request.headers.get("accept") == "application/json" or request.args.get(
+                "_json"
+            ):
+                return Response.json(
+                    {
+                        "ok": False,
+                        "message": ex.message,
+                        "redirect": None,
+                    },
+                    status=403,
+                )
+            datasette.add_message(request, ex.message, datasette.ERROR)
+            return Response.redirect(stored_query.on_error_redirect or request.path)
 
         # If database is immutable, return an error
         if not db.is_mutable:

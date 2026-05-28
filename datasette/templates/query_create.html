@@ -106,9 +106,6 @@ form.sql .query-create-sql textarea#sql-editor {
 .query-create-analysis-note {
     margin: 0;
 }
-.query-create-action {
-    margin: 0.35rem 0 1rem;
-}
 .query-create-analysis {
     margin-top: 0.8rem;
 }
@@ -171,10 +168,6 @@ form.sql .query-create-sql textarea#sql-editor {
         <label><input type="checkbox" name="is_private" value="1"{% if is_private %} checked{% endif %}> Private</label>
         <span class="query-create-option-note">Queries marked private can only be seen by you, their creator.</span>
     </p>
-    {% if sql and analysis_is_write %}
-        <p class="query-create-action"><a href="{{ urls.database(database) }}/-/execute-write?{{ {'sql': sql}|urlencode|safe }}">Execute write SQL</a></p>
-    {% endif %}
-
     <p class="query-create-submit"><input type="submit" value="Save query" data-query-create-submit{% if save_disabled %} disabled{% endif %}></p>
 
     <div class="query-create-analysis" id="query-create-analysis-section"{% if not has_sql %} hidden{% endif %}>

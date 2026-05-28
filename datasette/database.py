@@ -26,7 +26,7 @@ from .utils import (
     table_column_details,
 )
 from .utils.sql_analysis import SQLAnalysis, analyze_sql_tables
-from .utils.sqlite import sqlite_version
+from .utils.sqlite import sqlite_hidden_table_names
 from .inspect import inspect_hash
 
 connections = threading.local()
@@ -702,83 +702,7 @@ class Database:
                 t for t in db_config["tables"] if db_config["tables"][t].get("hidden")
             ]
 
-        if sqlite_version()[1] >= 37:
-            hidden_tables += [x[0] for x in await self.execute("""
-                      with shadow_tables as (
-                        select name
-                        from pragma_table_list
-                        where [type] = 'shadow'
-                        order by name
-                      ),
-                      core_tables as (
-                        select name
-                        from sqlite_master
-                        WHERE  name in ('sqlite_stat1', 'sqlite_stat2', 'sqlite_stat3', 'sqlite_stat4')
-                          OR substr(name, 1, 1) == '_'
-                      ),
-                      combined as (
-                        select name from shadow_tables
-                        union all
-                        select name from core_tables
-                      )
-                      select name from combined order by 1
-                    """)]
-        else:
-            hidden_tables += [x[0] for x in await self.execute("""
-                      WITH base AS (
-                        SELECT name
-                        FROM sqlite_master
-                        WHERE  name IN ('sqlite_stat1', 'sqlite_stat2', 'sqlite_stat3', 'sqlite_stat4')
-                          OR substr(name, 1, 1) == '_'
-                      ),
-                      fts_suffixes AS (
-                        SELECT column1 AS suffix
-                        FROM (VALUES ('_data'), ('_idx'), ('_docsize'), ('_content'), ('_config'))
-                      ),
-                      fts5_names AS (
-                        SELECT name
-                        FROM sqlite_master
-                        WHERE sql LIKE '%VIRTUAL TABLE%USING FTS%'
-                      ),
-                      fts5_shadow_tables AS (
-                        SELECT
-                          printf('%s%s', fts5_names.name, fts_suffixes.suffix) AS name
-                        FROM fts5_names
-                        JOIN fts_suffixes
-                      ),
-                      fts3_suffixes AS (
-                        SELECT column1 AS suffix
-                        FROM (VALUES ('_content'), ('_segdir'), ('_segments'), ('_stat'), ('_docsize'))
-                      ),
-                      fts3_names AS (
-                        SELECT name
-                        FROM sqlite_master
-                        WHERE sql LIKE '%VIRTUAL TABLE%USING FTS3%'
-                          OR sql LIKE '%VIRTUAL TABLE%USING FTS4%'
-                      ),
-                      fts3_shadow_tables AS (
-                        SELECT
-                          printf('%s%s', fts3_names.name, fts3_suffixes.suffix) AS name
-                        FROM fts3_names
-                        JOIN fts3_suffixes
-                      ),
-                      final AS (
-                        SELECT name FROM base
-                        UNION ALL
-                        SELECT name FROM fts5_shadow_tables
-                        UNION ALL
-                        SELECT name FROM fts3_shadow_tables
-                      )
-                      SELECT name FROM final ORDER BY 1
-                    """)]
-        # Also hide any FTS tables that have a content= argument
-        hidden_tables += [x[0] for x in await self.execute("""
-                  SELECT name
-                  FROM sqlite_master
-                  WHERE sql LIKE '%VIRTUAL TABLE%'
-                    AND sql LIKE '%USING FTS%'
-                    AND sql LIKE '%content=%'
-                """)]
+        hidden_tables += await self.execute_fn(sqlite_hidden_table_names)
 
         has_spatialite = await self.execute_fn(detect_spatialite)
         if has_spatialite:

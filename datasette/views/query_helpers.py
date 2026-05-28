@@ -3,11 +3,14 @@ import re
 
 from datasette.resources import DatabaseResource
 from datasette.stored_queries import (
-    QueryWriteRejected,
     StoredQuery,
+)
+from datasette.write_sql import (
+    IgnoreWriteSqlOperation,
+    QueryWriteRejected,
+    RequireWriteSqlPermissions,
+    decision_for_write_sql_operation,
     operation_is_write,
-    operation_should_be_ignored,
-    permission_requirements_for_operation,
 )
 from datasette.utils import (
     named_parameters as derive_named_parameters,
@@ -212,7 +215,9 @@ async def _analyze_user_query(datasette, db, sql, *, actor):
 def _display_operations(analysis: SQLAnalysis) -> list[Operation]:
     operations = []
     for operation in analysis.operations:
-        if operation_should_be_ignored(operation):
+        if isinstance(
+            decision_for_write_sql_operation(operation), IgnoreWriteSqlOperation
+        ):
             continue
         operations.append(operation)
     return operations
@@ -221,8 +226,12 @@ def _display_operations(analysis: SQLAnalysis) -> list[Operation]:
 def _analysis_rows(analysis: SQLAnalysis) -> list[dict[str, object]]:
     rows = []
     for operation in _display_operations(analysis):
-        permissions = permission_requirements_for_operation(operation)
-        required_permission = ", ".join(permission.action for permission in permissions)
+        decision = decision_for_write_sql_operation(operation)
+        required_permission = (
+            ", ".join(permission.action for permission in decision.permissions)
+            if isinstance(decision, RequireWriteSqlPermissions)
+            else ""
+        )
         rows.append(
             {
                 "operation": operation.operation,
@@ -241,10 +250,10 @@ async def _analysis_rows_with_permissions(
     rows = _analysis_rows(analysis)
     is_write = _analysis_is_write(analysis)
     for row, operation in zip(rows, _display_operations(analysis)):
-        permissions = permission_requirements_for_operation(operation)
-        if permissions:
+        decision = decision_for_write_sql_operation(operation)
+        if isinstance(decision, RequireWriteSqlPermissions):
             row["allowed"] = True
-            for permission in permissions:
+            for permission in decision.permissions:
                 if not await datasette.allowed(
                     action=permission.action,
                     resource=permission.resource,

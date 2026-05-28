@@ -42,7 +42,7 @@ from jinja2.exceptions import TemplateNotFound
 
 from .events import Event
 from .column_types import SQLiteType
-from . import stored_queries
+from . import stored_queries, write_sql
 from .views import Context
 from .views.database import (
     database_download,
@@ -1197,7 +1197,8 @@ class Datasette:
     async def ensure_query_write_permissions(
         self, database, sql, *, actor=None, params=None, analysis=None
     ):
-        return await stored_queries.ensure_query_write_permissions(
+        # Raise Forbidden or QueryWriteRejected if SQL should not run
+        return await write_sql.ensure_query_write_permissions(
             self, database, sql, actor=actor, params=params, analysis=analysis
         )
 

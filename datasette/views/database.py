@@ -13,7 +13,8 @@ import textwrap
 from datasette.events import AlterTableEvent, CreateTableEvent, InsertRowsEvent
 from datasette.database import QueryInterrupted
 from datasette.resources import DatabaseResource, QueryResource
-from datasette.stored_queries import QueryWriteRejected, stored_query_to_dict
+from datasette.stored_queries import stored_query_to_dict
+from datasette.write_sql import QueryWriteRejected
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,

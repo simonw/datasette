@@ -1413,7 +1413,7 @@ Actor is allowed to drop a database table.
 execute-sql
 -----------
 
-Actor is allowed to run arbitrary read-only SQL queries against a specific database, e.g. https://latest.datasette.io/fixtures/-/query?sql=select+100
+Actor is allowed to run arbitrary read-only SQL queries against a specific database using the :ref:`custom SQL query page <pages_custom_sql_queries>`, e.g. https://latest.datasette.io/fixtures/-/query?sql=select+100
 
 ``resource`` - ``datasette.resources.DatabaseResource(database)``
     ``database`` is the name of the database (string)
@@ -1425,7 +1425,7 @@ See also :ref:`the default_allow_sql setting <setting_default_allow_sql>`.
 execute-write-sql
 -----------------
 
-Actor is allowed to run arbitrary writable SQL queries against a specific database, subject to table-level write permissions such as ``insert-row``, ``update-row`` and ``delete-row``. SQL functions are allowed and are not separately restricted by Datasette permissions.
+Actor is allowed to run arbitrary writable SQL queries against a specific database using the :ref:`write SQL queries page <pages_execute_write>`, subject to table-level write permissions such as ``insert-row``, ``update-row`` and ``delete-row``. SQL functions are allowed and are not separately restricted by Datasette permissions.
 
 ``resource`` - ``datasette.resources.DatabaseResource(database)``
     ``database`` is the name of the database (string)

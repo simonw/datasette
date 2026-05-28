@@ -62,6 +62,11 @@ The following tables are hidden by default:
 Queries
 =======
 
+.. _pages_custom_sql_queries:
+
+Custom SQL queries
+------------------
+
 The ``/database-name/-/query`` page can be used to execute an arbitrary SQL query against that database, if the :ref:`actions_execute_sql` permission is enabled. This query is passed as the ``?sql=`` query string parameter.
 
 This means you can link directly to a query by constructing the following URL:
@@ -71,6 +76,28 @@ This means you can link directly to a query by constructing the following URL:
 Each configured :ref:`stored query <stored_queries>` has its own page, at ``/database-name/query-name``. Viewing this page will execute the query and display the results.
 
 In both cases adding a ``.json`` extension to the URL will return the results as JSON.
+
+.. _pages_execute_write:
+
+Write SQL queries
+-----------------
+
+The ``/database-name/-/execute-write`` page can be used to execute SQL statements that write to a mutable database, if the :ref:`actions_execute_write_sql` permission is enabled.
+
+This page extracts named parameters from the SQL, shows the tables that will be affected and lists the permissions required before the query can be executed. It also includes templates for common ``INSERT``, ``UPDATE`` and ``DELETE`` statements.
+
+Datasette checks additional permissions based on the operations in the SQL. Row changes require the relevant table-level permissions such as :ref:`actions_insert_row`, :ref:`actions_update_row` and :ref:`actions_delete_row`; reads from source tables require :ref:`actions_view_table`; and schema changes require permissions such as :ref:`actions_create_table`, :ref:`actions_alter_table` or :ref:`actions_drop_table`.
+
+Use the :ref:`ExecuteWriteView` JSON API to execute writable SQL programmatically.
+
+.. _pages_stored_query_browser:
+
+Stored query browsers
+---------------------
+
+The ``/-/queries`` page lists stored queries across every database visible to the current actor. The ``/database-name/-/queries`` page lists stored queries for a single database.
+
+These pages support search, pagination and filters for read-only or writable queries and private or public queries. Adding a ``.json`` extension to either URL returns the same list as JSON.
 
 .. _TableView:
 

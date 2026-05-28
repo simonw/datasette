@@ -5,7 +5,7 @@ Tests for various datasette helper functions.
 from datasette.app import Datasette
 from datasette import utils
 from datasette.utils.asgi import Request
-from datasette.utils.sqlite import sqlite3
+from datasette.utils.sqlite import sqlite3, sqlite_table_type
 import json
 import os
 import pathlib
@@ -224,6 +224,49 @@ def test_detect_fts_different_table_names(table):
     conn.executescript(sql)
     assert "{table}_fts".format(table=table) == utils.detect_fts(conn, table)
     conn.close()
+
+
+@pytest.mark.parametrize("use_fallback", (False, True))
+def test_sqlite_table_type_detects_virtual_and_shadow_tables(monkeypatch, use_fallback):
+    if use_fallback:
+        monkeypatch.setattr("datasette.utils.sqlite.sqlite_version", lambda: (3, 25, 0))
+    conn = utils.sqlite3.connect(":memory:")
+    try:
+        conn.executescript("""
+            create table dogs(id integer primary key, name text);
+            create view dog_names as select name from dogs;
+            create virtual table search_index using fts5(title, body);
+            create virtual table boxes using rtree(id, minx, maxx, miny, maxy);
+        """)
+
+        assert sqlite_table_type(conn, "dogs") == "table"
+        assert sqlite_table_type(conn, "dog_names") == "view"
+        assert sqlite_table_type(conn, "search_index") == "virtual"
+        assert sqlite_table_type(conn, "search_index_config") == "shadow"
+        assert sqlite_table_type(conn, "boxes") == "virtual"
+        assert sqlite_table_type(conn, "boxes_node") == "shadow"
+        assert sqlite_table_type(conn, "missing") is None
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("use_fallback", (False, True))
+def test_sqlite_table_type_detects_attached_database_tables(monkeypatch, use_fallback):
+    if use_fallback:
+        monkeypatch.setattr("datasette.utils.sqlite.sqlite_version", lambda: (3, 25, 0))
+    conn = utils.sqlite3.connect(":memory:")
+    try:
+        conn.executescript("""
+            attach database ':memory:' as extra;
+            create table extra.cats(id integer primary key, name text);
+            create virtual table extra.cat_search using fts5(name);
+        """)
+
+        assert sqlite_table_type(conn, "cats", schema="extra") == "table"
+        assert sqlite_table_type(conn, "cat_search", schema="extra") == "virtual"
+        assert sqlite_table_type(conn, "cat_search_data", schema="extra") == "shadow"
+    finally:
+        conn.close()
 
 
 @pytest.mark.parametrize(

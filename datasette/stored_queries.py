@@ -713,6 +713,11 @@ def operation_should_be_ignored(operation: Operation) -> bool:
 def operation_forbidden_message(operation: Operation) -> str | None:
     if operation.operation == "vacuum":
         return "VACUUM is not allowed in user-supplied SQL"
+    if operation.operation in {"insert", "update", "delete"}:
+        if operation.table_kind == "virtual":
+            return "Writes to virtual tables are not allowed in user-supplied SQL"
+        if operation.table_kind == "shadow":
+            return "Writes to shadow tables are not allowed in user-supplied SQL"
     return None
 
 

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Literal
 
-from datasette.utils.sqlite import sqlite3
+from datasette.utils.sqlite import SQLiteTableType, sqlite3, sqlite_table_type
 
 SQLOperation = Literal[
     "read",
@@ -42,6 +42,7 @@ SQLTargetType = Literal[
 SQLTableOperation = Literal["read", "insert", "update", "delete"]
 SQLSchemaOperation = Literal["create", "drop"]
 SQLSchemaTargetType = Literal["index", "table", "trigger", "view", "virtual-table"]
+SQLTableKind = SQLiteTableType
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,7 @@ class Operation:
     database: str | None
     table: str | None
     sqlite_schema: str | None
+    table_kind: SQLTableKind | None = None
     target: str | None = None
     columns: tuple[str, ...] = ()
     source: str | None = None
@@ -500,6 +502,22 @@ def analyze_sql_tables(
             return True
         return False
 
+    table_kind_cache: dict[tuple[str | None, str], SQLTableKind | None] = {}
+
+    def table_kind_for(key: OperationKey) -> SQLTableKind | None:
+        if (
+            key.target_type != "table"
+            or key.operation not in {"read", "insert", "update", "delete"}
+            or key.table is None
+        ):
+            return None
+        cache_key = (key.sqlite_schema, key.table)
+        if cache_key not in table_kind_cache:
+            table_kind_cache[cache_key] = sqlite_table_type(
+                conn, key.table, schema=key.sqlite_schema
+            )
+        return table_kind_cache[cache_key]
+
     return SQLAnalysis(
         operations=tuple(
             Operation(
@@ -508,6 +526,7 @@ def analyze_sql_tables(
                 database=key.database,
                 table=key.table,
                 sqlite_schema=key.sqlite_schema,
+                table_kind=table_kind_for(key),
                 target=key.target,
                 columns=tuple(sorted(columns)),
                 source=key.source,

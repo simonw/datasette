@@ -2194,6 +2194,159 @@ async def test_trusted_stored_write_query_skips_vacuum_filtering():
 
 
 @pytest.mark.asyncio
+async def test_execute_write_rejects_virtual_table_control_insert():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_virtual_table_control", name="data")
+    await db.execute_write("""
+        create virtual table docs using fts5(title, body, content='')
+    """)
+    await db.execute_write("""
+        insert into docs(rowid, title, body) values (1, 'hello', 'world')
+    """)
+    await ds.invoke_startup()
+
+    denied_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        json={"sql": "insert into docs(docs) values('delete-all')"},
+    )
+
+    assert denied_response.status_code == 403
+    assert denied_response.json()["errors"] == [
+        "Writes to virtual tables are not allowed in user-supplied SQL"
+    ]
+    assert (
+        await db.execute("select count(*) from docs where docs match 'hello'")
+    ).first()[0] == 1
+
+
+@pytest.mark.asyncio
+async def test_execute_write_rejects_regular_virtual_table_insert():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_virtual_table_insert", name="data")
+    await db.execute_write("create virtual table docs using fts5(title, body)")
+    await ds.invoke_startup()
+
+    denied_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        json={"sql": "insert into docs(rowid, title, body) values (1, 'a', 'b')"},
+    )
+
+    assert denied_response.status_code == 403
+    assert denied_response.json()["errors"] == [
+        "Writes to virtual tables are not allowed in user-supplied SQL"
+    ]
+    assert (await db.execute("select count(*) from docs")).first()[0] == 0
+
+
+@pytest.mark.asyncio
+async def test_execute_write_rejects_shadow_table_insert():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_shadow_table_insert", name="data")
+    await db.execute_write("create virtual table docs using fts5(title, body)")
+    await ds.invoke_startup()
+
+    denied_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        json={"sql": "insert into docs_config(k, v) values ('x', 1)"},
+    )
+
+    assert denied_response.status_code == 403
+    assert denied_response.json()["errors"] == [
+        "Writes to shadow tables are not allowed in user-supplied SQL"
+    ]
+    assert (await db.execute("select count(*) from docs_config")).first()[0] == 1
+
+
+@pytest.mark.asyncio
+async def test_untrusted_stored_write_query_rejects_virtual_table_control_insert():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("stored_query_virtual_table_control", name="data")
+    await db.execute_write("""
+        create virtual table docs using fts5(title, body, content='')
+    """)
+    await db.execute_write("""
+        insert into docs(rowid, title, body) values (1, 'hello', 'world')
+    """)
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "delete_all_docs",
+        "insert into docs(docs) values('delete-all')",
+        is_write=True,
+        is_trusted=False,
+        source="user",
+        owner_id="root",
+    )
+
+    denied_response = await ds.client.post(
+        "/data/delete_all_docs?_json=1",
+        actor={"id": "root"},
+        data={},
+    )
+
+    assert denied_response.status_code == 403
+    assert denied_response.json()["message"] == (
+        "Writes to virtual tables are not allowed in user-supplied SQL"
+    )
+    assert (
+        await db.execute("select count(*) from docs where docs match 'hello'")
+    ).first()[0] == 1
+
+
+@pytest.mark.asyncio
+async def test_trusted_stored_write_query_can_write_virtual_table():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": "writer"},
+                        "view-query": {"id": "writer"},
+                    }
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database("trusted_stored_query_virtual_table", name="data")
+    await db.execute_write("""
+        create virtual table docs using fts5(title, body, content='')
+    """)
+    await db.execute_write("""
+        insert into docs(rowid, title, body) values (1, 'hello', 'world')
+    """)
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "trusted_delete_all",
+        "insert into docs(docs) values('delete-all')",
+        is_write=True,
+        is_trusted=True,
+        source="config",
+    )
+
+    response = await ds.client.post(
+        "/data/trusted_delete_all?_json=1",
+        actor={"id": "writer"},
+        data={},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert (
+        await db.execute("select count(*) from docs where docs match 'hello'")
+    ).first()[0] == 0
+
+
+@pytest.mark.asyncio
 async def test_execute_write_create_table_uses_create_table_permission():
     ds = Datasette(
         memory=True,

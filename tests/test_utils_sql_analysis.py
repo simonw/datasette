@@ -260,6 +260,53 @@ def test_analyze_create_virtual_table_operation():
     } in [operation_dict(operation) for operation in analysis.operations]
 
 
+def test_analyze_table_kind_for_regular_virtual_and_shadow_tables():
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.executescript("""
+            create table dogs (id integer primary key, name text);
+            create virtual table docs using fts5(title, body, content='');
+        """)
+
+        regular_analysis = analyze_sql_tables(
+            conn,
+            "insert into dogs (name) values ('Cleo')",
+            database_name="data",
+        )
+        virtual_analysis = analyze_sql_tables(
+            conn,
+            "insert into docs(docs) values('delete-all')",
+            database_name="data",
+        )
+        shadow_analysis = analyze_sql_tables(
+            conn,
+            "insert into docs_config(k, v) values ('x', 1)",
+            database_name="data",
+        )
+    finally:
+        conn.close()
+
+    regular_insert = next(
+        operation
+        for operation in regular_analysis.operations
+        if operation.operation == "insert" and operation.table == "dogs"
+    )
+    virtual_insert = next(
+        operation
+        for operation in virtual_analysis.operations
+        if operation.operation == "insert" and operation.table == "docs"
+    )
+    shadow_insert = next(
+        operation
+        for operation in shadow_analysis.operations
+        if operation.operation == "insert" and operation.table == "docs_config"
+    )
+
+    assert regular_insert.table_kind == "table"
+    assert virtual_insert.table_kind == "virtual"
+    assert shadow_insert.table_kind == "shadow"
+
+
 def test_analyze_create_table_as_select_function_is_not_internal():
     conn = sqlite3.connect(":memory:")
     try:

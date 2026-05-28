@@ -16,7 +16,7 @@ _cached_sqlite_version = None
 SQLiteTableType = Literal["table", "view", "virtual", "shadow"]
 _VIRTUAL_TABLE_MODULE_RE = re.compile(
     r"\bCREATE\s+VIRTUAL\s+TABLE\b.*?\bUSING\s+([^\s(]+)",
-    re.IGNORECASE,
+    re.IGNORECASE | re.DOTALL,
 )
 _VIRTUAL_TABLE_SHADOW_SUFFIXES = {
     "fts3": ("_content", "_segdir", "_segments", "_stat", "_docsize"),

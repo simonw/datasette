@@ -279,6 +279,20 @@ def test_sqlite_table_type_detects_attached_database_tables(monkeypatch, use_fal
         conn.close()
 
 
+def test_sqlite_hidden_table_names_hides_multiline_content_fts_table():
+    conn = utils.sqlite3.connect(":memory:")
+    try:
+        conn.executescript("""
+            create table searchable(id integer primary key, body text);
+            create virtual table searchable_fts
+                using fts5(body, content='searchable', content_rowid='id');
+        """)
+
+        assert "searchable_fts" in sqlite_hidden_table_names(conn)
+    finally:
+        conn.close()
+
+
 @pytest.mark.parametrize(
     "url,expected",
     [

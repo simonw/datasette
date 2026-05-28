@@ -50,6 +50,25 @@ The ``"truncated"`` key lets you know if the query was truncated. This can happe
 
 For table pages, an additional key ``"next"`` may be present. This indicates that the next page in the pagination set can be retrieved using ``?_next=VALUE``.
 
+.. _json_api_custom_sql:
+
+Executing custom SQL
+--------------------
+
+Actors with the :ref:`actions_execute_sql` permission can execute read-only SQL against a database using ``/-/query.json``:
+
+::
+
+    GET /<database>/-/query.json?sql=select+*+from+dogs
+
+Values for named SQL parameters can be provided as additional query string parameters:
+
+::
+
+    GET /<database>/-/query.json?sql=select+*+from+dogs+where+name=:name&name=Cleo
+
+The response uses the same default representation described above.
+
 .. _json_api_shapes:
 
 Different shapes
@@ -529,7 +548,7 @@ The request body must include a ``"sql"`` string. Named SQL parameters can be pr
         }
     }
 
-The SQL must be writable. Read-only ``select`` queries should use the regular :ref:`custom SQL query API <sql>` instead.
+The SQL must be writable. Read-only ``select`` queries should use the regular :ref:`custom SQL query JSON API <json_api_custom_sql>` instead.
 
 Datasette analyzes the SQL before executing it. The actor must have ``execute-write-sql`` permission for the database, and must also have any permissions required by the operations in the SQL. For example, inserts and updates against a table require ``insert-row``, ``update-row`` and ``delete-row`` permissions for that table. Reads performed as part of the write, such as ``insert into dogs select ... from other_table``, require ``view-table`` permission on the source table. Schema changes require ``create-table``, ``alter-table`` or ``drop-table`` permissions as appropriate.
 

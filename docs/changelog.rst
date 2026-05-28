@@ -24,6 +24,8 @@ Write SQL UI
 
 - New "Write to this database" interface at ``/<database>/-/execute-write`` for running arbitrary writable SQL against mutable databases. The form extracts named parameters, analyzes the SQL, shows the table operations that will be attempted and links to a newly inserted row when a single-row insert succeeds. (:issue:`2742`)
 - Added the new :ref:`execute-write-sql <actions_execute_write_sql>` permission for running arbitrary writable SQL. Execution is also gated by table-level permissions such as :ref:`insert-row <actions_insert_row>`, :ref:`update-row <actions_update_row>` and :ref:`delete-row <actions_delete_row>`, and writes to attached databases are rejected. (:issue:`2742`)
+- The write SQL analyzer now uses a deny-by-default model for unsupported operations. Reads from source tables require :ref:`view-table <actions_view_table>` permission, schema changes require :ref:`create-table <actions_create_table>`, :ref:`alter-table <actions_alter_table>` or :ref:`drop-table <actions_drop_table>` as appropriate, and row mutation statements require the full ``insert-row``, ``update-row`` and ``delete-row`` permission set. SQL functions are allowed and are not separately permission-gated. (:issue:`2748`)
+- User-supplied write SQL now rejects ``VACUUM`` and writes to SQLite virtual tables or shadow tables. These restrictions also apply to untrusted stored write queries; trusted configured stored queries continue to skip these filters. (:issue:`2748`)
 
 Plugin API changes
 ~~~~~~~~~~~~~~~~~~

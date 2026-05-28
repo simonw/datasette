@@ -35,12 +35,28 @@ def test_inspect_cli(app_client):
         assert expected_count == database["tables"][table_name]["count"]
 
 
+def test_inspect_cli_counts_all_rows(tmp_path):
+    db_path = tmp_path / "big.db"
+    conn = sqlite3.connect(db_path)
+    with conn:
+        conn.execute("create table t (id integer primary key)")
+        conn.executemany("insert into t (id) values (?)", ((i,) for i in range(10002)))
+    conn.close()
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["inspect", str(db_path)])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+
+    assert data["big"]["tables"]["t"]["count"] == 10002
+
+
 def test_inspect_cli_writes_to_file(app_client):
     runner = CliRunner()
     result = runner.invoke(
         cli, ["inspect", "fixtures.db", "--inspect-file", "foo.json"]
     )
-    assert 0 == result.exit_code, result.output
+    assert result.exit_code == 0, result.output
     with open("foo.json") as fp:
         data = json.load(fp)
     assert ["fixtures"] == list(data.keys())

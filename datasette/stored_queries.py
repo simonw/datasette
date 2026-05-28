@@ -109,7 +109,6 @@ async def save_queries_from_config(datasette: Any) -> None:
                 fragment=query_config.get("fragment"),
                 parameters=query_config.get("params"),
                 is_write=bool(query_config.get("write")),
-                is_private=bool(query_config.get("is_private")),
                 is_trusted=bool(query_config.get("is_trusted", True)),
                 source="config",
                 on_success_message=query_config.get("on_success_message"),

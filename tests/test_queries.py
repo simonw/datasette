@@ -191,6 +191,8 @@ async def test_config_queries_imported_to_internal_table():
                             "title": "Configured query",
                             "description_html": "<p>Configured HTML</p>",
                             "params": ["name"],
+                            # Configured queries are always public; this is ignored.
+                            "is_private": True,
                             "on_success_message_sql": "select 'Hello ' || :name",
                         }
                     }

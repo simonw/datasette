@@ -8,7 +8,7 @@ from datasette.app import Datasette
 from datasette.database import Database, Results, MultipleValues
 from datasette.database import DatasetteClosedError
 from datasette.database import _deliver_write_result
-from datasette.utils.sqlite import sqlite3, sqlite_version
+from datasette.utils.sqlite import sqlite3
 from datasette.utils import Column
 import pytest
 import time
@@ -798,14 +798,7 @@ async def test_in_memory_databases_forbid_writes(app_client):
     assert await db.table_names() == ["foo"]
 
 
-def pragma_table_list_supported():
-    return sqlite_version()[1] >= 37
-
-
 @pytest.mark.asyncio
-@pytest.mark.skipif(
-    not pragma_table_list_supported(), reason="Requires PRAGMA table_list support"
-)
 async def test_hidden_tables(app_client):
     ds = app_client.ds
     db = ds.add_database(Database(ds, is_memory=True, is_mutable=True))

@@ -80,6 +80,28 @@ def sqlite_table_type(
     return _sqlite_table_type_from_schema(conn, table, schema=schema)
 
 
+def sqlite_hidden_table_names(conn, *, schema: str | None = "main") -> list[str]:
+    schema_table = _sqlite_schema_table(schema)
+    try:
+        rows = conn.execute(
+            "select name, sql from {} where type = 'table'".format(schema_table)
+        ).fetchall()
+    except sqlite3.DatabaseError:
+        return []
+    hidden_tables = []
+    content_fts_tables = []
+    for name, sql in rows:
+        if (
+            name in {"sqlite_stat1", "sqlite_stat2", "sqlite_stat3", "sqlite_stat4"}
+            or name.startswith("_")
+            or sqlite_table_type(conn, name, schema=schema) == "shadow"
+        ):
+            hidden_tables.append(name)
+        elif _is_fts_content_virtual_table(sql):
+            content_fts_tables.append(name)
+    return sorted(hidden_tables) + content_fts_tables
+
+
 def _sqlite_table_type_from_schema(
     conn,
     table: str,
@@ -150,3 +172,10 @@ def _virtual_table_module(sql: str | None) -> str | None:
     if match is None:
         return None
     return match.group(1).strip("\"'[]`").lower()
+
+
+def _is_fts_content_virtual_table(sql: str | None) -> bool:
+    return (
+        _virtual_table_module(sql) in {"fts3", "fts4", "fts5"}
+        and "content=" in sql.lower()
+    )

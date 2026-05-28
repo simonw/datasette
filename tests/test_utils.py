@@ -5,7 +5,7 @@ Tests for various datasette helper functions.
 from datasette.app import Datasette
 from datasette import utils
 from datasette.utils.asgi import Request
-from datasette.utils.sqlite import sqlite3, sqlite_table_type
+from datasette.utils.sqlite import sqlite3, sqlite_hidden_table_names, sqlite_table_type
 import json
 import os
 import pathlib
@@ -246,6 +246,16 @@ def test_sqlite_table_type_detects_virtual_and_shadow_tables(monkeypatch, use_fa
         assert sqlite_table_type(conn, "boxes") == "virtual"
         assert sqlite_table_type(conn, "boxes_node") == "shadow"
         assert sqlite_table_type(conn, "missing") is None
+        assert sqlite_hidden_table_names(conn) == [
+            "boxes_node",
+            "boxes_parent",
+            "boxes_rowid",
+            "search_index_config",
+            "search_index_content",
+            "search_index_data",
+            "search_index_docsize",
+            "search_index_idx",
+        ]
     finally:
         conn.close()
 

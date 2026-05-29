@@ -9,16 +9,9 @@ Changelog
 Unreleased
 ----------
 
-Stored queries
-~~~~~~~~~~~~~~
+Datasette now offers users with the necessary permissions the ability to both **execute write queries** against their database and to **save stored queries** (renamed from "canned queries") both privately and for use by other members of their Datasette instance.
 
-- The previous "canned queries" feature has been renamed and expanded into :ref:`stored queries <stored_queries>`. Queries configured in ``datasette.yaml`` are now loaded into a new ``queries`` table in Datasette's :ref:`internal database <internals_internal_schema>`, alongside user-created stored queries. (:issue:`2735`)
-- New stored query management APIs: ``datasette.add_query()``, ``datasette.update_query()``, ``datasette.remove_query()``, ``datasette.get_query()``, ``datasette.list_queries()`` and ``datasette.count_queries()``. These replace the removed ``datasette.get_canned_query()`` and ``datasette.get_canned_queries()`` methods. (:issue:`2735`)
-- Users with :ref:`store-query <actions_store_query>` and :ref:`execute-sql <actions_execute_sql>` permission can create stored queries from the SQL query page or the new ``GET /<database>/-/queries/store`` form. (:issue:`2735`)
-- The database page now shows a count and preview of stored queries, capped at five, and links to new paginated query browsers at ``/-/queries`` and ``/<database>/-/queries``. Those browsers support search. (:issue:`2735`)
-- Stored queries created by users default to private and untrusted. Private stored queries can only be viewed, updated or deleted by their owner, even if another actor has broad ``view-query``, ``update-query`` or ``delete-query`` permission. Untrusted stored queries execute using the permissions of the actor running them. See :ref:`stored_queries` and :ref:`trusted_stored_queries` for details. (:issue:`2735`)
-- Configured queries from ``datasette.yaml`` are trusted by default, so they can execute with ``view-query`` permission alone. They can opt out of that behavior using ``is_trusted: false`` but cannot be made private; private queries are only available for user-created stored queries. (:issue:`2735`)
-- New ``store-query``, ``update-query`` and ``delete-query`` permissions, plus updated semantics for :ref:`view-query <actions_view_query>`. Trusted stored queries can still execute with ``view-query`` alone; untrusted read queries also require :ref:`execute-sql <actions_execute_sql>` and untrusted writable queries require :ref:`execute-write-sql <actions_execute_write_sql>` plus the relevant table-level write permissions. (:issue:`2735`)
+The ability to write is controlled by the new ``execute-write-sql`` permission, but the user also needs the relevant ``insert-row``/``update-row``/``delete-row``/``create-table``/etc permissions for the query they are trying to execute.
 
 Write SQL UI
 ~~~~~~~~~~~~
@@ -26,7 +19,18 @@ Write SQL UI
 - New "Write to this database" interface at ``/<database>/-/execute-write`` for running arbitrary writable SQL against mutable databases. The form extracts named parameters, analyzes the SQL, shows the table operations that will be attempted, includes starter templates for ``INSERT``, ``UPDATE`` and ``DELETE`` statements and links to a newly inserted row when a single-row insert succeeds. This is also available as a :ref:`JSON API <ExecuteWriteView>`. (:issue:`2742`)
 - Added the new :ref:`execute-write-sql <actions_execute_write_sql>` permission for running arbitrary writable SQL. Execution is also gated by table-level permissions such as :ref:`insert-row <actions_insert_row>`, :ref:`update-row <actions_update_row>` and :ref:`delete-row <actions_delete_row>`, and writes to attached databases are rejected. (:issue:`2742`)
 - The write SQL analyzer now uses a deny-by-default model for unsupported operations. Reads from source tables require :ref:`view-table <actions_view_table>` permission, schema changes require :ref:`create-table <actions_create_table>`, :ref:`alter-table <actions_alter_table>` or :ref:`drop-table <actions_drop_table>` as appropriate, and row mutation statements require the full ``insert-row``, ``update-row`` and ``delete-row`` permission set. SQL functions are allowed and are not separately permission-gated. (:issue:`2748`)
-- User-supplied write SQL now rejects ``VACUUM`` and writes to SQLite virtual tables or shadow tables. These restrictions also apply to untrusted stored write queries; trusted configured stored queries continue to skip these filters. (:issue:`2748`)
+- User-supplied write SQL rejects both ``VACUUM`` operations and writes to SQLite virtual or shadow tables. These restrictions also apply to untrusted stored write queries; trusted queries in ``datasette.yml`` skip these filters. (:issue:`2748`)
+
+Stored queries
+~~~~~~~~~~~~~~
+
+- The previous "canned queries" feature has been renamed and expanded into :ref:`stored queries <stored_queries>`. Queries configured in ``datasette.yaml`` are now loaded into a new ``queries`` table in Datasette's :ref:`internal database <internals_internal_schema>`, alongside user-created stored queries. (:issue:`2735`)
+- New stored query management API methods available to plugins: ``datasette.add_query()``, ``datasette.update_query()``, ``datasette.remove_query()``, ``datasette.get_query()``, ``datasette.list_queries()`` and ``datasette.count_queries()``. These replace the removed ``datasette.get_canned_query()`` and ``datasette.get_canned_queries()`` methods. (:issue:`2735`)
+- Users with :ref:`store-query <actions_store_query>` and :ref:`execute-sql <actions_execute_sql>` permission can create stored queries from the SQL query page or the new ``GET /<database>/-/queries/store`` form. (:issue:`2735`)
+- The database page now shows a count and preview of stored queries, capped at five, and links to new paginated query lists at ``/-/queries`` and ``/<database>/-/queries``. Those pages support search. (:issue:`2735`)
+- Stored queries created by users default to private and untrusted. Private stored queries can only be viewed, updated or deleted by their owner, even if another actor has broad ``view-query``, ``update-query`` or ``delete-query`` permission. Untrusted stored queries execute using the permissions of the actor running them. See :ref:`stored_queries` and :ref:`trusted_stored_queries` for details. (:issue:`2735`)
+- Configured queries from ``datasette.yaml`` are trusted by default, so they can execute with ``view-query`` permission alone. They can opt out of that behavior using ``is_trusted: false`` but cannot be made private; private queries are only available for user-created stored queries. (:issue:`2735`)
+- New ``store-query``, ``update-query`` and ``delete-query`` permissions, plus updated semantics for :ref:`view-query <actions_view_query>`. Trusted stored queries can still execute with ``view-query`` alone; untrusted read queries also require :ref:`execute-sql <actions_execute_sql>` and untrusted writable queries require :ref:`execute-write-sql <actions_execute_write_sql>` plus the relevant table-level write permissions. (:issue:`2735`)
 
 Plugin API changes
 ~~~~~~~~~~~~~~~~~~

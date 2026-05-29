@@ -1086,6 +1086,11 @@ class MultiParams:
         """Return full list"""
         return self._data.get(name) or []
 
+    def items(self):
+        """Yield (key, first_value) pairs, matching ``__getitem__`` semantics."""
+        for key, values in self._data.items():
+            yield key, values[0]
+
 
 class ConnectionProblem(Exception):
     pass

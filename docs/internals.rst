@@ -106,8 +106,8 @@ The object also has the following awaitable methods:
 
     Don't forget to read about :ref:`internals_csrf`!
 
-``await request.post_vars()`` - dictionary
-    Returns a dictionary of form variables that were submitted in the request body via ``POST`` using ``application/x-www-form-urlencoded`` encoding. For multipart forms or file uploads, use ``request.form()`` instead.
+``await request.post_vars()`` - MultiParams
+    Returns a :ref:`MultiParams <internals_multiparams>` object of form variables that were submitted in the request body via ``POST`` using ``application/x-www-form-urlencoded`` encoding. This has the same shape as ``request.args``, so use ``.getlist(key)`` to retrieve every value submitted for keys with multiple values (such as ``<select multiple>`` fields). For multipart forms or file uploads, use ``request.form()`` instead.
 
 ``await request.json()`` - Any
     Returns the parsed JSON body of a request submitted by ``POST``.

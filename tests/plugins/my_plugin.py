@@ -237,7 +237,8 @@ def register_routes():
         if request.method == "GET":
             return Response.html(request.scope["csrftoken"]())
         else:
-            return Response.json(await request.post_vars())
+            # post_vars() returns a MultiParams; convert to a plain dict for JSON
+            return Response.json(dict(await request.post_vars()))
 
     async def csrftoken_form(request, datasette):
         return Response.html(

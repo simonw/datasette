@@ -1,3 +1,4 @@
+import re
 from urllib.parse import urlencode
 
 from datasette.resources import DatabaseResource
@@ -21,6 +22,187 @@ from .query_helpers import (
     _table_columns,
     _wants_json,
 )
+
+WRITE_TEMPLATE_LABELS = {
+    "insert": "Insert row",
+    "update": "Update rows",
+    "delete": "Delete rows",
+}
+WRITE_TEMPLATE_OPERATIONS = tuple(WRITE_TEMPLATE_LABELS)
+
+
+def _parameter_names(columns):
+    seen = set()
+    names = {}
+    for column in columns:
+        base = re.sub(r"[^a-z0-9_]+", "_", column.lower())
+        base = base.strip("_") or "value"
+        if base[0].isdigit():
+            base = "p_{}".format(base)
+        name = base
+        index = 2
+        while name in seen:
+            name = "{}_{}".format(base, index)
+            index += 1
+        seen.add(name)
+        names[column] = name
+    return names
+
+
+def _quote_identifier(identifier):
+    return '"{}"'.format(identifier.replace('"', '""'))
+
+
+def _preferred_where_column(table, columns):
+    lower_table_id = "{}_id".format(table.lower())
+    return (
+        next((column for column in columns if column.lower() == "id"), None)
+        or next(
+            (column for column in columns if column.lower() == lower_table_id), None
+        )
+        or columns[0]
+    )
+
+
+def _auto_incrementing_primary_key(columns):
+    primary_keys = [column for column in columns if column.is_pk]
+    if len(primary_keys) != 1:
+        return None
+    primary_key = primary_keys[0]
+    if primary_key.type and primary_key.type.lower() == "integer":
+        return primary_key.name
+    return None
+
+
+def _insert_template_sql(table, columns):
+    column_names = [column.name for column in columns]
+    auto_pk = _auto_incrementing_primary_key(columns)
+    insert_columns = [column for column in column_names if column != auto_pk]
+    if not insert_columns:
+        return "insert into {}\ndefault values".format(_quote_identifier(table))
+    names = _parameter_names(insert_columns)
+    return "\n".join(
+        (
+            "insert into {} (".format(_quote_identifier(table)),
+            ",\n".join(
+                "  {}".format(_quote_identifier(column)) for column in insert_columns
+            ),
+            ")",
+            "values (",
+            ",\n".join("  :{}".format(names[column]) for column in insert_columns),
+            ")",
+        )
+    )
+
+
+def _update_template_sql(table, columns):
+    column_names = [column.name for column in columns]
+    names = _parameter_names(column_names)
+    where_column = _preferred_where_column(table, column_names)
+    set_columns = [column for column in column_names if column != where_column]
+    if not set_columns:
+        return "\n".join(
+            (
+                "update {}".format(_quote_identifier(table)),
+                "set {} = :new_{}".format(
+                    _quote_identifier(where_column), names[where_column]
+                ),
+                "where {} = :{}".format(
+                    _quote_identifier(where_column), names[where_column]
+                ),
+            )
+        )
+    return "\n".join(
+        (
+            "update {}".format(_quote_identifier(table)),
+            "set "
+            + ",\n".join(
+                "{}{} = :{}".format(
+                    "    " if index else "",
+                    _quote_identifier(column),
+                    names[column],
+                )
+                for index, column in enumerate(set_columns)
+            ),
+            "where {} = :{}".format(
+                _quote_identifier(where_column), names[where_column]
+            ),
+        )
+    )
+
+
+def _delete_template_sql(table, columns):
+    column_names = [column.name for column in columns]
+    names = _parameter_names(column_names)
+    where_column = _preferred_where_column(table, column_names)
+    return "\n".join(
+        (
+            "delete from {}".format(_quote_identifier(table)),
+            "where {} = :{}".format(
+                _quote_identifier(where_column), names[where_column]
+            ),
+        )
+    )
+
+
+def _template_sqls_for_table(table, columns):
+    return {
+        "insert": _insert_template_sql(table, columns),
+        "update": _update_template_sql(table, columns),
+        "delete": _delete_template_sql(table, columns),
+    }
+
+
+async def _template_sql_allowed(datasette, db, sql, actor):
+    params = {parameter: "" for parameter in _derived_query_parameters(sql)}
+    try:
+        analysis = await db.analyze_sql(sql, params)
+    except sqlite3.DatabaseError:
+        return False
+    if not _analysis_is_write(analysis):
+        return False
+    analysis_rows = await _analysis_rows_with_permissions(datasette, analysis, actor)
+    return _execute_write_disabled_reason(sql, None, analysis_rows) is None
+
+
+async def _write_template_tables(
+    datasette, db, table_columns, hidden_table_names, actor
+):
+    write_template_tables = {}
+    for table in table_columns:
+        if table in hidden_table_names or not table_columns[table]:
+            continue
+        column_details = [
+            column
+            for column in await db.table_column_details(table)
+            if not column.hidden
+        ]
+        if not column_details:
+            continue
+        templates = {}
+        for operation, sql in _template_sqls_for_table(table, column_details).items():
+            if await _template_sql_allowed(datasette, db, sql, actor):
+                templates[operation] = sql
+        if templates:
+            write_template_tables[table] = {
+                "templates": templates,
+            }
+    return write_template_tables
+
+
+def _write_template_operations(write_template_tables):
+    operations = []
+    for operation in WRITE_TEMPLATE_OPERATIONS:
+        if any(
+            operation in table["templates"] for table in write_template_tables.values()
+        ):
+            operations.append(
+                {
+                    "name": operation,
+                    "label": WRITE_TEMPLATE_LABELS[operation],
+                }
+            )
+    return operations
 
 
 class ExecuteWriteView(BaseView):
@@ -47,11 +229,10 @@ class ExecuteWriteView(BaseView):
         analysis_rows = []
         table_columns = await _table_columns(self.ds, db.name)
         hidden_table_names = set(await db.hidden_table_names())
-        write_template_tables = {
-            table: columns
-            for table, columns in table_columns.items()
-            if columns and table not in hidden_table_names
-        }
+        write_template_tables = await _write_template_tables(
+            self.ds, db, table_columns, hidden_table_names, request.actor
+        )
+        write_template_operations = _write_template_operations(write_template_tables)
         if sql and analysis_error is None:
             try:
                 parameter_names = _derived_query_parameters(sql)
@@ -107,6 +288,7 @@ class ExecuteWriteView(BaseView):
                 "execute_disabled_reason": execute_disabled_reason,
                 "table_columns": table_columns,
                 "write_template_tables": write_template_tables,
+                "write_template_operations": write_template_operations,
                 "save_query_url": save_query_url,
                 "save_query_base_url": save_query_base_url,
             },

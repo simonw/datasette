@@ -1,4 +1,6 @@
 import json
+import re
+from html import unescape
 
 import pytest
 
@@ -6,6 +8,19 @@ from datasette.app import Datasette
 from datasette.resources import DatabaseResource, QueryResource
 from datasette.stored_queries import StoredQuery, StoredQueryPage
 from datasette.utils.asgi import Forbidden
+
+
+def _template_option_attributes(html, table):
+    match = re.search(r'<option value="{}"([^>]*)>'.format(table), html)
+    assert match, "Could not find template option for {}".format(table)
+    return match.group(1)
+
+
+def _template_sql(html, table, operation):
+    attrs = _template_option_attributes(html, table)
+    match = re.search(r'data-template-{}-sql="([^"]*)"'.format(operation), attrs)
+    assert match, "Could not find {} template for {}".format(operation, table)
+    return unescape(match.group(1))
 
 
 async def add_numbered_queries(ds, database, count):
@@ -1360,7 +1375,8 @@ async def test_execute_write_get_prepopulates_without_executing():
     )
     assert "<h2>Query operations</h2>" in response.text
     assert "<summary>Start with a template</summary>" in response.text
-    assert '<option value="dogs">dogs</option>' in response.text
+    assert '<option value="dogs"' in response.text
+    assert "data-template-insert-sql=" in response.text
     assert 'data-sql-template="insert"' in response.text
     assert 'data-sql-template="update"' in response.text
     assert 'data-sql-template="delete"' in response.text
@@ -1467,6 +1483,105 @@ async def test_execute_write_disabled_submit_explains_denied_operations():
     assert data["execute_disabled_reason"] == (
         "You do not have permission for every operation listed above."
     )
+
+
+@pytest.mark.asyncio
+async def test_execute_write_templates_are_filtered_by_permission_and_server_generated():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": ["writer", "deleter", "viewer"]},
+                        "execute-write-sql": {"id": ["writer", "deleter", "viewer"]},
+                    },
+                    "tables": {
+                        "dogs": {
+                            "permissions": {
+                                "view-table": {"id": ["writer", "deleter"]},
+                                "insert-row": {"id": "writer"},
+                                "update-row": {"id": "writer"},
+                                "delete-row": {"id": ["writer", "deleter"]},
+                            }
+                        },
+                        "manual": {
+                            "permissions": {
+                                "view-table": {"id": "writer"},
+                                "insert-row": {"id": "writer"},
+                                "update-row": {"id": "writer"},
+                                "delete-row": {"id": "writer"},
+                            }
+                        },
+                    },
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database("execute_write_templates", name="data")
+    await db.execute_write(
+        "create table dogs (id integer primary key, name text, age integer)"
+    )
+    await db.execute_write("create table manual (id text primary key, name text)")
+    await db.execute_write("create table cats (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    writer_response = await ds.client.get(
+        "/data/-/execute-write", actor={"id": "writer"}
+    )
+    deleter_response = await ds.client.get(
+        "/data/-/execute-write", actor={"id": "deleter"}
+    )
+    viewer_response = await ds.client.get(
+        "/data/-/execute-write", actor={"id": "viewer"}
+    )
+
+    assert writer_response.status_code == 200
+    assert "<summary>Start with a template</summary>" in writer_response.text
+    assert "You don't currently have permission" not in writer_response.text
+    assert '<option value="dogs"' in writer_response.text
+    assert '<option value="manual"' in writer_response.text
+    assert '<option value="cats"' not in writer_response.text
+    assert "function insertSql(" not in writer_response.text
+    assert "function updateSql(" not in writer_response.text
+    assert "function deleteSql(" not in writer_response.text
+
+    dogs_insert_sql = _template_sql(writer_response.text, "dogs", "insert")
+    assert '"id"' not in dogs_insert_sql
+    assert '"name"' in dogs_insert_sql
+    assert '"age"' in dogs_insert_sql
+    assert ":name" in dogs_insert_sql
+    assert ":age" in dogs_insert_sql
+
+    dogs_update_sql = _template_sql(writer_response.text, "dogs", "update")
+    assert 'where "id" = :id' in dogs_update_sql
+    assert '"id" = :new_id' not in dogs_update_sql
+
+    manual_insert_sql = _template_sql(writer_response.text, "manual", "insert")
+    assert '"id"' in manual_insert_sql
+    assert ":id" in manual_insert_sql
+
+    assert deleter_response.status_code == 200
+    assert "<summary>Start with a template</summary>" in deleter_response.text
+    assert '<option value="dogs"' in deleter_response.text
+    dogs_attrs = _template_option_attributes(deleter_response.text, "dogs")
+    assert "data-template-delete-sql" in dogs_attrs
+    assert "data-template-insert-sql" not in dogs_attrs
+    assert "data-template-update-sql" not in dogs_attrs
+    assert 'data-sql-template="delete"' in deleter_response.text
+    assert 'data-sql-template="insert"' not in deleter_response.text
+    assert 'data-sql-template="update"' not in deleter_response.text
+
+    assert viewer_response.status_code == 200
+    assert "<summary>Start with a template</summary>" not in viewer_response.text
+    assert (
+        "You don't currently have permission to insert, edit or delete from any tables."
+        in viewer_response.text
+    )
+    assert "data-template-insert-sql" not in viewer_response.text
+    assert "data-template-update-sql" not in viewer_response.text
+    assert "data-template-delete-sql" not in viewer_response.text
 
 
 @pytest.mark.asyncio

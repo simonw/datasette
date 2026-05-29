@@ -89,16 +89,18 @@ form.sql.core input[data-execute-write-submit]:disabled {
                 <p class="execute-write-template-controls">
                     <label for="execute-write-template-table">Table</label>
                     <select id="execute-write-template-table">
-                        {% for table_name, columns in write_template_tables|dictsort %}
-                            <option value="{{ table_name }}">{{ table_name }}</option>
+                        {% for table_name, table in write_template_tables|dictsort %}
+                            <option value="{{ table_name }}"{% for operation, template_sql in table.templates|dictsort %} data-template-{{ operation }}-sql="{{ template_sql }}"{% endfor %}>{{ table_name }}</option>
                         {% endfor %}
                     </select>
-                    <button type="button" data-sql-template="insert">Insert row</button>
-                    <button type="button" data-sql-template="update">Update rows</button>
-                    <button type="button" data-sql-template="delete">Delete rows</button>
+                    {% for operation in write_template_operations %}
+                        <button type="button" data-sql-template="{{ operation.name }}">{{ operation.label }}</button>
+                    {% endfor %}
                 </p>
             </details>
         </div>
+    {% else %}
+        <p class="message-warning execute-write-template-unavailable">You don't currently have permission to insert, edit or delete from any tables.</p>
     {% endif %}
 
     <p class="sql-editor"><textarea id="sql-editor" name="sql"{% if sql %} style="height: {{ sql.split("\n")|length + 2 }}em"{% endif %}>{{ sql }}</textarea></p>
@@ -242,119 +244,43 @@ window.addEventListener("DOMContentLoaded", () => {
 {% if write_template_tables %}
 <script>
 window.addEventListener("DOMContentLoaded", () => {
-  const tableColumns = {{ write_template_tables|tojson(2) }};
   const tableSelect = document.querySelector("#execute-write-template-table");
   const templateButtons = document.querySelectorAll("[data-sql-template]");
 
-  function quoteIdentifier(identifier) {
-    return `"${identifier.replace(/"/g, '""')}"`;
+  function dataKey(operation) {
+    return `template${operation.charAt(0).toUpperCase()}${operation.slice(1)}Sql`;
   }
 
-  function parameterNames(columns) {
-    const seen = new Set();
-    const names = {};
-    columns.forEach((column) => {
-      let base = column
-        .toLowerCase()
-        .replace(/[^a-z0-9_]+/g, "_")
-        .replace(/^_+|_+$/g, "");
-      if (!base) {
-        base = "value";
-      }
-      if (/^[0-9]/.test(base)) {
-        base = `p_${base}`;
-      }
-      let name = base;
-      let index = 2;
-      while (seen.has(name)) {
-        name = `${base}_${index}`;
-        index += 1;
-      }
-      seen.add(name);
-      names[column] = name;
+  function selectedOption() {
+    return tableSelect ? tableSelect.options[tableSelect.selectedIndex] : null;
+  }
+
+  function templateSql(operation) {
+    const option = selectedOption();
+    return option ? option.dataset[dataKey(operation)] || "" : "";
+  }
+
+  function updateTemplateButtons() {
+    templateButtons.forEach((button) => {
+      button.hidden = !templateSql(button.dataset.sqlTemplate);
     });
-    return names;
-  }
-
-  function preferredWhereColumn(table, columns) {
-    const lowerTableId = `${table.toLowerCase()}_id`;
-    return (
-      columns.find((column) => column.toLowerCase() === "id") ||
-      columns.find((column) => column.toLowerCase() === lowerTableId) ||
-      columns[0]
-    );
-  }
-
-  function insertSql(table, columns) {
-    const names = parameterNames(columns);
-    return [
-      `insert into ${quoteIdentifier(table)} (`,
-      columns.map((column) => `  ${quoteIdentifier(column)}`).join(",\n"),
-      ")",
-      "values (",
-      columns.map((column) => `  :${names[column]}`).join(",\n"),
-      ")",
-    ].join("\n");
-  }
-
-  function updateSql(table, columns) {
-    const names = parameterNames(columns);
-    const whereColumn = preferredWhereColumn(table, columns);
-    const setColumns = columns.filter((column) => column !== whereColumn);
-    if (!setColumns.length) {
-      return [
-        `update ${quoteIdentifier(table)}`,
-        `set ${quoteIdentifier(whereColumn)} = :new_${names[whereColumn]}`,
-        `where ${quoteIdentifier(whereColumn)} = :${names[whereColumn]}`,
-      ].join("\n");
-    }
-    return [
-      `update ${quoteIdentifier(table)}`,
-      "set " +
-        setColumns
-          .map((column, index) => {
-            const indent = index ? "    " : "";
-            return `${indent}${quoteIdentifier(column)} = :${names[column]}`;
-          })
-          .join(",\n"),
-      `where ${quoteIdentifier(whereColumn)} = :${names[whereColumn]}`,
-    ].join("\n");
-  }
-
-  function deleteSql(table, columns) {
-    const names = parameterNames(columns);
-    const whereColumn = preferredWhereColumn(table, columns);
-    return [
-      `delete from ${quoteIdentifier(table)}`,
-      `where ${quoteIdentifier(whereColumn)} = :${names[whereColumn]}`,
-    ].join("\n");
-  }
-
-  function templateSql(operation, table, columns) {
-    if (operation === "insert") {
-      return insertSql(table, columns);
-    }
-    if (operation === "update") {
-      return updateSql(table, columns);
-    }
-    return deleteSql(table, columns);
   }
 
   templateButtons.forEach((button) => {
     button.addEventListener("click", () => {
-      const table = tableSelect.value;
-      const columns = tableColumns[table] || [];
-      if (!columns.length) {
+      const sql = templateSql(button.dataset.sqlTemplate);
+      if (!sql) {
         return;
       }
       const url = new URL(window.location.href);
-      url.searchParams.set(
-        "sql",
-        templateSql(button.dataset.sqlTemplate, table, columns)
-      );
+      url.searchParams.set("sql", sql);
       window.location.href = url.toString();
     });
   });
+  if (tableSelect) {
+    tableSelect.addEventListener("change", updateTemplateButtons);
+  }
+  updateTemplateButtons();
 });
 </script>
 {% endif %}

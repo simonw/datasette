@@ -43,6 +43,7 @@ Bug fixes
 
 - Fixed a bug where visiting ``/<database>/-/query`` without a ``?sql=`` parameter returned a 500 error. (:issue:`2743`)
 - The ``datasette inspect`` command now correctly records row counts for tables with more than 10,000 rows. (:issue:`2712`)
+- ``await request.post_vars()`` now returns a :ref:`MultiParams <internals_multiparams>` object instead of a ``dict``, so multiple values for the same form field are preserved. Use ``.getlist(key)`` to retrieve every value. Existing ``post_vars[key]`` access continues to work, but now returns the *first* submitted value rather than the *last* (matching ``request.args`` semantics). (:issue:`2425`)
 
 .. _v1_0_a30:
 

@@ -4,10 +4,10 @@
 Changelog
 =========
 
-.. _v1_0_unreleased:
+.. _v1_0_a31:
 
-Unreleased
-----------
+1.0a31 (2026-05-28)
+-------------------
 
 Datasette now offers users with the necessary permissions the ability to both **execute write queries** against their database and to **save stored queries** (renamed from "canned queries") both privately and for use by other members of their Datasette instance.
 

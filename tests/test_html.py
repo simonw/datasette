@@ -943,6 +943,17 @@ def test_base_url_config(app_client_base_url_prefix, path, use_prefix):
                 indent=4,
                 default=repr,
             )
+    for el in soup.find_all("navigation-search"):
+        assert el["url"] == "/prefix/-/jump", json.dumps(
+            {
+                "path": path,
+                "path_to_get": path_to_get,
+                "url": el["url"],
+                "element": str(el),
+            },
+            indent=4,
+            default=repr,
+        )
 
 
 def test_base_url_affects_filter_redirects(app_client_base_url_prefix):

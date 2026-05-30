@@ -497,11 +497,13 @@ async def _check_permission_for_actor(ds, action, parent, child, actor):
     if action_obj.resource_class is None:
         resource_obj = None
     elif action_obj.takes_parent and action_obj.takes_child:
-        # Child-level resource (e.g., TableResource, QueryResource)
-        resource_obj = action_obj.resource_class(database=parent, table=child)
+        # Child-level resource (e.g., TableResource, QueryResource). Pass
+        # positional args so we work with subclasses whose second parameter
+        # is named `table`, `query`, or anything else.
+        resource_obj = action_obj.resource_class(parent, child)
     elif action_obj.takes_parent:
         # Parent-level resource (e.g., DatabaseResource)
-        resource_obj = action_obj.resource_class(database=parent)
+        resource_obj = action_obj.resource_class(parent)
     else:
         # This shouldn't happen given validation in Action.__post_init__
         return {"error": f"Invalid action configuration: {action}"}, 500

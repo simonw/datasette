@@ -1734,6 +1734,34 @@ async def test_permission_check_view_requires_debug_permission():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "action,child",
+    [
+        ("view-query", "myquery"),
+        ("update-query", "myquery"),
+        ("delete-query", "myquery"),
+    ],
+)
+async def test_permission_check_view_query_scoped_action(action, child):
+    """Test that /-/check works for query-scoped actions (issue #2756)."""
+    ds = Datasette()
+    ds.root_enabled = True
+    root_token = await ds.create_token("root", handler="signed")
+    response = await ds.client.get(
+        f"/-/check.json?action={action}&parent=mydb&child={child}",
+        headers={"Authorization": f"Bearer {root_token}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["action"] == action
+    assert data["resource"] == {
+        "parent": "mydb",
+        "child": child,
+        "path": f"/mydb/{child}",
+    }
+
+
+@pytest.mark.asyncio
 async def test_root_allow_block_with_table_restricted_actor():
     """
     Test that root-level allow: blocks are processed for actors with

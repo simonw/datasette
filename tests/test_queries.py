@@ -1941,8 +1941,8 @@ async def test_execute_write_json_returning_rows_can_be_truncated():
     assert response.status_code == 200
     data = response.json()
     assert data["ok"] is True
-    assert data["message"] == "Query executed, 11 rows affected"
-    assert data["rowcount"] == 11
+    assert data["message"] == "Query executed"
+    assert data["rowcount"] == -1
     assert data["rows"] == [
         {"id": index, "name": "Dog {}!".format(index)} for index in range(1, 11)
     ]

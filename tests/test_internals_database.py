@@ -576,7 +576,7 @@ async def test_execute_write_with_returning_one_more_than_default_limit(db):
         "update write_returning_one_more set id = id returning id"
     )
 
-    assert result.rowcount == 11
+    assert result.rowcount == -1
     assert result.truncated is True
     assert len(result.fetchall()) == 10
 

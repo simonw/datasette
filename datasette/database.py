@@ -920,7 +920,7 @@ class ExecuteWriteResult:
             rowcount = cursor.rowcount
         finally:
             cursor.close()
-        if description is not None and not return_all and truncated and rowcount == 0:
+        if description is not None and not return_all and truncated:
             rowcount = -1
         return cls(rowcount, lastrowid, description, rows, truncated)
 

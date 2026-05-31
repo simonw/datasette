@@ -31,6 +31,8 @@ from .inspect import inspect_hash
 
 connections = threading.local()
 
+EXECUTE_WRITE_RETURNING_LIMIT = 10
+
 AttachedDatabase = namedtuple("AttachedDatabase", ("seq", "name", "file"))
 
 
@@ -236,11 +238,14 @@ class Database:
                 except OSError:
                     pass
 
-    async def execute_write(self, sql, params=None, block=True, request=None):
+    async def execute_write(
+        self, sql, params=None, block=True, request=None, return_all=False
+    ):
         self._check_not_closed()
 
         def _inner(conn):
-            return conn.execute(sql, params or [])
+            cursor = conn.execute(sql, params or [])
+            return ExecuteWriteResult.from_cursor(cursor, return_all=return_all)
 
         with trace("sql", database=self.name, sql=sql.strip(), params=params):
             results = await self.execute_write_fn(_inner, block=block, request=request)
@@ -875,6 +880,40 @@ class QueryInterrupted(Exception):
 
 class MultipleValues(Exception):
     pass
+
+
+class ExecuteWriteResult:
+    def __init__(self, rowcount, lastrowid, description, rows, truncated):
+        self.rowcount = rowcount
+        self.lastrowid = lastrowid
+        self.description = description
+        self.truncated = truncated
+        self._rows = rows
+
+    @classmethod
+    def from_cursor(cls, cursor, return_all=False):
+        rows = []
+        truncated = False
+        description = cursor.description
+        lastrowid = cursor.lastrowid
+        if description is not None:
+            if return_all:
+                rows = cursor.fetchall()
+            else:
+                rows = cursor.fetchmany(EXECUTE_WRITE_RETURNING_LIMIT + 1)
+                if len(rows) > EXECUTE_WRITE_RETURNING_LIMIT:
+                    rows = rows[:EXECUTE_WRITE_RETURNING_LIMIT]
+                    truncated = True
+        rowcount = cursor.rowcount
+        cursor.close()
+        if description is not None and not return_all and truncated and rowcount == 0:
+            rowcount = -1
+        return cls(rowcount, lastrowid, description, rows, truncated)
+
+    def fetchall(self):
+        rows = self._rows
+        self._rows = []
+        return rows
 
 
 class Results:

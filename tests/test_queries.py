@@ -3002,3 +3002,32 @@ async def test_user_writable_query_execution_rechecks_table_permissions():
     assert denied_response.status_code == 403
     rows = (await db.execute("select name from dogs")).dicts()
     assert rows == [{"name": "Cleo"}]
+
+
+@pytest.mark.asyncio
+async def test_stored_write_query_with_returning():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("query_write_returning", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "insert_dog",
+        "insert into dogs (name) values (:name) returning id, name",
+        is_write=True,
+        source="user",
+        owner_id="root",
+    )
+
+    response = await ds.client.post(
+        "/data/insert_dog?_json=1",
+        actor={"id": "root"},
+        data={"name": "Cleo"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert (await db.execute("select id, name from dogs")).dicts() == [
+        {"id": 1, "name": "Cleo"}
+    ]

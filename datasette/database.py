@@ -239,13 +239,23 @@ class Database:
                     pass
 
     async def execute_write(
-        self, sql, params=None, block=True, request=None, return_all=False
+        self,
+        sql,
+        params=None,
+        block=True,
+        request=None,
+        return_all=False,
+        returning_limit=EXECUTE_WRITE_RETURNING_LIMIT,
     ):
         self._check_not_closed()
+        if returning_limit < 0:
+            raise ValueError("returning_limit must be >= 0")
 
         def _inner(conn):
             cursor = conn.execute(sql, params or [])
-            return ExecuteWriteResult.from_cursor(cursor, return_all=return_all)
+            return ExecuteWriteResult.from_cursor(
+                cursor, return_all=return_all, returning_limit=returning_limit
+            )
 
         with trace("sql", database=self.name, sql=sql.strip(), params=params):
             results = await self.execute_write_fn(_inner, block=block, request=request)
@@ -891,7 +901,9 @@ class ExecuteWriteResult:
         self._rows = rows
 
     @classmethod
-    def from_cursor(cls, cursor, return_all=False):
+    def from_cursor(
+        cls, cursor, return_all=False, returning_limit=EXECUTE_WRITE_RETURNING_LIMIT
+    ):
         rows = []
         truncated = False
         description = cursor.description
@@ -900,9 +912,9 @@ class ExecuteWriteResult:
             if return_all:
                 rows = cursor.fetchall()
             else:
-                rows = cursor.fetchmany(EXECUTE_WRITE_RETURNING_LIMIT + 1)
-                if len(rows) > EXECUTE_WRITE_RETURNING_LIMIT:
-                    rows = rows[:EXECUTE_WRITE_RETURNING_LIMIT]
+                rows = cursor.fetchmany(returning_limit + 1)
+                if len(rows) > returning_limit:
+                    rows = rows[:returning_limit]
                     truncated = True
         rowcount = cursor.rowcount
         cursor.close()

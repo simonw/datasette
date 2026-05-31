@@ -524,6 +524,26 @@ async def test_execute_write_with_returning_default_limit(db):
 
 
 @pytest.mark.asyncio
+async def test_execute_write_with_returning_custom_limit(db):
+    await db.execute_write(
+        "create table write_returning_custom (id integer primary key)"
+    )
+    await db.execute_write_many(
+        "insert into write_returning_custom (id) values (?)",
+        [(i,) for i in range(1, 6)],
+    )
+
+    result = await db.execute_write(
+        "update write_returning_custom set id = id returning id",
+        returning_limit=2,
+    )
+
+    assert result.rowcount == -1
+    assert result.truncated is True
+    assert [row["id"] for row in result.fetchall()] == [1, 2]
+
+
+@pytest.mark.asyncio
 async def test_execute_write_with_returning_exact_default_limit(db):
     await db.execute_write(
         "create table write_returning_exact_limit (id integer primary key)"

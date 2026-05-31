@@ -13,6 +13,7 @@ if hasattr(sqlite3, "enable_callback_tracebacks"):
     sqlite3.enable_callback_tracebacks(True)
 
 _cached_sqlite_version = None
+_cached_supports_returning = None
 SQLiteTableType = Literal["table", "view", "virtual", "shadow"]
 _VIRTUAL_TABLE_MODULE_RE = re.compile(
     r"\bCREATE\s+VIRTUAL\s+TABLE\b.*?\bUSING\s+([^\s(]+)",
@@ -57,6 +58,21 @@ def supports_table_list():
 
 def supports_generated_columns():
     return sqlite_version() >= (3, 31, 0)
+
+
+def supports_returning():
+    global _cached_supports_returning
+    if _cached_supports_returning is None:
+        conn = sqlite3.connect(":memory:")
+        try:
+            conn.execute("create table t (id integer primary key)")
+            conn.execute("insert into t default values returning id").fetchone()
+            _cached_supports_returning = True
+        except sqlite3.DatabaseError:
+            _cached_supports_returning = False
+        finally:
+            conn.close()
+    return _cached_supports_returning
 
 
 def sqlite_table_type(

@@ -1928,8 +1928,8 @@ Example usage:
 
 .. _database_execute_write:
 
-await db.execute_write(sql, params=None, block=True)
-----------------------------------------------------
+await db.execute_write(sql, params=None, block=True, request=None, return_all=False, returning_limit=10)
+--------------------------------------------------------------------------------------------------------
 
 SQLite only allows one database connection to write at a time. Datasette handles this for you by maintaining a queue of writes to be executed against a given database. Plugins can submit write operations to this queue and they will be executed in the order in which they are received.
 
@@ -1937,7 +1937,30 @@ This method can be used to queue up a non-SELECT SQL query to be executed agains
 
 You can pass additional SQL parameters as a tuple or dictionary.
 
-The method will block until the operation is completed, and the return value will be the return from calling ``conn.execute(...)`` using the underlying ``sqlite3`` Python library.
+The optional ``request=`` argument is used internally by Datasette to pass request context to :ref:`write_wrapper plugin hooks <plugin_hook_write_wrapper>`.
+
+The method will block until the operation is completed, and the return value will be an ``ExecuteWriteResult`` object. This imitates a subset of the ``sqlite3.Cursor`` object:
+
+``.rowcount``
+    The number of rows modified by the statement, or ``-1`` if that number is unavailable.
+
+``.lastrowid``
+    The row ID of the last modified row, as returned by ``sqlite3.Cursor.lastrowid``.
+
+``.description``
+    The same column metadata exposed by Python's `sqlite3.Cursor.description <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.description>`__: one tuple per returned column, or ``None`` if the statement does not return rows.
+
+``.truncated``
+    ``True`` if the statement returned more rows than ``returning_limit``.
+
+``.fetchall()``
+    Returns any rows buffered by Datasette from the statement, such as rows from SQLite's ``RETURNING`` clause. This may be limited by ``returning_limit`` unless ``return_all=True`` was used. This method empties the buffer, so calling it again will return an empty list.
+
+SQLite statements using ``RETURNING`` must have their rows consumed before the transaction can commit. Datasette will fetch up to ``returning_limit + 1`` rows before committing, store up to ``returning_limit`` rows on the result object and set ``.truncated`` if there were more. The default ``returning_limit`` is ``10``.
+
+When ``.truncated`` is ``True``, ``.rowcount`` will be ``-1``. SQLite only reports the final row count for a ``RETURNING`` statement after every returned row has been fetched, and Datasette has deliberately stopped fetching rows after ``returning_limit`` to avoid buffering a potentially large result in memory.
+
+If you need to retrieve every row returned by a statement, pass ``return_all=True``. This will buffer all returned rows in memory before committing.
 
 If you pass ``block=False`` this behavior changes to "fire and forget" - queries will be added to the write queue and executed in a separate thread while your code can continue to do other things. The method will return a UUID representing the queued task.
 

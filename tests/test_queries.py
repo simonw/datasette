@@ -8,6 +8,11 @@ from datasette.app import Datasette
 from datasette.resources import DatabaseResource, QueryResource
 from datasette.stored_queries import StoredQuery, StoredQueryPage
 from datasette.utils.asgi import Forbidden
+from datasette.utils.sqlite import supports_returning
+
+requires_sqlite_returning = pytest.mark.skipif(
+    not supports_returning(), reason="SQLite does not support RETURNING"
+)
 
 
 def _template_option_attributes(html, table):
@@ -1884,8 +1889,142 @@ async def test_execute_write_post_requires_database_and_table_permissions():
     assert allowed.status_code == 200
     assert allowed.json()["ok"] is True
     assert allowed.json()["rowcount"] == 1
+    assert allowed.json()["rows"] == []
+    assert allowed.json()["truncated"] is False
     assert allowed.json()["analysis"][0]["operation"] == "insert"
     assert (await db.execute("select name from dogs")).first()[0] == "Cleo"
+
+
+@pytest.mark.asyncio
+@requires_sqlite_returning
+async def test_execute_write_json_includes_returning_rows():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_returning_json", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        json={
+            "sql": "insert into dogs (name) values (:name) returning id, name",
+            "params": {"name": "Cleo"},
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["message"] == "Query executed, 1 row affected"
+    assert data["rowcount"] == 1
+    assert data["rows"] == [{"id": 1, "name": "Cleo"}]
+    assert data["truncated"] is False
+    assert [row["operation"] for row in data["analysis"]] == ["insert", "read"]
+    assert (await db.execute("select id, name from dogs")).dicts() == [
+        {"id": 1, "name": "Cleo"}
+    ]
+
+
+@pytest.mark.asyncio
+@requires_sqlite_returning
+async def test_execute_write_json_returning_rows_can_be_truncated():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_returning_json_truncated", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    for index in range(1, 12):
+        await db.execute_write(
+            "insert into dogs (name) values (?)", ["Dog {}".format(index)]
+        )
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        json={"sql": "update dogs set name = name || '!' returning id, name"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["message"] == "Query executed"
+    assert data["rowcount"] == -1
+    assert data["rows"] == [
+        {"id": index, "name": "Dog {}!".format(index)} for index in range(1, 11)
+    ]
+    assert data["truncated"] is True
+    assert (await db.execute("select count(*) from dogs where name like '%!'")).first()[
+        0
+    ] == 11
+
+
+@pytest.mark.asyncio
+@requires_sqlite_returning
+async def test_execute_write_html_displays_returning_rows():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_returning_html", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        data={
+            "sql": "insert into dogs (name) values (:name) returning id, name",
+            "name": "Cleo",
+        },
+    )
+    non_returning_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        data={"sql": "insert into dogs (name) values ('Pancakes')"},
+    )
+
+    assert response.status_code == 200
+    assert "Query executed, 1 row affected" in response.text
+    assert "<h2>Returned rows</h2>" in response.text
+    assert '<table class="rows-and-columns">' in response.text
+    assert '<th class="col-id" scope="col">id</th>' in response.text
+    assert '<th class="col-name" scope="col">name</th>' in response.text
+    assert '<td class="col-id">1</td>' in response.text
+    assert '<td class="col-name">Cleo</td>' in response.text
+
+    assert non_returning_response.status_code == 200
+    assert "Query executed, 1 row affected" in non_returning_response.text
+    assert "<h2>Returned rows</h2>" not in non_returning_response.text
+    assert '<p class="zero-results">0 results</p>' not in non_returning_response.text
+
+
+@pytest.mark.asyncio
+@requires_sqlite_returning
+async def test_execute_write_html_returning_rows_can_be_truncated():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_returning_html_truncated", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    for index in range(1, 12):
+        await db.execute_write(
+            "insert into dogs (name) values (?)", ["Dog {}".format(index)]
+        )
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        data={"sql": "update dogs set name = name || '!' returning id, name"},
+    )
+
+    assert response.status_code == 200
+    assert "<h2>Returned rows</h2>" in response.text
+    assert "Only the first 10 returned rows are shown." in response.text
+    assert '<td class="col-id">1</td>' in response.text
+    assert '<td class="col-name">Dog 1!</td>' in response.text
+    assert '<td class="col-id">10</td>' in response.text
+    assert '<td class="col-name">Dog 10!</td>' in response.text
+    assert '<td class="col-id">11</td>' not in response.text
+    assert '<td class="col-name">Dog 11!</td>' not in response.text
 
 
 @pytest.mark.parametrize(
@@ -3002,3 +3141,65 @@ async def test_user_writable_query_execution_rechecks_table_permissions():
     assert denied_response.status_code == 403
     rows = (await db.execute("select name from dogs")).dicts()
     assert rows == [{"name": "Cleo"}]
+
+
+@pytest.mark.asyncio
+@requires_sqlite_returning
+async def test_stored_write_query_with_returning():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("query_write_returning", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "insert_dog",
+        "insert into dogs (name) values (:name) returning id, name",
+        is_write=True,
+        source="user",
+        owner_id="root",
+    )
+
+    response = await ds.client.post(
+        "/data/insert_dog?_json=1",
+        actor={"id": "root"},
+        data={"name": "Cleo"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert (await db.execute("select id, name from dogs")).dicts() == [
+        {"id": 1, "name": "Cleo"}
+    ]
+
+
+@pytest.mark.asyncio
+@requires_sqlite_returning
+async def test_stored_write_query_with_truncated_returning_message():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("query_write_truncated_returning", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await db.execute_write_many(
+        "insert into dogs (name) values (?)",
+        [("Cleo",) for _ in range(20)],
+    )
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "update_dogs",
+        "update dogs set name = name returning id",
+        is_write=True,
+        source="user",
+        owner_id="root",
+    )
+
+    response = await ds.client.post(
+        "/data/update_dogs?_json=1",
+        actor={"id": "root"},
+        data={},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert response.json()["message"] == "Query executed"

@@ -528,12 +528,14 @@ class QueryView(View):
                     message = "Error running on_success_message_sql: {}".format(ex)
                     message_type = datasette.ERROR
             if not message:
-                message = (
-                    stored_query.on_success_message
-                    or "Query executed, {} row{} affected".format(
+                if stored_query.on_success_message:
+                    message = stored_query.on_success_message
+                elif cursor.rowcount == -1:
+                    message = "Query executed"
+                else:
+                    message = "Query executed, {} row{} affected".format(
                         cursor.rowcount, "" if cursor.rowcount == 1 else "s"
                     )
-                )
 
             redirect_url = stored_query.on_success_redirect
             ok = True

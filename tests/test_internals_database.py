@@ -5,14 +5,18 @@ Tests for the datasette.database.Database class
 import asyncio
 from types import SimpleNamespace
 from datasette.app import Datasette
-from datasette.database import Database, Results, MultipleValues
+from datasette.database import Database, ExecuteWriteResult, Results, MultipleValues
 from datasette.database import DatasetteClosedError
 from datasette.database import _deliver_write_result
-from datasette.utils.sqlite import sqlite3
+from datasette.utils.sqlite import sqlite3, supports_returning
 from datasette.utils import Column
 import pytest
 import time
 import uuid
+
+requires_sqlite_returning = pytest.mark.skipif(
+    not supports_returning(), reason="SQLite does not support RETURNING"
+)
 
 
 @pytest.fixture
@@ -469,11 +473,140 @@ async def test_view_names(db):
 
 @pytest.mark.asyncio
 async def test_execute_write_block_true(db):
-    await db.execute_write(
+    result = await db.execute_write(
         "update roadside_attractions set name = ? where pk = ?", ["Mystery!", 1]
     )
     rows = await db.execute("select name from roadside_attractions where pk = 1")
+    assert result.rowcount == 1
+    assert result.description is None
+    assert result.truncated is False
+    assert result.fetchall() == []
     assert "Mystery!" == rows.rows[0][0]
+
+
+@pytest.mark.asyncio
+@requires_sqlite_returning
+async def test_execute_write_with_returning(db):
+    await db.execute_write(
+        "create table write_returning (id integer primary key, name text)"
+    )
+    result = await db.execute_write(
+        "insert into write_returning (name) values (?) returning id, name",
+        ["Cleo"],
+    )
+
+    assert result.rowcount == 1
+    assert result.lastrowid == 1
+    assert [column[0] for column in result.description] == ["id", "name"]
+    assert result.truncated is False
+    assert [dict(row) for row in result.fetchall()] == [{"id": 1, "name": "Cleo"}]
+    assert result.fetchall() == []
+    assert (await db.execute("select id, name from write_returning")).dicts() == [
+        {"id": 1, "name": "Cleo"}
+    ]
+
+
+@pytest.mark.asyncio
+@requires_sqlite_returning
+async def test_execute_write_with_returning_default_limit(db):
+    await db.execute_write(
+        "create table write_returning_limit (id integer primary key)"
+    )
+    await db.execute_write_many(
+        "insert into write_returning_limit (id) values (?)",
+        [(i,) for i in range(1, 21)],
+    )
+
+    result = await db.execute_write(
+        "update write_returning_limit set id = id returning id"
+    )
+
+    assert result.rowcount == -1
+    assert result.truncated is True
+    assert len(result.fetchall()) == 10
+    assert (
+        await db.execute("select count(*) from write_returning_limit")
+    ).single_value() == 20
+
+
+@pytest.mark.asyncio
+@requires_sqlite_returning
+async def test_execute_write_with_returning_custom_limit(db):
+    await db.execute_write(
+        "create table write_returning_custom (id integer primary key)"
+    )
+    await db.execute_write_many(
+        "insert into write_returning_custom (id) values (?)",
+        [(i,) for i in range(1, 6)],
+    )
+
+    result = await db.execute_write(
+        "update write_returning_custom set id = id returning id",
+        returning_limit=2,
+    )
+
+    assert result.rowcount == -1
+    assert result.truncated is True
+    assert [row["id"] for row in result.fetchall()] == [1, 2]
+
+
+@pytest.mark.asyncio
+@requires_sqlite_returning
+async def test_execute_write_with_returning_exact_default_limit(db):
+    await db.execute_write(
+        "create table write_returning_exact_limit (id integer primary key)"
+    )
+    await db.execute_write_many(
+        "insert into write_returning_exact_limit (id) values (?)",
+        [(i,) for i in range(1, 11)],
+    )
+
+    result = await db.execute_write(
+        "update write_returning_exact_limit set id = id returning id"
+    )
+
+    assert result.rowcount == 10
+    assert result.truncated is False
+    assert len(result.fetchall()) == 10
+
+
+@pytest.mark.asyncio
+@requires_sqlite_returning
+async def test_execute_write_with_returning_one_more_than_default_limit(db):
+    await db.execute_write(
+        "create table write_returning_one_more (id integer primary key)"
+    )
+    await db.execute_write_many(
+        "insert into write_returning_one_more (id) values (?)",
+        [(i,) for i in range(1, 12)],
+    )
+
+    result = await db.execute_write(
+        "update write_returning_one_more set id = id returning id"
+    )
+
+    assert result.rowcount == -1
+    assert result.truncated is True
+    assert len(result.fetchall()) == 10
+
+
+@pytest.mark.asyncio
+@requires_sqlite_returning
+async def test_execute_write_with_returning_return_all(db):
+    await db.execute_write("create table write_returning_all (id integer primary key)")
+    await db.execute_write_many(
+        "insert into write_returning_all (id) values (?)",
+        [(i,) for i in range(1, 21)],
+    )
+
+    result = await db.execute_write(
+        "update write_returning_all set id = id returning id",
+        return_all=True,
+    )
+
+    assert result.rowcount == 20
+    assert result.truncated is False
+    assert [row["id"] for row in result.fetchall()] == list(range(1, 21))
 
 
 @pytest.mark.asyncio
@@ -485,6 +618,48 @@ async def test_execute_write_block_false(db):
     time.sleep(0.1)
     rows = await db.execute("select name from roadside_attractions where pk = 1")
     assert "Mystery!" == rows.rows[0][0]
+
+
+@pytest.mark.asyncio
+@requires_sqlite_returning
+async def test_execute_write_with_returning_block_false(db):
+    await db.execute_write(
+        "create table write_returning_block_false (id integer primary key, name text)"
+    )
+    task_id = await db.execute_write(
+        "insert into write_returning_block_false (name) values (?) returning id",
+        ["Cleo"],
+        block=False,
+    )
+
+    assert isinstance(task_id, uuid.UUID)
+    time.sleep(0.1)
+    assert (
+        await db.execute("select name from write_returning_block_false")
+    ).single_value() == "Cleo"
+
+
+def test_execute_write_result_closes_cursor_on_fetch_error():
+    class Cursor:
+        description = (("id", None, None, None, None, None, None),)
+        lastrowid = 1
+        rowcount = 0
+
+        def __init__(self):
+            self.closed = False
+
+        def fetchmany(self, size):
+            raise sqlite3.DatabaseError("fetch failed")
+
+        def close(self):
+            self.closed = True
+
+    cursor = Cursor()
+
+    with pytest.raises(sqlite3.DatabaseError):
+        ExecuteWriteResult.from_cursor(cursor)
+
+    assert cursor.closed is True
 
 
 @pytest.mark.asyncio

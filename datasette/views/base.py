@@ -153,7 +153,13 @@ class BaseView:
         if self.has_json_alternate:
             alternate_url_json = self.ds.absolute_url(
                 request,
-                self.ds.urls.path(path_with_format(request=request, format="json")),
+                self.ds.urls.path(
+                    path_with_format(
+                        request=request,
+                        path=request.scope.get("route_path"),
+                        format="json",
+                    )
+                ),
             )
             template_context["alternate_url_json"] = alternate_url_json
             headers.update(
@@ -347,13 +353,21 @@ class DataView(BaseView):
                 if it_can_render:
                     renderers[key] = self.ds.urls.path(
                         path_with_format(
-                            request=request, format=key, extra_qs={**url_labels_extra}
+                            request=request,
+                            path=request.scope.get("route_path"),
+                            format=key,
+                            extra_qs={**url_labels_extra},
                         )
                     )
 
             url_csv_args = {"_size": "max", **url_labels_extra}
             url_csv = self.ds.urls.path(
-                path_with_format(request=request, format="csv", extra_qs=url_csv_args)
+                path_with_format(
+                    request=request,
+                    path=request.scope.get("route_path"),
+                    format="csv",
+                    extra_qs=url_csv_args,
+                )
             )
             url_csv_path = url_csv.split("?")[0]
             context = {

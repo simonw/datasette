@@ -453,6 +453,12 @@ def test_path_with_format(path, format, extra_qs, expected):
     assert expected == actual
 
 
+def test_path_with_format_can_override_request_path():
+    request = Request.fake("/prefix/foo?x=1")
+    actual = utils.path_with_format(request=request, path="/foo", format="json")
+    assert "/foo.json?x=1" == actual
+
+
 @pytest.mark.parametrize(
     "bytes,expected",
     [

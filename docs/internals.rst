@@ -1937,7 +1937,7 @@ This method can be used to queue up a non-SELECT SQL query to be executed agains
 
 You can pass additional SQL parameters as a tuple or dictionary.
 
-The optional ``request=`` argument is used internally by Datasette to pass request context to write hooks.
+The optional ``request=`` argument is used internally by Datasette to pass request context to :ref:`write_wrapper plugin hooks <plugin_hook_write_wrapper>`.
 
 The method will block until the operation is completed, and the return value will be an ``ExecuteWriteResult`` object. This imitates a subset of the ``sqlite3.Cursor`` object:
 

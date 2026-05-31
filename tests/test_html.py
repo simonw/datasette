@@ -878,6 +878,8 @@ def test_debug_context_includes_extra_template_vars():
         "/fixtures/facetable",
         "/fixtures/facetable?_facet=state",
         "/fixtures/-/query?sql=select+1",
+        "/-/api",
+        "/-/patterns",
     ],
 )
 @pytest.mark.parametrize("use_prefix", (True, False))
@@ -932,7 +934,9 @@ def test_base_url_config(app_client_base_url_prefix, path, use_prefix):
         ):
             # If this has been made absolute it may start http://localhost/
             if href.startswith("http://localhost/"):
-                href = href[len("http://localost/") :]
+                href = href[len("http://localhost") :]
+            elif href.startswith(("http://", "https://")):
+                continue
             assert href.startswith("/prefix/"), json.dumps(
                 {
                     "path": path,
@@ -964,6 +968,25 @@ def test_base_url_affects_filter_redirects(app_client_base_url_prefix):
         response.headers["location"]
         == "/prefix/fixtures/binary_data?_sort=rowid&rowid__exact=1"
     )
+
+
+def test_base_url_affects_database_sql_redirect(app_client_base_url_prefix):
+    response = app_client_base_url_prefix.get(
+        "/prefix/fixtures?sql=select+1", follow_redirects=False
+    )
+    assert response.status_code == 302
+    assert response.headers["location"] == "/prefix/fixtures/-/query?sql=select+1"
+
+
+def test_base_url_affects_permanent_redirects():
+    with make_app_client(memory=True, settings={"base_url": "/prefix/"}) as client:
+        response = client.get("/prefix/-", follow_redirects=False)
+        assert response.status_code == 301
+        assert response.headers["location"] == "/prefix/-/"
+
+        response2 = client.get("/prefix/:memory:", follow_redirects=False)
+        assert response2.status_code == 301
+        assert response2.headers["location"] == "/prefix/_memory"
 
 
 def test_base_url_affects_metadata_extra_css_urls(app_client_base_url_prefix):

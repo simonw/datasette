@@ -1942,21 +1942,23 @@ The optional ``request=`` argument is used internally by Datasette to pass reque
 The method will block until the operation is completed, and the return value will be an ``ExecuteWriteResult`` object. This imitates a subset of the ``sqlite3.Cursor`` object:
 
 ``.rowcount``
-    The number of rows modified by the statement, or ``-1`` if SQLite cannot provide that information.
+    The number of rows modified by the statement, or ``-1`` if that number is unavailable.
 
 ``.lastrowid``
     The row ID of the last modified row, as returned by ``sqlite3.Cursor.lastrowid``.
 
 ``.description``
-    Column metadata for statements that return rows, otherwise ``None``.
+    The same column metadata exposed by Python's `sqlite3.Cursor.description <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.description>`__: one tuple per returned column, or ``None`` if the statement does not return rows.
 
 ``.truncated``
     ``True`` if the statement returned more rows than ``returning_limit``.
 
 ``.fetchall()``
-    Returns any rows returned by the statement, such as rows from SQLite's ``RETURNING`` clause. This method returns buffered rows and empties that buffer, so calling it again will return an empty list.
+    Returns any rows buffered by Datasette from the statement, such as rows from SQLite's ``RETURNING`` clause. This may be limited by ``returning_limit`` unless ``return_all=True`` was used. This method empties the buffer, so calling it again will return an empty list.
 
 SQLite statements using ``RETURNING`` must have their rows consumed before the transaction can commit. Datasette will fetch up to ``returning_limit + 1`` rows before committing, store up to ``returning_limit`` rows on the result object and set ``.truncated`` if there were more. The default ``returning_limit`` is ``10``.
+
+When ``.truncated`` is ``True``, ``.rowcount`` will be ``-1``. SQLite only reports the final row count for a ``RETURNING`` statement after every returned row has been fetched, and Datasette has deliberately stopped fetching rows after ``returning_limit`` to avoid buffering a potentially large result in memory.
 
 If you need to retrieve every row returned by a statement, pass ``return_all=True``. This will buffer all returned rows in memory before committing.
 

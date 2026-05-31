@@ -3031,3 +3031,34 @@ async def test_stored_write_query_with_returning():
     assert (await db.execute("select id, name from dogs")).dicts() == [
         {"id": 1, "name": "Cleo"}
     ]
+
+
+@pytest.mark.asyncio
+async def test_stored_write_query_with_truncated_returning_message():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("query_write_truncated_returning", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await db.execute_write_many(
+        "insert into dogs (name) values (?)",
+        [("Cleo",) for _ in range(20)],
+    )
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "update_dogs",
+        "update dogs set name = name returning id",
+        is_write=True,
+        source="user",
+        owner_id="root",
+    )
+
+    response = await ds.client.post(
+        "/data/update_dogs?_json=1",
+        actor={"id": "root"},
+        data={},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert response.json()["message"] == "Query executed"

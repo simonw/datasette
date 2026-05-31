@@ -908,16 +908,18 @@ class ExecuteWriteResult:
         truncated = False
         description = cursor.description
         lastrowid = cursor.lastrowid
-        if description is not None:
-            if return_all:
-                rows = cursor.fetchall()
-            else:
-                rows = cursor.fetchmany(returning_limit + 1)
-                if len(rows) > returning_limit:
-                    rows = rows[:returning_limit]
-                    truncated = True
-        rowcount = cursor.rowcount
-        cursor.close()
+        try:
+            if description is not None:
+                if return_all:
+                    rows = cursor.fetchall()
+                else:
+                    rows = cursor.fetchmany(returning_limit + 1)
+                    if len(rows) > returning_limit:
+                        rows = rows[:returning_limit]
+                        truncated = True
+            rowcount = cursor.rowcount
+        finally:
+            cursor.close()
         if description is not None and not return_all and truncated and rowcount == 0:
             rowcount = -1
         return cls(rowcount, lastrowid, description, rows, truncated)

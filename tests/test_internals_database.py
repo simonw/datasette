@@ -5,7 +5,7 @@ Tests for the datasette.database.Database class
 import asyncio
 from types import SimpleNamespace
 from datasette.app import Datasette
-from datasette.database import Database, Results, MultipleValues
+from datasette.database import Database, ExecuteWriteResult, Results, MultipleValues
 from datasette.database import DatasetteClosedError
 from datasette.database import _deliver_write_result
 from datasette.utils.sqlite import sqlite3
@@ -626,6 +626,29 @@ async def test_execute_write_with_returning_block_false(db):
     assert (
         await db.execute("select name from write_returning_block_false")
     ).single_value() == "Cleo"
+
+
+def test_execute_write_result_closes_cursor_on_fetch_error():
+    class Cursor:
+        description = (("id", None, None, None, None, None, None),)
+        lastrowid = 1
+        rowcount = 0
+
+        def __init__(self):
+            self.closed = False
+
+        def fetchmany(self, size):
+            raise sqlite3.DatabaseError("fetch failed")
+
+        def close(self):
+            self.closed = True
+
+    cursor = Cursor()
+
+    with pytest.raises(sqlite3.DatabaseError):
+        ExecuteWriteResult.from_cursor(cursor)
+
+    assert cursor.closed is True
 
 
 @pytest.mark.asyncio

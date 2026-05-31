@@ -892,14 +892,15 @@ class ApiExplorerView(BaseView):
             raise Forbidden("You do not have permission to view this instance")
 
         def api_path(link):
-            return "/-/api#{}".format(
+            return "{}#{}".format(
+                self.ds.urls.path("/-/api"),
                 urllib.parse.urlencode(
                     {
                         key: json.dumps(value, indent=2) if key == "json" else value
                         for key, value in link.items()
                         if key in ("path", "method", "json")
                     }
-                )
+                ),
             )
 
         return await self.render(

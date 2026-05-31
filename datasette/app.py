@@ -2870,19 +2870,22 @@ def wrap_view_function(view_fn, datasette):
 
 
 def permanent_redirect(path, forward_query_string=False, forward_rest=False):
-    return wrap_view(
-        lambda request, send: Response.redirect(
+    def view(request, send):
+        redirect_path = (
             path
             + (request.url_vars["rest"] if forward_rest else "")
             + (
                 ("?" + request.query_string)
                 if forward_query_string and request.query_string
                 else ""
-            ),
-            status=301,
-        ),
-        datasette=None,
-    )
+            )
+        )
+        route_path = request.scope.get("route_path")
+        if route_path and request.path.endswith(route_path):
+            redirect_path = request.path[: -len(route_path)] + redirect_path
+        return Response.redirect(redirect_path, status=301)
+
+    return wrap_view(view, datasette=None)
 
 
 _curly_re = re.compile(r"({.*?})")

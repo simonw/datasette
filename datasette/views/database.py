@@ -60,9 +60,11 @@ class DatabaseView(View):
 
         sql = (request.args.get("sql") or "").strip()
         if sql:
-            redirect_url = "/" + request.url_vars.get("database") + "/-/query"
+            redirect_url = datasette.urls.database(database) + "/-/query"
             if request.url_vars.get("format"):
-                redirect_url += "." + request.url_vars.get("format")
+                redirect_url = path_with_format(
+                    path=redirect_url, format=request.url_vars.get("format")
+                )
             redirect_url += "?" + request.query_string
             response = Response.redirect(redirect_url)
             if datasette.cors:

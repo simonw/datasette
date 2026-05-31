@@ -8,6 +8,11 @@ from datasette.app import Datasette
 from datasette.resources import DatabaseResource, QueryResource
 from datasette.stored_queries import StoredQuery, StoredQueryPage
 from datasette.utils.asgi import Forbidden
+from datasette.utils.sqlite import supports_returning
+
+requires_sqlite_returning = pytest.mark.skipif(
+    not supports_returning(), reason="SQLite does not support RETURNING"
+)
 
 
 def _template_option_attributes(html, table):
@@ -1891,6 +1896,7 @@ async def test_execute_write_post_requires_database_and_table_permissions():
 
 
 @pytest.mark.asyncio
+@requires_sqlite_returning
 async def test_execute_write_json_includes_returning_rows():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -1921,6 +1927,7 @@ async def test_execute_write_json_includes_returning_rows():
 
 
 @pytest.mark.asyncio
+@requires_sqlite_returning
 async def test_execute_write_json_returning_rows_can_be_truncated():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -1953,6 +1960,7 @@ async def test_execute_write_json_returning_rows_can_be_truncated():
 
 
 @pytest.mark.asyncio
+@requires_sqlite_returning
 async def test_execute_write_html_displays_returning_rows():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -1990,6 +1998,7 @@ async def test_execute_write_html_displays_returning_rows():
 
 
 @pytest.mark.asyncio
+@requires_sqlite_returning
 async def test_execute_write_html_returning_rows_can_be_truncated():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -3135,6 +3144,7 @@ async def test_user_writable_query_execution_rechecks_table_permissions():
 
 
 @pytest.mark.asyncio
+@requires_sqlite_returning
 async def test_stored_write_query_with_returning():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -3164,6 +3174,7 @@ async def test_stored_write_query_with_returning():
 
 
 @pytest.mark.asyncio
+@requires_sqlite_returning
 async def test_stored_write_query_with_truncated_returning_message():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True

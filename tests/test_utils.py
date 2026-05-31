@@ -5,7 +5,12 @@ Tests for various datasette helper functions.
 from datasette.app import Datasette
 from datasette import utils
 from datasette.utils.asgi import Request
-from datasette.utils.sqlite import sqlite3, sqlite_hidden_table_names, sqlite_table_type
+from datasette.utils.sqlite import (
+    sqlite3,
+    sqlite_hidden_table_names,
+    sqlite_table_type,
+    supports_returning,
+)
 import json
 import os
 import pathlib
@@ -224,6 +229,20 @@ def test_detect_fts_different_table_names(table):
     conn.executescript(sql)
     assert "{table}_fts".format(table=table) == utils.detect_fts(conn, table)
     conn.close()
+
+
+def test_supports_returning():
+    conn = utils.sqlite3.connect(":memory:")
+    try:
+        conn.execute("create table t (id integer primary key)")
+        conn.execute("insert into t default values returning id").fetchone()
+        expected = True
+    except sqlite3.DatabaseError:
+        expected = False
+    finally:
+        conn.close()
+
+    assert supports_returning() is expected
 
 
 @pytest.mark.parametrize("use_fallback", (False, True))

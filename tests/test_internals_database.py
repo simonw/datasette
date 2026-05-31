@@ -8,11 +8,15 @@ from datasette.app import Datasette
 from datasette.database import Database, ExecuteWriteResult, Results, MultipleValues
 from datasette.database import DatasetteClosedError
 from datasette.database import _deliver_write_result
-from datasette.utils.sqlite import sqlite3
+from datasette.utils.sqlite import sqlite3, supports_returning
 from datasette.utils import Column
 import pytest
 import time
 import uuid
+
+requires_sqlite_returning = pytest.mark.skipif(
+    not supports_returning(), reason="SQLite does not support RETURNING"
+)
 
 
 @pytest.fixture
@@ -481,6 +485,7 @@ async def test_execute_write_block_true(db):
 
 
 @pytest.mark.asyncio
+@requires_sqlite_returning
 async def test_execute_write_with_returning(db):
     await db.execute_write(
         "create table write_returning (id integer primary key, name text)"
@@ -502,6 +507,7 @@ async def test_execute_write_with_returning(db):
 
 
 @pytest.mark.asyncio
+@requires_sqlite_returning
 async def test_execute_write_with_returning_default_limit(db):
     await db.execute_write(
         "create table write_returning_limit (id integer primary key)"
@@ -524,6 +530,7 @@ async def test_execute_write_with_returning_default_limit(db):
 
 
 @pytest.mark.asyncio
+@requires_sqlite_returning
 async def test_execute_write_with_returning_custom_limit(db):
     await db.execute_write(
         "create table write_returning_custom (id integer primary key)"
@@ -544,6 +551,7 @@ async def test_execute_write_with_returning_custom_limit(db):
 
 
 @pytest.mark.asyncio
+@requires_sqlite_returning
 async def test_execute_write_with_returning_exact_default_limit(db):
     await db.execute_write(
         "create table write_returning_exact_limit (id integer primary key)"
@@ -563,6 +571,7 @@ async def test_execute_write_with_returning_exact_default_limit(db):
 
 
 @pytest.mark.asyncio
+@requires_sqlite_returning
 async def test_execute_write_with_returning_one_more_than_default_limit(db):
     await db.execute_write(
         "create table write_returning_one_more (id integer primary key)"
@@ -582,6 +591,7 @@ async def test_execute_write_with_returning_one_more_than_default_limit(db):
 
 
 @pytest.mark.asyncio
+@requires_sqlite_returning
 async def test_execute_write_with_returning_return_all(db):
     await db.execute_write("create table write_returning_all (id integer primary key)")
     await db.execute_write_many(
@@ -611,6 +621,7 @@ async def test_execute_write_block_false(db):
 
 
 @pytest.mark.asyncio
+@requires_sqlite_returning
 async def test_execute_write_with_returning_block_false(db):
     await db.execute_write(
         "create table write_returning_block_false (id integer primary key, name text)"

@@ -355,11 +355,15 @@ class ExecuteWriteView(BaseView):
                 status=ex.status,
             )
 
+        wants_json = _wants_json(request, is_json, data)
         try:
-            cursor = await db.execute_write(sql, params, request=request)
+            execute_write_kwargs = {"request": request}
+            if wants_json:
+                execute_write_kwargs["returning_limit"] = self.ds.max_returned_rows
+            cursor = await db.execute_write(sql, params, **execute_write_kwargs)
         except sqlite3.DatabaseError as ex:
             message = str(ex)
-            if _wants_json(request, is_json, data):
+            if wants_json:
                 return _block_framing(_error([message], 400))
             return await self._render_form(
                 request,
@@ -378,17 +382,19 @@ class ExecuteWriteView(BaseView):
             message = "Query executed, {} row{} affected".format(
                 cursor.rowcount, "" if cursor.rowcount == 1 else "s"
             )
-        if _wants_json(request, is_json, data):
-            return _block_framing(
-                Response.json(
-                    {
-                        "ok": True,
-                        "message": message,
-                        "rowcount": cursor.rowcount,
-                        "analysis": _analysis_rows(analysis),
-                    }
-                )
-            )
+        if wants_json:
+            data = {
+                "ok": True,
+                "message": message,
+                "rowcount": cursor.rowcount,
+                "rows": [],
+                "truncated": False,
+                "analysis": _analysis_rows(analysis),
+            }
+            if cursor.description is not None:
+                data["rows"] = [dict(row) for row in cursor.fetchall()]
+                data["truncated"] = cursor.truncated
+            return _block_framing(Response.json(data))
 
         inserted_row_url = await _inserted_row_url(self.ds, db, analysis, cursor)
         execution_links = (

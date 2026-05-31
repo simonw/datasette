@@ -554,7 +554,8 @@ Datasette analyzes the SQL before executing it. The actor must have ``execute-wr
 
 Unsupported SQL operations are rejected by default. ``VACUUM`` is not allowed in arbitrary write SQL, and writes to SQLite virtual tables or shadow tables are rejected. SQL functions are allowed and are not separately restricted by Datasette permissions.
 
-A successful response includes a message, the SQLite ``rowcount`` and a summary of the operations that were executed:
+A successful response includes a message, the SQLite ``rowcount``, a ``"rows"``
+list, a ``"truncated"`` flag and a summary of the operations that were executed:
 
 The shape of the ``"analysis"`` block is not yet considered a stable API and may change in future Datasette releases.
 
@@ -564,6 +565,8 @@ The shape of the ``"analysis"`` block is not yet considered a stable API and may
         "ok": true,
         "message": "Query executed, 1 row affected",
         "rowcount": 1,
+        "rows": [],
+        "truncated": false,
         "analysis": [
             {
                 "operation": "insert",
@@ -576,6 +579,43 @@ The shape of the ``"analysis"`` block is not yet considered a stable API and may
     }
 
 If SQLite reports ``-1`` for the row count, the message will be ``"Query executed"``.
+
+For most write statements ``"rows"`` will be an empty list and ``"truncated"``
+will be ``false``. If the SQL uses SQLite's ``RETURNING`` clause, ``"rows"``
+will contain returned rows using the same default representation as table and
+query JSON responses. ``"truncated"`` indicates if more rows were returned than
+the configured :ref:`setting_max_returned_rows` limit:
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "message": "Query executed, 1 row affected",
+        "rowcount": 1,
+        "rows": [
+            {
+                "id": 1,
+                "name": "Cleo"
+            }
+        ],
+        "truncated": false,
+        "analysis": [
+            {
+                "operation": "insert",
+                "database": "data",
+                "table": "dogs",
+                "required_permission": "insert-row, update-row, delete-row",
+                "source": null
+            },
+            {
+                "operation": "read",
+                "database": "data",
+                "table": "dogs",
+                "required_permission": "view-table",
+                "source": null
+            }
+        ]
+    }
 
 Errors use the standard Datasette error format:
 

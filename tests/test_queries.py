@@ -1884,8 +1884,77 @@ async def test_execute_write_post_requires_database_and_table_permissions():
     assert allowed.status_code == 200
     assert allowed.json()["ok"] is True
     assert allowed.json()["rowcount"] == 1
+    assert allowed.json()["rows"] == []
+    assert allowed.json()["truncated"] is False
     assert allowed.json()["analysis"][0]["operation"] == "insert"
     assert (await db.execute("select name from dogs")).first()[0] == "Cleo"
+
+
+@pytest.mark.asyncio
+async def test_execute_write_json_includes_returning_rows():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_returning_json", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        json={
+            "sql": "insert into dogs (name) values (:name) returning id, name",
+            "params": {"name": "Cleo"},
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["message"] == "Query executed, 1 row affected"
+    assert data["rowcount"] == 1
+    assert data["rows"] == [{"id": 1, "name": "Cleo"}]
+    assert data["truncated"] is False
+    assert [row["operation"] for row in data["analysis"]] == ["insert", "read"]
+    assert (await db.execute("select id, name from dogs")).dicts() == [
+        {"id": 1, "name": "Cleo"}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_execute_write_json_returning_rows_can_be_truncated():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        settings={"max_returned_rows": 2},
+    )
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_returning_json_truncated", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await db.execute_write(
+        "insert into dogs (name) values "
+        "('Cleo'), ('Pancakes'), ('Nixie'), ('Marnie')"
+    )
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        json={"sql": "update dogs set name = name || '!' returning id, name"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["message"] == "Query executed"
+    assert data["rowcount"] == -1
+    assert data["rows"] == [
+        {"id": 1, "name": "Cleo!"},
+        {"id": 2, "name": "Pancakes!"},
+    ]
+    assert data["truncated"] is True
+    assert (await db.execute("select count(*) from dogs where name like '%!'")).first()[
+        0
+    ] == 4
 
 
 @pytest.mark.parametrize(

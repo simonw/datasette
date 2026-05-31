@@ -1580,10 +1580,7 @@ async def test_execute_write_templates_are_filtered_by_permission_and_server_gen
 
     assert viewer_response.status_code == 200
     assert "<summary>Start with a template</summary>" not in viewer_response.text
-    assert (
-        "You don't currently have permission to insert, edit or delete from any tables."
-        in viewer_response.text
-    )
+    assert "There are no tables that you can currently edit." in viewer_response.text
     assert "data-template-insert-sql" not in viewer_response.text
     assert "data-template-update-sql" not in viewer_response.text
     assert "data-template-delete-sql" not in viewer_response.text

@@ -111,7 +111,7 @@ form.sql.core input[data-execute-write-submit]:disabled {
             </details>
         </div>
     {% else %}
-        <p class="message-warning execute-write-template-unavailable">You don't currently have permission to insert, edit or delete from any tables.</p>
+        <p class="message-warning execute-write-template-unavailable">There are no tables that you can currently edit.</p>
     {% endif %}
 
     <p class="sql-editor"><textarea id="sql-editor" name="sql"{% if sql %} style="height: {{ sql.split("\n")|length + 2 }}em"{% endif %}>{{ sql }}</textarea></p>

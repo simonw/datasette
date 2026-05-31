@@ -1922,18 +1922,14 @@ async def test_execute_write_json_includes_returning_rows():
 
 @pytest.mark.asyncio
 async def test_execute_write_json_returning_rows_can_be_truncated():
-    ds = Datasette(
-        memory=True,
-        default_deny=True,
-        settings={"max_returned_rows": 2},
-    )
+    ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
     db = ds.add_memory_database("execute_write_returning_json_truncated", name="data")
     await db.execute_write("create table dogs (id integer primary key, name text)")
-    await db.execute_write(
-        "insert into dogs (name) values "
-        "('Cleo'), ('Pancakes'), ('Nixie'), ('Marnie')"
-    )
+    for index in range(1, 12):
+        await db.execute_write(
+            "insert into dogs (name) values (?)", ["Dog {}".format(index)]
+        )
     await ds.invoke_startup()
 
     response = await ds.client.post(
@@ -1945,16 +1941,81 @@ async def test_execute_write_json_returning_rows_can_be_truncated():
     assert response.status_code == 200
     data = response.json()
     assert data["ok"] is True
-    assert data["message"] == "Query executed"
-    assert data["rowcount"] == -1
+    assert data["message"] == "Query executed, 11 rows affected"
+    assert data["rowcount"] == 11
     assert data["rows"] == [
-        {"id": 1, "name": "Cleo!"},
-        {"id": 2, "name": "Pancakes!"},
+        {"id": index, "name": "Dog {}!".format(index)} for index in range(1, 11)
     ]
     assert data["truncated"] is True
     assert (await db.execute("select count(*) from dogs where name like '%!'")).first()[
         0
-    ] == 4
+    ] == 11
+
+
+@pytest.mark.asyncio
+async def test_execute_write_html_displays_returning_rows():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_returning_html", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        data={
+            "sql": "insert into dogs (name) values (:name) returning id, name",
+            "name": "Cleo",
+        },
+    )
+    non_returning_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        data={"sql": "insert into dogs (name) values ('Pancakes')"},
+    )
+
+    assert response.status_code == 200
+    assert "Query executed, 1 row affected" in response.text
+    assert "<h2>Returned rows</h2>" in response.text
+    assert '<table class="rows-and-columns">' in response.text
+    assert '<th class="col-id" scope="col">id</th>' in response.text
+    assert '<th class="col-name" scope="col">name</th>' in response.text
+    assert '<td class="col-id">1</td>' in response.text
+    assert '<td class="col-name">Cleo</td>' in response.text
+
+    assert non_returning_response.status_code == 200
+    assert "Query executed, 1 row affected" in non_returning_response.text
+    assert "<h2>Returned rows</h2>" not in non_returning_response.text
+    assert '<p class="zero-results">0 results</p>' not in non_returning_response.text
+
+
+@pytest.mark.asyncio
+async def test_execute_write_html_returning_rows_can_be_truncated():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_returning_html_truncated", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    for index in range(1, 12):
+        await db.execute_write(
+            "insert into dogs (name) values (?)", ["Dog {}".format(index)]
+        )
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        data={"sql": "update dogs set name = name || '!' returning id, name"},
+    )
+
+    assert response.status_code == 200
+    assert "<h2>Returned rows</h2>" in response.text
+    assert "Only the first 10 returned rows are shown." in response.text
+    assert '<td class="col-id">1</td>' in response.text
+    assert '<td class="col-name">Dog 1!</td>' in response.text
+    assert '<td class="col-id">10</td>' in response.text
+    assert '<td class="col-name">Dog 10!</td>' in response.text
+    assert '<td class="col-id">11</td>' not in response.text
+    assert '<td class="col-name">Dog 11!</td>' not in response.text
 
 
 @pytest.mark.parametrize(

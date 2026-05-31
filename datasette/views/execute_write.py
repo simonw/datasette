@@ -6,6 +6,7 @@ from datasette.utils import sqlite3
 from datasette.utils.asgi import Response
 
 from .base import BaseView, _error
+from .database import display_rows as display_query_rows
 from .query_helpers import (
     QueryValidationError,
     _analysis_is_write,
@@ -221,10 +222,16 @@ class ExecuteWriteView(BaseView):
         execution_message=None,
         execution_links=None,
         execution_ok=None,
+        execute_write_returns_rows=False,
+        execute_write_columns=None,
+        execute_write_display_rows=None,
+        execute_write_truncated=False,
         status=200,
     ):
         parameter_values = parameter_values or {}
         execution_links = execution_links or []
+        execute_write_columns = execute_write_columns or []
+        execute_write_display_rows = execute_write_display_rows or []
         parameter_names = []
         analysis_rows = []
         table_columns = await _table_columns(self.ds, db.name)
@@ -284,6 +291,10 @@ class ExecuteWriteView(BaseView):
                 "execution_message": execution_message,
                 "execution_links": execution_links,
                 "execution_ok": execution_ok,
+                "execute_write_returns_rows": execute_write_returns_rows,
+                "execute_write_columns": execute_write_columns,
+                "execute_write_display_rows": execute_write_display_rows,
+                "execute_write_truncated": execute_write_truncated,
                 "execute_disabled": bool(execute_disabled_reason),
                 "execute_disabled_reason": execute_disabled_reason,
                 "table_columns": table_columns,
@@ -358,8 +369,6 @@ class ExecuteWriteView(BaseView):
         wants_json = _wants_json(request, is_json, data)
         try:
             execute_write_kwargs = {"request": request}
-            if wants_json:
-                execute_write_kwargs["returning_limit"] = self.ds.max_returned_rows
             cursor = await db.execute_write(sql, params, **execute_write_kwargs)
         except sqlite3.DatabaseError as ex:
             message = str(ex)
@@ -402,6 +411,20 @@ class ExecuteWriteView(BaseView):
             if inserted_row_url
             else []
         )
+        execute_write_returns_rows = cursor.description is not None
+        execute_write_columns = []
+        execute_write_display_rows = []
+        if execute_write_returns_rows:
+            execute_write_columns = [
+                description[0] for description in cursor.description
+            ]
+            execute_write_display_rows = await display_query_rows(
+                self.ds,
+                db.name,
+                request,
+                cursor.fetchall(),
+                execute_write_columns,
+            )
         return await self._render_form(
             request,
             db,
@@ -411,6 +434,10 @@ class ExecuteWriteView(BaseView):
             execution_message=message,
             execution_links=execution_links,
             execution_ok=True,
+            execute_write_returns_rows=execute_write_returns_rows,
+            execute_write_columns=execute_write_columns,
+            execute_write_display_rows=execute_write_display_rows,
+            execute_write_truncated=cursor.truncated,
         )
 
 

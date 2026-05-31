@@ -584,7 +584,7 @@ For most write statements ``"rows"`` will be an empty list and ``"truncated"``
 will be ``false``. If the SQL uses SQLite's ``RETURNING`` clause, ``"rows"``
 will contain returned rows using the same default representation as table and
 query JSON responses. ``"truncated"`` indicates if more rows were returned than
-the configured :ref:`setting_max_returned_rows` limit:
+the execute-write returning row limit, which defaults to 10:
 
 .. code-block:: json
 

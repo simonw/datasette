@@ -1,0 +1,20 @@
+{% if display_rows %}
+<div class="table-wrapper"><table class="rows-and-columns">
+    <thead>
+        <tr>
+            {% for column in columns %}<th class="col-{{ column|to_css_class }}" scope="col">{{ column }}</th>{% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+    {% for row in display_rows %}
+        <tr>
+            {% for column, td in zip(columns, row) %}
+                <td class="col-{{ column|to_css_class }}">{{ td }}</td>
+            {% endfor %}
+        </tr>
+    {% endfor %}
+    </tbody>
+</table></div>
+{% elif show_zero_results %}
+    <p class="zero-results">0 results</p>
+{% endif %}

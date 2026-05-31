@@ -73,27 +73,9 @@
 
 {% if display_rows %}
 <p class="export-links">This data as {% for name, url in renderers.items() %}<a href="{{ url }}">{{ name }}</a>{{ ", " if not loop.last }}{% endfor %}, <a href="{{ url_csv }}">CSV</a></p>
-<div class="table-wrapper"><table class="rows-and-columns">
-    <thead>
-        <tr>
-            {% for column in columns %}<th class="col-{{ column|to_css_class }}" scope="col">{{ column }}</th>{% endfor %}
-        </tr>
-    </thead>
-    <tbody>
-    {% for row in display_rows %}
-        <tr>
-            {% for column, td in zip(columns, row) %}
-                <td class="col-{{ column|to_css_class }}">{{ td }}</td>
-            {% endfor %}
-        </tr>
-    {% endfor %}
-    </tbody>
-</table></div>
-{% else %}
-    {% if not stored_query_write and not error %}
-        <p class="zero-results">0 results</p>
-    {% endif %}
 {% endif %}
+{% set show_zero_results = not stored_query_write and not error %}
+{% include "_query_results.html" %}
 
 {% include "_codemirror_foot.html" %}
 {% include "_sql_parameter_scripts.html" %}

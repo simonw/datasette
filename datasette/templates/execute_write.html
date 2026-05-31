@@ -81,6 +81,17 @@ form.sql.core input[data-execute-write-submit]:disabled {
     <p class="{% if execution_ok %}message-info{% else %}message-error{% endif %}">{{ execution_message }}{% for link in execution_links %} <a href="{{ link.href }}">{{ link.label }}</a>{% endfor %}</p>
 {% endif %}
 
+{% if execute_write_returns_rows %}
+    <h2>Returned rows</h2>
+    {% if execute_write_truncated %}
+        <p class="message-warning">Only the first {{ "{:,}".format(execute_write_display_rows|length) }} returned rows are shown.</p>
+    {% endif %}
+    {% set columns = execute_write_columns %}
+    {% set display_rows = execute_write_display_rows %}
+    {% set show_zero_results = true %}
+    {% include "_query_results.html" %}
+{% endif %}
+
 <form class="sql core" action="{{ urls.database(database) }}/-/execute-write" method="post" data-analyze-url="{{ urls.database(database) }}/-/execute-write/analyze">
     {% if write_template_tables %}
         <div class="execute-write-template-menu">

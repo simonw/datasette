@@ -16,6 +16,8 @@ def ds():
         ("/prefix/", "/", "/prefix/"),
         ("/prefix/", "/foo", "/prefix/foo"),
         ("/prefix/", "foo", "/prefix/foo"),
+        ("/data/", "/data", "/data/data"),
+        ("/data/", "/data/foo", "/data/data/foo"),
     ],
 )
 def test_path(ds, base_url, path, expected):

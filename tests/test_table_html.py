@@ -510,6 +510,57 @@ async def test_table_csv_json_export_interface(ds_client):
     ] == inputs
 
 
+def test_base_url_export_links_are_not_double_prefixed(app_client_base_url_prefix):
+    for path, expected_json, expected_csv in (
+        (
+            "/prefix/fixtures/simple_primary_key?id__gt=2",
+            "/prefix/fixtures/simple_primary_key.json?id__gt=2",
+            "/prefix/fixtures/simple_primary_key.csv?id__gt=2&_size=max",
+        ),
+        (
+            "/prefix/fixtures/simple_primary_key/1",
+            "/prefix/fixtures/simple_primary_key/1.json",
+            None,
+        ),
+        (
+            "/prefix/fixtures/-/query?sql=select+1",
+            "/prefix/fixtures/-/query.json?sql=select+1",
+            "/prefix/fixtures/-/query.csv?sql=select+1&_size=max",
+        ),
+    ):
+        response = app_client_base_url_prefix.get(path)
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        export_links = soup.find("p", {"class": "export-links"}) or next(
+            p for p in soup.find_all("p") if "This data as" in p.get_text()
+        )
+        hrefs = [a["href"] for a in export_links.find_all("a", href=True)]
+        assert expected_json in hrefs
+        if expected_csv:
+            assert expected_csv in hrefs
+        assert not [href for href in hrefs if href.startswith("/prefix/prefix/")]
+        assert response.headers["link"] == (
+            f"<http://localhost{expected_json}>; "
+            'rel="alternate"; type="application/json+datasette"'
+        )
+
+
+def test_base_url_export_links_when_database_matches_prefix():
+    with make_app_client(settings={"base_url": "/data/"}, filename="data.db") as client:
+        response = client.get("/data/data/simple_primary_key?id__gt=2")
+        assert response.status_code == 200
+        export_links = Soup(response.text, "html.parser").find(
+            "p", {"class": "export-links"}
+        )
+        hrefs = [a["href"] for a in export_links.find_all("a", href=True)]
+        assert "/data/data/simple_primary_key.json?id__gt=2" in hrefs
+        assert "/data/data/simple_primary_key.csv?id__gt=2&_size=max" in hrefs
+        assert response.headers["link"] == (
+            "<http://localhost/data/data/simple_primary_key.json?id__gt=2>; "
+            'rel="alternate"; type="application/json+datasette"'
+        )
+
+
 @pytest.mark.asyncio
 async def test_csv_json_export_links_include_labels_if_foreign_keys(ds_client):
     response = await ds_client.get("/fixtures/facetable")

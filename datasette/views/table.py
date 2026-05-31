@@ -1072,7 +1072,13 @@ async def table_view_traced(datasette, request):
         template = environment.select_template(templates)
         alternate_url_json = datasette.absolute_url(
             request,
-            datasette.urls.path(path_with_format(request=request, format="json")),
+            datasette.urls.path(
+                path_with_format(
+                    request=request,
+                    path=request.scope.get("route_path"),
+                    format="json",
+                )
+            ),
         )
         headers.update(
             {
@@ -1878,7 +1884,10 @@ async def table_view_data(
             if it_can_render:
                 renderers[key] = datasette.urls.path(
                     path_with_format(
-                        request=request, format=key, extra_qs={**url_labels_extra}
+                        request=request,
+                        path=request.scope.get("route_path"),
+                        format=key,
+                        extra_qs={**url_labels_extra},
                     )
                 )
         return renderers
@@ -2042,7 +2051,12 @@ async def table_view_data(
             url_labels_extra = {"_labels": "on"}
         url_csv_args = {"_size": "max", **url_labels_extra}
         url_csv = datasette.urls.path(
-            path_with_format(request=request, format="csv", extra_qs=url_csv_args)
+            path_with_format(
+                request=request,
+                path=request.scope.get("route_path"),
+                format="csv",
+                extra_qs=url_csv_args,
+            )
         )
         url_csv_path = url_csv.split("?")[0]
         data.update(

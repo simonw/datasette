@@ -837,7 +837,8 @@ def path_with_format(
     *, request=None, path=None, format=None, extra_qs=None, replace_format=None
 ):
     qs = extra_qs or {}
-    path = request.path if request else path
+    if path is None and request:
+        path = request.path
     if replace_format and path.endswith(f".{replace_format}"):
         path = path[: -(1 + len(replace_format))]
     if "." in path:

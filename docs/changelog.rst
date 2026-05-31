@@ -4,6 +4,19 @@
 Changelog
 =========
 
+.. _v1_0_a32:
+
+1.0a32 (2026-05-31)
+-------------------
+
+SQLite INSERT ... RETURNING clauses are now supported by ``/db/-/execute-write``, plus several fixes relating to the :ref:`base_url setting <setting_base_url>`.
+
+- ``INSERT``/``UPDATE``/``DELETE`` statements that use SQLite's ``RETURNING`` clause now work correctly in the new ``/db/-/execute-write`` interface. Datasette fetches returned rows before committing the write transaction, displays them in the HTML UI and includes them in the ``"rows"`` key for the JSON API response. (:issue:`2762`, :pr:`2763`)
+- ``Database.execute_write()`` now returns an ``ExecuteWriteResult`` object instead of the raw ``sqlite3.Cursor`` returned by ``conn.execute()``. The new object exposes ``.rowcount``, ``.lastrowid``, ``.description``, ``.truncated`` and ``.fetchall()``, and adds ``return_all=`` and ``returning_limit=`` options for controlling how rows from ``RETURNING`` statements are buffered. (:pr:`2763`)
+- Fixed the ``/-/jump`` navigation search endpoint when Datasette is served with a configured ``base_url``. (:issue:`2757`)
+- Fixed JSON and CSV export links, plus ``Link:`` alternate headers, on table, row and query pages when ``base_url`` is configured. These could previously be prefixed twice. (:issue:`2759`)
+- Fixed several other ``base_url`` handling bugs, including the API explorer form actions and share links, the ``/-/patterns`` development page, permanent redirects such as ``/-`` to ``/-/`` and database query redirects from ``/<database>?sql=...`` to ``/<database>/-/query?sql=...``.
+
 .. _v1_0_a31:
 
 1.0a31 (2026-05-28)

@@ -77,6 +77,7 @@ def documented_views():
             "QueryCreateAnalyzeView",
             "QueryDeleteView",
             "QueryDefinitionView",
+            "QueryEditView",
             "QueryListView",
             "QueryParametersView",
             "QueryStoreView",

@@ -18,6 +18,7 @@ from .query_helpers import (
     _query_create_analysis_data,
     _query_create_form_context,
     _query_create_form_error_message,
+    _query_edit_form_context,
     _query_list_limit,
 )
 
@@ -464,13 +465,164 @@ class QueryUpdateView(BaseView):
         return Response.json({"ok": True})
 
 
-class QueryDeleteView(BaseView):
-    name = "query-delete"
+class QueryEditView(BaseView):
+    name = "query-edit"
+    has_json_alternate = False
 
-    async def post(self, request):
+    async def _load(self, request):
         db = await self.ds.resolve_database(request)
         query_name = tilde_decode(request.url_vars["query"])
         existing = await self.ds.get_query(db.name, query_name)
+        return db, query_name, existing
+
+    async def _render_form(
+        self,
+        request,
+        db,
+        existing,
+        *,
+        sql=None,
+        title=None,
+        description=None,
+        is_private=None,
+        status=200,
+    ):
+        response = await self.render(
+            ["query_edit.html"],
+            request,
+            await _query_edit_form_context(
+                self.ds,
+                request,
+                db,
+                existing,
+                sql=sql,
+                title=title,
+                description=description,
+                is_private=is_private,
+            ),
+        )
+        response.status = status
+        return response
+
+    async def get(self, request):
+        db, query_name, existing = await self._load(request)
+        if existing is None:
+            return _error(["Query not found: {}".format(query_name)], 404)
+        await self.ds.ensure_permission(
+            action="update-query",
+            resource=QueryResource(db.name, query_name),
+            actor=request.actor,
+        )
+        if existing.is_trusted:
+            return _error(["Trusted queries cannot be edited"], 403)
+        return await self._render_form(request, db, existing)
+
+    async def post(self, request):
+        db, query_name, existing = await self._load(request)
+        if existing is None:
+            return _error(["Query not found: {}".format(query_name)], 404)
+        if not await self.ds.allowed(
+            action="update-query",
+            resource=QueryResource(db.name, query_name),
+            actor=request.actor,
+        ):
+            return _error(["Permission denied: need update-query"], 403)
+        if existing.is_trusted:
+            return _error(["Trusted queries cannot be edited"], 403)
+
+        data, _ = await _json_or_form_payload(request)
+        if not isinstance(data, dict):
+            return _error(["Invalid form submission"], 400)
+        sql = data.get("sql")
+        sql = existing.sql if sql is None else sql.strip()
+        title = data.get("title") or ""
+        description = data.get("description") or ""
+        is_private = _as_bool(data.get("is_private"))
+
+        update = {
+            "title": title,
+            "description": description,
+            "is_private": is_private,
+        }
+        if sql != existing.sql:
+            if not await self.ds.allowed(
+                action="execute-sql",
+                resource=DatabaseResource(db.name),
+                actor=request.actor,
+            ):
+                self.ds.add_message(
+                    request,
+                    "Permission denied: need execute-sql to change the SQL",
+                    self.ds.ERROR,
+                )
+                return await self._render_form(
+                    request,
+                    db,
+                    existing,
+                    sql=sql,
+                    title=title,
+                    description=description,
+                    is_private=is_private,
+                    status=403,
+                )
+            update["sql"] = sql
+
+        try:
+            update_kwargs = await _prepare_query_update(
+                self.ds, request, db, existing, update
+            )
+        except QueryValidationError as ex:
+            self.ds.add_message(request, ex.message, self.ds.ERROR)
+            return await self._render_form(
+                request,
+                db,
+                existing,
+                sql=sql,
+                title=title,
+                description=description,
+                is_private=is_private,
+                status=ex.status,
+            )
+
+        await self.ds.update_query(db.name, query_name, **update_kwargs)
+        self.ds.add_message(request, "Query updated", self.ds.INFO)
+        return Response.redirect(
+            self.ds.urls.path(self.ds.urls.table(db.name, query_name))
+        )
+
+
+class QueryDeleteView(BaseView):
+    name = "query-delete"
+    has_json_alternate = False
+
+    async def _load(self, request):
+        db = await self.ds.resolve_database(request)
+        query_name = tilde_decode(request.url_vars["query"])
+        existing = await self.ds.get_query(db.name, query_name)
+        return db, query_name, existing
+
+    async def get(self, request):
+        db, query_name, existing = await self._load(request)
+        if existing is None:
+            return _error(["Query not found: {}".format(query_name)], 404)
+        await self.ds.ensure_permission(
+            action="delete-query",
+            resource=QueryResource(db.name, query_name),
+            actor=request.actor,
+        )
+        return await self.render(
+            ["query_delete.html"],
+            request,
+            {
+                "database": db.name,
+                "database_color": db.color,
+                "query": stored_query_to_dict(existing),
+                "query_url": self.ds.urls.table(db.name, query_name),
+            },
+        )
+
+    async def post(self, request):
+        db, query_name, existing = await self._load(request)
         if existing is None:
             return _error(["Query not found: {}".format(query_name)], 404)
         if not await self.ds.allowed(
@@ -479,5 +631,16 @@ class QueryDeleteView(BaseView):
             actor=request.actor,
         ):
             return _error(["Permission denied: need delete-query"], 403)
+
+        data, is_json = await _json_or_form_payload(request)
         await self.ds.remove_query(db.name, query_name)
-        return Response.json({"ok": True})
+        if is_json:
+            return Response.json({"ok": True})
+        self.ds.add_message(
+            request,
+            "Query “{}” deleted".format(existing.title or query_name),
+            self.ds.INFO,
+        )
+        return Response.redirect(
+            self.ds.urls.path(self.ds.urls.database(db.name) + "/-/queries")
+        )

@@ -795,6 +795,44 @@ async def test_update_row_alter(ds_write):
 
 
 @pytest.mark.asyncio
+async def test_execute_write_form_parameter_called_sql():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_parameter_sql", name="data")
+    await db.execute_write("create table docs (id integer primary key, title text)")
+    await db.execute_write("insert into docs (id, title) values (1, 'Initial')")
+    await ds.invoke_startup()
+
+    form_response = await ds.client.get(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        params={"sql": "update docs set title = :sql where id = :id"},
+    )
+    assert form_response.status_code == 200
+    assert 'data-parameter-name-prefix="_sql_param_"' in form_response.text
+    assert '<label for="qp1">sql</label>' in form_response.text
+    assert 'name="_sql_param_sql"' in form_response.text
+    assert 'data-parameter-name="sql"' in form_response.text
+    assert 'name="_sql_param_id"' in form_response.text
+
+    response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        data={
+            "sql": "update docs set title = :sql where id = :id",
+            "_sql_param_sql": "Updated",
+            "_sql_param_id": "1",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Query executed, 1 row affected" in response.text
+    assert (await db.execute("select title from docs where id = 1")).first()[
+        0
+    ] == "Updated"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "input,expected_errors",
     (

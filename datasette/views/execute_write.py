@@ -9,6 +9,7 @@ from .base import BaseView, _error
 from .database import display_rows as display_query_rows
 from .query_helpers import (
     QueryValidationError,
+    SQL_PARAMETER_FORM_PREFIX,
     _analysis_is_write,
     _analysis_rows,
     _analysis_rows_with_permissions,
@@ -295,6 +296,7 @@ class ExecuteWriteView(BaseView):
                 "execute_write_columns": execute_write_columns,
                 "execute_write_display_rows": execute_write_display_rows,
                 "execute_write_truncated": execute_write_truncated,
+                "sql_parameter_name_prefix": SQL_PARAMETER_FORM_PREFIX,
                 "execute_disabled": bool(execute_disabled_reason),
                 "execute_disabled_reason": execute_disabled_reason,
                 "table_columns": table_columns,

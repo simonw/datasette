@@ -22,21 +22,28 @@ window.datasetteSqlParameters = (() => {
     };
   }
 
+  function parameterName(control) {
+    return control.dataset.parameterName || control.name;
+  }
+
   function syncParameterState(manager) {
     manager.parameterState = new Map();
     manager.section
       .querySelectorAll("[data-parameter-control]")
       .forEach((control) => {
-        manager.parameterState.set(control.name, controlState(control));
+        manager.parameterState.set(parameterName(control), controlState(control));
       });
   }
 
-  function createControl(parameter, id, state) {
+  function createControl(parameter, id, state, namePrefix) {
     const control = document.createElement(state.expanded ? "textarea" : "input");
     control.id = id;
-    control.name = parameter;
+    control.name = `${namePrefix || ""}${parameter}`;
     control.value = state.value;
     control.setAttribute("data-parameter-control", "");
+    if (namePrefix) {
+      control.dataset.parameterName = parameter;
+    }
     if (state.expanded) {
       control.rows = 5;
     } else {
@@ -53,10 +60,16 @@ window.datasetteSqlParameters = (() => {
     value,
     selectionStart
   ) {
-    const replacement = createControl(control.name, control.id, {
-      value: value === undefined ? control.value : value,
-      expanded: expand,
-    });
+    const parameter = parameterName(control);
+    const replacement = createControl(
+      parameter,
+      control.id,
+      {
+        value: value === undefined ? control.value : value,
+        expanded: expand,
+      },
+      manager.namePrefix
+    );
     button.textContent = expand ? "Collapse" : "Expand";
     button.setAttribute("aria-expanded", expand ? "true" : "false");
     control.replaceWith(replacement);
@@ -64,7 +77,7 @@ window.datasetteSqlParameters = (() => {
     if (selectionStart !== undefined && replacement.setSelectionRange) {
       replacement.setSelectionRange(selectionStart, selectionStart);
     }
-    manager.parameterState.set(replacement.name, controlState(replacement));
+    manager.parameterState.set(parameter, controlState(replacement));
   }
 
   function renderParameters(manager, parameters) {
@@ -99,7 +112,7 @@ window.datasetteSqlParameters = (() => {
       label.htmlFor = id;
       label.textContent = parameter;
 
-      const control = createControl(parameter, id, state);
+      const control = createControl(parameter, id, state, manager.namePrefix);
 
       row.append(label, control);
       if (manager.allowExpand) {
@@ -124,7 +137,7 @@ window.datasetteSqlParameters = (() => {
       if (!control.matches || !control.matches("[data-parameter-control]")) {
         return;
       }
-      manager.parameterState.set(control.name, controlState(control));
+      manager.parameterState.set(parameterName(control), controlState(control));
     });
 
     if (!manager.allowExpand) {
@@ -230,6 +243,7 @@ window.datasetteSqlParameters = (() => {
             ? section.dataset.allowExpand === "1"
             : false
           : options.allowExpand,
+      namePrefix: section ? section.dataset.parameterNamePrefix || "" : "",
       parameterState: new Map(),
     };
     if (section) {

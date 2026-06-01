@@ -1196,9 +1196,7 @@ async def test_private_query_edit_delete_restricted_to_owner():
     # A different actor cannot view, edit or delete the private query
     other = {"id": "intruder"}
     assert (await ds.client.get("/data/saved/-/edit", actor=other)).status_code == 403
-    assert (
-        await ds.client.get("/data/saved/-/delete", actor=other)
-    ).status_code == 403
+    assert (await ds.client.get("/data/saved/-/delete", actor=other)).status_code == 403
     delete_attempt = await ds.client.post(
         "/data/saved/-/delete",
         actor=other,
@@ -1323,7 +1321,9 @@ async def test_query_edit_rejected_for_trusted_query():
     ds.add_memory_database("query_edit_trusted", name="data")
     await ds.invoke_startup()
 
-    response = await ds.client.get("/data/trusted_report/-/edit", actor={"id": "editor"})
+    response = await ds.client.get(
+        "/data/trusted_report/-/edit", actor={"id": "editor"}
+    )
     assert response.status_code == 403
     # Edit/delete links should not appear on a trusted/config query page
     page = await ds.client.get("/data/trusted_report", actor={"id": "editor"})

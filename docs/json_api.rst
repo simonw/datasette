@@ -237,22 +237,25 @@ query string arguments:
 
 .. _json_api_extra:
 
-Expanding table JSON responses
-------------------------------
+Expanding JSON responses
+------------------------
 
-Table JSON responses can be expanded with one or more ``?_extra=`` parameters.
+Table, row and query JSON responses can be expanded with one or more ``?_extra=`` parameters.
 These can be repeated or comma-separated:
 
 ::
 
     ?_extra=columns&_extra=count,next_url
 
-The available table extras are listed below.
-
 .. [[[cog
     from json_api_doc import table_extras
     table_extras(cog)
 .. ]]]
+
+Table JSON responses
+~~~~~~~~~~~~~~~~~~~~
+
+The available table extras are listed below.
 
 ``count``
     Total count of rows matching these filters (May execute additional queries.)
@@ -459,12 +462,12 @@ The available table extras are listed below.
     .. code-block:: json
 
         {
-          "resolved": "ResolvedTable(db=<Database: fixtures (mutable, size=249856)>, table='facetable', is_view=False)",
           "url_vars": {
             "database": "fixtures",
             "table": "facetable",
             "format": "json"
           },
+          "resolved": "ResolvedTable(db=<Database: fixtures (mutable, size=249856)>, table='facetable', is_view=False)",
           "nofacet": null,
           "nosuggest": null
         }
@@ -511,7 +514,7 @@ The available table extras are listed below.
     Column type UI metadata for this table
 
 ``metadata``
-    Metadata about the table and database
+    Metadata about the table, database or stored query
 
     ``GET /fixtures/facetable.json?_extra=metadata``
 
@@ -649,7 +652,7 @@ The available table extras are listed below.
         true
 
 ``private``
-    Whether this table is private to the current actor
+    Whether this resource is private to the current actor
 
     ``GET /fixtures/facetable.json?_extra=private``
 
@@ -696,6 +699,373 @@ The available table extras are listed below.
             "form_hidden_args"
           ]
         ]
+
+Row JSON responses
+~~~~~~~~~~~~~~~~~~
+
+The following extras are available for row JSON responses.
+
+``columns``
+    Column names returned by this query
+
+    ``GET /fixtures/simple_primary_key/1.json?_extra=columns``
+
+    .. code-block:: json
+
+        [
+          "id",
+          "content"
+        ]
+
+``primary_keys``
+    Primary keys for this table
+
+    ``GET /fixtures/simple_primary_key/1.json?_extra=primary_keys``
+
+    .. code-block:: json
+
+        [
+          "id"
+        ]
+
+``render_cell``
+    Rendered HTML for each cell using the render_cell plugin hook
+
+    The ``render_cell`` array has one item for the requested row. The object is keyed by column name. Only columns whose rendered value differs from the default are included.
+
+    .. code-block:: json
+
+        {
+          "rows": [
+            {
+              "id": 4,
+              "content": "RENDER_CELL_DEMO"
+            }
+          ],
+          "render_cell": [
+            {
+              "content": "<strong>Custom rendered HTML</strong>"
+            }
+          ]
+        }
+
+``debug``
+    Extra debug information
+
+    ``GET /fixtures/simple_primary_key/1.json?_extra=debug``
+
+    .. code-block:: json
+
+        {
+          "url_vars": {
+            "database": "fixtures",
+            "table": "simple_primary_key",
+            "pks": "1",
+            "format": "json"
+          },
+          "resolved": {
+            "table": "simple_primary_key",
+            "sql": "select * from simple_primary_key where \"id\"=:p0",
+            "params": {
+              "p0": "1"
+            },
+            "pks": [
+              "id"
+            ],
+            "pk_values": [
+              "1"
+            ]
+          }
+        }
+
+``request``
+    Full information about the request
+
+    ``GET /fixtures/simple_primary_key/1.json?_extra=request``
+
+    .. code-block:: json
+
+        {
+          "url": "http://localhost/fixtures/simple_primary_key/1.json?_extra=request",
+          "path": "/fixtures/simple_primary_key/1.json",
+          "full_path": "/fixtures/simple_primary_key/1.json?_extra=request",
+          "host": "localhost",
+          "args": {
+            "_extra": [
+              "request"
+            ]
+          }
+        }
+
+``query``
+    Details of the underlying SQL query
+
+    ``GET /fixtures/simple_primary_key/1.json?_extra=query``
+
+    .. code-block:: json
+
+        {
+          "sql": "select * from simple_primary_key where \"id\"=:p0",
+          "params": {
+            "p0": "1"
+          }
+        }
+
+``column_types``
+    Column type assignments for this table
+
+    .. code-block:: json
+
+        {}
+
+``metadata``
+    Metadata about the table, database or stored query
+
+    ``GET /fixtures/simple_primary_key/1.json?_extra=metadata``
+
+    .. code-block:: json
+
+        {
+          "columns": {}
+        }
+
+``extras``
+    Available ?_extra= blocks
+
+``database``
+    Database name
+
+    ``GET /fixtures/simple_primary_key/1.json?_extra=database``
+
+    .. code-block:: json
+
+        "fixtures"
+
+``table``
+    Table name
+
+    ``GET /fixtures/simple_primary_key/1.json?_extra=table``
+
+    .. code-block:: json
+
+        "simple_primary_key"
+
+``database_color``
+    Color assigned to the database
+
+    ``GET /fixtures/simple_primary_key/1.json?_extra=database_color``
+
+    .. code-block:: json
+
+        "9403e5"
+
+``private``
+    Whether this resource is private to the current actor
+
+    ``GET /fixtures/simple_primary_key/1.json?_extra=private``
+
+    .. code-block:: json
+
+        false
+
+``foreign_key_tables``
+    Tables that link to this row using foreign keys
+
+    ``GET /fixtures/simple_primary_key/1.json?_extra=foreign_key_tables``
+
+    .. code-block:: json
+
+        [
+          {
+            "other_table": "complex_foreign_keys",
+            "column": "id",
+            "other_column": "f1",
+            "count": 1,
+            "link": "/fixtures/complex_foreign_keys?f1=1"
+          },
+          {
+            "other_table": "complex_foreign_keys",
+            "column": "id",
+            "other_column": "f2",
+            "count": 0,
+            "link": "/fixtures/complex_foreign_keys?f2=1"
+          },
+          {
+            "other_table": "complex_foreign_keys",
+            "column": "id",
+            "other_column": "f3",
+            "count": 1,
+            "link": "/fixtures/complex_foreign_keys?f3=1"
+          },
+          {
+            "other_table": "foreign_key_references",
+            "column": "id",
+            "other_column": "foreign_key_with_blank_label",
+            "count": 0,
+            "link": "/fixtures/foreign_key_references?foreign_key_with_blank_label=1"
+          },
+          {
+            "other_table": "foreign_key_references",
+            "column": "id",
+            "other_column": "foreign_key_with_label",
+            "count": 1,
+            "link": "/fixtures/foreign_key_references?foreign_key_with_label=1"
+          }
+        ]
+
+Query JSON responses
+~~~~~~~~~~~~~~~~~~~~
+
+The following extras are available for arbitrary SQL query responses and stored, named query responses.
+
+``columns``
+    Column names returned by this query
+
+    ``GET /fixtures/-/query.json?sql=select+1+as+one&_extra=columns``
+
+    .. code-block:: json
+
+        [
+          "one"
+        ]
+
+``render_cell``
+    Rendered HTML for each cell using the render_cell plugin hook
+
+    The ``render_cell`` array has one item per query result row, in the same order as the ``rows`` array. Each object is keyed by column name. Only columns whose rendered value differs from the default are included.
+
+    .. code-block:: json
+
+        {
+          "rows": [
+            {
+              "content": "RENDER_CELL_DEMO"
+            }
+          ],
+          "render_cell": [
+            {
+              "content": "<strong>Custom rendered HTML</strong>"
+            }
+          ]
+        }
+
+``debug``
+    Extra debug information
+
+    ``GET /fixtures/-/query.json?sql=select+1+as+one&_extra=debug``
+
+    .. code-block:: json
+
+        {
+          "url_vars": {
+            "database": "fixtures",
+            "format": "json"
+          }
+        }
+
+``request``
+    Full information about the request
+
+    ``GET /fixtures/-/query.json?sql=select+1+as+one&_extra=request``
+
+    .. code-block:: json
+
+        {
+          "url": "http://localhost/fixtures/-/query.json?sql=select+1+as+one&_extra=request",
+          "path": "/fixtures/-/query.json",
+          "full_path": "/fixtures/-/query.json?sql=select+1+as+one&_extra=request",
+          "host": "localhost",
+          "args": {
+            "sql": [
+              "select 1 as one"
+            ],
+            "_extra": [
+              "request"
+            ]
+          }
+        }
+
+``query``
+    Details of the underlying SQL query
+
+    ``GET /fixtures/-/query.json?sql=select+1+as+one&_extra=query``
+
+    .. code-block:: json
+
+        {
+          "sql": "select 1 as one",
+          "params": {}
+        }
+
+    ``GET /fixtures/neighborhood_search.json?text=town&_extra=query``
+
+    .. code-block:: json
+
+        {
+          "sql": "\nselect _neighborhood, facet_cities.name, state\nfrom facetable\n    join facet_cities\n        on facetable._city_id = facet_cities.id\nwhere _neighborhood like '%' || :text || '%'\norder by _neighborhood;\n",
+          "params": {
+            "text": "town"
+          }
+        }
+
+``metadata``
+    Metadata about the table, database or stored query
+
+    ``GET /fixtures/neighborhood_search.json?text=town&_extra=metadata``
+
+    .. code-block:: json
+
+        {
+          "database": "fixtures",
+          "name": "neighborhood_search",
+          "sql": "\nselect _neighborhood, facet_cities.name, state\nfrom facetable\n    join facet_cities\n        on facetable._city_id = facet_cities.id\nwhere _neighborhood like '%' || :text || '%'\norder by _neighborhood;\n",
+          "title": "Search neighborhoods",
+          "description": null,
+          "description_html": null,
+          "hide_sql": false,
+          "fragment": null,
+          "params": [],
+          "parameters": [],
+          "is_write": false,
+          "is_private": false,
+          "is_trusted": true,
+          "owner_id": null,
+          "on_success_message": null,
+          "on_success_message_sql": null,
+          "on_success_redirect": null,
+          "on_error_message": null,
+          "on_error_redirect": null
+        }
+
+``extras``
+    Available ?_extra= blocks
+
+``database``
+    Database name
+
+    ``GET /fixtures/-/query.json?sql=select+1+as+one&_extra=database``
+
+    .. code-block:: json
+
+        "fixtures"
+
+``database_color``
+    Color assigned to the database
+
+    ``GET /fixtures/-/query.json?sql=select+1+as+one&_extra=database_color``
+
+    .. code-block:: json
+
+        "9403e5"
+
+``private``
+    Whether this resource is private to the current actor
+
+    ``GET /fixtures/-/query.json?sql=select+1+as+one&_extra=private``
+
+    .. code-block:: json
+
+        false
 
 .. [[[end]]]
 

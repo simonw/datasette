@@ -11,6 +11,7 @@ import sqlite_utils
 import textwrap
 
 from datasette.events import AlterTableEvent, CreateTableEvent, InsertRowsEvent
+from datasette.extras import extra_names_from_request
 from datasette.database import QueryInterrupted
 from datasette.resources import DatabaseResource, QueryResource
 from datasette.stored_queries import stored_query_to_dict
@@ -38,6 +39,11 @@ from datasette.plugins import pm
 
 from .base import BaseView, DatasetteError, View, _error, stream_csv
 from .query_helpers import _ensure_stored_query_execution_permissions, _table_columns
+from .table_extras import (
+    QueryExtraContext,
+    resolve_query_extras,
+    table_extra_registry,
+)
 from . import Context
 
 
@@ -692,6 +698,34 @@ class QueryView(View):
             except DatasetteError:
                 raise
 
+        extras = extra_names_from_request(request)
+        metadata = None
+        data = {"ok": True, "rows": rows, "columns": columns}
+        if extras:
+            metadata = await datasette.get_database_metadata(database)
+            if stored_query:
+                metadata = stored_query_to_dict(stored_query)
+                metadata.pop("source", None)
+            query_extra_context = QueryExtraContext(
+                datasette=datasette,
+                request=request,
+                db=db,
+                database_name=database,
+                private=private,
+                rows=rows,
+                columns=columns,
+                sql=sql,
+                params=params_for_query,
+                query_name=stored_query.name if stored_query else None,
+                stored_query=stored_query,
+                stored_query_write=stored_query_write,
+                error=query_error,
+                metadata=metadata,
+                extras=extras,
+                extra_registry=table_extra_registry,
+            )
+            data.update(await resolve_query_extras(extras, query_extra_context))
+
         # Handle formats from plugins
         if format_ == "csv":
             if not sql:
@@ -721,7 +755,7 @@ class QueryView(View):
                 error=query_error,
                 # These will be deprecated in Datasette 1.0:
                 args=request.args,
-                data={"ok": True, "rows": rows, "columns": columns},
+                data=data,
             )
             if asyncio.iscoroutine(result):
                 result = await result
@@ -770,11 +804,11 @@ class QueryView(View):
                     )
                 }
             )
-            metadata = await datasette.get_database_metadata(database)
-            if stored_query:
-                metadata = stored_query_to_dict(stored_query)
-                metadata.pop("source", None)
-
+            if metadata is None:
+                metadata = await datasette.get_database_metadata(database)
+                if stored_query:
+                    metadata = stored_query_to_dict(stored_query)
+                    metadata.pop("source", None)
             renderers = {}
             for key, (_, can_render) in datasette.renderers.items():
                 it_can_render = call_with_supported_arguments(

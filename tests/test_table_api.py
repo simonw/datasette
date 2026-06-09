@@ -69,6 +69,55 @@ async def test_table_shape_arrayfirst(ds_client):
 
 
 @pytest.mark.asyncio
+async def test_query_extras_for_arbitrary_sql(ds_client):
+    response = await ds_client.get(
+        "/fixtures/-/query.json?"
+        + urllib.parse.urlencode(
+            {
+                "sql": "select 1 as one",
+                "_extra": "columns,database,query,request,debug",
+            }
+        )
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["rows"] == [{"one": 1}]
+    assert data["columns"] == ["one"]
+    assert data["database"] == "fixtures"
+    assert data["query"]["sql"] == "select 1 as one"
+    assert data["request"]["path"] == "/fixtures/-/query.json"
+    assert data["debug"]["url_vars"] == {
+        "database": "fixtures",
+        "format": "json",
+    }
+
+
+@pytest.mark.asyncio
+async def test_query_extras_for_stored_query(ds_client):
+    response = await ds_client.get(
+        "/fixtures/neighborhood_search.json?"
+        + urllib.parse.urlencode(
+            {
+                "text": "town",
+                "_extra": "columns,database,query,request,debug",
+            }
+        )
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["columns"] == ["_neighborhood", "name", "state"]
+    assert data["database"] == "fixtures"
+    assert data["query"]["sql"].strip().startswith("select _neighborhood")
+    assert data["query"]["params"]["text"] == "town"
+    assert data["request"]["path"] == "/fixtures/neighborhood_search.json"
+    assert data["debug"]["url_vars"] == {
+        "database": "fixtures",
+        "table": "neighborhood_search",
+        "format": "json",
+    }
+
+
+@pytest.mark.asyncio
 async def test_table_shape_objects(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key.json?_shape=objects")
     assert response.json()["rows"] == [

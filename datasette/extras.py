@@ -16,6 +16,8 @@ def extra_names_from_request(request):
 
 class ExtraScope(Enum):
     TABLE = "table"
+    ROW = "row"
+    QUERY = "query"
 
 
 @dataclass(frozen=True)
@@ -46,10 +48,15 @@ class Provider:
 class Extra(Provider):
     description: ClassVar[str | None] = None
     example: ClassVar[ExtraExample | None] = None
+    examples: ClassVar[dict[ExtraScope, ExtraExample | list[ExtraExample]]] = {}
     public: ClassVar[bool] = True
     stable: ClassVar[bool] = True
     expensive: ClassVar[bool] = False
     docs_note: ClassVar[str | None] = None
+
+    @classmethod
+    def example_for_scope(cls, scope):
+        return cls.examples.get(scope, cls.example)
 
     @classmethod
     def documentation(cls):

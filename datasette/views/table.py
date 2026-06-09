@@ -6,6 +6,7 @@ import urllib
 from asyncinject import Registry
 import markupsafe
 
+from datasette.extras import extra_names_from_request
 from datasette.plugins import pm
 from datasette.database import QueryInterrupted
 from datasette.events import (
@@ -850,11 +851,7 @@ class TableDropView(BaseView):
 
 
 def _get_extras(request):
-    extra_bits = request.args.getlist("_extra")
-    extras = set()
-    for bit in extra_bits:
-        extras.update(bit.split(","))
-    return extras
+    return extra_names_from_request(request)
 
 
 async def _columns_to_select(table_columns, pks, request):

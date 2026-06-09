@@ -1,4 +1,5 @@
 import json
+from datasette.extras import extra_names_from_request
 from datasette.utils import (
     value_as_boolean,
     remove_infinites,
@@ -108,7 +109,7 @@ def json_renderer(request, args, data, error, truncated=None):
 
     # Don't include "columns" in output
     # https://github.com/simonw/datasette/issues/2136
-    if isinstance(data, dict) and "columns" not in request.args.getlist("_extra"):
+    if isinstance(data, dict) and "columns" not in extra_names_from_request(request):
         data.pop("columns", None)
 
     # Handle _nl option for _shape=array

@@ -1377,6 +1377,17 @@ async def test_table_extras(ds_client, extra, expected_json):
 
 
 @pytest.mark.asyncio
+async def test_table_extra_columns_can_be_comma_separated(ds_client):
+    response = await ds_client.get(
+        "/fixtures/primary_key_multiple_columns.json?_extra=columns,count"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["columns"] == ["id", "content", "content2"]
+    assert data["count"] == 1
+
+
+@pytest.mark.asyncio
 async def test_extra_render_cell():
     """Test that _extra=render_cell returns rendered HTML from render_cell plugin hook"""
     from datasette import hookimpl

@@ -308,6 +308,7 @@ class IsViewExtra(Extra):
 
 class DebugExtra(Extra):
     description = "Extra debug information"
+    example = ExtraExample("/fixtures/facetable.json?_extra=debug")
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -321,6 +322,7 @@ class DebugExtra(Extra):
 
 class RequestExtra(Extra):
     description = "Full information about the request"
+    example = ExtraExample("/fixtures/facetable.json?_extra=request")
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):

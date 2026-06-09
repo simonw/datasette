@@ -130,6 +130,19 @@ def test_render_cell_extra_example_explains_row_and_column_mapping():
     assert '"render_cell": [' in section
 
 
+def test_debug_and_request_extra_examples_are_documented():
+    content = (docs_path / "json_api.rst").read_text()
+    section = content.split(".. _json_api_extra:")[-1].split(".. _table_arguments:")[0]
+
+    debug_section = section.split("``debug``")[-1].split("``request``")[0]
+    assert "GET /fixtures/facetable.json?_extra=debug" in debug_section
+    assert '"url_vars": {' in debug_section
+
+    request_section = section.split("``request``")[-1].split("``query``")[0]
+    assert "GET /fixtures/facetable.json?_extra=request" in request_section
+    assert '"full_path":' in request_section
+
+
 @pytest.fixture(scope="session")
 def documented_labels():
     labels = set()

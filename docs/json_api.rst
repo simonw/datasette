@@ -454,8 +454,39 @@ The available table extras are listed below.
 ``debug``
     Extra debug information
 
+    ``GET /fixtures/facetable.json?_extra=debug``
+
+    .. code-block:: json
+
+        {
+          "resolved": "ResolvedTable(db=<Database: fixtures (mutable, size=249856)>, table='facetable', is_view=False)",
+          "url_vars": {
+            "database": "fixtures",
+            "table": "facetable",
+            "format": "json"
+          },
+          "nofacet": null,
+          "nosuggest": null
+        }
+
 ``request``
     Full information about the request
+
+    ``GET /fixtures/facetable.json?_extra=request``
+
+    .. code-block:: json
+
+        {
+          "url": "http://localhost/fixtures/facetable.json?_extra=request",
+          "path": "/fixtures/facetable.json",
+          "full_path": "/fixtures/facetable.json?_extra=request",
+          "host": "localhost",
+          "args": {
+            "_extra": [
+              "request"
+            ]
+          }
+        }
 
 ``query``
     Details of the underlying SQL query

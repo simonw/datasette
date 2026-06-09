@@ -142,6 +142,15 @@ Datasette stores both configured queries and user-created queries in the ``queri
 
 Stored queries created by users default to private. Private stored queries can only be viewed, updated or deleted by the actor that created them. Broad ``view-query``, ``update-query`` or ``delete-query`` permission grants still do not allow other actors to access another actor's private stored queries.
 
+Editing and deleting stored queries
++++++++++++++++++++++++++++++++++++
+
+The page for a stored query includes a "Query actions" menu with **Edit this query** and **Delete this query** links for actors who have permission to use them.
+
+The owner of a stored query can always edit and delete it. For queries that are not private, any actor granted the ``update-query`` or ``delete-query`` permission can edit or delete the query, even if they did not create it. Private queries can only be edited or deleted by their owner, regardless of any broad permission grants.
+
+Editing a query lets you change its title, description, SQL and whether it is private. Changing the SQL also requires the ``execute-sql`` permission (and the relevant write permissions for writable queries). The same operations are available through the JSON API by sending a ``POST`` to ``/<database>/<query>/-/update`` or ``/<database>/<query>/-/delete``. Trusted stored queries cannot be edited or deleted through the web interface or the JSON API.
+
 Stored queries created by users are untrusted. This means they execute using the permissions of the actor who runs them, as if that actor had pasted the SQL into the regular custom SQL interface or write SQL interface. Read-only stored queries require ``execute-sql``. Writable stored queries require ``execute-write-sql`` plus the relevant table-level write permissions. SQL functions are allowed and are not separately restricted by Datasette permissions.
 
 .. _trusted_stored_queries:

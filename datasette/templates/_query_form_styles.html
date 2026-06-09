@@ -1,0 +1,138 @@
+<style>
+.query-create-page {
+    max-width: 64rem;
+}
+.query-create-form {
+    --query-create-label-width: clamp(7rem, 18vw, 10rem);
+    --query-create-column-gap: 0.8rem;
+    --query-create-control-width: minmax(16rem, 1fr);
+}
+.query-create-fields {
+    margin: 0 0 0.85rem;
+    max-width: 52rem;
+}
+.query-create-field {
+    align-items: start;
+    column-gap: var(--query-create-column-gap);
+    display: grid;
+    grid-template-columns: var(--query-create-label-width) var(--query-create-control-width);
+    margin: 0 0 0.65rem;
+}
+.query-create-field label {
+    padding-top: 0.55rem;
+    width: auto;
+}
+.query-create-field input[type=text],
+.query-create-field textarea {
+    box-sizing: border-box;
+    width: 100%;
+}
+form.sql .query-create-field textarea {
+    width: 100%;
+}
+.query-create-url-control {
+    align-items: center;
+    box-sizing: border-box;
+    display: grid;
+    gap: 0.35rem;
+    grid-template-columns: max-content minmax(12rem, 1fr);
+    width: 100%;
+}
+.query-create-url-prefix {
+    color: #4f5b6d;
+    font-family: var(--font-monospace, monospace);
+    white-space: nowrap;
+}
+.query-create-url-control input[type=text] {
+    border: 1px solid #ccc;
+    border-radius: 3px;
+}
+.query-create-url-static {
+    color: #39445a;
+    font-family: var(--font-monospace, monospace);
+    word-break: break-all;
+}
+.query-create-field textarea {
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    display: block;
+    font-family: Helvetica, sans-serif;
+    font-size: 1em;
+    min-height: 5rem;
+    padding: 9px 4px;
+    resize: vertical;
+}
+form.sql .query-create-sql {
+    column-gap: var(--query-create-column-gap);
+    display: grid;
+    grid-template-columns: var(--query-create-label-width) var(--query-create-control-width);
+    margin: 0.9rem 0 0.75rem;
+    max-width: 52rem;
+}
+.query-create-sql .cm-editor,
+form.sql .query-create-sql textarea#sql-editor {
+    grid-column: 2;
+    width: 100%;
+}
+.query-create-options {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.8rem 1.4rem;
+    margin: 0 0 0.9rem calc(var(--query-create-label-width) + var(--query-create-column-gap));
+    max-width: calc(52rem - var(--query-create-label-width) - var(--query-create-column-gap));
+}
+.query-create-options label {
+    align-items: center;
+    display: inline-flex;
+    gap: 0.35rem;
+    width: auto;
+}
+.query-create-options input[type=checkbox] {
+    margin: 0;
+}
+.query-create-option-note,
+.query-create-analysis-note {
+    color: #4f5b6d;
+    flex-basis: 100%;
+    font-size: 0.82rem;
+}
+.query-create-option-note {
+    margin: -0.45rem 0 0;
+}
+.query-create-analysis-note {
+    margin: 0;
+}
+.query-create-analysis {
+    margin-top: 0.8rem;
+}
+.query-create-submit {
+    margin-left: calc(var(--query-create-label-width) + var(--query-create-column-gap));
+    margin-bottom: 0.9rem;
+    margin-top: 1rem;
+}
+@media (max-width: 560px) {
+    .query-create-form {
+        --query-create-label-width: 1fr;
+        --query-create-column-gap: 0;
+    }
+    .query-create-field {
+        grid-template-columns: 1fr;
+        row-gap: 0.25rem;
+    }
+    .query-create-field label {
+        padding-top: 0;
+    }
+    form.sql .query-create-sql {
+        grid-template-columns: 1fr;
+    }
+    .query-create-sql .cm-editor,
+    form.sql .query-create-sql textarea#sql-editor {
+        grid-column: 1;
+    }
+    .query-create-options,
+    .query-create-submit {
+        margin-left: 0;
+    }
+}
+</style>

@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v1_0_a33:
+
+1.0a33 (unreleased)
+-------------------
+
+- Stored queries can now be edited and deleted from the web interface. The stored query page gained a "Query actions" menu with **Edit this query** and **Delete this query** links for actors with the necessary permissions. The owner of a query can always edit or delete it; for queries that are not private, any actor with the :ref:`update-query <actions_update_query>` or :ref:`delete-query <actions_delete_query>` permission can do so too. Private queries remain editable and deletable only by their owner. See :ref:`stored_queries` for details. (:issue:`2735`)
+
 .. _v1_0_a32:
 
 1.0a32 (2026-05-31)

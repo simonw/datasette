@@ -436,6 +436,35 @@ async def _query_create_form_context(
     }
 
 
+async def _query_edit_form_context(
+    datasette,
+    request,
+    db,
+    existing: StoredQuery,
+    *,
+    sql=None,
+    title=None,
+    description=None,
+    is_private=None,
+):
+    sql = existing.sql if sql is None else sql
+    title = existing.title if title is None else title
+    description = existing.description if description is None else description
+    is_private = existing.is_private if is_private is None else is_private
+    analysis_data = await _query_create_analysis_data(datasette, db, sql, request.actor)
+    return {
+        "database": db.name,
+        "database_color": db.color,
+        "name": existing.name,
+        "sql": sql,
+        "title": title or "",
+        "description": description or "",
+        "is_private": is_private,
+        "query_url": datasette.urls.table(db.name, existing.name),
+        **analysis_data,
+    }
+
+
 async def _inserted_row_url(datasette, db, analysis, cursor):
     if cursor.rowcount != 1:
         return None

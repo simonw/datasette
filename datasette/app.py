@@ -55,6 +55,7 @@ from .views.stored_queries import (
     QueryCreateAnalyzeView,
     QueryDeleteView,
     QueryDefinitionView,
+    QueryEditView,
     GlobalQueryListView,
     QueryListView,
     QueryParametersView,
@@ -2492,6 +2493,10 @@ class Datasette:
         add_route(
             QueryDefinitionView.as_view(self),
             r"/(?P<database>[^\/\.]+)/(?P<query>[^\/\.]+)/-/definition$",
+        )
+        add_route(
+            QueryEditView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<query>[^\/\.]+)/-/edit$",
         )
         add_route(
             QueryUpdateView.as_view(self),

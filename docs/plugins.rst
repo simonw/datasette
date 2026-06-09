@@ -272,6 +272,15 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             ]
         },
         {
+            "name": "datasette.default_query_actions",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "query_actions"
+            ]
+        },
+        {
             "name": "datasette.events",
             "static": false,
             "templates": false,

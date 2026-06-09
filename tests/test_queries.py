@@ -3,6 +3,7 @@ import re
 from html import unescape
 
 import pytest
+from bs4 import BeautifulSoup as Soup
 
 from datasette.app import Datasette
 from datasette.resources import DatabaseResource, QueryResource
@@ -712,6 +713,10 @@ async def test_query_list_search_filter_and_html():
         "/data/-/queries?is_private=1",
         actor={"id": "root"},
     )
+    no_results_response = await ds.client.get(
+        "/data/-/queries?q=nope",
+        actor={"id": "root"},
+    )
 
     assert html_response.status_code == 200
     assert "Demo query 02" in html_response.text
@@ -799,6 +804,13 @@ async def test_query_list_search_filter_and_html():
         '<span class="query-list-facet-link query-list-facet-disabled"><span>Not private</span><span class="query-list-facet-count">0</span></span>'
         not in filtered_private_response.text
     )
+    assert no_results_response.status_code == 200
+    assert "No queries found." in no_results_response.text
+    assert 'class="query-list-filters core"' not in no_results_response.text
+    assert 'id="query-search"' not in no_results_response.text
+    assert 'class="query-list-facets"' not in no_results_response.text
+    assert "<h2>Mode</h2>" not in no_results_response.text
+    assert "<h2>Visibility</h2>" not in no_results_response.text
 
 
 @pytest.mark.asyncio
@@ -1112,6 +1124,227 @@ async def test_query_update_api_rejects_trusted_queries_but_internal_update_allo
     assert query.is_trusted is True
     assert query.sql == "select 3 as three"
     assert query.title == "Internal"
+
+
+async def _make_ds_with_user_query(name, *, is_private=False, owner_id="owner"):
+    ds = Datasette(memory=True, settings={"default_allow_sql": True})
+    db = ds.add_memory_database(name, name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "saved",
+        "select * from dogs",
+        title="Saved query",
+        description="A saved query",
+        source="user",
+        owner_id=owner_id,
+        is_private=is_private,
+    )
+    return ds
+
+
+@pytest.mark.asyncio
+async def test_query_edit_form_renders_and_updates_for_owner():
+    ds = await _make_ds_with_user_query("query_edit_owner")
+    actor = {"id": "owner"}
+
+    # GET renders the form pre-filled with existing values
+    get_response = await ds.client.get("/data/saved/-/edit", actor=actor)
+    assert get_response.status_code == 200
+    assert 'value="Saved query"' in get_response.text
+    assert ">A saved query</textarea>" in get_response.text
+    assert "select * from dogs" in get_response.text
+    # URL slug is shown but not editable
+    assert 'name="name"' not in get_response.text
+
+    # POST updates the query and redirects back to the query page
+    post_response = await ds.client.post(
+        "/data/saved/-/edit",
+        actor=actor,
+        data={
+            "title": "Updated title",
+            "description": "Updated description",
+            "sql": "select id from dogs",
+            "is_private": "1",
+        },
+    )
+    assert post_response.status_code == 302
+    assert post_response.headers["location"] == "/data/saved"
+
+    query = await ds.get_query("data", "saved")
+    assert query.title == "Updated title"
+    assert query.description == "Updated description"
+    assert query.sql == "select id from dogs"
+    assert query.is_private is True
+
+
+@pytest.mark.asyncio
+async def test_query_edit_metadata_only_does_not_require_execute_sql():
+    # An owner who can no longer execute SQL can still edit title/description
+    ds = await _make_ds_with_user_query("query_edit_metadata_only")
+    actor = {"id": "owner"}
+
+    post_response = await ds.client.post(
+        "/data/saved/-/edit",
+        actor=actor,
+        data={
+            "title": "Renamed",
+            "description": "A saved query",
+            "sql": "select * from dogs",
+        },
+    )
+    assert post_response.status_code == 302
+    query = await ds.get_query("data", "saved")
+    assert query.title == "Renamed"
+
+
+@pytest.mark.asyncio
+async def test_private_query_edit_delete_restricted_to_owner():
+    ds = await _make_ds_with_user_query(
+        "query_edit_private", is_private=True, owner_id="owner"
+    )
+
+    # A different actor cannot view, edit or delete the private query
+    other = {"id": "intruder"}
+    assert (await ds.client.get("/data/saved/-/edit", actor=other)).status_code == 403
+    assert (await ds.client.get("/data/saved/-/delete", actor=other)).status_code == 403
+    delete_attempt = await ds.client.post(
+        "/data/saved/-/delete",
+        actor=other,
+        data={},
+    )
+    assert delete_attempt.status_code == 403
+    assert await ds.get_query("data", "saved") is not None
+
+    # The owner can edit and delete
+    owner = {"id": "owner"}
+    assert (await ds.client.get("/data/saved/-/edit", actor=owner)).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_non_private_query_editable_by_permitted_non_owner():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "execute-sql": {"id": "editor"},
+                        "update-query": {"id": "editor"},
+                        "delete-query": {"id": "editor"},
+                    }
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database("query_non_private_editor", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+    await ds.add_query(
+        "data",
+        "saved",
+        "select * from dogs",
+        title="Shared",
+        source="user",
+        owner_id="owner",
+        is_private=False,
+    )
+
+    editor = {"id": "editor"}
+    # Editor (not the owner) can edit because the query is not private
+    post_response = await ds.client.post(
+        "/data/saved/-/edit",
+        actor=editor,
+        data={
+            "title": "Edited by editor",
+            "description": "",
+            "sql": "select * from dogs",
+        },
+    )
+    assert post_response.status_code == 302
+    query = await ds.get_query("data", "saved")
+    assert query.title == "Edited by editor"
+
+    # Editor can also delete it
+    delete_response = await ds.client.post(
+        "/data/saved/-/delete",
+        actor=editor,
+        data={},
+    )
+    assert delete_response.status_code == 302
+    assert await ds.get_query("data", "saved") is None
+
+
+@pytest.mark.asyncio
+async def test_query_delete_confirmation_and_form_delete():
+    ds = await _make_ds_with_user_query("query_delete_form")
+    actor = {"id": "owner"}
+
+    get_response = await ds.client.get("/data/saved/-/delete", actor=actor)
+    assert get_response.status_code == 200
+    assert "Are you sure" in get_response.text
+    assert "select * from dogs" in get_response.text
+    soup = Soup(get_response.text, "html.parser")
+    form = soup.select_one("form.query-delete-form")
+    assert form is not None
+    assert "core" in form["class"]
+    assert form.select_one('input[type="submit"][value="Delete query"]') is not None
+
+    post_response = await ds.client.post(
+        "/data/saved/-/delete",
+        actor=actor,
+        data={},
+    )
+    assert post_response.status_code == 302
+    assert post_response.headers["location"] == "/data"
+    assert await ds.get_query("data", "saved") is None
+
+
+@pytest.mark.asyncio
+async def test_query_action_menu_shows_edit_and_delete_for_owner():
+    ds = await _make_ds_with_user_query("query_action_menu")
+
+    owner_response = await ds.client.get("/data/saved", actor={"id": "owner"})
+    assert owner_response.status_code == 200
+    assert "/data/saved/-/edit" in owner_response.text
+    assert "/data/saved/-/delete" in owner_response.text
+
+    # A different actor (the query is public) cannot edit/delete by default
+    other_response = await ds.client.get("/data/saved", actor={"id": "stranger"})
+    assert other_response.status_code == 200
+    assert "/data/saved/-/edit" not in other_response.text
+    assert "/data/saved/-/delete" not in other_response.text
+
+
+@pytest.mark.asyncio
+async def test_query_edit_rejected_for_trusted_query():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "execute-sql": {"id": "editor"},
+                        "update-query": {"id": "editor"},
+                    },
+                    "queries": {"trusted_report": {"sql": "select 1 as one"}},
+                }
+            }
+        },
+    )
+    ds.add_memory_database("query_edit_trusted", name="data")
+    await ds.invoke_startup()
+
+    response = await ds.client.get(
+        "/data/trusted_report/-/edit", actor={"id": "editor"}
+    )
+    assert response.status_code == 403
+    # Edit/delete links should not appear on a trusted/config query page
+    page = await ds.client.get("/data/trusted_report", actor={"id": "editor"})
+    assert "/data/trusted_report/-/edit" not in page.text
 
 
 @pytest.mark.asyncio

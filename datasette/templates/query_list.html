@@ -205,32 +205,32 @@
 
 <h1 style="padding-left: 10px; border-left: 10px solid #{% if database_color %}{{ database_color }}{% else %}666{% endif %}">Queries</h1>
 
-<form class="query-list-filters core" action="{{ query_list_path }}" method="get">
-    <p class="query-list-search">
-        <label for="query-search">Search</label>
-        <input id="query-search" type="search" name="q" value="{{ filters.q }}">
-        {% if filters.is_write %}<input type="hidden" name="is_write" value="{{ filters.is_write }}">{% endif %}
-        {% if filters.is_private %}<input type="hidden" name="is_private" value="{{ filters.is_private }}">{% endif %}
-        {% if filters.source %}<input type="hidden" name="source" value="{{ filters.source }}">{% endif %}
-        {% if filters.owner_id %}<input type="hidden" name="owner_id" value="{{ filters.owner_id }}">{% endif %}
-        <button type="submit">Search</button>
-    </p>
-</form>
-
-<nav class="query-list-facets" aria-label="Query filters">
-    {% for facet in facets %}
-        <section class="query-list-facet">
-            <h2>{{ facet.title }}</h2>
-            <ul>
-                {% for item in facet["items"] %}
-                    <li>{% if item.href %}<a class="query-list-facet-link{% if item.active %} query-list-facet-link-active{% endif %}" href="{{ item.href }}"{% if item.active %} aria-current="true"{% endif %}>{% else %}<span class="query-list-facet-link query-list-facet-disabled">{% endif %}<span>{{ item.label }}</span><span class="query-list-facet-count">{{ item.count }}</span>{% if item.href %}</a>{% else %}</span>{% endif %}</li>
-                {% endfor %}
-            </ul>
-        </section>
-    {% endfor %}
-</nav>
-
 {% if queries %}
+    <form class="query-list-filters core" action="{{ query_list_path }}" method="get">
+        <p class="query-list-search">
+            <label for="query-search">Search</label>
+            <input id="query-search" type="search" name="q" value="{{ filters.q }}">
+            {% if filters.is_write %}<input type="hidden" name="is_write" value="{{ filters.is_write }}">{% endif %}
+            {% if filters.is_private %}<input type="hidden" name="is_private" value="{{ filters.is_private }}">{% endif %}
+            {% if filters.source %}<input type="hidden" name="source" value="{{ filters.source }}">{% endif %}
+            {% if filters.owner_id %}<input type="hidden" name="owner_id" value="{{ filters.owner_id }}">{% endif %}
+            <button type="submit">Search</button>
+        </p>
+    </form>
+
+    <nav class="query-list-facets" aria-label="Query filters">
+        {% for facet in facets %}
+            <section class="query-list-facet">
+                <h2>{{ facet.title }}</h2>
+                <ul>
+                    {% for item in facet["items"] %}
+                        <li>{% if item.href %}<a class="query-list-facet-link{% if item.active %} query-list-facet-link-active{% endif %}" href="{{ item.href }}"{% if item.active %} aria-current="true"{% endif %}>{% else %}<span class="query-list-facet-link query-list-facet-disabled">{% endif %}<span>{{ item.label }}</span><span class="query-list-facet-count">{{ item.count }}</span>{% if item.href %}</a>{% else %}</span>{% endif %}</li>
+                    {% endfor %}
+                </ul>
+            </section>
+        {% endfor %}
+    </nav>
+
     <div class="table-wrapper"><table class="query-list-results">
         <thead>
             <tr>

@@ -32,6 +32,16 @@
     display: flex;
     gap: 1rem;
 }
+.query-delete-form input[type=submit] {
+    background: linear-gradient(180deg, #d73a31 0%, #b42318 100%);
+    border-color: #b42318;
+    font-weight: 700;
+}
+.query-delete-form input[type=submit]:hover,
+.query-delete-form input[type=submit]:focus {
+    background: linear-gradient(180deg, #c3342b 0%, #971c14 100%);
+    border-color: #971c14;
+}
 </style>
 {% endblock %}
 
@@ -60,7 +70,7 @@
     <dd><pre>{{ query.sql }}</pre></dd>
 </dl>
 
-<form action="{{ query_url }}/-/delete" method="post">
+<form class="core query-delete-form" action="{{ query_url }}/-/delete" method="post">
     <p class="query-delete-actions">
         <input type="submit" value="Delete query">
         <a href="{{ query_url }}">Cancel</a>

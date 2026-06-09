@@ -3,6 +3,7 @@ import re
 from html import unescape
 
 import pytest
+from bs4 import BeautifulSoup as Soup
 
 from datasette.app import Datasette
 from datasette.resources import DatabaseResource, QueryResource
@@ -712,6 +713,10 @@ async def test_query_list_search_filter_and_html():
         "/data/-/queries?is_private=1",
         actor={"id": "root"},
     )
+    no_results_response = await ds.client.get(
+        "/data/-/queries?q=nope",
+        actor={"id": "root"},
+    )
 
     assert html_response.status_code == 200
     assert "Demo query 02" in html_response.text
@@ -799,6 +804,13 @@ async def test_query_list_search_filter_and_html():
         '<span class="query-list-facet-link query-list-facet-disabled"><span>Not private</span><span class="query-list-facet-count">0</span></span>'
         not in filtered_private_response.text
     )
+    assert no_results_response.status_code == 200
+    assert "No queries found." in no_results_response.text
+    assert 'class="query-list-filters core"' not in no_results_response.text
+    assert 'id="query-search"' not in no_results_response.text
+    assert 'class="query-list-facets"' not in no_results_response.text
+    assert "<h2>Mode</h2>" not in no_results_response.text
+    assert "<h2>Visibility</h2>" not in no_results_response.text
 
 
 @pytest.mark.asyncio
@@ -1274,6 +1286,11 @@ async def test_query_delete_confirmation_and_form_delete():
     assert get_response.status_code == 200
     assert "Are you sure" in get_response.text
     assert "select * from dogs" in get_response.text
+    soup = Soup(get_response.text, "html.parser")
+    form = soup.select_one("form.query-delete-form")
+    assert form is not None
+    assert "core" in form["class"]
+    assert form.select_one('input[type="submit"][value="Delete query"]') is not None
 
     post_response = await ds.client.post(
         "/data/saved/-/delete",
@@ -1281,7 +1298,7 @@ async def test_query_delete_confirmation_and_form_delete():
         data={},
     )
     assert post_response.status_code == 302
-    assert post_response.headers["location"] == "/data/-/queries"
+    assert post_response.headers["location"] == "/data"
     assert await ds.get_query("data", "saved") is None
 
 

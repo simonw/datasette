@@ -641,6 +641,4 @@ class QueryDeleteView(BaseView):
             "Query “{}” deleted".format(existing.title or query_name),
             self.ds.INFO,
         )
-        return Response.redirect(
-            self.ds.urls.path(self.ds.urls.database(db.name) + "/-/queries")
-        )
+        return Response.redirect(self.ds.urls.path(self.ds.urls.database(db.name)))

@@ -254,79 +254,405 @@ The available table extras are listed below.
     table_extras(cog)
 .. ]]]
 
-.. list-table::
-   :header-rows: 1
+``count``
+    Total count of rows matching these filters (May execute additional queries.)
 
-   * - Extra
-     - Description
-   * - ``count``
-     - Total count of rows matching these filters (May execute additional queries.)
-   * - ``count_sql``
-     - SQL query used to calculate the total count
-   * - ``facet_results``
-     - Results of facets calculated against this data (May execute additional queries.)
-   * - ``facets_timed_out``
-     - Facet calculations that timed out
-   * - ``suggested_facets``
-     - Suggestions for facets that might return interesting results (May execute additional queries.)
-   * - ``human_description_en``
-     - Human-readable description of the filters
-   * - ``next_url``
-     - Full URL for the next page of results
-   * - ``columns``
-     - Column names returned by this query
-   * - ``all_columns``
-     - All columns in the table, regardless of _col/_nocol filtering
-   * - ``primary_keys``
-     - Primary keys for this table
-   * - ``display_columns``
-     - Column metadata used by the HTML table display
-   * - ``display_rows``
-     - Row data formatted for the HTML table display
-   * - ``render_cell``
-     - Rendered HTML for each cell using the render_cell plugin hook
-   * - ``debug``
-     - Extra debug information
-   * - ``request``
-     - Full information about the request
-   * - ``query``
-     - Details of the underlying SQL query
-   * - ``column_types``
-     - Column type assignments for this table
-   * - ``set_column_type_ui``
-     - Column type UI metadata for this table
-   * - ``metadata``
-     - Metadata about the table and database
-   * - ``extras``
-     - Available ?_extra= blocks
-   * - ``database``
-     - Database name
-   * - ``table``
-     - Table name
-   * - ``database_color``
-     - Color assigned to the database
-   * - ``actions``
-     - Table or view actions made available by plugin hooks
-   * - ``filters``
-     - Filters object used by the HTML table interface
-   * - ``renderers``
-     - Alternative output renderers available for this table
-   * - ``custom_table_templates``
-     - Custom template names considered for this table
-   * - ``sorted_facet_results``
-     - Facet results sorted for display
-   * - ``table_definition``
-     - SQL definition for this table
-   * - ``view_definition``
-     - SQL definition for this view
-   * - ``is_view``
-     - Whether this resource is a view instead of a table
-   * - ``private``
-     - Whether this table is private to the current actor
-   * - ``expandable_columns``
-     - Foreign key columns that can be expanded with labels
-   * - ``form_hidden_args``
-     - Hidden form arguments used by the HTML table interface
+    ``GET /fixtures/facetable.json?_extra=count``
+
+    .. code-block:: json
+
+        15
+
+``count_sql``
+    SQL query used to calculate the total count
+
+    ``GET /fixtures/facetable.json?_size=0&_extra=count_sql``
+
+    .. code-block:: json
+
+        "select count(*) from facetable "
+
+``facet_results``
+    Results of facets calculated against this data (May execute additional queries.)
+
+    Shape abbreviated from /fixtures/facetable.json?_facet=state&_extra=facet_results.
+
+    .. code-block:: json
+
+        {
+          "results": {
+            "state": {
+              "name": "state",
+              "type": "column",
+              "results": [
+                {
+                  "value": "CA",
+                  "label": "CA",
+                  "count": 10
+                },
+                {
+                  "value": "MI",
+                  "label": "MI",
+                  "count": 4
+                }
+              ]
+            }
+          },
+          "timed_out": []
+        }
+
+``facets_timed_out``
+    Facet calculations that timed out
+
+    ``GET /fixtures/facetable.json?_facet=state&_extra=facets_timed_out``
+
+    .. code-block:: json
+
+        []
+
+``suggested_facets``
+    Suggestions for facets that might return interesting results (May execute additional queries.)
+
+    Shape abbreviated from /fixtures/facetable.json?_extra=suggested_facets.
+
+    .. code-block:: json
+
+        [
+          {
+            "name": "state",
+            "toggle_url": "http://localhost/fixtures/facetable.json?_extra=suggested_facets&_facet=state"
+          }
+        ]
+
+``human_description_en``
+    Human-readable description of the filters
+
+    ``GET /fixtures/facetable.json?state=CA&_sort=pk&_extra=human_description_en``
+
+    .. code-block:: json
+
+        "where state = \"CA\" sorted by pk"
+
+``next_url``
+    Full URL for the next page of results
+
+    ``GET /fixtures/facetable.json?_size=1&_extra=next_url``
+
+    .. code-block:: json
+
+        "http://localhost/fixtures/facetable.json?_size=1&_extra=next_url&_next=1"
+
+``columns``
+    Column names returned by this query
+
+    ``GET /fixtures/facetable.json?_extra=columns``
+
+    .. code-block:: json
+
+        [
+          "pk",
+          "created",
+          "planet_int",
+          "on_earth",
+          "state",
+          "_city_id",
+          "_neighborhood",
+          "tags",
+          "complex_array",
+          "distinct_some_null",
+          "n"
+        ]
+
+``all_columns``
+    All columns in the table, regardless of _col/_nocol filtering
+
+    ``GET /fixtures/facetable.json?_col=pk&_extra=all_columns``
+
+    .. code-block:: json
+
+        [
+          "pk",
+          "created",
+          "planet_int",
+          "on_earth",
+          "state",
+          "_city_id",
+          "_neighborhood",
+          "tags",
+          "complex_array",
+          "distinct_some_null",
+          "n"
+        ]
+
+``primary_keys``
+    Primary keys for this table
+
+    ``GET /fixtures/facetable.json?_extra=primary_keys``
+
+    .. code-block:: json
+
+        [
+          "pk"
+        ]
+
+``display_columns``
+    Column metadata used by the HTML table display
+
+    Shape abbreviated from /fixtures/facetable.json?_size=1&_extra=display_columns.
+
+    .. code-block:: json
+
+        [
+          {
+            "name": "pk",
+            "sortable": true,
+            "is_pk": true,
+            "type": "INTEGER",
+            "notnull": 0
+          },
+          {
+            "name": "created",
+            "sortable": true,
+            "is_pk": false,
+            "type": "TEXT",
+            "notnull": 0,
+            "description": null,
+            "column_type": null,
+            "column_type_config": null
+          }
+        ]
+
+``display_rows``
+    Row data formatted for the HTML table display
+
+``render_cell``
+    Rendered HTML for each cell using the render_cell plugin hook
+
+    Only columns whose rendered value differs from the default are included.
+
+    .. code-block:: json
+
+        [
+          {},
+          {
+            "content": "<strong>Custom rendered HTML</strong>"
+          }
+        ]
+
+``debug``
+    Extra debug information
+
+``request``
+    Full information about the request
+
+``query``
+    Details of the underlying SQL query
+
+    ``GET /fixtures/facetable.json?_size=1&_extra=query``
+
+    .. code-block:: json
+
+        {
+          "sql": "select pk, created, planet_int, on_earth, state, _city_id, _neighborhood, tags, complex_array, distinct_some_null, n from facetable order by pk limit 2",
+          "params": {}
+        }
+
+``column_types``
+    Column type assignments for this table
+
+    .. code-block:: json
+
+        {}
+
+``set_column_type_ui``
+    Column type UI metadata for this table
+
+``metadata``
+    Metadata about the table and database
+
+    ``GET /fixtures/facetable.json?_extra=metadata``
+
+    .. code-block:: json
+
+        {
+          "columns": {}
+        }
+
+``extras``
+    Available ?_extra= blocks
+
+``database``
+    Database name
+
+    ``GET /fixtures/facetable.json?_extra=database``
+
+    .. code-block:: json
+
+        "fixtures"
+
+``table``
+    Table name
+
+    ``GET /fixtures/facetable.json?_extra=table``
+
+    .. code-block:: json
+
+        "facetable"
+
+``database_color``
+    Color assigned to the database
+
+    ``GET /fixtures/facetable.json?_extra=database_color``
+
+    .. code-block:: json
+
+        "9403e5"
+
+``actions``
+    Table or view actions made available by plugin hooks
+
+``filters``
+    Filters object used by the HTML table interface
+
+``renderers``
+    Alternative output renderers available for this table
+
+    ``GET /fixtures/facetable.json?_extra=renderers``
+
+    .. code-block:: json
+
+        {
+          "json": "/fixtures/facetable.json?_extra=renderers&_format=json&_labels=on"
+        }
+
+``custom_table_templates``
+    Custom template names considered for this table
+
+    ``GET /fixtures/facetable.json?_extra=custom_table_templates``
+
+    .. code-block:: json
+
+        [
+          "_table-fixtures-facetable.html",
+          "_table-table-fixtures-facetable.html",
+          "_table.html"
+        ]
+
+``sorted_facet_results``
+    Facet results sorted for display
+
+    ``GET /fixtures/facetable.json?_facet=state&_extra=sorted_facet_results``
+
+    .. code-block:: json
+
+        [
+          {
+            "name": "state",
+            "type": "column",
+            "hideable": true,
+            "toggle_url": "/fixtures/facetable.json?_extra=sorted_facet_results",
+            "results": [
+              {
+                "value": "CA",
+                "label": "CA",
+                "count": 10,
+                "toggle_url": "http://localhost/fixtures/facetable.json?_facet=state&_extra=sorted_facet_results&state=CA",
+                "selected": false
+              },
+              {
+                "value": "MI",
+                "label": "MI",
+                "count": 4,
+                "toggle_url": "http://localhost/fixtures/facetable.json?_facet=state&_extra=sorted_facet_results&state=MI",
+                "selected": false
+              },
+              {
+                "value": "MC",
+                "label": "MC",
+                "count": 1,
+                "toggle_url": "http://localhost/fixtures/facetable.json?_facet=state&_extra=sorted_facet_results&state=MC",
+                "selected": false
+              }
+            ],
+            "truncated": false
+          }
+        ]
+
+``table_definition``
+    SQL definition for this table
+
+    ``GET /fixtures/facetable.json?_extra=table_definition``
+
+    .. code-block:: json
+
+        "CREATE TABLE facetable (\n    pk integer primary key,\n    created text,\n    planet_int integer,\n    on_earth integer,\n    state text,\n    _city_id integer,\n    _neighborhood text,\n    tags text,\n    complex_array text,\n    distinct_some_null,\n    n text,\n    FOREIGN KEY (\"_city_id\") REFERENCES [facet_cities](id)\n);"
+
+``view_definition``
+    SQL definition for this view
+
+    ``GET /fixtures/simple_view.json?_extra=view_definition``
+
+    .. code-block:: json
+
+        "CREATE VIEW simple_view AS\n    SELECT content, upper(content) AS upper_content FROM simple_primary_key;"
+
+``is_view``
+    Whether this resource is a view instead of a table
+
+    ``GET /fixtures/simple_view.json?_extra=is_view``
+
+    .. code-block:: json
+
+        true
+
+``private``
+    Whether this table is private to the current actor
+
+    ``GET /fixtures/facetable.json?_extra=private``
+
+    .. code-block:: json
+
+        false
+
+``expandable_columns``
+    Foreign key columns that can be expanded with labels
+
+    ``GET /fixtures/facetable.json?_extra=expandable_columns``
+
+    .. code-block:: json
+
+        [
+          [
+            {
+              "column": "_city_id",
+              "other_table": "facet_cities",
+              "other_column": "id"
+            },
+            "name"
+          ]
+        ]
+
+``form_hidden_args``
+    Hidden form arguments used by the HTML table interface
+
+    ``GET /fixtures/facetable.json?_facet=state&_size=1&_extra=form_hidden_args``
+
+    .. code-block:: json
+
+        [
+          [
+            "_facet",
+            "state"
+          ],
+          [
+            "_size",
+            "1"
+          ],
+          [
+            "_extra",
+            "form_hidden_args"
+          ]
+        ]
 
 .. [[[end]]]
 

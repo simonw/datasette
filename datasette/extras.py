@@ -1,4 +1,5 @@
 import re
+from dataclasses import dataclass
 from enum import Enum
 from typing import ClassVar
 
@@ -15,6 +16,14 @@ def extra_names_from_request(request):
 
 class ExtraScope(Enum):
     TABLE = "table"
+
+
+@dataclass(frozen=True)
+class ExtraExample:
+    path: str | None = None
+    key: str | None = None
+    value: object | None = None
+    note: str | None = None
 
 
 class Provider:
@@ -36,6 +45,7 @@ class Provider:
 
 class Extra(Provider):
     description: ClassVar[str | None] = None
+    example: ClassVar[ExtraExample | None] = None
     public: ClassVar[bool] = True
     stable: ClassVar[bool] = True
     expensive: ClassVar[bool] = False
@@ -52,6 +62,7 @@ class Extra(Provider):
             "stable": cls.stable,
             "expensive": cls.expensive,
             "docs_note": cls.docs_note,
+            "example": cls.example,
         }
 
 

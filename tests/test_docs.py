@@ -112,6 +112,16 @@ def test_table_filters_are_documented(documented_table_filters, subtests):
             assert f.key in documented_table_filters
 
 
+def test_table_extra_examples_are_documented():
+    from datasette.views.table_extras import CountExtra
+
+    assert CountExtra.example.path == "/fixtures/facetable.json?_extra=count"
+    content = (docs_path / "json_api.rst").read_text()
+    section = content.split(".. _json_api_extra:")[-1].split(".. _table_arguments:")[0]
+    assert "GET /fixtures/facetable.json?_extra=count" in section
+    assert ".. code-block:: json" in section
+
+
 @pytest.fixture(scope="session")
 def documented_labels():
     labels = set()

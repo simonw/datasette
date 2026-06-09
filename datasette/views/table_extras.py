@@ -2,7 +2,7 @@ import itertools
 from dataclasses import dataclass
 
 from datasette.database import QueryInterrupted
-from datasette.extras import Extra, ExtraRegistry, ExtraScope, Provider
+from datasette.extras import Extra, ExtraExample, ExtraRegistry, ExtraScope, Provider
 from datasette.plugins import pm
 from datasette.resources import TableResource
 from datasette.utils import (
@@ -56,6 +56,7 @@ class TableExtraContext:
 
 class CountSqlExtra(Extra):
     description = "SQL query used to calculate the total count"
+    example = ExtraExample("/fixtures/facetable.json?_size=0&_extra=count_sql")
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -64,6 +65,7 @@ class CountSqlExtra(Extra):
 
 class CountExtra(Extra):
     description = "Total count of rows matching these filters"
+    example = ExtraExample("/fixtures/facetable.json?_extra=count")
     scopes = frozenset({ExtraScope.TABLE})
     expensive = True
 
@@ -121,6 +123,22 @@ class FacetInstancesProvider(Provider):
 
 class FacetResultsExtra(Extra):
     description = "Results of facets calculated against this data"
+    example = ExtraExample(
+        value={
+            "results": {
+                "state": {
+                    "name": "state",
+                    "type": "column",
+                    "results": [
+                        {"value": "CA", "label": "CA", "count": 10},
+                        {"value": "MI", "label": "MI", "count": 4},
+                    ],
+                }
+            },
+            "timed_out": [],
+        },
+        note="Shape abbreviated from /fixtures/facetable.json?_facet=state&_extra=facet_results.",
+    )
     scopes = frozenset({ExtraScope.TABLE})
     expensive = True
 
@@ -153,6 +171,9 @@ class FacetResultsExtra(Extra):
 
 class FacetsTimedOutExtra(Extra):
     description = "Facet calculations that timed out"
+    example = ExtraExample(
+        "/fixtures/facetable.json?_facet=state&_extra=facets_timed_out"
+    )
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context, facet_results):
@@ -161,6 +182,15 @@ class FacetsTimedOutExtra(Extra):
 
 class SuggestedFacetsExtra(Extra):
     description = "Suggestions for facets that might return interesting results"
+    example = ExtraExample(
+        value=[
+            {
+                "name": "state",
+                "toggle_url": "http://localhost/fixtures/facetable.json?_extra=suggested_facets&_facet=state",
+            }
+        ],
+        note="Shape abbreviated from /fixtures/facetable.json?_extra=suggested_facets.",
+    )
     scopes = frozenset({ExtraScope.TABLE})
     expensive = True
 
@@ -183,6 +213,9 @@ class SuggestedFacetsExtra(Extra):
 
 class HumanDescriptionEnExtra(Extra):
     description = "Human-readable description of the filters"
+    example = ExtraExample(
+        "/fixtures/facetable.json?state=CA&_sort=pk&_extra=human_description_en"
+    )
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -202,6 +235,7 @@ class HumanDescriptionEnExtra(Extra):
 
 class NextUrlExtra(Extra):
     description = "Full URL for the next page of results"
+    example = ExtraExample("/fixtures/facetable.json?_size=1&_extra=next_url")
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -210,6 +244,7 @@ class NextUrlExtra(Extra):
 
 class ColumnsExtra(Extra):
     description = "Column names returned by this query"
+    example = ExtraExample("/fixtures/facetable.json?_extra=columns")
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -218,6 +253,7 @@ class ColumnsExtra(Extra):
 
 class AllColumnsExtra(Extra):
     description = "All columns in the table, regardless of _col/_nocol filtering"
+    example = ExtraExample("/fixtures/facetable.json?_col=pk&_extra=all_columns")
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -226,6 +262,7 @@ class AllColumnsExtra(Extra):
 
 class PrimaryKeysExtra(Extra):
     description = "Primary keys for this table"
+    example = ExtraExample("/fixtures/facetable.json?_extra=primary_keys")
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -262,6 +299,7 @@ class ActionsExtra(Extra):
 
 class IsViewExtra(Extra):
     description = "Whether this resource is a view instead of a table"
+    example = ExtraExample("/fixtures/simple_view.json?_extra=is_view")
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -318,6 +356,28 @@ class DisplayColumnsAndRowsProvider(Provider):
 
 class DisplayColumnsExtra(Extra):
     description = "Column metadata used by the HTML table display"
+    example = ExtraExample(
+        value=[
+            {
+                "name": "pk",
+                "sortable": True,
+                "is_pk": True,
+                "type": "INTEGER",
+                "notnull": 0,
+            },
+            {
+                "name": "created",
+                "sortable": True,
+                "is_pk": False,
+                "type": "TEXT",
+                "notnull": 0,
+                "description": None,
+                "column_type": None,
+                "column_type_config": None,
+            },
+        ],
+        note="Shape abbreviated from /fixtures/facetable.json?_size=1&_extra=display_columns.",
+    )
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context, display_columns_and_rows):
@@ -334,6 +394,13 @@ class DisplayRowsExtra(Extra):
 
 class RenderCellExtra(Extra):
     description = "Rendered HTML for each cell using the render_cell plugin hook"
+    example = ExtraExample(
+        value=[
+            {},
+            {"content": "<strong>Custom rendered HTML</strong>"},
+        ],
+        note="Only columns whose rendered value differs from the default are included.",
+    )
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -385,6 +452,7 @@ class RenderCellExtra(Extra):
 
 class QueryExtra(Extra):
     description = "Details of the underlying SQL query"
+    example = ExtraExample("/fixtures/facetable.json?_size=1&_extra=query")
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -396,6 +464,7 @@ class QueryExtra(Extra):
 
 class ColumnTypesExtra(Extra):
     description = "Column type assignments for this table"
+    example = ExtraExample(value={})
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -464,6 +533,7 @@ class SetColumnTypeUiExtra(Extra):
 
 class MetadataExtra(Extra):
     description = "Metadata about the table and database"
+    example = ExtraExample("/fixtures/facetable.json?_extra=metadata")
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -489,6 +559,7 @@ class MetadataExtra(Extra):
 
 class DatabaseExtra(Extra):
     description = "Database name"
+    example = ExtraExample("/fixtures/facetable.json?_extra=database")
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -497,6 +568,7 @@ class DatabaseExtra(Extra):
 
 class TableExtra(Extra):
     description = "Table name"
+    example = ExtraExample("/fixtures/facetable.json?_extra=table")
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -505,6 +577,7 @@ class TableExtra(Extra):
 
 class DatabaseColorExtra(Extra):
     description = "Color assigned to the database"
+    example = ExtraExample("/fixtures/facetable.json?_extra=database_color")
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -513,6 +586,9 @@ class DatabaseColorExtra(Extra):
 
 class FormHiddenArgsExtra(Extra):
     description = "Hidden form arguments used by the HTML table interface"
+    example = ExtraExample(
+        "/fixtures/facetable.json?_facet=state&_size=1&_extra=form_hidden_args"
+    )
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -538,6 +614,7 @@ class FiltersExtra(Extra):
 
 class CustomTableTemplatesExtra(Extra):
     description = "Custom template names considered for this table"
+    example = ExtraExample("/fixtures/facetable.json?_extra=custom_table_templates")
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -550,6 +627,9 @@ class CustomTableTemplatesExtra(Extra):
 
 class SortedFacetResultsExtra(Extra):
     description = "Facet results sorted for display"
+    example = ExtraExample(
+        "/fixtures/facetable.json?_facet=state&_extra=sorted_facet_results"
+    )
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context, facet_results):
@@ -585,6 +665,7 @@ class SortedFacetResultsExtra(Extra):
 
 class TableDefinitionExtra(Extra):
     description = "SQL definition for this table"
+    example = ExtraExample("/fixtures/facetable.json?_extra=table_definition")
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -593,6 +674,7 @@ class TableDefinitionExtra(Extra):
 
 class ViewDefinitionExtra(Extra):
     description = "SQL definition for this view"
+    example = ExtraExample("/fixtures/simple_view.json?_extra=view_definition")
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -601,6 +683,7 @@ class ViewDefinitionExtra(Extra):
 
 class RenderersExtra(Extra):
     description = "Alternative output renderers available for this table"
+    example = ExtraExample("/fixtures/facetable.json?_extra=renderers")
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context, expandable_columns, query):
@@ -636,6 +719,7 @@ class RenderersExtra(Extra):
 
 class PrivateExtra(Extra):
     description = "Whether this table is private to the current actor"
+    example = ExtraExample("/fixtures/facetable.json?_extra=private")
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -644,6 +728,7 @@ class PrivateExtra(Extra):
 
 class ExpandableColumnsExtra(Extra):
     description = "Foreign key columns that can be expanded with labels"
+    example = ExtraExample("/fixtures/facetable.json?_extra=expandable_columns")
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):

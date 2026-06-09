@@ -122,6 +122,14 @@ def test_table_extra_examples_are_documented():
     assert ".. code-block:: json" in section
 
 
+def test_render_cell_extra_example_explains_row_and_column_mapping():
+    content = (docs_path / "json_api.rst").read_text()
+    section = content.split("``render_cell``")[-1].split("``query``")[0]
+    assert "same order as the ``rows`` array" in section
+    assert '"rows": [' in section
+    assert '"render_cell": [' in section
+
+
 @pytest.fixture(scope="session")
 def documented_labels():
     labels = set()

@@ -428,16 +428,28 @@ The available table extras are listed below.
 ``render_cell``
     Rendered HTML for each cell using the render_cell plugin hook
 
-    Only columns whose rendered value differs from the default are included.
+    The ``render_cell`` array has one item per row, in the same order as the ``rows`` array. Each object is keyed by column name. Only columns whose rendered value differs from the default are included.
 
     .. code-block:: json
 
-        [
-          {},
-          {
-            "content": "<strong>Custom rendered HTML</strong>"
-          }
-        ]
+        {
+          "rows": [
+            {
+              "id": 1,
+              "content": "hello"
+            },
+            {
+              "id": 4,
+              "content": "RENDER_CELL_DEMO"
+            }
+          ],
+          "render_cell": [
+            {},
+            {
+              "content": "<strong>Custom rendered HTML</strong>"
+            }
+          ]
+        }
 
 ``debug``
     Extra debug information

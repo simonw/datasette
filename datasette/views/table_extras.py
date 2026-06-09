@@ -395,11 +395,21 @@ class DisplayRowsExtra(Extra):
 class RenderCellExtra(Extra):
     description = "Rendered HTML for each cell using the render_cell plugin hook"
     example = ExtraExample(
-        value=[
-            {},
-            {"content": "<strong>Custom rendered HTML</strong>"},
-        ],
-        note="Only columns whose rendered value differs from the default are included.",
+        value={
+            "rows": [
+                {"id": 1, "content": "hello"},
+                {"id": 4, "content": "RENDER_CELL_DEMO"},
+            ],
+            "render_cell": [
+                {},
+                {"content": "<strong>Custom rendered HTML</strong>"},
+            ],
+        },
+        note=(
+            "The ``render_cell`` array has one item per row, in the same order as "
+            "the ``rows`` array. Each object is keyed by column name. Only columns "
+            "whose rendered value differs from the default are included."
+        ),
     )
     scopes = frozenset({ExtraScope.TABLE})
 

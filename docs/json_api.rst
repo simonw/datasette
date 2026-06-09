@@ -235,6 +235,101 @@ query string arguments:
 
     Only available if the :ref:`setting_trace_debug` setting is enabled.
 
+.. _json_api_extra:
+
+Expanding table JSON responses
+------------------------------
+
+Table JSON responses can be expanded with one or more ``?_extra=`` parameters.
+These can be repeated or comma-separated:
+
+::
+
+    ?_extra=columns&_extra=count,next_url
+
+The available table extras are listed below.
+
+.. [[[cog
+    from json_api_doc import table_extras
+    table_extras(cog)
+.. ]]]
+
+.. list-table::
+   :header-rows: 1
+
+   * - Extra
+     - Description
+   * - ``count``
+     - Total count of rows matching these filters (May execute additional queries.)
+   * - ``count_sql``
+     - SQL query used to calculate the total count
+   * - ``facet_results``
+     - Results of facets calculated against this data (May execute additional queries.)
+   * - ``facets_timed_out``
+     - Facet calculations that timed out
+   * - ``suggested_facets``
+     - Suggestions for facets that might return interesting results (May execute additional queries.)
+   * - ``human_description_en``
+     - Human-readable description of the filters
+   * - ``next_url``
+     - Full URL for the next page of results
+   * - ``columns``
+     - Column names returned by this query
+   * - ``all_columns``
+     - All columns in the table, regardless of _col/_nocol filtering
+   * - ``primary_keys``
+     - Primary keys for this table
+   * - ``display_columns``
+     - Column metadata used by the HTML table display
+   * - ``display_rows``
+     - Row data formatted for the HTML table display
+   * - ``render_cell``
+     - Rendered HTML for each cell using the render_cell plugin hook
+   * - ``debug``
+     - Extra debug information
+   * - ``request``
+     - Full information about the request
+   * - ``query``
+     - Details of the underlying SQL query
+   * - ``column_types``
+     - Column type assignments for this table
+   * - ``set_column_type_ui``
+     - Column type UI metadata for this table
+   * - ``metadata``
+     - Metadata about the table and database
+   * - ``extras``
+     - Available ?_extra= blocks
+   * - ``database``
+     - Database name
+   * - ``table``
+     - Table name
+   * - ``database_color``
+     - Color assigned to the database
+   * - ``actions``
+     - Table or view actions made available by plugin hooks
+   * - ``filters``
+     - Filters object used by the HTML table interface
+   * - ``renderers``
+     - Alternative output renderers available for this table
+   * - ``custom_table_templates``
+     - Custom template names considered for this table
+   * - ``sorted_facet_results``
+     - Facet results sorted for display
+   * - ``table_definition``
+     - SQL definition for this table
+   * - ``view_definition``
+     - SQL definition for this view
+   * - ``is_view``
+     - Whether this resource is a view instead of a table
+   * - ``private``
+     - Whether this table is private to the current actor
+   * - ``expandable_columns``
+     - Foreign key columns that can be expanded with labels
+   * - ``form_hidden_args``
+     - Hidden form arguments used by the HTML table interface
+
+.. [[[end]]]
+
 .. _table_arguments:
 
 Table arguments

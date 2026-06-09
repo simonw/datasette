@@ -55,6 +55,7 @@ class TableExtraContext:
 
 
 class CountSqlExtra(Extra):
+    description = "SQL query used to calculate the total count"
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -151,6 +152,7 @@ class FacetResultsExtra(Extra):
 
 
 class FacetsTimedOutExtra(Extra):
+    description = "Facet calculations that timed out"
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context, facet_results):
@@ -231,6 +233,7 @@ class PrimaryKeysExtra(Extra):
 
 
 class ActionsExtra(Extra):
+    description = "Table or view actions made available by plugin hooks"
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -258,6 +261,7 @@ class ActionsExtra(Extra):
 
 
 class IsViewExtra(Extra):
+    description = "Whether this resource is a view instead of a table"
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -313,6 +317,7 @@ class DisplayColumnsAndRowsProvider(Provider):
 
 
 class DisplayColumnsExtra(Extra):
+    description = "Column metadata used by the HTML table display"
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context, display_columns_and_rows):
@@ -320,6 +325,7 @@ class DisplayColumnsExtra(Extra):
 
 
 class DisplayRowsExtra(Extra):
+    description = "Row data formatted for the HTML table display"
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context, display_columns_and_rows):
@@ -482,6 +488,7 @@ class MetadataExtra(Extra):
 
 
 class DatabaseExtra(Extra):
+    description = "Database name"
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -489,6 +496,7 @@ class DatabaseExtra(Extra):
 
 
 class TableExtra(Extra):
+    description = "Table name"
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -496,6 +504,7 @@ class TableExtra(Extra):
 
 
 class DatabaseColorExtra(Extra):
+    description = "Color assigned to the database"
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -503,6 +512,7 @@ class DatabaseColorExtra(Extra):
 
 
 class FormHiddenArgsExtra(Extra):
+    description = "Hidden form arguments used by the HTML table interface"
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -519,6 +529,7 @@ class FormHiddenArgsExtra(Extra):
 
 
 class FiltersExtra(Extra):
+    description = "Filters object used by the HTML table interface"
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -526,6 +537,7 @@ class FiltersExtra(Extra):
 
 
 class CustomTableTemplatesExtra(Extra):
+    description = "Custom template names considered for this table"
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -537,6 +549,7 @@ class CustomTableTemplatesExtra(Extra):
 
 
 class SortedFacetResultsExtra(Extra):
+    description = "Facet results sorted for display"
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context, facet_results):
@@ -571,6 +584,7 @@ class SortedFacetResultsExtra(Extra):
 
 
 class TableDefinitionExtra(Extra):
+    description = "SQL definition for this table"
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -578,6 +592,7 @@ class TableDefinitionExtra(Extra):
 
 
 class ViewDefinitionExtra(Extra):
+    description = "SQL definition for this view"
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -585,6 +600,7 @@ class ViewDefinitionExtra(Extra):
 
 
 class RenderersExtra(Extra):
+    description = "Alternative output renderers available for this table"
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context, expandable_columns, query):
@@ -619,6 +635,7 @@ class RenderersExtra(Extra):
 
 
 class PrivateExtra(Extra):
+    description = "Whether this table is private to the current actor"
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):
@@ -626,6 +643,7 @@ class PrivateExtra(Extra):
 
 
 class ExpandableColumnsExtra(Extra):
+    description = "Foreign key columns that can be expanded with labels"
     scopes = frozenset({ExtraScope.TABLE})
 
     async def resolve(self, context):

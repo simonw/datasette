@@ -762,7 +762,15 @@ class QueryView(View):
                     )
                 ),
             )
-            data = {}
+            data = {
+                "ok": query_error is None,
+                "rows": rows,
+                "columns": columns,
+                "query": {"sql": sql, "params": params},
+                "query_name": stored_query.name if stored_query else None,
+                "database": database,
+                "table": None,
+            }
             headers.update(
                 {
                     "Link": '<{}>; rel="alternate"; type="application/json+datasette"'.format(

@@ -627,6 +627,31 @@ async def test_hook_register_output_renderer_can_render(ds_client):
 
 
 @pytest.mark.asyncio
+async def test_hook_register_output_renderer_can_render_canned_query(ds_client):
+    # https://github.com/simonw/datasette/issues/2711
+    # can_render for a canned query must be passed the query's columns, rows
+    # and SQL - previously it received an empty data dict, so renderers that
+    # depend on the columns (datasette-atom, datasette-ics) never showed up.
+    response = await ds_client.get("/fixtures/pragma_cache_size")
+    assert response.status_code == 200
+    saw = ds_client.ds._can_render_saw
+    assert saw["columns"] == ["cache_size"]
+    assert len(saw["rows"]) == 1
+    assert saw["sql"] == "PRAGMA cache_size;"
+    assert saw["query_name"] == "pragma_cache_size"
+    # The renderer's export link should therefore be offered
+    links = (
+        Soup(response.text, "html.parser")
+        .find("p", {"class": "export-links"})
+        .find_all("a")
+    )
+    actual = [link["href"] for link in links]
+    assert any(
+        href.startswith("/fixtures/pragma_cache_size.testall") for href in actual
+    )
+
+
+@pytest.mark.asyncio
 async def test_hook_prepare_jinja2_environment(ds_client):
     ds_client.ds._HELLO = "HI"
     await ds_client.ds.invoke_startup()

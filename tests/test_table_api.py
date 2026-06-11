@@ -117,6 +117,29 @@ async def test_query_extras_for_stored_query(ds_client):
     }
 
 
+def test_query_extra_private_for_arbitrary_sql():
+    with make_app_client(config={"allow_sql": {"id": "root"}}) as client:
+        cookies = {"ds_actor": client.actor_cookie({"id": "root"})}
+        response = client.get(
+            "/fixtures/-/query.json?sql=select+1+as+one&_extra=private",
+            cookies=cookies,
+        )
+        assert response.status == 200
+        assert response.json["private"] is True
+        # Anonymous users cannot execute SQL at all here
+        anon = client.get("/fixtures/-/query.json?sql=select+1+as+one")
+        assert anon.status == 403
+
+
+def test_query_extra_private_false_when_sql_is_public():
+    with make_app_client() as client:
+        response = client.get(
+            "/fixtures/-/query.json?sql=select+1+as+one&_extra=private"
+        )
+        assert response.status == 200
+        assert response.json["private"] is False
+
+
 @pytest.mark.asyncio
 async def test_table_shape_objects(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key.json?_shape=objects")

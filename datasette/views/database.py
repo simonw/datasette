@@ -612,11 +612,13 @@ class QueryView(View):
                 )
 
         else:
-            await datasette.ensure_permission(
+            visible, private = await datasette.check_visibility(
+                request.actor,
                 action="execute-sql",
                 resource=DatabaseResource(database=database),
-                actor=request.actor,
             )
+            if not visible:
+                raise Forbidden("execute-sql")
 
         # Flattened because of ?sql=&name1=value1&name2=value2 feature
         params = {key: request.args.get(key) for key in request.args}

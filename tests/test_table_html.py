@@ -349,7 +349,11 @@ async def test_facet_display(ds_client):
                     {
                         "name": a.text,
                         "qs": a["href"].split("?")[-1],
-                        "count": int(str(a.parent).split("</a>")[1].split("<")[0]),
+                        "count": int(
+                            a.parent.find(
+                                "span", {"class": "facet-count"}
+                            ).text.replace(",", "")
+                        ),
                     }
                     for a in div.find("ul").find_all("a")
                 ],
@@ -695,7 +699,7 @@ async def test_table_html_foreign_key_facets(ds_client):
     assert response.status_code == 200
     assert (
         '<li><a href="http://localhost/fixtures/foreign_key_references?_facet=foreign_key_with_blank_label&amp;foreign_key_with_blank_label=3"'
-        ' data-facet-value="3">-</a> 1</li>'
+        ' data-facet-value="3">-</a> <span class="facet-count">1</span></li>'
     ) in response.text
 
 

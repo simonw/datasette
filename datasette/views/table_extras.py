@@ -53,6 +53,7 @@ class TableExtraContext:
     extra_registry: ExtraRegistry
     display_columns_and_rows: object
     run_sequential: object
+    query_name: str | None = None
     scope: ExtraScope = ExtraScope.TABLE
 
 
@@ -67,7 +68,6 @@ class RowExtraContext:
     private: bool
     rows: list
     columns: list
-    results_description: list
     pks: list
     pk_values: list
     sql: str
@@ -75,6 +75,7 @@ class RowExtraContext:
     extras: set
     extra_registry: ExtraRegistry
     foreign_key_tables: object
+    is_view: bool = False
     scope: ExtraScope = ExtraScope.ROW
 
 
@@ -96,6 +97,9 @@ class QueryExtraContext:
     metadata: dict
     extras: set
     extra_registry: ExtraRegistry
+    table_name: str | None = None
+    is_view: bool = False
+    pks: list | None = None
     scope: ExtraScope = ExtraScope.QUERY
 
 
@@ -383,6 +387,8 @@ class DebugExtra(Extra):
         }
         if context.scope == ExtraScope.TABLE:
             debug["resolved"] = repr(context.resolved)
+            debug["nofacet"] = context.nofacet
+            debug["nosuggest"] = context.nosuggest
         elif context.scope == ExtraScope.ROW:
             debug["resolved"] = {
                 "table": context.table_name,
@@ -391,10 +397,6 @@ class DebugExtra(Extra):
                 "pks": context.pks,
                 "pk_values": context.pk_values,
             }
-        if hasattr(context, "nofacet"):
-            debug["nofacet"] = context.nofacet
-        if hasattr(context, "nosuggest"):
-            debug["nosuggest"] = context.nosuggest
         return debug
 
 
@@ -527,16 +529,10 @@ class RenderCellExtra(Extra):
     scopes = frozenset({ExtraScope.TABLE, ExtraScope.ROW, ExtraScope.QUERY})
 
     async def resolve(self, context):
-        table_name = getattr(context, "table_name", None)
-        is_view = getattr(context, "is_view", False)
-        pks = getattr(context, "pks", [])
-        pks_for_display = (
-            pks if pks else (["rowid"] if table_name and not is_view else [])
+        table_name = context.table_name
+        pks_for_display = context.pks or (
+            ["rowid"] if table_name and not context.is_view else []
         )
-        if hasattr(context, "results_description"):
-            col_names = [col[0] for col in context.results_description]
-        else:
-            col_names = context.columns
         ct_map = (
             await context.datasette.get_column_types(context.database_name, table_name)
             if table_name
@@ -545,7 +541,7 @@ class RenderCellExtra(Extra):
         rendered_rows = []
         for row in context.rows:
             rendered_row = {}
-            for value, column in zip(row, col_names):
+            for value, column in zip(row, context.columns):
                 ct = ct_map.get(column)
                 plugin_display_value = None
                 if ct:
@@ -869,7 +865,7 @@ class RenderersExtra(Extra):
         url_labels_extra = {}
         if expandable_columns:
             url_labels_extra = {"_labels": "on"}
-        table_name = getattr(context, "table_name", None)
+        table_name = context.table_name
         view_name = "table" if context.scope == ExtraScope.TABLE else "database"
         for key, (_, can_render) in context.datasette.renderers.items():
             it_can_render = call_with_supported_arguments(
@@ -878,7 +874,7 @@ class RenderersExtra(Extra):
                 columns=context.columns or [],
                 rows=context.rows or [],
                 sql=query.get("sql", None),
-                query_name=getattr(context, "query_name", None),
+                query_name=context.query_name,
                 database=context.database_name,
                 table=table_name,
                 request=context.request,

@@ -179,7 +179,6 @@ class RowView(DataView):
             private=private,
             rows=rows,
             columns=columns,
-            results_description=results.description,
             pks=pks,
             pk_values=pk_values,
             sql=resolved.sql,

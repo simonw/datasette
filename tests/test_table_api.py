@@ -69,6 +69,134 @@ async def test_table_shape_arrayfirst(ds_client):
 
 
 @pytest.mark.asyncio
+async def test_query_extras_for_arbitrary_sql(ds_client):
+    response = await ds_client.get(
+        "/fixtures/-/query.json?"
+        + urllib.parse.urlencode(
+            {
+                "sql": "select 1 as one",
+                "_extra": "columns,database,query,request,debug",
+            }
+        )
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["rows"] == [{"one": 1}]
+    assert data["columns"] == ["one"]
+    assert data["database"] == "fixtures"
+    assert data["query"]["sql"] == "select 1 as one"
+    assert data["request"]["path"] == "/fixtures/-/query.json"
+    assert data["debug"]["url_vars"] == {
+        "database": "fixtures",
+        "format": "json",
+    }
+
+
+@pytest.mark.asyncio
+async def test_query_extras_for_stored_query(ds_client):
+    response = await ds_client.get(
+        "/fixtures/neighborhood_search.json?"
+        + urllib.parse.urlencode(
+            {
+                "text": "town",
+                "_extra": "columns,database,query,request,debug",
+            }
+        )
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["columns"] == ["_neighborhood", "name", "state"]
+    assert data["database"] == "fixtures"
+    assert data["query"]["sql"].strip().startswith("select _neighborhood")
+    assert data["query"]["params"]["text"] == "town"
+    assert data["request"]["path"] == "/fixtures/neighborhood_search.json"
+    assert data["debug"]["url_vars"] == {
+        "database": "fixtures",
+        "table": "neighborhood_search",
+        "format": "json",
+    }
+
+
+@pytest.mark.parametrize("extra", ["filters", "actions", "display_rows"])
+@pytest.mark.asyncio
+async def test_html_only_extras_are_not_available_via_json(ds_client, extra):
+    # These extras exist for the HTML view; their values are not JSON
+    # serializable so they are internal, not part of the JSON API
+    response = await ds_client.get(f"/fixtures/facetable.json?_extra={extra}")
+    assert response.status_code == 200
+    assert extra not in response.json()
+
+
+@pytest.mark.asyncio
+async def test_html_only_extras_are_not_advertised(ds_client):
+    response = await ds_client.get("/fixtures/facetable.json?_extra=extras")
+    assert response.status_code == 200
+    names = {e["name"] for e in response.json()["extras"]}
+    assert {"filters", "actions", "display_rows"}.isdisjoint(names)
+
+
+def test_query_extra_private_for_arbitrary_sql():
+    with make_app_client(config={"allow_sql": {"id": "root"}}) as client:
+        cookies = {"ds_actor": client.actor_cookie({"id": "root"})}
+        response = client.get(
+            "/fixtures/-/query.json?sql=select+1+as+one&_extra=private",
+            cookies=cookies,
+        )
+        assert response.status == 200
+        assert response.json["private"] is True
+        # Anonymous users cannot execute SQL at all here
+        anon = client.get("/fixtures/-/query.json?sql=select+1+as+one")
+        assert anon.status == 403
+
+
+def test_query_extra_query_reports_bound_params():
+    config = {
+        "databases": {
+            "fixtures": {
+                "queries": {
+                    "declared_params": {
+                        "sql": "select 1 as one",
+                        "params": ["foo"],
+                    },
+                    "magic_host": {
+                        "sql": "select :_header_host as h",
+                    },
+                }
+            }
+        }
+    }
+    with make_app_client(config=config) as client:
+        # Declared parameters are reported even when the regex cannot find them
+        response = client.get("/fixtures/declared_params.json?foo=bar&_extra=query")
+        assert response.status == 200
+        assert response.json["query"]["params"] == {"foo": "bar"}
+        # Magic parameters are bound internally and should not be reported,
+        # especially not as a value taken from the querystring
+        response = client.get(
+            "/fixtures/magic_host.json?_extra=query&_header_host=spoofed"
+        )
+        assert response.status == 200
+        assert response.json["rows"] == [{"h": "localhost"}]
+        assert response.json["query"]["params"] == {}
+
+
+def test_query_extra_query_does_not_echo_querystring_without_sql():
+    with make_app_client() as client:
+        response = client.get("/fixtures/-/query.json?_extra=query&foo=bar")
+        assert response.status == 200
+        assert response.json["query"]["params"] == {}
+
+
+def test_query_extra_private_false_when_sql_is_public():
+    with make_app_client() as client:
+        response = client.get(
+            "/fixtures/-/query.json?sql=select+1+as+one&_extra=private"
+        )
+        assert response.status == 200
+        assert response.json["private"] is False
+
+
+@pytest.mark.asyncio
 async def test_table_shape_objects(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key.json?_shape=objects")
     assert response.json()["rows"] == [
@@ -1374,6 +1502,17 @@ async def test_table_extras(ds_client, extra, expected_json):
     )
     assert response.status_code == 200
     assert response.json() == expected_json
+
+
+@pytest.mark.asyncio
+async def test_table_extra_columns_can_be_comma_separated(ds_client):
+    response = await ds_client.get(
+        "/fixtures/primary_key_multiple_columns.json?_extra=columns,count"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["columns"] == ["id", "content", "content2"]
+    assert data["count"] == 1
 
 
 @pytest.mark.asyncio

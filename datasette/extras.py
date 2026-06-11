@@ -1,0 +1,118 @@
+import re
+from dataclasses import dataclass
+from enum import Enum
+from typing import ClassVar
+
+from asyncinject import Registry
+
+
+def extra_names_from_request(request):
+    extra_bits = request.args.getlist("_extra")
+    extras = set()
+    for bit in extra_bits:
+        extras.update(part for part in bit.split(",") if part)
+    return extras
+
+
+class ExtraScope(Enum):
+    TABLE = "table"
+    ROW = "row"
+    QUERY = "query"
+
+
+@dataclass(frozen=True)
+class ExtraExample:
+    path: str | None = None
+    key: str | None = None
+    value: object | None = None
+    note: str | None = None
+
+
+class Provider:
+    name: ClassVar[str | None] = None
+    scopes: ClassVar[set[ExtraScope]] = set()
+    public: ClassVar[bool] = False
+
+    @classmethod
+    def key(cls):
+        return cls.name or _camel_to_snake(cls.__name__)
+
+    @classmethod
+    def available_for(cls, scope):
+        return scope in cls.scopes
+
+    async def resolve(self, context):
+        raise NotImplementedError
+
+
+class Extra(Provider):
+    description: ClassVar[str | None] = None
+    example: ClassVar[ExtraExample | None] = None
+    examples: ClassVar[dict[ExtraScope, ExtraExample | list[ExtraExample]]] = {}
+    public: ClassVar[bool] = True
+    expensive: ClassVar[bool] = False
+    docs_note: ClassVar[str | None] = None
+
+    @classmethod
+    def example_for_scope(cls, scope):
+        return cls.examples.get(scope, cls.example)
+
+
+class ExtraRegistry:
+    def __init__(self, classes):
+        self.classes = list(classes)
+        self.classes_by_name = {cls.key(): cls for cls in self.classes}
+        # Lazily-built shared state, keyed by scope. Safe to share across
+        # requests because Extra instances are stateless and asyncinject's
+        # Registry keeps per-call state local to each resolve_multi() call.
+        # If extras classes ever become registerable at runtime (e.g. via a
+        # plugin hook) these caches will need invalidating.
+        self._scope_registries = {}
+        self._allowed_names = {}
+
+    def classes_for_scope(self, scope, include_internal=True):
+        classes = [
+            cls
+            for cls in self.classes
+            if cls.available_for(scope) and (include_internal or cls.public)
+        ]
+        return classes
+
+    def public_classes_for_scope(self, scope):
+        return self.classes_for_scope(scope, include_internal=False)
+
+    def _registry_for_scope(self, scope):
+        registry = self._scope_registries.get(scope)
+        if registry is None:
+            registry = Registry()
+            for cls in self.classes_for_scope(scope):
+                registry.register(cls().resolve, name=cls.key())
+            self._scope_registries[scope] = registry
+        return registry
+
+    def _allowed_names_for_scope(self, scope, include_internal):
+        key = (scope, include_internal)
+        names = self._allowed_names.get(key)
+        if names is None:
+            names = {
+                cls.key()
+                for cls in self.classes_for_scope(
+                    scope, include_internal=include_internal
+                )
+            }
+            self._allowed_names[key] = names
+        return names
+
+    async def resolve(self, requested, context, scope, include_internal=False):
+        allowed_names = self._allowed_names_for_scope(scope, include_internal)
+        requested_names = [name for name in requested if name in allowed_names]
+        resolved = await self._registry_for_scope(scope).resolve_multi(
+            requested_names, results={"context": context}
+        )
+        return {name: resolved[name] for name in requested_names}
+
+
+def _camel_to_snake(name):
+    name = re.sub(r"(Extra|Provider)$", "", name)
+    name = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
+    return re.sub("([a-z0-9])([A-Z])", r"\1_\2", name).lower()

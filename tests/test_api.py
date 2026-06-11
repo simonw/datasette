@@ -383,7 +383,7 @@ async def test_row_strange_table_name(ds_client):
 @pytest.mark.asyncio
 async def test_row_foreign_key_tables(ds_client):
     response = await ds_client.get(
-        "/fixtures/simple_primary_key/1.json?_extras=foreign_key_tables"
+        "/fixtures/simple_primary_key/1.json?_extra=foreign_key_tables"
     )
     assert response.status_code == 200
     # Foreign keys are sorted by (other_table, column, other_column)
@@ -424,6 +424,28 @@ async def test_row_foreign_key_tables(ds_client):
             "link": "/fixtures/foreign_key_references?foreign_key_with_label=1",
         },
     ]
+
+
+@pytest.mark.asyncio
+async def test_row_extras(ds_client):
+    response = await ds_client.get(
+        "/fixtures/simple_primary_key/1.json?_extra=database,table,primary_keys,query,request,debug,foreign_key_tables"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["database"] == "fixtures"
+    assert data["table"] == "simple_primary_key"
+    assert data["primary_keys"] == ["id"]
+    assert data["query"]["sql"] == 'select * from simple_primary_key where "id"=:p0'
+    assert data["query"]["params"] == {"p0": "1"}
+    assert data["request"]["path"] == "/fixtures/simple_primary_key/1.json"
+    assert data["debug"]["url_vars"] == {
+        "database": "fixtures",
+        "table": "simple_primary_key",
+        "pks": "1",
+        "format": "json",
+    }
+    assert len(data["foreign_key_tables"]) == 5
 
 
 @pytest.mark.asyncio

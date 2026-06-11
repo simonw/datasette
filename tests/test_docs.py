@@ -112,6 +112,51 @@ def test_table_filters_are_documented(documented_table_filters, subtests):
             assert f.key in documented_table_filters
 
 
+def test_table_extra_examples_are_documented():
+    from datasette.views.table_extras import CountExtra
+
+    assert CountExtra.example.path == "/fixtures/facetable.json?_extra=count"
+    content = (docs_path / "json_api.rst").read_text()
+    section = content.split(".. _json_api_extra:")[-1].split(".. _table_arguments:")[0]
+    assert "GET /fixtures/facetable.json?_extra=count" in section
+    assert ".. code-block:: json" in section
+
+
+def test_render_cell_extra_example_explains_row_and_column_mapping():
+    content = (docs_path / "json_api.rst").read_text()
+    section = content.split("``render_cell``")[-1].split("``query``")[0]
+    assert "same order as the ``rows`` array" in section
+    assert '"rows": [' in section
+    assert '"render_cell": [' in section
+
+
+def test_debug_and_request_extra_examples_are_documented():
+    content = (docs_path / "json_api.rst").read_text()
+    section = content.split("Table JSON responses")[-1].split("Row JSON responses")[0]
+
+    debug_section = section.split("``debug``")[-1].split("``request``")[0]
+    assert "GET /fixtures/facetable.json?_extra=debug" in debug_section
+    assert '"url_vars": {' in debug_section
+
+    request_section = section.split("``request``")[-1].split("``query``")[0]
+    assert "GET /fixtures/facetable.json?_extra=request" in request_section
+    assert '"full_path":' in request_section
+
+
+def test_row_and_query_extra_sections_are_documented():
+    content = (docs_path / "json_api.rst").read_text()
+    assert "Row JSON responses" in content
+    assert (
+        "``GET /fixtures/simple_primary_key/1.json?_extra=foreign_key_tables``"
+        in content
+    )
+    assert "Query JSON responses" in content
+    assert "``GET /fixtures/-/query.json?sql=select+1+as+one&_extra=query``" in content
+    assert (
+        "``GET /fixtures/neighborhood_search.json?text=town&_extra=query``" in content
+    )
+
+
 @pytest.fixture(scope="session")
 def documented_labels():
     labels = set()

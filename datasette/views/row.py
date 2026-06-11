@@ -14,7 +14,9 @@ from datasette.plugins import pm
 import json
 import markupsafe
 import sqlite_utils
-from .table import display_columns_and_rows, _get_extras
+from datasette.extras import extra_names_from_request
+from .table import display_columns_and_rows
+from .table_extras import RowExtraContext, resolve_row_extras, table_extra_registry
 
 
 class RowView(DataView):
@@ -164,60 +166,27 @@ class RowView(DataView):
             "primary_key_values": pk_values,
         }
 
-        # Handle _extra parameter (new style)
-        extras = _get_extras(request)
-
-        # Also support legacy _extras parameter for backward compatibility
-        if "foreign_key_tables" in (request.args.get("_extras") or "").split(","):
-            extras.add("foreign_key_tables")
+        extras = extra_names_from_request(request)
 
         # Process extras
-        if "foreign_key_tables" in extras:
-            data["foreign_key_tables"] = await self.foreign_key_tables(
-                database, table, pk_values
-            )
-
-        if "render_cell" in extras:
-            # Call render_cell plugin hook for each cell
-            ct_map = await self.ds.get_column_types(database, table)
-            rendered_rows = []
-            for row in rows:
-                rendered_row = {}
-                for value, column in zip(row, columns):
-                    ct = ct_map.get(column)
-                    plugin_display_value = None
-                    # Try column type render_cell first
-                    if ct:
-                        candidate = await ct.render_cell(
-                            value=value,
-                            column=column,
-                            table=table,
-                            database=database,
-                            datasette=self.ds,
-                            request=request,
-                        )
-                        if candidate is not None:
-                            plugin_display_value = candidate
-                    if plugin_display_value is None:
-                        for candidate in pm.hook.render_cell(
-                            row=row,
-                            value=value,
-                            column=column,
-                            table=table,
-                            pks=resolved.pks,
-                            database=database,
-                            datasette=self.ds,
-                            request=request,
-                            column_type=ct,
-                        ):
-                            candidate = await await_me_maybe(candidate)
-                            if candidate is not None:
-                                plugin_display_value = candidate
-                                break
-                    if plugin_display_value:
-                        rendered_row[column] = str(plugin_display_value)
-                rendered_rows.append(rendered_row)
-            data["render_cell"] = rendered_rows
+        row_extra_context = RowExtraContext(
+            datasette=self.ds,
+            request=request,
+            db=db,
+            database_name=database,
+            table_name=table,
+            private=private,
+            rows=rows,
+            columns=columns,
+            pks=pks,
+            pk_values=pk_values,
+            sql=resolved.sql,
+            params=resolved.params,
+            extras=extras,
+            extra_registry=table_extra_registry,
+            foreign_key_tables=self.foreign_key_tables,
+        )
+        data.update(await resolve_row_extras(extras, row_extra_context))
 
         return (
             data,

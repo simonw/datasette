@@ -3,11 +3,10 @@ import itertools
 import json
 import urllib
 
-from asyncinject import Registry
 import markupsafe
 
+from datasette.extras import extra_names_from_request
 from datasette.plugins import pm
-from datasette.database import QueryInterrupted
 from datasette.events import (
     AlterTableEvent,
     DropTableEvent,
@@ -46,6 +45,12 @@ from datasette.filters import Filters
 import sqlite_utils
 from .base import BaseView, DatasetteError, _error, stream_csv
 from .database import QueryView
+from .table_extras import (
+    TABLE_EXTRA_BUNDLES,
+    TableExtraContext,
+    resolve_table_extras,
+    table_extra_registry,
+)
 
 LINK_WITH_LABEL = (
     '<a href="{base_url}{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'
@@ -849,14 +854,6 @@ class TableDropView(BaseView):
         return Response.json({"ok": True}, status=200)
 
 
-def _get_extras(request):
-    extra_bits = request.args.getlist("_extra")
-    extras = set()
-    for bit in extra_bits:
-        extras.update(bit.split(","))
-    return extras
-
-
 async def _columns_to_select(table_columns, pks, request):
     columns = list(table_columns)
     if "_col" in request.args:
@@ -1460,7 +1457,7 @@ async def table_view_data(
     rows = rows[:page_size]
 
     # Resolve extras
-    extras = _get_extras(request)
+    extras = extra_names_from_request(request)
     if any(k for k in request.args.keys() if k == "_facet" or k.startswith("_facet_")):
         extras.add("facet_results")
     if request.args.get("_shape") == "object":
@@ -1468,559 +1465,65 @@ async def table_view_data(
     if extra_extras:
         extras.update(extra_extras)
 
-    async def extra_count_sql():
-        return count_sql
-
-    async def extra_count():
-        "Total count of rows matching these filters"
-        # Calculate the total count for this query
-        count = None
-        if (
-            not db.is_mutable
-            and datasette.inspect_data
-            and count_sql == f"select count(*) from {table_name} "
-        ):
-            # We can use a previously cached table row count
-            try:
-                count = datasette.inspect_data[database_name]["tables"][table_name][
-                    "count"
-                ]
-            except KeyError:
-                pass
-
-        # Otherwise run a select count(*) ...
-        if count_sql and count is None and not nocount:
-            count_sql_limited = (
-                f"select count(*) from (select * {from_sql} limit 10001)"
-            )
-            try:
-                count_rows = list(await db.execute(count_sql_limited, from_sql_params))
-                count = count_rows[0][0]
-            except QueryInterrupted:
-                pass
-        return count
-
-    async def facet_instances(extra_count):
-        facet_instances = []
-        facet_classes = list(
-            itertools.chain.from_iterable(pm.hook.register_facet_classes())
-        )
-        for facet_class in facet_classes:
-            facet_instances.append(
-                facet_class(
-                    datasette,
-                    request,
-                    database_name,
-                    sql=sql_no_order_no_limit,
-                    params=params,
-                    table=table_name,
-                    table_config=table_metadata,
-                    row_count=extra_count,
-                )
-            )
-        return facet_instances
-
-    async def extra_facet_results(facet_instances):
-        "Results of facets calculated against this data"
-        facet_results = {}
-        facets_timed_out = []
-
-        if not nofacet:
-            # Run them in parallel
-            facet_awaitables = [facet.facet_results() for facet in facet_instances]
-            facet_awaitable_results = await run_sequential(*facet_awaitables)
-            for (
-                instance_facet_results,
-                instance_facets_timed_out,
-            ) in facet_awaitable_results:
-                for facet_info in instance_facet_results:
-                    base_key = facet_info["name"]
-                    key = base_key
-                    i = 1
-                    while key in facet_results:
-                        i += 1
-                        key = f"{base_key}_{i}"
-                    facet_results[key] = facet_info
-                facets_timed_out.extend(instance_facets_timed_out)
-
-        return {
-            "results": facet_results,
-            "timed_out": facets_timed_out,
-        }
-
-    async def extra_suggested_facets(facet_instances):
-        "Suggestions for facets that might return interesting results"
-        suggested_facets = []
-        # Calculate suggested facets
-        if (
-            datasette.setting("suggest_facets")
-            and datasette.setting("allow_facet")
-            and not _next
-            and not nofacet
-            and not nosuggest
-        ):
-            # Run them in parallel
-            facet_suggest_awaitables = [facet.suggest() for facet in facet_instances]
-            for suggest_result in await run_sequential(*facet_suggest_awaitables):
-                suggested_facets.extend(suggest_result)
-        return suggested_facets
-
     # Faceting
     if not datasette.setting("allow_facet") and any(
         arg.startswith("_facet") for arg in request.args
     ):
         raise BadRequest("_facet= is not allowed")
 
-    # human_description_en combines filters AND search, if provided
-    async def extra_human_description_en():
-        "Human-readable description of the filters"
-        human_description_en = filters.human_description_en(
-            extra=extra_human_descriptions
-        )
-        if sort or sort_desc:
-            human_description_en = " ".join(
-                [b for b in [human_description_en, sorted_by] if b]
-            )
-        return human_description_en
-
-    if sort or sort_desc:
-        sorted_by = "sorted by {}{}".format(
-            (sort or sort_desc), " descending" if sort_desc else ""
-        )
-
-    async def extra_next_url():
-        "Full URL for the next page of results"
-        return next_url
-
-    async def extra_columns():
-        "Column names returned by this query"
-        return columns
-
-    async def extra_all_columns():
-        "All columns in the table, regardless of _col/_nocol filtering"
-        return list(table_columns)
-
-    async def extra_primary_keys():
-        "Primary keys for this table"
-        return pks
-
-    async def extra_actions():
-        async def actions():
-            links = []
-            kwargs = {
-                "datasette": datasette,
-                "database": database_name,
-                "actor": request.actor,
-                "request": request,
-            }
-            if is_view:
-                kwargs["view"] = table_name
-                method = pm.hook.view_actions
-            else:
-                kwargs["table"] = table_name
-                method = pm.hook.table_actions
-            for hook in method(**kwargs):
-                extra_links = await await_me_maybe(hook)
-                if extra_links:
-                    links.extend(extra_links)
-            return links
-
-        return actions
-
-    async def extra_is_view():
-        return is_view
-
-    async def extra_debug():
-        "Extra debug information"
-        return {
-            "resolved": repr(resolved),
-            "url_vars": request.url_vars,
-            "nofacet": nofacet,
-            "nosuggest": nosuggest,
-        }
-
-    async def extra_request():
-        "Full information about the request"
-        return {
-            "url": request.url,
-            "path": request.path,
-            "full_path": request.full_path,
-            "host": request.host,
-            "args": request.args._data,
-        }
-
-    async def run_display_columns_and_rows():
-        display_columns, display_rows = await display_columns_and_rows(
-            datasette,
-            database_name,
-            table_name,
-            results.description,
-            rows,
-            link_column=not is_view,
-            truncate_cells=datasette.setting("truncate_cells_html"),
-            sortable_columns=sortable_columns,
-            request=request,
-        )
-        return {
-            "columns": display_columns,
-            "rows": display_rows,
-        }
-
-    async def extra_display_columns(run_display_columns_and_rows):
-        return run_display_columns_and_rows["columns"]
-
-    async def extra_display_rows(run_display_columns_and_rows):
-        return run_display_columns_and_rows["rows"]
-
-    async def extra_render_cell():
-        "Rendered HTML for each cell using the render_cell plugin hook"
-        pks_for_display = pks if pks else (["rowid"] if not is_view else [])
-        col_names = [col[0] for col in results.description]
-        ct_map = await datasette.get_column_types(database_name, table_name)
-        rendered_rows = []
-        for row in rows:
-            rendered_row = {}
-            for value, column in zip(row, col_names):
-                ct = ct_map.get(column)
-                plugin_display_value = None
-                # Try column type render_cell first
-                if ct:
-                    candidate = await ct.render_cell(
-                        value=value,
-                        column=column,
-                        table=table_name,
-                        database=database_name,
-                        datasette=datasette,
-                        request=request,
-                    )
-                    if candidate is not None:
-                        plugin_display_value = candidate
-                if plugin_display_value is None:
-                    for candidate in pm.hook.render_cell(
-                        row=row,
-                        value=value,
-                        column=column,
-                        table=table_name,
-                        pks=pks_for_display,
-                        database=database_name,
-                        datasette=datasette,
-                        request=request,
-                        column_type=ct,
-                    ):
-                        candidate = await await_me_maybe(candidate)
-                        if candidate is not None:
-                            plugin_display_value = candidate
-                            break
-                if plugin_display_value:
-                    rendered_row[column] = str(plugin_display_value)
-            rendered_rows.append(rendered_row)
-        return rendered_rows
-
-    async def extra_query():
-        "Details of the underlying SQL query"
-        return {
-            "sql": sql,
-            "params": params,
-        }
-
-    async def extra_column_types():
-        "Column type assignments for this table"
-        ct_map = await datasette.get_column_types(database_name, table_name)
-        return {
-            col_name: {
-                "type": ct.name,
-                "config": ct.config,
-            }
-            for col_name, ct in ct_map.items()
-        }
-
-    async def extra_set_column_type_ui():
-        "Column type UI metadata for this table"
-        if is_view:
-            return None
-
-        if not await datasette.allowed(
-            action="set-column-type",
-            resource=TableResource(database=database_name, table=table_name),
-            actor=request.actor,
-        ):
-            return None
-
-        column_details = await datasette._get_resource_column_details(
-            database_name, table_name
-        )
-        ct_map = await datasette.get_column_types(database_name, table_name)
-        columns = {}
-        for column_name, column_detail in column_details.items():
-            current = ct_map.get(column_name)
-            columns[column_name] = {
-                "current": (
-                    {"type": current.name, "config": current.config}
-                    if current is not None
-                    else None
-                ),
-                "options": [
-                    {
-                        "name": name,
-                        "description": ct_cls.description,
-                    }
-                    for name, ct_cls in sorted(datasette._column_types.items())
-                    if datasette._column_type_is_applicable(ct_cls, column_detail)
-                ],
-            }
-        return {
-            "path": "{}/-/set-column-type".format(
-                datasette.urls.table(database_name, table_name)
-            ),
-            "columns": columns,
-        }
-
-    async def extra_metadata():
-        "Metadata about the table and database"
-        tablemetadata = await datasette.get_resource_metadata(database_name, table_name)
-
-        rows = await datasette.get_internal_database().execute(
-            """
-              SELECT
-                column_name,
-                value
-              FROM metadata_columns
-              WHERE database_name = ?
-                AND resource_name = ?
-                AND key = 'description'
-            """,
-            [database_name, table_name],
-        )
-        tablemetadata["columns"] = dict(rows)
-        return tablemetadata
-
-    async def extra_database():
-        return database_name
-
-    async def extra_table():
-        return table_name
-
-    async def extra_database_color():
-        return db.color
-
-    async def extra_form_hidden_args():
-        form_hidden_args = []
-        for key in request.args:
-            if (
-                key.startswith("_")
-                and key not in ("_sort", "_sort_desc", "_search", "_next")
-                and "__" not in key
-            ):
-                for value in request.args.getlist(key):
-                    form_hidden_args.append((key, value))
-        return form_hidden_args
-
-    async def extra_filters():
-        return filters
-
-    async def extra_custom_table_templates():
-        return [
-            f"_table-{to_css_class(database_name)}-{to_css_class(table_name)}.html",
-            f"_table-table-{to_css_class(database_name)}-{to_css_class(table_name)}.html",
-            "_table.html",
-        ]
-
-    async def extra_sorted_facet_results(extra_facet_results):
-        facet_configs = table_metadata.get("facets", [])
-        if facet_configs:
-            # Build ordered list of facet names from metadata config
-            metadata_facet_names = []
-            for fc in facet_configs:
-                if isinstance(fc, str):
-                    metadata_facet_names.append(fc)
-                elif isinstance(fc, dict):
-                    metadata_facet_names.append(list(fc.values())[0])
-            metadata_order = {name: i for i, name in enumerate(metadata_facet_names)}
-            metadata_facets = []
-            request_facets = []
-            for f in extra_facet_results["results"].values():
-                if f["name"] in metadata_order:
-                    metadata_facets.append(f)
-                else:
-                    request_facets.append(f)
-            metadata_facets.sort(key=lambda f: metadata_order[f["name"]])
-            request_facets.sort(
-                key=lambda f: (len(f["results"]), f["name"]),
-                reverse=True,
-            )
-            return metadata_facets + request_facets
-        else:
-            return sorted(
-                extra_facet_results["results"].values(),
-                key=lambda f: (len(f["results"]), f["name"]),
-                reverse=True,
-            )
-
-    async def extra_table_definition():
-        return await db.get_table_definition(table_name)
-
-    async def extra_view_definition():
-        return await db.get_view_definition(table_name)
-
-    async def extra_renderers(extra_expandable_columns, extra_query):
-        renderers = {}
-        url_labels_extra = {}
-        if extra_expandable_columns:
-            url_labels_extra = {"_labels": "on"}
-        for key, (_, can_render) in datasette.renderers.items():
-            it_can_render = call_with_supported_arguments(
-                can_render,
-                datasette=datasette,
-                columns=columns or [],
-                rows=rows or [],
-                sql=extra_query.get("sql", None),
-                query_name=None,
-                database=database_name,
-                table=table_name,
-                request=request,
-                view_name="table",
-            )
-            it_can_render = await await_me_maybe(it_can_render)
-            if it_can_render:
-                renderers[key] = datasette.urls.path(
-                    path_with_format(
-                        request=request,
-                        path=request.scope.get("route_path"),
-                        format=key,
-                        extra_qs={**url_labels_extra},
-                    )
-                )
-        return renderers
-
-    async def extra_private():
-        return private
-
-    async def extra_expandable_columns():
-        expandables = []
-        db = datasette.databases[database_name]
-        for fk in await db.foreign_keys_for_table(table_name):
-            label_column = await db.label_column_for_table(fk["other_table"])
-            expandables.append((fk, label_column))
-        return expandables
-
-    async def extra_extras():
-        "Available ?_extra= blocks"
-        all_extras = [
-            (key[len("extra_") :], fn.__doc__)
-            for key, fn in registry._registry.items()
-            if key.startswith("extra_")
-        ]
-        return [
-            {
-                "name": name,
-                "description": doc,
-                "toggle_url": datasette.absolute_url(
-                    request,
-                    datasette.urls.path(
-                        path_with_added_args(request, {"_extra": name})
-                        if name not in extras
-                        else path_with_removed_args(request, {"_extra": name})
-                    ),
-                ),
-                "selected": name in extras,
-            }
-            for name, doc in all_extras
-        ]
-
-    async def extra_facets_timed_out(extra_facet_results):
-        return extra_facet_results["timed_out"]
-
-    bundles = {
-        "html": [
-            "suggested_facets",
-            "facet_results",
-            "facets_timed_out",
-            "count",
-            "count_sql",
-            "human_description_en",
-            "next_url",
-            "metadata",
-            "query",
-            "columns",
-            "display_columns",
-            "display_rows",
-            "database",
-            "table",
-            "database_color",
-            "actions",
-            "filters",
-            "renderers",
-            "custom_table_templates",
-            "sorted_facet_results",
-            "table_definition",
-            "view_definition",
-            "is_view",
-            "private",
-            "primary_keys",
-            "all_columns",
-            "expandable_columns",
-            "form_hidden_args",
-            "set_column_type_ui",
-        ]
-    }
-
-    for key, values in bundles.items():
+    for key, values in TABLE_EXTRA_BUNDLES.items():
         if f"_{key}" in extras:
             extras.update(values)
         extras.discard(f"_{key}")
 
-    registry = Registry(
-        extra_count,
-        extra_count_sql,
-        extra_facet_results,
-        extra_facets_timed_out,
-        extra_suggested_facets,
-        facet_instances,
-        extra_human_description_en,
-        extra_next_url,
-        extra_columns,
-        extra_all_columns,
-        extra_primary_keys,
-        run_display_columns_and_rows,
-        extra_display_columns,
-        extra_display_rows,
-        extra_render_cell,
-        extra_debug,
-        extra_request,
-        extra_query,
-        extra_column_types,
-        extra_set_column_type_ui,
-        extra_metadata,
-        extra_extras,
-        extra_database,
-        extra_table,
-        extra_database_color,
-        extra_actions,
-        extra_filters,
-        extra_renderers,
-        extra_custom_table_templates,
-        extra_sorted_facet_results,
-        extra_table_definition,
-        extra_view_definition,
-        extra_is_view,
-        extra_private,
-        extra_expandable_columns,
-        extra_form_hidden_args,
+    table_extra_context = TableExtraContext(
+        datasette=datasette,
+        request=request,
+        resolved=resolved,
+        db=db,
+        database_name=database_name,
+        table_name=table_name,
+        is_view=is_view,
+        private=private,
+        rows=rows,
+        columns=columns,
+        results_description=results.description,
+        table_columns=table_columns,
+        pks=pks,
+        count_sql=count_sql,
+        from_sql=from_sql,
+        from_sql_params=from_sql_params,
+        nocount=nocount,
+        nofacet=nofacet,
+        nosuggest=nosuggest,
+        next_arg=request.args.get("_next"),
+        next_url=next_url,
+        sql=sql,
+        sql_no_order_no_limit=sql_no_order_no_limit,
+        params=params,
+        table_metadata=table_metadata,
+        filters=filters,
+        extra_human_descriptions=extra_human_descriptions,
+        sort=sort,
+        sort_desc=sort_desc,
+        sortable_columns=sortable_columns,
+        extras=extras,
+        extra_registry=table_extra_registry,
+        display_columns_and_rows=display_columns_and_rows,
+        run_sequential=run_sequential,
     )
 
-    results = await registry.resolve_multi(
-        ["extra_{}".format(extra) for extra in extras]
-    )
     data = {
         "ok": True,
         "next": next_value and str(next_value) or None,
     }
     data.update(
-        {
-            key.replace("extra_", ""): value
-            for key, value in results.items()
-            if key.startswith("extra_") and key.replace("extra_", "") in extras
-        }
+        await resolve_table_extras(
+            extras,
+            table_extra_context,
+            # The HTML view needs extras that are not JSON serializable
+            include_internal=bool(extra_extras),
+        )
     )
     raw_sqlite_rows = rows[:page_size]
     # Apply transform_value for columns with assigned types

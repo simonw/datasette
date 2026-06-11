@@ -36,7 +36,7 @@ dependencies = [
     "mergedeep>=1.1.1",
     "itsdangerous>=1.1",
     "sqlite-utils>=3.30",
-    "asyncinject>=0.6.1",
+    "asyncinject>=0.7",
     "setuptools",
     "pip",
 ]

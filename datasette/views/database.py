@@ -11,6 +11,7 @@ import sqlite_utils
 import textwrap
 
 from datasette.events import AlterTableEvent, CreateTableEvent, InsertRowsEvent
+from datasette.extras import extra_names_from_request
 from datasette.database import QueryInterrupted
 from datasette.resources import DatabaseResource, QueryResource
 from datasette.stored_queries import stored_query_to_dict
@@ -38,6 +39,11 @@ from datasette.plugins import pm
 
 from .base import BaseView, DatasetteError, View, _error, stream_csv
 from .query_helpers import _ensure_stored_query_execution_permissions, _table_columns
+from .table_extras import (
+    QueryExtraContext,
+    resolve_query_extras,
+    table_extra_registry,
+)
 from . import Context
 
 
@@ -606,11 +612,13 @@ class QueryView(View):
                 )
 
         else:
-            await datasette.ensure_permission(
+            visible, private = await datasette.check_visibility(
+                request.actor,
                 action="execute-sql",
                 resource=DatabaseResource(database=database),
-                actor=request.actor,
             )
+            if not visible:
+                raise Forbidden("execute-sql")
 
         # Flattened because of ?sql=&name1=value1&name2=value2 feature
         params = {key: request.args.get(key) for key in request.args}
@@ -692,6 +700,13 @@ class QueryView(View):
             except DatasetteError:
                 raise
 
+        async def query_metadata():
+            if stored_query:
+                metadata = stored_query_to_dict(stored_query)
+                metadata.pop("source", None)
+                return metadata
+            return await datasette.get_database_metadata(database)
+
         # Handle formats from plugins
         if format_ == "csv":
             if not sql:
@@ -704,6 +719,25 @@ class QueryView(View):
 
             return await stream_csv(datasette, fetch_data_for_csv, request, db.name)
         elif format_ in datasette.renderers.keys():
+            data = {"ok": True, "rows": rows, "columns": columns}
+            extras = extra_names_from_request(request)
+            if extras:
+                query_extra_context = QueryExtraContext(
+                    datasette=datasette,
+                    request=request,
+                    db=db,
+                    database_name=database,
+                    private=private,
+                    rows=rows,
+                    columns=columns,
+                    sql=sql,
+                    params=named_parameter_values,
+                    query_name=stored_query.name if stored_query else None,
+                    metadata=await query_metadata(),
+                    extras=extras,
+                    extra_registry=table_extra_registry,
+                )
+                data.update(await resolve_query_extras(extras, query_extra_context))
             # Dispatch request to the correct output format renderer
             # (CSV is not handled here due to streaming)
             result = call_with_supported_arguments(
@@ -721,7 +755,7 @@ class QueryView(View):
                 error=query_error,
                 # These will be deprecated in Datasette 1.0:
                 args=request.args,
-                data={"ok": True, "rows": rows, "columns": columns},
+                data=data,
             )
             if asyncio.iscoroutine(result):
                 result = await result
@@ -778,11 +812,7 @@ class QueryView(View):
                     )
                 }
             )
-            metadata = await datasette.get_database_metadata(database)
-            if stored_query:
-                metadata = stored_query_to_dict(stored_query)
-                metadata.pop("source", None)
-
+            metadata = await query_metadata()
             renderers = {}
             for key, (_, can_render) in datasette.renderers.items():
                 it_can_render = call_with_supported_arguments(

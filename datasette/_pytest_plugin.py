@@ -19,23 +19,38 @@ import weakref
 
 import pytest
 
-from datasette.app import Datasette
-
 _active_instances: contextvars.ContextVar[list | None] = contextvars.ContextVar(
     "datasette_active_instances", default=None
 )
 
-_original_init = Datasette.__init__
+_original_init = None
 
 
-def _tracking_init(self, *args, **kwargs):
-    _original_init(self, *args, **kwargs)
-    instances = _active_instances.get()
-    if instances is not None:
-        instances.append(weakref.ref(self))
+def _install_tracking():
+    # datasette.app is imported lazily here rather than at module level:
+    # as a pytest11 entry point this module is imported during pytest
+    # startup, before pytest-cov starts measuring, so a module-level
+    # import would drag in all of datasette and make every import-time
+    # line in the package invisible to coverage
+    global _original_init
+    if _original_init is not None:
+        return
+    from datasette.app import Datasette
+
+    _original_init = Datasette.__init__
+
+    def _tracking_init(self, *args, **kwargs):
+        _original_init(self, *args, **kwargs)
+        instances = _active_instances.get()
+        if instances is not None:
+            instances.append(weakref.ref(self))
+
+    Datasette.__init__ = _tracking_init
 
 
-Datasette.__init__ = _tracking_init
+def pytest_configure(config):
+    if _enabled(config):
+        _install_tracking()
 
 
 def pytest_addoption(parser):

@@ -44,6 +44,51 @@ def test_context_dataclass_fields_all_have_help(klass):
         )
 
 
+def test_extra_field_documentation_comes_from_the_extra_class():
+    from datasette.views import extra_field
+    from datasette.views.table_extras import CountExtra
+
+    @dataclass
+    class DemoContext(Context):
+        extras_scope = ExtraScope.TABLE
+
+        count: int = extra_field()
+        name: str = field(metadata={"help": "The name"})
+
+    fields = {f.name: f for f in DemoContext.documented_fields()}
+    assert fields["count"].help == CountExtra.description
+    assert fields["count"].from_extra
+    assert fields["name"].help == "The name"
+    assert not fields["name"].from_extra
+
+
+def test_extra_field_must_match_a_registered_extra():
+    from datasette.views import extra_field
+
+    @dataclass
+    class BadContext(Context):
+        extras_scope = ExtraScope.TABLE
+
+        not_a_real_extra: str = extra_field()
+
+    with pytest.raises(KeyError):
+        BadContext.documented_fields()
+
+
+def test_extra_field_must_be_available_for_the_scope():
+    from datasette.views import extra_field
+
+    @dataclass
+    class WrongScopeContext(Context):
+        extras_scope = ExtraScope.ROW
+
+        # count is a TABLE-scope extra, not available for ROW
+        count: int = extra_field()
+
+    with pytest.raises(ValueError):
+        WrongScopeContext.documented_fields()
+
+
 @pytest.fixture
 def isolate_extra_template_vars_plugins():
     # Datasette instances created with plugins_dir (e.g. the session-scoped

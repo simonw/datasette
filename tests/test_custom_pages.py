@@ -104,3 +104,24 @@ def test_custom_route_pattern_with_slash_slash_302(custom_pages_client):
     response = custom_pages_client.get("//example.com/")
     assert response.status == 302
     assert response.headers["location"] == "/example.com"
+
+
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/\\example.com/",
+        "/\\\\example.com/",
+        "/\\/example.com/",
+    ),
+)
+def test_redirect_does_not_allow_backslash_open_redirect(custom_pages_client, path):
+    # https://github.com/simonw/datasette/issues/2680
+    # Browsers normalise backslashes to forward slashes, so a Location of
+    # /\example.com would be treated as the protocol-relative //example.com
+    response = custom_pages_client.get(path)
+    assert response.status == 302
+    location = response.headers["location"]
+    assert location == "/example.com"
+    # Must not start with anything a browser reads as protocol-relative
+    assert not location.startswith("//")
+    assert not location.startswith("/\\")

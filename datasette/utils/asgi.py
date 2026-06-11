@@ -330,9 +330,11 @@ async def asgi_send_html(send, html, status=200, headers=None):
 
 
 async def asgi_send_redirect(send, location, status=302):
-    # Prevent open redirect vulnerability: strip multiple leading slashes
-    # //example.com would be interpreted as a protocol-relative URL (e.g., https://example.com/)
-    location = re.sub(r"^/+", "/", location)
+    # Prevent open redirect vulnerability: collapse leading slashes and
+    # backslashes down to a single slash. //example.com is a protocol-relative
+    # URL, and browsers normalise backslashes to slashes so /\example.com would
+    # be treated as //example.com - https://github.com/simonw/datasette/issues/2680
+    location = re.sub(r"^[/\\]+", "/", location)
     await asgi_send(
         send,
         "",

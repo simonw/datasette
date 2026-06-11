@@ -1734,6 +1734,29 @@ async def test_permission_check_view_requires_debug_permission():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("action", ("view-query", "update-query", "delete-query"))
+async def test_permission_check_view_query_actions(action):
+    # https://github.com/simonw/datasette/issues/2756
+    # QueryResource takes a "query" argument, not "table", so /-/check must
+    # not assume every child resource class accepts table=
+    ds = Datasette()
+    ds.root_enabled = True
+    root_token = await ds.create_token("root", handler="signed")
+    response = await ds.client.get(
+        f"/-/check.json?action={action}&parent=mydb&child=myquery",
+        headers={"Authorization": f"Bearer {root_token}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["action"] == action
+    assert data["resource"] == {
+        "parent": "mydb",
+        "child": "myquery",
+        "path": "/mydb/myquery",
+    }
+
+
+@pytest.mark.asyncio
 async def test_root_allow_block_with_table_restricted_actor():
     """
     Test that root-level allow: blocks are processed for actors with

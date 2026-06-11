@@ -497,11 +497,13 @@ async def _check_permission_for_actor(ds, action, parent, child, actor):
     if action_obj.resource_class is None:
         resource_obj = None
     elif action_obj.takes_parent and action_obj.takes_child:
-        # Child-level resource (e.g., TableResource, QueryResource)
-        resource_obj = action_obj.resource_class(database=parent, table=child)
+        # Child-level resource (e.g., TableResource, QueryResource). The child
+        # argument is named differently per resource class (table, query, ...),
+        # so pass positionally - https://github.com/simonw/datasette/issues/2756
+        resource_obj = action_obj.resource_class(parent, child)
     elif action_obj.takes_parent:
         # Parent-level resource (e.g., DatabaseResource)
-        resource_obj = action_obj.resource_class(database=parent)
+        resource_obj = action_obj.resource_class(parent)
     else:
         # This shouldn't happen given validation in Action.__post_init__
         return {"error": f"Invalid action configuration: {action}"}, 500

@@ -14,7 +14,8 @@ from datasette.plugins import pm
 import json
 import markupsafe
 import sqlite_utils
-from .table import display_columns_and_rows, _get_extras
+from datasette.extras import extra_names_from_request
+from .table import display_columns_and_rows
 from .table_extras import RowExtraContext, resolve_row_extras, table_extra_registry
 
 
@@ -165,7 +166,7 @@ class RowView(DataView):
             "primary_key_values": pk_values,
         }
 
-        extras = _get_extras(request)
+        extras = extra_names_from_request(request)
 
         # Process extras
         row_extra_context = RowExtraContext(

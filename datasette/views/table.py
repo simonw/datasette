@@ -854,10 +854,6 @@ class TableDropView(BaseView):
         return Response.json({"ok": True}, status=200)
 
 
-def _get_extras(request):
-    return extra_names_from_request(request)
-
-
 async def _columns_to_select(table_columns, pks, request):
     columns = list(table_columns)
     if "_col" in request.args:
@@ -1461,7 +1457,7 @@ async def table_view_data(
     rows = rows[:page_size]
 
     # Resolve extras
-    extras = _get_extras(request)
+    extras = extra_names_from_request(request)
     if any(k for k in request.args.keys() if k == "_facet" or k.startswith("_facet_")):
         extras.add("facet_results")
     if request.args.get("_shape") == "object":

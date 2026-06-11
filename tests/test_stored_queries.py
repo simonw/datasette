@@ -201,7 +201,7 @@ def test_error_in_on_success_message_sql(stored_write_client):
 def test_custom_params(stored_write_client):
     response = stored_write_client.get("/data/update_name?extra=foo")
     assert (
-        '<input type="text" id="qp3" name="extra" value="foo" data-parameter-control>'
+        '<input type="text" id="qp3" name="extra" value="foo" data-parameter-control data-parameter-name="extra">'
         in response.text
     )
 

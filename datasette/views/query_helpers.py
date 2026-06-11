@@ -49,6 +49,8 @@ _query_write_fields = {
     "on_error_redirect",
 }
 
+SQL_PARAMETER_FORM_PREFIX = "_sql_param_"
+
 
 class QueryValidationError(Exception):
     def __init__(self, message, status=400, *, flash=False):
@@ -289,11 +291,13 @@ def _coerce_execute_write_payload(data, is_json):
             )
         params = data.get("params") or {}
     else:
-        params = {
-            key: value
-            for key, value in data.items()
-            if key not in {"sql", "csrftoken", "_json"}
-        }
+        params = {}
+        for key, value in data.items():
+            if key in {"sql", "csrftoken", "_json"}:
+                continue
+            if key.startswith(SQL_PARAMETER_FORM_PREFIX):
+                key = key[len(SQL_PARAMETER_FORM_PREFIX) :]
+            params[key] = value
     if not isinstance(params, dict):
         raise QueryValidationError("params must be a dictionary")
     return data.get("sql"), params

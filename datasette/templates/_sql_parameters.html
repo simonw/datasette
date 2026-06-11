@@ -1,9 +1,10 @@
-<div id="{{ sql_parameters_section_id|default("sql-parameters-section") }}" class="sql-parameters-section" data-sql-parameters-section{% if sql_parameters_allow_expand|default(false) %} data-allow-expand="1"{% endif %}>
+{% set sql_parameter_name_prefix = sql_parameter_name_prefix|default("") %}
+<div id="{{ sql_parameters_section_id|default("sql-parameters-section") }}" class="sql-parameters-section" data-sql-parameters-section{% if sql_parameter_name_prefix %} data-parameter-name-prefix="{{ sql_parameter_name_prefix }}"{% endif %}{% if sql_parameters_allow_expand|default(false) %} data-allow-expand="1"{% endif %}>
     {% if parameter_names %}
         <h2>Parameters</h2>
         {% for parameter in parameter_names %}
             {% set parameter_id = (sql_parameter_id_prefix|default("qp")) ~ loop.index %}
-            <p class="sql-parameter-row"><label for="{{ parameter_id }}">{{ parameter }}</label> <input type="text" id="{{ parameter_id }}" name="{{ parameter }}" value="{{ parameter_values.get(parameter, "") }}" data-parameter-control>{% if sql_parameters_allow_expand|default(false) %} <button type="button" class="sql-parameter-toggle" data-parameter-toggle aria-controls="{{ parameter_id }}" aria-expanded="false">Expand</button>{% endif %}</p>
+            <p class="sql-parameter-row"><label for="{{ parameter_id }}">{{ parameter }}</label> <input type="text" id="{{ parameter_id }}" name="{{ sql_parameter_name_prefix }}{{ parameter }}" value="{{ parameter_values.get(parameter, "") }}" data-parameter-control data-parameter-name="{{ parameter }}">{% if sql_parameters_allow_expand|default(false) %} <button type="button" class="sql-parameter-toggle" data-parameter-toggle aria-controls="{{ parameter_id }}" aria-expanded="false">Expand</button>{% endif %}</p>
         {% endfor %}
     {% endif %}
 </div>

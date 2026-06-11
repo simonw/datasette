@@ -30,7 +30,7 @@ class ExtraExample:
 
 class Provider:
     name: ClassVar[str | None] = None
-    scopes: ClassVar[frozenset[ExtraScope]] = frozenset()
+    scopes: ClassVar[set[ExtraScope]] = set()
     public: ClassVar[bool] = False
 
     @classmethod

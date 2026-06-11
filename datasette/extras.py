@@ -1,9 +1,15 @@
+import contextvars
 import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import ClassVar
 
 from asyncinject import Registry
+
+# Per-request context for Extra.resolve(), so the asyncinject registries can
+# be shared across requests. asyncio tasks copy the caller's context, so
+# concurrent resolve() calls each see their own value.
+_resolve_context = contextvars.ContextVar("datasette_extras_context")
 
 
 def extra_names_from_request(request):
@@ -62,6 +68,13 @@ class ExtraRegistry:
     def __init__(self, classes):
         self.classes = list(classes)
         self.classes_by_name = {cls.key(): cls for cls in self.classes}
+        # Lazily-built shared state, keyed by scope. Safe to share across
+        # requests because Extra instances are stateless and asyncinject's
+        # Registry keeps per-call state local to each resolve_multi() call.
+        # If extras classes ever become registerable at runtime (e.g. via a
+        # plugin hook) these caches will need invalidating.
+        self._scope_registries = {}
+        self._allowed_names = {}
 
     def classes_for_scope(self, scope, include_internal=True):
         classes = [
@@ -74,23 +87,43 @@ class ExtraRegistry:
     def public_classes_for_scope(self, scope):
         return self.classes_for_scope(scope, include_internal=False)
 
+    def _registry_for_scope(self, scope):
+        registry = self._scope_registries.get(scope)
+        if registry is None:
+            registry = Registry()
+
+            async def context_provider():
+                return _resolve_context.get()
+
+            registry.register(context_provider, name="context")
+            for cls in self.classes_for_scope(scope):
+                registry.register(cls().resolve, name=cls.key())
+            self._scope_registries[scope] = registry
+        return registry
+
+    def _allowed_names_for_scope(self, scope, include_internal):
+        key = (scope, include_internal)
+        names = self._allowed_names.get(key)
+        if names is None:
+            names = {
+                cls.key()
+                for cls in self.classes_for_scope(
+                    scope, include_internal=include_internal
+                )
+            }
+            self._allowed_names[key] = names
+        return names
+
     async def resolve(self, requested, context, scope, include_internal=False):
-        registry = Registry()
-
-        async def context_provider():
-            return context
-
-        registry.register(context_provider, name="context")
-
-        for cls in self.classes_for_scope(scope):
-            registry.register(cls().resolve, name=cls.key())
-
-        allowed_names = {
-            cls.key()
-            for cls in self.classes_for_scope(scope, include_internal=include_internal)
-        }
+        allowed_names = self._allowed_names_for_scope(scope, include_internal)
         requested_names = [name for name in requested if name in allowed_names]
-        resolved = await registry.resolve_multi(requested_names)
+        token = _resolve_context.set(context)
+        try:
+            resolved = await self._registry_for_scope(scope).resolve_multi(
+                requested_names
+            )
+        finally:
+            _resolve_context.reset(token)
         return {name: resolved[name] for name in requested_names}
 
 

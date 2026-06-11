@@ -37,7 +37,6 @@ class TableExtraContext:
     nofacet: object
     nosuggest: object
     next_arg: object
-    next_value: object
     next_url: str | None
     sql: str
     sql_no_order_no_limit: str
@@ -60,7 +59,6 @@ class TableExtraContext:
 class RowExtraContext:
     datasette: object
     request: object
-    resolved: object
     db: object
     database_name: str
     table_name: str
@@ -90,9 +88,6 @@ class QueryExtraContext:
     sql: str | None
     params: dict
     query_name: str | None
-    stored_query: object
-    stored_query_write: bool
-    error: str | None
     metadata: dict
     extras: set
     extra_registry: ExtraRegistry

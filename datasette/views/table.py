@@ -1497,7 +1497,6 @@ async def table_view_data(
         nofacet=nofacet,
         nosuggest=nosuggest,
         next_arg=request.args.get("_next"),
-        next_value=next_value,
         next_url=next_url,
         sql=sql,
         sql_no_order_no_limit=sql_no_order_no_limit,

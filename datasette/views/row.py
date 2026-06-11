@@ -172,7 +172,6 @@ class RowView(DataView):
         row_extra_context = RowExtraContext(
             datasette=self.ds,
             request=request,
-            resolved=resolved,
             db=db,
             database_name=database,
             table_name=table,

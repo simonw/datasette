@@ -50,27 +50,12 @@ class Extra(Provider):
     example: ClassVar[ExtraExample | None] = None
     examples: ClassVar[dict[ExtraScope, ExtraExample | list[ExtraExample]]] = {}
     public: ClassVar[bool] = True
-    stable: ClassVar[bool] = True
     expensive: ClassVar[bool] = False
     docs_note: ClassVar[str | None] = None
 
     @classmethod
     def example_for_scope(cls, scope):
         return cls.examples.get(scope, cls.example)
-
-    @classmethod
-    def documentation(cls):
-        return {
-            "name": cls.key(),
-            "description": cls.description,
-            "scopes": [
-                scope.value for scope in sorted(cls.scopes, key=lambda s: s.value)
-            ],
-            "stable": cls.stable,
-            "expensive": cls.expensive,
-            "docs_note": cls.docs_note,
-            "example": cls.example,
-        }
 
 
 class ExtraRegistry:
@@ -106,9 +91,7 @@ class ExtraRegistry:
         }
         requested_names = [name for name in requested if name in allowed_names]
         resolved = await registry.resolve_multi(requested_names)
-        return {
-            name: resolved[name] for name in requested_names if name in resolved
-        }
+        return {name: resolved[name] for name in requested_names}
 
 
 def _camel_to_snake(name):

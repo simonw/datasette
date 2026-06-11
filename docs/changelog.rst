@@ -6,7 +6,7 @@ Changelog
 
 .. _v1_0_a33:
 
-1.0a33 (unreleased)
+1.0a33 (2026-06-11)
 -------------------
 
 Stored queries can now be edited and deleted through the web interface, and the JSON API ``?_extra=`` mechanism has been extended to cover row and query pages in addition to tables. This release also fixes two security issues: an identifier-quoting bug involving table and column names that contain ``]``, and an open redirect.

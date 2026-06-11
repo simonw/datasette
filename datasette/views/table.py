@@ -59,8 +59,9 @@ from .table_extras import (
 
 @dataclass
 class TableContext(Context):
-    "The page showing the rows in a table or SQL view, e.g. /fixtures/facetable"
+    "The page showing the rows in a table or SQL view, e.g. /fixtures/facetable."
 
+    template = "table.html"
     extras_scope = ExtraScope.TABLE
 
     # Fields resolved by registered extras - their documentation comes

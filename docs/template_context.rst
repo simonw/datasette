@@ -250,160 +250,160 @@ The page showing the rows in a table or SQL view, e.g. /fixtures/facetable. Rend
 
 Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 
-``actions``
+``actions`` - ``callable``
     Table or view actions made available by plugin hooks
 
-``all_columns``
+``all_columns`` - ``list``
     All columns in the table, regardless of _col/_nocol filtering
 
-``allow_execute_sql``
+``allow_execute_sql`` - ``bool``
     True if the current actor can execute custom SQL against this database
 
-``alternate_url_json``
+``alternate_url_json`` - ``str``
     URL for the JSON version of this page
 
-``append_querystring``
+``append_querystring`` - ``callable``
     Function that appends additional querystring arguments to a URL
 
-``columns``
+``columns`` - ``list``
     Column names returned by this query
 
-``count``
+``count`` - ``int``
     Total count of rows matching these filters
 
-``count_limit``
+``count_limit`` - ``int``
     The maximum number of rows Datasette will count before showing an approximation
 
-``count_sql``
+``count_sql`` - ``str``
     SQL query used to calculate the total count
 
-``custom_table_templates``
+``custom_table_templates`` - ``list``
     Custom template names considered for this table
 
-``database``
+``database`` - ``str``
     Database name
 
-``database_color``
+``database_color`` - ``str``
     Color assigned to the database
 
-``datasette_allow_facet``
+``datasette_allow_facet`` - ``str``
     The string "true" or "false" reflecting the allow_facet setting
 
-``display_columns``
+``display_columns`` - ``list``
     Column metadata used by the HTML table display
 
-``display_rows``
+``display_rows`` - ``list``
     Row data formatted for the HTML table display
 
-``expandable_columns``
+``expandable_columns`` - ``list``
     Foreign key columns that can be expanded with labels
 
-``extra_wheres_for_ui``
+``extra_wheres_for_ui`` - ``list``
     Extra where clauses from ?_where=, with links to remove them
 
-``facet_results``
+``facet_results`` - ``dict``
     Results of facets calculated against this data
 
-``facets_timed_out``
+``facets_timed_out`` - ``list``
     Facet calculations that timed out
 
-``filter_columns``
+``filter_columns`` - ``list``
     List of columns offered by the filter interface
 
-``filters``
+``filters`` - ``Filters``
     Filters object used by the HTML table interface
 
-``fix_path``
+``fix_path`` - ``callable``
     Function that applies the base_url prefix to a path
 
-``form_hidden_args``
+``form_hidden_args`` - ``list``
     Hidden form arguments used by the HTML table interface
 
-``human_description_en``
+``human_description_en`` - ``str``
     Human-readable description of the filters
 
-``is_sortable``
+``is_sortable`` - ``bool``
     True if any of the displayed columns can be used to sort
 
-``is_view``
+``is_view`` - ``bool``
     Whether this resource is a view instead of a table
 
-``metadata``
+``metadata`` - ``dict``
     Metadata about the table, database or stored query
 
-``next``
+``next`` - ``str``
     Pagination token for the next page, or None
 
-``next_url``
+``next_url`` - ``str``
     Full URL for the next page of results
 
-``ok``
+``ok`` - ``bool``
     True if the data for this page was retrieved without errors
 
-``path_with_replaced_args``
+``path_with_replaced_args`` - ``callable``
     Function for building the current path with modified querystring arguments
 
-``primary_keys``
+``primary_keys`` - ``list``
     Primary keys for this table
 
-``private``
+``private`` - ``bool``
     Whether this resource is private to the current actor
 
-``query``
+``query`` - ``dict``
     Details of the underlying SQL query
 
-``query_ms``
+``query_ms`` - ``float``
     Time taken by the SQL queries for this page, in milliseconds
 
-``renderers``
+``renderers`` - ``dict``
     Alternative output renderers available for this table
 
-``rows``
+``rows`` - ``list``
     The rows for this page, as a list of dictionaries mapping column name to value
 
-``select_templates``
+``select_templates`` - ``list``
     List of template names that were considered for this page, the one used marked with an asterisk
 
-``set_column_type_ui``
+``set_column_type_ui`` - ``dict``
     Column type UI metadata for this table
 
-``settings``
+``settings`` - ``dict``
     Dictionary of Datasette's current settings
 
-``sort``
+``sort`` - ``str``
     Column the page is sorted by, or None
 
-``sort_desc``
+``sort_desc`` - ``str``
     Column the page is sorted by in descending order, or None
 
-``sorted_facet_results``
+``sorted_facet_results`` - ``list``
     Facet results sorted for display
 
-``suggested_facets``
+``suggested_facets`` - ``list``
     Suggestions for facets that might return interesting results
 
-``supports_search``
+``supports_search`` - ``bool``
     True if this table has full-text search configured
 
-``table``
+``table`` - ``str``
     Table name
 
-``table_definition``
+``table_definition`` - ``str``
     SQL definition for this table
 
-``top_table``
+``top_table`` - ``callable``
     Async function rendering the top_table plugin slot
 
-``url_csv``
+``url_csv`` - ``str``
     URL for the CSV export of this page
 
-``url_csv_hidden_args``
+``url_csv_hidden_args`` - ``list``
     (name, value) pairs for hidden form fields used by the CSV export form
 
-``url_csv_path``
+``url_csv_path`` - ``str``
     Path portion of the CSV export URL
 
-``view_definition``
+``view_definition`` - ``str``
     SQL definition for this view
 
 Row page
@@ -413,76 +413,76 @@ The page showing an individual row, e.g. /fixtures/facetable/1. Rendered using t
 
 Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 
-``alternate_url_json``
+``alternate_url_json`` - ``str``
     URL for the JSON version of this page
 
-``columns``
+``columns`` - ``list``
     Column names returned by this query
 
-``custom_table_templates``
+``custom_table_templates`` - ``list``
     Custom template names that were considered for displaying this table
 
-``database``
+``database`` - ``str``
     Database name
 
-``database_color``
+``database_color`` - ``str``
     Color assigned to the database
 
-``display_columns``
+``display_columns`` - ``list``
     Column objects formatted for the HTML table display
 
-``display_rows``
+``display_rows`` - ``list``
     Row data formatted for the HTML table display
 
-``foreign_key_tables``
+``foreign_key_tables`` - ``list``
     Tables that link to this row using foreign keys
 
-``metadata``
+``metadata`` - ``dict``
     Metadata about the table, database or stored query
 
-``ok``
+``ok`` - ``bool``
     True if the data for this page was retrieved without errors
 
-``primary_key_values``
+``primary_key_values`` - ``list``
     Values of the primary keys for this row, from the URL
 
-``primary_keys``
+``primary_keys`` - ``list``
     Primary keys for this table
 
-``private``
+``private`` - ``bool``
     Whether this resource is private to the current actor
 
-``query_ms``
+``query_ms`` - ``float``
     Time taken by the SQL queries for this page, in milliseconds
 
-``renderers``
+``renderers`` - ``dict``
     Dictionary mapping output format names (e.g. json) to their URLs for this page
 
-``row_actions``
+``row_actions`` - ``list``
     Row actions made available by plugin hooks
 
-``rows``
+``rows`` - ``list``
     The rows for this page, as a list of dictionaries mapping column name to value
 
-``select_templates``
+``select_templates`` - ``list``
     List of template names that were considered for this page, the one used marked with an asterisk
 
-``settings``
+``settings`` - ``dict``
     Dictionary of Datasette's current settings
 
-``table``
+``table`` - ``str``
     Table name
 
-``top_row``
+``top_row`` - ``callable``
     Async function rendering the top_row plugin slot
 
-``url_csv``
+``url_csv`` - ``str``
     URL for the CSV export of this page
 
-``url_csv_hidden_args``
+``url_csv_hidden_args`` - ``list``
     (name, value) pairs for hidden form fields used by the CSV export form
 
-``url_csv_path``
+``url_csv_path`` - ``str``
     Path portion of the CSV export URL
 
 .. [[[end]]]

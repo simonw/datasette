@@ -313,6 +313,32 @@ def _to_string(value):
         return json.dumps(value, default=str)
 
 
+# Documentation for the variables Datasette.render_template() adds to the
+# context for every page. This is part of the documented template contract:
+# keys added in render_template() must be documented here - the contract
+# tests in tests/test_template_context.py enforce this, and the docs in
+# docs/template_context.rst are generated from it.
+TEMPLATE_BASE_CONTEXT = {
+    "request": "The current Request object, or None",
+    "crumb_items": "Async function returning breadcrumb navigation items for the current page",
+    "urls": "Object with methods for constructing URLs to pages within Datasette - see datasette.urls in the internals documentation",
+    "actor": "The currently authenticated actor dictionary, or None",
+    "menu_links": "Async function returning links for the Datasette application menu, including those added by plugins",
+    "display_actor": "Function returning a display string for an actor dictionary",
+    "show_logout": "True if the logout link should be shown in the navigation menu",
+    "app_css_hash": "Hash of Datasette's app.css contents, used for cache busting",
+    "zip": "Python's zip() builtin, made available to template logic",
+    "body_scripts": "List of script blocks for the page body contributed by plugins",
+    "format_bytes": "Function that formats a number of bytes as a human-readable size",
+    "show_messages": "Function returning any messages set for the current user, clearing them in the process",
+    "extra_css_urls": "List of {url, sri} dictionaries of extra CSS stylesheets to include on the page, from plugins and configuration",
+    "extra_js_urls": "List of {url, sri, module} dictionaries of extra JavaScript URLs to include on the page",
+    "base_url": "The configured base_url setting",
+    "csrftoken": "Function returning the CSRF token for the current request",
+    "datasette_version": "The version of Datasette that is running",
+}
+
+
 class Datasette:
     # Message constants:
     INFO = 1
@@ -2216,6 +2242,8 @@ class Datasette:
                     links.extend(extra_links)
             return links
 
+        # Keys added here must be documented in TEMPLATE_BASE_CONTEXT -
+        # the contract tests fail otherwise
         template_context = {
             **context,
             **{

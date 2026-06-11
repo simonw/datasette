@@ -228,6 +228,10 @@ class DatabaseView(View):
 
 @dataclass
 class DatabaseContext(Context):
+    "The page listing the tables, views and queries in a database, e.g. /fixtures."
+
+    template = "database.html"
+
     database: str = field(metadata={"help": "The name of the database"})
     private: bool = field(
         metadata={"help": "Boolean indicating if this is a private database"}
@@ -281,6 +285,10 @@ class DatabaseContext(Context):
 
 @dataclass
 class QueryContext(Context):
+    "The page for arbitrary SQL queries (/database/-/query?sql=...) and stored queries (/database/query-name)."
+
+    template = "query.html"
+
     database: str = field(metadata={"help": "The name of the database being queried"})
     database_color: str = field(metadata={"help": "The color of the database"})
     query: dict = field(

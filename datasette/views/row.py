@@ -23,8 +23,9 @@ from .table_extras import RowExtraContext, resolve_row_extras, table_extra_regis
 
 @dataclass
 class RowContext(Context):
-    "The page showing an individual row, e.g. /fixtures/facetable/1"
+    "The page showing an individual row, e.g. /fixtures/facetable/1."
 
+    template = "row.html"
     extras_scope = ExtraScope.ROW
 
     # Fields resolved by registered extras - their documentation comes

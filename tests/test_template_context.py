@@ -10,17 +10,11 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from datasette.app import Datasette
+from datasette.app import Datasette, TEMPLATE_BASE_CONTEXT
 from datasette.extras import ExtraScope
 from datasette.fixtures import write_fixture_database
-from datasette.template_contexts import (
-    BASE_CONTEXT_KEYS,
-    PAGES,
-    documented_context_keys,
-)
+from datasette.template_contexts import PAGES, documented_context_keys
 from datasette.views import Context
-from datasette.views.database import DatabaseContext, QueryContext
-from datasette.views.table_extras import table_extra_registry
 
 
 def test_documented_fields():
@@ -36,12 +30,18 @@ def test_documented_fields():
     ]
 
 
-@pytest.mark.parametrize("klass", (DatabaseContext, QueryContext))
-def test_context_dataclass_fields_all_have_help(klass):
+@pytest.mark.parametrize("klass", PAGES.values(), ids=lambda klass: klass.__name__)
+def test_context_class_fields_all_have_help(klass):
     for context_field in klass.documented_fields():
-        assert context_field.help, "{}.{} is missing help metadata".format(
+        assert context_field.help, "{}.{} is missing documentation".format(
             klass.__name__, context_field.name
         )
+
+
+@pytest.mark.parametrize("klass", PAGES.values(), ids=lambda klass: klass.__name__)
+def test_context_class_has_docstring_and_template(klass):
+    assert klass.__doc__, "{} is missing a docstring".format(klass.__name__)
+    assert klass.template, "{} is missing a template".format(klass.__name__)
 
 
 def test_extra_field_documentation_comes_from_the_extra_class():
@@ -169,8 +169,8 @@ async def test_template_context_matches_documented_contract(
     undocumented = actual - documented
     no_longer_present = documented - actual
     assert not undocumented, (
-        "Undocumented keys in {} template context: {} - document them in "
-        "datasette/template_contexts.py".format(page_name, sorted(undocumented))
+        "Undocumented keys in {} template context: {} - add them to the "
+        "page's Context class".format(page_name, sorted(undocumented))
     )
     assert not no_longer_present, (
         "Documented keys missing from {} template context: {} - this would "
@@ -178,53 +178,21 @@ async def test_template_context_matches_documented_contract(
     )
 
 
-def test_table_context_fields_match_documented_contract():
-    from datasette.views.table import TableContext
-
-    assert {f.name for f in TableContext.documented_fields()} == {
-        key.name for key in PAGES["table"].documented_keys()
-    }
-
-
-def test_row_context_fields_match_documented_contract():
-    from datasette.views.row import RowContext
-
-    assert {f.name for f in RowContext.documented_fields()} == {
-        key.name for key in PAGES["row"].documented_keys()
-    }
-
-
 def test_base_context_keys_all_have_docs():
-    for key in BASE_CONTEXT_KEYS:
-        assert key.doc, "Base context key {} is missing docs".format(key.name)
-
-
-@pytest.mark.parametrize("page", PAGES.values(), ids=lambda page: page.name)
-def test_page_documented_keys_all_have_docs(page):
-    for key in page.documented_keys():
-        assert key.doc, "{} page key {} is missing docs".format(page.name, key.name)
+    for name, doc in TEMPLATE_BASE_CONTEXT.items():
+        assert doc, "Base context key {} is missing docs".format(name)
 
 
 def test_template_context_docs_cover_every_documented_key():
     docs_path = pathlib.Path(__file__).parent.parent / "docs" / "template_context.rst"
     assert docs_path.exists(), "docs/template_context.rst is missing"
     docs = docs_path.read_text()
-    for key in BASE_CONTEXT_KEYS:
-        assert "``{}``".format(key.name) in docs, key.name
-    for page in PAGES.values():
-        assert page.title in docs, page.title
-        for key in page.documented_keys():
-            assert "``{}``".format(key.name) in docs, "{} ({} page)".format(
-                key.name, page.name
+    for name in TEMPLATE_BASE_CONTEXT:
+        assert "``{}``".format(name) in docs, name
+    for page_name, klass in PAGES.items():
+        title = "{} page".format(klass.__name__.removesuffix("Context"))
+        assert title in docs, title
+        for context_field in klass.documented_fields():
+            assert "``{}``".format(context_field.name) in docs, "{} ({} page)".format(
+                context_field.name, page_name
             )
-
-
-@pytest.mark.parametrize("page", PAGES.values(), ids=lambda page: page.name)
-def test_page_extra_keys_are_registered_extras(page):
-    for name in page.extra_keys:
-        cls = table_extra_registry.classes_by_name.get(name)
-        assert cls is not None, "{} is not a registered extra".format(name)
-        assert page.extras_scope is not None
-        assert cls.available_for(
-            page.extras_scope
-        ), "{} extra is not available for scope {}".format(name, page.extras_scope)

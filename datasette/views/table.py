@@ -1518,7 +1518,14 @@ async def table_view_data(
         "ok": True,
         "next": next_value and str(next_value) or None,
     }
-    data.update(await resolve_table_extras(extras, table_extra_context))
+    data.update(
+        await resolve_table_extras(
+            extras,
+            table_extra_context,
+            # The HTML view needs extras that are not JSON serializable
+            include_internal=bool(extra_extras),
+        )
+    )
     raw_sqlite_rows = rows[:page_size]
     # Apply transform_value for columns with assigned types
     ct_map = await datasette.get_column_types(database_name, table_name)

@@ -117,6 +117,24 @@ async def test_query_extras_for_stored_query(ds_client):
     }
 
 
+@pytest.mark.parametrize("extra", ["filters", "actions", "display_rows"])
+@pytest.mark.asyncio
+async def test_html_only_extras_are_not_available_via_json(ds_client, extra):
+    # These extras exist for the HTML view; their values are not JSON
+    # serializable so they are internal, not part of the JSON API
+    response = await ds_client.get(f"/fixtures/facetable.json?_extra={extra}")
+    assert response.status_code == 200
+    assert extra not in response.json()
+
+
+@pytest.mark.asyncio
+async def test_html_only_extras_are_not_advertised(ds_client):
+    response = await ds_client.get("/fixtures/facetable.json?_extra=extras")
+    assert response.status_code == 200
+    names = {e["name"] for e in response.json()["extras"]}
+    assert {"filters", "actions", "display_rows"}.isdisjoint(names)
+
+
 def test_query_extra_private_for_arbitrary_sql():
     with make_app_client(config={"allow_sql": {"id": "root"}}) as client:
         cookies = {"ds_actor": client.actor_cookie({"id": "root"})}

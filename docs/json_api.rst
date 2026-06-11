@@ -425,9 +425,6 @@ The available table extras are listed below.
           }
         ]
 
-``display_rows``
-    Row data formatted for the HTML table display
-
 ``render_cell``
     Rendered HTML for each cell using the render_cell plugin hook
 
@@ -553,12 +550,6 @@ The available table extras are listed below.
     .. code-block:: json
 
         "9403e5"
-
-``actions``
-    Table or view actions made available by plugin hooks
-
-``filters``
-    Filters object used by the HTML table interface
 
 ``renderers``
     Alternative output renderers available for this table

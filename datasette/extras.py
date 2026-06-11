@@ -89,7 +89,7 @@ class ExtraRegistry:
     def public_classes_for_scope(self, scope):
         return self.classes_for_scope(scope, include_internal=False)
 
-    async def resolve(self, requested, context, scope):
+    async def resolve(self, requested, context, scope, include_internal=False):
         registry = Registry()
 
         async def context_provider():
@@ -100,15 +100,14 @@ class ExtraRegistry:
         for cls in self.classes_for_scope(scope):
             registry.register(cls().resolve, name=cls.key())
 
-        public_names = {cls.key() for cls in self.public_classes_for_scope(scope)}
-        requested_public_names = [
-            name
-            for name in requested
-            if name in public_names and name in registry._registry
-        ]
-        resolved = await registry.resolve_multi(requested_public_names)
+        allowed_names = {
+            cls.key()
+            for cls in self.classes_for_scope(scope, include_internal=include_internal)
+        }
+        requested_names = [name for name in requested if name in allowed_names]
+        resolved = await registry.resolve_multi(requested_names)
         return {
-            name: resolved[name] for name in requested_public_names if name in resolved
+            name: resolved[name] for name in requested_names if name in resolved
         }
 
 

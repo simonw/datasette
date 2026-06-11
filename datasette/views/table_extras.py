@@ -333,6 +333,8 @@ class PrimaryKeysExtra(Extra):
 class ActionsExtra(Extra):
     description = "Table or view actions made available by plugin hooks"
     scopes = frozenset({ExtraScope.TABLE})
+    # Returns an async function for the HTML templates - not JSON serializable
+    public = False
 
     async def resolve(self, context):
         async def actions():
@@ -476,6 +478,8 @@ class DisplayColumnsExtra(Extra):
 class DisplayRowsExtra(Extra):
     description = "Row data formatted for the HTML table display"
     scopes = frozenset({ExtraScope.TABLE})
+    # Contains markupsafe/sqlite3.Row values - not JSON serializable
+    public = False
 
     async def resolve(self, context, display_columns_and_rows):
         return display_columns_and_rows["rows"]
@@ -772,6 +776,8 @@ class FormHiddenArgsExtra(Extra):
 class FiltersExtra(Extra):
     description = "Filters object used by the HTML table interface"
     scopes = frozenset({ExtraScope.TABLE})
+    # Returns a Filters instance for the HTML templates - not JSON serializable
+    public = False
 
     async def resolve(self, context):
         return context.filters
@@ -1034,8 +1040,10 @@ TABLE_EXTRA_CLASSES = [
 table_extra_registry = ExtraRegistry(TABLE_EXTRA_CLASSES)
 
 
-async def resolve_table_extras(extras, context):
-    return await table_extra_registry.resolve(extras, context, ExtraScope.TABLE)
+async def resolve_table_extras(extras, context, include_internal=False):
+    return await table_extra_registry.resolve(
+        extras, context, ExtraScope.TABLE, include_internal=include_internal
+    )
 
 
 async def resolve_row_extras(extras, context):

@@ -700,33 +700,12 @@ class QueryView(View):
             except DatasetteError:
                 raise
 
-        extras = extra_names_from_request(request)
-        metadata = None
-        data = {"ok": True, "rows": rows, "columns": columns}
-        if extras:
-            metadata = await datasette.get_database_metadata(database)
+        async def query_metadata():
             if stored_query:
                 metadata = stored_query_to_dict(stored_query)
                 metadata.pop("source", None)
-            query_extra_context = QueryExtraContext(
-                datasette=datasette,
-                request=request,
-                db=db,
-                database_name=database,
-                private=private,
-                rows=rows,
-                columns=columns,
-                sql=sql,
-                params=named_parameter_values,
-                query_name=stored_query.name if stored_query else None,
-                stored_query=stored_query,
-                stored_query_write=stored_query_write,
-                error=query_error,
-                metadata=metadata,
-                extras=extras,
-                extra_registry=table_extra_registry,
-            )
-            data.update(await resolve_query_extras(extras, query_extra_context))
+                return metadata
+            return await datasette.get_database_metadata(database)
 
         # Handle formats from plugins
         if format_ == "csv":
@@ -740,6 +719,28 @@ class QueryView(View):
 
             return await stream_csv(datasette, fetch_data_for_csv, request, db.name)
         elif format_ in datasette.renderers.keys():
+            data = {"ok": True, "rows": rows, "columns": columns}
+            extras = extra_names_from_request(request)
+            if extras:
+                query_extra_context = QueryExtraContext(
+                    datasette=datasette,
+                    request=request,
+                    db=db,
+                    database_name=database,
+                    private=private,
+                    rows=rows,
+                    columns=columns,
+                    sql=sql,
+                    params=named_parameter_values,
+                    query_name=stored_query.name if stored_query else None,
+                    stored_query=stored_query,
+                    stored_query_write=stored_query_write,
+                    error=query_error,
+                    metadata=await query_metadata(),
+                    extras=extras,
+                    extra_registry=table_extra_registry,
+                )
+                data.update(await resolve_query_extras(extras, query_extra_context))
             # Dispatch request to the correct output format renderer
             # (CSV is not handled here due to streaming)
             result = call_with_supported_arguments(
@@ -806,11 +807,7 @@ class QueryView(View):
                     )
                 }
             )
-            if metadata is None:
-                metadata = await datasette.get_database_metadata(database)
-                if stored_query:
-                    metadata = stored_query_to_dict(stored_query)
-                    metadata.pop("source", None)
+            metadata = await query_metadata()
             renderers = {}
             for key, (_, can_render) in datasette.renderers.items():
                 it_can_render = call_with_supported_arguments(

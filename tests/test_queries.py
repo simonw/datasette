@@ -9,7 +9,7 @@ from datasette.app import Datasette
 from datasette.resources import DatabaseResource, QueryResource
 from datasette.stored_queries import StoredQuery, StoredQueryPage
 from datasette.utils.asgi import Forbidden
-from datasette.utils.sqlite import supports_returning
+from datasette.utils.sqlite import sqlite3, supports_returning
 
 requires_sqlite_returning = pytest.mark.skipif(
     not supports_returning(), reason="SQLite does not support RETURNING"
@@ -591,6 +591,38 @@ async def test_query_store_api_creates_read_only_query():
     assert data["query"]["is_write"] is False
     assert data["query"]["source"] == "user"
     assert data["query"]["owner_id"] == "root"
+
+
+@pytest.mark.asyncio
+async def test_query_store_api_creates_query_for_immutable_database(tmp_path):
+    db_path = tmp_path / "immutable.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("create table dogs (id integer primary key, name text)")
+    conn.commit()
+    conn.close()
+
+    ds = Datasette([], immutables=[str(db_path)], default_deny=True)
+    ds.root_enabled = True
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/immutable/-/queries/store",
+        actor={"id": "root"},
+        json={
+            "query": {
+                "name": "by_name",
+                "sql": "select * from dogs where name = :name",
+            }
+        },
+    )
+
+    ds.close()
+    assert response.status_code == 201
+    data = response.json()
+    assert data["ok"] is True
+    assert data["query"]["name"] == "by_name"
+    assert data["query"]["parameters"] == ["name"]
+    assert data["query"]["is_write"] is False
 
 
 @pytest.mark.asyncio

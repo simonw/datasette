@@ -298,13 +298,14 @@ class Database:
 
     async def execute_isolated_fn(self, fn):
         self._check_not_closed()
-        # Open a new connection just for the duration of this function
+        # Open a new connection just for the duration of this function,
         # blocking the write queue to avoid any writes occurring during it
-        if self.ds.executor is None:
-            # non-threaded mode
-            isolated_connection = self.connect(write=True)
+        write = self.is_mutable
+
+        def _run():
+            isolated_connection = self.connect(write=write)
             try:
-                result = fn(isolated_connection)
+                return fn(isolated_connection)
             finally:
                 isolated_connection.close()
                 try:
@@ -312,10 +313,18 @@ class Database:
                 except ValueError:
                     # Was probably a memory connection
                     pass
-            return result
-        else:
-            # Threaded mode - send to write thread
-            return await self._send_to_write_thread(fn, isolated_connection=True)
+
+        if self.ds.executor is None:
+            # non-threaded mode
+            return _run()
+        if not write:
+            # Immutable database - no writes can ever occur, so there is no
+            # write queue to block; run against a fresh read-only connection
+            return await asyncio.get_running_loop().run_in_executor(
+                self.ds.executor, _run
+            )
+        # Threaded mode - send to write thread
+        return await self._send_to_write_thread(fn, isolated_connection=True)
 
     async def analyze_sql(self, sql, params=None) -> SQLAnalysis:
         self._check_not_closed()
@@ -449,20 +458,21 @@ class Database:
             if conn_exception is not None:
                 exception = conn_exception
             elif task.isolated_connection:
-                isolated_connection = self.connect(write=True)
                 try:
-                    result = task.fn(isolated_connection)
+                    isolated_connection = self.connect(write=True)
+                    try:
+                        result = task.fn(isolated_connection)
+                    finally:
+                        isolated_connection.close()
+                        try:
+                            self._all_file_connections.remove(isolated_connection)
+                        except ValueError:
+                            # Was probably a memory connection
+                            pass
                 except Exception as e:
                     sys.stderr.write("{}\n".format(e))
                     sys.stderr.flush()
                     exception = e
-                finally:
-                    isolated_connection.close()
-                    try:
-                        self._all_file_connections.remove(isolated_connection)
-                    except ValueError:
-                        # Was probably a memory connection
-                        pass
             else:
                 try:
                     if task.transaction:

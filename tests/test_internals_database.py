@@ -864,6 +864,39 @@ async def test_execute_isolated(db, disable_threads):
 
 
 @pytest.mark.asyncio
+async def test_execute_isolated_connect_failure_does_not_kill_write_thread():
+    # A connect() failure for an isolated task should be returned to the
+    # caller as an exception, not crash the write thread
+    class ConnectError(Exception):
+        pass
+
+    ds = Datasette(memory=True)
+    db = ds.add_memory_database("test_isolated_connect_failure")
+    # Start the write thread with a healthy dedicated write connection
+    await db.execute_write("create table dogs (id integer primary key)")
+
+    original_connect = db.connect
+
+    def broken_connect(write=False):
+        raise ConnectError("Could not connect")
+
+    db.connect = broken_connect
+    try:
+        with pytest.raises(ConnectError):
+            await asyncio.wait_for(db.execute_isolated_fn(lambda conn: None), timeout=2)
+    finally:
+        db.connect = original_connect
+
+    # Write thread should still be alive and processing tasks
+    assert db._write_thread.is_alive()
+    await db.execute_write("insert into dogs (id) values (1)")
+    count = await db.execute_isolated_fn(
+        lambda conn: conn.execute("select count(*) from dogs").fetchone()[0]
+    )
+    assert count == 1
+
+
+@pytest.mark.asyncio
 async def test_analyze_sql():
     ds = Datasette(memory=True)
     db = ds.add_memory_database("test_analyze_sql", name="data")

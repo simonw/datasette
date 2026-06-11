@@ -10,6 +10,13 @@ Changelog
 -------------------
 
 - Stored queries can now be edited and deleted from the web interface. The stored query page gained a "Query actions" menu with **Edit this query** and **Delete this query** links for actors with the necessary permissions. The owner of a query can always edit or delete it; for queries that are not private, any actor with the :ref:`update-query <actions_update_query>` or :ref:`delete-query <actions_delete_query>` permission can do so too. Private queries remain editable and deletable only by their owner. See :ref:`stored_queries` for details. (:issue:`2735`)
+- Row and query JSON pages now support the same ``?_extra=`` mechanism as table pages. Row pages can request extras such as ``foreign_key_tables``, ``query``, ``metadata`` and ``database_color``; arbitrary SQL and stored query pages can request extras such as ``columns``, ``query``, ``metadata`` and ``private``. The implementation was refactored into a registry of extra classes shared by all three page types. See :ref:`json_api_extra` for the full list.
+- New generated reference documentation for every ``?_extra=`` parameter available on table, row and query JSON pages, with example output captured from a live Datasette instance at documentation build time. See :ref:`json_api_extra`.
+- ``?_extra=`` values can be separated by commas as well as repeated, e.g. ``?_extra=count,next_url``. Previously a comma-separated value that included ``columns`` failed to include the ``columns`` key in the response.
+- The ``?_extra=private`` extra on arbitrary SQL query pages now correctly reflects whether the SQL execution permission is private to the current actor - it previously always returned ``false``.
+- The ``?_extra=query`` extra on query pages now reports the named parameters that were actually bound when the query executed, including parameters declared in a stored query's ``params`` list. Magic ``_``-prefixed parameters are no longer echoed back with unbound values taken from the querystring.
+- Extras that exist to serve the HTML interface (``filters``, ``actions``, ``display_rows``) are no longer advertised or reachable through the JSON API, where requesting them previously returned a 500 serialization error.
+- The pre-1.0 ``?_extras=`` (plural) parameter on row pages has been removed - use ``?_extra=foreign_key_tables`` instead.
 
 .. _v1_0_a32:
 

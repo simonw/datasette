@@ -216,6 +216,38 @@ def test_detect_fts(open_quote, close_quote):
     conn.close()
 
 
+@pytest.mark.parametrize(
+    "identifier,expected",
+    (
+        ("plain", "plain"),
+        ("select", "[select]"),
+        ("has space", "[has space]"),
+        ("has'quote", "[has'quote]"),
+        # Identifiers containing ] must fall back to double-quote quoting
+        # (SQLite does not support escaping ] inside [brackets]) - #2677
+        ("has]bracket", '"has]bracket"'),
+        ('has"dquote]', '"has""dquote]"'),
+    ),
+)
+def test_escape_sqlite(identifier, expected):
+    assert utils.escape_sqlite(identifier) == expected
+
+
+def test_escape_sqlite_prevents_injection():
+    # https://github.com/simonw/datasette/issues/2677
+    conn = utils.sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE users (id INTEGER, password TEXT)")
+    conn.execute("INSERT INTO users VALUES (1, 'super_secret_password')")
+    malicious = "users] UNION SELECT password FROM users--"
+    conn.execute('CREATE TABLE "{}" (id INTEGER)'.format(malicious))
+    sql = "select count(*) from {}".format(utils.escape_sqlite(malicious))
+    results = conn.execute(sql).fetchall()
+    conn.close()
+    # The injected UNION must not execute - only the empty malicious table
+    # is queried, so we get a single count row and no leaked password
+    assert results == [(0,)]
+
+
 @pytest.mark.parametrize("table", ("regular", "has'single quote"))
 def test_detect_fts_different_table_names(table):
     sql = """

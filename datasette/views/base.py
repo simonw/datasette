@@ -1,5 +1,6 @@
 import asyncio
 import csv
+import dataclasses
 import hashlib
 import sys
 import textwrap
@@ -88,6 +89,9 @@ class View:
 class BaseView:
     ds = None
     has_json_alternate = True
+    # Set to a Context subclass to render a documented template context -
+    # keys not declared on the class are dropped before rendering
+    context_class = None
 
     def __init__(self, datasette):
         self.ds = datasette
@@ -168,6 +172,11 @@ class BaseView:
                         alternate_url_json
                     )
                 }
+            )
+        if self.context_class is not None:
+            declared = {f.name for f in dataclasses.fields(self.context_class)}
+            template_context = self.context_class(
+                **{k: v for k, v in template_context.items() if k in declared}
             )
         return Response.html(
             await self.ds.render_template(

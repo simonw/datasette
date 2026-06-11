@@ -11,16 +11,95 @@ from datasette.utils import (
     escape_sqlite,
 )
 from datasette.plugins import pm
+from dataclasses import dataclass, field
 import json
 import markupsafe
 import sqlite_utils
-from datasette.extras import extra_names_from_request
+from datasette.extras import extra_names_from_request, ExtraScope
+from . import Context, extra_field
 from .table import display_columns_and_rows
 from .table_extras import RowExtraContext, resolve_row_extras, table_extra_registry
 
 
+@dataclass
+class RowContext(Context):
+    "The page showing an individual row, e.g. /fixtures/facetable/1"
+
+    extras_scope = ExtraScope.ROW
+
+    # Fields resolved by registered extras - their documentation comes
+    # from the description on each Extra class in table_extras.py
+    columns: list = extra_field()
+    database: str = extra_field()
+    database_color: str = extra_field()
+    foreign_key_tables: list = extra_field()
+    metadata: dict = extra_field()
+    primary_keys: list = extra_field()
+    private: bool = extra_field()
+    table: str = extra_field()
+
+    # Fields added by the view code
+    ok: bool = field(
+        metadata={"help": "True if the data for this page was retrieved without errors"}
+    )
+    rows: list = field(
+        metadata={
+            "help": "The rows for this page, as a list of dictionaries mapping column name to value"
+        }
+    )
+    primary_key_values: list = field(
+        metadata={"help": "Values of the primary keys for this row, from the URL"}
+    )
+    query_ms: float = field(
+        metadata={
+            "help": "Time taken by the SQL queries for this page, in milliseconds"
+        }
+    )
+    display_columns: list = field(
+        metadata={"help": "Column objects formatted for the HTML table display"}
+    )
+    display_rows: list = field(
+        metadata={"help": "Row data formatted for the HTML table display"}
+    )
+    custom_table_templates: list = field(
+        metadata={
+            "help": "Custom template names that were considered for displaying this table"
+        }
+    )
+    row_actions: list = field(
+        metadata={"help": "Row actions made available by plugin hooks"}
+    )
+    top_row: callable = field(
+        metadata={"help": "Async function rendering the top_row plugin slot"}
+    )
+    renderers: dict = field(
+        metadata={
+            "help": "Dictionary mapping output format names (e.g. json) to their URLs for this page"
+        }
+    )
+    url_csv: str = field(metadata={"help": "URL for the CSV export of this page"})
+    url_csv_path: str = field(metadata={"help": "Path portion of the CSV export URL"})
+    url_csv_hidden_args: list = field(
+        metadata={
+            "help": "(name, value) pairs for hidden form fields used by the CSV export form"
+        }
+    )
+    settings: dict = field(
+        metadata={"help": "Dictionary of Datasette's current settings"}
+    )
+    select_templates: list = field(
+        metadata={
+            "help": "List of template names that were considered for this page, the one used marked with an asterisk"
+        }
+    )
+    alternate_url_json: str = field(
+        metadata={"help": "URL for the JSON version of this page"}
+    )
+
+
 class RowView(DataView):
     name = "row"
+    context_class = RowContext
 
     async def data(self, request, default_labels=False):
         resolved = await self.ds.resolve_row(request)

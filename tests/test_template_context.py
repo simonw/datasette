@@ -44,6 +44,27 @@ def test_context_dataclass_fields_all_have_help(klass):
         )
 
 
+@pytest.fixture
+def isolate_extra_template_vars_plugins():
+    # Datasette instances created with plugins_dir (e.g. the session-scoped
+    # ds_client fixture) register their plugins on the global plugin manager
+    # for the rest of the process. The contract documents plugin-free
+    # Datasette core, so unregister any non-default plugin that adds
+    # template variables via the extra_template_vars hook
+    from datasette.plugins import pm, DEFAULT_PLUGINS
+
+    hook_plugins = {impl.plugin for impl in pm.hook.extra_template_vars.get_hookimpls()}
+    removed = []
+    for plugin in list(pm.get_plugins()):
+        name = pm.get_name(plugin)
+        if name not in DEFAULT_PLUGINS and plugin in hook_plugins:
+            pm.unregister(plugin)
+            removed.append((plugin, name))
+    yield
+    for plugin, name in removed:
+        pm.register(plugin, name)
+
+
 @pytest.fixture(scope="module")
 def context_ds(tmp_path_factory):
     db_path = tmp_path_factory.mktemp("template-context") / "fixtures.db"
@@ -94,7 +115,7 @@ async def get_template_context(ds, path):
     ),
 )
 async def test_template_context_matches_documented_contract(
-    context_ds, page_name, path
+    context_ds, isolate_extra_template_vars_plugins, page_name, path
 ):
     # The full contract: every key in the rendered template context is
     # documented, and every documented key is present in the context

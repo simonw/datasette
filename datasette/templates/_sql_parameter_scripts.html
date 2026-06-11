@@ -22,16 +22,15 @@ window.datasetteSqlParameters = (() => {
     };
   }
 
-  function parameterName(control) {
-    return control.dataset.parameterName || control.name;
-  }
-
   function syncParameterState(manager) {
     manager.parameterState = new Map();
     manager.section
       .querySelectorAll("[data-parameter-control]")
       .forEach((control) => {
-        manager.parameterState.set(parameterName(control), controlState(control));
+        manager.parameterState.set(
+          control.dataset.parameterName,
+          controlState(control)
+        );
       });
   }
 
@@ -41,9 +40,7 @@ window.datasetteSqlParameters = (() => {
     control.name = `${namePrefix || ""}${parameter}`;
     control.value = state.value;
     control.setAttribute("data-parameter-control", "");
-    if (namePrefix) {
-      control.dataset.parameterName = parameter;
-    }
+    control.dataset.parameterName = parameter;
     if (state.expanded) {
       control.rows = 5;
     } else {
@@ -60,7 +57,7 @@ window.datasetteSqlParameters = (() => {
     value,
     selectionStart
   ) {
-    const parameter = parameterName(control);
+    const parameter = control.dataset.parameterName;
     const replacement = createControl(
       parameter,
       control.id,
@@ -137,7 +134,10 @@ window.datasetteSqlParameters = (() => {
       if (!control.matches || !control.matches("[data-parameter-control]")) {
         return;
       }
-      manager.parameterState.set(parameterName(control), controlState(control));
+      manager.parameterState.set(
+        control.dataset.parameterName,
+        controlState(control)
+      );
     });
 
     if (!manager.allowExpand) {

@@ -342,7 +342,7 @@ async def test_query_parameter_form_fields(ds_client):
     response = await ds_client.get("/fixtures/-/query?sql=select+:name")
     assert response.status_code == 200
     assert (
-        '<label for="qp1">name</label> <input type="text" id="qp1" name="name" value="" data-parameter-control>'
+        '<label for="qp1">name</label> <input type="text" id="qp1" name="name" value="" data-parameter-control data-parameter-name="name">'
         in response.text
     )
     assert 'data-parameters-url="/fixtures/-/query/parameters"' in response.text
@@ -351,7 +351,7 @@ async def test_query_parameter_form_fields(ds_client):
     response2 = await ds_client.get("/fixtures/-/query?sql=select+:name&name=hello")
     assert response2.status_code == 200
     assert (
-        '<label for="qp1">name</label> <input type="text" id="qp1" name="name" value="hello" data-parameter-control>'
+        '<label for="qp1">name</label> <input type="text" id="qp1" name="name" value="hello" data-parameter-control data-parameter-name="name">'
         in response2.text
     )
 

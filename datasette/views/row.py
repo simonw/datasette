@@ -165,12 +165,7 @@ class RowView(DataView):
             "primary_key_values": pk_values,
         }
 
-        # Handle _extra parameter (new style)
         extras = _get_extras(request)
-
-        # Also support legacy _extras parameter for backward compatibility
-        if "foreign_key_tables" in (request.args.get("_extras") or "").split(","):
-            extras.add("foreign_key_tables")
 
         # Process extras
         row_extra_context = RowExtraContext(

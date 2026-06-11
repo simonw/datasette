@@ -383,7 +383,7 @@ async def test_row_strange_table_name(ds_client):
 @pytest.mark.asyncio
 async def test_row_foreign_key_tables(ds_client):
     response = await ds_client.get(
-        "/fixtures/simple_primary_key/1.json?_extras=foreign_key_tables"
+        "/fixtures/simple_primary_key/1.json?_extra=foreign_key_tables"
     )
     assert response.status_code == 200
     # Foreign keys are sorted by (other_table, column, other_column)

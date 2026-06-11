@@ -706,6 +706,11 @@ button.core[type=button] {
     color: #666;
     padding-right: 0.25em;
 }
+/* The label may wrap (word-break: break-all on the li) but the count should
+   stay on one line - https://github.com/simonw/datasette/issues/2754 */
+.facet-count {
+    white-space: nowrap;
+}
 .facet-info li,
 .facet-info ul {
     margin: 0;

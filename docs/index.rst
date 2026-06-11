@@ -58,6 +58,7 @@ Contents
    settings
    introspection
    custom_templates
+   template_context
    plugins
    writing_plugins
    javascript_plugins

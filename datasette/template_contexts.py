@@ -115,21 +115,21 @@ PAGES = {
         PageContext(
             name="database",
             title="Database",
-            description="The page listing the tables, views and queries in a database, e.g. /fixtures",
+            description="The page listing the tables, views and queries in a database, e.g. /fixtures.",
             template="database.html",
             context_class=DatabaseContext,
         ),
         PageContext(
             name="query",
             title="Query",
-            description="The page for arbitrary SQL queries (/database/-/query?sql=...) and stored queries (/database/query-name)",
+            description="The page for arbitrary SQL queries (/database/-/query?sql=...) and stored queries (/database/query-name).",
             template="query.html",
             context_class=QueryContext,
         ),
         PageContext(
             name="table",
             title="Table",
-            description="The page showing the rows in a table or SQL view, e.g. /fixtures/facetable",
+            description="The page showing the rows in a table or SQL view, e.g. /fixtures/facetable.",
             template="table.html",
             extras_scope=ExtraScope.TABLE,
             extra_keys=(
@@ -194,7 +194,7 @@ PAGES = {
         PageContext(
             name="row",
             title="Row",
-            description="The page showing an individual row, e.g. /fixtures/facetable/1",
+            description="The page showing an individual row, e.g. /fixtures/facetable/1.",
             template="row.html",
             extras_scope=ExtraScope.ROW,
             extra_keys=(

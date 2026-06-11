@@ -5,6 +5,7 @@ template authors can rely on for Datasette 1.0.
 
 import html
 import json
+import pathlib
 from dataclasses import dataclass, field
 
 import pytest
@@ -76,9 +77,7 @@ async def get_template_context(ds, path):
     sep = "&" if "?" in path else "?"
     response = await ds.client.get(path + sep + "_context=1")
     assert response.status_code == 200, path
-    body = html.unescape(
-        response.text.removeprefix("<pre>").removesuffix("</pre>")
-    )
+    body = html.unescape(response.text.removeprefix("<pre>").removesuffix("</pre>"))
     return json.loads(body)
 
 
@@ -124,12 +123,26 @@ def test_page_documented_keys_all_have_docs(page):
         assert key.doc, "{} page key {} is missing docs".format(page.name, key.name)
 
 
+def test_template_context_docs_cover_every_documented_key():
+    docs_path = pathlib.Path(__file__).parent.parent / "docs" / "template_context.rst"
+    assert docs_path.exists(), "docs/template_context.rst is missing"
+    docs = docs_path.read_text()
+    for key in BASE_CONTEXT_KEYS:
+        assert "``{}``".format(key.name) in docs, key.name
+    for page in PAGES.values():
+        assert page.title in docs, page.title
+        for key in page.documented_keys():
+            assert "``{}``".format(key.name) in docs, "{} ({} page)".format(
+                key.name, page.name
+            )
+
+
 @pytest.mark.parametrize("page", PAGES.values(), ids=lambda page: page.name)
 def test_page_extra_keys_are_registered_extras(page):
     for name in page.extra_keys:
         cls = table_extra_registry.classes_by_name.get(name)
         assert cls is not None, "{} is not a registered extra".format(name)
         assert page.extras_scope is not None
-        assert cls.available_for(page.extras_scope), (
-            "{} extra is not available for scope {}".format(name, page.extras_scope)
-        )
+        assert cls.available_for(
+            page.extras_scope
+        ), "{} extra is not available for scope {}".format(name, page.extras_scope)

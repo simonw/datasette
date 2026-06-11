@@ -131,6 +131,44 @@ def test_query_extra_private_for_arbitrary_sql():
         assert anon.status == 403
 
 
+def test_query_extra_query_reports_bound_params():
+    config = {
+        "databases": {
+            "fixtures": {
+                "queries": {
+                    "declared_params": {
+                        "sql": "select 1 as one",
+                        "params": ["foo"],
+                    },
+                    "magic_host": {
+                        "sql": "select :_header_host as h",
+                    },
+                }
+            }
+        }
+    }
+    with make_app_client(config=config) as client:
+        # Declared parameters are reported even when the regex cannot find them
+        response = client.get("/fixtures/declared_params.json?foo=bar&_extra=query")
+        assert response.status == 200
+        assert response.json["query"]["params"] == {"foo": "bar"}
+        # Magic parameters are bound internally and should not be reported,
+        # especially not as a value taken from the querystring
+        response = client.get(
+            "/fixtures/magic_host.json?_extra=query&_header_host=spoofed"
+        )
+        assert response.status == 200
+        assert response.json["rows"] == [{"h": "localhost"}]
+        assert response.json["query"]["params"] == {}
+
+
+def test_query_extra_query_does_not_echo_querystring_without_sql():
+    with make_app_client() as client:
+        response = client.get("/fixtures/-/query.json?_extra=query&foo=bar")
+        assert response.status == 200
+        assert response.json["query"]["params"] == {}
+
+
 def test_query_extra_private_false_when_sql_is_public():
     with make_app_client() as client:
         response = client.get(

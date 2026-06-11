@@ -8,7 +8,6 @@ from datasette.resources import TableResource
 from datasette.utils import (
     await_me_maybe,
     call_with_supported_arguments,
-    named_parameters as derive_named_parameters,
     path_with_added_args,
     path_with_format,
     path_with_removed_args,
@@ -592,17 +591,9 @@ class QueryExtra(Extra):
     scopes = frozenset({ExtraScope.TABLE, ExtraScope.ROW, ExtraScope.QUERY})
 
     async def resolve(self, context):
-        params = context.params
-        if context.scope == ExtraScope.QUERY and context.sql:
-            parameter_names = set(derive_named_parameters(context.sql))
-            params = {
-                key: value
-                for key, value in dict(context.params).items()
-                if key in parameter_names
-            }
         return {
             "sql": context.sql,
-            "params": params,
+            "params": context.params,
         }
 
 

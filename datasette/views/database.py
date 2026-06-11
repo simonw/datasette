@@ -717,7 +717,7 @@ class QueryView(View):
                 rows=rows,
                 columns=columns,
                 sql=sql,
-                params=params_for_query,
+                params=named_parameter_values,
                 query_name=stored_query.name if stored_query else None,
                 stored_query=stored_query,
                 stored_query_write=stored_query_write,

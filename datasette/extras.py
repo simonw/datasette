@@ -1,15 +1,9 @@
-import contextvars
 import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import ClassVar
 
 from asyncinject import Registry
-
-# Per-request context for Extra.resolve(), so the asyncinject registries can
-# be shared across requests. asyncio tasks copy the caller's context, so
-# concurrent resolve() calls each see their own value.
-_resolve_context = contextvars.ContextVar("datasette_extras_context")
 
 
 def extra_names_from_request(request):
@@ -91,11 +85,6 @@ class ExtraRegistry:
         registry = self._scope_registries.get(scope)
         if registry is None:
             registry = Registry()
-
-            async def context_provider():
-                return _resolve_context.get()
-
-            registry.register(context_provider, name="context")
             for cls in self.classes_for_scope(scope):
                 registry.register(cls().resolve, name=cls.key())
             self._scope_registries[scope] = registry
@@ -117,13 +106,9 @@ class ExtraRegistry:
     async def resolve(self, requested, context, scope, include_internal=False):
         allowed_names = self._allowed_names_for_scope(scope, include_internal)
         requested_names = [name for name in requested if name in allowed_names]
-        token = _resolve_context.set(context)
-        try:
-            resolved = await self._registry_for_scope(scope).resolve_multi(
-                requested_names
-            )
-        finally:
-            _resolve_context.reset(token)
+        resolved = await self._registry_for_scope(scope).resolve_multi(
+            requested_names, results={"context": context}
+        )
         return {name: resolved[name] for name in requested_names}
 
 

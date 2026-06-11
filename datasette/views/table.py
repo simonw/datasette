@@ -43,6 +43,10 @@ from datasette.utils import (
 from datasette.utils.asgi import BadRequest, Forbidden, NotFound, Response
 from datasette.filters import Filters
 import sqlite_utils
+from dataclasses import dataclass, field, fields
+
+from datasette.extras import ExtraScope
+from . import Context, extra_field
 from .base import BaseView, DatasetteError, _error, stream_csv
 from .database import QueryView
 from .table_extras import (
@@ -51,6 +55,129 @@ from .table_extras import (
     resolve_table_extras,
     table_extra_registry,
 )
+
+
+@dataclass
+class TableContext(Context):
+    "The page showing the rows in a table or SQL view, e.g. /fixtures/facetable"
+
+    extras_scope = ExtraScope.TABLE
+
+    # Fields resolved by registered extras - their documentation comes
+    # from the description on each Extra class in table_extras.py
+    actions: callable = extra_field()
+    all_columns: list = extra_field()
+    columns: list = extra_field()
+    count: int = extra_field()
+    count_sql: str = extra_field()
+    custom_table_templates: list = extra_field()
+    database: str = extra_field()
+    database_color: str = extra_field()
+    display_columns: list = extra_field()
+    display_rows: list = extra_field()
+    expandable_columns: list = extra_field()
+    facet_results: dict = extra_field()
+    facets_timed_out: list = extra_field()
+    filters: Filters = extra_field()
+    form_hidden_args: list = extra_field()
+    human_description_en: str = extra_field()
+    is_view: bool = extra_field()
+    metadata: dict = extra_field()
+    next_url: str = extra_field()
+    primary_keys: list = extra_field()
+    private: bool = extra_field()
+    query: dict = extra_field()
+    renderers: dict = extra_field()
+    set_column_type_ui: dict = extra_field()
+    sorted_facet_results: list = extra_field()
+    suggested_facets: list = extra_field()
+    table: str = extra_field()
+    table_definition: str = extra_field()
+    view_definition: str = extra_field()
+
+    # Fields added by the view code
+    ok: bool = field(
+        metadata={"help": "True if the data for this page was retrieved without errors"}
+    )
+    next: str = field(metadata={"help": "Pagination token for the next page, or None"})
+    rows: list = field(
+        metadata={
+            "help": "The rows for this page, as a list of dictionaries mapping column name to value"
+        }
+    )
+    filter_columns: list = field(
+        metadata={"help": "List of columns offered by the filter interface"}
+    )
+    supports_search: bool = field(
+        metadata={"help": "True if this table has full-text search configured"}
+    )
+    extra_wheres_for_ui: list = field(
+        metadata={
+            "help": "Extra where clauses from ?_where=, with links to remove them"
+        }
+    )
+    url_csv: str = field(metadata={"help": "URL for the CSV export of this page"})
+    url_csv_path: str = field(metadata={"help": "Path portion of the CSV export URL"})
+    url_csv_hidden_args: list = field(
+        metadata={
+            "help": "(name, value) pairs for hidden form fields used by the CSV export form"
+        }
+    )
+    sort: str = field(metadata={"help": "Column the page is sorted by, or None"})
+    sort_desc: str = field(
+        metadata={"help": "Column the page is sorted by in descending order, or None"}
+    )
+    append_querystring: callable = field(
+        metadata={
+            "help": "Function that appends additional querystring arguments to a URL"
+        }
+    )
+    path_with_replaced_args: callable = field(
+        metadata={
+            "help": "Function for building the current path with modified querystring arguments"
+        }
+    )
+    fix_path: callable = field(
+        metadata={"help": "Function that applies the base_url prefix to a path"}
+    )
+    settings: dict = field(
+        metadata={"help": "Dictionary of Datasette's current settings"}
+    )
+    alternate_url_json: str = field(
+        metadata={"help": "URL for the JSON version of this page"}
+    )
+    datasette_allow_facet: str = field(
+        metadata={
+            "help": 'The string "true" or "false" reflecting the allow_facet setting'
+        }
+    )
+    is_sortable: bool = field(
+        metadata={"help": "True if any of the displayed columns can be used to sort"}
+    )
+    allow_execute_sql: bool = field(
+        metadata={
+            "help": "True if the current actor can execute custom SQL against this database"
+        }
+    )
+    query_ms: float = field(
+        metadata={
+            "help": "Time taken by the SQL queries for this page, in milliseconds"
+        }
+    )
+    select_templates: list = field(
+        metadata={
+            "help": "List of template names that were considered for this page, the one used marked with an asterisk"
+        }
+    )
+    top_table: callable = field(
+        metadata={"help": "Async function rendering the top_table plugin slot"}
+    )
+    count_limit: int = field(
+        metadata={
+            "help": "The maximum number of rows Datasette will count before showing an approximation"
+        }
+    )
+
 
 LINK_WITH_LABEL = (
     '<a href="{base_url}{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'
@@ -1084,11 +1211,16 @@ async def table_view_traced(datasette, request):
                 )
             }
         )
+        # Only keys declared on TableContext are part of the documented
+        # template contract - anything else in data (e.g. extras requested
+        # with ?_extra= on the HTML page, or extra filter context added by
+        # filters_from_request plugins) is dropped here
+        declared_fields = {f.name for f in fields(TableContext)}
         r = Response.html(
             await datasette.render_template(
                 template,
-                dict(
-                    data,
+                TableContext(
+                    **{k: v for k, v in data.items() if k in declared_fields},
                     append_querystring=append_querystring,
                     path_with_replaced_args=path_with_replaced_args,
                     fix_path=datasette.urls.path,

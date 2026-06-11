@@ -2162,7 +2162,11 @@ class Datasette:
                 templates = [templates]
             template = self.get_jinja_environment(request).select_template(templates)
         if dataclasses.is_dataclass(context):
-            context = dataclasses.asdict(context)
+            # Shallow conversion - asdict() would deep-copy values, which
+            # is wasteful and fails on values like sqlite3.Row
+            context = {
+                f.name: getattr(context, f.name) for f in dataclasses.fields(context)
+            }
         body_scripts = []
         # pylint: disable=no-member
         for extra_script in pm.hook.extra_body_script(

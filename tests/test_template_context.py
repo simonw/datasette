@@ -178,6 +178,14 @@ async def test_template_context_matches_documented_contract(
     )
 
 
+def test_table_context_fields_match_documented_contract():
+    from datasette.views.table import TableContext
+
+    assert {f.name for f in TableContext.documented_fields()} == {
+        key.name for key in PAGES["table"].documented_keys()
+    }
+
+
 def test_base_context_keys_all_have_docs():
     for key in BASE_CONTEXT_KEYS:
         assert key.doc, "Base context key {} is missing docs".format(key.name)

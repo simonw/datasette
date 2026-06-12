@@ -1421,6 +1421,16 @@ def test_generated_columns_are_visible_in_datasette():
             ["pk", "state"],
         ),
         (
+            # https://github.com/simonw/datasette/issues/1975
+            "/fixtures/facetable.json?_col=pk&_col=state",
+            ["pk", "state"],
+        ),
+        (
+            # https://github.com/simonw/datasette/issues/1975
+            "/fixtures/facetable.json?_col=pk",
+            ["pk"],
+        ),
+        (
             "/fixtures/facetable.json?_col=state&_col=created&_nocol=created",
             ["pk", "state"],
         ),

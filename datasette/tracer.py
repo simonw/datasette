@@ -27,8 +27,10 @@ def get_task_id():
 @contextmanager
 def trace_child_tasks():
     token = trace_task_id.set(get_task_id())
-    yield
-    trace_task_id.reset(token)
+    try:
+        yield
+    finally:
+        trace_task_id.reset(token)
 
 
 @contextmanager

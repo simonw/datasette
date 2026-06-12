@@ -512,6 +512,8 @@ Example usage:
 
 The method returns ``True`` if the permission is granted, ``False`` if denied.
 
+Results are cached for the duration of the current request, so checking the same ``(actor, action, resource)`` combination twice within one request only does the underlying permission resolution work once.
+
 .. _datasette_allowed_many:
 
 await .allowed_many(\*, actions, resource, actor=None)
@@ -542,6 +544,8 @@ Example usage:
         actor=request.actor,
     )
     # {"insert-row": True, "delete-row": True, "drop-table": False}
+
+Each result is stored in the per-request permission check cache, so subsequent ``datasette.allowed()`` calls for the same checks within the same request are served from that cache. Datasette uses this before running the ``table_actions`` and ``database_actions`` plugin hooks: it resolves every registered table-level action against the current table and every database-level action against its database first, which means ``allowed()`` calls made by those plugin hooks are usually served from the cache instead of triggering additional queries.
 
 Actions for which no plugin provides any permission rules are resolved to ``False`` directly, without being included in the SQL query at all.
 

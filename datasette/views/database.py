@@ -118,6 +118,19 @@ class DatabaseView(View):
         )
 
         async def database_actions():
+            # Resolve the registered database-level actions for this
+            # database in one batched query, seeding the request permission
+            # cache so that allowed() calls made inside the plugin hooks
+            # below are served from the cache
+            await datasette.allowed_many(
+                actions=[
+                    name
+                    for name, action in datasette.actions.items()
+                    if action.resource_class is DatabaseResource
+                ],
+                resource=DatabaseResource(database),
+                actor=request.actor,
+            )
             links = []
             for hook in pm.hook.database_actions(
                 datasette=datasette,

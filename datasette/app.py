@@ -291,6 +291,15 @@ DEFAULT_NOT_SET = object()
 ResourcesSQL = collections.namedtuple("ResourcesSQL", ("sql", "params"))
 
 
+def _permission_cache_key(actor, action, parent, child):
+    # Key on the full serialized actor so actors differing in any field
+    # (e.g. token restrictions) never share cache entries
+    actor_key = (
+        json.dumps(actor, sort_keys=True, default=repr) if actor is not None else None
+    )
+    return (actor_key, action, parent, child)
+
+
 async def favicon(request, send):
     await asgi_send_file(
         send,
@@ -1834,7 +1843,9 @@ class Datasette:
 
         Resolves every action (plus any also_requires dependencies) with a
         single internal database query, instead of one or two queries per
-        action.
+        action. Results are stored in the request-scoped permission cache,
+        so subsequent datasette.allowed() calls for the same checks within
+        the same request are served from the cache.
 
         Example:
             from datasette.resources import TableResource
@@ -1846,6 +1857,10 @@ class Datasette:
             # {"edit-schema": True, "drop-table": True, "insert-row": False}
         """
         from datasette.utils.actions_sql import check_permissions_for_actions
+        from datasette.permissions import (
+            _permission_check_cache,
+            _skip_permission_checks,
+        )
 
         # For global actions, resource is None
         parent = resource.parent if resource else None
@@ -1869,14 +1884,30 @@ class Datasette:
         for name in requested:
             add_action(name)
 
-        raw = await check_permissions_for_actions(
-            datasette=self,
-            actor=actor,
-            actions=expanded,
-            parent=parent,
-            child=child,
-        )
+        # Consult the request-scoped cache, unless permission checks are
+        # being skipped (skip-mode verdicts must never be cached)
+        skip = _skip_permission_checks.get()
+        cache = None if skip else _permission_check_cache.get()
+
         final = {}
+        to_check = []
+        for name in expanded:
+            if cache is not None:
+                key = _permission_cache_key(actor, name, parent, child)
+                if key in cache:
+                    final[name] = cache[key]
+                    continue
+            to_check.append(name)
+
+        raw = {}
+        if to_check:
+            raw = await check_permissions_for_actions(
+                datasette=self,
+                actor=actor,
+                actions=to_check,
+                parent=parent,
+                child=child,
+            )
 
         def resolve(name):
             # final verdict = own rules AND verdict of also_requires chain
@@ -1892,8 +1923,13 @@ class Datasette:
         for name in expanded:
             resolve(name)
 
-        # Log every check for the debug page, dependencies before the
-        # actions that required them
+        # Cache the freshly computed checks
+        if cache is not None:
+            for name in to_check:
+                cache[_permission_cache_key(actor, name, parent, child)] = final[name]
+
+        # Log every check (including cache hits) for the debug page,
+        # dependencies before the actions that required them
         when = datetime.datetime.now(datetime.timezone.utc).isoformat()
         for name in reversed(expanded):
             self._permission_checks.append(
@@ -2663,7 +2699,16 @@ class DatasetteRouter:
         if raw_path:
             path = raw_path.decode("ascii")
         path = path.partition("?")[0]
-        return await self.route_path(scope, receive, send, path)
+        # Give each request a fresh permission check cache, so repeated
+        # datasette.allowed() checks within the request are memoized but
+        # results never persist beyond it
+        from datasette.permissions import _permission_check_cache
+
+        cache_token = _permission_check_cache.set({})
+        try:
+            return await self.route_path(scope, receive, send, path)
+        finally:
+            _permission_check_cache.reset(cache_token)
 
     async def route_path(self, scope, receive, send, path):
         # Strip off base_url if present before routing

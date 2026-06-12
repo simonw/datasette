@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Sequence
 
 if TYPE_CHECKING:
     from datasette.permissions import Resource
@@ -1817,46 +1817,97 @@ class Datasette:
             # For global actions, resource can be omitted:
             can_debug = await datasette.allowed(action="permissions-debug", actor=actor)
         """
-        from datasette.utils.actions_sql import check_permission_for_resource
+        results = await self.allowed_many(
+            actions=[action], resource=resource, actor=actor
+        )
+        return results[action]
 
-        # For global actions, resource remains None
+    async def allowed_many(
+        self,
+        *,
+        actions: Sequence[str],
+        resource: "Resource" = None,
+        actor: dict | None = None,
+    ) -> dict[str, bool]:
+        """
+        Check several actions against one resource for one actor.
 
-        # Check if this action has also_requires - if so, check that action first
-        action_obj = self.actions.get(action)
-        if action_obj and action_obj.also_requires:
-            # Must have the required action first
-            if not await self.allowed(
-                action=action_obj.also_requires,
-                resource=resource,
+        Resolves every action (plus any also_requires dependencies) with a
+        single internal database query, instead of one or two queries per
+        action.
+
+        Example:
+            from datasette.resources import TableResource
+            results = await datasette.allowed_many(
+                actions=["edit-schema", "drop-table", "insert-row"],
+                resource=TableResource(database="data", table="exercise"),
                 actor=actor,
-            ):
-                return False
+            )
+            # {"edit-schema": True, "drop-table": True, "insert-row": False}
+        """
+        from datasette.utils.actions_sql import check_permissions_for_actions
 
         # For global actions, resource is None
         parent = resource.parent if resource else None
         child = resource.child if resource else None
 
-        result = await check_permission_for_resource(
+        # Expand also_requires dependencies (transitively) so that each
+        # dependency is resolved within the same batch
+        expanded = []
+
+        def add_action(name):
+            if name in expanded:
+                return
+            action_obj = self.actions.get(name)
+            if action_obj is None:
+                raise ValueError(f"Unknown action: {name}")
+            expanded.append(name)
+            if action_obj.also_requires:
+                add_action(action_obj.also_requires)
+
+        requested = list(dict.fromkeys(actions))
+        for name in requested:
+            add_action(name)
+
+        raw = await check_permissions_for_actions(
             datasette=self,
             actor=actor,
-            action=action,
+            actions=expanded,
             parent=parent,
             child=child,
         )
+        final = {}
 
-        # Log the permission check for debugging
-        self._permission_checks.append(
-            PermissionCheck(
-                when=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                actor=actor,
-                action=action,
-                parent=parent,
-                child=child,
-                result=result,
+        def resolve(name):
+            # final verdict = own rules AND verdict of also_requires chain
+            if name in final:
+                return final[name]
+            result = raw[name]
+            action_obj = self.actions.get(name)
+            if result and action_obj.also_requires:
+                result = resolve(action_obj.also_requires)
+            final[name] = result
+            return result
+
+        for name in expanded:
+            resolve(name)
+
+        # Log every check for the debug page, dependencies before the
+        # actions that required them
+        when = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        for name in reversed(expanded):
+            self._permission_checks.append(
+                PermissionCheck(
+                    when=when,
+                    actor=actor,
+                    action=name,
+                    parent=parent,
+                    child=child,
+                    result=final[name],
+                )
             )
-        )
 
-        return result
+        return {name: final[name] for name in requested}
 
     async def ensure_permission(
         self,

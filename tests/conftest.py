@@ -146,6 +146,7 @@ def restore_working_directory(tmpdir, request):
 @pytest.fixture(scope="session", autouse=True)
 def check_actions_are_documented():
     from datasette.plugins import pm
+    from datasette.default_actions import register_actions as default_register_actions
 
     content = (
         pathlib.Path(__file__).parent.parent / "docs" / "authentication.rst"
@@ -154,6 +155,9 @@ def check_actions_are_documented():
     documented_actions = set(permissions_re.findall(content)).union(
         UNDOCUMENTED_PERMISSIONS
     )
+    # Only Datasette core actions need to be documented - actions registered
+    # by (test) plugins are checked for registration but not documentation
+    core_actions = {action.name for action in default_register_actions()}
 
     def before(hook_name, hook_impls, kwargs):
         if hook_name == "permission_resources_sql":
@@ -165,9 +169,10 @@ def check_actions_are_documented():
                 + " (or maybe a test forgot to do await ds.invoke_startup())"
             )
             action = kwargs.get("action").replace("-", "_")
-            assert (
-                action in documented_actions
-            ), "Undocumented permission action: {}".format(action)
+            if kwargs["action"] in core_actions:
+                assert (
+                    action in documented_actions
+                ), "Undocumented permission action: {}".format(action)
 
     pm.add_hookcall_monitoring(
         before=before, after=lambda outcome, hook_name, hook_impls, kwargs: None

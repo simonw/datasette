@@ -93,9 +93,26 @@ async def _fetch_live_examples(scoped_classes):
         datasette = Datasette(
             [str(db_path)],
             settings={"num_sql_threads": 1},
+            metadata={
+                "databases": {
+                    "fixtures": {
+                        "tables": {
+                            "facetable": {
+                                "description": "A demo table of places, used to demonstrate facets",
+                                "columns": {"state": "Two letter US state code"},
+                            }
+                        }
+                    }
+                }
+            },
             config={
                 "databases": {
                     "fixtures": {
+                        "tables": {
+                            "facetable": {
+                                "column_types": {"tags": "json"},
+                            }
+                        },
                         "queries": {
                             "neighborhood_search": {
                                 "sql": textwrap.dedent("""
@@ -108,7 +125,7 @@ async def _fetch_live_examples(scoped_classes):
                                 """),
                                 "title": "Search neighborhoods",
                             }
-                        }
+                        },
                     }
                 }
             },

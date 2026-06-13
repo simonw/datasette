@@ -12,6 +12,7 @@ import pytest
 import pytest_asyncio
 from datasette.app import Datasette
 from datasette.permissions import (
+    Action,
     PermissionSQL,
     SkipPermissions,
     _permission_check_cache,
@@ -539,6 +540,43 @@ async def test_allowed_many_skip_permission_checks(ds):
             actor=None,
         )
     assert results == {"view-table": True, "drop-table": True}
+
+
+class ManyActionsPlugin:
+    """Registers enough actions to exceed SQLite's compound SELECT limit."""
+
+    def __init__(self, count):
+        self.action_names = [f"bulk-action-{i}" for i in range(count)]
+        self.action_names_set = set(self.action_names)
+
+    @hookimpl
+    def register_actions(self, datasette):
+        return [
+            Action(name=name, abbr=None, description="Bulk test action")
+            for name in self.action_names
+        ]
+
+    @hookimpl
+    def permission_resources_sql(self, datasette, actor, action):
+        if action in self.action_names_set:
+            return PermissionSQL(
+                sql="SELECT NULL AS parent, NULL AS child, 1 AS allow, 'bulk allow' AS reason",
+                params={},
+            )
+
+
+@pytest.mark.asyncio
+async def test_allowed_many_more_than_sqlite_compound_select_limit():
+    plugin = ManyActionsPlugin(600)
+    ds = Datasette()
+    ds.pm.register(plugin, name="many_actions")
+    try:
+        await ds.invoke_startup()
+        results = await ds.allowed_many(actions=plugin.action_names, actor=None)
+        assert len(results) == 600
+        assert all(results.values())
+    finally:
+        ds.pm.unregister(name="many_actions")
 
 
 # ----------------------------------------------------------------------

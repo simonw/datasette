@@ -555,7 +555,7 @@ async def check_permissions_for_actions(
 
     params = {"_check_parent": parent, "_check_child": child}
     ctes = []
-    selects = []
+    result_rows = []
     verdicts = {}
 
     for i, (action, permission_sqls) in enumerate(zip(unique_actions, gathered)):
@@ -627,10 +627,17 @@ async def check_permissions_for_actions(
     AND (r.child = :_check_child OR r.child IS NULL)
 )"""
 
-        selects.append(f"SELECT {i} AS action_idx, ({verdict_sql}) AS is_allowed")
+        result_rows.append(f"({i}, ({verdict_sql}))")
 
-    if selects:
-        query = "WITH\n" + ",\n".join(ctes) + "\n" + "\nUNION ALL\n".join(selects)
+    if result_rows:
+        ctes.append(
+            "results(action_idx, is_allowed) AS (VALUES\n"
+            + ",\n".join(result_rows)
+            + "\n)"
+        )
+        query = (
+            "WITH\n" + ",\n".join(ctes) + "\nSELECT action_idx, is_allowed FROM results"
+        )
         result = await datasette.get_internal_database().execute(query, params)
         for row in result.rows:
             verdicts[unique_actions[row[0]]] = bool(row[1])

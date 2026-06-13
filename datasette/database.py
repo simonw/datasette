@@ -829,10 +829,10 @@ def _apply_write_wrapper(fn, wrapper_factory, track_event):
         # Execute the actual write
         try:
             result = fn(conn)
-        except Exception:
+        except Exception as e:
             # Throw exception into generator so it can handle it
             try:
-                gen.throw(*sys.exc_info())
+                gen.throw(e)
             except StopIteration:
                 pass
             # Re-raise the original exception

@@ -1458,12 +1458,6 @@ to avoid conflicts with other plugins. The recommended convention is to prefix p
 plugin's source name (e.g., ``myplugin_user_id``). The system reserves these parameter names:
 ``:actor``, ``:actor_id``, ``:action``, and ``:filter_parent``.
 
-This hook may be called for many actions in rapid succession - for example
-:ref:`datasette.allowed_many() <datasette_allowed_many>` gathers rules for every action in its batch
-concurrently before table and database pages render their action menus. Hook implementations must not
-assume that checks for different actions arrive one page-render apart, and expensive work (such as
-network calls) should be cached independently of the ``action`` argument where possible.
-
 You can also use return ``PermissionSQL.allow(reason="reason goes here")`` or ``PermissionSQL.deny(reason="reason goes here")`` as shortcuts for simple root-level allow or deny rules. These will create SQL snippets that look like this:
 
 .. code-block:: sql

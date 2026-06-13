@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Sequence
 
 if TYPE_CHECKING:
     from datasette.permissions import Resource
@@ -289,6 +289,15 @@ DEFAULT_NOT_SET = object()
 
 
 ResourcesSQL = collections.namedtuple("ResourcesSQL", ("sql", "params"))
+
+
+def _permission_cache_key(actor, action, parent, child):
+    # Key on the full serialized actor so actors differing in any field
+    # (e.g. token restrictions) never share cache entries
+    actor_key = (
+        json.dumps(actor, sort_keys=True, default=repr) if actor is not None else None
+    )
+    return (actor_key, action, parent, child)
 
 
 async def favicon(request, send):
@@ -1817,46 +1826,124 @@ class Datasette:
             # For global actions, resource can be omitted:
             can_debug = await datasette.allowed(action="permissions-debug", actor=actor)
         """
-        from datasette.utils.actions_sql import check_permission_for_resource
+        results = await self.allowed_many(
+            actions=[action], resource=resource, actor=actor
+        )
+        return results[action]
 
-        # For global actions, resource remains None
+    async def allowed_many(
+        self,
+        *,
+        actions: Sequence[str],
+        resource: "Resource" = None,
+        actor: dict | None = None,
+    ) -> dict[str, bool]:
+        """
+        Check several actions against one resource for one actor.
 
-        # Check if this action has also_requires - if so, check that action first
-        action_obj = self.actions.get(action)
-        if action_obj and action_obj.also_requires:
-            # Must have the required action first
-            if not await self.allowed(
-                action=action_obj.also_requires,
-                resource=resource,
+        Resolves every action (plus any also_requires dependencies) with a
+        single internal database query, instead of one or two queries per
+        action. Results are stored in the request-scoped permission cache,
+        so subsequent datasette.allowed() calls for the same checks within
+        the same request are served from the cache.
+
+        Example:
+            from datasette.resources import TableResource
+            results = await datasette.allowed_many(
+                actions=["edit-schema", "drop-table", "insert-row"],
+                resource=TableResource(database="data", table="exercise"),
                 actor=actor,
-            ):
-                return False
+            )
+            # {"edit-schema": True, "drop-table": True, "insert-row": False}
+        """
+        from datasette.utils.actions_sql import check_permissions_for_actions
+        from datasette.permissions import (
+            _permission_check_cache,
+            _skip_permission_checks,
+        )
 
         # For global actions, resource is None
         parent = resource.parent if resource else None
         child = resource.child if resource else None
 
-        result = await check_permission_for_resource(
-            datasette=self,
-            actor=actor,
-            action=action,
-            parent=parent,
-            child=child,
-        )
+        # Expand also_requires dependencies (transitively) so that each
+        # dependency is resolved within the same batch
+        expanded = []
 
-        # Log the permission check for debugging
-        self._permission_checks.append(
-            PermissionCheck(
-                when=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        def add_action(name):
+            if name in expanded:
+                return
+            action_obj = self.actions.get(name)
+            if action_obj is None:
+                raise ValueError(f"Unknown action: {name}")
+            expanded.append(name)
+            if action_obj.also_requires:
+                add_action(action_obj.also_requires)
+
+        requested = list(dict.fromkeys(actions))
+        for name in requested:
+            add_action(name)
+
+        # Consult the request-scoped cache, unless permission checks are
+        # being skipped (skip-mode verdicts must never be cached)
+        skip = _skip_permission_checks.get()
+        cache = None if skip else _permission_check_cache.get()
+
+        final = {}
+        to_check = []
+        for name in expanded:
+            if cache is not None:
+                key = _permission_cache_key(actor, name, parent, child)
+                if key in cache:
+                    final[name] = cache[key]
+                    continue
+            to_check.append(name)
+
+        raw = {}
+        if to_check:
+            raw = await check_permissions_for_actions(
+                datasette=self,
                 actor=actor,
-                action=action,
+                actions=to_check,
                 parent=parent,
                 child=child,
-                result=result,
             )
-        )
 
-        return result
+        def resolve(name):
+            # final verdict = own rules AND verdict of also_requires chain
+            if name in final:
+                return final[name]
+            result = raw[name]
+            action_obj = self.actions.get(name)
+            if result and action_obj.also_requires:
+                result = resolve(action_obj.also_requires)
+            final[name] = result
+            return result
+
+        for name in expanded:
+            resolve(name)
+
+        # Cache the freshly computed checks
+        if cache is not None:
+            for name in to_check:
+                cache[_permission_cache_key(actor, name, parent, child)] = final[name]
+
+        # Log every check (including cache hits) for the debug page,
+        # dependencies before the actions that required them
+        when = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        for name in reversed(expanded):
+            self._permission_checks.append(
+                PermissionCheck(
+                    when=when,
+                    actor=actor,
+                    action=name,
+                    parent=parent,
+                    child=child,
+                    result=final[name],
+                )
+            )
+
+        return {name: final[name] for name in requested}
 
     async def ensure_permission(
         self,
@@ -2612,7 +2699,16 @@ class DatasetteRouter:
         if raw_path:
             path = raw_path.decode("ascii")
         path = path.partition("?")[0]
-        return await self.route_path(scope, receive, send, path)
+        # Give each request a fresh permission check cache, so repeated
+        # datasette.allowed() checks within the request are memoized but
+        # results never persist beyond it
+        from datasette.permissions import _permission_check_cache
+
+        cache_token = _permission_check_cache.set({})
+        try:
+            return await self.route_path(scope, receive, send, path)
+        finally:
+            _permission_check_cache.reset(cache_token)
 
     async def route_path(self, scope, receive, send, path):
         # Strip off base_url if present before routing

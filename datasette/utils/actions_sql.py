@@ -21,6 +21,8 @@ The core pattern is:
 - Across levels, child beats parent beats global
 """
 
+import asyncio
+import re
 from typing import TYPE_CHECKING
 
 from datasette.utils.permissions import gather_permission_sql_from_hooks
@@ -495,6 +497,153 @@ async def build_permission_rules_sql(
     return rules_union, all_params, restriction_sqls
 
 
+async def check_permissions_for_actions(
+    *,
+    datasette: "Datasette",
+    actor: dict | None,
+    actions: list[str],
+    parent: str | None,
+    child: str | None,
+) -> dict[str, bool]:
+    """
+    Check several actions for one actor and resource in a single query.
+
+    Args:
+        datasette: The Datasette instance
+        actor: The actor dict (or None)
+        actions: List of action names to check
+        parent: The parent resource identifier (e.g., database name, or None)
+        child: The child resource identifier (e.g., table name, or None)
+
+    Returns:
+        Dict mapping each action name to True (allowed) or False (denied)
+
+    Each action contributes its own tagged block of permission rules
+    (gathered from the permission_resources_sql hook, with parameters
+    namespaced per action to avoid collisions) plus an optional
+    restriction allowlist CTE. One internal database query resolves
+    the winning rule per action using the same specificity-then-deny
+    ordering as the rest of the permission system.
+
+    Note: this resolves each action independently - also_requires
+    dependencies are handled by the caller (Datasette.allowed_many).
+    """
+    from datasette.utils.permissions import SKIP_PERMISSION_CHECKS
+
+    for action in actions:
+        if not datasette.actions.get(action):
+            raise ValueError(f"Unknown action: {action}")
+
+    # Dedupe while preserving order
+    unique_actions = list(dict.fromkeys(actions))
+    if not unique_actions:
+        return {}
+
+    # Gather hook results for each action concurrently - hooks within a
+    # single action still run sequentially, preserving existing semantics
+    gathered = await asyncio.gather(
+        *(
+            gather_permission_sql_from_hooks(
+                datasette=datasette, actor=actor, action=action
+            )
+            for action in unique_actions
+        )
+    )
+
+    if any(result is SKIP_PERMISSION_CHECKS for result in gathered):
+        return {action: True for action in unique_actions}
+
+    params = {"_check_parent": parent, "_check_child": child}
+    ctes = []
+    result_rows = []
+    verdicts = {}
+
+    for i, (action, permission_sqls) in enumerate(zip(unique_actions, gathered)):
+        prefix = f"a{i}_"
+        rule_parts = []
+        restriction_parts = []
+
+        for permission_sql in permission_sqls:
+            sql = permission_sql.sql
+            restriction_sql = permission_sql.restriction_sql
+            # Namespace this block's params so identical names used for
+            # different actions cannot collide
+            for key in permission_sql.params or {}:
+                new_key = prefix + key
+                params[new_key] = permission_sql.params[key]
+                pattern = re.compile(":" + re.escape(key) + r"(?![A-Za-z0-9_])")
+                if sql:
+                    sql = pattern.sub(":" + new_key, sql)
+                if restriction_sql:
+                    restriction_sql = pattern.sub(":" + new_key, restriction_sql)
+
+            if restriction_sql:
+                restriction_parts.append(restriction_sql)
+
+            # Skip plugins that only provide restriction_sql (no permission rules)
+            if sql is None:
+                continue
+            rule_parts.append(
+                f"SELECT parent, child, allow, reason, '{permission_sql.source}' AS source_plugin FROM (\n{sql}\n)"
+            )
+
+        if not rule_parts:
+            # No rules from any plugin - default deny. Restrictions can
+            # only restrict, never grant, so no SQL is needed at all
+            verdicts[action] = False
+            continue
+        ctes.append(f"a{i}_rules AS (\n" + "\nUNION ALL\n".join(rule_parts) + "\n)")
+
+        # Winning rule for this action: most specific depth first, then
+        # deny-beats-allow, then source_plugin as a stable tie-break
+        verdict_sql = f"""COALESCE((
+  SELECT allow FROM (
+    SELECT allow, source_plugin,
+      CASE
+        WHEN child IS NOT NULL THEN 2
+        WHEN parent IS NOT NULL THEN 1
+        ELSE 0
+      END AS depth
+    FROM a{i}_rules
+    WHERE (parent IS NULL OR parent = :_check_parent)
+      AND (child IS NULL OR child = :_check_child)
+    ORDER BY
+      depth DESC,
+      CASE WHEN allow = 0 THEN 0 ELSE 1 END,
+      source_plugin
+    LIMIT 1
+  )
+), 0)"""
+
+        if restriction_parts:
+            # Database-level restrictions (parent, NULL) match all children
+            restriction_intersect = "\nINTERSECT\n".join(
+                f"SELECT * FROM ({sql})" for sql in restriction_parts
+            )
+            ctes.append(f"a{i}_restriction AS (\n{restriction_intersect}\n)")
+            verdict_sql = f"""({verdict_sql}) AND EXISTS (
+  SELECT 1 FROM a{i}_restriction r
+  WHERE (r.parent = :_check_parent OR r.parent IS NULL)
+    AND (r.child = :_check_child OR r.child IS NULL)
+)"""
+
+        result_rows.append(f"({i}, ({verdict_sql}))")
+
+    if result_rows:
+        ctes.append(
+            "results(action_idx, is_allowed) AS (VALUES\n"
+            + ",\n".join(result_rows)
+            + "\n)"
+        )
+        query = (
+            "WITH\n" + ",\n".join(ctes) + "\nSELECT action_idx, is_allowed FROM results"
+        )
+        result = await datasette.get_internal_database().execute(query, params)
+        for row in result.rows:
+            verdicts[unique_actions[row[0]]] = bool(row[1])
+    return verdicts
+
+
 async def check_permission_for_resource(
     *,
     datasette: "Datasette",
@@ -515,77 +664,12 @@ async def check_permission_for_resource(
 
     Returns:
         True if the actor is allowed, False otherwise
-
-    This builds the cascading permission query and checks if the specific
-    resource is in the allowed set.
     """
-    rules_union, all_params, restriction_sqls = await build_permission_rules_sql(
-        datasette, actor, action
+    results = await check_permissions_for_actions(
+        datasette=datasette,
+        actor=actor,
+        actions=[action],
+        parent=parent,
+        child=child,
     )
-
-    # If no rules (empty SQL), default deny
-    if not rules_union:
-        return False
-
-    # Add parameters for the resource we're checking
-    all_params["_check_parent"] = parent
-    all_params["_check_child"] = child
-
-    # If there are restriction filters, check if the resource passes them first
-    if restriction_sqls:
-        # Check if resource is in restriction allowlist
-        # Database-level restrictions (parent, NULL) should match all children (parent, *)
-        # Wrap each restriction_sql in a subquery to avoid operator precedence issues
-        restriction_check = "\nINTERSECT\n".join(
-            f"SELECT * FROM ({sql})" for sql in restriction_sqls
-        )
-        restriction_query = f"""
-WITH restriction_list AS (
-    {restriction_check}
-)
-SELECT EXISTS (
-    SELECT 1 FROM restriction_list
-    WHERE (parent = :_check_parent OR parent IS NULL)
-      AND (child = :_check_child OR child IS NULL)
-) AS in_allowlist
-"""
-        result = await datasette.get_internal_database().execute(
-            restriction_query, all_params
-        )
-        if result.rows and not result.rows[0][0]:
-            # Resource not in restriction allowlist - deny
-            return False
-
-    query = f"""
-WITH
-all_rules AS (
-  {rules_union}
-),
-matched_rules AS (
-  SELECT ar.*,
-    CASE
-      WHEN ar.child IS NOT NULL THEN 2  -- child-level (most specific)
-      WHEN ar.parent IS NOT NULL THEN 1  -- parent-level
-      ELSE 0                             -- root/global
-    END AS depth
-  FROM all_rules ar
-  WHERE (ar.parent IS NULL OR ar.parent = :_check_parent)
-    AND (ar.child IS NULL OR ar.child = :_check_child)
-),
-winner AS (
-  SELECT *
-  FROM matched_rules
-  ORDER BY
-    depth DESC,                          -- specificity first (higher depth wins)
-    CASE WHEN allow=0 THEN 0 ELSE 1 END, -- then deny over allow
-    source_plugin                        -- stable tie-break
-  LIMIT 1
-)
-SELECT COALESCE((SELECT allow FROM winner), 0) AS is_allowed
-"""
-
-    # Execute the query against the internal database
-    result = await datasette.get_internal_database().execute(query, all_params)
-    if result.rows:
-        return bool(result.rows[0][0])
-    return False
+    return results[action]

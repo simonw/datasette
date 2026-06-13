@@ -512,6 +512,43 @@ Example usage:
 
 The method returns ``True`` if the permission is granted, ``False`` if denied.
 
+Results are cached for the duration of the current request, so checking the same ``(actor, action, resource)`` combination twice within one request only does the underlying permission resolution work once.
+
+.. _datasette_allowed_many:
+
+await .allowed_many(\*, actions, resource, actor=None)
+------------------------------------------------------
+
+``actions`` - list of strings
+    The names of the actions to permission check.
+
+``resource`` - Resource object
+    A Resource object representing the database, table, or other resource that each action is checked against. Omit for global actions.
+
+``actor`` - dictionary, optional
+    The authenticated actor. This is usually ``request.actor``. Defaults to ``None`` for unauthenticated requests.
+
+Checks several actions against the same resource for the same actor, returning a dictionary mapping each action name to ``True`` or ``False``. The whole batch - including any actions pulled in through ``also_requires`` dependencies - is resolved with a single SQL query against the internal database, so this is much faster than calling :ref:`datasette.allowed() <datasette_allowed>` once per action.
+
+Example usage:
+
+.. code-block:: python
+
+    from datasette.resources import TableResource
+
+    results = await datasette.allowed_many(
+        actions=["insert-row", "delete-row", "drop-table"],
+        resource=TableResource(
+            database="fixtures", table="facetable"
+        ),
+        actor=request.actor,
+    )
+    # {"insert-row": True, "delete-row": True, "drop-table": False}
+
+Each result is stored in the per-request permission check cache, so subsequent ``datasette.allowed()`` calls for the same checks within the same request are served from that cache. Datasette uses this before running the ``table_actions`` and ``database_actions`` plugin hooks: it resolves every registered table-level action against the current table and every database-level action against its database first, which means ``allowed()`` calls made by those plugin hooks are usually served from the cache instead of triggering additional queries.
+
+Actions for which no plugin provides any permission rules are resolved to ``False`` directly, without being included in the SQL query at all.
+
 .. _datasette_allowed_resources:
 
 await .allowed_resources(action, actor=None, \*, parent=None, include_is_private=False, include_reasons=False, limit=100, next=None)

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datasette.database import QueryInterrupted
 from datasette.extras import Extra, ExtraExample, ExtraRegistry, ExtraScope, Provider
 from datasette.plugins import pm
-from datasette.resources import TableResource
+from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
     await_me_maybe,
     call_with_supported_arguments,
@@ -361,6 +361,30 @@ class ActionsExtra(Extra):
             else:
                 kwargs["table"] = context.table_name
                 method = pm.hook.table_actions
+                # Resolve the registered table-level actions for this table
+                # and the database-level actions for its database in two
+                # batched queries, seeding the request permission cache so
+                # that allowed() calls made inside the plugin hooks below
+                # are served from the cache
+                datasette = context.datasette
+                await datasette.allowed_many(
+                    actions=[
+                        name
+                        for name, action in datasette.actions.items()
+                        if action.resource_class is TableResource
+                    ],
+                    resource=TableResource(context.database_name, context.table_name),
+                    actor=context.request.actor,
+                )
+                await datasette.allowed_many(
+                    actions=[
+                        name
+                        for name, action in datasette.actions.items()
+                        if action.resource_class is DatabaseResource
+                    ],
+                    resource=DatabaseResource(context.database_name),
+                    actor=context.request.actor,
+                )
             for hook in method(**kwargs):
                 extra_links = await await_me_maybe(hook)
                 if extra_links:

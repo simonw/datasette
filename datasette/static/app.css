@@ -1192,6 +1192,50 @@ dialog.set-column-type-dialog::backdrop {
     cursor: wait;
 }
 
+.row-link-with-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.row-inline-actions {
+    display: inline-flex;
+    gap: 0.2rem;
+    align-items: center;
+}
+
+.row-inline-action {
+    appearance: none;
+    border: 1px solid rgba(74, 85, 104, 0.24);
+    background: transparent;
+    color: #4a5568;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-grid;
+    place-items: center;
+    min-height: 24px;
+    min-width: 24px;
+    padding: 2px;
+    position: relative;
+}
+
+.row-inline-action:hover,
+.row-inline-action:focus {
+    background: rgba(74, 85, 104, 0.07);
+}
+
+.row-inline-action:focus {
+    outline: 3px solid #b3d4ff;
+    outline-offset: 1px;
+}
+
+.row-inline-action-icon {
+    display: block;
+    height: 13px;
+    width: 13px;
+}
+
 @media (max-width: 640px) {
     dialog.mobile-column-actions-dialog {
         width: 95vw;
@@ -1238,6 +1282,17 @@ dialog.set-column-type-dialog::backdrop {
     .set-column-type-options {
         padding-left: 18px;
         padding-right: 18px;
+    }
+
+    .row-inline-action {
+        min-height: 30px;
+        min-width: 30px;
+        padding: 4px;
+    }
+
+    .row-inline-action-icon {
+        height: 14px;
+        width: 14px;
     }
 }
 

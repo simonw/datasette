@@ -194,6 +194,13 @@ async def display_columns_and_rows(
     pks_for_display = pks
     if not pks_for_display:
         pks_for_display = ["rowid"]
+    row_action_permissions = {}
+    if link_column and request is not None and db.is_mutable:
+        row_action_permissions = await datasette.allowed_many(
+            actions=["update-row", "delete-row"],
+            resource=TableResource(database=database_name, table=table_name),
+            actor=request.actor,
+        )
 
     columns = []
     for r in description:
@@ -233,19 +240,65 @@ async def display_columns_and_rows(
         if link_column:
             is_special_link_column = len(pks) != 1
             pk_path = path_from_row_pks(row, pks, not pks, False)
+            row_path = path_from_row_pks(row, pks, not pks)
+            row_link = '<a href="{table_path}/{flat_pks_quoted}">{flat_pks}</a>'.format(
+                table_path=datasette.urls.table(database_name, table_name),
+                flat_pks=str(markupsafe.escape(pk_path)),
+                flat_pks_quoted=row_path,
+            )
+            edit_icon = (
+                '<svg class="row-inline-action-icon" aria-hidden="true" '
+                'xmlns="http://www.w3.org/2000/svg" width="14" height="14" '
+                'viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+                'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+                '<path d="M12 20h9"></path>'
+                '<path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>'
+                "</svg>"
+            )
+            delete_icon = (
+                '<svg class="row-inline-action-icon" aria-hidden="true" '
+                'xmlns="http://www.w3.org/2000/svg" width="14" height="14" '
+                'viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+                'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+                '<path d="M3 6h18"></path>'
+                '<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>'
+                '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>'
+                '<path d="M10 11v6"></path>'
+                '<path d="M14 11v6"></path>'
+                "</svg>"
+            )
+            row_actions = []
+            if row_action_permissions.get("update-row"):
+                row_actions.append(
+                    '<button type="button" class="row-inline-action row-inline-action-edit" '
+                    'aria-label="Edit row {row_label}" title="Edit row">'
+                    "{edit_icon}</button>".format(
+                        edit_icon=edit_icon,
+                        row_label=markupsafe.escape(pk_path),
+                    )
+                )
+            if row_action_permissions.get("delete-row"):
+                row_actions.append(
+                    '<button type="button" class="row-inline-action row-inline-action-delete" '
+                    'aria-label="Delete row {row_label}" title="Delete row">'
+                    "{delete_icon}</button>".format(
+                        delete_icon=delete_icon,
+                        row_label=markupsafe.escape(pk_path),
+                    )
+                )
+            if row_actions:
+                row_link = (
+                    '<span class="row-link-with-actions">{row_link}'
+                    '<span class="row-inline-actions" aria-label="Row actions">'
+                    "{row_actions}</span></span>"
+                ).format(row_link=row_link, row_actions="".join(row_actions))
             cells.append(
                 {
                     "column": pks[0] if len(pks) == 1 else "Link",
                     "value_type": "pk",
                     "is_special_link_column": is_special_link_column,
                     "raw": pk_path,
-                    "value": markupsafe.Markup(
-                        '<a href="{table_path}/{flat_pks_quoted}">{flat_pks}</a>'.format(
-                            table_path=datasette.urls.table(database_name, table_name),
-                            flat_pks=str(markupsafe.escape(pk_path)),
-                            flat_pks_quoted=path_from_row_pks(row, pks, not pks),
-                        )
-                    ),
+                    "value": markupsafe.Markup(row_link),
                 }
             )
 

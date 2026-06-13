@@ -1333,6 +1333,199 @@ dialog.row-delete-dialog::backdrop {
     cursor: wait;
 }
 
+dialog.row-edit-dialog {
+    --ink: #0f0f0f;
+    --paper: #f5f3ef;
+    --muted: #6b6b6b;
+    --rule: #e2dfd8;
+    --accent: #1a56db;
+    --card: #ffffff;
+    border: none;
+    border-radius: var(--modal-border-radius, 0.75rem);
+    padding: 0;
+    margin: auto;
+    width: min(720px, calc(100vw - 32px));
+    max-width: 95vw;
+    max-height: min(780px, calc(100vh - 32px));
+    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
+    animation: datasette-modal-slide-in var(--modal-animation-duration, 0.2s) ease-out;
+    overflow: hidden;
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--card);
+}
+
+dialog.row-edit-dialog[open] {
+    display: flex;
+    flex-direction: column;
+}
+
+dialog.row-edit-dialog::backdrop {
+    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
+    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
+    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
+    animation: datasette-modal-fade-in var(--modal-animation-duration, 0.2s) ease-out;
+}
+
+.row-edit-dialog .modal-header {
+    padding: 20px 24px 12px;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.row-edit-dialog .modal-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.row-edit-form {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    flex-direction: column;
+}
+
+.row-edit-summary,
+.row-edit-loading,
+.row-edit-error {
+    margin: 0;
+    padding: 12px 24px 0;
+}
+
+.row-edit-summary,
+.row-edit-loading {
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.row-edit-id {
+    display: inline;
+    padding: 2px 5px;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: var(--paper);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.92em;
+    overflow-wrap: anywhere;
+}
+
+.row-edit-error {
+    color: #b91c1c;
+    font-size: 0.9rem;
+}
+
+.row-edit-fields {
+    display: grid;
+    gap: 14px;
+    padding: 16px 24px 24px;
+    overflow-y: auto;
+}
+
+.row-edit-field {
+    display: grid;
+    grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+}
+
+.row-edit-label {
+    padding-top: 8px;
+    color: var(--ink);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    overflow-wrap: anywhere;
+}
+
+.row-edit-control-wrap {
+    display: grid;
+    gap: 5px;
+}
+
+.row-edit-input {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    padding: 8px 10px;
+    color: var(--ink);
+    background: #fff;
+    font: inherit;
+}
+
+textarea.row-edit-input {
+    resize: vertical;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+
+.row-edit-input:focus {
+    border-color: var(--accent);
+    outline: 3px solid rgba(26, 86, 219, 0.12);
+}
+
+.row-edit-input[readonly] {
+    color: var(--muted);
+    background: var(--paper);
+}
+
+.row-edit-field-meta {
+    color: var(--muted);
+    font-size: 0.78rem;
+}
+
+.row-edit-dialog .modal-footer {
+    padding: 14px 20px;
+    border-top: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-shrink: 0;
+    background: var(--paper);
+}
+
+.row-edit-dialog .btn {
+    border: none;
+    border-radius: 5px;
+    padding: 9px 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    touch-action: manipulation;
+    font-family: inherit;
+    transition: background 0.12s;
+}
+
+.row-edit-dialog .btn-ghost {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--rule);
+}
+
+.row-edit-dialog .btn-ghost:hover {
+    background: var(--rule);
+    color: var(--ink);
+}
+
+.row-edit-dialog .btn-primary {
+    background: var(--accent);
+    color: #fff;
+}
+
+.row-edit-dialog .btn-primary:hover {
+    background: #1949b8;
+}
+
+.row-edit-dialog .btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
 .row-link-with-actions {
     display: inline-flex;
     align-items: center;
@@ -1443,6 +1636,35 @@ dialog.row-delete-dialog::backdrop {
         padding-right: 18px;
     }
 
+    dialog.row-edit-dialog {
+        width: 95vw;
+        max-height: 85vh;
+        border-radius: 0.5rem;
+    }
+
+    .row-edit-dialog .modal-header,
+    .row-edit-summary,
+    .row-edit-loading,
+    .row-edit-error,
+    .row-edit-fields {
+        padding-left: 18px;
+        padding-right: 18px;
+    }
+
+    .row-edit-field {
+        grid-template-columns: 1fr;
+        gap: 5px;
+    }
+
+    .row-edit-label {
+        padding-top: 0;
+    }
+
+    .row-edit-dialog .modal-footer {
+        padding-left: 18px;
+        padding-right: 18px;
+    }
+
     .row-inline-action {
         min-height: 30px;
         min-width: 30px;
@@ -1505,6 +1727,10 @@ dialog.row-delete-dialog::backdrop {
         color: black;
         margin-left: -10%;
         font-size: 0.8em;
+    }
+
+    .row-inline-actions {
+        margin-bottom: 0.35rem;
     }
 
     .select-wrapper {

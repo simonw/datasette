@@ -66,12 +66,14 @@ class Row:
         row_path=None,
         row_url=None,
         delete_url=None,
+        update_url=None,
     ):
         self.cells = cells
         self.pk_path = pk_path
         self.row_path = row_path
         self.row_url = row_url
         self.delete_url = delete_url
+        self.update_url = update_url
 
     def __iter__(self):
         return iter(self.cells)
@@ -258,6 +260,7 @@ async def display_columns_and_rows(
                 row_path=row_path,
             )
             delete_url = "{row_url}/-/delete".format(row_url=row_url)
+            update_url = "{row_url}/-/update".format(row_url=row_url)
             row_link = '<a href="{table_path}/{flat_pks_quoted}">{flat_pks}</a>'.format(
                 table_path=table_path,
                 flat_pks=str(markupsafe.escape(pk_path)),
@@ -288,7 +291,8 @@ async def display_columns_and_rows(
             if row_action_permissions.get("update-row"):
                 row_actions.append(
                     '<button type="button" class="row-inline-action row-inline-action-edit" '
-                    'aria-label="Edit row {row_label}" title="Edit row">'
+                    'aria-label="Edit row {row_label}" title="Edit row" '
+                    'data-row-action="edit">'
                     "{edit_icon}</button>".format(
                         edit_icon=edit_icon,
                         row_label=markupsafe.escape(pk_path),
@@ -430,6 +434,7 @@ async def display_columns_and_rows(
                     row_path=row_path,
                     row_url=row_url,
                     delete_url=delete_url,
+                    update_url=update_url,
                 )
             )
         else:

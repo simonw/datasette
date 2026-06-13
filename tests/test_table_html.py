@@ -839,6 +839,7 @@ async def test_row_delete_action_data_attributes():
                     "tables": {
                         "items": {
                             "permissions": {
+                                "update-row": {"id": "root"},
                                 "delete-row": {"id": "root"},
                             },
                         },
@@ -863,6 +864,15 @@ async def test_row_delete_action_data_attributes():
         assert row["data-row-path"] == "1"
         assert row["data-row-url"] == "/data/items/1"
         assert row["data-row-delete-url"] == "/data/items/1/-/delete"
+        assert row["data-row-update-url"] == "/data/items/1/-/update"
+
+        edit_button = row.select_one(
+            'button.row-inline-action-edit[data-row-action="edit"]'
+        )
+        assert edit_button is not None
+        assert edit_button["aria-label"] == "Edit row 1"
+        assert edit_button["title"] == "Edit row"
+        assert edit_button.find("svg") is not None
 
         button = row.select_one(
             'button.row-inline-action-delete[data-row-action="delete"]'

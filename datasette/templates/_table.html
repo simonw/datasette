@@ -22,7 +22,7 @@
         </thead>
         <tbody>
         {% for row in display_rows %}
-            <tr{% if row.pk_path is not none %} data-row-pk-path="{{ row.pk_path }}" data-row-path="{{ row.row_path }}" data-row-url="{{ row.row_url }}" data-row-delete-url="{{ row.delete_url }}"{% endif %}>
+            <tr{% if row.pk_path is not none %} data-row-pk-path="{{ row.pk_path }}" data-row-path="{{ row.row_path }}" data-row-url="{{ row.row_url }}" data-row-delete-url="{{ row.delete_url }}" data-row-update-url="{{ row.update_url }}"{% endif %}>
                 {% for cell in row %}
                     <td class="col-{{ cell.column|to_css_class }} type-{{ cell.value_type }}">{{ cell.value }}</td>
                 {% endfor %}

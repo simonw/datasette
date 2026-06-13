@@ -14,6 +14,8 @@ var SET_COLUMN_TYPE_DIALOG_ID = "set-column-type-dialog";
 var setColumnTypeDialogState = null;
 var ROW_DELETE_DIALOG_ID = "row-delete-dialog";
 var rowDeleteDialogState = null;
+var ROW_EDIT_DIALOG_ID = "row-edit-dialog";
+var rowEditDialogState = null;
 
 function getParams() {
   return new URLSearchParams(location.search);
@@ -627,6 +629,290 @@ function initRowDeleteActions(manager) {
   });
 }
 
+function rowJsonUrl(row) {
+  var url = new URL(row.dataset.rowUrl, location.href);
+  url.pathname = url.pathname + ".json";
+  url.searchParams.set("_extra", "columns,column_types");
+  return url.toString();
+}
+
+function valueToEditText(value) {
+  if (value === null || typeof value === "undefined") {
+    return "";
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value, null, 2);
+  }
+  return String(value);
+}
+
+function shouldUseTextarea(value) {
+  if (value && typeof value === "object") {
+    return true;
+  }
+  var text = valueToEditText(value);
+  return text.length > 80 || text.indexOf("\n") !== -1;
+}
+
+function createRowEditField(column, value, isPk, columnType, index) {
+  var field = document.createElement("div");
+  field.className = "row-edit-field";
+
+  var fieldId = "row-edit-field-" + index;
+  var metaId = "row-edit-field-meta-" + index;
+  var label = document.createElement("label");
+  label.className = "row-edit-label";
+  label.setAttribute("for", fieldId);
+  label.textContent = column;
+
+  var controlWrap = document.createElement("div");
+  controlWrap.className = "row-edit-control-wrap";
+
+  var control = shouldUseTextarea(value)
+    ? document.createElement("textarea")
+    : document.createElement("input");
+  control.className = "row-edit-input";
+  control.id = fieldId;
+  control.name = column;
+  control.value = valueToEditText(value);
+  control.setAttribute("aria-describedby", metaId);
+  control.dataset.originalValue = valueToEditText(value);
+
+  if (control.nodeName === "TEXTAREA") {
+    control.rows = Math.min(8, Math.max(3, control.value.split("\n").length));
+  } else {
+    control.type = "text";
+  }
+
+  if (isPk) {
+    control.readOnly = true;
+  }
+
+  var meta = document.createElement("span");
+  meta.id = metaId;
+  meta.className = "row-edit-field-meta";
+  var metaParts = [];
+  if (isPk) {
+    metaParts.push("Primary key");
+  }
+  if (value === null) {
+    metaParts.push("Current value: NULL");
+    control.placeholder = "NULL";
+  }
+  if (columnType && columnType.type) {
+    metaParts.push("Custom type: " + columnType.type);
+  }
+  meta.textContent = metaParts.join(" · ");
+
+  controlWrap.appendChild(control);
+  if (meta.textContent) {
+    controlWrap.appendChild(meta);
+  }
+  field.appendChild(label);
+  field.appendChild(controlWrap);
+  return field;
+}
+
+function clearRowEditDialogError(state) {
+  state.error.hidden = true;
+  state.error.textContent = "";
+}
+
+function showRowEditDialogError(state, message) {
+  state.error.hidden = false;
+  state.error.textContent = message;
+}
+
+function setRowEditDialogLoading(state, isLoading) {
+  state.isLoading = isLoading;
+  state.loading.hidden = !isLoading;
+}
+
+function renderRowEditFields(state, data) {
+  var row = data.rows && data.rows.length ? data.rows[0] : null;
+  var columns = data.columns || (row ? Object.keys(row) : []);
+  var primaryKeys = data.primary_keys || [];
+  var columnTypes = data.column_types || {};
+
+  state.fields.innerHTML = "";
+  columns.forEach(function (column, index) {
+    state.fields.appendChild(
+      createRowEditField(
+        column,
+        row ? row[column] : null,
+        primaryKeys.indexOf(column) !== -1,
+        columnTypes[column],
+        index,
+      ),
+    );
+  });
+
+  var firstEditable = state.fields.querySelector(".row-edit-input:not([readonly])");
+  var firstField = state.fields.querySelector(".row-edit-input");
+  (firstEditable || firstField || state.cancelButton).focus();
+}
+
+function ensureRowEditDialog(manager) {
+  if (rowEditDialogState) {
+    return rowEditDialogState;
+  }
+  if (!window.HTMLDialogElement) {
+    return null;
+  }
+
+  var dialog = document.createElement("dialog");
+  dialog.id = ROW_EDIT_DIALOG_ID;
+  dialog.className = "row-edit-dialog";
+  dialog.setAttribute("aria-labelledby", "row-edit-title");
+  dialog.setAttribute("aria-describedby", "row-edit-summary");
+  dialog.innerHTML = `
+    <div class="modal-header">
+      <span class="modal-title" id="row-edit-title">Edit row</span>
+    </div>
+    <form class="row-edit-form">
+      <p class="row-edit-summary" id="row-edit-summary">Editing row <span class="row-edit-id"></span></p>
+      <p class="row-edit-loading">Loading row...</p>
+      <p class="row-edit-error" role="alert" hidden></p>
+      <div class="row-edit-fields"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost row-edit-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary row-edit-save" disabled>Save</button>
+      </div>
+    </form>
+  `;
+  document.body.appendChild(dialog);
+
+  rowEditDialogState = {
+    dialog: dialog,
+    form: dialog.querySelector(".row-edit-form"),
+    rowId: dialog.querySelector(".row-edit-id"),
+    loading: dialog.querySelector(".row-edit-loading"),
+    error: dialog.querySelector(".row-edit-error"),
+    fields: dialog.querySelector(".row-edit-fields"),
+    cancelButton: dialog.querySelector(".row-edit-cancel"),
+    saveButton: dialog.querySelector(".row-edit-save"),
+    currentButton: null,
+    currentRow: null,
+    currentPkPath: null,
+    loadId: 0,
+    manager: manager,
+    isLoading: false,
+    shouldRestoreFocus: true,
+  };
+
+  rowEditDialogState.form.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+  });
+
+  rowEditDialogState.cancelButton.addEventListener("click", function () {
+    rowEditDialogState.shouldRestoreFocus = true;
+    dialog.close();
+  });
+
+  dialog.addEventListener("click", function (ev) {
+    if (ev.target === dialog) {
+      rowEditDialogState.shouldRestoreFocus = true;
+      dialog.close();
+    }
+  });
+
+  dialog.addEventListener("keydown", function (ev) {
+    if (ev.key !== "Escape") {
+      return;
+    }
+    ev.preventDefault();
+    rowEditDialogState.shouldRestoreFocus = true;
+    dialog.close();
+  });
+
+  dialog.addEventListener("cancel", function () {
+    rowEditDialogState.shouldRestoreFocus = true;
+  });
+
+  dialog.addEventListener("close", function () {
+    var state = rowEditDialogState;
+    state.loadId += 1;
+    clearRowEditDialogError(state);
+    setRowEditDialogLoading(state, false);
+    if (
+      state.shouldRestoreFocus &&
+      state.currentButton &&
+      document.contains(state.currentButton)
+    ) {
+      state.currentButton.focus();
+    }
+  });
+
+  return rowEditDialogState;
+}
+
+async function openRowEditDialog(button, manager) {
+  var row = button.closest("tr[data-row-url]");
+  if (!row || !row.dataset.rowUrl) {
+    return;
+  }
+  var state = ensureRowEditDialog(manager);
+  if (!state) {
+    return;
+  }
+
+  state.manager = manager;
+  state.currentButton = button;
+  state.currentRow = row;
+  state.currentPkPath = row.dataset.rowPkPath || "";
+  state.shouldRestoreFocus = true;
+  state.loadId += 1;
+  var loadId = state.loadId;
+
+  clearRowEditDialogError(state);
+  setRowEditDialogLoading(state, true);
+  state.fields.innerHTML = "";
+  state.rowId.textContent = state.currentPkPath || "this row";
+
+  if (!state.dialog.open) {
+    state.dialog.showModal();
+  }
+  state.cancelButton.focus();
+
+  try {
+    var response = await fetch(rowJsonUrl(row), {
+      headers: {
+        Accept: "application/json",
+      },
+    });
+    var data = await response.json();
+    if (loadId !== state.loadId) {
+      return;
+    }
+    if (!response.ok || data.ok === false) {
+      throw rowDeleteRequestError(response, data);
+    }
+    setRowEditDialogLoading(state, false);
+    renderRowEditFields(state, data);
+  } catch (error) {
+    if (loadId !== state.loadId) {
+      return;
+    }
+    setRowEditDialogLoading(state, false);
+    showRowEditDialogError(state, error.message || "Could not load row");
+    state.cancelButton.focus();
+  }
+}
+
+function initRowEditActions(manager) {
+  if (!window.fetch || !window.HTMLDialogElement) {
+    return;
+  }
+  document.addEventListener("click", function (ev) {
+    var button = ev.target.closest('button[data-row-action="edit"]');
+    if (!button) {
+      return;
+    }
+    ev.preventDefault();
+    openRowEditDialog(button, manager);
+  });
+}
+
 function canChooseColumns() {
   return !!(
     document.querySelector("column-chooser") && window._columnChooserData
@@ -1022,6 +1308,7 @@ document.addEventListener("datasette_init", function (evt) {
 
   // Main table
   initDatasetteTable(manager);
+  initRowEditActions(manager);
   initRowDeleteActions(manager);
 
   // Other UI functions with interactive JS needs

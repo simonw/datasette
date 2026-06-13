@@ -59,8 +59,19 @@ LINK_WITH_VALUE = '<a href="{base_url}{database}/{table}/{link_id}">{id}</a>'
 
 
 class Row:
-    def __init__(self, cells):
+    def __init__(
+        self,
+        cells,
+        pk_path=None,
+        row_path=None,
+        row_url=None,
+        delete_url=None,
+    ):
         self.cells = cells
+        self.pk_path = pk_path
+        self.row_path = row_path
+        self.row_url = row_url
+        self.delete_url = delete_url
 
     def __iter__(self):
         return iter(self.cells)
@@ -241,8 +252,14 @@ async def display_columns_and_rows(
             is_special_link_column = len(pks) != 1
             pk_path = path_from_row_pks(row, pks, not pks, False)
             row_path = path_from_row_pks(row, pks, not pks)
+            table_path = datasette.urls.table(database_name, table_name)
+            row_url = "{table_path}/{row_path}".format(
+                table_path=table_path,
+                row_path=row_path,
+            )
+            delete_url = "{row_url}/-/delete".format(row_url=row_url)
             row_link = '<a href="{table_path}/{flat_pks_quoted}">{flat_pks}</a>'.format(
-                table_path=datasette.urls.table(database_name, table_name),
+                table_path=table_path,
                 flat_pks=str(markupsafe.escape(pk_path)),
                 flat_pks_quoted=row_path,
             )
@@ -280,7 +297,8 @@ async def display_columns_and_rows(
             if row_action_permissions.get("delete-row"):
                 row_actions.append(
                     '<button type="button" class="row-inline-action row-inline-action-delete" '
-                    'aria-label="Delete row {row_label}" title="Delete row">'
+                    'aria-label="Delete row {row_label}" title="Delete row" '
+                    'data-row-action="delete">'
                     "{delete_icon}</button>".format(
                         delete_icon=delete_icon,
                         row_label=markupsafe.escape(pk_path),
@@ -404,7 +422,18 @@ async def display_columns_and_rows(
                     ),
                 }
             )
-        cell_rows.append(Row(cells))
+        if link_column:
+            cell_rows.append(
+                Row(
+                    cells,
+                    pk_path=pk_path,
+                    row_path=row_path,
+                    row_url=row_url,
+                    delete_url=delete_url,
+                )
+            )
+        else:
+            cell_rows.append(Row(cells))
 
     if link_column:
         # Add the link column header.

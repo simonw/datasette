@@ -1,4 +1,5 @@
 from datasette.app import Datasette
+from datasette.database import Database
 from bs4 import BeautifulSoup as Soup
 from .fixtures import make_app_client
 import pathlib
@@ -826,6 +827,52 @@ async def test_mobile_column_actions_present(ds_client, path):
     # so the thead must render even when the table has no rows.
     ths = soup.select("table.rows-and-columns thead th[data-column]")
     assert len(ths) >= 1
+
+
+@pytest.mark.asyncio
+async def test_row_delete_action_data_attributes():
+    ds = Datasette(
+        [],
+        config={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "items": {
+                            "permissions": {
+                                "delete-row": {"id": "root"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_row_delete_actions"), name="data"
+        )
+        await db.execute_write_script("""
+            create table items (id integer primary key, name text);
+            insert into items (id, name) values (1, 'One');
+            """)
+        response = await ds.client.get("/data/items", actor={"id": "root"})
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        row = soup.select_one("table.rows-and-columns tbody tr")
+        assert row["data-row-pk-path"] == "1"
+        assert row["data-row-path"] == "1"
+        assert row["data-row-url"] == "/data/items/1"
+        assert row["data-row-delete-url"] == "/data/items/1/-/delete"
+
+        button = row.select_one(
+            'button.row-inline-action-delete[data-row-action="delete"]'
+        )
+        assert button is not None
+        assert button["aria-label"] == "Delete row 1"
+        assert button["title"] == "Delete row"
+        assert button.find("svg") is not None
+    finally:
+        ds.close()
 
 
 @pytest.mark.asyncio

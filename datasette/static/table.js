@@ -12,6 +12,8 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
 
 var SET_COLUMN_TYPE_DIALOG_ID = "set-column-type-dialog";
 var setColumnTypeDialogState = null;
+var ROW_DELETE_DIALOG_ID = "row-delete-dialog";
+var rowDeleteDialogState = null;
 
 function getParams() {
   return new URLSearchParams(location.search);
@@ -353,6 +355,276 @@ function openSetColumnTypeDialog(th) {
   } else {
     state.saveButton.focus();
   }
+}
+
+function ensureRowDeleteStatus(manager) {
+  var status = document.querySelector(".row-delete-status");
+  if (status) {
+    return status;
+  }
+
+  status = document.createElement("p");
+  status.className = "row-delete-status";
+  status.hidden = true;
+  status.setAttribute("role", "status");
+  status.setAttribute("aria-live", "polite");
+  status.setAttribute("tabindex", "-1");
+
+  var tableWrapper = document.querySelector(manager.selectors.tableWrapper);
+  if (tableWrapper && tableWrapper.parentNode) {
+    tableWrapper.parentNode.insertBefore(status, tableWrapper);
+  } else {
+    document.body.appendChild(status);
+  }
+  return status;
+}
+
+function showRowDeleteStatus(manager, message, isError) {
+  var status = ensureRowDeleteStatus(manager);
+  status.hidden = false;
+  status.classList.toggle("row-delete-status-error", !!isError);
+  status.textContent = message;
+  return status;
+}
+
+function setRowDeleteDialogBusy(state, isBusy) {
+  state.isBusy = isBusy;
+  state.confirmButton.disabled = isBusy;
+  state.cancelButton.disabled = isBusy;
+  state.confirmButton.textContent = isBusy ? "Deleting..." : "Delete row";
+}
+
+function clearRowDeleteDialogError(state) {
+  state.error.hidden = true;
+  state.error.textContent = "";
+}
+
+function showRowDeleteDialogError(state, message) {
+  state.error.hidden = false;
+  state.error.textContent = message;
+}
+
+function rowDeleteRequestError(response, data) {
+  if (data && data.errors) {
+    return new Error(data.errors.join(" "));
+  }
+  if (data && data.error) {
+    return new Error(data.error);
+  }
+  if (data && data.title) {
+    return new Error(data.title);
+  }
+  return new Error("Delete failed with HTTP " + response.status);
+}
+
+function nextRowDeleteFocusTarget(row, manager) {
+  var sibling = row.nextElementSibling;
+  while (sibling) {
+    var nextButton = sibling.querySelector(
+      'button[data-row-action="delete"]:not([disabled])',
+    );
+    if (nextButton) {
+      return nextButton;
+    }
+    sibling = sibling.nextElementSibling;
+  }
+
+  sibling = row.previousElementSibling;
+  while (sibling) {
+    var previousButton = sibling.querySelector(
+      'button[data-row-action="delete"]:not([disabled])',
+    );
+    if (previousButton) {
+      return previousButton;
+    }
+    sibling = sibling.previousElementSibling;
+  }
+
+  return ensureRowDeleteStatus(manager);
+}
+
+function ensureRowDeleteDialog(manager) {
+  if (rowDeleteDialogState) {
+    return rowDeleteDialogState;
+  }
+  if (!window.HTMLDialogElement) {
+    return null;
+  }
+
+  var dialog = document.createElement("dialog");
+  dialog.id = ROW_DELETE_DIALOG_ID;
+  dialog.className = "row-delete-dialog";
+  dialog.setAttribute("aria-labelledby", "row-delete-title");
+  dialog.setAttribute("aria-describedby", "row-delete-message");
+  dialog.innerHTML = `
+    <div class="modal-header">
+      <span class="modal-title" id="row-delete-title">Delete row</span>
+    </div>
+    <p class="row-delete-message" id="row-delete-message">Delete row <span class="row-delete-id"></span>?</p>
+    <p class="row-delete-error" role="alert" hidden></p>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost row-delete-cancel">Cancel</button>
+      <button type="button" class="btn btn-primary row-delete-confirm">Delete row</button>
+    </div>
+  `;
+  document.body.appendChild(dialog);
+
+  rowDeleteDialogState = {
+    dialog: dialog,
+    message: dialog.querySelector(".row-delete-message"),
+    rowId: dialog.querySelector(".row-delete-id"),
+    error: dialog.querySelector(".row-delete-error"),
+    cancelButton: dialog.querySelector(".row-delete-cancel"),
+    confirmButton: dialog.querySelector(".row-delete-confirm"),
+    currentRow: null,
+    currentDeleteUrl: null,
+    currentPkPath: null,
+    manager: manager,
+    isBusy: false,
+    shouldRestoreFocus: true,
+  };
+
+  rowDeleteDialogState.cancelButton.addEventListener("click", function () {
+    if (!rowDeleteDialogState.isBusy) {
+      rowDeleteDialogState.shouldRestoreFocus = true;
+      dialog.close();
+    }
+  });
+
+  dialog.addEventListener("click", function (ev) {
+    if (ev.target === dialog && !rowDeleteDialogState.isBusy) {
+      rowDeleteDialogState.shouldRestoreFocus = true;
+      dialog.close();
+    }
+  });
+
+  dialog.addEventListener("keydown", function (ev) {
+    if (
+      ev.key === "Enter" &&
+      document.activeElement === rowDeleteDialogState.confirmButton
+    ) {
+      ev.preventDefault();
+      if (!rowDeleteDialogState.isBusy) {
+        rowDeleteDialogState.confirmButton.click();
+      }
+      return;
+    }
+    if (ev.key !== "Escape") {
+      return;
+    }
+    if (rowDeleteDialogState.isBusy) {
+      ev.preventDefault();
+      return;
+    }
+    ev.preventDefault();
+    rowDeleteDialogState.shouldRestoreFocus = true;
+    dialog.close();
+  });
+
+  dialog.addEventListener("cancel", function (ev) {
+    if (rowDeleteDialogState.isBusy) {
+      ev.preventDefault();
+    } else {
+      rowDeleteDialogState.shouldRestoreFocus = true;
+    }
+  });
+
+  dialog.addEventListener("close", function () {
+    var state = rowDeleteDialogState;
+    clearRowDeleteDialogError(state);
+    setRowDeleteDialogBusy(state, false);
+    if (
+      state.shouldRestoreFocus &&
+      state.currentButton &&
+      document.contains(state.currentButton)
+    ) {
+      state.currentButton.focus();
+    }
+  });
+
+  rowDeleteDialogState.confirmButton.addEventListener("click", async function () {
+    var state = rowDeleteDialogState;
+    clearRowDeleteDialogError(state);
+    setRowDeleteDialogBusy(state, true);
+
+    try {
+      var response = await fetch(state.currentDeleteUrl, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+        },
+      });
+      var data = null;
+      try {
+        data = await response.json();
+      } catch (_error) {
+        data = null;
+      }
+      if (!response.ok || (data && data.ok === false)) {
+        throw rowDeleteRequestError(response, data);
+      }
+
+      var focusTarget = nextRowDeleteFocusTarget(state.currentRow, state.manager);
+      var statusMessage = state.currentPkPath
+        ? "Deleted row " + state.currentPkPath + "."
+        : "Deleted row.";
+      state.shouldRestoreFocus = false;
+      state.dialog.close();
+      state.currentRow.remove();
+      showRowDeleteStatus(state.manager, statusMessage, false);
+      if (focusTarget && document.contains(focusTarget)) {
+        focusTarget.focus();
+      } else {
+        ensureRowDeleteStatus(state.manager).focus();
+      }
+    } catch (error) {
+      setRowDeleteDialogBusy(state, false);
+      showRowDeleteDialogError(state, error.message || "Delete failed");
+    }
+  });
+
+  return rowDeleteDialogState;
+}
+
+function openRowDeleteDialog(button, manager) {
+  var row = button.closest("tr[data-row-delete-url]");
+  if (!row || !row.dataset.rowDeleteUrl) {
+    return;
+  }
+  var state = ensureRowDeleteDialog(manager);
+  if (!state) {
+    return;
+  }
+
+  state.manager = manager;
+  state.currentButton = button;
+  state.currentRow = row;
+  state.currentDeleteUrl = row.dataset.rowDeleteUrl;
+  state.currentPkPath = row.dataset.rowPkPath || "";
+  state.shouldRestoreFocus = true;
+
+  clearRowDeleteDialogError(state);
+  setRowDeleteDialogBusy(state, false);
+  state.rowId.textContent = state.currentPkPath || "this row";
+
+  if (!state.dialog.open) {
+    state.dialog.showModal();
+  }
+  state.confirmButton.focus();
+}
+
+function initRowDeleteActions(manager) {
+  if (!window.fetch || !window.HTMLDialogElement) {
+    return;
+  }
+  document.addEventListener("click", function (ev) {
+    var button = ev.target.closest('button[data-row-action="delete"]');
+    if (!button) {
+      return;
+    }
+    ev.preventDefault();
+    openRowDeleteDialog(button, manager);
+  });
 }
 
 function canChooseColumns() {
@@ -750,6 +1022,7 @@ document.addEventListener("datasette_init", function (evt) {
 
   // Main table
   initDatasetteTable(manager);
+  initRowDeleteActions(manager);
 
   // Other UI functions with interactive JS needs
   addButtonsToFilterRows(manager);

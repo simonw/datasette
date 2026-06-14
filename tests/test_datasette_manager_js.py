@@ -80,7 +80,7 @@ def test_table_plugin_column_field_api():
     script = textwrap.dedent("""
         const fs = require("fs");
         const vm = require("vm");
-        const tableJs = __TABLE_JS__;
+        const editToolsJs = __EDIT_TOOLS_JS__;
 
         class FakeEvent {
           constructor(type, options) {
@@ -180,8 +180,8 @@ def test_table_plugin_column_field_api():
           },
         };
 
-        vm.runInThisContext(fs.readFileSync(tableJs, "utf8"), {
-          filename: "table.js",
+        vm.runInThisContext(fs.readFileSync(editToolsJs, "utf8"), {
+          filename: "edit-tools.js",
         });
 
         const context = columnFormControlContext(
@@ -452,7 +452,7 @@ def test_table_plugin_column_field_api():
         }
 
         process.stdout.write("ok");
-    """).replace("__TABLE_JS__", json.dumps(str(STATIC_DIR / "table.js")))
+    """).replace("__EDIT_TOOLS_JS__", json.dumps(str(STATIC_DIR / "edit-tools.js")))
     result = subprocess.run(
         ["node", "-e", script],
         text=True,
@@ -467,7 +467,7 @@ def test_builtin_json_column_field_validation():
     script = textwrap.dedent("""
         const fs = require("fs");
         const vm = require("vm");
-        const tableJs = __TABLE_JS__;
+        const editToolsJs = __EDIT_TOOLS_JS__;
 
         class FakeEvent {
           constructor(type, options) {
@@ -547,8 +547,8 @@ def test_builtin_json_column_field_validation():
           },
         };
 
-        vm.runInThisContext(fs.readFileSync(tableJs, "utf8"), {
-          filename: "table.js",
+        vm.runInThisContext(fs.readFileSync(editToolsJs, "utf8"), {
+          filename: "edit-tools.js",
         });
 
         const plugins = [];
@@ -648,7 +648,7 @@ def test_builtin_json_column_field_validation():
         }
 
         process.stdout.write("ok");
-    """).replace("__TABLE_JS__", json.dumps(str(STATIC_DIR / "table.js")))
+    """).replace("__EDIT_TOOLS_JS__", json.dumps(str(STATIC_DIR / "edit-tools.js")))
     result = subprocess.run(
         ["node", "-e", script],
         text=True,

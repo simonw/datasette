@@ -1151,6 +1151,160 @@ async def test_table_fragment_row_parameter_replaces_pk_filters(ds_client):
     assert rows[0]["data-row-label"] == "hello"
 
 
+@pytest.mark.asyncio
+async def test_row_page_edit_delete_action_menu_buttons():
+    ds = Datasette(
+        [],
+        config={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "items": {
+                            "permissions": {
+                                "update-row": {"id": "root"},
+                                "delete-row": {"id": "root"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_row_page_edit_delete_actions"), name="data"
+        )
+        await db.execute_write_script("""
+            create table items (id integer primary key, name text, score integer);
+            insert into items (id, name, score) values (1, 'One', 5);
+            """)
+        response = await ds.client.get("/data/items/1", actor={"id": "root"})
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        assert table_data_from_soup(soup) == {
+            "database": "data",
+            "table": "items",
+            "tableUrl": "/data/items",
+        }
+        script_srcs = [script.get("src") or "" for script in soup.find_all("script")]
+        assert any("edit-tools.js" in src for src in script_srcs)
+        assert not any("table.js" in src for src in script_srcs)
+
+        row = soup.select_one("table.rows-and-columns tbody tr")
+        assert row["data-row"] == "1"
+        assert row["data-row-label"] == "One"
+
+        edit_button = soup.select_one(
+            'details.actions-menu-links button.action-menu-button[data-row-action="edit"]'
+        )
+        assert edit_button is not None
+        assert edit_button["aria-label"] == "Edit row 1 One"
+        assert edit_button["data-row"] == "1"
+        assert edit_button["data-row-label"] == "One"
+        assert edit_button["role"] == "menuitem"
+        assert edit_button.find("span", class_="dropdown-description").text.strip() == (
+            "Open a dialog to edit this row."
+        )
+        edit_button.find("span").extract()
+        assert edit_button.text.strip() == "Edit row"
+
+        delete_button = soup.select_one(
+            'details.actions-menu-links button.action-menu-button[data-row-action="delete"]'
+        )
+        assert delete_button is not None
+        assert delete_button["aria-label"] == "Delete row 1 One"
+        assert delete_button["data-row"] == "1"
+        assert delete_button["data-row-label"] == "One"
+        assert delete_button["role"] == "menuitem"
+        assert delete_button.find(
+            "span", class_="dropdown-description"
+        ).text.strip() == ("Open a confirmation dialog to delete this row.")
+        delete_button.find("span").extract()
+        assert delete_button.text.strip() == "Delete row"
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_row_delete_redirect_to_table_sets_message():
+    ds = Datasette(
+        [],
+        config={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "items": {
+                            "permissions": {
+                                "delete-row": {"id": "root"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_row_delete_redirect"), name="data"
+        )
+        await db.execute_write_script("""
+            create table items (id integer primary key, name text);
+            insert into items (id, name) values (1, 'One');
+            """)
+        response = await ds.client.post(
+            "/data/items/1/-/delete?_redirect_to_table=1", actor={"id": "root"}
+        )
+        assert response.status_code == 200
+        assert response.json() == {"ok": True, "redirect": "/data/items"}
+        assert ds.unsign(response.cookies["ds_messages"], "messages") == [
+            ["Deleted row 1 (One)", ds.INFO]
+        ]
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_row_update_sets_message():
+    ds = Datasette(
+        [],
+        config={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "items": {
+                            "permissions": {
+                                "update-row": {"id": "root"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_row_update_message"), name="data"
+        )
+        await db.execute_write_script("""
+            create table items (id integer primary key, name text);
+            insert into items (id, name) values (1, 'One');
+            """)
+        long_name = "Two " + ("long label " * 12)
+        truncated_name = long_name[:79] + "\u2026"
+        response = await ds.client.post(
+            "/data/items/1/-/update?_message=1",
+            actor={"id": "root"},
+            json={"update": {"name": long_name}, "return": True},
+        )
+        assert response.status_code == 200
+        assert response.json()["row"]["name"] == long_name
+        assert ds.unsign(response.cookies["ds_messages"], "messages") == [
+            ["Updated row 1 ({})".format(truncated_name), ds.INFO]
+        ]
+    finally:
+        ds.close()
+
+
 def test_table_data_uses_base_url(app_client_base_url_prefix):
     response = app_client_base_url_prefix.get("/prefix/fixtures/simple_primary_key")
     assert response.status_code == 200

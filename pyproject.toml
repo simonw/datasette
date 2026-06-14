@@ -81,6 +81,9 @@ dev = [
     "ruamel.yaml",
     "psutil>=5.9",
 ]
+playwright = [
+    "pytest-playwright>=0.8.0",
+]
 
 [project.optional-dependencies]
 rich = ["rich"]

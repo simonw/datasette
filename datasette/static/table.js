@@ -475,6 +475,14 @@ function rowTitleLabel(row) {
   return row.getAttribute("data-row-label") || "";
 }
 
+function insertedRowStatusMessage(rowId, rowLabel) {
+  var message = "Inserted row " + rowId;
+  if (rowLabel && rowLabel !== rowId) {
+    message += " (" + rowLabel + ")";
+  }
+  return message + ".";
+}
+
 function tableBaseUrl() {
   var tableUrl =
     window._datasetteTableData && window._datasetteTableData.tableUrl;
@@ -1201,8 +1209,6 @@ async function saveRowEditDialog(state) {
 
       state.currentRowId = insertedRowId;
       state.currentFragmentUrl = rowFragmentUrlById(insertedRowId);
-      var insertedStatusMessage =
-        "Inserted row " + tildeDecode(insertedRowId) + ".";
       var insertedRow = null;
       try {
         insertedRow = await fetchUpdatedRowElement(state);
@@ -1217,6 +1223,10 @@ async function saveRowEditDialog(state) {
         return;
       }
       if (insertedRow) {
+        var insertedStatusMessage = insertedRowStatusMessage(
+          tildeDecode(insertedRowId),
+          rowTitleLabel(insertedRow),
+        );
         var addedRow = addInsertedRowToPage(insertedRow);
         state.dialog.close();
         showRowMutationStatus(state.manager, insertedStatusMessage, false);

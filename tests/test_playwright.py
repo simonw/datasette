@@ -145,3 +145,41 @@ def test_navigation_search_tracks_and_renders_recent_items(page, datasette_serve
     assert "Clear recent" in result["html"]
     assert result["clearedValue"] is None
     assert "Clear recent" not in result["htmlAfterClear"]
+
+
+@pytest.mark.playwright
+def test_navigation_search_renders_jump_sections_from_javascript_plugins(
+    page, datasette_server
+):
+    page.goto(datasette_server)
+    html = page.evaluate("""
+    async () => {
+      await customElements.whenDefined("navigation-search");
+      window.__DATASETTE__.registerPlugin("agent", {
+        version: "0.1",
+        makeJumpSections() {
+          return [
+            {
+              id: "agent-chat",
+              render(node, context) {
+                if (!context.navigationSearch) {
+                  throw new Error("Expected navigationSearch in render context");
+                }
+                node.innerHTML = [
+                  '<section class="agent-jump-start">',
+                  '<button>Start a new agent chat</button>',
+                  '</section>',
+                ].join("");
+              },
+            },
+          ];
+        },
+      });
+
+      const element = document.querySelector("navigation-search");
+      element.shadowRoot.querySelector(".search-input").value = "";
+      element.renderResults();
+      return element.shadowRoot.querySelector(".results-container").innerHTML;
+    }
+    """)
+    assert "Start a new agent chat" in html

@@ -53,6 +53,53 @@ async def test_autocomplete_blank_q_returns_no_results():
     assert response.status_code == 200
     assert response.json() == {"rows": []}
 
+    response = await ds.client.get("/autocomplete_blank/people/-/autocomplete")
+
+    assert response.status_code == 200
+    assert response.json() == {"rows": []}
+
+
+@pytest.mark.asyncio
+async def test_autocomplete_initial_returns_latest_rows():
+    ds = Datasette(memory=True)
+    db = ds.add_memory_database("autocomplete_initial")
+    await db.execute_write_script("""
+        create table people (
+            id integer primary key,
+            name text
+        );
+        insert into people (id, name) values
+            (1, 'Alice'),
+            (2, 'Bob'),
+            (3, 'Cleo');
+        """)
+
+    response = await ds.client.get(
+        "/autocomplete_initial/people/-/autocomplete?_initial=1"
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "rows": [
+            {"pks": {"id": 3}, "label": "Cleo"},
+            {"pks": {"id": 2}, "label": "Bob"},
+            {"pks": {"id": 1}, "label": "Alice"},
+        ]
+    }
+
+    response = await ds.client.get(
+        "/autocomplete_initial/people/-/autocomplete?q=&_initial=1"
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "rows": [
+            {"pks": {"id": 3}, "label": "Cleo"},
+            {"pks": {"id": 2}, "label": "Bob"},
+            {"pks": {"id": 1}, "label": "Alice"},
+        ]
+    }
+
 
 @pytest.mark.asyncio
 async def test_autocomplete_escapes_like_characters():

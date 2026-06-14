@@ -2019,6 +2019,11 @@ class Datasette:
 
         other_table = fk["other_table"]
         other_column = fk["other_column"]
+        if other_column is None:
+            other_pks = await db.primary_keys(other_table)
+            if len(other_pks) != 1:
+                return {}
+            other_column = other_pks[0]
         visible, _ = await self.check_visibility(
             actor,
             action="view-table",

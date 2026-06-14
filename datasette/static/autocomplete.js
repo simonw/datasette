@@ -41,6 +41,7 @@
       this.boundKeydown = this.handleKeydown.bind(this);
       this.boundBlur = this.handleBlur.bind(this);
       this.boundFocus = this.handleFocus.bind(this);
+      this.boundPositionListbox = this.positionListbox.bind(this);
     }
 
     connectedCallback() {
@@ -109,7 +110,7 @@
     }
 
     handleFocus() {
-      if (this.input.value.trim()) {
+      if (this.input.value.trim() || this.hasAttribute("suggest-on-focus")) {
         this.scheduleSearch();
       }
     }
@@ -155,7 +156,8 @@
 
     async search() {
       var query = this.input.value.trim();
-      if (!query) {
+      var initial = !query && this.hasAttribute("suggest-on-focus");
+      if (!query && !initial) {
         this.close();
         this.status.textContent = "";
         return;
@@ -167,6 +169,11 @@
 
       var url = new URL(src, location.href);
       url.searchParams.set("q", query);
+      if (initial) {
+        url.searchParams.set("_initial", "1");
+      } else {
+        url.searchParams.delete("_initial");
+      }
       var fetchId = this.fetchId + 1;
       this.fetchId = fetchId;
       this.status.textContent = "Searching...";
@@ -225,7 +232,47 @@
       this.input.setAttribute("aria-expanded", "true");
       this.status.textContent =
         this.results.length + (this.results.length === 1 ? " match" : " matches");
+      this.positionListbox();
       this.setActiveIndex(0);
+    }
+
+    positionListbox() {
+      if (!this.input || !this.listbox || this.listbox.hidden) {
+        return;
+      }
+
+      var gap = 3;
+      var margin = 8;
+      var inputRect = this.input.getBoundingClientRect();
+      this.listbox.style.maxHeight = "";
+      var defaultMaxHeight = parseFloat(
+        window.getComputedStyle(this.listbox).maxHeight,
+      );
+      if (!Number.isFinite(defaultMaxHeight)) {
+        defaultMaxHeight = 256;
+      }
+      var scrollHeight = Math.ceil(this.listbox.scrollHeight);
+      var desiredHeight = Math.min(scrollHeight, defaultMaxHeight);
+      var availableBelow = Math.max(
+        0,
+        (window.innerHeight || document.documentElement.clientHeight) -
+          inputRect.bottom -
+          gap -
+          margin,
+      );
+
+      this.listbox.style.left = inputRect.left + "px";
+      this.listbox.style.top = inputRect.bottom + gap + "px";
+      this.listbox.style.width = inputRect.width + "px";
+      if (scrollHeight <= defaultMaxHeight && scrollHeight <= availableBelow) {
+        this.listbox.style.maxHeight = "none";
+      } else {
+        this.listbox.style.maxHeight =
+          Math.min(defaultMaxHeight, desiredHeight, availableBelow || defaultMaxHeight) +
+          "px";
+      }
+      window.addEventListener("resize", this.boundPositionListbox);
+      document.addEventListener("scroll", this.boundPositionListbox, true);
     }
 
     setActiveIndex(index) {
@@ -278,11 +325,17 @@
       if (this.listbox) {
         this.listbox.hidden = true;
         this.listbox.textContent = "";
+        this.listbox.style.left = "";
+        this.listbox.style.maxHeight = "";
+        this.listbox.style.top = "";
+        this.listbox.style.width = "";
       }
       if (this.input) {
         this.input.setAttribute("aria-expanded", "false");
         this.input.removeAttribute("aria-activedescendant");
       }
+      window.removeEventListener("resize", this.boundPositionListbox);
+      document.removeEventListener("scroll", this.boundPositionListbox, true);
       this.activeIndex = -1;
     }
   }

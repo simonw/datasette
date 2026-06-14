@@ -1594,6 +1594,20 @@ textarea.row-edit-input {
     font-size: 0.78rem;
 }
 
+.row-edit-field-meta-autocomplete {
+    line-height: 1.2;
+    min-height: 1.2em;
+}
+
+.row-edit-fk-pk {
+    color: var(--ink);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.row-edit-fk-link {
+    overflow-wrap: anywhere;
+}
+
 .row-edit-empty {
     color: var(--muted);
     font-size: 0.9rem;
@@ -1622,10 +1636,10 @@ datasette-autocomplete input[type="text"],
     left: 0;
     max-height: 16rem;
     overflow-y: auto;
-    position: absolute;
-    right: 0;
-    top: calc(100% + 3px);
-    z-index: 20;
+    position: fixed;
+    right: auto;
+    top: auto;
+    z-index: 10000;
 }
 
 .datasette-autocomplete-list[hidden] {
@@ -1643,8 +1657,8 @@ datasette-autocomplete input[type="text"],
 }
 
 .datasette-autocomplete-option[aria-selected="true"] {
-    background: #eef4ff;
-    box-shadow: inset 3px 0 0 #1a56db;
+    background: var(--paper);
+    font-weight: 600;
 }
 
 .datasette-autocomplete-status {

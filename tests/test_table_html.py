@@ -1051,6 +1051,61 @@ async def test_table_insert_action_includes_compound_primary_keys():
 
 
 @pytest.mark.asyncio
+async def test_table_data_includes_foreign_key_autocomplete_urls():
+    ds = Datasette([])
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_table_foreign_key_autocomplete"), name="data"
+        )
+        await db.execute_write_script("""
+            create table authors (
+                id integer primary key,
+                name text
+            );
+            create table tags (
+                slug text unique,
+                name text
+            );
+            create table articles (
+                id integer primary key,
+                author_id integer references authors(id),
+                implicit_author_id integer references authors,
+                tag_slug text references tags(slug),
+                title text
+            );
+            insert into authors (id, name) values (1, 'Ada Lovelace');
+            insert into tags (slug, name) values ('science', 'Science');
+            insert into articles (
+                id,
+                author_id,
+                implicit_author_id,
+                tag_slug,
+                title
+            ) values (
+                1,
+                1,
+                1,
+                'science',
+                'Notes'
+            );
+            """)
+        response = await ds.client.get("/data/articles")
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        table_data = table_data_from_soup(soup)
+        assert table_data["foreignKeys"] == {
+            "author_id": "/data/authors/-/autocomplete",
+            "implicit_author_id": "/data/authors/-/autocomplete",
+        }
+        assert any(
+            "autocomplete.js" in (script.get("src") or "")
+            for script in soup.find_all("script")
+        )
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
 async def test_table_fragment_endpoint(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key/-/fragment?_row=1")
     assert response.status_code == 200

@@ -250,6 +250,47 @@ def _column_value_type_for_insert_form(column_detail, column_type):
     return "string"
 
 
+async def _foreign_key_autocomplete_urls(
+    datasette, request, db, database_name, table_name
+):
+    autocomplete_urls = {}
+    for fk in await db.foreign_keys_for_table(table_name):
+        if not await db.table_exists(fk["other_table"]):
+            continue
+        other_pks = await db.primary_keys(fk["other_table"])
+        other_column = fk["other_column"]
+        if other_column is None and len(other_pks) == 1:
+            other_column = other_pks[0]
+        if len(other_pks) != 1 or other_column != other_pks[0]:
+            continue
+        visible, _ = await datasette.check_visibility(
+            request.actor,
+            action="view-table",
+            resource=TableResource(database=database_name, table=fk["other_table"]),
+        )
+        if not visible:
+            continue
+        autocomplete_urls[fk["column"]] = "{}/-/autocomplete".format(
+            datasette.urls.table(database_name, fk["other_table"])
+        )
+    return autocomplete_urls
+
+
+async def _table_page_data(
+    datasette, request, db, database_name, table_name, is_view, table_insert_ui
+):
+    data = {"tableUrl": datasette.urls.table(database_name, table_name)}
+    if table_insert_ui:
+        data["insertRow"] = table_insert_ui
+    if not is_view:
+        foreign_keys = await _foreign_key_autocomplete_urls(
+            datasette, request, db, database_name, table_name
+        )
+        if foreign_keys:
+            data["foreignKeys"] = foreign_keys
+    return data
+
+
 async def _table_insert_ui(
     datasette, request, db, database_name, table_name, is_view, pks
 ):
@@ -1164,6 +1205,12 @@ def _autocomplete_pk_order_by(pks):
     return ", ".join(escape_sqlite(pk) for pk in pks)
 
 
+def _autocomplete_initial_order_by(pks):
+    order_by = [f"{escape_sqlite(pks[0])} desc"]
+    order_by.extend(escape_sqlite(pk) for pk in pks[1:])
+    return ", ".join(order_by)
+
+
 def _autocomplete_response_rows(rows, pks, label_column):
     response_rows = []
     for row in rows:
@@ -1202,7 +1249,14 @@ class TableAutocompleteView(BaseView):
         )
         select_sql = ", ".join(escape_sqlite(column) for column in select_columns)
         q = request.args.get("q") or ""
-        if not q:
+        initial_arg = request.args.get("_initial")
+        initial = (
+            not q
+            and initial_arg is not None
+            and initial_arg != ""
+            and value_as_boolean(initial_arg)
+        )
+        if not q and not initial:
             return Response.json({"rows": []})
         params = {
             "q": q,
@@ -1215,6 +1269,12 @@ class TableAutocompleteView(BaseView):
             like_columns.append(label_column)
         where_sql = " or ".join(_autocomplete_like(column) for column in like_columns)
         exact_pk = len(pks) == 1
+        order_by = _autocomplete_order_by(pks, label_column, exact_pk)
+
+        if initial:
+            where_sql = "1 = 1"
+            order_by = _autocomplete_initial_order_by(pks)
+
         sql = """
             select {select_sql}
             from {table}
@@ -1225,7 +1285,7 @@ class TableAutocompleteView(BaseView):
             select_sql=select_sql,
             table=escape_sqlite(table_name),
             where=where_sql,
-            order_by=_autocomplete_order_by(pks, label_column, exact_pk),
+            order_by=order_by,
         )
 
         try:
@@ -1990,8 +2050,18 @@ async def table_view_data(
                 sort = "rowid"
         data["sort"] = sort
         data["sort_desc"] = sort_desc
-        data["table_insert_ui"] = await _table_insert_ui(
+        table_insert_ui = await _table_insert_ui(
             datasette, request, db, database_name, table_name, is_view, pks
+        )
+        data["table_insert_ui"] = table_insert_ui
+        data["table_page_data"] = await _table_page_data(
+            datasette,
+            request,
+            db,
+            database_name,
+            table_name,
+            is_view,
+            table_insert_ui,
         )
 
     return data, rows[:page_size], columns, expanded_columns, sql, next_url

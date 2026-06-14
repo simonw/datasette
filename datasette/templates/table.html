@@ -4,12 +4,11 @@
 
 {% block extra_head %}
 {{- super() -}}
-{% if table_insert_ui %}
-<script>window._datasetteTableData = {{ {"tableUrl": urls.table(database, table), "insertRow": table_insert_ui}|tojson }};</script>
-{% else %}
-<script>window._datasetteTableData = {{ {"tableUrl": urls.table(database, table)}|tojson }};</script>
-{% endif %}
+<script>window._datasetteTableData = {{ table_page_data|tojson }};</script>
 <script src="{{ urls.static('column-chooser.js') }}" defer></script>
+{% if table_page_data.foreignKeys %}
+<script src="{{ urls.static('autocomplete.js') }}" defer></script>
+{% endif %}
 <script src="{{ urls.static('table.js') }}?hash={{ table_js_hash }}" defer></script>
 <script src="{{ urls.static('mobile-column-actions.js') }}" defer></script>
 <script>DATASETTE_ALLOW_FACET = {{ datasette_allow_facet }};</script>

@@ -496,6 +496,158 @@ function tableInsertData() {
   return window._datasetteTableData && window._datasetteTableData.insertRow;
 }
 
+function tableForeignKeys() {
+  return (window._datasetteTableData && window._datasetteTableData.foreignKeys) || {};
+}
+
+function foreignKeyAutocompleteUrl(column) {
+  return tableForeignKeys()[column] || null;
+}
+
+function autocompleteRowPk(row) {
+  var pks = (row && row.pks) || {};
+  var keys = Object.keys(pks);
+  if (keys.length !== 1) {
+    return null;
+  }
+  return pks[keys[0]];
+}
+
+function foreignKeyRowUrl(autocompleteUrl, pk) {
+  var url = new URL(autocompleteUrl, location.href);
+  if (!/\/-\/autocomplete\/?$/.test(url.pathname)) {
+    return null;
+  }
+  url.pathname =
+    url.pathname.replace(/\/-\/autocomplete\/?$/, "") + "/" + tildeEncode(pk);
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+function foreignKeyLabelText(row) {
+  var pk = autocompleteRowPk(row);
+  var label = row && row.label;
+  if (
+    label !== null &&
+    typeof label !== "undefined" &&
+    String(label) !== String(pk)
+  ) {
+    return String(label);
+  }
+  return "View row";
+}
+
+function rowEditMetaTextWithoutCurrentValue(meta) {
+  return (meta.dataset.baseMeta || "")
+    .split(" · ")
+    .filter(function (part) {
+      return part !== "Current value: NULL";
+    })
+    .join(" · ");
+}
+
+function updateRowEditForeignKeySeparator(meta) {
+  var separator = meta.querySelector(".row-edit-fk-separator");
+  if (!separator) {
+    return;
+  }
+  var baseMeta = meta.querySelector(".row-edit-base-meta");
+  var hasBaseMeta = !!(baseMeta && baseMeta.textContent);
+  separator.textContent = hasBaseMeta ? " · " : "";
+  separator.hidden = !hasBaseMeta;
+}
+
+function updateRowEditFieldMetaHidden(meta) {
+  var baseMeta = meta.querySelector(".row-edit-base-meta");
+  var hasBaseMeta = !!(baseMeta && baseMeta.textContent);
+  var foreignKeyLinkWrap = meta.querySelector(".row-edit-fk-link-wrap");
+  var hasForeignKeyLink = foreignKeyLinkWrap && !foreignKeyLinkWrap.hidden;
+  meta.hidden =
+    meta.dataset.reserveSpace !== "1" && !hasBaseMeta && !hasForeignKeyLink;
+}
+
+function setRowEditBaseMetaText(meta, text) {
+  var baseMeta = meta.querySelector(".row-edit-base-meta");
+  if (!baseMeta) {
+    return;
+  }
+  baseMeta.textContent = text || "";
+  updateRowEditForeignKeySeparator(meta);
+  updateRowEditFieldMetaHidden(meta);
+}
+
+function setForeignKeyMetaLink(meta, autocompleteUrl, row) {
+  var wrap = meta.querySelector(".row-edit-fk-link-wrap");
+  if (!wrap) {
+    return;
+  }
+  var pkSpan = wrap.querySelector(".row-edit-fk-pk");
+  var link = wrap.querySelector("a");
+  var pk = autocompleteRowPk(row);
+  var url =
+    pk === null || typeof pk === "undefined"
+      ? null
+      : foreignKeyRowUrl(autocompleteUrl, pk);
+  if (!url) {
+    wrap.hidden = true;
+    pkSpan.textContent = "";
+    link.removeAttribute("href");
+    link.textContent = "";
+    link.removeAttribute("aria-label");
+    setRowEditBaseMetaText(meta, meta.dataset.baseMeta || "");
+    updateRowEditFieldMetaHidden(meta);
+    return;
+  }
+  setRowEditBaseMetaText(meta, rowEditMetaTextWithoutCurrentValue(meta));
+  var pkText = String(pk);
+  var linkText = foreignKeyLabelText(row);
+  pkSpan.textContent = pkText;
+  link.href = url;
+  link.textContent = linkText;
+  link.setAttribute(
+    "aria-label",
+    "Open referenced row " + pkText + " " + linkText + " in a new tab",
+  );
+  wrap.hidden = false;
+  updateRowEditFieldMetaHidden(meta);
+}
+
+async function resolveForeignKeyMetaLink(control, autocompleteUrl, meta) {
+  var value = control.value.trim();
+  if (!value) {
+    setForeignKeyMetaLink(meta, autocompleteUrl, null);
+    return;
+  }
+
+  var url = new URL(autocompleteUrl, location.href);
+  url.searchParams.set("q", value);
+  try {
+    var response = await fetch(url.toString(), {
+      headers: {
+        Accept: "application/json",
+      },
+    });
+    if (!response.ok) {
+      throw new Error("HTTP " + response.status);
+    }
+    var data = await response.json();
+    if (control.value.trim() !== value) {
+      return;
+    }
+    var rows = (data && data.rows) || [];
+    var row = rows.find(function (candidate) {
+      var pk = autocompleteRowPk(candidate);
+      return pk !== null && typeof pk !== "undefined" && String(pk) === value;
+    });
+    setForeignKeyMetaLink(meta, autocompleteUrl, row || null);
+  } catch (_error) {
+    if (control.value.trim() === value) {
+      setForeignKeyMetaLink(meta, autocompleteUrl, null);
+    }
+  }
+}
+
 function tableInsertUrl() {
   var data = tableInsertData();
   if (data && data.path) {
@@ -819,6 +971,17 @@ function rowEditValueType(value) {
   return "string";
 }
 
+function rowEditControlElement(control, autocompleteUrl) {
+  if (!autocompleteUrl || control.nodeName !== "INPUT") {
+    return control;
+  }
+  var autocomplete = document.createElement("datasette-autocomplete");
+  autocomplete.setAttribute("src", autocompleteUrl);
+  autocomplete.setAttribute("suggest-on-focus", "");
+  autocomplete.appendChild(control);
+  return autocomplete;
+}
+
 function createRowEditField(column, value, isPk, columnType, index, options) {
   options = options || {};
   var field = document.createElement("div");
@@ -871,6 +1034,10 @@ function createRowEditField(column, value, isPk, columnType, index, options) {
   var meta = document.createElement("span");
   meta.id = metaId;
   meta.className = "row-edit-field-meta";
+  if (options.autocompleteUrl) {
+    meta.classList.add("row-edit-field-meta-autocomplete");
+    meta.dataset.reserveSpace = "1";
+  }
   var metaParts = [];
   if (isPk) {
     metaParts.push("Primary key");
@@ -888,7 +1055,49 @@ function createRowEditField(column, value, isPk, columnType, index, options) {
   if (columnType && columnType.type) {
     metaParts.push("Custom type: " + columnType.type);
   }
-  meta.textContent = metaParts.join(" · ");
+  meta.dataset.baseMeta = metaParts.join(" · ");
+  var baseMeta = document.createElement("span");
+  baseMeta.className = "row-edit-base-meta";
+  baseMeta.textContent = meta.dataset.baseMeta;
+  meta.appendChild(baseMeta);
+  if (options.autocompleteUrl) {
+    var foreignKeyLinkWrap = document.createElement("span");
+    foreignKeyLinkWrap.className = "row-edit-fk-link-wrap";
+    foreignKeyLinkWrap.hidden = true;
+    var foreignKeySeparator = document.createElement("span");
+    foreignKeySeparator.className = "row-edit-fk-separator";
+    foreignKeySeparator.textContent = meta.dataset.baseMeta ? " · " : "";
+    foreignKeySeparator.hidden = !meta.dataset.baseMeta;
+    foreignKeyLinkWrap.appendChild(foreignKeySeparator);
+    var foreignKeyPk = document.createElement("span");
+    foreignKeyPk.className = "row-edit-fk-pk";
+    foreignKeyLinkWrap.appendChild(foreignKeyPk);
+    foreignKeyLinkWrap.appendChild(document.createTextNode(" "));
+    var foreignKeyLink = document.createElement("a");
+    foreignKeyLink.className = "row-edit-fk-link";
+    foreignKeyLink.target = "_blank";
+    foreignKeyLink.rel = "noopener noreferrer";
+    foreignKeyLinkWrap.appendChild(foreignKeyLink);
+    meta.appendChild(foreignKeyLinkWrap);
+    updateRowEditFieldMetaHidden(meta);
+  }
+  var controlElement = rowEditControlElement(control, options.autocompleteUrl);
+  if (options.autocompleteUrl) {
+    control.addEventListener("input", function () {
+      setForeignKeyMetaLink(meta, options.autocompleteUrl, null);
+    });
+    control.addEventListener("change", function () {
+      resolveForeignKeyMetaLink(control, options.autocompleteUrl, meta);
+    });
+    controlElement.addEventListener("datasette-autocomplete-select", function (ev) {
+      setForeignKeyMetaLink(
+        meta,
+        options.autocompleteUrl,
+        ev.detail && ev.detail.row,
+      );
+    });
+    resolveForeignKeyMetaLink(control, options.autocompleteUrl, meta);
+  }
 
   if (useDefaultInitially) {
     var defaultBlock = document.createElement("div");
@@ -939,14 +1148,14 @@ function createRowEditField(column, value, isPk, columnType, index, options) {
 
     defaultBlock.appendChild(defaultText);
     defaultBlock.appendChild(setValueButton);
-    customWrap.appendChild(control);
+    customWrap.appendChild(controlElement);
     customWrap.appendChild(useDefaultButton);
     controlWrap.appendChild(defaultBlock);
     controlWrap.appendChild(customWrap);
   } else {
-    controlWrap.appendChild(control);
+    controlWrap.appendChild(controlElement);
   }
-  if (meta.textContent) {
+  if (meta.textContent || options.autocompleteUrl) {
     controlWrap.appendChild(meta);
   }
   field.appendChild(label);
@@ -1307,6 +1516,7 @@ function renderRowEditFields(state, data) {
         columnTypes[column],
         index,
         {
+          autocompleteUrl: foreignKeyAutocompleteUrl(column),
           primaryKeyReadonly: true,
         },
       ),
@@ -1333,6 +1543,7 @@ function renderRowInsertFields(state, data) {
         column.column_type,
         index,
         {
+          autocompleteUrl: foreignKeyAutocompleteUrl(column.name),
           defaultValue: column.default,
           hasDefault: column.has_default,
           notnull: column.notnull,

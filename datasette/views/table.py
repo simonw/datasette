@@ -103,7 +103,7 @@ def row_label_from_label_column(row, label_column):
         return None
     try:
         value = row[label_column]
-    except KeyError:
+    except (KeyError, IndexError):
         return None
     if isinstance(value, dict):
         value = value.get("label")

@@ -875,8 +875,8 @@ async def test_row_delete_action_data_attributes():
             Database(ds, memory_name="test_row_delete_actions"), name="data"
         )
         await db.execute_write_script("""
-            create table items (id integer primary key, name text);
-            insert into items (id, name) values (1, 'One');
+            create table items (id integer primary key, name text, score integer);
+            insert into items (id, name, score) values (1, 'One', 5);
             """)
         response = await ds.client.get("/data/items", actor={"id": "root"})
         assert response.status_code == 200
@@ -907,6 +907,25 @@ async def test_row_delete_action_data_attributes():
         assert button["aria-label"] == "Delete row 1 One"
         assert button["title"] == "Delete row"
         assert button.find("svg") is not None
+
+        response = await ds.client.get("/data/items?_col=score", actor={"id": "root"})
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        row = soup.select_one("table.rows-and-columns tbody tr")
+        assert row["data-row"] == "1"
+        assert "data-row-label" not in row.attrs
+
+        edit_button = row.select_one(
+            'button.row-inline-action-edit[data-row-action="edit"]'
+        )
+        assert edit_button is not None
+        assert edit_button["aria-label"] == "Edit row 1"
+
+        button = row.select_one(
+            'button.row-inline-action-delete[data-row-action="delete"]'
+        )
+        assert button is not None
+        assert button["aria-label"] == "Delete row 1"
     finally:
         ds.close()
 

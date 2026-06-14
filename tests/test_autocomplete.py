@@ -1,6 +1,7 @@
 import pytest
 
 from datasette.app import Datasette
+import datasette.views.table as table_views
 
 
 @pytest.mark.asyncio
@@ -190,7 +191,8 @@ async def test_autocomplete_primary_key_called_label():
 
 
 @pytest.mark.asyncio
-async def test_autocomplete_timeout_uses_prefix_fallback():
+async def test_autocomplete_timeout_uses_prefix_fallback(monkeypatch):
+    monkeypatch.setattr(table_views, "AUTOCOMPLETE_TIME_LIMIT_MS", 1)
     ds = Datasette(
         memory=True,
         config={
@@ -200,7 +202,6 @@ async def test_autocomplete_timeout_uses_prefix_fallback():
         },
         settings={
             "num_sql_threads": 1,
-            "sql_time_limit_ms": 1,
         },
     )
     db = ds.add_memory_database("autocomplete_timeout")

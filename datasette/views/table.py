@@ -1158,7 +1158,7 @@ def _escape_like(value):
 
 
 # Returns the exclusive upper bound for an indexed prefix search:
-# "abc" -> "abd", so `pk >= "abc" and pk < "abd"` covers "abc%".
+# For example, values beginning with "abc" fall below the next prefix boundary.
 # The LIKE clause is still applied separately for exact escaped-LIKE semantics.
 def _prefix_range_end(value):
     if not value:
@@ -1219,6 +1219,9 @@ def _autocomplete_response_rows(rows, pks, label_column):
             item["label"] = row[label_column]
         response_rows.append(item)
     return response_rows
+
+
+AUTOCOMPLETE_TIME_LIMIT_MS = 500
 
 
 class TableAutocompleteView(BaseView):
@@ -1289,7 +1292,9 @@ class TableAutocompleteView(BaseView):
         )
 
         try:
-            results = await db.execute(sql, params, custom_time_limit=500)
+            results = await db.execute(
+                sql, params, custom_time_limit=AUTOCOMPLETE_TIME_LIMIT_MS
+            )
         except QueryInterrupted:
             fallback_where = _autocomplete_prefix_like(pks[0])
             prefix_end = _prefix_range_end(q)
@@ -1312,7 +1317,11 @@ class TableAutocompleteView(BaseView):
                 order_by=_autocomplete_pk_order_by(pks),
             )
             try:
-                results = await db.execute(fallback_sql, params, custom_time_limit=500)
+                results = await db.execute(
+                    fallback_sql,
+                    params,
+                    custom_time_limit=AUTOCOMPLETE_TIME_LIMIT_MS,
+                )
             except QueryInterrupted:
                 return Response.json({"rows": []})
 

@@ -201,6 +201,15 @@ Search example with ``?q=facet`` returns only items matching ``.*facet.*``:
 
 When multiple search terms are provided (e.g., ``?q=user+profile``), items must match the pattern ``.*user.*profile.*``. Results are ordered by relevance, then by item type and shortest display name.
 
+.. _AutocompleteDebugView:
+
+/-/debug/autocomplete
+---------------------
+
+The debug tool at ``/-/debug/autocomplete`` can be used to try out the autocomplete component against a specific table. Pass ``?database=db&table=table`` to display an autocomplete field backed by that table's ``/-/autocomplete`` endpoint.
+
+Without those query string arguments, the page lists up to five tables with detected label columns, scanning at most 100 tables.
+
 .. _JsonDataView_threads:
 
 /-/threads

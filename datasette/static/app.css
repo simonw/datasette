@@ -1600,6 +1600,73 @@ textarea.row-edit-input {
     margin: 0;
 }
 
+datasette-autocomplete {
+    display: block;
+    position: relative;
+    max-width: 38rem;
+}
+
+datasette-autocomplete input[type="text"],
+.debug-autocomplete-form input[type="text"] {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 38rem;
+}
+
+.datasette-autocomplete-list {
+    background: #fff;
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.14);
+    box-sizing: border-box;
+    left: 0;
+    max-height: 16rem;
+    overflow-y: auto;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 3px);
+    z-index: 20;
+}
+
+.datasette-autocomplete-list[hidden] {
+    display: none;
+}
+
+.datasette-autocomplete-option {
+    cursor: pointer;
+    padding: 7px 9px;
+}
+
+.datasette-autocomplete-option:hover,
+.datasette-autocomplete-option[aria-selected="true"] {
+    background: var(--paper);
+}
+
+.datasette-autocomplete-option[aria-selected="true"] {
+    background: #eef4ff;
+    box-shadow: inset 3px 0 0 #1a56db;
+}
+
+.datasette-autocomplete-status {
+    border: 0;
+    clip: rect(0 0 0 0);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+}
+
+.debug-autocomplete-demo {
+    margin: 1rem 0;
+}
+
+.debug-autocomplete-selected {
+    max-width: 46rem;
+}
+
 .row-edit-dialog .modal-footer {
     padding: 14px 20px;
     border-top: 1px solid var(--rule);

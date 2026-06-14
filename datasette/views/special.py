@@ -91,6 +91,110 @@ class PatternPortfolioView(View):
         )
 
 
+class AutocompleteDebugView(BaseView):
+    name = "autocomplete_debug"
+    has_json_alternate = False
+
+    async def _suggested_tables(self, request):
+        scanned = 0
+        reached_scan_limit = False
+        suggestions = []
+        for database_name, db in self.ds.databases.items():
+            if scanned >= 100 or len(suggestions) >= 5:
+                break
+            remaining = 100 - scanned
+            results = await db.execute(
+                "select name from sqlite_master where type = 'table' order by name limit ?",
+                [remaining],
+            )
+            for row in results.rows:
+                table_name = row["name"]
+                scanned += 1
+                if scanned >= 100:
+                    reached_scan_limit = True
+                visible, _ = await self.ds.check_visibility(
+                    request.actor,
+                    action="view-table",
+                    resource=TableResource(database=database_name, table=table_name),
+                )
+                if not visible:
+                    if scanned >= 100:
+                        break
+                    continue
+                label_column = await db.label_column_for_table(table_name)
+                if label_column:
+                    suggestions.append(
+                        {
+                            "database": database_name,
+                            "table": table_name,
+                            "label_column": label_column,
+                            "url": self.ds.urls.path(
+                                "-/debug/autocomplete?"
+                                + urllib.parse.urlencode(
+                                    {
+                                        "database": database_name,
+                                        "table": table_name,
+                                    }
+                                )
+                            ),
+                        }
+                    )
+                    if len(suggestions) >= 5:
+                        break
+                if scanned >= 100:
+                    break
+        return suggestions, scanned, reached_scan_limit
+
+    async def get(self, request):
+        await self.ds.ensure_permission(action="view-instance", actor=request.actor)
+        database_name = request.args.get("database")
+        table_name = request.args.get("table")
+        context = {
+            "database_name": database_name,
+            "table_name": table_name,
+        }
+
+        if database_name or table_name:
+            if not database_name or not table_name:
+                context["error"] = "Both database and table are required."
+            elif database_name not in self.ds.databases:
+                context["error"] = "Database not found."
+            else:
+                db = self.ds.databases[database_name]
+                if not await db.table_exists(table_name):
+                    context["error"] = "Table not found."
+                else:
+                    await self.ds.ensure_permission(
+                        action="view-table",
+                        resource=TableResource(
+                            database=database_name,
+                            table=table_name,
+                        ),
+                        actor=request.actor,
+                    )
+                    context.update(
+                        {
+                            "autocomplete_url": "{}/-/autocomplete".format(
+                                self.ds.urls.table(database_name, table_name)
+                            ),
+                            "label_column": await db.label_column_for_table(table_name),
+                        }
+                    )
+        else:
+            suggestions, scanned, reached_scan_limit = await self._suggested_tables(
+                request
+            )
+            context.update(
+                {
+                    "suggestions": suggestions,
+                    "scanned": scanned,
+                    "reached_scan_limit": reached_scan_limit,
+                }
+            )
+
+        return await self.render(["debug_autocomplete.html"], request, context)
+
+
 class AuthTokenView(BaseView):
     name = "auth_token"
     has_json_alternate = False

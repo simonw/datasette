@@ -66,6 +66,7 @@ from .views.index import IndexView
 from .views.special import (
     JsonDataView,
     PatternPortfolioView,
+    AutocompleteDebugView,
     AuthTokenView,
     ApiExplorerView,
     CreateTokenView,
@@ -2538,6 +2539,10 @@ class Datasette:
         add_route(
             wrap_view(PatternPortfolioView, self),
             r"/-/patterns$",
+        )
+        add_route(
+            AutocompleteDebugView.as_view(self),
+            r"/-/debug/autocomplete$",
         )
         add_route(
             wrap_view(database_download, self),

@@ -191,6 +191,7 @@ async def test_debug_menu_items_are_in_jump_for_debug_menu_permission():
         "Debug permissions": "/-/permissions",
         "Debug messages": "/-/messages",
         "Debug allow rules": "/-/allow-debug",
+        "Debug autocomplete": "/-/debug/autocomplete",
         "Debug threads": "/-/threads",
         "Debug actor": "/-/actor",
         "Pattern portfolio": "/-/patterns",

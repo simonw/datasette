@@ -942,6 +942,7 @@ async def test_table_insert_action_button_and_data():
                             "permissions": {
                                 "insert-row": {"id": "root"},
                             },
+                            "column_types": {"body": "textarea"},
                         },
                     },
                 },
@@ -993,6 +994,7 @@ async def test_table_insert_action_button_and_data():
         assert created["default"] == "datetime('now')"
         assert created["has_default"]
         assert body["value_type"] == "string"
+        assert body["column_type"] == {"type": "textarea", "config": None}
     finally:
         ds.close()
 

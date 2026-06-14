@@ -792,12 +792,15 @@ function valueToEditText(value) {
   return String(value);
 }
 
-function shouldUseTextarea(value) {
+function shouldUseTextarea(value, columnType) {
+  if (columnType && columnType.type === "textarea") {
+    return true;
+  }
   if (value && typeof value === "object") {
     return true;
   }
   var text = valueToEditText(value);
-  return text.length > 80 || text.indexOf("\n") !== -1;
+  return text.length > 80 || /[\r\n]/.test(text);
 }
 
 function rowEditValueType(value) {
@@ -835,7 +838,7 @@ function createRowEditField(column, value, isPk, columnType, index, options) {
   var controlWrap = document.createElement("div");
   controlWrap.className = "row-edit-control-wrap";
 
-  var control = shouldUseTextarea(value)
+  var control = shouldUseTextarea(value, columnType)
     ? document.createElement("textarea")
     : document.createElement("input");
   control.className = "row-edit-input";

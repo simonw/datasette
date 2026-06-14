@@ -1092,7 +1092,7 @@ Column types are assigned to columns via the :ref:`column_types <table_configura
                 config:
                   format: rgb
 
-Datasette includes three built-in column types: ``url``, ``email``, and ``json``.
+Datasette includes four built-in column types: ``url``, ``email``, ``json``, and ``textarea``. The ``textarea`` type is an editing hint that causes Datasette's insert/edit forms to use a multiline ``<textarea>`` control for that column.
 
 .. _plugin_asgi_wrapper:
 

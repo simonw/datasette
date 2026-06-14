@@ -494,6 +494,7 @@ async def test_builtin_column_types_registered(ds_ct):
     assert "url" in ds_ct._column_types
     assert "email" in ds_ct._column_types
     assert "json" in ds_ct._column_types
+    assert "textarea" in ds_ct._column_types
     assert "nonexistent" not in ds_ct._column_types
 
 
@@ -510,6 +511,10 @@ async def test_column_type_class_attributes(ds_ct):
     assert email_cls.sqlite_types == (SQLiteType.TEXT,)
     json_cls = ds_ct._column_types["json"]
     assert json_cls.sqlite_types == (SQLiteType.TEXT,)
+    textarea_cls = ds_ct._column_types["textarea"]
+    assert textarea_cls.name == "textarea"
+    assert textarea_cls.description == "Multiline text"
+    assert textarea_cls.sqlite_types == (SQLiteType.TEXT,)
 
 
 def test_sqlite_type_from_declared_type():
@@ -941,6 +946,7 @@ async def test_set_column_type_ui_data_includes_applicable_types(
         "options": [
             {"name": "email", "description": "Email address"},
             {"name": "json", "description": "JSON data"},
+            {"name": "textarea", "description": "Multiline text"},
             {"name": "url", "description": "URL"},
         ],
     }
@@ -949,6 +955,7 @@ async def test_set_column_type_ui_data_includes_applicable_types(
         "options": [
             {"name": "email", "description": "Email address"},
             {"name": "json", "description": "JSON data"},
+            {"name": "textarea", "description": "Multiline text"},
             {"name": "url", "description": "URL"},
         ],
     }

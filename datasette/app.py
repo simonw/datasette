@@ -82,6 +82,7 @@ from .views.special import (
     TableSchemaView,
 )
 from .views.table import (
+    TableAutocompleteView,
     TableInsertView,
     TableUpsertView,
     TableSetColumnTypeView,
@@ -2618,6 +2619,10 @@ class Datasette:
         add_route(
             TableFragmentView.as_view(self),
             r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/fragment$",
+        )
+        add_route(
+            TableAutocompleteView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/autocomplete$",
         )
         add_route(
             TableDropView.as_view(self),

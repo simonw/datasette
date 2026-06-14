@@ -1201,6 +1201,48 @@ The following extras are available for arbitrary SQL query responses and stored,
 
 .. [[[end]]]
 
+.. _TableAutocompleteView:
+
+Table autocomplete
+------------------
+
+The ``/<database>/<table>/-/autocomplete`` endpoint returns up to 10 primary key
+matches for a table, intended for building autocomplete interfaces such as
+foreign key pickers.
+
+::
+
+    GET /<database>/<table>/-/autocomplete?q=search
+
+The ``q`` parameter is required. If it is omitted or blank, the endpoint returns
+an empty ``"rows"`` list.
+
+The response includes a ``"pks"`` object containing the primary key value or
+values for each row. If Datasette can detect a label column, or one has been
+configured using ``label_column``, each row will also include ``"label"``:
+
+.. code-block:: json
+
+    {
+        "rows": [
+            {
+                "pks": {
+                    "id": 1
+                },
+                "label": "Example row"
+            }
+        ]
+    }
+
+The endpoint searches the primary key column or columns and the label column
+using escaped SQL ``LIKE`` queries. A single-column primary key exact match is
+returned first. Other matches are ordered by the shortest matching label value
+where a label column is available.
+
+The initial search runs with a 500ms time limit. If that query times out,
+Datasette falls back to a prefix match against the first primary key column so
+SQLite can use the primary key index.
+
 .. _table_arguments:
 
 Table arguments

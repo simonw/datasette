@@ -15,6 +15,7 @@ from datasette.events import (
     InsertRowsEvent,
     UpsertRowsEvent,
 )
+from datasette.database import QueryInterrupted
 from datasette import tracer
 from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
@@ -1109,6 +1110,155 @@ class TableFragmentView(BaseView):
             view_name="table",
         )
         return Response.html(html)
+
+
+def _escape_like(value):
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+# Returns the exclusive upper bound for an indexed prefix search:
+# "abc" -> "abd", so `pk >= "abc" and pk < "abd"` covers "abc%".
+# The LIKE clause is still applied separately for exact escaped-LIKE semantics.
+def _prefix_range_end(value):
+    if not value:
+        return None
+    characters = list(value)
+    for i in range(len(characters) - 1, -1, -1):
+        if ord(characters[i]) < 0x10FFFF:
+            return "{}{}".format("".join(characters[:i]), chr(ord(characters[i]) + 1))
+    return None
+
+
+def _autocomplete_like(column):
+    return "{} like :like escape char(92)".format(escape_sqlite(column))
+
+
+def _autocomplete_prefix_like(column):
+    return "{} like :prefix escape char(92)".format(escape_sqlite(column))
+
+
+def _autocomplete_order_by(pks, label_column, exact_pk, label_matches_first=True):
+    clauses = []
+    if exact_pk:
+        clauses.append(
+            "case when cast({} as text) = :q then 0 else 1 end".format(
+                escape_sqlite(pks[0])
+            )
+        )
+    if label_column:
+        label_like = _autocomplete_like(label_column)
+        if label_matches_first:
+            clauses.append("case when {} then 0 else 1 end".format(label_like))
+        clauses.append(
+            "case when {} then length(cast({} as text)) end".format(
+                label_like, escape_sqlite(label_column)
+            )
+        )
+    else:
+        clauses.append("length(cast({} as text))".format(escape_sqlite(pks[0])))
+    clauses.extend(escape_sqlite(pk) for pk in pks)
+    return ", ".join(clauses)
+
+
+def _autocomplete_pk_order_by(pks):
+    return ", ".join(escape_sqlite(pk) for pk in pks)
+
+
+def _autocomplete_response_rows(rows, pks, label_column):
+    response_rows = []
+    for row in rows:
+        item = {"pks": {pk: row[pk] for pk in pks}}
+        if label_column:
+            item["label"] = row[label_column]
+        response_rows.append(item)
+    return response_rows
+
+
+class TableAutocompleteView(BaseView):
+    name = "table-autocomplete"
+
+    async def get(self, request):
+        resolved = await self.ds.resolve_table(request)
+        if resolved.is_view:
+            raise BadRequest("Autocomplete is only available for tables")
+
+        db = resolved.db
+        database_name = db.name
+        table_name = resolved.table
+        visible, _ = await self.ds.check_visibility(
+            request.actor,
+            action="view-table",
+            resource=TableResource(database=database_name, table=table_name),
+        )
+        if not visible:
+            raise Forbidden("You do not have permission to view this table")
+
+        pks = await db.primary_keys(table_name)
+        if not pks:
+            pks = ["rowid"]
+        label_column = await db.label_column_for_table(table_name)
+        select_columns = list(
+            dict.fromkeys(pks + ([label_column] if label_column else []))
+        )
+        select_sql = ", ".join(escape_sqlite(column) for column in select_columns)
+        q = request.args.get("q") or ""
+        if not q:
+            return Response.json({"rows": []})
+        params = {
+            "q": q,
+            "like": "%{}%".format(_escape_like(q)),
+            "prefix": "{}%".format(_escape_like(q)),
+        }
+
+        like_columns = pks[:]
+        if label_column and label_column not in like_columns:
+            like_columns.append(label_column)
+        where_sql = " or ".join(_autocomplete_like(column) for column in like_columns)
+        exact_pk = len(pks) == 1
+        sql = """
+            select {select_sql}
+            from {table}
+            where {where}
+            order by {order_by}
+            limit 10
+        """.format(
+            select_sql=select_sql,
+            table=escape_sqlite(table_name),
+            where=where_sql,
+            order_by=_autocomplete_order_by(pks, label_column, exact_pk),
+        )
+
+        try:
+            results = await db.execute(sql, params, custom_time_limit=500)
+        except QueryInterrupted:
+            fallback_where = _autocomplete_prefix_like(pks[0])
+            prefix_end = _prefix_range_end(q)
+            if prefix_end:
+                params["prefix_end"] = prefix_end
+                first_pk = escape_sqlite(pks[0])
+                fallback_where = (
+                    "{first_pk} >= :q and {first_pk} < :prefix_end and {like}"
+                ).format(first_pk=first_pk, like=fallback_where)
+            fallback_sql = """
+                select {select_sql}
+                from {table}
+                where {where}
+                order by {order_by}
+                limit 10
+            """.format(
+                select_sql=select_sql,
+                table=escape_sqlite(table_name),
+                where=fallback_where,
+                order_by=_autocomplete_pk_order_by(pks),
+            )
+            try:
+                results = await db.execute(fallback_sql, params, custom_time_limit=500)
+            except QueryInterrupted:
+                return Response.json({"rows": []})
+
+        return Response.json(
+            {"rows": _autocomplete_response_rows(results.rows, pks, label_column)}
+        )
 
 
 async def _columns_to_select(table_columns, pks, request):

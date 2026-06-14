@@ -389,6 +389,16 @@ function showRowMutationStatus(manager, message, isError) {
   return status;
 }
 
+function hideRowMutationStatus() {
+  var status = document.querySelector(".row-mutation-status");
+  if (!status) {
+    return;
+  }
+  status.hidden = true;
+  status.classList.remove("row-mutation-status-error");
+  status.textContent = "";
+}
+
 function setRowDeleteDialogBusy(state, isBusy) {
   state.isBusy = isBusy;
   state.confirmButton.disabled = isBusy;
@@ -436,6 +446,27 @@ function tildeDecode(value) {
   }
 }
 
+function tildeEncode(value) {
+  var bytes = new TextEncoder().encode(String(value));
+  var encoded = "";
+  bytes.forEach(function (byte) {
+    var isSafe =
+      (byte >= 65 && byte <= 90) ||
+      (byte >= 97 && byte <= 122) ||
+      (byte >= 48 && byte <= 57) ||
+      byte === 95 ||
+      byte === 45;
+    if (isSafe) {
+      encoded += String.fromCharCode(byte);
+    } else if (byte === 32) {
+      encoded += "+";
+    } else {
+      encoded += "~" + byte.toString(16).toUpperCase().padStart(2, "0");
+    }
+  });
+  return encoded;
+}
+
 function rowDisplayLabel(row) {
   return tildeDecode(row.getAttribute("data-row") || "");
 }
@@ -447,6 +478,20 @@ function tableBaseUrl() {
   url.hash = "";
   url.search = "";
   return url;
+}
+
+function tableInsertData() {
+  return window._datasetteTableData && window._datasetteTableData.insertRow;
+}
+
+function tableInsertUrl() {
+  var data = tableInsertData();
+  if (data && data.path) {
+    return new URL(data.path, location.href).toString();
+  }
+  var url = tableBaseUrl();
+  url.pathname = url.pathname.replace(/\/$/, "") + "/-/insert";
+  return url.toString();
 }
 
 function rowResourceUrl(row) {
@@ -489,6 +534,10 @@ function rowUpdateUrl(row) {
 
 function rowFragmentUrl(row) {
   var rowId = row.getAttribute("data-row");
+  return rowFragmentUrlById(rowId);
+}
+
+function rowFragmentUrlById(rowId) {
   if (!rowId) {
     return "";
   }
@@ -748,9 +797,14 @@ function rowEditValueType(value) {
   return "string";
 }
 
-function createRowEditField(column, value, isPk, columnType, index) {
+function createRowEditField(column, value, isPk, columnType, index, options) {
+  options = options || {};
   var field = document.createElement("div");
   field.className = "row-edit-field";
+  var hasDefault =
+    options.hasDefault ||
+    (options.defaultValue !== null && typeof options.defaultValue !== "undefined");
+  var useDefaultInitially = hasDefault && options.useDefaultInitially;
 
   var fieldId = "row-edit-field-" + index;
   var metaId = "row-edit-field-meta-" + index;
@@ -771,8 +825,16 @@ function createRowEditField(column, value, isPk, columnType, index) {
   control.value = valueToEditText(value);
   control.setAttribute("aria-describedby", metaId);
   control.dataset.originalValue = valueToEditText(value);
-  control.dataset.originalValueType = rowEditValueType(value);
+  control.dataset.originalValueType =
+    options.valueType || rowEditValueType(value);
   control.dataset.primaryKey = isPk ? "1" : "0";
+  if (useDefaultInitially) {
+    control.dataset.useDefault = "1";
+    control.disabled = true;
+  }
+  if (options.omitIfBlank) {
+    control.dataset.omitIfBlank = "1";
+  }
 
   if (control.nodeName === "TEXTAREA") {
     control.rows = Math.min(8, Math.max(3, control.value.split("\n").length));
@@ -780,7 +842,7 @@ function createRowEditField(column, value, isPk, columnType, index) {
     control.type = "text";
   }
 
-  if (isPk) {
+  if (isPk && options.primaryKeyReadonly !== false) {
     control.readOnly = true;
   }
 
@@ -791,6 +853,12 @@ function createRowEditField(column, value, isPk, columnType, index) {
   if (isPk) {
     metaParts.push("Primary key");
   }
+  if (options.notnull) {
+    metaParts.push("Required");
+  }
+  if (hasDefault && !useDefaultInitially) {
+    metaParts.push("Default: " + options.defaultValue);
+  }
   if (value === null) {
     metaParts.push("Current value: NULL");
     control.placeholder = "NULL";
@@ -800,7 +868,62 @@ function createRowEditField(column, value, isPk, columnType, index) {
   }
   meta.textContent = metaParts.join(" · ");
 
-  controlWrap.appendChild(control);
+  if (useDefaultInitially) {
+    var defaultBlock = document.createElement("div");
+    defaultBlock.className = "row-edit-default";
+    defaultBlock.setAttribute("aria-describedby", metaId);
+
+    var defaultText = document.createElement("span");
+    defaultText.className = "row-edit-default-text";
+    defaultText.appendChild(document.createTextNode("default "));
+    var defaultCode = document.createElement("code");
+    defaultCode.className = "row-edit-default-code";
+    defaultCode.textContent = options.defaultValue;
+    defaultText.appendChild(defaultCode);
+
+    var setValueButton = document.createElement("button");
+    setValueButton.type = "button";
+    setValueButton.className =
+      "row-edit-default-button row-edit-default-set-value";
+    setValueButton.textContent = "Set value";
+    setValueButton.setAttribute("aria-label", "Set value for " + column);
+
+    var customWrap = document.createElement("div");
+    customWrap.className = "row-edit-custom-value";
+    customWrap.hidden = true;
+
+    var useDefaultButton = document.createElement("button");
+    useDefaultButton.type = "button";
+    useDefaultButton.className = "row-edit-default-button";
+    useDefaultButton.textContent = "Use default";
+    useDefaultButton.setAttribute("aria-label", "Use default for " + column);
+
+    setValueButton.addEventListener("click", function () {
+      control.dataset.useDefault = "0";
+      control.disabled = false;
+      defaultBlock.hidden = true;
+      customWrap.hidden = false;
+      control.focus();
+    });
+
+    useDefaultButton.addEventListener("click", function () {
+      control.dataset.useDefault = "1";
+      control.disabled = true;
+      control.value = "";
+      customWrap.hidden = true;
+      defaultBlock.hidden = false;
+      setValueButton.focus();
+    });
+
+    defaultBlock.appendChild(defaultText);
+    defaultBlock.appendChild(setValueButton);
+    customWrap.appendChild(control);
+    customWrap.appendChild(useDefaultButton);
+    controlWrap.appendChild(defaultBlock);
+    controlWrap.appendChild(customWrap);
+  } else {
+    controlWrap.appendChild(control);
+  }
   if (meta.textContent) {
     controlWrap.appendChild(meta);
   }
@@ -823,7 +946,8 @@ function showRowEditDialogError(state, message) {
 function updateRowEditDialogButtons(state) {
   state.saveButton.disabled = state.isLoading || state.isSaving || !state.hasLoaded;
   state.cancelButton.disabled = state.isSaving;
-  state.saveButton.textContent = state.isSaving ? "Saving..." : "Save";
+  var saveLabel = state.mode === "insert" ? "Insert row" : "Save";
+  state.saveButton.textContent = state.isSaving ? "Saving..." : saveLabel;
   state.form.setAttribute(
     "aria-busy",
     state.isLoading || state.isSaving ? "true" : "false",
@@ -843,8 +967,15 @@ function setRowEditDialogSaving(state, isSaving) {
 
 function valueFromRowEditControl(control) {
   var value = control.value;
+  return valueFromRowEditText(
+    control.name,
+    value,
+    control.dataset.originalValueType || "string",
+  );
+}
+
+function valueFromRowEditText(name, value, originalValueType) {
   var trimmed = value.trim();
-  var originalValueType = control.dataset.originalValueType || "string";
 
   if (originalValueType === "null" && value === "") {
     return null;
@@ -855,7 +986,7 @@ function valueFromRowEditControl(control) {
     }
     var numberValue = Number(trimmed);
     if (Number.isNaN(numberValue)) {
-      throw new Error(control.name + " must be a number");
+      throw new Error(name + " must be a number");
     }
     return numberValue;
   }
@@ -866,7 +997,7 @@ function valueFromRowEditControl(control) {
     if (/^(false|0|no)$/i.test(trimmed)) {
       return false;
     }
-    throw new Error(control.name + " must be true or false");
+    throw new Error(name + " must be true or false");
   }
   if (originalValueType === "json") {
     if (trimmed === "") {
@@ -875,21 +1006,60 @@ function valueFromRowEditControl(control) {
     try {
       return JSON.parse(value);
     } catch (_error) {
-      throw new Error(control.name + " must be valid JSON");
+      throw new Error(name + " must be valid JSON");
     }
   }
   return value;
 }
 
-function collectRowEditUpdate(state) {
-  var update = {};
+function originalValueFromRowEditControl(control) {
+  return valueFromRowEditText(
+    control.name,
+    control.dataset.originalValue || "",
+    control.dataset.originalValueType || "string",
+  );
+}
+
+function rowEditValuesMatch(left, right) {
+  if (left === right) {
+    return true;
+  }
+  if (
+    left &&
+    right &&
+    typeof left === "object" &&
+    typeof right === "object"
+  ) {
+    return JSON.stringify(left) === JSON.stringify(right);
+  }
+  return false;
+}
+
+function collectRowFormValues(state) {
+  var values = {};
   state.fields.querySelectorAll(".row-edit-input").forEach(function (control) {
-    if (control.readOnly || control.dataset.primaryKey === "1") {
+    if (
+      state.mode === "edit" &&
+      (control.readOnly || control.dataset.primaryKey === "1")
+    ) {
       return;
     }
-    update[control.name] = valueFromRowEditControl(control);
+    if (control.dataset.useDefault === "1") {
+      return;
+    }
+    if (control.dataset.omitIfBlank === "1" && control.value === "") {
+      return;
+    }
+    var value = valueFromRowEditControl(control);
+    if (
+      state.mode === "edit" &&
+      rowEditValuesMatch(value, originalValueFromRowEditControl(control))
+    ) {
+      return;
+    }
+    values[control.name] = value;
   });
-  return update;
+  return values;
 }
 
 function findDataRowElement(root, rowId) {
@@ -919,6 +1089,41 @@ async function fetchUpdatedRowElement(state) {
   return findDataRowElement(doc, state.currentRowId);
 }
 
+function rowPathFromRowData(row, primaryKeys) {
+  if (!row) {
+    return null;
+  }
+  var keys = primaryKeys && primaryKeys.length ? primaryKeys : ["rowid"];
+  var bits = [];
+  for (var i = 0; i < keys.length; i += 1) {
+    var key = keys[i];
+    if (typeof row[key] === "undefined") {
+      return null;
+    }
+    bits.push(tildeEncode(row[key]));
+  }
+  return bits.join(",");
+}
+
+function addInsertedRowToPage(rowElement) {
+  var importedRow = document.importNode(rowElement, true);
+  var firstRow = document.querySelector("[data-row]");
+  if (firstRow && firstRow.parentNode) {
+    firstRow.parentNode.insertBefore(importedRow, firstRow);
+  } else {
+    var tbody = document.querySelector("table.rows-and-columns tbody");
+    if (!tbody) {
+      return null;
+    }
+    tbody.appendChild(importedRow);
+  }
+  var zeroResults = document.querySelector(".zero-results");
+  if (zeroResults) {
+    zeroResults.remove();
+  }
+  return importedRow;
+}
+
 async function saveRowEditDialog(state) {
   if (state.isLoading || state.isSaving || !state.hasLoaded) {
     return;
@@ -927,19 +1132,32 @@ async function saveRowEditDialog(state) {
   setRowEditDialogSaving(state, true);
 
   try {
-    if (!state.currentUpdateUrl) {
-      throw new Error("Could not find the row update URL");
+    var url = state.mode === "insert" ? state.currentInsertUrl : state.currentUpdateUrl;
+    if (!url) {
+      throw new Error(
+        state.mode === "insert"
+          ? "Could not find the row insert URL"
+          : "Could not find the row update URL",
+      );
     }
-    var response = await fetch(state.currentUpdateUrl, {
+    var formValues = collectRowFormValues(state);
+    if (state.mode === "edit" && !Object.keys(formValues).length) {
+      state.shouldRestoreFocus = true;
+      hideRowMutationStatus();
+      state.dialog.close();
+      return;
+    }
+    var payload =
+      state.mode === "insert"
+        ? { row: formValues, return: true }
+        : { update: formValues, return: true };
+    var response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({
-        update: collectRowEditUpdate(state),
-        return: true,
-      }),
+      body: JSON.stringify(payload),
     });
     var data = null;
     try {
@@ -951,11 +1169,75 @@ async function saveRowEditDialog(state) {
       throw rowMutationRequestError(response, data);
     }
 
+    if (state.mode === "insert") {
+      var insertData = tableInsertData() || {};
+      var insertedRowData = data && data.rows && data.rows.length ? data.rows[0] : null;
+      var insertedRowId = rowPathFromRowData(
+        insertedRowData,
+        insertData.primaryKeys || [],
+      );
+      state.shouldRestoreFocus = false;
+      if (!insertedRowId) {
+        state.dialog.close();
+        var missingIdStatus = showRowMutationStatus(
+          state.manager,
+          "Inserted row. Refresh the page to see it.",
+          false,
+        );
+        missingIdStatus.focus();
+        return;
+      }
+
+      state.currentRowId = insertedRowId;
+      state.currentFragmentUrl = rowFragmentUrlById(insertedRowId);
+      var insertedStatusMessage =
+        "Inserted row " + tildeDecode(insertedRowId) + ".";
+      var insertedRow = null;
+      try {
+        insertedRow = await fetchUpdatedRowElement(state);
+      } catch (_error) {
+        state.dialog.close();
+        var refreshFailedStatus = showRowMutationStatus(
+          state.manager,
+          "Inserted row, but could not refresh the table row. Refresh the page to see it.",
+          true,
+        );
+        refreshFailedStatus.focus();
+        return;
+      }
+      if (insertedRow) {
+        var addedRow = addInsertedRowToPage(insertedRow);
+        state.dialog.close();
+        showRowMutationStatus(state.manager, insertedStatusMessage, false);
+        if (addedRow) {
+          var insertedFocusTarget =
+            addedRow.querySelector('button[data-row-action="edit"]') || addedRow;
+          insertedFocusTarget.focus();
+        }
+      } else {
+        state.dialog.close();
+        var filteredStatus = showRowMutationStatus(
+          state.manager,
+          "Inserted row. It does not match the current filters.",
+          false,
+        );
+        filteredStatus.focus();
+      }
+      return;
+    }
+
     var updatedRow = await fetchUpdatedRowElement(state);
     var focusTarget = null;
     if (updatedRow && state.currentRow && document.contains(state.currentRow)) {
       var importedRow = document.importNode(updatedRow, true);
       state.currentRow.replaceWith(importedRow);
+      showRowMutationStatus(
+        state.manager,
+        state.currentPkPath
+          ? "Updated row " + state.currentPkPath + "."
+          : "Updated row.",
+        false,
+      );
       focusTarget =
         importedRow.querySelector('button[data-row-action="edit"]') || importedRow;
     } else if (state.currentRow && document.contains(state.currentRow)) {
@@ -965,7 +1247,11 @@ async function saveRowEditDialog(state) {
       state.currentRow.remove();
       showRowMutationStatus(
         state.manager,
-        "Saved row. It no longer matches the current filters.",
+        state.currentPkPath
+          ? "Updated row " +
+              state.currentPkPath +
+              ". It no longer matches the current filters."
+          : "Updated row. It no longer matches the current filters.",
         false,
       );
     }
@@ -996,6 +1282,9 @@ function renderRowEditFields(state, data) {
         primaryKeys.indexOf(column) !== -1,
         columnTypes[column],
         index,
+        {
+          primaryKeyReadonly: true,
+        },
       ),
     );
   });
@@ -1005,6 +1294,57 @@ function renderRowEditFields(state, data) {
   var firstEditable = state.fields.querySelector(".row-edit-input:not([readonly])");
   var firstField = state.fields.querySelector(".row-edit-input");
   (firstEditable || firstField || state.cancelButton).focus();
+}
+
+function renderRowInsertFields(state, data) {
+  var columns = data.columns || [];
+
+  state.fields.innerHTML = "";
+  columns.forEach(function (column, index) {
+    state.fields.appendChild(
+      createRowEditField(
+        column.name,
+        "",
+        !!column.is_pk,
+        column.column_type,
+        index,
+        {
+          defaultValue: column.default,
+          hasDefault: column.has_default,
+          notnull: column.notnull,
+          primaryKeyReadonly: false,
+          useDefaultInitially: column.has_default,
+          valueType: column.value_type,
+        },
+      ),
+    );
+  });
+
+  if (!columns.length) {
+    var emptyMessage = document.createElement("p");
+    emptyMessage.className = "row-edit-empty";
+    emptyMessage.textContent = "This row will use the table defaults.";
+    state.fields.appendChild(emptyMessage);
+  }
+
+  state.hasLoaded = true;
+  updateRowEditDialogButtons(state);
+  var firstControl = state.fields.querySelector(
+    ".row-edit-default-set-value, .row-edit-input:not(:disabled)",
+  );
+  (firstControl || state.saveButton).focus();
+}
+
+function setRowEditDialogTitle(state, text, codeText) {
+  state.title.textContent = "";
+  state.title.appendChild(document.createTextNode(text));
+  if (!codeText) {
+    return;
+  }
+  state.title.appendChild(document.createTextNode(" "));
+  var code = document.createElement("code");
+  code.textContent = codeText;
+  state.title.appendChild(code);
 }
 
 function ensureRowEditDialog(manager) {
@@ -1019,13 +1359,12 @@ function ensureRowEditDialog(manager) {
   dialog.id = ROW_EDIT_DIALOG_ID;
   dialog.className = "row-edit-dialog";
   dialog.setAttribute("aria-labelledby", "row-edit-title");
-  dialog.setAttribute("aria-describedby", "row-edit-summary");
   dialog.innerHTML = `
     <div class="modal-header">
       <span class="modal-title" id="row-edit-title">Edit row</span>
     </div>
     <form class="row-edit-form" method="post">
-      <p class="row-edit-summary" id="row-edit-summary">Editing row <span class="row-edit-id"></span></p>
+      <p class="row-edit-summary" id="row-edit-summary" hidden></p>
       <p class="row-edit-loading" role="status" aria-live="polite">Loading row...</p>
       <p class="row-edit-error" role="alert" tabindex="-1" hidden></p>
       <div class="row-edit-fields"></div>
@@ -1040,7 +1379,8 @@ function ensureRowEditDialog(manager) {
   rowEditDialogState = {
     dialog: dialog,
     form: dialog.querySelector(".row-edit-form"),
-    rowId: dialog.querySelector(".row-edit-id"),
+    title: dialog.querySelector(".modal-title"),
+    summary: dialog.querySelector(".row-edit-summary"),
     loading: dialog.querySelector(".row-edit-loading"),
     error: dialog.querySelector(".row-edit-error"),
     fields: dialog.querySelector(".row-edit-fields"),
@@ -1050,8 +1390,10 @@ function ensureRowEditDialog(manager) {
     currentRow: null,
     currentRowId: null,
     currentPkPath: null,
+    currentInsertUrl: null,
     currentUpdateUrl: null,
     currentFragmentUrl: null,
+    mode: "edit",
     loadId: 0,
     manager: manager,
     isLoading: false,
@@ -1130,10 +1472,12 @@ async function openRowEditDialog(button, manager) {
   }
 
   state.manager = manager;
+  state.mode = "edit";
   state.currentButton = button;
   state.currentRow = row;
   state.currentRowId = row.getAttribute("data-row") || "";
   state.currentPkPath = rowDisplayLabel(row);
+  state.currentInsertUrl = null;
   state.currentUpdateUrl = rowUpdateUrl(row);
   state.currentFragmentUrl = rowFragmentUrl(row);
   if (state.currentUpdateUrl) {
@@ -1149,7 +1493,10 @@ async function openRowEditDialog(button, manager) {
   clearRowEditDialogError(state);
   setRowEditDialogLoading(state, true);
   state.fields.innerHTML = "";
-  state.rowId.textContent = state.currentPkPath || "this row";
+  state.dialog.removeAttribute("aria-describedby");
+  setRowEditDialogTitle(state, "Edit row", state.currentPkPath || "this row");
+  state.summary.hidden = true;
+  state.summary.textContent = "";
 
   if (!state.dialog.open) {
     state.dialog.showModal();
@@ -1181,6 +1528,52 @@ async function openRowEditDialog(button, manager) {
   }
 }
 
+function openRowInsertDialog(button, manager) {
+  var insertData = tableInsertData();
+  if (!insertData) {
+    return;
+  }
+  var state = ensureRowEditDialog(manager);
+  if (!state) {
+    return;
+  }
+
+  state.manager = manager;
+  state.mode = "insert";
+  state.currentButton = button;
+  state.currentRow = null;
+  state.currentRowId = null;
+  state.currentPkPath = null;
+  state.currentInsertUrl = tableInsertUrl();
+  state.currentUpdateUrl = null;
+  state.currentFragmentUrl = null;
+  state.shouldRestoreFocus = true;
+  state.hasLoaded = false;
+  state.loadId += 1;
+
+  if (state.currentInsertUrl) {
+    state.form.action = new URL(state.currentInsertUrl, location.href).toString();
+  } else {
+    state.form.removeAttribute("action");
+  }
+
+  clearRowEditDialogError(state);
+  setRowEditDialogLoading(state, false);
+  state.fields.innerHTML = "";
+  state.dialog.removeAttribute("aria-describedby");
+  setRowEditDialogTitle(
+    state,
+    insertData.tableName ? "Insert row into " + insertData.tableName : "Insert row",
+  );
+  state.summary.hidden = true;
+  state.summary.textContent = "";
+
+  if (!state.dialog.open) {
+    state.dialog.showModal();
+  }
+  renderRowInsertFields(state, insertData);
+}
+
 function initRowEditActions(manager) {
   if (!window.fetch || !window.HTMLDialogElement) {
     return;
@@ -1192,6 +1585,20 @@ function initRowEditActions(manager) {
     }
     ev.preventDefault();
     openRowEditDialog(button, manager);
+  });
+}
+
+function initRowInsertActions(manager) {
+  if (!window.fetch || !window.HTMLDialogElement || !tableInsertData()) {
+    return;
+  }
+  document.addEventListener("click", function (ev) {
+    var button = ev.target.closest('button[data-table-action="insert-row"]');
+    if (!button) {
+      return;
+    }
+    ev.preventDefault();
+    openRowInsertDialog(button, manager);
   });
 }
 
@@ -1590,6 +1997,7 @@ document.addEventListener("datasette_init", function (evt) {
 
   // Main table
   initDatasetteTable(manager);
+  initRowInsertActions(manager);
   initRowEditActions(manager);
   initRowDeleteActions(manager);
 

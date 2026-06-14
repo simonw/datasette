@@ -1209,6 +1209,21 @@ dialog.set-column-type-dialog::backdrop {
     background: rgba(208,2,27,0.12);
 }
 
+.table-row-toolbar {
+    margin: 0 0 0.75rem;
+}
+
+button.table-insert-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+button.table-insert-row svg {
+    display: block;
+    flex-shrink: 0;
+}
+
 dialog.row-delete-dialog {
     --ink: #0f0f0f;
     --paper: #f5f3ef;
@@ -1381,6 +1396,17 @@ dialog.row-edit-dialog::backdrop {
     color: var(--ink);
 }
 
+.row-edit-dialog .modal-title code {
+    display: inline;
+    padding: 2px 5px;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: var(--paper);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.92em;
+    overflow-wrap: anywhere;
+}
+
 .row-edit-form {
     display: flex;
     flex: 1 1 auto;
@@ -1399,17 +1425,6 @@ dialog.row-edit-dialog::backdrop {
 .row-edit-loading {
     color: var(--muted);
     font-size: 0.9rem;
-}
-
-.row-edit-id {
-    display: inline;
-    padding: 2px 5px;
-    border: 1px solid var(--rule);
-    border-radius: 4px;
-    background: var(--paper);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 0.92em;
-    overflow-wrap: anywhere;
 }
 
 .row-edit-error {
@@ -1483,9 +1498,78 @@ textarea.row-edit-input {
     background: var(--paper);
 }
 
+.row-edit-default {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 7.25rem;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    padding: 7px 8px 7px 10px;
+    background: var(--paper);
+    color: var(--ink);
+}
+
+.row-edit-default[hidden],
+.row-edit-custom-value[hidden] {
+    display: none;
+}
+
+.row-edit-default-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.row-edit-default-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+}
+
+.row-edit-custom-value {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 7.25rem;
+    gap: 8px;
+    align-items: center;
+    min-height: 45px;
+    padding-right: 8px;
+}
+
+.row-edit-default-button {
+    appearance: none;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: #fff;
+    color: var(--accent);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.78rem;
+    line-height: 1.2;
+    padding: 6px 8px;
+    white-space: nowrap;
+    width: 100%;
+    align-self: center;
+}
+
+.row-edit-default-button:hover,
+.row-edit-default-button:focus {
+    background: #f8fafc;
+}
+
+.row-edit-default-button:focus {
+    outline: 3px solid rgba(26, 86, 219, 0.12);
+    outline-offset: 1px;
+}
+
 .row-edit-field-meta {
     color: var(--muted);
     font-size: 0.78rem;
+}
+
+.row-edit-empty {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin: 0;
 }
 
 .row-edit-dialog .modal-footer {
@@ -1757,6 +1841,7 @@ textarea.row-edit-input {
         width: 140px;
     }
     button.choose-columns-mobile,
+    button.table-insert-row,
     button.column-actions-mobile {
         display: inline-flex;
         align-items: center;
@@ -1792,6 +1877,15 @@ textarea.row-edit-input {
 
     button.choose-columns-mobile {
         margin-right: 0.5rem;
+    }
+
+    .table-row-toolbar {
+        margin-bottom: 0.75rem;
+    }
+
+    button.table-insert-row {
+        width: 100%;
+        margin-bottom: 0;
     }
 }
 

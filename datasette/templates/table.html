@@ -4,7 +4,11 @@
 
 {% block extra_head %}
 {{- super() -}}
+{% if table_insert_ui %}
+<script>window._datasetteTableData = {{ {"tableUrl": urls.table(database, table), "insertRow": table_insert_ui}|tojson }};</script>
+{% else %}
 <script>window._datasetteTableData = {{ {"tableUrl": urls.table(database, table)}|tojson }};</script>
+{% endif %}
 <script src="{{ urls.static('column-chooser.js') }}" defer></script>
 <script src="{{ urls.static('table.js') }}?hash={{ table_js_hash }}" defer></script>
 <script src="{{ urls.static('mobile-column-actions.js') }}" defer></script>
@@ -157,6 +161,19 @@ window._columnChooserData = {{ {"allColumns": all_columns, "selectedColumns": di
 <script>
 window._setColumnTypeData = {{ set_column_type_ui|tojson }};
 </script>
+{% endif %}
+
+{% if table_insert_ui %}
+<div class="table-row-toolbar">
+    <button type="button" class="core table-insert-row" data-table-action="insert-row">
+        <svg class="row-inline-action-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="18" height="18" x="3" y="3" rx="2"></rect>
+            <path d="M8 12h8"></path>
+            <path d="M12 8v8"></path>
+        </svg>
+        <span>Insert row</span>
+    </button>
+</div>
 {% endif %}
 
 {% include custom_table_templates %}

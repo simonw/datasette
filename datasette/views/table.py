@@ -6,6 +6,7 @@ import urllib.parse
 
 import markupsafe
 
+from datasette.column_types import SQLiteType
 from datasette.extras import extra_names_from_request
 from datasette.plugins import pm
 from datasette.events import (
@@ -221,6 +222,68 @@ async def _validate_column_types(datasette, database_name, table_name, rows):
             if error:
                 errors.append(f"{col_name}: {error}")
     return errors
+
+
+def _column_value_type_for_insert_form(column_detail, column_type):
+    if column_type is not None and column_type.name == "json":
+        return "json"
+    sqlite_type = SQLiteType.from_declared_type(column_detail.type)
+    if sqlite_type in (SQLiteType.INTEGER, SQLiteType.REAL):
+        return "number"
+    return "string"
+
+
+async def _table_insert_ui(
+    datasette, request, db, database_name, table_name, is_view, pks
+):
+    if is_view or not db.is_mutable:
+        return None
+
+    if not await datasette.allowed(
+        action="insert-row",
+        resource=TableResource(database=database_name, table=table_name),
+        actor=request.actor,
+    ):
+        return None
+
+    column_types_map = await datasette.get_column_types(database_name, table_name)
+    columns = []
+    column_details = await db.table_column_details(table_name)
+    for column in column_details:
+        if column.hidden:
+            continue
+        is_pk = column.name in pks
+        is_auto_pk = (
+            is_pk
+            and len(pks) == 1
+            and SQLiteType.from_declared_type(column.type) == SQLiteType.INTEGER
+        )
+        if is_auto_pk:
+            continue
+        column_type = column_types_map.get(column.name)
+        columns.append(
+            {
+                "name": column.name,
+                "type": column.type,
+                "notnull": column.notnull,
+                "default": column.default_value,
+                "has_default": column.default_value is not None,
+                "is_pk": is_pk,
+                "value_type": _column_value_type_for_insert_form(column, column_type),
+                "column_type": (
+                    {"type": column_type.name, "config": column_type.config}
+                    if column_type is not None
+                    else None
+                ),
+            }
+        )
+
+    return {
+        "path": "{}/-/insert".format(datasette.urls.table(database_name, table_name)),
+        "tableName": table_name,
+        "columns": columns,
+        "primaryKeys": pks,
+    }
 
 
 async def display_columns_and_rows(
@@ -1753,6 +1816,9 @@ async def table_view_data(
                 sort = "rowid"
         data["sort"] = sort
         data["sort_desc"] = sort_desc
+        data["table_insert_ui"] = await _table_insert_ui(
+            datasette, request, db, database_name, table_name, is_view, pks
+        )
 
     return data, rows[:page_size], columns, expanded_columns, sql, next_url
 

@@ -8,6 +8,21 @@ import urllib.parse
 from .utils import inner_html
 
 
+def table_data_from_soup(soup):
+    import json
+    import re
+
+    table_script = [
+        s for s in soup.find_all("script") if "_datasetteTableData" in (s.string or "")
+    ][0]
+    match = re.search(
+        r"window\._datasetteTableData\s*=\s*({.*?});",
+        table_script.string,
+        re.DOTALL,
+    )
+    return json.loads(match.group(1))
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_definition_sql",
@@ -864,24 +879,12 @@ async def test_row_delete_action_data_attributes():
         response = await ds.client.get("/data/items", actor={"id": "root"})
         assert response.status_code == 200
         soup = Soup(response.text, "html.parser")
-        import json
-        import re
-
-        table_script = [
-            s for s in soup.find_all("script") if "_datasetteTableData" in (s.string or "")
-        ][0]
-        match = re.search(
-            r"window\._datasetteTableData\s*=\s*({.*?});",
-            table_script.string,
-            re.DOTALL,
-        )
-        assert json.loads(match.group(1)) == {"tableUrl": "/data/items"}
+        assert table_data_from_soup(soup) == {"tableUrl": "/data/items"}
+        assert soup.select_one('button[data-table-action="insert-row"]') is None
 
         row = soup.select_one("table.rows-and-columns tbody tr")
         assert row["data-row"] == "1"
-        assert {
-            key for key in row.attrs if key.startswith("data-row")
-        } == {"data-row"}
+        assert {key for key in row.attrs if key.startswith("data-row")} == {"data-row"}
 
         edit_button = row.select_one(
             'button.row-inline-action-edit[data-row-action="edit"]'
@@ -903,6 +906,124 @@ async def test_row_delete_action_data_attributes():
 
 
 @pytest.mark.asyncio
+async def test_table_insert_action_button_and_data():
+    ds = Datasette(
+        [],
+        config={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "items": {
+                            "permissions": {
+                                "insert-row": {"id": "root"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_table_insert_action"), name="data"
+        )
+        await db.execute_write_script("""
+            create table items (
+                id integer primary key,
+                name text not null,
+                score integer default 5,
+                created text default (datetime('now')),
+                body text
+            );
+            """)
+        response = await ds.client.get("/data/items", actor={"id": "root"})
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+
+        button = soup.select_one(
+            'button.table-insert-row[data-table-action="insert-row"]'
+        )
+        assert button is not None
+        assert button.text.strip() == "Insert row"
+        assert button.find("svg") is not None
+        assert button.find_parent("div", class_="table-row-toolbar") is not None
+
+        insert_data = table_data_from_soup(soup)["insertRow"]
+        assert insert_data["path"] == "/data/items/-/insert"
+        assert insert_data["tableName"] == "items"
+        assert insert_data["primaryKeys"] == ["id"]
+        assert [column["name"] for column in insert_data["columns"]] == [
+            "name",
+            "score",
+            "created",
+            "body",
+        ]
+        name, score, created, body = insert_data["columns"]
+        assert name["notnull"] == 1
+        assert name["value_type"] == "string"
+        assert not name["has_default"]
+        assert score["default"] == "5"
+        assert score["has_default"]
+        assert score["value_type"] == "number"
+        assert created["default"] == "datetime('now')"
+        assert created["has_default"]
+        assert body["value_type"] == "string"
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_table_insert_action_includes_compound_primary_keys():
+    ds = Datasette(
+        [],
+        config={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "memberships": {
+                            "permissions": {
+                                "insert-row": {"id": "root"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_table_insert_compound_pk"), name="data"
+        )
+        await db.execute_write_script("""
+            create table memberships (
+                account text,
+                username text,
+                role text,
+                primary key (account, username)
+            );
+            """)
+        response = await ds.client.get("/data/memberships", actor={"id": "root"})
+        assert response.status_code == 200
+        insert_data = table_data_from_soup(Soup(response.text, "html.parser"))[
+            "insertRow"
+        ]
+        assert insert_data["tableName"] == "memberships"
+        assert insert_data["primaryKeys"] == ["account", "username"]
+        assert [column["name"] for column in insert_data["columns"]] == [
+            "account",
+            "username",
+            "role",
+        ]
+        assert [column["is_pk"] for column in insert_data["columns"]] == [
+            True,
+            True,
+            False,
+        ]
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
 async def test_table_fragment_endpoint(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key/-/fragment?_row=1")
     assert response.status_code == 200
@@ -912,9 +1033,7 @@ async def test_table_fragment_endpoint(ds_client):
     rows = soup.select("[data-row]")
     assert len(rows) == 1
     assert rows[0]["data-row"] == "1"
-    assert {
-        key for key in rows[0].attrs if key.startswith("data-row")
-    } == {"data-row"}
+    assert {key for key in rows[0].attrs if key.startswith("data-row")} == {"data-row"}
 
 
 @pytest.mark.asyncio
@@ -979,9 +1098,7 @@ async def test_table_fragment_uses_render_cell_hook():
     ds = Datasette(memory=True)
     await ds.invoke_startup()
     db = ds.add_memory_database("data")
-    await db.execute_write(
-        "create table items (id integer primary key, name text)"
-    )
+    await db.execute_write("create table items (id integer primary key, name text)")
     await db.execute_write("insert into items values (1, 'Alice')")
     ds.pm.register(TestRenderCellPlugin(), name="TestRenderCellPlugin")
     try:

@@ -959,7 +959,7 @@ function shouldUseTextarea(value, columnType) {
   return text.length > 80 || /[\r\n]/.test(text);
 }
 
-function rowEditValueType(value) {
+function rowEditValueKind(value) {
   if (value === null || typeof value === "undefined") {
     return "null";
   }
@@ -968,9 +968,6 @@ function rowEditValueType(value) {
   }
   if (typeof value === "boolean") {
     return "boolean";
-  }
-  if (typeof value === "object") {
-    return "json";
   }
   return "string";
 }
@@ -986,26 +983,37 @@ function rowEditControlElement(control, autocompleteUrl) {
   return autocomplete;
 }
 
+function columnTypeForContext(columnType) {
+  if (!columnType) {
+    return null;
+  }
+  return {
+    type: columnType.type,
+    config: columnType.config || {},
+  };
+}
+
 function columnFormControlContext(column, value, isPk, columnType, options) {
   var pageData = tablePageData();
-  var hasDefault =
-    options.hasDefault ||
-    (options.defaultValue !== null && typeof options.defaultValue !== "undefined");
+  var hasSqliteDefault =
+    options.hasSqliteDefault ||
+    (options.sqliteDefaultExpression !== null &&
+      typeof options.sqliteDefaultExpression !== "undefined");
   return {
     mode: options.mode || "edit",
     database: pageData.database || null,
     table: pageData.table || (tableInsertData() && tableInsertData().tableName) || null,
     tableUrl: pageData.tableUrl || null,
     column: column,
-    value: value,
-    originalValue: value,
-    columnType: columnType || null,
+    columnType: columnTypeForContext(columnType),
     sqliteType: options.sqliteType || null,
     notNull: !!options.notnull,
     isPrimaryKey: !!isPk,
-    readOnly: !!(isPk && options.primaryKeyReadonly !== false),
-    hasDefault: !!hasDefault,
-    defaultValue: options.defaultValue,
+    hasSqliteDefault: !!hasSqliteDefault,
+    sqliteDefaultExpression: options.sqliteDefaultExpression,
+    useSqliteDefaultInitially: !!(
+      hasSqliteDefault && options.useSqliteDefaultInitially
+    ),
     form: options.form || null,
     dialog: options.dialog || null,
   };
@@ -1016,6 +1024,148 @@ function makeColumnField(manager, context) {
     return null;
   }
   return manager.makeColumnField(context);
+}
+
+function createColumnFieldApi(options) {
+  var control = options.control;
+  var context = options.context;
+  var field = {
+    context: context,
+    id: options.id,
+    labelId: options.labelId,
+    descriptionId: options.descriptionId,
+    root: null,
+    form: options.form || null,
+    dialog: options.dialog || null,
+    input: control,
+    control: control,
+    meta: options.meta || null,
+    validationMessageElement: null,
+    getValue: function () {
+      return valueFromRowEditControl(control);
+    },
+    setValue: function (value, setOptions) {
+      setOptions = setOptions || {};
+      if (
+        value !== null &&
+        typeof value !== "undefined" &&
+        typeof value === "object"
+      ) {
+        throw new TypeError(
+          "field.setValue() accepts strings, numbers, booleans or null; serialize objects before setting the field value",
+        );
+      }
+      field.stopUsingSqliteDefault({ dispatch: false });
+      control.value = valueToEditText(value);
+      control.dataset.currentValueKind = rowEditValueKind(value);
+      if (setOptions.dispatch !== false) {
+        field.dispatchChange();
+      }
+    },
+    getInitialValue: function () {
+      return initialValueFromRowEditControl(control);
+    },
+    hasChanged: function () {
+      if (field.isUsingSqliteDefault()) {
+        return !context.useSqliteDefaultInitially;
+      }
+      if (
+        control.value === (control.dataset.initialValue || "") &&
+        (control.dataset.currentValueKind ||
+          control.dataset.initialValueKind ||
+          "string") === (control.dataset.initialValueKind || "string")
+      ) {
+        return false;
+      }
+      try {
+        return !rowEditValuesMatch(field.getValue(), field.getInitialValue());
+      } catch (_error) {
+        return true;
+      }
+    },
+    clearValue: function (clearOptions) {
+      field.setValue(null, clearOptions);
+    },
+    resetValue: function (resetOptions) {
+      resetOptions = resetOptions || {};
+      field.stopUsingSqliteDefault({ dispatch: false });
+      control.value = control.dataset.initialValue || "";
+      control.dataset.currentValueKind =
+        control.dataset.initialValueKind || "string";
+      if (resetOptions.dispatch !== false) {
+        field.dispatchChange();
+      }
+    },
+    isUsingSqliteDefault: function () {
+      return control.dataset.useSqliteDefault === "1";
+    },
+    useSqliteDefault: function (defaultOptions) {
+      defaultOptions = defaultOptions || {};
+      if (!context.hasSqliteDefault) {
+        return;
+      }
+      control.dataset.useSqliteDefault = "1";
+      control.disabled = true;
+      control.value = "";
+      control.dataset.currentValueKind = "null";
+      field.syncSqliteDefaultUi();
+      if (defaultOptions.dispatch !== false) {
+        field.dispatchChange();
+      }
+    },
+    stopUsingSqliteDefault: function (defaultOptions) {
+      defaultOptions = defaultOptions || {};
+      if (control.dataset.useSqliteDefault !== "1") {
+        return;
+      }
+      control.dataset.useSqliteDefault = "0";
+      control.disabled = false;
+      field.syncSqliteDefaultUi();
+      if (defaultOptions.dispatch !== false) {
+        field.dispatchChange();
+      }
+    },
+    syncSqliteDefaultUi: function () {},
+    dispatchChange: function () {
+      control.dispatchEvent(new Event("input", { bubbles: true }));
+      control.dispatchEvent(new Event("change", { bubbles: true }));
+    },
+    setValidity: function (message) {
+      message = message || "";
+      control.setCustomValidity(message);
+      if (message) {
+        control.setAttribute("aria-invalid", "true");
+      } else {
+        control.removeAttribute("aria-invalid");
+      }
+      var validationMessage = ensureColumnFieldValidationMessage(field);
+      if (validationMessage) {
+        validationMessage.textContent = message;
+        validationMessage.hidden = !message;
+      }
+    },
+    clearValidity: function () {
+      field.setValidity("");
+    },
+  };
+  return field;
+}
+
+function ensureColumnFieldValidationMessage(field) {
+  if (field.validationMessageElement) {
+    return field.validationMessageElement;
+  }
+  if (!field.meta) {
+    return null;
+  }
+  var validationMessage = document.createElement("span");
+  validationMessage.id = field.id + "-validation-error";
+  validationMessage.className = "row-edit-field-validation-error";
+  validationMessage.hidden = true;
+  validationMessage.setAttribute("role", "alert");
+  field.meta.appendChild(validationMessage);
+  field.validationMessageElement = validationMessage;
+  return validationMessage;
 }
 
 function renderColumnField(pluginControl, fieldApi) {
@@ -1029,8 +1179,9 @@ function renderColumnField(pluginControl, fieldApi) {
   if (fieldApi.context.columnType && fieldApi.context.columnType.type) {
     pluginWrap.dataset.columnType = fieldApi.context.columnType.type;
   }
+  fieldApi.root = pluginWrap;
   try {
-    var rendered = pluginControl.render(pluginWrap, fieldApi);
+    var rendered = pluginControl.render(fieldApi);
     if (rendered && rendered.nodeType) {
       pluginWrap.appendChild(rendered);
     }
@@ -1043,6 +1194,54 @@ function renderColumnField(pluginControl, fieldApi) {
   return pluginWrap;
 }
 
+function validateJsonColumnField(field) {
+  var value = field.input.value;
+  if (value.trim() === "") {
+    field.clearValidity();
+    return true;
+  }
+  try {
+    JSON.parse(value);
+    field.clearValidity();
+    return true;
+  } catch (error) {
+    field.setValidity(
+      "Invalid JSON" + (error && error.message ? ": " + error.message : ""),
+    );
+    return false;
+  }
+}
+
+function registerBuiltinColumnFieldPlugins(manager) {
+  if (!manager || !manager.registerPlugin) {
+    return;
+  }
+  manager.registerPlugin("datasette-json-column", {
+    version: "1.0",
+    makeColumnField: function (context) {
+      if (!context.columnType || context.columnType.type !== "json") {
+        return null;
+      }
+      return {
+        inputType: "textarea",
+        render: function (field) {
+          field.input.addEventListener("input", function () {
+            validateJsonColumnField(field);
+          });
+          field.input.addEventListener("change", function () {
+            validateJsonColumnField(field);
+          });
+          validateJsonColumnField(field);
+          field.root.appendChild(field.input);
+        },
+        focus: function (field) {
+          field.input.focus();
+        },
+      };
+    },
+  });
+}
+
 function focusRowEditPluginControl(field) {
   var pluginWrap = field.querySelector(".row-edit-plugin-control");
   if (!pluginWrap) {
@@ -1051,8 +1250,12 @@ function focusRowEditPluginControl(field) {
   var pluginControl = pluginWrap._datasetteColumnField;
   var fieldApi = pluginWrap._datasetteColumnFormField;
   if (pluginControl && pluginControl.focus) {
-    pluginControl.focus(pluginWrap, fieldApi);
-    return true;
+    try {
+      pluginControl.focus(fieldApi);
+      return true;
+    } catch (error) {
+      console.error("Error focusing column form control", error);
+    }
   }
   return false;
 }
@@ -1089,7 +1292,7 @@ function destroyRowEditFields(state) {
       var fieldApi = pluginWrap._datasetteColumnFormField;
       if (pluginControl && pluginControl.destroy) {
         try {
-          pluginControl.destroy(pluginWrap, fieldApi);
+          pluginControl.destroy(fieldApi);
         } catch (error) {
           console.error("Error destroying column form control", error);
         }
@@ -1102,10 +1305,12 @@ function createRowEditField(column, value, isPk, columnType, index, options) {
   options = options || {};
   var field = document.createElement("div");
   field.className = "row-edit-field";
-  var hasDefault =
-    options.hasDefault ||
-    (options.defaultValue !== null && typeof options.defaultValue !== "undefined");
-  var useDefaultInitially = hasDefault && options.useDefaultInitially;
+  var hasSqliteDefault =
+    options.hasSqliteDefault ||
+    (options.sqliteDefaultExpression !== null &&
+      typeof options.sqliteDefaultExpression !== "undefined");
+  var useSqliteDefaultInitially =
+    hasSqliteDefault && options.useSqliteDefaultInitially;
 
   var fieldId = "row-edit-field-" + index;
   var metaId = "row-edit-field-meta-" + index;
@@ -1136,12 +1341,15 @@ function createRowEditField(column, value, isPk, columnType, index, options) {
   control.name = column;
   control.value = valueToEditText(value);
   control.setAttribute("aria-describedby", metaId);
-  control.dataset.originalValue = valueToEditText(value);
-  control.dataset.originalValueType =
-    options.valueType || rowEditValueType(value);
+  control.dataset.initialValue = valueToEditText(value);
+  control.dataset.initialValueKind =
+    options.valueKind || rowEditValueKind(value);
   control.dataset.primaryKey = isPk ? "1" : "0";
-  if (useDefaultInitially) {
-    control.dataset.useDefault = "1";
+  control.dataset.currentValueKind = control.dataset.initialValueKind;
+  if (hasSqliteDefault) {
+    control.dataset.useSqliteDefault = useSqliteDefaultInitially ? "1" : "0";
+  }
+  if (useSqliteDefaultInitially) {
     control.disabled = true;
   }
   if (options.omitIfBlank) {
@@ -1172,8 +1380,8 @@ function createRowEditField(column, value, isPk, columnType, index, options) {
   if (options.notnull) {
     metaParts.push("Required");
   }
-  if (hasDefault && !useDefaultInitially) {
-    metaParts.push("Default: " + options.defaultValue);
+  if (hasSqliteDefault && !useSqliteDefaultInitially) {
+    metaParts.push("SQLite default: " + options.sqliteDefaultExpression);
   }
   if (value === null) {
     metaParts.push("Current value: NULL");
@@ -1208,16 +1416,17 @@ function createRowEditField(column, value, isPk, columnType, index, options) {
     meta.appendChild(foreignKeyLinkWrap);
     updateRowEditFieldMetaHidden(meta);
   }
-  var fieldApi = {
+  var fieldApi = createColumnFieldApi({
     id: fieldId,
     labelId: labelId,
     descriptionId: metaId,
-    input: control,
     control: control,
+    meta: meta,
+    input: control,
     form: options.form || null,
     dialog: options.dialog || null,
     context: context,
-  };
+  });
   var pluginControlElement = renderColumnField(pluginControl, fieldApi);
   var controlElement =
     pluginControlElement || rowEditControlElement(control, options.autocompleteUrl);
@@ -1238,7 +1447,7 @@ function createRowEditField(column, value, isPk, columnType, index, options) {
     resolveForeignKeyMetaLink(control, options.autocompleteUrl, meta);
   }
 
-  if (useDefaultInitially) {
+  if (hasSqliteDefault) {
     var defaultBlock = document.createElement("div");
     defaultBlock.className = "row-edit-default";
     defaultBlock.setAttribute("aria-describedby", metaId);
@@ -1248,7 +1457,7 @@ function createRowEditField(column, value, isPk, columnType, index, options) {
     defaultText.appendChild(document.createTextNode("default "));
     var defaultCode = document.createElement("code");
     defaultCode.className = "row-edit-default-code";
-    defaultCode.textContent = options.defaultValue;
+    defaultCode.textContent = options.sqliteDefaultExpression;
     defaultText.appendChild(defaultCode);
 
     var setValueButton = document.createElement("button");
@@ -1262,35 +1471,37 @@ function createRowEditField(column, value, isPk, columnType, index, options) {
     customWrap.className = "row-edit-custom-value";
     customWrap.hidden = true;
 
-    var useDefaultButton = document.createElement("button");
-    useDefaultButton.type = "button";
-    useDefaultButton.className = "row-edit-default-button";
-    useDefaultButton.textContent = "Use default";
-    useDefaultButton.setAttribute("aria-label", "Use default for " + column);
+    var useSqliteDefaultButton = document.createElement("button");
+    useSqliteDefaultButton.type = "button";
+    useSqliteDefaultButton.className = "row-edit-default-button";
+    useSqliteDefaultButton.textContent = "Use default";
+    useSqliteDefaultButton.setAttribute(
+      "aria-label",
+      "Use SQLite default for " + column,
+    );
 
     setValueButton.addEventListener("click", function () {
-      control.dataset.useDefault = "0";
-      control.disabled = false;
-      defaultBlock.hidden = true;
-      customWrap.hidden = false;
+      fieldApi.stopUsingSqliteDefault();
       control.focus();
     });
 
-    useDefaultButton.addEventListener("click", function () {
-      control.dataset.useDefault = "1";
-      control.disabled = true;
-      control.value = "";
-      customWrap.hidden = true;
-      defaultBlock.hidden = false;
+    useSqliteDefaultButton.addEventListener("click", function () {
+      fieldApi.useSqliteDefault();
       setValueButton.focus();
     });
 
     defaultBlock.appendChild(defaultText);
     defaultBlock.appendChild(setValueButton);
     customWrap.appendChild(controlElement);
-    customWrap.appendChild(useDefaultButton);
+    customWrap.appendChild(useSqliteDefaultButton);
     controlWrap.appendChild(defaultBlock);
     controlWrap.appendChild(customWrap);
+    fieldApi.syncSqliteDefaultUi = function () {
+      var usingDefault = fieldApi.isUsingSqliteDefault();
+      defaultBlock.hidden = !usingDefault;
+      customWrap.hidden = usingDefault;
+    };
+    fieldApi.syncSqliteDefaultUi();
   } else {
     controlWrap.appendChild(controlElement);
   }
@@ -1340,17 +1551,19 @@ function valueFromRowEditControl(control) {
   return valueFromRowEditText(
     control.name,
     value,
-    control.dataset.originalValueType || "string",
+    control.dataset.currentValueKind ||
+      control.dataset.initialValueKind ||
+      "string",
   );
 }
 
-function valueFromRowEditText(name, value, originalValueType) {
+function valueFromRowEditText(name, value, initialValueKind) {
   var trimmed = value.trim();
 
-  if (originalValueType === "null" && value === "") {
+  if (initialValueKind === "null" && value === "") {
     return null;
   }
-  if (originalValueType === "number") {
+  if (initialValueKind === "number") {
     if (trimmed === "") {
       return null;
     }
@@ -1360,7 +1573,7 @@ function valueFromRowEditText(name, value, originalValueType) {
     }
     return numberValue;
   }
-  if (originalValueType === "boolean") {
+  if (initialValueKind === "boolean") {
     if (/^(true|1|yes)$/i.test(trimmed)) {
       return true;
     }
@@ -1369,24 +1582,14 @@ function valueFromRowEditText(name, value, originalValueType) {
     }
     throw new Error(name + " must be true or false");
   }
-  if (originalValueType === "json") {
-    if (trimmed === "") {
-      return null;
-    }
-    try {
-      return JSON.parse(value);
-    } catch (_error) {
-      throw new Error(name + " must be valid JSON");
-    }
-  }
   return value;
 }
 
-function originalValueFromRowEditControl(control) {
+function initialValueFromRowEditControl(control) {
   return valueFromRowEditText(
     control.name,
-    control.dataset.originalValue || "",
-    control.dataset.originalValueType || "string",
+    control.dataset.initialValue || "",
+    control.dataset.initialValueKind || "string",
   );
 }
 
@@ -1414,18 +1617,31 @@ function collectRowFormValues(state) {
     ) {
       return;
     }
-    if (control.dataset.useDefault === "1") {
+    if (control.dataset.useSqliteDefault === "1") {
       return;
     }
     if (control.dataset.omitIfBlank === "1" && control.value === "") {
       return;
     }
-    var value = valueFromRowEditControl(control);
     if (
       state.mode === "edit" &&
-      rowEditValuesMatch(value, originalValueFromRowEditControl(control))
+      control.value === (control.dataset.initialValue || "") &&
+      (control.dataset.currentValueKind ||
+        control.dataset.initialValueKind ||
+        "string") === (control.dataset.initialValueKind || "string")
     ) {
       return;
+    }
+    var value = valueFromRowEditControl(control);
+    if (state.mode === "edit") {
+      try {
+        if (rowEditValuesMatch(value, initialValueFromRowEditControl(control))) {
+          return;
+        }
+      } catch (_error) {
+        // If the original value cannot be parsed using the field's current
+        // type, treat the field as changed and submit the corrected value.
+      }
     }
     values[control.name] = value;
   });
@@ -1688,16 +1904,16 @@ function renderRowInsertFields(state, data) {
         {
           autocompleteUrl: foreignKeyAutocompleteUrl(column.name),
           dialog: state.dialog,
-          defaultValue: column.default,
           form: state.form,
-          hasDefault: column.has_default,
+          hasSqliteDefault: column.has_default,
           manager: state.manager,
           mode: state.mode,
           notnull: column.notnull,
           primaryKeyReadonly: false,
-          sqliteType: column.type,
-          useDefaultInitially: column.has_default,
-          valueType: column.value_type,
+          sqliteDefaultExpression: column.default,
+          sqliteType: column.sqlite_type,
+          useSqliteDefaultInitially: column.has_default,
+          valueKind: column.value_kind,
         },
       ),
     );
@@ -2395,6 +2611,7 @@ function openColumnChooser() {
 document.addEventListener("datasette_init", function (evt) {
   const { detail: manager } = evt;
 
+  registerBuiltinColumnFieldPlugins(manager);
   initializeColumnActions(manager);
 
   // Main table

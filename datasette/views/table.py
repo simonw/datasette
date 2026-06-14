@@ -241,13 +241,16 @@ async def _validate_column_types(datasette, database_name, table_name, rows):
     return errors
 
 
-def _column_value_type_for_insert_form(column_detail, column_type):
-    if column_type is not None and column_type.name == "json":
-        return "json"
+def _column_value_kind_for_insert_form(column_detail):
     sqlite_type = SQLiteType.from_declared_type(column_detail.type)
     if sqlite_type in (SQLiteType.INTEGER, SQLiteType.REAL):
         return "number"
     return "string"
+
+
+def _column_sqlite_type_for_insert_form(column_detail):
+    sqlite_type = SQLiteType.from_declared_type(column_detail.type)
+    return sqlite_type.value if sqlite_type is not None else None
 
 
 async def _foreign_key_autocomplete_urls(
@@ -326,12 +329,12 @@ async def _table_insert_ui(
         columns.append(
             {
                 "name": column.name,
-                "type": column.type,
+                "sqlite_type": _column_sqlite_type_for_insert_form(column),
                 "notnull": column.notnull,
                 "default": column.default_value,
                 "has_default": column.default_value is not None,
                 "is_pk": is_pk,
-                "value_type": _column_value_type_for_insert_form(column, column_type),
+                "value_kind": _column_value_kind_for_insert_form(column),
                 "column_type": (
                     {"type": column_type.name, "config": column_type.config}
                     if column_type is not None

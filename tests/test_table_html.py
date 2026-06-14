@@ -990,14 +990,18 @@ async def test_table_insert_action_button_and_data():
         ]
         name, score, created, body = insert_data["columns"]
         assert name["notnull"] == 1
-        assert name["value_type"] == "string"
+        assert name["sqlite_type"] == "TEXT"
+        assert name["value_kind"] == "string"
         assert not name["has_default"]
         assert score["default"] == "5"
         assert score["has_default"]
-        assert score["value_type"] == "number"
+        assert score["sqlite_type"] == "INTEGER"
+        assert score["value_kind"] == "number"
         assert created["default"] == "datetime('now')"
         assert created["has_default"]
-        assert body["value_type"] == "string"
+        assert created["sqlite_type"] == "TEXT"
+        assert body["sqlite_type"] == "TEXT"
+        assert body["value_kind"] == "string"
         assert body["column_type"] == {"type": "textarea", "config": None}
     finally:
         ds.close()

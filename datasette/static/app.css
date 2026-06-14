@@ -1521,6 +1521,16 @@ textarea.row-edit-input {
     outline: 3px solid rgba(26, 86, 219, 0.12);
 }
 
+.row-edit-input[aria-invalid="true"] {
+    border-color: #b42318;
+    background: #fff8f7;
+}
+
+.row-edit-input[aria-invalid="true"]:focus {
+    border-color: #b42318;
+    outline-color: rgba(180, 35, 24, 0.16);
+}
+
 .row-edit-input[readonly] {
     color: var(--muted);
     background: var(--paper);
@@ -1592,6 +1602,16 @@ textarea.row-edit-input {
 .row-edit-field-meta {
     color: var(--muted);
     font-size: 0.78rem;
+}
+
+.row-edit-field-validation-error {
+    color: #b42318;
+    display: block;
+    margin-top: 2px;
+}
+
+.row-edit-field-validation-error[hidden] {
+    display: none;
 }
 
 .row-edit-field-meta-autocomplete {

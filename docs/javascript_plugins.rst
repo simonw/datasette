@@ -63,22 +63,26 @@ The ``implementation`` object passed to this method should include a ``version``
 
 .. _javascript_plugins_makeJumpSections:
 
-makeJumpSections()
-~~~~~~~~~~~~~~~~~~
+makeJumpSections(context)
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This method should return a JavaScript array of objects defining additional sections to be added to the blank state of the ``/`` jump menu, before the user starts typing a search.
 
-Each object should have the following:
+It should return an array of objects, each with the following:
 
 ``id`` - string
     A unique string ID for the section, for example ``agent-chat``
 ``render(node, context)`` - function
     A function that will be called with a DOM node to render the section into
 
-The ``context`` object has the following keys:
+Datasette passes a ``context`` object to both ``makeJumpSections(context)`` and ``render(node, context)``. It has the following keys:
 
 ``navigationSearch``
     The ``<navigation-search>`` custom element instance.
+``container`` - only for ``render()``
+    The ``.results-container`` element used by the jump menu.
+``input`` - only for ``render()``
+    The ``.search-input`` element used by the jump menu.
 
 This example shows how a plugin might add a button for starting a new chat:
 
@@ -87,11 +91,11 @@ This example shows how a plugin might add a button for starting a new chat:
     document.addEventListener('datasette_init', function(ev) {
       ev.detail.registerPlugin('agent-plugin', {
         version: 0.1,
-        makeJumpSections: () => {
+        makeJumpSections: (context) => {
           return [
             {
               id: 'agent-chat',
-              render: node => {
+              render: (node, context) => {
                 node.innerHTML = '<button type="button">Start a new chat</button>';
                 node.querySelector('button').addEventListener('click', () => {
                   location.href = '/-/agent/new';

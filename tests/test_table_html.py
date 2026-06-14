@@ -962,8 +962,10 @@ async def test_table_insert_action_button_and_data():
                 id integer primary key,
                 name text not null,
                 score integer default 5,
+                price numeric,
                 created text default (datetime('now')),
-                body text
+                body text,
+                typeless
             );
             """)
         response = await ds.client.get("/data/items", actor={"id": "root"})
@@ -985,10 +987,12 @@ async def test_table_insert_action_button_and_data():
         assert [column["name"] for column in insert_data["columns"]] == [
             "name",
             "score",
+            "price",
             "created",
             "body",
+            "typeless",
         ]
-        name, score, created, body = insert_data["columns"]
+        name, score, price, created, body, typeless = insert_data["columns"]
         assert name["notnull"] == 1
         assert name["sqlite_type"] == "TEXT"
         assert name["value_kind"] == "string"
@@ -997,12 +1001,16 @@ async def test_table_insert_action_button_and_data():
         assert score["has_default"]
         assert score["sqlite_type"] == "INTEGER"
         assert score["value_kind"] == "number"
+        assert price["sqlite_type"] == "NUMERIC"
+        assert price["value_kind"] == "string"
         assert created["default"] == "datetime('now')"
         assert created["has_default"]
         assert created["sqlite_type"] == "TEXT"
         assert body["sqlite_type"] == "TEXT"
         assert body["value_kind"] == "string"
         assert body["column_type"] == {"type": "textarea", "config": None}
+        assert typeless["sqlite_type"] == "BLOB"
+        assert typeless["value_kind"] == "string"
     finally:
         ds.close()
 

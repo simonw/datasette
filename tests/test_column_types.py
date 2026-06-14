@@ -518,13 +518,18 @@ async def test_column_type_class_attributes(ds_ct):
 
 
 def test_sqlite_type_from_declared_type():
+    assert SQLiteType.from_declared_type(None) == SQLiteType.BLOB
     assert SQLiteType.from_declared_type("text") == SQLiteType.TEXT
     assert SQLiteType.from_declared_type("varchar(255)") == SQLiteType.TEXT
     assert SQLiteType.from_declared_type("integer") == SQLiteType.INTEGER
     assert SQLiteType.from_declared_type("float") == SQLiteType.REAL
     assert SQLiteType.from_declared_type("blob") == SQLiteType.BLOB
-    assert SQLiteType.from_declared_type("") == SQLiteType.NULL
-    assert SQLiteType.from_declared_type("numeric") is None
+    assert SQLiteType.from_declared_type("") == SQLiteType.BLOB
+    assert SQLiteType.from_declared_type("numeric") == SQLiteType.NUMERIC
+    assert SQLiteType.from_declared_type("decimal(10,5)") == SQLiteType.NUMERIC
+    assert SQLiteType.from_declared_type("boolean") == SQLiteType.NUMERIC
+    assert SQLiteType.from_declared_type("date") == SQLiteType.NUMERIC
+    assert SQLiteType.from_declared_type("null") == SQLiteType.NUMERIC
 
 
 # --- JSON API ---

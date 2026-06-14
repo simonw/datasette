@@ -200,11 +200,11 @@ This method, if present, can provide a custom form field for a column in Dataset
 
 It is designed for plugins that :ref:`register custom column types <plugin_register_column_types>` using the Python ``register_column_types()`` plugin hook. For example, a plugin that defines a ``file`` column type can use ``makeColumnField()`` to replace a plain text input with a file picker, and a plugin that defines a rich text column type can use it to enhance the field with an editor.
 
-Datasette calls ``makeColumnField(context)`` on each registered JavaScript plugin when it renders an editable insert/edit field. Plugins should inspect the ``context`` object and return ``null`` or ``undefined`` for fields they do not handle.
+Datasette calls ``makeColumnField(context)`` on each registered JavaScript plugin when it renders an editable insert/edit field. Plugins should inspect the ``context`` object and only return a control object if they can handle that field. Otherwise, use a bare ``return;``.
 
 The first plugin to return a truthy control object is used for that field. Plugins are called in registration order. If a plugin raises an exception, Datasette logs the error to the browser console and continues to the next plugin.
 
-Datasette owns the value that will be submitted to the insert/update API. The ``context`` object describes the column and form environment; custom controls should read and write field values using the ``field`` helper object passed to ``render(field)``.
+The row dialog tracks the value that will be sent to the insert/update API. The ``context`` object describes the column and form environment; custom controls should read and write field values using the ``field`` helper object passed to ``render(field)``.
 
 Context object
 ^^^^^^^^^^^^^^
@@ -237,25 +237,17 @@ Context object
     ``config`` - object
         Configuration for this specific column type assignment. This is ``{}`` if no configuration has been set.
 
-    Plugins should generally check ``context.columnType && context.columnType.type`` before deciding whether to handle a field.
-
 ``sqliteType`` - string or null
-    The normalized SQLite type for this column, if known. This is one of ``"TEXT"``, ``"INTEGER"``, ``"REAL"``, ``"BLOB"``, ``"NULL"`` or ``null`` if Datasette could not determine the type.
+    The SQLite affinity for this column, if known. This is one of ``"TEXT"``, ``"INTEGER"``, ``"REAL"``, ``"BLOB"``, ``"NUMERIC"`` or ``null`` if Datasette could not determine the affinity.
 
 ``notNull`` - boolean
     True if the column is defined as ``NOT NULL``.
 
-``isPrimaryKey`` - boolean
+``isPk`` - boolean
     True if this column is part of the table's primary key.
 
-``hasSqliteDefault`` - boolean
-    True if the column has a SQLite default value and the insert form can offer the "use default" behavior.
-
-``sqliteDefaultExpression``
-    The SQLite default expression for the column, if available. This is the expression from the table schema, not the actual value SQLite will insert.
-
-``useSqliteDefaultInitially`` - boolean
-    True if the insert form should initially omit this column so SQLite uses the column default.
+``defaultExpression`` - string or null
+    The SQLite default expression for the column, if available. This is ``null`` if the column has no SQLite default. For example, a column defined with ``DEFAULT (datetime('now'))`` will have ``"datetime('now')"`` here. This is the expression from the table schema, not the actual value SQLite will insert.
 
 ``form`` - ``HTMLFormElement`` or null
     The row insert/edit form element.
@@ -268,21 +260,19 @@ Returned control object
 
 A plugin that wants to handle a field should return an object. Datasette currently recognizes these properties:
 
-``inputType`` - string, optional
-    If set to ``"textarea"``, Datasette creates a ``<textarea>`` as the underlying ``field.input`` before calling ``render()``. Any other value is ignored.
+``useTextarea`` - boolean, optional
+    If true, Datasette creates a ``<textarea>`` as the underlying ``field.input`` before calling ``render()``. If omitted, Datasette chooses either an ``<input>`` or ``<textarea>`` based on the column type and current value.
 
 ``render(field)`` - function
     Called once to render the custom field UI. ``field`` is a helper object described below.
 
-    The plugin should append its UI to ``field.root``. If ``render()`` returns a DOM node, Datasette appends that returned node to ``field.root``.
+    The recommended pattern is to return a DOM node from ``render()``. Datasette appends that node to ``field.root``, a ``<div>`` inside the control area for that field in the row insert/edit dialog. A plugin can alternatively manipulate ``field.root`` directly and return nothing.
 
 ``focus(field)`` - function, optional
     Called when Datasette wants to focus this field, for example when focusing the first editable field in the dialog. Use this to focus the most useful interactive element inside the custom UI.
 
 ``destroy(field)`` - function, optional
     Called when Datasette tears down the insert/edit form. Use this to remove event listeners, close nested pickers, revoke object URLs, clear timers, or release other resources.
-
-Datasette adds a ``pluginName`` property to the control object internally, based on the name passed to ``registerPlugin()``.
 
 The field helper object
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -293,7 +283,7 @@ The ``field`` object passed to ``render(field)``, ``focus(field)`` and ``destroy
     The original context object passed to ``makeColumnField()``.
 
 ``id`` - string
-    The ID Datasette assigned to the underlying form control.
+    The ID Datasette assigned to ``field.input``, the backing ``<input>`` or ``<textarea>`` element.
 
 ``labelId`` - string
     The ID of the visible field label.
@@ -302,7 +292,7 @@ The ``field`` object passed to ``render(field)``, ``focus(field)`` and ``destroy
     The ID of the field metadata/help text. This metadata can include details such as ``Primary key``, ``Required``, ``Current value: NULL`` or ``Custom type: file``.
 
 ``root`` - ``HTMLElement``
-    The empty container element created by Datasette for this custom field. Plugins should append their UI to this element.
+    The empty ``<div>`` container created by Datasette for this custom field. It is inside the control area for the field in the row insert/edit dialog, next to the field label and above the field metadata. Datasette appends the DOM node returned by ``render(field)`` to this element. Plugins can alternatively manipulate this element directly and return nothing from ``render(field)``.
 
 ``input`` - ``HTMLInputElement`` or ``HTMLTextAreaElement``
     The core-owned backing form control. Plugins can keep this visible, wrap it or hide it, but should use the value helper methods below rather than mutating ``input.value`` directly.
@@ -320,12 +310,12 @@ The ``field`` object passed to ``render(field)``, ``focus(field)`` and ``destroy
     The containing modal dialog.
 
 ``getValue()`` - function
-    Returns the current value Datasette will submit for this field.
+    Returns the current value for this field.
 
     Datasette uses string values by default. Insert fields for ``"INTEGER"`` and ``"REAL"`` SQLite columns return numbers, or ``null`` if left blank. Plugins can use strings, numbers, booleans or ``null``. If a plugin is editing structured data stored in a SQLite ``TEXT`` column, such as JSON, it should serialize that data to a string before calling ``setValue()``.
 
-``setValue(value, options)`` - function
-    Sets the current value Datasette will submit for this field. ``value`` should be a string, number, boolean or ``null``. This also dispatches ``input`` and ``change`` events from the backing input. Pass ``{dispatch: false}`` as the second argument to skip those events.
+``setValue(value)`` - function
+    Sets the current value for this field. ``value`` should be a string, number, boolean or ``null``.
 
     Calling ``setValue()`` also stops using the SQLite default for the field, if it was previously selected.
 
@@ -333,25 +323,18 @@ The ``field`` object passed to ``render(field)``, ``focus(field)`` and ``destroy
     Returns the submitted-value representation the field had when the form was rendered. For edit forms this is the raw row value from the database. For insert forms this is the blank starting value.
 
 ``hasChanged()`` - function
-    Returns true if the field value differs from its initial value, or if the field's SQLite-default state has changed.
+    Returns true if the field has changed since Datasette last considered it unmodified. By default that means the field state when the insert/edit form was rendered.
 
-``clearValue(options)`` - function
-    Sets the value to ``null``. Accepts the same options as ``setValue()``.
+``clearValue()`` - function
+    Sets the value to ``null``.
 
-``resetValue(options)`` - function
-    Restores the initial field value. Accepts the same options as ``setValue()``.
+``markClean()`` - function
+    Tells Datasette to treat the field's current state as unmodified. After calling this method, ``hasChanged()`` returns false until the field value changes again or its SQLite-default state changes.
+
+    This is useful when a plugin rewrites the starting value into an equivalent representation while initializing its editor. For example, a rich text editor might normalize empty HTML or reserialize its initial document before the user has made any edits.
 
 ``isUsingSqliteDefault()`` - function
     Returns true if the insert dialog is currently set to omit this column and use the SQLite default.
-
-``useSqliteDefault(options)`` - function
-    Switches the field to use the SQLite default, if one exists. Accepts ``{dispatch: false}``.
-
-``stopUsingSqliteDefault(options)`` - function
-    Switches the field away from the SQLite default without changing the current field value. Accepts ``{dispatch: false}``.
-
-``dispatchChange()`` - function
-    Dispatches ``input`` and ``change`` events from the backing input.
 
 ``setValidity(message)`` - function
     Sets a custom validation message for this field, marks the backing input with ``aria-invalid="true"`` and shows the message in the field metadata area. Pass an empty string to clear the error.
@@ -362,16 +345,16 @@ The ``field`` object passed to ``render(field)``, ``focus(field)`` and ``destroy
 Submitted value contract
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-The field value contract is deliberately narrow. Datasette submits field values to the row insert/update JSON API, so a custom field value should be one of:
+The ``field.setValue()`` method accepts the following value types:
 
 * string
 * number
 * boolean
 * ``null``
 
-Plugins should not pass objects or arrays to ``field.setValue()``. If a column stores structured data in SQLite, such as JSON in a ``TEXT`` column, the plugin should serialize that data first and submit the serialized string. Client-side parsing can still be useful for validation or editor state, but the submitted value should match the SQLite value Datasette should write.
+These values are used as column values in requests to the :ref:`insert rows <TableInsertView>` and :ref:`update row <RowUpdateView>` JSON APIs.
 
-``field.input.dataset`` is reserved for Datasette's private form state. Plugins should not read from it, write to it, or use it to change how Datasette serializes values.
+Plugins should not pass objects or arrays to ``field.setValue()``. If a column stores structured data in SQLite, such as JSON in a ``TEXT`` column, the plugin should serialize that data first and submit the serialized string. Client-side parsing can still be useful for validation or editor state, but the submitted value should match the SQLite value Datasette should write.
 
 Value helpers
 ^^^^^^^^^^^^^
@@ -386,18 +369,16 @@ Custom fields should use ``field.getValue()`` and ``field.setValue(value)`` for 
 
 Plugins can keep the core input visible, wrap it in a custom element, or hide it and provide a richer interface. If the input is hidden, the custom UI must still expose an accessible name, state and keyboard interaction.
 
-``field.setValue()`` updates the backing input and Datasette's private value serialization state.
+``field.setValue()`` updates both ``field.input`` and the value used in the insert/update request.
 
-For insert forms with a SQLite default, ``field.isUsingSqliteDefault()`` indicates whether Datasette will omit that column from the insert payload. Calling ``field.setValue(value)`` automatically stops using the SQLite default. A plugin can also expose explicit controls that call ``field.useSqliteDefault()`` and ``field.stopUsingSqliteDefault()``.
-
-Datasette's built-in ``json`` column type is implemented using this same JavaScript plugin hook. Datasette registers a small textarea-backed control for fields where ``context.columnType.type === "json"``; that control validates the field as JSON while the value changes and marks it visibly invalid if parsing fails. The submitted value remains the textarea string. The generic field API does not special-case custom column types.
-
-For example, a file picker can store a file ID string or ``null`` without modifying the backing input directly:
+For example, a file picker that stores a selected file ID can hide the backing input and call ``field.setValue()`` when the selection changes:
 
 .. code-block:: javascript
 
     field.input.type = "hidden";
-    field.setValue(fileId || null);
+    field.setValue(fileId);
+
+For insert forms with a SQLite default, ``field.isUsingSqliteDefault()`` indicates whether Datasette will omit that column from the insert payload. Calling ``field.setValue(value)`` automatically stops using the SQLite default.
 
 Lazy loading large controls
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -414,15 +395,15 @@ The JavaScript file that registers ``makeColumnField()`` should be small. If the
 
         makeColumnField(context) {
           if (!context.columnType || context.columnType.type !== "my-editor") {
-            return null;
+            return;
           }
           return {
-            inputType: "textarea",
+            useTextarea: true,
             render(field) {
-              field.root.appendChild(field.input);
               import(editorUrl).then(function () {
                 // Enhance field.input here.
               });
+              return field.input;
             }
           };
         }
@@ -432,7 +413,7 @@ The JavaScript file that registers ``makeColumnField()`` should be small. If the
 Example: textarea-backed custom element
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-This example handles a ``markdown-editor`` column type by asking Datasette for a textarea and wrapping that textarea in a custom element:
+This example handles a ``markdown-editor`` column type by asking Datasette for a textarea and wrapping that textarea in a custom ``<my-markdown-editor>`` Web Component element:
 
 .. code-block:: javascript
 
@@ -442,16 +423,15 @@ This example handles a ``markdown-editor`` column type by asking Datasette for a
 
         makeColumnField(context) {
           if (!context.columnType || context.columnType.type !== "markdown-editor") {
-            return null;
+            return;
           }
 
           return {
-            inputType: "textarea",
+            useTextarea: true,
 
             render(field) {
               const editor = document.createElement("my-markdown-editor");
               editor.appendChild(field.input);
-              field.root.appendChild(editor);
 
               if (field.labelId) {
                 field.input.setAttribute("aria-labelledby", field.labelId);
@@ -459,6 +439,8 @@ This example handles a ``markdown-editor`` column type by asking Datasette for a
               if (field.descriptionId) {
                 field.input.setAttribute("aria-describedby", field.descriptionId);
               }
+
+              return editor;
             },
 
             focus(field) {
@@ -467,63 +449,6 @@ This example handles a ``markdown-editor`` column type by asking Datasette for a
                 editor.focus();
               } else {
                 field.input.focus();
-              }
-            }
-          };
-        }
-      });
-    });
-
-Example: hidden input with custom picker
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-This example handles an ``asset`` column type by hiding the core input and writing an asset ID into it when the user selects an item:
-
-.. code-block:: javascript
-
-    document.addEventListener("datasette_init", function (event) {
-      event.detail.registerPlugin("asset-picker", {
-        version: "0.1",
-
-        makeColumnField(context) {
-          if (!context.columnType || context.columnType.type !== "asset") {
-            return null;
-          }
-
-          return {
-            render(field) {
-              field.input.type = "hidden";
-
-              const group = document.createElement("div");
-              group.setAttribute("role", "group");
-              group.setAttribute("aria-labelledby", field.labelId);
-              group.setAttribute("aria-describedby", field.descriptionId);
-
-              const current = document.createElement("span");
-              current.textContent = field.getValue() || "No asset selected";
-
-              const button = document.createElement("button");
-              button.type = "button";
-              button.textContent = "Choose asset";
-              button.addEventListener("click", async function () {
-                const assetId = await chooseAsset();
-                if (assetId === null) {
-                  return;
-                }
-                field.setValue(assetId || null);
-                current.textContent = assetId || "No asset selected";
-              });
-
-              group.appendChild(current);
-              group.appendChild(button);
-              field.root.appendChild(field.input);
-              field.root.appendChild(group);
-            },
-
-            focus(field) {
-              const button = field.root.querySelector("button");
-              if (button) {
-                button.focus();
               }
             }
           };

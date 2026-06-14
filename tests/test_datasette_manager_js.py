@@ -42,15 +42,15 @@ def test_datasette_manager_make_column_field():
 
         window.__DATASETTE__.registerPlugin("declines", {
           makeColumnField() {
-            return null;
+            return;
           },
         });
         window.__DATASETTE__.registerPlugin("handles", {
           makeColumnField(context) {
             if (context.columnType.type !== "demo") {
-              return null;
+              return;
             }
-            return { inputType: "textarea" };
+            return { useTextarea: true };
           },
         });
 
@@ -72,7 +72,7 @@ def test_datasette_manager_make_column_field():
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout) == {
         "pluginName": "handles",
-        "inputType": "textarea",
+        "useTextarea": True,
     }
 
 
@@ -186,33 +186,39 @@ def test_table_plugin_column_field_api():
 
         const context = columnFormControlContext(
           "logo",
-          "df-old",
-          false,
+          true,
           { type: "file", config: null },
           {
             mode: "edit",
-            hasSqliteDefault: true,
-            sqliteDefaultExpression: "lower(hex(randomblob(4)))",
-            useSqliteDefaultInitially: true,
+            defaultExpression: "lower(hex(randomblob(4)))",
+            useSqliteDefault: true,
           }
         );
-        if ("defaultValue" in context) {
-          throw new Error("context should not expose defaultValue");
+        const expectedContextKeys = [
+          "mode",
+          "database",
+          "table",
+          "tableUrl",
+          "column",
+          "columnType",
+          "sqliteType",
+          "notNull",
+          "isPk",
+          "defaultExpression",
+          "form",
+          "dialog",
+        ].join(",");
+        if (Object.keys(context).join(",") !== expectedContextKeys) {
+          throw new Error(`Unexpected context keys: ${Object.keys(context).join(",")}`);
         }
-        if (!context.hasSqliteDefault) {
-          throw new Error("context.hasSqliteDefault should be true");
-        }
-        if (context.sqliteDefaultExpression !== "lower(hex(randomblob(4)))") {
-          throw new Error("context.sqliteDefaultExpression was not set");
+        if (context.defaultExpression !== "lower(hex(randomblob(4)))") {
+          throw new Error("context.defaultExpression was not set");
         }
         if (JSON.stringify(context.columnType) !== '{"type":"file","config":{}}') {
           throw new Error("context.columnType should expose type and object config");
         }
-        if ("value" in context || "valueType" in context) {
-          throw new Error("context should not expose value state");
-        }
-        if ("initialValue" in context || "initialValueKind" in context) {
-          throw new Error("context should not expose initial value state");
+        if (!context.isPk) {
+          throw new Error("context.isPk should say whether the column is a primary key");
         }
 
         const control = new FakeElement("input");
@@ -241,7 +247,7 @@ def test_table_plugin_column_field_api():
             render(field) {
               renderArgumentCount = arguments.length;
               renderField = field;
-              field.root.appendChild(document.createElement("button"));
+              return document.createElement("button");
             },
           },
           field
@@ -251,6 +257,9 @@ def test_table_plugin_column_field_api():
         }
         if (field.root !== wrapper) {
           throw new Error("field.root should be the plugin wrapper");
+        }
+        if (wrapper.children.length !== 1 || wrapper.children[0].nodeName !== "BUTTON") {
+          throw new Error("plugin render should append returned DOM nodes to field.root");
         }
 
         field.setValue(null);
@@ -274,9 +283,145 @@ def test_table_plugin_column_field_api():
         if (!field.hasChanged()) {
           throw new Error("field.hasChanged() should notice plugin value changes");
         }
-        if (control.dispatchedEvents.join(",") !== "input,change,input,change") {
-          throw new Error(`Unexpected dispatched events: ${control.dispatchedEvents}`);
+        if (control.dispatchedEvents.length !== 0) {
+          throw new Error(`field.setValue() should not dispatch events: ${control.dispatchedEvents}`);
         }
+
+        const dirtyRowField = new FakeElement("div");
+        dirtyRowField._datasetteColumnFormField = field;
+        const dirtyState = {
+          hasLoaded: true,
+          isLoading: false,
+          isSaving: false,
+          mode: "edit",
+          fields: {
+            querySelectorAll(selector) {
+              return selector === ".row-edit-field" ? [dirtyRowField] : [];
+            },
+          },
+          dialog: {
+            closeCalled: false,
+            close() {
+              this.closeCalled = true;
+            },
+          },
+          shouldRestoreFocus: false,
+        };
+        const confirmMessages = [];
+        window.confirm = (message) => {
+          confirmMessages.push(message);
+          return false;
+        };
+        if (!rowEditDialogHasChanges(dirtyState)) {
+          throw new Error("row edit dialog should notice changed field values");
+        }
+        if (closeRowEditDialogIfConfirmed(dirtyState)) {
+          throw new Error("dirty row edit dialog should stay open when discard is rejected");
+        }
+        if (dirtyState.dialog.closeCalled) {
+          throw new Error("dirty row edit dialog should not close when discard is rejected");
+        }
+        if (confirmMessages[0] !== "Discard unsaved changes to this row?") {
+          throw new Error(`Unexpected discard confirmation: ${confirmMessages[0]}`);
+        }
+        dirtyState.mode = "insert";
+        window.confirm = (message) => {
+          confirmMessages.push(message);
+          return true;
+        };
+        if (!closeRowEditDialogIfConfirmed(dirtyState)) {
+          throw new Error("dirty row edit dialog should close when discard is confirmed");
+        }
+        if (!dirtyState.dialog.closeCalled || !dirtyState.shouldRestoreFocus) {
+          throw new Error("confirmed dirty row edit dialog should close and restore focus");
+        }
+        if (confirmMessages[1] !== "Discard this new row?") {
+          throw new Error(`Unexpected insert discard confirmation: ${confirmMessages[1]}`);
+        }
+
+        const cleanContext = columnFormControlContext(
+          "title",
+          false,
+          null,
+          { mode: "edit" }
+        );
+        if (cleanContext.defaultExpression !== null) {
+          throw new Error("context.defaultExpression should be null without a SQLite default");
+        }
+        const cleanControl = new FakeElement("input");
+        cleanControl.name = "title";
+        cleanControl.value = "clean";
+        cleanControl.dataset.initialValue = "clean";
+        cleanControl.dataset.initialValueKind = "string";
+        cleanControl.dataset.currentValueKind = "string";
+        const cleanField = createColumnFieldApi({
+          id: "row-edit-field-1",
+          labelId: "row-edit-field-label-1",
+          descriptionId: "row-edit-field-meta-1",
+          control: cleanControl,
+          meta: new FakeElement("span"),
+          context: cleanContext,
+        });
+        const cleanRowField = new FakeElement("div");
+        cleanRowField._datasetteColumnFormField = cleanField;
+        const cleanState = {
+          hasLoaded: true,
+          isLoading: false,
+          isSaving: false,
+          mode: "edit",
+          fields: {
+            querySelectorAll(selector) {
+              return selector === ".row-edit-field" ? [cleanRowField] : [];
+            },
+          },
+          dialog: {
+            closeCalled: false,
+            close() {
+              this.closeCalled = true;
+            },
+          },
+          shouldRestoreFocus: false,
+        };
+        confirmMessages.length = 0;
+        window.confirm = (message) => {
+          confirmMessages.push(message);
+          return false;
+        };
+        if (rowEditDialogHasChanges(cleanState)) {
+          throw new Error("row edit dialog should ignore unchanged field values");
+        }
+        if (!closeRowEditDialogIfConfirmed(cleanState)) {
+          throw new Error("clean row edit dialog should close without confirmation");
+        }
+        if (!cleanState.dialog.closeCalled || !cleanState.shouldRestoreFocus) {
+          throw new Error("clean row edit dialog should close and restore focus");
+        }
+        if (confirmMessages.length !== 0) {
+          throw new Error("clean row edit dialog should not ask for confirmation");
+        }
+
+        dirtyState.dialog.closeCalled = false;
+        dirtyState.shouldRestoreFocus = false;
+        confirmMessages.length = 0;
+        field.setValue("<p></p>");
+        field.markClean();
+        if (field.hasChanged()) {
+          throw new Error("field.markClean() should update the clean baseline");
+        }
+        if (rowEditDialogHasChanges(dirtyState)) {
+          throw new Error("row edit dialog should ignore clean plugin normalization");
+        }
+        if (!closeRowEditDialogIfConfirmed(dirtyState)) {
+          throw new Error("normalized row edit dialog should close without confirmation");
+        }
+        if (confirmMessages.length !== 0) {
+          throw new Error("normalized row edit dialog should not ask for confirmation");
+        }
+        field.setValue("<p>Hello</p>");
+        if (!field.hasChanged() || !rowEditDialogHasChanges(dirtyState)) {
+          throw new Error("later plugin value changes should still count as dirty");
+        }
+
         try {
           field.setValue({ id: "df-object" });
           throw new Error("field.setValue() should reject object values");
@@ -420,13 +565,12 @@ def test_builtin_json_column_field_validation():
           column: "metadata",
           columnType: { type: "json", config: {} },
         });
-        if (!pluginControl || pluginControl.inputType !== "textarea") {
+        if (!pluginControl || pluginControl.useTextarea !== true) {
           throw new Error("JSON column plugin should request a textarea");
         }
 
         const context = columnFormControlContext(
           "metadata",
-          '{"ok": true}',
           false,
           { type: "json", config: {} },
           { mode: "edit" }

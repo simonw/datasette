@@ -77,3 +77,71 @@ def datasette_server(tmp_path):
 def test_datasette_homepage_contains_datasette(page, datasette_server):
     page.goto(datasette_server)
     assert "Datasette" in page.locator("body").inner_text()
+
+
+@pytest.mark.playwright
+def test_navigation_search_tracks_and_renders_recent_items(page, datasette_server):
+    page.goto(datasette_server)
+    result = page.evaluate("""
+    async () => {
+      await customElements.whenDefined("navigation-search");
+      const element = document.querySelector("navigation-search");
+      const key = element.recentItemsStorageKey();
+      localStorage.removeItem(key);
+
+      const items = Array.from({ length: 6 }, (_, index) => ({
+        name: `Item ${index + 1}`,
+        url: `/item-${index + 1}`,
+        type: "table",
+        description: "Table",
+      }));
+      items[5].name = "content: recent_datasette_releases";
+      items[5].display_name = "Recent Datasette releases";
+
+      for (const item of items) {
+        element.saveRecentItem(item);
+      }
+
+      const stored = JSON.parse(localStorage.getItem(key));
+      element.matches = [
+        items[5],
+        items[4],
+        {
+          name: "Other",
+          url: "/other",
+          type: "database",
+          description: "Database",
+        },
+      ];
+      element.shadowRoot.querySelector(".search-input").value = "";
+      element.renderResults();
+      const html = element.shadowRoot.querySelector(".results-container").innerHTML;
+
+      element.clearRecentItems();
+      const clearedValue = localStorage.getItem(key);
+      element.renderResults();
+      const htmlAfterClear = element.shadowRoot
+        .querySelector(".results-container")
+        .innerHTML;
+
+      return { stored, html, clearedValue, htmlAfterClear };
+    }
+    """)
+    assert [item["url"] for item in result["stored"]] == [
+        "/item-6",
+        "/item-5",
+        "/item-4",
+        "/item-3",
+        "/item-2",
+    ]
+    assert result["stored"][0]["display_name"] == "Recent Datasette releases"
+    assert "Recent" in result["html"]
+    assert "Recent Datasette releases" in result["html"]
+    assert "Item 5" in result["html"]
+    assert "content: recent_datasette_releases" in result["html"]
+    assert "Item 4" in result["html"]
+    assert "Item 2" in result["html"]
+    assert "Other" not in result["html"]
+    assert "Clear recent" in result["html"]
+    assert result["clearedValue"] is None
+    assert "Clear recent" not in result["htmlAfterClear"]

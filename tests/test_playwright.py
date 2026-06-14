@@ -542,3 +542,128 @@ def test_table_plugin_column_field_api(page, datasette_server):
       );
     }
     """)
+
+
+@pytest.mark.playwright
+def test_builtin_json_column_field_validation(page, datasette_server):
+    load_edit_tools(page, datasette_server)
+    page.evaluate("""
+    () => {
+      const assert = (condition, message) => {
+        if (!condition) {
+          throw new Error(message);
+        }
+      };
+
+      const plugins = [];
+      registerBuiltinColumnFieldPlugins({
+        registerPlugin(name, plugin) {
+          plugins.push({ name, plugin });
+        },
+      });
+      const jsonPlugin = plugins.find(
+        (entry) => entry.name === "datasette-json-column",
+      );
+      assert(
+        jsonPlugin,
+        "datasette-json-column plugin was not registered",
+      );
+      const pluginControl = jsonPlugin.plugin.makeColumnField({
+        column: "metadata",
+        columnType: { type: "json", config: {} },
+      });
+      assert(
+        pluginControl && pluginControl.useTextarea === true,
+        "JSON column plugin should request a textarea",
+      );
+
+      const context = columnFormControlContext(
+        "metadata",
+        false,
+        { type: "json", config: {} },
+        { mode: "edit" },
+      );
+      const control = document.createElement("textarea");
+      control.className = "row-edit-input";
+      control.name = "metadata";
+      control.value = '{"ok": true}';
+      control.dataset.initialValue = '{"ok": true}';
+      control.dataset.initialValueKind = "string";
+      control.dataset.currentValueKind = "string";
+      const meta = document.createElement("span");
+
+      const field = createColumnFieldApi({
+        id: "row-edit-field-0",
+        labelId: "row-edit-field-label-0",
+        descriptionId: "row-edit-field-meta-0",
+        control,
+        meta,
+        context,
+      });
+      const wrapper = renderColumnField(
+        Object.assign({ pluginName: "datasette-json-column" }, pluginControl),
+        field,
+      );
+
+      assert(
+        control.validationMessage === "",
+        "Initial valid JSON should not be invalid",
+      );
+      assert(
+        control.dataset.initialValueKind === "string",
+        "JSON plugin should keep the original string value kind",
+      );
+      assert(
+        control.dataset.currentValueKind === "string",
+        "JSON plugin should keep the current string value kind",
+      );
+      assert(
+        field.validationMessageElement &&
+          field.validationMessageElement.hidden === true,
+        "JSON validation message should start hidden",
+      );
+
+      control.value = "{";
+      control.dispatchEvent(new Event("input", { bubbles: true }));
+      assert(
+        control.validationMessage.startsWith("Invalid JSON"),
+        "Invalid JSON should set a custom validity message",
+      );
+      assert(
+        control.getAttribute("aria-invalid") === "true",
+        "Invalid JSON should set aria-invalid",
+      );
+      assert(
+        !field.validationMessageElement.hidden,
+        "Invalid JSON should show the validation message",
+      );
+
+      control.value = '{"ok": true}';
+      control.dispatchEvent(new Event("input", { bubbles: true }));
+      assert(
+        control.validationMessage === "",
+        "Valid JSON should clear the custom validity message",
+      );
+      assert(
+        control.getAttribute("aria-invalid") === null,
+        "Valid JSON should clear aria-invalid",
+      );
+      assert(
+        field.validationMessageElement.hidden,
+        "Valid JSON should hide the validation message",
+      );
+
+      control.dataset.initialValue = '{"ok":';
+      control.value = '{"ok": true}';
+      const fields = document.createElement("div");
+      fields.appendChild(wrapper);
+      const values = collectRowFormValues({
+        mode: "edit",
+        fields,
+      });
+      assert(
+        values.metadata === '{"ok": true}',
+        "Corrected JSON should be submitted as a string value",
+      );
+    }
+    """)

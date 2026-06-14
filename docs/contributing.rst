@@ -62,6 +62,33 @@ You can run the tests faster using multiple CPU cores with `pytest-xdist <https:
 
     uv run pytest -m "serial"
 
+Running Playwright tests
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Datasette includes a small number of browser automation tests using Playwright_.
+These tests are skipped by default, so you can run the main test suite with
+``uv run pytest`` without installing Playwright or any browser binaries.
+
+.. _Playwright: https://playwright.dev/python/
+
+The Playwright tests use a separate dependency group. To run them, first install
+the browser engine you want to test against, for example Chromium::
+
+    uv run --group playwright playwright install chromium
+
+Then run the Playwright test module with the explicit ``--playwright`` flag::
+
+    uv run --group playwright pytest tests/test_playwright.py --playwright --browser chromium
+
+You can also run the same tests against Firefox or WebKit by installing that
+browser engine and passing it to ``--browser``::
+
+    uv run --group playwright playwright install firefox
+    uv run --group playwright pytest tests/test_playwright.py --playwright --browser firefox
+
+    uv run --group playwright playwright install webkit
+    uv run --group playwright pytest tests/test_playwright.py --playwright --browser webkit
+
 .. _contributing_using_fixtures:
 
 Using fixtures

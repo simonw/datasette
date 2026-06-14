@@ -1264,9 +1264,15 @@ dialog.row-delete-dialog::backdrop {
     justify-content: flex-start;
     gap: 12px;
     flex-shrink: 0;
+    min-width: 0;
 }
 
 .row-delete-dialog .modal-title {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    max-width: 100%;
     font-size: 1rem;
     font-weight: 600;
     color: var(--ink);
@@ -1388,16 +1394,30 @@ dialog.row-edit-dialog::backdrop {
     align-items: center;
     gap: 12px;
     flex-shrink: 0;
+    min-width: 0;
 }
 
 .row-edit-dialog .modal-title {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    max-width: 100%;
     font-size: 1rem;
     font-weight: 600;
     color: var(--ink);
 }
 
-.row-edit-dialog .modal-title code {
+.row-edit-dialog .modal-title .row-dialog-action,
+.row-delete-dialog .modal-title .row-dialog-action {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.row-edit-dialog .modal-title code,
+.row-delete-dialog .modal-title code {
     display: inline;
+    flex: 0 0 auto;
     padding: 2px 5px;
     border: 1px solid var(--rule);
     border-radius: 4px;
@@ -1405,6 +1425,14 @@ dialog.row-edit-dialog::backdrop {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 0.92em;
     overflow-wrap: anywhere;
+}
+
+.row-edit-dialog .modal-title .row-dialog-label,
+.row-delete-dialog .modal-title .row-dialog-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .row-edit-form {

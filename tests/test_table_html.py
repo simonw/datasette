@@ -682,8 +682,10 @@ async def test_table_html_compound_primary_key(ds_client):
     rows = table.select("tbody tr")
     assert rows[0]["data-row"] == "a,b"
     assert "data-row-pk-path" not in rows[0].attrs
+    assert "data-row-label" not in rows[0].attrs
     assert rows[1]["data-row"] == "a~2Fb,~2Ec-d"
     assert "data-row-pk-path" not in rows[1].attrs
+    assert "data-row-label" not in rows[1].attrs
 
 
 @pytest.mark.asyncio
@@ -884,13 +886,17 @@ async def test_row_delete_action_data_attributes():
 
         row = soup.select_one("table.rows-and-columns tbody tr")
         assert row["data-row"] == "1"
-        assert {key for key in row.attrs if key.startswith("data-row")} == {"data-row"}
+        assert row["data-row-label"] == "One"
+        assert {key for key in row.attrs if key.startswith("data-row")} == {
+            "data-row",
+            "data-row-label",
+        }
 
         edit_button = row.select_one(
             'button.row-inline-action-edit[data-row-action="edit"]'
         )
         assert edit_button is not None
-        assert edit_button["aria-label"] == "Edit row 1"
+        assert edit_button["aria-label"] == "Edit row 1 One"
         assert edit_button["title"] == "Edit row"
         assert edit_button.find("svg") is not None
 
@@ -898,7 +904,7 @@ async def test_row_delete_action_data_attributes():
             'button.row-inline-action-delete[data-row-action="delete"]'
         )
         assert button is not None
-        assert button["aria-label"] == "Delete row 1"
+        assert button["aria-label"] == "Delete row 1 One"
         assert button["title"] == "Delete row"
         assert button.find("svg") is not None
     finally:
@@ -1033,7 +1039,11 @@ async def test_table_fragment_endpoint(ds_client):
     rows = soup.select("[data-row]")
     assert len(rows) == 1
     assert rows[0]["data-row"] == "1"
-    assert {key for key in rows[0].attrs if key.startswith("data-row")} == {"data-row"}
+    assert rows[0]["data-row-label"] == "hello"
+    assert {key for key in rows[0].attrs if key.startswith("data-row")} == {
+        "data-row",
+        "data-row-label",
+    }
 
 
 @pytest.mark.asyncio
@@ -1046,6 +1056,7 @@ async def test_table_fragment_row_parameter_replaces_pk_filters(ds_client):
     rows = soup.select("[data-row]")
     assert len(rows) == 1
     assert rows[0]["data-row"] == "1"
+    assert rows[0]["data-row-label"] == "hello"
 
 
 def test_table_data_uses_base_url(app_client_base_url_prefix):

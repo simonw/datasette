@@ -471,6 +471,10 @@ function rowDisplayLabel(row) {
   return tildeDecode(row.getAttribute("data-row") || "");
 }
 
+function rowTitleLabel(row) {
+  return row.getAttribute("data-row-label") || "";
+}
+
 function tableBaseUrl() {
   var tableUrl =
     window._datasetteTableData && window._datasetteTableData.tableUrl;
@@ -607,6 +611,7 @@ function ensureRowDeleteDialog(manager) {
 
   rowDeleteDialogState = {
     dialog: dialog,
+    title: dialog.querySelector(".modal-title"),
     message: dialog.querySelector(".row-delete-message"),
     rowId: dialog.querySelector(".row-delete-id"),
     error: dialog.querySelector(".row-delete-error"),
@@ -741,6 +746,12 @@ function openRowDeleteDialog(button, manager) {
 
   clearRowDeleteDialogError(state);
   setRowDeleteDialogBusy(state, false);
+  setRowDialogTitle(
+    state.title,
+    "Delete row",
+    state.currentPkPath || "this row",
+    rowTitleLabel(row),
+  );
   state.rowId.textContent = state.currentPkPath || "this row";
 
   if (!state.dialog.open) {
@@ -1335,16 +1346,26 @@ function renderRowInsertFields(state, data) {
   (firstControl || state.saveButton).focus();
 }
 
-function setRowEditDialogTitle(state, text, codeText) {
-  state.title.textContent = "";
-  state.title.appendChild(document.createTextNode(text));
+function setRowDialogTitle(title, text, codeText, labelText) {
+  title.textContent = "";
+  var action = document.createElement("span");
+  action.className = "row-dialog-action";
+  action.textContent = text;
+  title.appendChild(action);
   if (!codeText) {
     return;
   }
-  state.title.appendChild(document.createTextNode(" "));
+  title.appendChild(document.createTextNode(" "));
   var code = document.createElement("code");
   code.textContent = codeText;
-  state.title.appendChild(code);
+  title.appendChild(code);
+  if (labelText && labelText !== codeText) {
+    title.appendChild(document.createTextNode(" "));
+    var label = document.createElement("span");
+    label.className = "row-dialog-label";
+    label.textContent = labelText;
+    title.appendChild(label);
+  }
 }
 
 function ensureRowEditDialog(manager) {
@@ -1494,7 +1515,12 @@ async function openRowEditDialog(button, manager) {
   setRowEditDialogLoading(state, true);
   state.fields.innerHTML = "";
   state.dialog.removeAttribute("aria-describedby");
-  setRowEditDialogTitle(state, "Edit row", state.currentPkPath || "this row");
+  setRowDialogTitle(
+    state.title,
+    "Edit row",
+    state.currentPkPath || "this row",
+    rowTitleLabel(row),
+  );
   state.summary.hidden = true;
   state.summary.textContent = "";
 
@@ -1561,8 +1587,8 @@ function openRowInsertDialog(button, manager) {
   setRowEditDialogLoading(state, false);
   state.fields.innerHTML = "";
   state.dialog.removeAttribute("aria-describedby");
-  setRowEditDialogTitle(
-    state,
+  setRowDialogTitle(
+    state.title,
     insertData.tableName ? "Insert row into " + insertData.tableName : "Insert row",
   );
   state.summary.hidden = true;

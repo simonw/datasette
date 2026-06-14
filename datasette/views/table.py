@@ -66,10 +66,12 @@ class Row:
         cells,
         pk_path=None,
         row_path=None,
+        row_label=None,
     ):
         self.cells = cells
         self.pk_path = pk_path
         self.row_path = row_path
+        self.row_label = row_label
 
     def __iter__(self):
         return iter(self.cells)
@@ -94,6 +96,20 @@ class Row:
             ]
         }
         return json.dumps(d, default=repr, indent=2)
+
+
+def row_label_from_label_column(row, label_column):
+    if not label_column:
+        return None
+    try:
+        value = row[label_column]
+    except KeyError:
+        return None
+    if isinstance(value, dict):
+        value = value.get("label")
+    if value is None or value == "":
+        return None
+    return str(value)
 
 
 async def run_sequential(*args):
@@ -325,6 +341,9 @@ async def display_columns_and_rows(
     pks_for_display = pks
     if not pks_for_display:
         pks_for_display = ["rowid"]
+    label_column = None
+    if link_column:
+        label_column = await db.label_column_for_table(table_name)
     row_action_permissions = {}
     if link_column and request is not None and db.is_mutable:
         row_action_permissions = await datasette.allowed_many(
@@ -372,6 +391,10 @@ async def display_columns_and_rows(
             is_special_link_column = len(pks) != 1
             pk_path = path_from_row_pks(row, pks, not pks, False)
             row_path = path_from_row_pks(row, pks, not pks)
+            row_label = row_label_from_label_column(row, label_column)
+            row_action_label = pk_path
+            if row_label and row_label != pk_path:
+                row_action_label = "{} {}".format(pk_path, row_label)
             table_path = datasette.urls.table(database_name, table_name)
             row_link = '<a href="{table_path}/{flat_pks_quoted}">{flat_pks}</a>'.format(
                 table_path=table_path,
@@ -407,7 +430,7 @@ async def display_columns_and_rows(
                     'data-row-action="edit">'
                     "{edit_icon}</button>".format(
                         edit_icon=edit_icon,
-                        row_label=markupsafe.escape(pk_path),
+                        row_label=markupsafe.escape(row_action_label),
                     )
                 )
             if row_action_permissions.get("delete-row"):
@@ -417,7 +440,7 @@ async def display_columns_and_rows(
                     'data-row-action="delete">'
                     "{delete_icon}</button>".format(
                         delete_icon=delete_icon,
-                        row_label=markupsafe.escape(pk_path),
+                        row_label=markupsafe.escape(row_action_label),
                     )
                 )
             if row_actions:
@@ -544,6 +567,7 @@ async def display_columns_and_rows(
                     cells,
                     pk_path=pk_path,
                     row_path=row_path,
+                    row_label=row_label,
                 )
             )
         else:

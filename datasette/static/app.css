@@ -2061,18 +2061,32 @@ svg.dropdown-menu-icon {
 .dropdown-menu a:link,
 .dropdown-menu a:visited,
 .dropdown-menu a:hover,
-.dropdown-menu a:focus
-.dropdown-menu a:active {
+.dropdown-menu a:focus,
+.dropdown-menu a:active,
+.dropdown-menu button.action-menu-button {
     text-decoration: none;
     display: block;
     padding: 4px 8px 2px 8px;
     color: #222;
     white-space: nowrap;
 }
-.dropdown-menu a:hover {
+.dropdown-menu button.action-menu-button {
+    appearance: none;
+    background: none;
+    border: none;
+    box-sizing: border-box;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+    width: 100%;
+}
+.dropdown-menu a:hover,
+.dropdown-menu button.action-menu-button:hover,
+.dropdown-menu button.action-menu-button:focus {
     background-color: #eee;
 }
 .dropdown-menu .dropdown-description {
+    display: block;
     margin: 0;
     color: #666;
     font-size: 0.8em;

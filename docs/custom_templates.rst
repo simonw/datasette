@@ -288,6 +288,14 @@ element that wraps the HTML for that row. Datasette uses this attribute to find
 the element to remove after a delete, or replace after an edit. Any edit or
 delete controls should be rendered inside that same element.
 
+The ``_action_menu.html`` template renders the action menus used by database,
+table, query and row pages. Plugin-provided actions can be link dictionaries
+with ``href`` and ``label`` keys, or button dictionaries using ``{"type":
+"button", "label": "...", "attrs": {...}}`` for JavaScript-backed interactions.
+Both shapes can include an optional ``description`` key. Custom
+``_action_menu.html`` templates should preserve support for both link and button
+action items.
+
 .. _custom_pages:
 
 Custom pages

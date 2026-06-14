@@ -1062,6 +1062,7 @@ async def test_hook_menu_links(ds_client):
 async def test_hook_table_actions(ds_client):
     response = await ds_client.get("/fixtures/facetable")
     assert get_actions_links(response.text) == []
+    assert get_actions_buttons(response.text) == []
     response_2 = await ds_client.get("/fixtures/facetable?_bot=1&_hello=BOB")
     assert ">Table actions<" in response_2.text
     assert sorted(
@@ -1070,6 +1071,23 @@ async def test_hook_table_actions(ds_client):
         {"label": "Database: fixtures", "href": "/", "description": None},
         {"label": "From async BOB", "href": "/", "description": None},
         {"label": "Table: facetable", "href": "/", "description": None},
+    ]
+    response_3 = await ds_client.get("/fixtures/facetable?_bot=1&_button=1")
+    assert get_actions_buttons(response_3.text) == [
+        {
+            "label": "Plugin button",
+            "description": "Runs JavaScript from a plugin",
+            "attrs": {
+                "aria-label": "Plugin button for facetable",
+                "class": ["button-as-link", "action-menu-button"],
+                "data-database": "fixtures",
+                "data-plugin-action": "plugin-button",
+                "data-table": "facetable",
+                "role": "menuitem",
+                "tabindex": "-1",
+                "type": "button",
+            },
+        }
     ]
 
 
@@ -1098,13 +1116,36 @@ def get_actions_links(html):
     links = []
     for a_el in details.select("a"):
         description = None
-        if a_el.find("p") is not None:
-            description = a_el.find("p").text.strip()
-            a_el.find("p").extract()
+        description_el = a_el.find(class_="dropdown-description")
+        if description_el is not None:
+            description = description_el.text.strip()
+            description_el.extract()
         label = a_el.text.strip()
         href = a_el["href"]
         links.append({"label": label, "href": href, "description": description})
     return links
+
+
+def get_actions_buttons(html):
+    soup = Soup(html, "html.parser")
+    details = soup.find("details", {"class": "actions-menu-links"})
+    if details is None:
+        return []
+    buttons = []
+    for button_el in details.select("button.action-menu-button"):
+        description = None
+        description_el = button_el.find(class_="dropdown-description")
+        if description_el is not None:
+            description = description_el.text.strip()
+            description_el.extract()
+        buttons.append(
+            {
+                "label": button_el.text.strip(),
+                "description": description,
+                "attrs": dict(button_el.attrs),
+            }
+        )
+    return buttons
 
 
 @pytest.mark.asyncio

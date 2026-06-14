@@ -15,10 +15,18 @@
         <div class="hook"></div>
         <ul role="menu">
             {% for link in action_links %}
-            <li role="none"><a href="{{ link.href }}" role="menuitem" tabindex="-1">{{ link.label }}
-            {% if link.description %}
-                <p class="dropdown-description">{{ link.description }}</p>
-            {% endif %}</a>
+            <li role="none">
+            {% if link.get("type") == "button" %}
+                <button type="button" class="button-as-link action-menu-button" role="menuitem" tabindex="-1"{% for name, value in (link.get("attrs") or {}).items() %} {{ name }}="{{ value }}"{% endfor %}>{{ link.label }}
+                {% if link.description %}
+                    <span class="dropdown-description">{{ link.description }}</span>
+                {% endif %}</button>
+            {% else %}
+                <a href="{{ link.href }}" role="menuitem" tabindex="-1">{{ link.label }}
+                {% if link.description %}
+                    <span class="dropdown-description">{{ link.description }}</span>
+                {% endif %}</a>
+            {% endif %}
             </li>
             {% endfor %}
         </ul>

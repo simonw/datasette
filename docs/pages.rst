@@ -118,6 +118,16 @@ Some examples:
 * `../antiquities-act%2Factions_under_antiquities_act <https://fivethirtyeight.datasettes.com/fivethirtyeight/antiquities-act%2Factions_under_antiquities_act>`_ is an interface for exploring the "actions under the antiquities act" data table published by FiveThirtyEight.
 * `../global-power-plants?country_long=United+Kingdom&primary_fuel=Gas <https://datasette.io/global-power-plants/global-power-plants?_facet=primary_fuel&_facet=owner&_facet=country_long&country_long__exact=United+Kingdom&primary_fuel=Gas>`_ is a filtered table page showing every Gas power plant in the United Kingdom. It includes some default facets (configured using `its metadata.json <https://datasette.io/-/metadata>`_) and uses the `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_ plugin to show a map of the results.
 
+.. _TableFragmentView:
+
+Table fragment
+--------------
+
+The ``/<database>/<table>/-/fragment`` endpoint returns the rendered table HTML
+for rows matching the provided filters. It is used by Datasette's row editing
+interface to refresh rows after changes while still respecting custom table
+templates and ``render_cell`` plugin hooks.
+
 .. _RowView:
 
 Row

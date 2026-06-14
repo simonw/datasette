@@ -66,6 +66,7 @@ from .views.index import IndexView
 from .views.special import (
     JsonDataView,
     PatternPortfolioView,
+    AutocompleteDebugView,
     AuthTokenView,
     ApiExplorerView,
     CreateTokenView,
@@ -82,10 +83,12 @@ from .views.special import (
     TableSchemaView,
 )
 from .views.table import (
+    TableAutocompleteView,
     TableInsertView,
     TableUpsertView,
     TableSetColumnTypeView,
     TableDropView,
+    TableFragmentView,
     table_view,
 )
 from .views.row import RowView, RowDeleteView, RowUpdateView
@@ -2016,6 +2019,11 @@ class Datasette:
 
         other_table = fk["other_table"]
         other_column = fk["other_column"]
+        if other_column is None:
+            other_pks = await db.primary_keys(other_table)
+            if len(other_pks) != 1:
+                return {}
+            other_column = other_pks[0]
         visible, _ = await self.check_visibility(
             actor,
             action="view-table",
@@ -2312,6 +2320,8 @@ class Datasette:
                 and "ds_actor" in request.cookies
                 and request.actor,
                 "app_css_hash": self.app_css_hash(),
+                "edit_tools_js_hash": self.static_hash("edit-tools.js"),
+                "table_js_hash": self.static_hash("table.js"),
                 "zip": zip,
                 "body_scripts": body_scripts,
                 "format_bytes": format_bytes,
@@ -2537,6 +2547,10 @@ class Datasette:
             r"/-/patterns$",
         )
         add_route(
+            AutocompleteDebugView.as_view(self),
+            r"/-/debug/autocomplete$",
+        )
+        add_route(
             wrap_view(database_download, self),
             r"/(?P<database>[^\/\.]+)\.db$",
         )
@@ -2612,6 +2626,14 @@ class Datasette:
         add_route(
             TableSetColumnTypeView.as_view(self),
             r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/set-column-type$",
+        )
+        add_route(
+            TableFragmentView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/fragment$",
+        )
+        add_route(
+            TableAutocompleteView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/autocomplete$",
         )
         add_route(
             TableDropView.as_view(self),

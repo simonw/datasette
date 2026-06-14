@@ -2,9 +2,11 @@ import asyncio
 import itertools
 import json
 import urllib
+import urllib.parse
 
 import markupsafe
 
+from datasette.column_types import SQLiteType
 from datasette.extras import extra_names_from_request
 from datasette.plugins import pm
 from datasette.events import (
@@ -13,6 +15,7 @@ from datasette.events import (
     InsertRowsEvent,
     UpsertRowsEvent,
 )
+from datasette.database import QueryInterrupted
 from datasette import tracer
 from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
@@ -40,7 +43,7 @@ from datasette.utils import (
     InvalidSql,
     sqlite3,
 )
-from datasette.utils.asgi import BadRequest, Forbidden, NotFound, Response
+from datasette.utils.asgi import BadRequest, Forbidden, NotFound, Request, Response
 from datasette.filters import Filters
 import sqlite_utils
 from .base import BaseView, DatasetteError, _error, stream_csv
@@ -59,8 +62,17 @@ LINK_WITH_VALUE = '<a href="{base_url}{database}/{table}/{link_id}">{id}</a>'
 
 
 class Row:
-    def __init__(self, cells):
+    def __init__(
+        self,
+        cells,
+        pk_path=None,
+        row_path=None,
+        row_label=None,
+    ):
         self.cells = cells
+        self.pk_path = pk_path
+        self.row_path = row_path
+        self.row_label = row_label
 
     def __iter__(self):
         return iter(self.cells)
@@ -87,6 +99,20 @@ class Row:
         return json.dumps(d, default=repr, indent=2)
 
 
+def row_label_from_label_column(row, label_column):
+    if not label_column:
+        return None
+    try:
+        value = row[label_column]
+    except (KeyError, IndexError):
+        return None
+    if isinstance(value, dict):
+        value = value.get("label")
+    if value is None or value == "":
+        return None
+    return str(value)
+
+
 async def run_sequential(*args):
     # This used to be swappable for asyncio.gather() to run things in
     # parallel, but this lead to hard-to-debug locking issues with
@@ -95,6 +121,66 @@ async def run_sequential(*args):
     for fn in args:
         results.append(await fn)
     return results
+
+
+def _exact_filter_key(column):
+    if column.startswith("_"):
+        return f"{column}__exact"
+    return column
+
+
+def _request_with_query_string(request, query_string):
+    scope = dict(request.scope)
+    scope["query_string"] = query_string.encode("latin-1")
+    return Request(scope, request.receive)
+
+
+async def _fragment_request_for_row(request, resolved):
+    row_path = request.args.get("_row")
+    if not row_path:
+        return request
+    if resolved.is_view:
+        raise BadRequest("_row is not supported for views")
+
+    pks = await resolved.db.primary_keys(resolved.table)
+    row_pks = pks or ["rowid"]
+    pk_values = urlsafe_components(row_path)
+    if len(pk_values) != len(row_pks):
+        raise BadRequest("_row does not match the primary key for this table")
+
+    row_pk_filter_keys = {
+        key
+        for pk in row_pks
+        for key in {
+            _exact_filter_key(pk),
+            f"{pk}__exact",
+        }
+    }
+    args = [
+        (key, value)
+        for key, value in urllib.parse.parse_qsl(
+            request.query_string, keep_blank_values=True
+        )
+        if key
+        not in {
+            "_row",
+            "_next",
+            "_nocount",
+            "_nofacet",
+            "_nosuggest",
+        }.union(row_pk_filter_keys)
+    ]
+    args.extend(
+        [(_exact_filter_key(pk), value) for pk, value in zip(row_pks, pk_values)]
+    )
+    args.extend(
+        [
+            ("_nocount", "1"),
+            ("_nofacet", "1"),
+            ("_nosuggest", "1"),
+        ]
+    )
+    return _request_with_query_string(request, urllib.parse.urlencode(args))
 
 
 def _redirect(datasette, request, path, forward_querystring=True, remove_args=None):
@@ -155,6 +241,116 @@ async def _validate_column_types(datasette, database_name, table_name, rows):
     return errors
 
 
+def _column_value_kind_for_insert_form(column_detail):
+    sqlite_type = SQLiteType.from_declared_type(column_detail.type)
+    if sqlite_type in (SQLiteType.INTEGER, SQLiteType.REAL):
+        return "number"
+    return "string"
+
+
+def _column_sqlite_type_for_insert_form(column_detail):
+    sqlite_type = SQLiteType.from_declared_type(column_detail.type)
+    return sqlite_type.value if sqlite_type is not None else None
+
+
+async def _foreign_key_autocomplete_urls(
+    datasette, request, db, database_name, table_name
+):
+    autocomplete_urls = {}
+    for fk in await db.foreign_keys_for_table(table_name):
+        if not await db.table_exists(fk["other_table"]):
+            continue
+        other_pks = await db.primary_keys(fk["other_table"])
+        other_column = fk["other_column"]
+        if other_column is None and len(other_pks) == 1:
+            other_column = other_pks[0]
+        if len(other_pks) != 1 or other_column != other_pks[0]:
+            continue
+        visible, _ = await datasette.check_visibility(
+            request.actor,
+            action="view-table",
+            resource=TableResource(database=database_name, table=fk["other_table"]),
+        )
+        if not visible:
+            continue
+        autocomplete_urls[fk["column"]] = "{}/-/autocomplete".format(
+            datasette.urls.table(database_name, fk["other_table"])
+        )
+    return autocomplete_urls
+
+
+async def _table_page_data(
+    datasette, request, db, database_name, table_name, is_view, table_insert_ui
+):
+    data = {
+        "database": database_name,
+        "table": table_name,
+        "tableUrl": datasette.urls.table(database_name, table_name),
+    }
+    if table_insert_ui:
+        data["insertRow"] = table_insert_ui
+    if not is_view:
+        foreign_keys = await _foreign_key_autocomplete_urls(
+            datasette, request, db, database_name, table_name
+        )
+        if foreign_keys:
+            data["foreignKeys"] = foreign_keys
+    return data
+
+
+async def _table_insert_ui(
+    datasette, request, db, database_name, table_name, is_view, pks
+):
+    if is_view or not db.is_mutable:
+        return None
+
+    if not await datasette.allowed(
+        action="insert-row",
+        resource=TableResource(database=database_name, table=table_name),
+        actor=request.actor,
+    ):
+        return None
+
+    column_types_map = await datasette.get_column_types(database_name, table_name)
+    columns = []
+    column_details = await db.table_column_details(table_name)
+    for column in column_details:
+        if column.hidden:
+            continue
+        is_pk = column.name in pks
+        is_auto_pk = (
+            is_pk
+            and len(pks) == 1
+            and SQLiteType.from_declared_type(column.type) == SQLiteType.INTEGER
+        )
+        if is_auto_pk:
+            continue
+        column_type = column_types_map.get(column.name)
+        columns.append(
+            {
+                "name": column.name,
+                "sqlite_type": _column_sqlite_type_for_insert_form(column),
+                "notnull": column.notnull,
+                "default": column.default_value,
+                "has_default": column.default_value is not None,
+                "is_pk": is_pk,
+                "value_kind": _column_value_kind_for_insert_form(column),
+                "column_type": (
+                    {"type": column_type.name, "config": column_type.config}
+                    if column_type is not None
+                    else None
+                ),
+            }
+        )
+
+    return {
+        "path": "{}/-/insert".format(datasette.urls.table(database_name, table_name)),
+        "tableName": table_name,
+        "columns": columns,
+        "primaryKeys": pks,
+    }
+
+
 async def display_columns_and_rows(
     datasette,
     database_name,
@@ -194,6 +390,16 @@ async def display_columns_and_rows(
     pks_for_display = pks
     if not pks_for_display:
         pks_for_display = ["rowid"]
+    label_column = None
+    if link_column:
+        label_column = await db.label_column_for_table(table_name)
+    row_action_permissions = {}
+    if link_column and request is not None and db.is_mutable:
+        row_action_permissions = await datasette.allowed_many(
+            actions=["update-row", "delete-row"],
+            resource=TableResource(database=database_name, table=table_name),
+            actor=request.actor,
+        )
 
     columns = []
     for r in description:
@@ -233,19 +439,72 @@ async def display_columns_and_rows(
         if link_column:
             is_special_link_column = len(pks) != 1
             pk_path = path_from_row_pks(row, pks, not pks, False)
+            row_path = path_from_row_pks(row, pks, not pks)
+            row_label = row_label_from_label_column(row, label_column)
+            row_action_label = pk_path
+            if row_label and row_label != pk_path:
+                row_action_label = "{} {}".format(pk_path, row_label)
+            table_path = datasette.urls.table(database_name, table_name)
+            row_link = '<a href="{table_path}/{flat_pks_quoted}">{flat_pks}</a>'.format(
+                table_path=table_path,
+                flat_pks=str(markupsafe.escape(pk_path)),
+                flat_pks_quoted=row_path,
+            )
+            edit_icon = (
+                '<svg class="row-inline-action-icon" aria-hidden="true" '
+                'xmlns="http://www.w3.org/2000/svg" width="14" height="14" '
+                'viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+                'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+                '<path d="M12 20h9"></path>'
+                '<path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>'
+                "</svg>"
+            )
+            delete_icon = (
+                '<svg class="row-inline-action-icon" aria-hidden="true" '
+                'xmlns="http://www.w3.org/2000/svg" width="14" height="14" '
+                'viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+                'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+                '<path d="M3 6h18"></path>'
+                '<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>'
+                '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>'
+                '<path d="M10 11v6"></path>'
+                '<path d="M14 11v6"></path>'
+                "</svg>"
+            )
+            row_actions = []
+            if row_action_permissions.get("update-row"):
+                row_actions.append(
+                    '<button type="button" class="row-inline-action row-inline-action-edit" '
+                    'aria-label="Edit row {row_label}" title="Edit row" '
+                    'data-row-action="edit">'
+                    "{edit_icon}</button>".format(
+                        edit_icon=edit_icon,
+                        row_label=markupsafe.escape(row_action_label),
+                    )
+                )
+            if row_action_permissions.get("delete-row"):
+                row_actions.append(
+                    '<button type="button" class="row-inline-action row-inline-action-delete" '
+                    'aria-label="Delete row {row_label}" title="Delete row" '
+                    'data-row-action="delete">'
+                    "{delete_icon}</button>".format(
+                        delete_icon=delete_icon,
+                        row_label=markupsafe.escape(row_action_label),
+                    )
+                )
+            if row_actions:
+                row_link = (
+                    '<span class="row-link-with-actions">{row_link}'
+                    '<span class="row-inline-actions" aria-label="Row actions">'
+                    "{row_actions}</span></span>"
+                ).format(row_link=row_link, row_actions="".join(row_actions))
             cells.append(
                 {
                     "column": pks[0] if len(pks) == 1 else "Link",
                     "value_type": "pk",
                     "is_special_link_column": is_special_link_column,
                     "raw": pk_path,
-                    "value": markupsafe.Markup(
-                        '<a href="{table_path}/{flat_pks_quoted}">{flat_pks}</a>'.format(
-                            table_path=datasette.urls.table(database_name, table_name),
-                            flat_pks=str(markupsafe.escape(pk_path)),
-                            flat_pks_quoted=path_from_row_pks(row, pks, not pks),
-                        )
-                    ),
+                    "value": markupsafe.Markup(row_link),
                 }
             )
 
@@ -351,7 +610,17 @@ async def display_columns_and_rows(
                     ),
                 }
             )
-        cell_rows.append(Row(cells))
+        if link_column:
+            cell_rows.append(
+                Row(
+                    cells,
+                    pk_path=pk_path,
+                    row_path=row_path,
+                    row_label=row_label,
+                )
+            )
+        else:
+            cell_rows.append(Row(cells))
 
     if link_column:
         # Add the link column header.
@@ -852,6 +1121,220 @@ class TableDropView(BaseView):
             )
         )
         return Response.json({"ok": True}, status=200)
+
+
+class TableFragmentView(BaseView):
+    name = "table-fragment"
+
+    def __init__(self, datasette):
+        self.ds = datasette
+
+    async def get(self, request):
+        resolved = await self.ds.resolve_table(request)
+        request = await _fragment_request_for_row(request, resolved)
+        view_data = await table_view_data(
+            self.ds,
+            request,
+            resolved,
+            extra_extras={"_html"},
+            context_for_html_hack=True,
+            default_labels=True,
+        )
+        if isinstance(view_data, Response):
+            return view_data
+        data, _rows, _columns, _expanded_columns, _sql, _next_url = view_data
+        templates = data["custom_table_templates"]
+        html = await self.ds.render_template(
+            templates,
+            dict(
+                data,
+                append_querystring=append_querystring,
+                path_with_replaced_args=path_with_replaced_args,
+                fix_path=self.ds.urls.path,
+                settings=self.ds.settings_dict(),
+                count_limit=resolved.db.count_limit,
+            ),
+            request=request,
+            view_name="table",
+        )
+        return Response.html(html)
+
+
+def _escape_like(value):
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+# Returns the exclusive upper bound for an indexed prefix search:
+# For example, values beginning with "abc" fall below the next prefix boundary.
+# The LIKE clause is still applied separately for exact escaped-LIKE semantics.
+def _prefix_range_end(value):
+    if not value:
+        return None
+    characters = list(value)
+    for i in range(len(characters) - 1, -1, -1):
+        if ord(characters[i]) < 0x10FFFF:
+            return "{}{}".format("".join(characters[:i]), chr(ord(characters[i]) + 1))
+    return None
+
+
+def _autocomplete_like(column):
+    return "{} like :like escape char(92)".format(escape_sqlite(column))
+
+
+def _autocomplete_prefix_like(column):
+    return "{} like :prefix escape char(92)".format(escape_sqlite(column))
+
+
+def _autocomplete_order_by(pks, label_column, exact_pk, label_matches_first=True):
+    clauses = []
+    if exact_pk:
+        clauses.append(
+            "case when cast({} as text) = :q then 0 else 1 end".format(
+                escape_sqlite(pks[0])
+            )
+        )
+    if label_column:
+        label_like = _autocomplete_like(label_column)
+        if label_matches_first:
+            clauses.append("case when {} then 0 else 1 end".format(label_like))
+        clauses.append(
+            "case when {} then length(cast({} as text)) end".format(
+                label_like, escape_sqlite(label_column)
+            )
+        )
+    else:
+        clauses.append("length(cast({} as text))".format(escape_sqlite(pks[0])))
+    clauses.extend(escape_sqlite(pk) for pk in pks)
+    return ", ".join(clauses)
+
+
+def _autocomplete_pk_order_by(pks):
+    return ", ".join(escape_sqlite(pk) for pk in pks)
+
+
+def _autocomplete_initial_order_by(pks):
+    order_by = [f"{escape_sqlite(pks[0])} desc"]
+    order_by.extend(escape_sqlite(pk) for pk in pks[1:])
+    return ", ".join(order_by)
+
+
+def _autocomplete_response_rows(rows, pks, label_column):
+    response_rows = []
+    for row in rows:
+        item = {"pks": {pk: row[pk] for pk in pks}}
+        if label_column:
+            item["label"] = row[label_column]
+        response_rows.append(item)
+    return response_rows
+
+
+AUTOCOMPLETE_TIME_LIMIT_MS = 500
+
+
+class TableAutocompleteView(BaseView):
+    name = "table-autocomplete"
+
+    async def get(self, request):
+        resolved = await self.ds.resolve_table(request)
+        if resolved.is_view:
+            raise BadRequest("Autocomplete is only available for tables")
+
+        db = resolved.db
+        database_name = db.name
+        table_name = resolved.table
+        visible, _ = await self.ds.check_visibility(
+            request.actor,
+            action="view-table",
+            resource=TableResource(database=database_name, table=table_name),
+        )
+        if not visible:
+            raise Forbidden("You do not have permission to view this table")
+
+        pks = await db.primary_keys(table_name)
+        if not pks:
+            pks = ["rowid"]
+        label_column = await db.label_column_for_table(table_name)
+        select_columns = list(
+            dict.fromkeys(pks + ([label_column] if label_column else []))
+        )
+        select_sql = ", ".join(escape_sqlite(column) for column in select_columns)
+        q = request.args.get("q") or ""
+        initial_arg = request.args.get("_initial")
+        initial = (
+            not q
+            and initial_arg is not None
+            and initial_arg != ""
+            and value_as_boolean(initial_arg)
+        )
+        if not q and not initial:
+            return Response.json({"rows": []})
+        params = {
+            "q": q,
+            "like": "%{}%".format(_escape_like(q)),
+            "prefix": "{}%".format(_escape_like(q)),
+        }
+
+        like_columns = pks[:]
+        if label_column and label_column not in like_columns:
+            like_columns.append(label_column)
+        where_sql = " or ".join(_autocomplete_like(column) for column in like_columns)
+        exact_pk = len(pks) == 1
+        order_by = _autocomplete_order_by(pks, label_column, exact_pk)
+
+        if initial:
+            where_sql = "1 = 1"
+            order_by = _autocomplete_initial_order_by(pks)
+
+        sql = """
+            select {select_sql}
+            from {table}
+            where {where}
+            order by {order_by}
+            limit 10
+        """.format(
+            select_sql=select_sql,
+            table=escape_sqlite(table_name),
+            where=where_sql,
+            order_by=order_by,
+        )
+
+        try:
+            results = await db.execute(
+                sql, params, custom_time_limit=AUTOCOMPLETE_TIME_LIMIT_MS
+            )
+        except QueryInterrupted:
+            fallback_where = _autocomplete_prefix_like(pks[0])
+            prefix_end = _prefix_range_end(q)
+            if prefix_end:
+                params["prefix_end"] = prefix_end
+                first_pk = escape_sqlite(pks[0])
+                fallback_where = (
+                    "{first_pk} >= :q and {first_pk} < :prefix_end and {like}"
+                ).format(first_pk=first_pk, like=fallback_where)
+            fallback_sql = """
+                select {select_sql}
+                from {table}
+                where {where}
+                order by {order_by}
+                limit 10
+            """.format(
+                select_sql=select_sql,
+                table=escape_sqlite(table_name),
+                where=fallback_where,
+                order_by=_autocomplete_pk_order_by(pks),
+            )
+            try:
+                results = await db.execute(
+                    fallback_sql,
+                    params,
+                    custom_time_limit=AUTOCOMPLETE_TIME_LIMIT_MS,
+                )
+            except QueryInterrupted:
+                return Response.json({"rows": []})
+
+        return Response.json(
+            {"rows": _autocomplete_response_rows(results.rows, pks, label_column)}
+        )
 
 
 async def _columns_to_select(table_columns, pks, request):
@@ -1583,6 +2066,19 @@ async def table_view_data(
                 sort = "rowid"
         data["sort"] = sort
         data["sort_desc"] = sort_desc
+        table_insert_ui = await _table_insert_ui(
+            datasette, request, db, database_name, table_name, is_view, pks
+        )
+        data["table_insert_ui"] = table_insert_ui
+        data["table_page_data"] = await _table_page_data(
+            datasette,
+            request,
+            db,
+            database_name,
+            table_name,
+            is_view,
+            table_insert_ui,
+        )
 
     return data, rows[:page_size], columns, expanded_columns, sql, next_url
 

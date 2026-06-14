@@ -792,9 +792,9 @@ p.zero-results {
 
 dialog.mobile-column-actions-dialog {
     --ink: #0f0f0f;
-    --paper: #f5f3ef;
+    --paper: #eef6ff;
     --muted: #6b6b6b;
-    --rule: #e2dfd8;
+    --rule: #d8e6f5;
     --accent: #1a56db;
     --card: #ffffff;
     border: none;
@@ -1020,9 +1020,9 @@ dialog.mobile-column-actions-dialog::backdrop {
 
 dialog.set-column-type-dialog {
     --ink: #0f0f0f;
-    --paper: #f5f3ef;
+    --paper: #eef6ff;
     --muted: #6b6b6b;
-    --rule: #e2dfd8;
+    --rule: #d8e6f5;
     --accent: #1a56db;
     --card: #ffffff;
     border: none;
@@ -1109,7 +1109,7 @@ dialog.set-column-type-dialog::backdrop {
     padding: 14px 16px;
     border: 1px solid var(--rule);
     border-radius: 8px;
-    background: #fcfbf9;
+    background: #fbfdff;
     cursor: pointer;
 }
 
@@ -1192,6 +1192,607 @@ dialog.set-column-type-dialog::backdrop {
     cursor: wait;
 }
 
+.row-mutation-status {
+    margin: 0 0 0.75rem;
+    padding: 8px 10px;
+    border-left: 4px solid #54AC8E;
+    background: rgba(103,201,141,0.12);
+    color: #222;
+}
+
+.row-mutation-status[hidden] {
+    display: none;
+}
+
+.row-mutation-status-error {
+    border-left-color: #D0021B;
+    background: rgba(208,2,27,0.12);
+}
+
+.table-row-toolbar {
+    margin: 0 0 0.75rem;
+}
+
+button.table-insert-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+button.table-insert-row svg {
+    display: block;
+    flex-shrink: 0;
+}
+
+dialog.row-delete-dialog {
+    --ink: #0f0f0f;
+    --paper: #eef6ff;
+    --muted: #6b6b6b;
+    --rule: #d8e6f5;
+    --accent: #1a56db;
+    --card: #ffffff;
+    border: none;
+    border-radius: var(--modal-border-radius, 0.75rem);
+    padding: 0;
+    margin: auto;
+    width: min(440px, calc(100vw - 32px));
+    max-width: 95vw;
+    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
+    animation: datasette-modal-slide-in var(--modal-animation-duration, 0.2s) ease-out;
+    overflow: hidden;
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--card);
+}
+
+dialog.row-delete-dialog[open] {
+    display: flex;
+    flex-direction: column;
+}
+
+dialog.row-delete-dialog::backdrop {
+    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
+    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
+    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
+    animation: datasette-modal-fade-in var(--modal-animation-duration, 0.2s) ease-out;
+}
+
+.row-delete-dialog .modal-header {
+    padding: 20px 24px 12px;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+    flex-shrink: 0;
+    min-width: 0;
+}
+
+.row-delete-dialog .modal-title {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    max-width: 100%;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.row-delete-message,
+.row-delete-error {
+    margin: 0;
+    padding: 16px 24px 0;
+}
+
+.row-delete-message {
+    color: var(--ink);
+    font-size: 0.95rem;
+}
+
+.row-delete-id {
+    display: inline;
+    padding: 2px 5px;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: var(--paper);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.92em;
+    overflow-wrap: anywhere;
+}
+
+.row-delete-error {
+    color: #b91c1c;
+    font-size: 0.9rem;
+}
+
+.row-delete-dialog .modal-footer {
+    padding: 18px 20px 14px;
+    border-top: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-shrink: 0;
+    background: var(--paper);
+    margin-top: 18px;
+}
+
+.row-delete-dialog .btn {
+    border: none;
+    border-radius: 5px;
+    padding: 9px 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    touch-action: manipulation;
+    font-family: inherit;
+    transition: background 0.12s;
+}
+
+.row-delete-dialog .btn-ghost {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--rule);
+}
+
+.row-delete-dialog .btn-ghost:hover {
+    background: var(--rule);
+    color: var(--ink);
+}
+
+.row-delete-dialog .btn-primary {
+    background: var(--accent);
+    color: #fff;
+}
+
+.row-delete-dialog .btn-primary:hover {
+    background: #1949b8;
+}
+
+.row-delete-dialog .btn:disabled {
+    opacity: 0.65;
+    cursor: wait;
+}
+
+dialog.row-edit-dialog {
+    --ink: #0f0f0f;
+    --paper: #eef6ff;
+    --muted: #6b6b6b;
+    --rule: #d8e6f5;
+    --accent: #1a56db;
+    --card: #ffffff;
+    border: none;
+    border-radius: var(--modal-border-radius, 0.75rem);
+    padding: 0;
+    margin: auto;
+    width: min(720px, calc(100vw - 32px));
+    max-width: 95vw;
+    max-height: min(780px, calc(100vh - 32px));
+    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
+    animation: datasette-modal-slide-in var(--modal-animation-duration, 0.2s) ease-out;
+    overflow: hidden;
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--card);
+}
+
+dialog.row-edit-dialog[open] {
+    display: flex;
+    flex-direction: column;
+}
+
+dialog.row-edit-dialog::backdrop {
+    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
+    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
+    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
+    animation: datasette-modal-fade-in var(--modal-animation-duration, 0.2s) ease-out;
+}
+
+.row-edit-dialog .modal-header {
+    padding: 20px 24px 12px;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    min-width: 0;
+}
+
+.row-edit-dialog .modal-title {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    max-width: 100%;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.row-edit-dialog .modal-title .row-dialog-action,
+.row-delete-dialog .modal-title .row-dialog-action {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.row-edit-dialog .modal-title code,
+.row-delete-dialog .modal-title code {
+    display: inline;
+    flex: 0 0 auto;
+    padding: 2px 5px;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: var(--paper);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.92em;
+    overflow-wrap: anywhere;
+}
+
+.row-edit-dialog .modal-title .row-dialog-label,
+.row-delete-dialog .modal-title .row-dialog-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.row-edit-form {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    flex-direction: column;
+}
+
+.row-edit-summary,
+.row-edit-loading,
+.row-edit-error {
+    margin: 0;
+    padding: 12px 24px 0;
+}
+
+.row-edit-summary,
+.row-edit-loading {
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.row-edit-error {
+    border-left: 4px solid #b91c1c;
+    border-radius: 4px;
+    background: #fff1f1;
+    color: #7f1d1d;
+    font-size: 0.9rem;
+    margin: 12px 24px 0;
+    padding: 10px 12px;
+}
+
+.row-edit-error:focus {
+    outline: 3px solid rgba(185, 28, 28, 0.18);
+    outline-offset: 2px;
+}
+
+.row-edit-fields {
+    display: grid;
+    gap: 14px;
+    padding: 16px 24px 24px;
+    overflow-y: auto;
+}
+
+.row-edit-field {
+    display: grid;
+    grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+}
+
+.row-edit-label {
+    padding-top: 8px;
+    color: var(--ink);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    overflow-wrap: anywhere;
+}
+
+.row-edit-control-wrap {
+    display: grid;
+    gap: 5px;
+}
+
+.row-edit-input {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    padding: 8px 10px;
+    color: var(--ink);
+    background: #fff;
+    font: inherit;
+}
+
+textarea.row-edit-input {
+    resize: vertical;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+
+.row-edit-input:focus {
+    border-color: var(--accent);
+    outline: 3px solid rgba(26, 86, 219, 0.12);
+}
+
+.row-edit-input[aria-invalid="true"] {
+    border-color: #b42318;
+    background: #fff8f7;
+}
+
+.row-edit-input[aria-invalid="true"]:focus {
+    border-color: #b42318;
+    outline-color: rgba(180, 35, 24, 0.16);
+}
+
+.row-edit-input[readonly] {
+    color: var(--muted);
+    background: var(--paper);
+}
+
+.row-edit-default {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 7.25rem;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    padding: 7px 8px 7px 10px;
+    background: var(--paper);
+    color: var(--ink);
+}
+
+.row-edit-default[hidden],
+.row-edit-custom-value[hidden] {
+    display: none;
+}
+
+.row-edit-default-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.row-edit-default-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+}
+
+.row-edit-custom-value {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 7.25rem;
+    gap: 8px;
+    align-items: center;
+    min-height: 45px;
+    padding-right: 8px;
+}
+
+.row-edit-default-button {
+    appearance: none;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: #fff;
+    color: var(--accent);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.78rem;
+    line-height: 1.2;
+    padding: 6px 8px;
+    white-space: nowrap;
+    width: 100%;
+    align-self: center;
+}
+
+.row-edit-default-button:hover,
+.row-edit-default-button:focus {
+    background: #f8fafc;
+}
+
+.row-edit-default-button:focus {
+    outline: 3px solid rgba(26, 86, 219, 0.12);
+    outline-offset: 1px;
+}
+
+.row-edit-field-meta {
+    color: var(--muted);
+    font-size: 0.78rem;
+}
+
+.row-edit-field-validation-error {
+    color: #b42318;
+    display: block;
+    margin-top: 2px;
+}
+
+.row-edit-field-validation-error[hidden] {
+    display: none;
+}
+
+.row-edit-field-meta-autocomplete {
+    line-height: 1.2;
+    min-height: 1.2em;
+}
+
+.row-edit-fk-pk {
+    color: var(--ink);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.row-edit-fk-link {
+    overflow-wrap: anywhere;
+}
+
+.row-edit-empty {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+datasette-autocomplete {
+    display: block;
+    position: relative;
+    max-width: 38rem;
+}
+
+datasette-autocomplete input[type="text"],
+.debug-autocomplete-form input[type="text"] {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 38rem;
+}
+
+.datasette-autocomplete-list {
+    background: #fff;
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.14);
+    box-sizing: border-box;
+    left: 0;
+    max-height: 16rem;
+    overflow-y: auto;
+    position: fixed;
+    right: auto;
+    top: auto;
+    z-index: 10000;
+}
+
+.datasette-autocomplete-list[hidden] {
+    display: none;
+}
+
+.datasette-autocomplete-option {
+    cursor: pointer;
+    padding: 7px 9px;
+}
+
+.datasette-autocomplete-option:hover,
+.datasette-autocomplete-option[aria-selected="true"] {
+    background: var(--paper);
+}
+
+.datasette-autocomplete-option[aria-selected="true"] {
+    background: var(--paper);
+    font-weight: 600;
+}
+
+.datasette-autocomplete-status {
+    border: 0;
+    clip: rect(0 0 0 0);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+}
+
+.debug-autocomplete-demo {
+    margin: 1rem 0;
+}
+
+.debug-autocomplete-selected {
+    max-width: 46rem;
+}
+
+.row-edit-dialog .modal-footer {
+    padding: 14px 20px;
+    border-top: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-shrink: 0;
+    background: var(--paper);
+}
+
+.row-edit-dialog .btn {
+    border: none;
+    border-radius: 5px;
+    padding: 9px 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    touch-action: manipulation;
+    font-family: inherit;
+    transition: background 0.12s;
+}
+
+.row-edit-dialog .btn-ghost {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--rule);
+}
+
+.row-edit-dialog .btn-ghost:hover {
+    background: var(--rule);
+    color: var(--ink);
+}
+
+.row-edit-dialog .btn-primary {
+    background: var(--accent);
+    color: #fff;
+}
+
+.row-edit-dialog .btn-primary:hover {
+    background: #1949b8;
+}
+
+.row-edit-dialog .btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.row-link-with-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.row-inline-actions {
+    display: inline-flex;
+    gap: 0.2rem;
+    align-items: center;
+}
+
+.row-inline-action {
+    appearance: none;
+    border: 1px solid rgba(74, 85, 104, 0.24);
+    background: transparent;
+    color: #4a5568;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-grid;
+    place-items: center;
+    min-height: 24px;
+    min-width: 24px;
+    padding: 2px;
+    position: relative;
+}
+
+.row-inline-action:hover,
+.row-inline-action:focus {
+    background: rgba(74, 85, 104, 0.07);
+}
+
+.row-inline-action:focus {
+    outline: 3px solid #b3d4ff;
+    outline-offset: 1px;
+}
+
+.row-inline-action-icon {
+    display: block;
+    height: 13px;
+    width: 13px;
+}
+
 @media (max-width: 640px) {
     dialog.mobile-column-actions-dialog {
         width: 95vw;
@@ -1238,6 +1839,68 @@ dialog.set-column-type-dialog::backdrop {
     .set-column-type-options {
         padding-left: 18px;
         padding-right: 18px;
+    }
+
+    dialog.row-delete-dialog {
+        width: 95vw;
+        max-height: 85vh;
+        border-radius: 0.5rem;
+    }
+
+    .row-delete-dialog .modal-header,
+    .row-delete-message,
+    .row-delete-error {
+        padding-left: 18px;
+        padding-right: 18px;
+    }
+
+    .row-delete-dialog .modal-footer {
+        padding-left: 18px;
+        padding-right: 18px;
+    }
+
+    dialog.row-edit-dialog {
+        width: 95vw;
+        max-height: 85vh;
+        border-radius: 0.5rem;
+    }
+
+    .row-edit-dialog .modal-header,
+    .row-edit-summary,
+    .row-edit-loading,
+    .row-edit-fields {
+        padding-left: 18px;
+        padding-right: 18px;
+    }
+
+    .row-edit-error {
+        margin-left: 18px;
+        margin-right: 18px;
+    }
+
+    .row-edit-field {
+        grid-template-columns: 1fr;
+        gap: 5px;
+    }
+
+    .row-edit-label {
+        padding-top: 0;
+    }
+
+    .row-edit-dialog .modal-footer {
+        padding-left: 18px;
+        padding-right: 18px;
+    }
+
+    .row-inline-action {
+        min-height: 30px;
+        min-width: 30px;
+        padding: 4px;
+    }
+
+    .row-inline-action-icon {
+        height: 14px;
+        width: 14px;
     }
 }
 
@@ -1293,6 +1956,10 @@ dialog.set-column-type-dialog::backdrop {
         font-size: 0.8em;
     }
 
+    .row-inline-actions {
+        margin-bottom: 0.35rem;
+    }
+
     .select-wrapper {
         width: 100px;
     }
@@ -1303,6 +1970,7 @@ dialog.set-column-type-dialog::backdrop {
         width: 140px;
     }
     button.choose-columns-mobile,
+    button.table-insert-row,
     button.column-actions-mobile {
         display: inline-flex;
         align-items: center;
@@ -1338,6 +2006,15 @@ dialog.set-column-type-dialog::backdrop {
 
     button.choose-columns-mobile {
         margin-right: 0.5rem;
+    }
+
+    .table-row-toolbar {
+        margin-bottom: 0.75rem;
+    }
+
+    button.table-insert-row {
+        width: 100%;
+        margin-bottom: 0;
     }
 }
 
@@ -1384,18 +2061,32 @@ svg.dropdown-menu-icon {
 .dropdown-menu a:link,
 .dropdown-menu a:visited,
 .dropdown-menu a:hover,
-.dropdown-menu a:focus
-.dropdown-menu a:active {
+.dropdown-menu a:focus,
+.dropdown-menu a:active,
+.dropdown-menu button.action-menu-button {
     text-decoration: none;
     display: block;
     padding: 4px 8px 2px 8px;
     color: #222;
     white-space: nowrap;
 }
-.dropdown-menu a:hover {
+.dropdown-menu button.action-menu-button {
+    appearance: none;
+    background: none;
+    border: none;
+    box-sizing: border-box;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+    width: 100%;
+}
+.dropdown-menu a:hover,
+.dropdown-menu button.action-menu-button:hover,
+.dropdown-menu button.action-menu-button:focus {
     background-color: #eee;
 }
 .dropdown-menu .dropdown-description {
+    display: block;
     margin: 0;
     color: #666;
     font-size: 0.8em;

@@ -357,15 +357,30 @@ def menu_links(datasette, actor, request):
 
 
 @hookimpl
-def table_actions(datasette, database, table, actor):
+def table_actions(datasette, database, table, actor, request):
     if actor:
-        return [
+        actions = [
             {
                 "href": datasette.urls.instance(),
                 "label": f"Database: {database}",
             },
             {"href": datasette.urls.instance(), "label": f"Table: {table}"},
         ]
+        if request.args.get("_button"):
+            actions.append(
+                {
+                    "type": "button",
+                    "label": "Plugin button",
+                    "description": "Runs JavaScript from a plugin",
+                    "attrs": {
+                        "aria-label": "Plugin button for {}".format(table),
+                        "data-plugin-action": "plugin-button",
+                        "data-database": database,
+                        "data-table": table,
+                    },
+                }
+            )
+        return actions
 
 
 @hookimpl

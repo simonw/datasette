@@ -6,19 +6,17 @@ class SQLiteType(Enum):
     INTEGER = "INTEGER"
     REAL = "REAL"
     BLOB = "BLOB"
-    NULL = "NULL"
+    NUMERIC = "NUMERIC"
 
     @classmethod
-    def from_declared_type(cls, declared_type: str | None) -> "SQLiteType | None":
+    def from_declared_type(cls, declared_type: str | None) -> "SQLiteType":
         if declared_type is None:
-            return cls.NULL
+            return cls.BLOB
 
         normalized = declared_type.strip().upper()
         if not normalized:
-            return cls.NULL
+            return cls.BLOB
 
-        if normalized == cls.NULL.value:
-            return cls.NULL
         if "INT" in normalized:
             return cls.INTEGER
         if any(token in normalized for token in ("CHAR", "CLOB", "TEXT")):
@@ -31,7 +29,7 @@ class SQLiteType(Enum):
         ):
             return cls.REAL
 
-        return None
+        return cls.NUMERIC
 
 
 class ColumnType:

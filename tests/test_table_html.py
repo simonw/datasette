@@ -1,10 +1,26 @@
 from datasette.app import Datasette
+from datasette.database import Database
 from bs4 import BeautifulSoup as Soup
 from .fixtures import make_app_client
 import pathlib
 import pytest
 import urllib.parse
 from .utils import inner_html
+
+
+def table_data_from_soup(soup):
+    import json
+    import re
+
+    table_script = [
+        s for s in soup.find_all("script") if "_datasetteTableData" in (s.string or "")
+    ][0]
+    match = re.search(
+        r"window\._datasetteTableData\s*=\s*({.*?});",
+        table_script.string,
+        re.DOTALL,
+    )
+    return json.loads(match.group(1))
 
 
 @pytest.mark.asyncio
@@ -663,6 +679,13 @@ async def test_table_html_compound_primary_key(ds_client):
     assert [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
     ] == expected
+    rows = table.select("tbody tr")
+    assert rows[0]["data-row"] == "a,b"
+    assert "data-row-pk-path" not in rows[0].attrs
+    assert "data-row-label" not in rows[0].attrs
+    assert rows[1]["data-row"] == "a~2Fb,~2Ec-d"
+    assert "data-row-pk-path" not in rows[1].attrs
+    assert "data-row-label" not in rows[1].attrs
 
 
 @pytest.mark.asyncio
@@ -826,6 +849,524 @@ async def test_mobile_column_actions_present(ds_client, path):
     # so the thead must render even when the table has no rows.
     ths = soup.select("table.rows-and-columns thead th[data-column]")
     assert len(ths) >= 1
+
+
+@pytest.mark.asyncio
+async def test_row_delete_action_data_attributes():
+    ds = Datasette(
+        [],
+        config={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "items": {
+                            "permissions": {
+                                "update-row": {"id": "root"},
+                                "delete-row": {"id": "root"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_row_delete_actions"), name="data"
+        )
+        await db.execute_write_script("""
+            create table items (id integer primary key, name text, score integer);
+            insert into items (id, name, score) values (1, 'One', 5);
+            """)
+        response = await ds.client.get("/data/items", actor={"id": "root"})
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        assert table_data_from_soup(soup) == {
+            "database": "data",
+            "table": "items",
+            "tableUrl": "/data/items",
+        }
+        assert soup.select_one('button[data-table-action="insert-row"]') is None
+
+        row = soup.select_one("table.rows-and-columns tbody tr")
+        assert row["data-row"] == "1"
+        assert row["data-row-label"] == "One"
+        assert {key for key in row.attrs if key.startswith("data-row")} == {
+            "data-row",
+            "data-row-label",
+        }
+
+        edit_button = row.select_one(
+            'button.row-inline-action-edit[data-row-action="edit"]'
+        )
+        assert edit_button is not None
+        assert edit_button["aria-label"] == "Edit row 1 One"
+        assert edit_button["title"] == "Edit row"
+        assert edit_button.find("svg") is not None
+
+        button = row.select_one(
+            'button.row-inline-action-delete[data-row-action="delete"]'
+        )
+        assert button is not None
+        assert button["aria-label"] == "Delete row 1 One"
+        assert button["title"] == "Delete row"
+        assert button.find("svg") is not None
+
+        response = await ds.client.get("/data/items?_col=score", actor={"id": "root"})
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        row = soup.select_one("table.rows-and-columns tbody tr")
+        assert row["data-row"] == "1"
+        assert "data-row-label" not in row.attrs
+
+        edit_button = row.select_one(
+            'button.row-inline-action-edit[data-row-action="edit"]'
+        )
+        assert edit_button is not None
+        assert edit_button["aria-label"] == "Edit row 1"
+
+        button = row.select_one(
+            'button.row-inline-action-delete[data-row-action="delete"]'
+        )
+        assert button is not None
+        assert button["aria-label"] == "Delete row 1"
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_table_insert_action_button_and_data():
+    ds = Datasette(
+        [],
+        config={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "items": {
+                            "permissions": {
+                                "insert-row": {"id": "root"},
+                            },
+                            "column_types": {"body": "textarea"},
+                        },
+                    },
+                },
+            },
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_table_insert_action"), name="data"
+        )
+        await db.execute_write_script("""
+            create table items (
+                id integer primary key,
+                name text not null,
+                score integer default 5,
+                price numeric,
+                created text default (datetime('now')),
+                body text,
+                typeless
+            );
+            """)
+        response = await ds.client.get("/data/items", actor={"id": "root"})
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+
+        button = soup.select_one(
+            'button.table-insert-row[data-table-action="insert-row"]'
+        )
+        assert button is not None
+        assert button.text.strip() == "Insert row"
+        assert button.find("svg") is not None
+        assert button.find_parent("div", class_="table-row-toolbar") is not None
+
+        insert_data = table_data_from_soup(soup)["insertRow"]
+        assert insert_data["path"] == "/data/items/-/insert"
+        assert insert_data["tableName"] == "items"
+        assert insert_data["primaryKeys"] == ["id"]
+        assert [column["name"] for column in insert_data["columns"]] == [
+            "name",
+            "score",
+            "price",
+            "created",
+            "body",
+            "typeless",
+        ]
+        name, score, price, created, body, typeless = insert_data["columns"]
+        assert name["notnull"] == 1
+        assert name["sqlite_type"] == "TEXT"
+        assert name["value_kind"] == "string"
+        assert not name["has_default"]
+        assert score["default"] == "5"
+        assert score["has_default"]
+        assert score["sqlite_type"] == "INTEGER"
+        assert score["value_kind"] == "number"
+        assert price["sqlite_type"] == "NUMERIC"
+        assert price["value_kind"] == "string"
+        assert created["default"] == "datetime('now')"
+        assert created["has_default"]
+        assert created["sqlite_type"] == "TEXT"
+        assert body["sqlite_type"] == "TEXT"
+        assert body["value_kind"] == "string"
+        assert body["column_type"] == {"type": "textarea", "config": None}
+        assert typeless["sqlite_type"] == "BLOB"
+        assert typeless["value_kind"] == "string"
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_table_insert_action_includes_compound_primary_keys():
+    ds = Datasette(
+        [],
+        config={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "memberships": {
+                            "permissions": {
+                                "insert-row": {"id": "root"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_table_insert_compound_pk"), name="data"
+        )
+        await db.execute_write_script("""
+            create table memberships (
+                account text,
+                username text,
+                role text,
+                primary key (account, username)
+            );
+            """)
+        response = await ds.client.get("/data/memberships", actor={"id": "root"})
+        assert response.status_code == 200
+        insert_data = table_data_from_soup(Soup(response.text, "html.parser"))[
+            "insertRow"
+        ]
+        assert insert_data["tableName"] == "memberships"
+        assert insert_data["primaryKeys"] == ["account", "username"]
+        assert [column["name"] for column in insert_data["columns"]] == [
+            "account",
+            "username",
+            "role",
+        ]
+        assert [column["is_pk"] for column in insert_data["columns"]] == [
+            True,
+            True,
+            False,
+        ]
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_table_data_includes_foreign_key_autocomplete_urls():
+    ds = Datasette([])
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_table_foreign_key_autocomplete"), name="data"
+        )
+        await db.execute_write_script("""
+            create table authors (
+                id integer primary key,
+                name text
+            );
+            create table tags (
+                slug text unique,
+                name text
+            );
+            create table articles (
+                id integer primary key,
+                author_id integer references authors(id),
+                implicit_author_id integer references authors,
+                tag_slug text references tags(slug),
+                title text
+            );
+            insert into authors (id, name) values (1, 'Ada Lovelace');
+            insert into tags (slug, name) values ('science', 'Science');
+            insert into articles (
+                id,
+                author_id,
+                implicit_author_id,
+                tag_slug,
+                title
+            ) values (
+                1,
+                1,
+                1,
+                'science',
+                'Notes'
+            );
+            """)
+        response = await ds.client.get("/data/articles")
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        table_data = table_data_from_soup(soup)
+        assert table_data["foreignKeys"] == {
+            "author_id": "/data/authors/-/autocomplete",
+            "implicit_author_id": "/data/authors/-/autocomplete",
+        }
+        assert any(
+            "autocomplete.js" in (script.get("src") or "")
+            for script in soup.find_all("script")
+        )
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_table_fragment_endpoint(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key/-/fragment?_row=1")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    soup = Soup(response.text, "html.parser")
+    assert soup.find("html") is None
+    rows = soup.select("[data-row]")
+    assert len(rows) == 1
+    assert rows[0]["data-row"] == "1"
+    assert rows[0]["data-row-label"] == "hello"
+    assert {key for key in rows[0].attrs if key.startswith("data-row")} == {
+        "data-row",
+        "data-row-label",
+    }
+
+
+@pytest.mark.asyncio
+async def test_table_fragment_row_parameter_replaces_pk_filters(ds_client):
+    response = await ds_client.get(
+        "/fixtures/simple_primary_key/-/fragment?id=2&_row=1"
+    )
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    rows = soup.select("[data-row]")
+    assert len(rows) == 1
+    assert rows[0]["data-row"] == "1"
+    assert rows[0]["data-row-label"] == "hello"
+
+
+@pytest.mark.asyncio
+async def test_row_page_edit_delete_action_menu_buttons():
+    ds = Datasette(
+        [],
+        config={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "items": {
+                            "permissions": {
+                                "update-row": {"id": "root"},
+                                "delete-row": {"id": "root"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_row_page_edit_delete_actions"), name="data"
+        )
+        await db.execute_write_script("""
+            create table items (id integer primary key, name text, score integer);
+            insert into items (id, name, score) values (1, 'One', 5);
+            """)
+        response = await ds.client.get("/data/items/1", actor={"id": "root"})
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        assert table_data_from_soup(soup) == {
+            "database": "data",
+            "table": "items",
+            "tableUrl": "/data/items",
+        }
+        script_srcs = [script.get("src") or "" for script in soup.find_all("script")]
+        assert any("edit-tools.js" in src for src in script_srcs)
+        assert not any("table.js" in src for src in script_srcs)
+
+        row = soup.select_one("table.rows-and-columns tbody tr")
+        assert row["data-row"] == "1"
+        assert row["data-row-label"] == "One"
+
+        edit_button = soup.select_one(
+            'details.actions-menu-links button.action-menu-button[data-row-action="edit"]'
+        )
+        assert edit_button is not None
+        assert edit_button["aria-label"] == "Edit row 1 One"
+        assert edit_button["data-row"] == "1"
+        assert edit_button["data-row-label"] == "One"
+        assert edit_button["role"] == "menuitem"
+        assert edit_button.find("span", class_="dropdown-description").text.strip() == (
+            "Open a dialog to edit this row."
+        )
+        edit_button.find("span").extract()
+        assert edit_button.text.strip() == "Edit row"
+
+        delete_button = soup.select_one(
+            'details.actions-menu-links button.action-menu-button[data-row-action="delete"]'
+        )
+        assert delete_button is not None
+        assert delete_button["aria-label"] == "Delete row 1 One"
+        assert delete_button["data-row"] == "1"
+        assert delete_button["data-row-label"] == "One"
+        assert delete_button["role"] == "menuitem"
+        assert delete_button.find(
+            "span", class_="dropdown-description"
+        ).text.strip() == ("Open a confirmation dialog to delete this row.")
+        delete_button.find("span").extract()
+        assert delete_button.text.strip() == "Delete row"
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_row_delete_redirect_to_table_sets_message():
+    ds = Datasette(
+        [],
+        config={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "items": {
+                            "permissions": {
+                                "delete-row": {"id": "root"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_row_delete_redirect"), name="data"
+        )
+        await db.execute_write_script("""
+            create table items (id integer primary key, name text);
+            insert into items (id, name) values (1, 'One');
+            """)
+        response = await ds.client.post(
+            "/data/items/1/-/delete?_redirect_to_table=1", actor={"id": "root"}
+        )
+        assert response.status_code == 200
+        assert response.json() == {"ok": True, "redirect": "/data/items"}
+        assert ds.unsign(response.cookies["ds_messages"], "messages") == [
+            ["Deleted row 1 (One)", ds.INFO]
+        ]
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_row_update_sets_message():
+    ds = Datasette(
+        [],
+        config={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "items": {
+                            "permissions": {
+                                "update-row": {"id": "root"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_row_update_message"), name="data"
+        )
+        await db.execute_write_script("""
+            create table items (id integer primary key, name text);
+            insert into items (id, name) values (1, 'One');
+            """)
+        long_name = "Two " + ("long label " * 12)
+        truncated_name = long_name[:79] + "\u2026"
+        response = await ds.client.post(
+            "/data/items/1/-/update?_message=1",
+            actor={"id": "root"},
+            json={"update": {"name": long_name}, "return": True},
+        )
+        assert response.status_code == 200
+        assert response.json()["row"]["name"] == long_name
+        assert ds.unsign(response.cookies["ds_messages"], "messages") == [
+            ["Updated row 1 ({})".format(truncated_name), ds.INFO]
+        ]
+    finally:
+        ds.close()
+
+
+def test_table_data_uses_base_url(app_client_base_url_prefix):
+    response = app_client_base_url_prefix.get("/prefix/fixtures/simple_primary_key")
+    assert response.status_code == 200
+    import json
+    import re
+
+    soup = Soup(response.text, "html.parser")
+    table_script = [
+        s for s in soup.find_all("script") if "_datasetteTableData" in (s.string or "")
+    ][0]
+    match = re.search(
+        r"window\._datasetteTableData\s*=\s*({.*?});",
+        table_script.string,
+        re.DOTALL,
+    )
+    assert json.loads(match.group(1)) == {
+        "database": "fixtures",
+        "table": "simple_primary_key",
+        "tableUrl": "/prefix/fixtures/simple_primary_key",
+    }
+
+
+def test_table_fragment_custom_table_include():
+    with make_app_client(
+        template_dir=str(pathlib.Path(__file__).parent / "test_templates")
+    ) as client:
+        response = client.get("/fixtures/complex_foreign_keys/-/fragment?f1=1&f2=2")
+        assert response.status == 200
+        assert (
+            '<div class="custom-table-row">'
+            '1 - 2 - <a href="/fixtures/simple_primary_key/1">hello</a> <em>1</em>'
+            "</div>"
+        ) == str(Soup(response.text, "html.parser").select_one("div.custom-table-row"))
+
+
+@pytest.mark.asyncio
+async def test_table_fragment_uses_render_cell_hook():
+    from datasette import hookimpl
+    from markupsafe import Markup
+
+    class TestRenderCellPlugin:
+        __name__ = "TestRenderCellPlugin"
+
+        @hookimpl
+        def render_cell(self, value, column, table, database):
+            if database == "data" and table == "items" and column == "name":
+                return Markup("<strong>{}</strong>".format(value))
+            return None
+
+    ds = Datasette(memory=True)
+    await ds.invoke_startup()
+    db = ds.add_memory_database("data")
+    await db.execute_write("create table items (id integer primary key, name text)")
+    await db.execute_write("insert into items values (1, 'Alice')")
+    ds.pm.register(TestRenderCellPlugin(), name="TestRenderCellPlugin")
+    try:
+        response = await ds.client.get("/data/items/-/fragment?id=1")
+        assert response.status_code == 200
+        assert "<strong>Alice</strong>" in response.text
+    finally:
+        ds.pm.unregister(name="TestRenderCellPlugin")
+        ds.close()
 
 
 @pytest.mark.asyncio

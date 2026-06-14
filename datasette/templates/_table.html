@@ -22,7 +22,7 @@
         </thead>
         <tbody>
         {% for row in display_rows %}
-            <tr>
+            <tr{% if row.pk_path is not none %} data-row="{{ row.row_path }}"{% if row.row_label %} data-row-label="{{ row.row_label }}"{% endif %}{% endif %}>
                 {% for cell in row %}
                     <td class="col-{{ cell.column|to_css_class }} type-{{ cell.value_type }}">{{ cell.value }}</td>
                 {% endfor %}

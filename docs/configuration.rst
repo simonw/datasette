@@ -1102,9 +1102,9 @@ These configure :ref:`full-text search <full_text_search>` for a table or view. 
 ``column_types``
 ^^^^^^^^^^^^^^^^
 
-You can assign semantic column types to columns, which affect how values are rendered, validated, and transformed. Built-in column types include ``url``, ``email``, and ``json``. Plugins can register additional column types using the :ref:`register_column_types <plugin_register_column_types>` plugin hook.
+You can assign semantic column types to columns, which affect how values are rendered, validated, transformed, and edited. Built-in column types include ``url``, ``email``, ``json``, and ``textarea``. Plugins can register additional column types using the :ref:`register_column_types <plugin_register_column_types>` plugin hook.
 
-Column types can optionally declare which SQLite column types they apply to using ``sqlite_types``. Datasette will reject incompatible assignments. The built-in ``url``, ``email``, and ``json`` column types are all restricted to ``TEXT`` columns.
+Column types can optionally declare which SQLite column types they apply to using ``sqlite_types``. Datasette will reject incompatible assignments. The built-in ``url``, ``email``, ``json``, and ``textarea`` column types are all restricted to ``TEXT`` columns.
 
 The simplest form maps column names to type name strings:
 
@@ -1119,6 +1119,7 @@ The simplest form maps column names to type name strings:
                   website: url
                   contact: email
                   extra_data: json
+                  notes: textarea
       """).strip()
     )
 .. ]]]
@@ -1135,6 +1136,7 @@ The simplest form maps column names to type name strings:
                   website: url
                   contact: email
                   extra_data: json
+                  notes: textarea
 
 .. tab:: datasette.json
 
@@ -1148,7 +1150,8 @@ The simplest form maps column names to type name strings:
                   "column_types": {
                     "website": "url",
                     "contact": "email",
-                    "extra_data": "json"
+                    "extra_data": "json",
+                    "notes": "textarea"
                   }
                 }
               }

@@ -12,7 +12,6 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
 
 var SET_COLUMN_TYPE_DIALOG_ID = "set-column-type-dialog";
 var setColumnTypeDialogState = null;
-
 function getParams() {
   return new URLSearchParams(location.search);
 }

@@ -279,7 +279,11 @@ async def _foreign_key_autocomplete_urls(
 async def _table_page_data(
     datasette, request, db, database_name, table_name, is_view, table_insert_ui
 ):
-    data = {"tableUrl": datasette.urls.table(database_name, table_name)}
+    data = {
+        "database": database_name,
+        "table": table_name,
+        "tableUrl": datasette.urls.table(database_name, table_name),
+    }
     if table_insert_ui:
         data["insertRow"] = table_insert_ui
     if not is_view:

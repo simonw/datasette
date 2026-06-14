@@ -492,12 +492,16 @@ function tableBaseUrl() {
   return url;
 }
 
+function tablePageData() {
+  return window._datasetteTableData || {};
+}
+
 function tableInsertData() {
-  return window._datasetteTableData && window._datasetteTableData.insertRow;
+  return tablePageData().insertRow;
 }
 
 function tableForeignKeys() {
-  return (window._datasetteTableData && window._datasetteTableData.foreignKeys) || {};
+  return tablePageData().foreignKeys || {};
 }
 
 function foreignKeyAutocompleteUrl(column) {
@@ -982,6 +986,118 @@ function rowEditControlElement(control, autocompleteUrl) {
   return autocomplete;
 }
 
+function columnFormControlContext(column, value, isPk, columnType, options) {
+  var pageData = tablePageData();
+  var hasDefault =
+    options.hasDefault ||
+    (options.defaultValue !== null && typeof options.defaultValue !== "undefined");
+  return {
+    mode: options.mode || "edit",
+    database: pageData.database || null,
+    table: pageData.table || (tableInsertData() && tableInsertData().tableName) || null,
+    tableUrl: pageData.tableUrl || null,
+    column: column,
+    value: value,
+    originalValue: value,
+    columnType: columnType || null,
+    sqliteType: options.sqliteType || null,
+    notNull: !!options.notnull,
+    isPrimaryKey: !!isPk,
+    readOnly: !!(isPk && options.primaryKeyReadonly !== false),
+    hasDefault: !!hasDefault,
+    defaultValue: options.defaultValue,
+    form: options.form || null,
+    dialog: options.dialog || null,
+  };
+}
+
+function makeColumnField(manager, context) {
+  if (!manager || !manager.makeColumnField) {
+    return null;
+  }
+  return manager.makeColumnField(context);
+}
+
+function renderColumnField(pluginControl, fieldApi) {
+  if (!pluginControl || !pluginControl.render) {
+    return null;
+  }
+  var pluginWrap = document.createElement("div");
+  pluginWrap.className = "row-edit-plugin-control";
+  pluginWrap.dataset.pluginName = pluginControl.pluginName || "";
+  pluginWrap.dataset.column = fieldApi.context.column;
+  if (fieldApi.context.columnType && fieldApi.context.columnType.type) {
+    pluginWrap.dataset.columnType = fieldApi.context.columnType.type;
+  }
+  try {
+    var rendered = pluginControl.render(pluginWrap, fieldApi);
+    if (rendered && rendered.nodeType) {
+      pluginWrap.appendChild(rendered);
+    }
+  } catch (error) {
+    console.error("Error rendering column form control", error);
+    return null;
+  }
+  pluginWrap._datasetteColumnField = pluginControl;
+  pluginWrap._datasetteColumnFormField = fieldApi;
+  return pluginWrap;
+}
+
+function focusRowEditPluginControl(field) {
+  var pluginWrap = field.querySelector(".row-edit-plugin-control");
+  if (!pluginWrap) {
+    return false;
+  }
+  var pluginControl = pluginWrap._datasetteColumnField;
+  var fieldApi = pluginWrap._datasetteColumnFormField;
+  if (pluginControl && pluginControl.focus) {
+    pluginControl.focus(pluginWrap, fieldApi);
+    return true;
+  }
+  return false;
+}
+
+function focusFirstRowEditControl(state, options) {
+  options = options || {};
+  var fields = state.fields.querySelectorAll(".row-edit-field");
+  for (var i = 0; i < fields.length; i += 1) {
+    var field = fields[i];
+    var control = field.querySelector(".row-edit-input");
+    if (!control) {
+      continue;
+    }
+    if (options.skipReadonly && (control.readOnly || control.disabled)) {
+      continue;
+    }
+    if (focusRowEditPluginControl(field)) {
+      return true;
+    }
+    control.focus();
+    return true;
+  }
+  return false;
+}
+
+function destroyRowEditFields(state) {
+  if (!state || !state.fields) {
+    return;
+  }
+  state.fields
+    .querySelectorAll(".row-edit-plugin-control")
+    .forEach(function (pluginWrap) {
+      var pluginControl = pluginWrap._datasetteColumnField;
+      var fieldApi = pluginWrap._datasetteColumnFormField;
+      if (pluginControl && pluginControl.destroy) {
+        try {
+          pluginControl.destroy(pluginWrap, fieldApi);
+        } catch (error) {
+          console.error("Error destroying column form control", error);
+        }
+      }
+    });
+  state.fields.innerHTML = "";
+}
+
 function createRowEditField(column, value, isPk, columnType, index, options) {
   options = options || {};
   var field = document.createElement("div");
@@ -993,15 +1109,26 @@ function createRowEditField(column, value, isPk, columnType, index, options) {
 
   var fieldId = "row-edit-field-" + index;
   var metaId = "row-edit-field-meta-" + index;
+  var labelId = "row-edit-field-label-" + index;
   var label = document.createElement("label");
   label.className = "row-edit-label";
+  label.id = labelId;
   label.setAttribute("for", fieldId);
   label.textContent = column;
 
   var controlWrap = document.createElement("div");
   controlWrap.className = "row-edit-control-wrap";
 
-  var control = shouldUseTextarea(value, columnType)
+  var context = columnFormControlContext(
+    column,
+    value,
+    isPk,
+    columnType,
+    options,
+  );
+  var pluginControl = makeColumnField(options.manager, context);
+  var preferredControl = pluginControl && pluginControl.inputType;
+  var control = (preferredControl === "textarea" || shouldUseTextarea(value, columnType))
     ? document.createElement("textarea")
     : document.createElement("input");
   control.className = "row-edit-input";
@@ -1081,8 +1208,20 @@ function createRowEditField(column, value, isPk, columnType, index, options) {
     meta.appendChild(foreignKeyLinkWrap);
     updateRowEditFieldMetaHidden(meta);
   }
-  var controlElement = rowEditControlElement(control, options.autocompleteUrl);
-  if (options.autocompleteUrl) {
+  var fieldApi = {
+    id: fieldId,
+    labelId: labelId,
+    descriptionId: metaId,
+    input: control,
+    control: control,
+    form: options.form || null,
+    dialog: options.dialog || null,
+    context: context,
+  };
+  var pluginControlElement = renderColumnField(pluginControl, fieldApi);
+  var controlElement =
+    pluginControlElement || rowEditControlElement(control, options.autocompleteUrl);
+  if (options.autocompleteUrl && !pluginControlElement) {
     control.addEventListener("input", function () {
       setForeignKeyMetaLink(meta, options.autocompleteUrl, null);
     });
@@ -1506,7 +1645,7 @@ function renderRowEditFields(state, data) {
   var primaryKeys = data.primary_keys || [];
   var columnTypes = data.column_types || {};
 
-  state.fields.innerHTML = "";
+  destroyRowEditFields(state);
   columns.forEach(function (column, index) {
     state.fields.appendChild(
       createRowEditField(
@@ -1517,6 +1656,10 @@ function renderRowEditFields(state, data) {
         index,
         {
           autocompleteUrl: foreignKeyAutocompleteUrl(column),
+          dialog: state.dialog,
+          form: state.form,
+          manager: state.manager,
+          mode: state.mode,
           primaryKeyReadonly: true,
         },
       ),
@@ -1525,15 +1668,15 @@ function renderRowEditFields(state, data) {
 
   state.hasLoaded = true;
   updateRowEditDialogButtons(state);
-  var firstEditable = state.fields.querySelector(".row-edit-input:not([readonly])");
-  var firstField = state.fields.querySelector(".row-edit-input");
-  (firstEditable || firstField || state.cancelButton).focus();
+  if (!focusFirstRowEditControl(state, { skipReadonly: true })) {
+    focusFirstRowEditControl(state) || state.cancelButton.focus();
+  }
 }
 
 function renderRowInsertFields(state, data) {
   var columns = data.columns || [];
 
-  state.fields.innerHTML = "";
+  destroyRowEditFields(state);
   columns.forEach(function (column, index) {
     state.fields.appendChild(
       createRowEditField(
@@ -1544,10 +1687,15 @@ function renderRowInsertFields(state, data) {
         index,
         {
           autocompleteUrl: foreignKeyAutocompleteUrl(column.name),
+          dialog: state.dialog,
           defaultValue: column.default,
+          form: state.form,
           hasDefault: column.has_default,
+          manager: state.manager,
+          mode: state.mode,
           notnull: column.notnull,
           primaryKeyReadonly: false,
+          sqliteType: column.type,
           useDefaultInitially: column.has_default,
           valueType: column.value_type,
         },
@@ -1564,10 +1712,13 @@ function renderRowInsertFields(state, data) {
 
   state.hasLoaded = true;
   updateRowEditDialogButtons(state);
-  var firstControl = state.fields.querySelector(
-    ".row-edit-default-set-value, .row-edit-input:not(:disabled)",
-  );
-  (firstControl || state.saveButton).focus();
+  var firstDefaultButton = state.fields.querySelector(".row-edit-default-set-value");
+  if (firstDefaultButton) {
+    firstDefaultButton.focus();
+  } else {
+    focusFirstRowEditControl(state, { skipReadonly: true }) ||
+      state.saveButton.focus();
+  }
 }
 
 function setRowDialogTitle(title, text, codeText, labelText) {
@@ -1692,6 +1843,7 @@ function ensureRowEditDialog(manager) {
     state.loadId += 1;
     clearRowEditDialogError(state);
     state.hasLoaded = false;
+    destroyRowEditFields(state);
     setRowEditDialogLoading(state, false);
     setRowEditDialogSaving(state, false);
     if (
@@ -1737,7 +1889,7 @@ async function openRowEditDialog(button, manager) {
 
   clearRowEditDialogError(state);
   setRowEditDialogLoading(state, true);
-  state.fields.innerHTML = "";
+  destroyRowEditFields(state);
   state.dialog.removeAttribute("aria-describedby");
   setRowDialogTitle(
     state.title,
@@ -1809,7 +1961,7 @@ function openRowInsertDialog(button, manager) {
 
   clearRowEditDialogError(state);
   setRowEditDialogLoading(state, false);
-  state.fields.innerHTML = "";
+  destroyRowEditFields(state);
   state.dialog.removeAttribute("aria-describedby");
   setRowDialogTitle(
     state.title,

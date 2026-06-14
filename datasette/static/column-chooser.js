@@ -31,9 +31,9 @@ class ColumnChooser extends HTMLElement {
       <style>
         :host {
           --ink: #0f0f0f;
-          --paper: #f5f3ef;
+          --paper: #eef6ff;
           --muted: #6b6b6b;
-          --rule: #e2dfd8;
+          --rule: #d8e6f5;
           --accent: #1a56db;
           --accent-light: #e8effd;
           --card: #ffffff;

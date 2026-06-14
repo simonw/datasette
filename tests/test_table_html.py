@@ -881,7 +881,11 @@ async def test_row_delete_action_data_attributes():
         response = await ds.client.get("/data/items", actor={"id": "root"})
         assert response.status_code == 200
         soup = Soup(response.text, "html.parser")
-        assert table_data_from_soup(soup) == {"tableUrl": "/data/items"}
+        assert table_data_from_soup(soup) == {
+            "database": "data",
+            "table": "items",
+            "tableUrl": "/data/items",
+        }
         assert soup.select_one('button[data-table-action="insert-row"]') is None
 
         row = soup.select_one("table.rows-and-columns tbody tr")
@@ -1151,7 +1155,9 @@ def test_table_data_uses_base_url(app_client_base_url_prefix):
         re.DOTALL,
     )
     assert json.loads(match.group(1)) == {
-        "tableUrl": "/prefix/fixtures/simple_primary_key"
+        "database": "fixtures",
+        "table": "simple_primary_key",
+        "tableUrl": "/prefix/fixtures/simple_primary_key",
     }
 
 

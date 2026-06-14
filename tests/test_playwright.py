@@ -183,3 +183,33 @@ def test_navigation_search_renders_jump_sections_from_javascript_plugins(
     }
     """)
     assert "Start a new agent chat" in html
+
+
+@pytest.mark.playwright
+def test_datasette_manager_make_column_field(page, datasette_server):
+    page.goto(datasette_server)
+    control = page.evaluate("""
+    () => {
+      window.__DATASETTE__.registerPlugin("declines", {
+        makeColumnField() {
+          return;
+        },
+      });
+      window.__DATASETTE__.registerPlugin("handles", {
+        makeColumnField(context) {
+          if (context.columnType.type !== "demo") {
+            return;
+          }
+          return { useTextarea: true };
+        },
+      });
+      return window.__DATASETTE__.makeColumnField({
+        column: "body",
+        columnType: { type: "demo", config: null },
+      });
+    }
+    """)
+    assert control == {
+        "pluginName": "handles",
+        "useTextarea": True,
+    }

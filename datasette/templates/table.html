@@ -4,6 +4,7 @@
 
 {% block extra_head %}
 {{- super() -}}
+<script>window._datasetteTableData = {{ {"tableUrl": urls.table(database, table)}|tojson }};</script>
 <script src="{{ urls.static('column-chooser.js') }}" defer></script>
 <script src="{{ urls.static('table.js') }}?hash={{ table_js_hash }}" defer></script>
 <script src="{{ urls.static('mobile-column-actions.js') }}" defer></script>

@@ -664,6 +664,11 @@ async def test_table_html_compound_primary_key(ds_client):
     assert [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
     ] == expected
+    rows = table.select("tbody tr")
+    assert rows[0]["data-row"] == "a,b"
+    assert "data-row-pk-path" not in rows[0].attrs
+    assert rows[1]["data-row"] == "a~2Fb,~2Ec-d"
+    assert "data-row-pk-path" not in rows[1].attrs
 
 
 @pytest.mark.asyncio
@@ -859,12 +864,24 @@ async def test_row_delete_action_data_attributes():
         response = await ds.client.get("/data/items", actor={"id": "root"})
         assert response.status_code == 200
         soup = Soup(response.text, "html.parser")
+        import json
+        import re
+
+        table_script = [
+            s for s in soup.find_all("script") if "_datasetteTableData" in (s.string or "")
+        ][0]
+        match = re.search(
+            r"window\._datasetteTableData\s*=\s*({.*?});",
+            table_script.string,
+            re.DOTALL,
+        )
+        assert json.loads(match.group(1)) == {"tableUrl": "/data/items"}
+
         row = soup.select_one("table.rows-and-columns tbody tr")
-        assert row["data-row-pk-path"] == "1"
-        assert row["data-row-path"] == "1"
-        assert row["data-row-url"] == "/data/items/1"
-        assert row["data-row-delete-url"] == "/data/items/1/-/delete"
-        assert row["data-row-update-url"] == "/data/items/1/-/update"
+        assert row["data-row"] == "1"
+        assert {
+            key for key in row.attrs if key.startswith("data-row")
+        } == {"data-row"}
 
         edit_button = row.select_one(
             'button.row-inline-action-edit[data-row-action="edit"]'
@@ -882,6 +899,97 @@ async def test_row_delete_action_data_attributes():
         assert button["title"] == "Delete row"
         assert button.find("svg") is not None
     finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_table_fragment_endpoint(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key/-/fragment?_row=1")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    soup = Soup(response.text, "html.parser")
+    assert soup.find("html") is None
+    rows = soup.select("[data-row]")
+    assert len(rows) == 1
+    assert rows[0]["data-row"] == "1"
+    assert {
+        key for key in rows[0].attrs if key.startswith("data-row")
+    } == {"data-row"}
+
+
+@pytest.mark.asyncio
+async def test_table_fragment_row_parameter_replaces_pk_filters(ds_client):
+    response = await ds_client.get(
+        "/fixtures/simple_primary_key/-/fragment?id=2&_row=1"
+    )
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    rows = soup.select("[data-row]")
+    assert len(rows) == 1
+    assert rows[0]["data-row"] == "1"
+
+
+def test_table_data_uses_base_url(app_client_base_url_prefix):
+    response = app_client_base_url_prefix.get("/prefix/fixtures/simple_primary_key")
+    assert response.status_code == 200
+    import json
+    import re
+
+    soup = Soup(response.text, "html.parser")
+    table_script = [
+        s for s in soup.find_all("script") if "_datasetteTableData" in (s.string or "")
+    ][0]
+    match = re.search(
+        r"window\._datasetteTableData\s*=\s*({.*?});",
+        table_script.string,
+        re.DOTALL,
+    )
+    assert json.loads(match.group(1)) == {
+        "tableUrl": "/prefix/fixtures/simple_primary_key"
+    }
+
+
+def test_table_fragment_custom_table_include():
+    with make_app_client(
+        template_dir=str(pathlib.Path(__file__).parent / "test_templates")
+    ) as client:
+        response = client.get("/fixtures/complex_foreign_keys/-/fragment?f1=1&f2=2")
+        assert response.status == 200
+        assert (
+            '<div class="custom-table-row">'
+            '1 - 2 - <a href="/fixtures/simple_primary_key/1">hello</a> <em>1</em>'
+            "</div>"
+        ) == str(Soup(response.text, "html.parser").select_one("div.custom-table-row"))
+
+
+@pytest.mark.asyncio
+async def test_table_fragment_uses_render_cell_hook():
+    from datasette import hookimpl
+    from markupsafe import Markup
+
+    class TestRenderCellPlugin:
+        __name__ = "TestRenderCellPlugin"
+
+        @hookimpl
+        def render_cell(self, value, column, table, database):
+            if database == "data" and table == "items" and column == "name":
+                return Markup("<strong>{}</strong>".format(value))
+            return None
+
+    ds = Datasette(memory=True)
+    await ds.invoke_startup()
+    db = ds.add_memory_database("data")
+    await db.execute_write(
+        "create table items (id integer primary key, name text)"
+    )
+    await db.execute_write("insert into items values (1, 'Alice')")
+    ds.pm.register(TestRenderCellPlugin(), name="TestRenderCellPlugin")
+    try:
+        response = await ds.client.get("/data/items/-/fragment?id=1")
+        assert response.status_code == 200
+        assert "<strong>Alice</strong>" in response.text
+    finally:
+        ds.pm.unregister(name="TestRenderCellPlugin")
         ds.close()
 
 

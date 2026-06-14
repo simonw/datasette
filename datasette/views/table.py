@@ -2,6 +2,7 @@ import asyncio
 import itertools
 import json
 import urllib
+import urllib.parse
 
 import markupsafe
 
@@ -40,7 +41,7 @@ from datasette.utils import (
     InvalidSql,
     sqlite3,
 )
-from datasette.utils.asgi import BadRequest, Forbidden, NotFound, Response
+from datasette.utils.asgi import BadRequest, Forbidden, NotFound, Request, Response
 from datasette.filters import Filters
 import sqlite_utils
 from .base import BaseView, DatasetteError, _error, stream_csv
@@ -64,16 +65,10 @@ class Row:
         cells,
         pk_path=None,
         row_path=None,
-        row_url=None,
-        delete_url=None,
-        update_url=None,
     ):
         self.cells = cells
         self.pk_path = pk_path
         self.row_path = row_path
-        self.row_url = row_url
-        self.delete_url = delete_url
-        self.update_url = update_url
 
     def __iter__(self):
         return iter(self.cells)
@@ -108,6 +103,66 @@ async def run_sequential(*args):
     for fn in args:
         results.append(await fn)
     return results
+
+
+def _exact_filter_key(column):
+    if column.startswith("_"):
+        return f"{column}__exact"
+    return column
+
+
+def _request_with_query_string(request, query_string):
+    scope = dict(request.scope)
+    scope["query_string"] = query_string.encode("latin-1")
+    return Request(scope, request.receive)
+
+
+async def _fragment_request_for_row(request, resolved):
+    row_path = request.args.get("_row")
+    if not row_path:
+        return request
+    if resolved.is_view:
+        raise BadRequest("_row is not supported for views")
+
+    pks = await resolved.db.primary_keys(resolved.table)
+    row_pks = pks or ["rowid"]
+    pk_values = urlsafe_components(row_path)
+    if len(pk_values) != len(row_pks):
+        raise BadRequest("_row does not match the primary key for this table")
+
+    row_pk_filter_keys = {
+        key
+        for pk in row_pks
+        for key in {
+            _exact_filter_key(pk),
+            f"{pk}__exact",
+        }
+    }
+    args = [
+        (key, value)
+        for key, value in urllib.parse.parse_qsl(
+            request.query_string, keep_blank_values=True
+        )
+        if key
+        not in {
+            "_row",
+            "_next",
+            "_nocount",
+            "_nofacet",
+            "_nosuggest",
+        }.union(row_pk_filter_keys)
+    ]
+    args.extend(
+        [(_exact_filter_key(pk), value) for pk, value in zip(row_pks, pk_values)]
+    )
+    args.extend(
+        [
+            ("_nocount", "1"),
+            ("_nofacet", "1"),
+            ("_nosuggest", "1"),
+        ]
+    )
+    return _request_with_query_string(request, urllib.parse.urlencode(args))
 
 
 def _redirect(datasette, request, path, forward_querystring=True, remove_args=None):
@@ -255,12 +310,6 @@ async def display_columns_and_rows(
             pk_path = path_from_row_pks(row, pks, not pks, False)
             row_path = path_from_row_pks(row, pks, not pks)
             table_path = datasette.urls.table(database_name, table_name)
-            row_url = "{table_path}/{row_path}".format(
-                table_path=table_path,
-                row_path=row_path,
-            )
-            delete_url = "{row_url}/-/delete".format(row_url=row_url)
-            update_url = "{row_url}/-/update".format(row_url=row_url)
             row_link = '<a href="{table_path}/{flat_pks_quoted}">{flat_pks}</a>'.format(
                 table_path=table_path,
                 flat_pks=str(markupsafe.escape(pk_path)),
@@ -432,9 +481,6 @@ async def display_columns_and_rows(
                     cells,
                     pk_path=pk_path,
                     row_path=row_path,
-                    row_url=row_url,
-                    delete_url=delete_url,
-                    update_url=update_url,
                 )
             )
         else:
@@ -939,6 +985,43 @@ class TableDropView(BaseView):
             )
         )
         return Response.json({"ok": True}, status=200)
+
+
+class TableFragmentView(BaseView):
+    name = "table-fragment"
+
+    def __init__(self, datasette):
+        self.ds = datasette
+
+    async def get(self, request):
+        resolved = await self.ds.resolve_table(request)
+        request = await _fragment_request_for_row(request, resolved)
+        view_data = await table_view_data(
+            self.ds,
+            request,
+            resolved,
+            extra_extras={"_html"},
+            context_for_html_hack=True,
+            default_labels=True,
+        )
+        if isinstance(view_data, Response):
+            return view_data
+        data, _rows, _columns, _expanded_columns, _sql, _next_url = view_data
+        templates = data["custom_table_templates"]
+        html = await self.ds.render_template(
+            templates,
+            dict(
+                data,
+                append_querystring=append_querystring,
+                path_with_replaced_args=path_with_replaced_args,
+                fix_path=self.ds.urls.path,
+                settings=self.ds.settings_dict(),
+                count_limit=resolved.db.count_limit,
+            ),
+            request=request,
+            view_name="table",
+        )
+        return Response.html(html)
 
 
 async def _columns_to_select(table_columns, pks, request):

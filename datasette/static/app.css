@@ -1192,7 +1192,7 @@ dialog.set-column-type-dialog::backdrop {
     cursor: wait;
 }
 
-.row-delete-status {
+.row-mutation-status {
     margin: 0 0 0.75rem;
     padding: 8px 10px;
     border-left: 4px solid #54AC8E;
@@ -1200,11 +1200,11 @@ dialog.set-column-type-dialog::backdrop {
     color: #222;
 }
 
-.row-delete-status[hidden] {
+.row-mutation-status[hidden] {
     display: none;
 }
 
-.row-delete-status-error {
+.row-mutation-status-error {
     border-left-color: #D0021B;
     background: rgba(208,2,27,0.12);
 }
@@ -1413,8 +1413,18 @@ dialog.row-edit-dialog::backdrop {
 }
 
 .row-edit-error {
-    color: #b91c1c;
+    border-left: 4px solid #b91c1c;
+    border-radius: 4px;
+    background: #fff1f1;
+    color: #7f1d1d;
     font-size: 0.9rem;
+    margin: 12px 24px 0;
+    padding: 10px 12px;
+}
+
+.row-edit-error:focus {
+    outline: 3px solid rgba(185, 28, 28, 0.18);
+    outline-offset: 2px;
 }
 
 .row-edit-fields {
@@ -1645,10 +1655,14 @@ textarea.row-edit-input {
     .row-edit-dialog .modal-header,
     .row-edit-summary,
     .row-edit-loading,
-    .row-edit-error,
     .row-edit-fields {
         padding-left: 18px;
         padding-right: 18px;
+    }
+
+    .row-edit-error {
+        margin-left: 18px;
+        margin-right: 18px;
     }
 
     .row-edit-field {

@@ -274,12 +274,19 @@ Here is an example of a custom ``_table.html`` template:
 .. code-block:: jinja
 
     {% for row in display_rows %}
-        <div>
+        <div data-row="{{ row.row_path }}">
             <h2>{{ row["title"] }}</h2>
             <p>{{ row["description"] }}<lp>
             <p>Category: {{ row.display("category_id") }}</p>
         </div>
     {% endfor %}
+
+If your custom table template should support Datasette's row editing UI, include
+``data-row="{{ row.row_path }}"`` on the outer element that represents each row.
+This does not need to be a ``<tr>``: it can be a ``<div>``, ``<li>`` or any other
+element that wraps the HTML for that row. Datasette uses this attribute to find
+the element to remove after a delete, or replace after an edit. Any edit or
+delete controls should be rendered inside that same element.
 
 .. _custom_pages:
 

@@ -155,6 +155,10 @@ class Request:
         body = await self.post_body()
         return dict(parse_qsl(body.decode("utf-8"), keep_blank_values=True))
 
+    async def json(self):
+        body = await self.post_body()
+        return json.loads(body)
+
     async def form(
         self,
         files: bool = False,

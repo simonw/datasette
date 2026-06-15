@@ -1093,9 +1093,8 @@ class TableCreateView(BaseView):
         ):
             return _error(["Permission denied"], 403)
 
-        body = await request.post_body()
         try:
-            data = json.loads(body)
+            data = await request.json()
         except json.JSONDecodeError as e:
             return _error(["Invalid JSON: {}".format(e)])
 

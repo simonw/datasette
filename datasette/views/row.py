@@ -418,9 +418,8 @@ class RowUpdateView(BaseView):
         if not ok:
             return resolved
 
-        body = await request.post_body()
         try:
-            data = json.loads(body)
+            data = await request.json()
         except json.JSONDecodeError as e:
             return _error(["Invalid JSON: {}".format(e)])
 

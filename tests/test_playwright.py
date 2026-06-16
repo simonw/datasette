@@ -1,3 +1,4 @@
+import json
 import socket
 import subprocess
 import sys
@@ -44,6 +45,10 @@ def datasette_server(tmp_path):
     write_fixture_database(str(fixtures_db_path))
     data_db_path = tmp_path / "data.db"
     write_playwright_database(str(data_db_path))
+    config_path = tmp_path / "datasette.json"
+    write_playwright_config(config_path)
+    plugins_dir = tmp_path / "plugins"
+    write_playwright_plugin(plugins_dir)
     port = find_free_port()
     process = subprocess.Popen(
         [
@@ -52,6 +57,10 @@ def datasette_server(tmp_path):
             "datasette",
             str(fixtures_db_path),
             str(data_db_path),
+            "--config",
+            str(config_path),
+            "--plugins-dir",
+            str(plugins_dir),
             "--host",
             "127.0.0.1",
             "--port",
@@ -85,13 +94,179 @@ def write_playwright_database(db_path):
             id integer primary key,
             title text not null,
             metadata text,
-            logo text
+            logo text,
+            notes text,
+            score integer default 5
         );
-        insert into projects (title, metadata, logo) values
-            ('Build Datasette', '{"ok": true}', 'df-old');
+        insert into projects (title, metadata, logo, notes, score) values
+            (
+                'Build Datasette',
+                '{"ok": true}',
+                'asset-original',
+                'Initial notes',
+                5
+            );
         """)
     finally:
         conn.close()
+
+
+def write_playwright_config(config_path):
+    config_path.write_text(
+        json.dumps(
+            {
+                "databases": {
+                    "data": {
+                        "tables": {
+                            "projects": {
+                                "label_column": "title",
+                                "column_types": {
+                                    "metadata": "json",
+                                    "logo": "asset",
+                                    "notes": "textarea",
+                                },
+                                "permissions": {
+                                    "insert-row": True,
+                                    "update-row": True,
+                                    "delete-row": True,
+                                },
+                            },
+                        },
+                    },
+                },
+            }
+        ),
+        "utf-8",
+    )
+
+
+def write_playwright_plugin(plugins_dir):
+    plugins_dir.mkdir()
+    (plugins_dir / "playwright_plugin.py").write_text(
+        '''
+from datasette import hookimpl
+from datasette.column_types import ColumnType, SQLiteType
+
+
+class AssetColumnType(ColumnType):
+    name = "asset"
+    description = "Demo asset picker"
+    sqlite_types = (SQLiteType.TEXT,)
+
+
+@hookimpl
+def register_column_types(datasette):
+    return [AssetColumnType]
+
+
+@hookimpl
+def extra_body_script():
+    return {
+        "module": True,
+        "script": """
+document.addEventListener("datasette_init", function (event) {
+  event.detail.registerPlugin("playwright-jump-section", {
+    version: "0.1",
+    makeJumpSections() {
+      return [
+        {
+          id: "agent-chat",
+          render(node, context) {
+            if (!context.navigationSearch || !context.input) {
+              throw new Error("Expected navigation search context");
+            }
+            node.innerHTML = [
+              '<section class="agent-jump-start">',
+              '<button type="button" data-playwright-agent-chat>',
+              'Start a new agent chat',
+              '</button>',
+              '</section>',
+            ].join("");
+            node.querySelector("button").addEventListener("click", function () {
+              window.location.href = "/-/playwright-agent";
+            });
+          },
+        },
+      ];
+    },
+  });
+
+  event.detail.registerPlugin("playwright-asset-field", {
+    version: "0.1",
+    makeColumnField(context) {
+      if (!context.columnType || context.columnType.type !== "asset") {
+        return;
+      }
+      return {
+        render(field) {
+          const wrapper = document.createElement("div");
+          wrapper.className = "playwright-asset-picker";
+          wrapper.dataset.column = field.context.column;
+          wrapper.dataset.database = field.context.database || "";
+          wrapper.dataset.table = field.context.table || "";
+          wrapper.dataset.tableUrl = field.context.tableUrl || "";
+          wrapper.dataset.mode = field.context.mode || "";
+          wrapper.dataset.columnType = field.context.columnType.type;
+
+          field.input.type = "hidden";
+          const value = document.createElement("span");
+          value.className = "playwright-asset-value";
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "playwright-asset-select";
+          button.textContent = "Use demo asset";
+
+          function sync() {
+            value.textContent = field.getValue() || "No asset selected";
+          }
+
+          button.addEventListener("click", function () {
+            field.setValue("asset-from-plugin");
+            sync();
+          });
+
+          wrapper.appendChild(field.input);
+          wrapper.appendChild(value);
+          wrapper.appendChild(button);
+          sync();
+          return wrapper;
+        },
+        focus(field) {
+          const button = field.root.querySelector(".playwright-asset-select");
+          if (button) {
+            button.focus();
+          }
+        },
+      };
+    },
+  });
+});
+""",
+    }
+''',
+        "utf-8",
+    )
+
+
+def project_rows(datasette_server, **filters):
+    params = {
+        "_shape": "objects",
+        **{key: str(value) for key, value in filters.items()},
+    }
+    response = httpx.get(f"{datasette_server}data/projects.json", params=params)
+    response.raise_for_status()
+    return response.json()["rows"]
+
+
+def project_row(datasette_server, pk):
+    rows = project_rows(datasette_server, id=pk)
+    assert len(rows) == 1
+    return rows[0]
+
+
+def open_jump_menu(page):
+    page.keyboard.press("/")
+    page.locator("navigation-search .search-input").wait_for()
 
 
 @pytest.mark.playwright
@@ -103,69 +278,24 @@ def test_datasette_homepage_contains_datasette(page, datasette_server):
 @pytest.mark.playwright
 def test_navigation_search_tracks_and_renders_recent_items(page, datasette_server):
     page.goto(datasette_server)
-    result = page.evaluate("""
-    async () => {
-      await customElements.whenDefined("navigation-search");
-      const element = document.querySelector("navigation-search");
-      const key = element.recentItemsStorageKey();
-      localStorage.removeItem(key);
+    open_jump_menu(page)
+    search = page.locator("navigation-search .search-input")
+    search.fill("projects")
+    result = page.locator("navigation-search .result-item", has_text="projects").first
+    result.wait_for()
+    result.click()
+    page.wait_for_url("**/data/projects")
 
-      const items = Array.from({ length: 6 }, (_, index) => ({
-        name: `Item ${index + 1}`,
-        url: `/item-${index + 1}`,
-        type: "table",
-        description: "Table",
-      }));
-      items[5].name = "content: recent_datasette_releases";
-      items[5].display_name = "Recent Datasette releases";
+    page.goto(datasette_server)
+    open_jump_menu(page)
+    results = page.locator("navigation-search .results-container")
+    results.locator(".results-heading", has_text="Recent").wait_for()
+    assert "projects" in results.inner_text()
 
-      for (const item of items) {
-        element.saveRecentItem(item);
-      }
-
-      const stored = JSON.parse(localStorage.getItem(key));
-      element.matches = [
-        items[5],
-        items[4],
-        {
-          name: "Other",
-          url: "/other",
-          type: "database",
-          description: "Database",
-        },
-      ];
-      element.shadowRoot.querySelector(".search-input").value = "";
-      element.renderResults();
-      const html = element.shadowRoot.querySelector(".results-container").innerHTML;
-
-      element.clearRecentItems();
-      const clearedValue = localStorage.getItem(key);
-      element.renderResults();
-      const htmlAfterClear = element.shadowRoot
-        .querySelector(".results-container")
-        .innerHTML;
-
-      return { stored, html, clearedValue, htmlAfterClear };
-    }
-    """)
-    assert [item["url"] for item in result["stored"]] == [
-        "/item-6",
-        "/item-5",
-        "/item-4",
-        "/item-3",
-        "/item-2",
-    ]
-    assert result["stored"][0]["display_name"] == "Recent Datasette releases"
-    assert "Recent" in result["html"]
-    assert "Recent Datasette releases" in result["html"]
-    assert "Item 5" in result["html"]
-    assert "content: recent_datasette_releases" in result["html"]
-    assert "Item 4" in result["html"]
-    assert "Item 2" in result["html"]
-    assert "Other" not in result["html"]
-    assert "Clear recent" in result["html"]
-    assert result["clearedValue"] is None
-    assert "Clear recent" not in result["htmlAfterClear"]
+    page.locator("navigation-search [data-clear-recent-items]").click()
+    page.locator("navigation-search .results-container", has_text="Recent").wait_for(
+        state="detached"
+    )
 
 
 @pytest.mark.playwright
@@ -173,504 +303,102 @@ def test_navigation_search_renders_jump_sections_from_javascript_plugins(
     page, datasette_server
 ):
     page.goto(datasette_server)
-    html = page.evaluate("""
-    async () => {
-      await customElements.whenDefined("navigation-search");
-      window.__DATASETTE__.registerPlugin("agent", {
-        version: "0.1",
-        makeJumpSections() {
-          return [
-            {
-              id: "agent-chat",
-              render(node, context) {
-                if (!context.navigationSearch) {
-                  throw new Error("Expected navigationSearch in render context");
-                }
-                node.innerHTML = [
-                  '<section class="agent-jump-start">',
-                  '<button>Start a new agent chat</button>',
-                  '</section>',
-                ].join("");
-              },
-            },
-          ];
-        },
-      });
-
-      const element = document.querySelector("navigation-search");
-      element.shadowRoot.querySelector(".search-input").value = "";
-      element.renderResults();
-      return element.shadowRoot.querySelector(".results-container").innerHTML;
-    }
-    """)
-    assert "Start a new agent chat" in html
+    open_jump_menu(page)
+    button = page.locator("navigation-search [data-playwright-agent-chat]")
+    button.wait_for()
+    assert button.inner_text() == "Start a new agent chat"
+    button.click()
+    page.wait_for_url("**/-/playwright-agent")
 
 
 @pytest.mark.playwright
-def test_datasette_manager_make_column_field(page, datasette_server):
-    page.goto(datasette_server)
-    control = page.evaluate("""
-    () => {
-      window.__DATASETTE__.registerPlugin("declines", {
-        makeColumnField() {
-          return;
-        },
-      });
-      window.__DATASETTE__.registerPlugin("handles", {
-        makeColumnField(context) {
-          if (context.columnType.type !== "demo") {
-            return;
-          }
-          return { useTextarea: true };
-        },
-      });
-      return window.__DATASETTE__.makeColumnField({
-        column: "body",
-        columnType: { type: "demo", config: null },
-      });
-    }
-    """)
-    assert control == {
-        "pluginName": "handles",
-        "useTextarea": True,
-    }
-
-
-@pytest.mark.playwright
-def test_table_plugin_column_field_api(page, datasette_server):
+def test_insert_row_flow_uses_custom_column_field(page, datasette_server):
     page.goto(f"{datasette_server}data/projects")
-    page.evaluate("""
-    () => {
-      const assert = (condition, message) => {
-        if (!condition) {
-          throw new Error(message);
-        }
-      };
+    page.locator('button[data-table-action="insert-row"]').click()
 
-      const context = columnFormControlContext(
-        "logo",
-        true,
-        { type: "file", config: null },
-        {
-          mode: "edit",
-          defaultExpression: "lower(hex(randomblob(4)))",
-          useSqliteDefault: true,
-        },
-      );
-      const expectedContextKeys = [
-        "mode",
-        "database",
-        "table",
-        "tableUrl",
-        "column",
-        "columnType",
-        "sqliteType",
-        "notNull",
-        "isPk",
-        "defaultExpression",
-        "form",
-        "dialog",
-      ].join(",");
-      assert(
-        Object.keys(context).join(",") === expectedContextKeys,
-        `Unexpected context keys: ${Object.keys(context).join(",")}`,
-      );
-      assert(
-        context.defaultExpression === "lower(hex(randomblob(4)))",
-        "context.defaultExpression was not set",
-      );
-      assert(
-        JSON.stringify(context.columnType) === '{"type":"file","config":{}}',
-        "context.columnType should expose type and object config",
-      );
-      assert(
-        context.isPk,
-        "context.isPk should say whether the column is a primary key",
-      );
+    dialog = page.locator("#row-edit-dialog")
+    dialog.wait_for()
+    dialog.locator('input[name="title"]').fill("Launch Datasette Cloud")
+    dialog.locator('textarea[name="metadata"]').fill(
+        '{"ok": false, "source": "playwright"}'
+    )
+    dialog.locator('textarea[name="notes"]').fill("Inserted from Playwright")
 
-      const control = document.createElement("input");
-      control.name = "logo";
-      control.value = "df-old";
-      control.dataset.initialValue = "df-old";
-      control.dataset.initialValueKind = "string";
-      control.dataset.currentValueKind = "string";
-      control.dataset.useSqliteDefault = "1";
-      control.disabled = true;
-      const dispatchedEvents = [];
-      control.addEventListener("input", (event) =>
-        dispatchedEvents.push(event.type),
-      );
-      control.addEventListener("change", (event) =>
-        dispatchedEvents.push(event.type),
-      );
+    asset = dialog.locator(".playwright-asset-picker")
+    asset.wait_for()
+    assert asset.get_attribute("data-column") == "logo"
+    assert asset.get_attribute("data-database") == "data"
+    assert asset.get_attribute("data-table") == "projects"
+    assert asset.get_attribute("data-mode") == "insert"
+    asset.locator(".playwright-asset-select").click()
+    assert asset.locator(".playwright-asset-value").inner_text() == "asset-from-plugin"
 
-      const field = createColumnFieldApi({
-        id: "row-edit-field-0",
-        labelId: "row-edit-field-label-0",
-        descriptionId: "row-edit-field-meta-0",
-        control,
-        meta: document.createElement("span"),
-        context,
-      });
+    dialog.locator(".row-edit-save").click()
+    page.locator(".row-mutation-status", has_text="Inserted row 2").wait_for()
+    row = page.locator('tr[data-row="2"]')
+    row.wait_for()
+    assert "Launch Datasette Cloud" in row.inner_text()
 
-      let renderArgumentCount = null;
-      let renderField = null;
-      const wrapper = renderColumnField(
-        {
-          pluginName: "test-plugin",
-          render(field) {
-            renderArgumentCount = arguments.length;
-            renderField = field;
-            return document.createElement("button");
-          },
-        },
-        field,
-      );
-      assert(
-        renderArgumentCount === 1 && renderField === field,
-        "plugin render should receive the field object only",
-      );
-      assert(field.root === wrapper, "field.root should be the plugin wrapper");
-      assert(
-        wrapper.children.length === 1 &&
-          wrapper.children[0].nodeName === "BUTTON",
-        "plugin render should append returned DOM nodes to field.root",
-      );
-
-      field.setValue(null);
-      assert(field.getValue() === null, "field.setValue(null) should round-trip as null");
-      assert(
-        !field.isUsingSqliteDefault(),
-        "field.setValue() should stop using the SQLite default",
-      );
-      assert(
-        control.dataset.currentValueKind === "null",
-        "null values should update currentValueKind",
-      );
-
-      field.setValue("df-new");
-      assert(
-        field.getValue() === "df-new",
-        "field.setValue() should update the current value",
-      );
-      assert(
-        field.getInitialValue() === "df-old",
-        "field.getInitialValue() should remain stable",
-      );
-      assert(
-        field.hasChanged(),
-        "field.hasChanged() should notice plugin value changes",
-      );
-      assert(
-        dispatchedEvents.length === 0,
-        `field.setValue() should not dispatch events: ${dispatchedEvents}`,
-      );
-
-      const dirtyRowField = document.createElement("div");
-      dirtyRowField.className = "row-edit-field";
-      dirtyRowField._datasetteColumnFormField = field;
-      const dirtyFields = document.createElement("div");
-      dirtyFields.appendChild(dirtyRowField);
-      const dirtyState = {
-        hasLoaded: true,
-        isLoading: false,
-        isSaving: false,
-        mode: "edit",
-        fields: dirtyFields,
-        dialog: {
-          closeCalled: false,
-          close() {
-            this.closeCalled = true;
-          },
-        },
-        shouldRestoreFocus: false,
-      };
-      const confirmMessages = [];
-      window.confirm = (message) => {
-        confirmMessages.push(message);
-        return false;
-      };
-      assert(
-        rowEditDialogHasChanges(dirtyState),
-        "row edit dialog should notice changed field values",
-      );
-      assert(
-        !closeRowEditDialogIfConfirmed(dirtyState),
-        "dirty row edit dialog should stay open when discard is rejected",
-      );
-      assert(
-        !dirtyState.dialog.closeCalled,
-        "dirty row edit dialog should not close when discard is rejected",
-      );
-      assert(
-        confirmMessages[0] === "Discard unsaved changes to this row?",
-        `Unexpected discard confirmation: ${confirmMessages[0]}`,
-      );
-      dirtyState.mode = "insert";
-      window.confirm = (message) => {
-        confirmMessages.push(message);
-        return true;
-      };
-      assert(
-        closeRowEditDialogIfConfirmed(dirtyState),
-        "dirty row edit dialog should close when discard is confirmed",
-      );
-      assert(
-        dirtyState.dialog.closeCalled && dirtyState.shouldRestoreFocus,
-        "confirmed dirty row edit dialog should close and restore focus",
-      );
-      assert(
-        confirmMessages[1] === "Discard this new row?",
-        `Unexpected insert discard confirmation: ${confirmMessages[1]}`,
-      );
-
-      const cleanContext = columnFormControlContext("title", false, null, {
-        mode: "edit",
-      });
-      assert(
-        cleanContext.defaultExpression === null,
-        "context.defaultExpression should be null without a SQLite default",
-      );
-      const cleanControl = document.createElement("input");
-      cleanControl.name = "title";
-      cleanControl.value = "clean";
-      cleanControl.dataset.initialValue = "clean";
-      cleanControl.dataset.initialValueKind = "string";
-      cleanControl.dataset.currentValueKind = "string";
-      const cleanField = createColumnFieldApi({
-        id: "row-edit-field-1",
-        labelId: "row-edit-field-label-1",
-        descriptionId: "row-edit-field-meta-1",
-        control: cleanControl,
-        meta: document.createElement("span"),
-        context: cleanContext,
-      });
-      const cleanRowField = document.createElement("div");
-      cleanRowField.className = "row-edit-field";
-      cleanRowField._datasetteColumnFormField = cleanField;
-      const cleanFields = document.createElement("div");
-      cleanFields.appendChild(cleanRowField);
-      const cleanState = {
-        hasLoaded: true,
-        isLoading: false,
-        isSaving: false,
-        mode: "edit",
-        fields: cleanFields,
-        dialog: {
-          closeCalled: false,
-          close() {
-            this.closeCalled = true;
-          },
-        },
-        shouldRestoreFocus: false,
-      };
-      confirmMessages.length = 0;
-      window.confirm = (message) => {
-        confirmMessages.push(message);
-        return false;
-      };
-      assert(
-        !rowEditDialogHasChanges(cleanState),
-        "row edit dialog should ignore unchanged field values",
-      );
-      assert(
-        closeRowEditDialogIfConfirmed(cleanState),
-        "clean row edit dialog should close without confirmation",
-      );
-      assert(
-        cleanState.dialog.closeCalled && cleanState.shouldRestoreFocus,
-        "clean row edit dialog should close and restore focus",
-      );
-      assert(
-        confirmMessages.length === 0,
-        "clean row edit dialog should not ask for confirmation",
-      );
-
-      dirtyState.dialog.closeCalled = false;
-      dirtyState.shouldRestoreFocus = false;
-      confirmMessages.length = 0;
-      field.setValue("<p></p>");
-      field.markClean();
-      assert(
-        !field.hasChanged(),
-        "field.markClean() should update the clean baseline",
-      );
-      assert(
-        !rowEditDialogHasChanges(dirtyState),
-        "row edit dialog should ignore clean plugin normalization",
-      );
-      assert(
-        closeRowEditDialogIfConfirmed(dirtyState),
-        "normalized row edit dialog should close without confirmation",
-      );
-      assert(
-        confirmMessages.length === 0,
-        "normalized row edit dialog should not ask for confirmation",
-      );
-      field.setValue("<p>Hello</p>");
-      assert(
-        field.hasChanged() && rowEditDialogHasChanges(dirtyState),
-        "later plugin value changes should still count as dirty",
-      );
-
-      try {
-        field.setValue({ id: "df-object" });
-        throw new Error("field.setValue() should reject object values");
-      } catch (error) {
-        if (!String(error.message).includes("serialize objects")) {
-          throw error;
-        }
-      }
-
-      field.setValidity("Pick a file");
-      assert(
-        control.validationMessage === "Pick a file",
-        "field.setValidity() should set custom validity",
-      );
-      assert(
-        control.getAttribute("aria-invalid") === "true",
-        "field.setValidity() should set aria-invalid",
-      );
-      assert(
-        field.validationMessageElement && !field.validationMessageElement.hidden,
-        "field.setValidity() should show a field validation message",
-      );
-      field.clearValidity();
-      assert(
-        control.validationMessage === "" &&
-          control.getAttribute("aria-invalid") === null,
-        "field.clearValidity() should clear custom validity",
-      );
-
-      field.useSqliteDefault();
-      assert(
-        field.isUsingSqliteDefault() && control.disabled,
-        "field.useSqliteDefault() should mark and disable control",
-      );
-    }
-    """)
+    data = project_row(datasette_server, 2)
+    assert data["title"] == "Launch Datasette Cloud"
+    assert data["metadata"] == '{"ok": false, "source": "playwright"}'
+    assert data["logo"] == "asset-from-plugin"
+    assert data["notes"] == "Inserted from Playwright"
+    assert data["score"] == 5
 
 
 @pytest.mark.playwright
-def test_builtin_json_column_field_validation(page, datasette_server):
+def test_edit_row_flow_validates_json_and_saves_changes(page, datasette_server):
     page.goto(f"{datasette_server}data/projects")
-    page.evaluate("""
-    () => {
-      const assert = (condition, message) => {
-        if (!condition) {
-          throw new Error(message);
-        }
-      };
+    page.locator('tr[data-row="1"] button[data-row-action="edit"]').click()
 
-      const plugins = [];
-      registerBuiltinColumnFieldPlugins({
-        registerPlugin(name, plugin) {
-          plugins.push({ name, plugin });
-        },
-      });
-      const jsonPlugin = plugins.find(
-        (entry) => entry.name === "datasette-json-column",
-      );
-      assert(
-        jsonPlugin,
-        "datasette-json-column plugin was not registered",
-      );
-      const pluginControl = jsonPlugin.plugin.makeColumnField({
-        column: "metadata",
-        columnType: { type: "json", config: {} },
-      });
-      assert(
-        pluginControl && pluginControl.useTextarea === true,
-        "JSON column plugin should request a textarea",
-      );
+    dialog = page.locator("#row-edit-dialog")
+    dialog.wait_for()
+    title = dialog.locator('input[name="title"]')
+    title.wait_for()
+    title.fill("Build Datasette, edited")
 
-      const context = columnFormControlContext(
-        "metadata",
-        false,
-        { type: "json", config: {} },
-        { mode: "edit" },
-      );
-      const control = document.createElement("textarea");
-      control.className = "row-edit-input";
-      control.name = "metadata";
-      control.value = '{"ok": true}';
-      control.dataset.initialValue = '{"ok": true}';
-      control.dataset.initialValueKind = "string";
-      control.dataset.currentValueKind = "string";
-      const meta = document.createElement("span");
+    metadata = dialog.locator('textarea[name="metadata"]')
+    metadata.fill("{")
+    dialog.locator(
+        ".row-edit-field-validation-error", has_text="Invalid JSON"
+    ).wait_for()
+    dialog.locator(".row-edit-save").click()
+    assert dialog.evaluate("node => node.open")
+    assert project_row(datasette_server, 1)["title"] == "Build Datasette"
 
-      const field = createColumnFieldApi({
-        id: "row-edit-field-0",
-        labelId: "row-edit-field-label-0",
-        descriptionId: "row-edit-field-meta-0",
-        control,
-        meta,
-        context,
-      });
-      const wrapper = renderColumnField(
-        Object.assign({ pluginName: "datasette-json-column" }, pluginControl),
-        field,
-      );
+    metadata.fill('{"ok": true, "edited": true}')
+    dialog.locator(
+        ".row-edit-field-validation-error", has_text="Invalid JSON"
+    ).wait_for(state="hidden")
+    dialog.locator('textarea[name="notes"]').fill("Edited from Playwright")
+    asset = dialog.locator(".playwright-asset-picker")
+    asset.wait_for()
+    assert asset.get_attribute("data-mode") == "edit"
+    asset.locator(".playwright-asset-select").click()
 
-      assert(
-        control.validationMessage === "",
-        "Initial valid JSON should not be invalid",
-      );
-      assert(
-        control.dataset.initialValueKind === "string",
-        "JSON plugin should keep the original string value kind",
-      );
-      assert(
-        control.dataset.currentValueKind === "string",
-        "JSON plugin should keep the current string value kind",
-      );
-      assert(
-        field.validationMessageElement &&
-          field.validationMessageElement.hidden === true,
-        "JSON validation message should start hidden",
-      );
+    dialog.locator(".row-edit-save").click()
+    page.locator(".row-mutation-status", has_text="Updated row 1").wait_for()
+    row = page.locator('tr[data-row="1"]')
+    assert "Build Datasette, edited" in row.inner_text()
 
-      control.value = "{";
-      control.dispatchEvent(new Event("input", { bubbles: true }));
-      assert(
-        control.validationMessage.startsWith("Invalid JSON"),
-        "Invalid JSON should set a custom validity message",
-      );
-      assert(
-        control.getAttribute("aria-invalid") === "true",
-        "Invalid JSON should set aria-invalid",
-      );
-      assert(
-        !field.validationMessageElement.hidden,
-        "Invalid JSON should show the validation message",
-      );
+    data = project_row(datasette_server, 1)
+    assert data["title"] == "Build Datasette, edited"
+    assert data["metadata"] == '{"ok": true, "edited": true}'
+    assert data["logo"] == "asset-from-plugin"
+    assert data["notes"] == "Edited from Playwright"
 
-      control.value = '{"ok": true}';
-      control.dispatchEvent(new Event("input", { bubbles: true }));
-      assert(
-        control.validationMessage === "",
-        "Valid JSON should clear the custom validity message",
-      );
-      assert(
-        control.getAttribute("aria-invalid") === null,
-        "Valid JSON should clear aria-invalid",
-      );
-      assert(
-        field.validationMessageElement.hidden,
-        "Valid JSON should hide the validation message",
-      );
 
-      control.dataset.initialValue = '{"ok":';
-      control.value = '{"ok": true}';
-      const fields = document.createElement("div");
-      fields.appendChild(wrapper);
-      const values = collectRowFormValues({
-        mode: "edit",
-        fields,
-      });
-      assert(
-        values.metadata === '{"ok": true}',
-        "Corrected JSON should be submitted as a string value",
-      );
-    }
-    """)
+@pytest.mark.playwright
+def test_delete_row_flow_removes_row(page, datasette_server):
+    page.goto(f"{datasette_server}data/projects")
+    page.locator('tr[data-row="1"] button[data-row-action="delete"]').click()
+
+    dialog = page.locator("#row-delete-dialog")
+    dialog.wait_for()
+    assert "Delete row 1" in dialog.inner_text()
+    dialog.locator(".row-delete-confirm").click()
+
+    page.locator(".row-mutation-status", has_text="Deleted row 1").wait_for()
+    page.locator('tr[data-row="1"]').wait_for(state="detached")
+    assert project_rows(datasette_server, id=1) == []

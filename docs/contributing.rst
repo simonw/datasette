@@ -73,16 +73,22 @@ These tests are skipped by default, so you can run the main test suite with
 
 The Playwright tests use a separate dependency group. The easiest way to run
 them is using ``just``. First install the browser engine you want to test
-against. Chromium is used by default::
+against. Chromium is used by default:
+
+.. code-block:: bash
 
     just playwright-install
 
-Then run the Playwright test module::
+Then run the Playwright test module:
+
+.. code-block:: bash
 
     just playwright
 
 You can also run the same tests against Firefox or WebKit by installing that
-browser engine and passing it to ``just playwright``::
+browser engine and passing it to ``just playwright``:
+
+.. code-block:: bash
 
     just playwright-install firefox
     just playwright firefox
@@ -91,17 +97,23 @@ browser engine and passing it to ``just playwright``::
     just playwright webkit
 
 To install every supported browser engine and run the tests against all of
-them, use::
+them, use:
+
+.. code-block:: bash
 
     just playwright-install-all
     just playwright-all
 
-You can pass extra ``pytest`` options after the browser name::
+You can pass extra ``pytest`` options after the browser name:
+
+.. code-block:: bash
 
     just playwright chromium -k permissions
     just playwright-all -x
 
-If you are not using ``just``, the equivalent Chromium commands are::
+If you are not using ``just``, the equivalent Chromium commands are:
+
+.. code-block:: bash
 
     uv run --group playwright playwright install chromium
 

@@ -93,7 +93,26 @@ def pytest_report_header(config):
     conn = sqlite3.connect(":memory:")
     version = conn.execute("select sqlite_version()").fetchone()[0]
     conn.close()
-    return "SQLite: {}".format(version)
+    headers = ["SQLite: {}".format(version)]
+    if config.getoption("--playwright"):
+        try:
+            browsers = config.getoption("--browser")
+        except ValueError:
+            browsers = None
+        if isinstance(browsers, str):
+            browsers = [browsers]
+        if browsers:
+            headers.append("Playwright browsers: {}".format(", ".join(browsers)))
+    return headers
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--playwright",
+        action="store_true",
+        default=False,
+        help="run Playwright browser automation tests",
+    )
 
 
 def pytest_configure(config):
@@ -108,7 +127,13 @@ def pytest_unconfigure(config):
     del sys._called_from_test
 
 
-def pytest_collection_modifyitems(items):
+def pytest_collection_modifyitems(config, items):
+    if not config.getoption("--playwright"):
+        skip_playwright = pytest.mark.skip(reason="need --playwright option to run")
+        for item in items:
+            if "playwright" in item.keywords:
+                item.add_marker(skip_playwright)
+
     # Ensure test_cli.py and test_black.py and test_inspect.py run first before any asyncio code kicks in
     move_to_front(items, "test_cli")
     move_to_front(items, "test_black")

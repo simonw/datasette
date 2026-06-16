@@ -3,10 +3,11 @@
 =========
 Changelog
 =========
-.. _unreleased:
 
-Unreleased
-----------
+.. _v1_0_a34:
+
+1.0a34 (2026-06-16)
+-------------------
 
 The big feature in this alpha is tools to **insert, edit and delete** rows within the Datasette interface. These features are available on table pages, and edit and delete are also available as action items on the row page.
 
@@ -23,6 +24,7 @@ The edit interface takes :ref:`custom column types <table_configuration_column_t
 - New ``/<database>/<table>/-/fragment`` :ref:`HTML fragment endpoint  <TableFragmentView>` for returning the HTML used to display a specific row.
 - ``await request.json()`` utility method for consuming the request body as JSON. (:issue:`2767`)
 - Database, table, query and row action menus can now be modified by plugins to :ref:`display buttons in addition to links <plugin_actions>`. (:issue:`2782`)
+- Datasette :ref:`now uses Playwright <contributing_playwright>` for browser automation tests as part of the test suite. (:issue:`2779`)
 
 .. _v1_0_a33:
 

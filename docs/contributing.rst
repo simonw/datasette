@@ -62,6 +62,8 @@ You can run the tests faster using multiple CPU cores with `pytest-xdist <https:
 
     uv run pytest -m "serial"
 
+.. _contributing_playwright:
+
 Running Playwright tests
 ~~~~~~~~~~~~~~~~~~~~~~~~
 

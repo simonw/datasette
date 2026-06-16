@@ -1396,6 +1396,38 @@ function closeRowEditDialogIfConfirmed(state) {
   return true;
 }
 
+function scheduleCloseRowEditDialogIfConfirmed(state) {
+  // Fix for an issue in Safari where hitting Esc would show
+  // the confirm() prompt asking if state should be discarded
+  // but the Esc key press would then cancel that dialog too.
+  // Wait for keyup, then move the confirm() to a fresh timer tick.
+  if (!state || state.isSaving || state.isClosePending) {
+    return false;
+  }
+  if (!rowEditDialogHasChanges(state)) {
+    state.shouldRestoreFocus = true;
+    state.dialog.close();
+    return true;
+  }
+  state.isClosePending = true;
+  var closeAfterKeyup = function () {
+    if (!state.isClosePending) {
+      return;
+    }
+    state.isClosePending = false;
+    closeRowEditDialogIfConfirmed(state);
+  };
+  var onKeyup = function (ev) {
+    if (ev.key !== "Escape") {
+      return;
+    }
+    document.removeEventListener("keyup", onKeyup, true);
+    setTimeout(closeAfterKeyup, 0);
+  };
+  document.addEventListener("keyup", onKeyup, true);
+  return true;
+}
+
 function findDataRowElement(root, rowId) {
   var elements = root.querySelectorAll("[data-row]");
   for (var i = 0; i < elements.length; i += 1) {
@@ -1770,6 +1802,7 @@ function ensureRowEditDialog(manager) {
     manager: manager,
     isLoading: false,
     isSaving: false,
+    isClosePending: false,
     hasLoaded: false,
     shouldRestoreFocus: true,
   };
@@ -1797,23 +1830,18 @@ function ensureRowEditDialog(manager) {
       return;
     }
     ev.preventDefault();
-    closeRowEditDialogIfConfirmed(rowEditDialogState);
+    scheduleCloseRowEditDialogIfConfirmed(rowEditDialogState);
   });
 
   dialog.addEventListener("cancel", function (ev) {
-    if (
-      rowEditDialogState.isSaving ||
-      !confirmDiscardRowEditChanges(rowEditDialogState)
-    ) {
-      ev.preventDefault();
-    } else {
-      rowEditDialogState.shouldRestoreFocus = true;
-    }
+    ev.preventDefault();
+    scheduleCloseRowEditDialogIfConfirmed(rowEditDialogState);
   });
 
   dialog.addEventListener("close", function () {
     var state = rowEditDialogState;
     state.loadId += 1;
+    state.isClosePending = false;
     clearRowEditDialogError(state);
     state.hasLoaded = false;
     destroyRowEditFields(state);

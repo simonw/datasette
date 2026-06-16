@@ -733,6 +733,16 @@ def test_parse_metadata(content, expected):
         ("select 1 + :one + :two", ["one", "two"]),
         ("select 'bob' || '0:00' || :cat", ["cat"]),
         ("select this is invalid :one, :two, :three", ["one", "two", "three"]),
+        # A string literal containing a comment marker should not hide
+        # parameters that come after it
+        ("select * from t where note = '-- TODO' and id = :id", ["id"]),
+        ("select '--' || :y", ["y"]),
+        ("select * from t where note = '/* x */' and id = :id", ["id"]),
+        # Parameters that live inside a comment should be ignored
+        ("select :x -- and :ignored", ["x"]),
+        ("select :x /* and :ignored */ from t", ["x"]),
+        # Parameters inside a string literal should be ignored
+        ("select ':ignored' || :real", ["real"]),
     ),
 )
 @pytest.mark.parametrize("use_async_version", (False, True))

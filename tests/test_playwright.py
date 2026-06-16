@@ -7,6 +7,7 @@ import httpx
 import pytest
 
 from datasette.fixtures import write_fixture_database
+from datasette.utils.sqlite import sqlite3
 
 
 def find_free_port():
@@ -39,15 +40,18 @@ def wait_for_server(process, url, timeout=10):
 
 @pytest.fixture
 def datasette_server(tmp_path):
-    db_path = tmp_path / "fixtures.db"
-    write_fixture_database(str(db_path))
+    fixtures_db_path = tmp_path / "fixtures.db"
+    write_fixture_database(str(fixtures_db_path))
+    data_db_path = tmp_path / "data.db"
+    write_playwright_database(str(data_db_path))
     port = find_free_port()
     process = subprocess.Popen(
         [
             sys.executable,
             "-m",
             "datasette",
-            str(db_path),
+            str(fixtures_db_path),
+            str(data_db_path),
             "--host",
             "127.0.0.1",
             "--port",
@@ -73,24 +77,27 @@ def datasette_server(tmp_path):
             process.wait()
 
 
+def write_playwright_database(db_path):
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.executescript("""
+        create table projects (
+            id integer primary key,
+            title text not null,
+            metadata text,
+            logo text
+        );
+        insert into projects (title, metadata, logo) values
+            ('Build Datasette', '{"ok": true}', 'df-old');
+        """)
+    finally:
+        conn.close()
+
+
 @pytest.mark.playwright
 def test_datasette_homepage_contains_datasette(page, datasette_server):
     page.goto(datasette_server)
     assert "Datasette" in page.locator("body").inner_text()
-
-
-def load_edit_tools(page, datasette_server):
-    page.goto(datasette_server)
-    page.evaluate("""
-    () => {
-      window._datasetteTableData = {
-        database: "data",
-        table: "projects",
-        tableUrl: "/data/projects",
-      };
-    }
-    """)
-    page.add_script_tag(url=f"{datasette_server}-/static/edit-tools.js")
 
 
 @pytest.mark.playwright
@@ -231,7 +238,7 @@ def test_datasette_manager_make_column_field(page, datasette_server):
 
 @pytest.mark.playwright
 def test_table_plugin_column_field_api(page, datasette_server):
-    load_edit_tools(page, datasette_server)
+    page.goto(f"{datasette_server}data/projects")
     page.evaluate("""
     () => {
       const assert = (condition, message) => {
@@ -546,7 +553,7 @@ def test_table_plugin_column_field_api(page, datasette_server):
 
 @pytest.mark.playwright
 def test_builtin_json_column_field_validation(page, datasette_server):
-    load_edit_tools(page, datasette_server)
+    page.goto(f"{datasette_server}data/projects")
     page.evaluate("""
     () => {
       const assert = (condition, message) => {

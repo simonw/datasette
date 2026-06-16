@@ -55,6 +55,57 @@ async def test_request_post_body():
     assert data == json.loads(body)
 
 
+@pytest.mark.asyncio
+async def test_request_json():
+    scope = {
+        "http_version": "1.1",
+        "method": "POST",
+        "path": "/",
+        "raw_path": b"/",
+        "query_string": b"",
+        "scheme": "http",
+        "type": "http",
+        "headers": [[b"content-type", b"application/json"]],
+    }
+
+    data = {"hello": "world", "items": [1, 2, 3]}
+
+    async def receive():
+        return {
+            "type": "http.request",
+            "body": json.dumps(data).encode("utf-8"),
+            "more_body": False,
+        }
+
+    request = Request(scope, receive)
+    assert data == await request.json()
+
+
+@pytest.mark.asyncio
+async def test_request_json_invalid():
+    scope = {
+        "http_version": "1.1",
+        "method": "POST",
+        "path": "/",
+        "raw_path": b"/",
+        "query_string": b"",
+        "scheme": "http",
+        "type": "http",
+        "headers": [[b"content-type", b"application/json"]],
+    }
+
+    async def receive():
+        return {
+            "type": "http.request",
+            "body": b"this is not JSON",
+            "more_body": False,
+        }
+
+    request = Request(scope, receive)
+    with pytest.raises(json.JSONDecodeError):
+        await request.json()
+
+
 def test_request_args():
     request = Request.fake("/foo?multi=1&multi=2&single=3")
     assert "1" == request.args.get("multi")

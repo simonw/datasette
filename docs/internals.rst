@@ -106,6 +106,9 @@ The object also has the following awaitable methods:
 ``await request.post_vars()`` - dictionary
     Returns a dictionary of form variables that were submitted in the request body via ``POST`` using ``application/x-www-form-urlencoded`` encoding. For multipart forms or file uploads, use ``request.form()`` instead.
 
+``await request.json()`` - Any
+    Returns the parsed JSON body of a request submitted by ``POST``.
+
 ``await request.post_body()`` - bytes
     Returns the un-parsed body of a request submitted by ``POST`` - useful for things like incoming JSON data.
 

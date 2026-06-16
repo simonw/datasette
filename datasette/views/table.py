@@ -673,9 +673,8 @@ class TableInsertView(BaseView):
         if not request.headers.get("content-type").startswith("application/json"):
             # TODO: handle form-encoded data
             return _errors(["Invalid content-type, must be application/json"])
-        body = await request.post_body()
         try:
-            data = json.loads(body)
+            data = await request.json()
         except json.JSONDecodeError as e:
             return _errors(["Invalid JSON: {}".format(e)])
         if not isinstance(data, dict):
@@ -974,7 +973,7 @@ class TableSetColumnTypeView(BaseView):
             return _error(["Invalid content-type, must be application/json"], 400)
 
         try:
-            data = json.loads(await request.post_body())
+            data = await request.json()
         except json.JSONDecodeError as e:
             return _error(["Invalid JSON: {}".format(e)], 400)
 
@@ -1091,7 +1090,7 @@ class TableDropView(BaseView):
             return _error(["Database is immutable"], 403)
         confirm = False
         try:
-            data = json.loads(await request.post_body())
+            data = await request.json()
             confirm = data.get("confirm")
         except json.JSONDecodeError:
             pass

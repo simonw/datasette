@@ -3,6 +3,26 @@
 =========
 Changelog
 =========
+.. _unreleased:
+
+Unreleased
+----------
+
+The big feature in this alpha is tools to **insert, edit and delete** rows within the Datasette interface. These features are available on table pages, and edit and delete are also available as action items on the row page.
+
+The edit interface takes :ref:`custom column types <table_configuration_column_types>` into account. Plugins that define their own column types can use JavaScript to customize how those column types are presented in the edit interface.
+
+- ``datasette.allowed_many()`` method for :ref:`resolving multiple permission checks at once <datasette_allowed_many>`. (:pr:`2775`)
+- Permission checks are now cached on a per-request basis, speeding up table pages with multiple plugins that check permissions in order to populate the :ref:`table actions menu <plugin_hook_table_actions>`.
+- Fixed a warning about ``gen.throw(*sys.exc_info())``. (:issue:`2776`)
+- New default custom column type ``textarea`` for multi-line text content. This is rendered as a ``<textarea>`` input in the edit UI.
+- The ``json`` column type now implements client-side validation in the edit UI.
+- The :ref:`makeColumnField() <javascript_plugins_makeColumnField>` JavaScript plugin hook allows plugins to define custom fields in the edit interface for their custom column types.
+- New UI for inserting, editing, and deleting rows within Datasette. (:issue:`2780`)
+- New ``/<database>/<table>/-/autocomplete?q=term`` :ref:`autocomplete JSON API <TableAutocompleteView>` for rapid autocomplete search against the contents of a table. This is used by the edit interface to select related rows for foreign keys. You can try it out on the ``/-/debug/autocomplete`` debug page.
+- New ``/<database>/<table>/-/fragment`` :ref:`HTML fragment endpoint  <TableFragmentView>` for returning the HTML used to display a specific row.
+- ``await request.json()`` utility method for consuming the request body as JSON. (:issue:`2767`)
+- Database, table, query and row action menus can now be modified by plugins to :ref:`display buttons in addition to links <plugin_actions>`. (:issue:`2782`)
 
 .. _v1_0_a33:
 

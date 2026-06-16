@@ -1,7 +1,7 @@
 import pytest
 
 from datasette.app import Datasette
-import datasette.views.table as table_views
+from datasette.database import QueryInterrupted
 
 
 @pytest.mark.asyncio
@@ -192,7 +192,6 @@ async def test_autocomplete_primary_key_called_label():
 
 @pytest.mark.asyncio
 async def test_autocomplete_timeout_uses_prefix_fallback(monkeypatch):
-    monkeypatch.setattr(table_views, "AUTOCOMPLETE_TIME_LIMIT_MS", 1)
     ds = Datasette(
         memory=True,
         config={
@@ -217,16 +216,34 @@ async def test_autocomplete_timeout_uses_prefix_fallback(monkeypatch):
     def insert_rows(conn):
         conn.executemany(
             "insert into things (id, name) values (?, ?)",
-            ((f"item-{i:06d}", f"name {i:06d}") for i in range(200_000)),
+            ((f"item-1999{i:02d}", f"name 1999{i:02d}") for i in range(12)),
         )
 
     await db.execute_write_fn(insert_rows)
+
+    original_execute = db.execute
+    timeout_was_simulated = False
+
+    async def execute_with_simulated_timeout(sql, params=None, *args, **kwargs):
+        nonlocal timeout_was_simulated
+        if (
+            not timeout_was_simulated
+            and isinstance(params, dict)
+            and params.get("q") == "item-1999"
+            and "prefix_end" not in params
+        ):
+            timeout_was_simulated = True
+            raise QueryInterrupted(Exception("interrupted"), sql, params)
+        return await original_execute(sql, params, *args, **kwargs)
+
+    monkeypatch.setattr(db, "execute", execute_with_simulated_timeout)
 
     response = await ds.client.get(
         "/autocomplete_timeout/things/-/autocomplete?q=item-1999"
     )
 
     assert response.status_code == 200
+    assert timeout_was_simulated
     data = response.json()
     assert data == {
         "rows": [

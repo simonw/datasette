@@ -93,7 +93,17 @@ def pytest_report_header(config):
     conn = sqlite3.connect(":memory:")
     version = conn.execute("select sqlite_version()").fetchone()[0]
     conn.close()
-    return "SQLite: {}".format(version)
+    headers = ["SQLite: {}".format(version)]
+    if config.getoption("--playwright"):
+        try:
+            browsers = config.getoption("--browser")
+        except ValueError:
+            browsers = None
+        if isinstance(browsers, str):
+            browsers = [browsers]
+        if browsers:
+            headers.append("Playwright browsers: {}".format(", ".join(browsers)))
+    return headers
 
 
 def pytest_addoption(parser):

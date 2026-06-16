@@ -11,6 +11,22 @@ export DATASETTE_SECRET := "not_a_secret"
 @test *options: init
   uv run pytest -n auto {{options}}
 
+# Install Playwright browser support, Chromium by default
+@playwright-install browser="chromium":
+  uv run --group playwright playwright install {{browser}}
+
+# Install all Playwright browsers used by the test suite
+@playwright-install-all:
+  uv run --group playwright playwright install chromium firefox webkit
+
+# Run Playwright tests, Chromium by default
+@playwright browser="chromium" *options:
+  uv run --group playwright pytest tests/test_playwright.py --playwright --browser {{browser}} {{options}}
+
+# Run Playwright tests against all supported browsers
+@playwright-all *options:
+  uv run --group playwright pytest tests/test_playwright.py --playwright --browser chromium --browser firefox --browser webkit {{options}}
+
 @codespell:
   uv run codespell README.md --ignore-words docs/codespell-ignore-words.txt
   uv run codespell docs/*.rst --ignore-words docs/codespell-ignore-words.txt

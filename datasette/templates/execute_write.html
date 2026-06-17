@@ -56,6 +56,11 @@ form.sql.core input[data-execute-write-submit]:disabled {
     cursor: not-allowed;
     opacity: 1;
 }
+.execute-write form.sql .sql-editor-min-lines .cm-content,
+.execute-write form.sql .sql-editor-min-lines .cm-gutter {
+    /* Four visible editor lines without adding blank lines to the SQL value. */
+    min-height: calc(5.6em + 8px);
+}
 .execute-write-disabled-reason {
     color: #4f5b6d;
     font-size: 0.85rem;
@@ -119,7 +124,7 @@ form.sql.core input[data-execute-write-submit]:disabled {
         <p class="message-warning execute-write-template-unavailable">There are no tables that you can currently edit.</p>
     {% endif %}
 
-    <p class="sql-editor"><textarea id="sql-editor" name="sql"{% if sql %} style="height: {{ sql.split("\n")|length + 2 }}em"{% endif %}>{{ sql }}</textarea></p>
+    <p class="sql-editor{% if not sql %} sql-editor-min-lines{% endif %}"><textarea id="sql-editor" name="sql"{% if sql %} style="height: {{ sql.split("\n")|length + 2 }}em"{% endif %}>{{ sql }}</textarea></p>
 
     {% set sql_parameters_section_id = "execute-write-parameters-section" %}
     {% set sql_parameters_allow_expand = true %}
@@ -164,19 +169,13 @@ form.sql.core input[data-execute-write-submit]:disabled {
     </p>
 </form>
 
-<script>
-const executeWriteSqlInput = document.querySelector("textarea#sql-editor");
-if (executeWriteSqlInput && !executeWriteSqlInput.value) {
-  executeWriteSqlInput.value = "\n\n\n";
-}
-</script>
-
 {% include "_codemirror_foot.html" %}
 {% include "_sql_parameter_scripts.html" %}
 {% include "_execute_write_analysis_scripts.html" %}
 
 <script>
 window.addEventListener("DOMContentLoaded", () => {
+  const executeWriteSqlInput = document.querySelector("textarea#sql-editor");
   const form = document.querySelector("form.sql.core");
   const analysisSection = document.querySelector("#execute-write-analysis-section");
   const submitButton = form

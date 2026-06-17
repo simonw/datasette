@@ -1708,8 +1708,10 @@ async def test_execute_write_get_prepopulates_without_executing():
         "/data/-/execute-write",
         actor={"id": "root"},
     )
+    assert '<p class="sql-editor sql-editor-min-lines">' in empty_response.text
     assert '<textarea id="sql-editor" name="sql"></textarea>' in empty_response.text
-    assert 'executeWriteSqlInput.value = "\\n\\n\\n";' in empty_response.text
+    assert "min-height: calc(5.6em + 8px);" in empty_response.text
+    assert 'executeWriteSqlInput.value = "\\n\\n\\n";' not in empty_response.text
     assert "Enter writable SQL before executing." in empty_response.text
     assert 'data-save-query-base-url="/data/-/queries/store"' in empty_response.text
     assert '<a href="/data/-/queries/store' not in empty_response.text

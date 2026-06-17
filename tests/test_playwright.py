@@ -117,6 +117,10 @@ def write_playwright_config(config_path):
             {
                 "databases": {
                     "data": {
+                        "permissions": {
+                            "create-table": True,
+                            "set-column-type": True,
+                        },
                         "tables": {
                             "projects": {
                                 "label_column": "title",
@@ -273,6 +277,55 @@ def open_jump_menu(page):
 def test_datasette_homepage_contains_datasette(page, datasette_server):
     page.goto(datasette_server)
     assert "Datasette" in page.locator("body").inner_text()
+
+
+@pytest.mark.playwright
+def test_create_table_flow(page, datasette_server):
+    page.goto(f"{datasette_server}data")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-database-action="create-table"]').click()
+
+    dialog = page.locator("#table-create-dialog")
+    dialog.wait_for()
+    assert dialog.locator(".modal-title").inner_text() == "Create a table in data"
+    placeholder_select = dialog.locator(".table-create-custom-column-type").nth(0)
+    assert placeholder_select.input_value() == ""
+    assert (
+        placeholder_select.locator("option:checked").inner_text() == "- custom type -"
+    )
+    assert "table-create-input-placeholder" in placeholder_select.get_attribute("class")
+    dialog.locator('input[name="table"]').fill("playwright_created")
+    dialog.locator(".table-create-column-name").nth(1).fill("title")
+    dialog.locator(".table-create-add-column").click()
+    dialog.locator(".table-create-column-name").nth(2).fill("score")
+    dialog.locator(".table-create-column-type").nth(2).select_option("integer")
+    dialog.locator(".table-create-add-column").click()
+    dialog.locator(".table-create-column-name").nth(3).fill("metadata")
+    dialog.locator(".table-create-column-type").nth(3).select_option("integer")
+    dialog.locator(".table-create-custom-column-type").nth(3).select_option("json")
+    assert dialog.locator(".table-create-column-type").nth(3).input_value() == "text"
+    assert "table-create-input-placeholder" not in dialog.locator(
+        ".table-create-custom-column-type"
+    ).nth(3).get_attribute("class")
+
+    dialog.locator(".table-create-save").click()
+    page.wait_for_url("**/data/playwright_created")
+    assert "playwright_created" in page.locator("h1").inner_text()
+
+    response = httpx.get(
+        f"{datasette_server}data/playwright_created.json?_extra=columns,column_types"
+    )
+    response.raise_for_status()
+    data = response.json()
+    assert data["columns"] == [
+        "id",
+        "title",
+        "score",
+        "metadata",
+    ]
+    assert data["column_types"] == {
+        "metadata": {"type": "json", "config": None},
+    }
 
 
 @pytest.mark.playwright

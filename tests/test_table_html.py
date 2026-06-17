@@ -23,6 +23,23 @@ def table_data_from_soup(soup):
     return json.loads(match.group(1))
 
 
+def database_data_from_soup(soup):
+    import json
+    import re
+
+    database_script = [
+        s
+        for s in soup.find_all("script")
+        if "_datasetteDatabaseData" in (s.string or "")
+    ][0]
+    match = re.search(
+        r"window\._datasetteDatabaseData\s*=\s*({.*?});",
+        database_script.string,
+        re.DOTALL,
+    )
+    return json.loads(match.group(1))
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_definition_sql",
@@ -930,6 +947,133 @@ async def test_row_delete_action_data_attributes():
         )
         assert button is not None
         assert button["aria-label"] == "Delete row 1"
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_database_create_table_action_button_and_data():
+    ds = Datasette(
+        [],
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "create-table": {"id": "root"},
+                    },
+                },
+            },
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_database_create_table_action"), name="data"
+        )
+        await db.execute_write_script("""
+            create table items (id integer primary key, name text);
+            """)
+
+        response = await ds.client.get("/data", actor={"id": "root"})
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+
+        button = soup.select_one(
+            'button.action-menu-button[data-database-action="create-table"]'
+        )
+        assert button is not None
+        assert button["aria-label"] == "Create table in data"
+        assert button["role"] == "menuitem"
+        description = button.find("span", class_="dropdown-description")
+        assert description.text.strip() == "Create a new table in this database."
+        description.extract()
+        assert button.text.strip() == "Create table"
+        assert any(
+            "edit-tools.js" in script.get("src", "")
+            for script in soup.find_all("script")
+        )
+        assert database_data_from_soup(soup) == {
+            "createTable": {
+                "path": "/data/-/create",
+                "databaseName": "data",
+                "columnTypes": ["text", "integer", "float", "blob"],
+            },
+        }
+        assert "customColumnTypes" not in database_data_from_soup(soup)["createTable"]
+
+        response_without_permission = await ds.client.get(
+            "/data", actor={"id": "someone-else"}
+        )
+        assert response_without_permission.status_code == 200
+        soup_without_permission = Soup(response_without_permission.text, "html.parser")
+        assert (
+            soup_without_permission.select_one(
+                'button[data-database-action="create-table"]'
+            )
+            is None
+        )
+        assert not any(
+            "_datasetteDatabaseData" in (script.string or "")
+            for script in soup_without_permission.find_all("script")
+        )
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_database_create_table_data_includes_custom_column_types():
+    ds = Datasette(
+        [],
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "create-table": {"id": "root"},
+                        "set-column-type": {"id": "root"},
+                    },
+                },
+            },
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_database_create_table_custom_types"),
+            name="data",
+        )
+        await db.execute_write_script("""
+            create table items (id integer primary key, name text);
+            """)
+
+        response = await ds.client.get("/data", actor={"id": "root"})
+        assert response.status_code == 200
+        create_table_data = database_data_from_soup(Soup(response.text, "html.parser"))[
+            "createTable"
+        ]
+        assert create_table_data["customColumnTypes"] == [
+            {
+                "name": "email",
+                "description": "Email address",
+                "sqliteTypes": ["text"],
+                "fixedSqliteType": "text",
+            },
+            {
+                "name": "json",
+                "description": "JSON data",
+                "sqliteTypes": ["text"],
+                "fixedSqliteType": "text",
+            },
+            {
+                "name": "textarea",
+                "description": "Multiline text",
+                "sqliteTypes": ["text"],
+                "fixedSqliteType": "text",
+            },
+            {
+                "name": "url",
+                "description": "URL",
+                "sqliteTypes": ["text"],
+                "fixedSqliteType": "text",
+            },
+        ]
     finally:
         ds.close()
 

@@ -13,7 +13,8 @@ import textwrap
 from datasette.events import AlterTableEvent, CreateTableEvent, InsertRowsEvent
 from datasette.extras import extra_names_from_request
 from datasette.database import QueryInterrupted
-from datasette.resources import DatabaseResource, QueryResource
+from datasette.column_types import SQLiteType
+from datasette.resources import DatabaseResource, QueryResource, TableResource
 from datasette.stored_queries import stored_query_to_dict
 from datasette.write_sql import QueryWriteRejected
 from datasette.utils import (
@@ -45,6 +46,18 @@ from .table_extras import (
     table_extra_registry,
 )
 from . import Context
+
+CREATE_TABLE_COLUMN_TYPES = ["text", "integer", "float", "blob"]
+CREATE_TABLE_SQLITE_TYPES = {
+    "text": SQLiteType.TEXT,
+    "integer": SQLiteType.INTEGER,
+    "float": SQLiteType.REAL,
+    "blob": SQLiteType.BLOB,
+}
+CREATE_TABLE_TYPE_FOR_SQLITE_TYPE = {
+    sqlite_type: column_type
+    for column_type, sqlite_type in CREATE_TABLE_SQLITE_TYPES.items()
+}
 
 
 class DatabaseView(View):
@@ -117,21 +130,36 @@ class DatabaseView(View):
             else len(stored_queries)
         )
 
+        # Resolve the registered database-level actions for this database in
+        # one batched query, seeding the request permission cache so allowed()
+        # calls made inside plugin hooks below are served from the cache.
+        database_action_permissions = await datasette.allowed_many(
+            actions=[
+                name
+                for name, action in datasette.actions.items()
+                if action.resource_class is DatabaseResource
+            ],
+            resource=DatabaseResource(database),
+            actor=request.actor,
+        )
+        create_table_ui = await _database_create_table_ui(
+            datasette, request, db, database, database_action_permissions
+        )
+
         async def database_actions():
-            # Resolve the registered database-level actions for this
-            # database in one batched query, seeding the request permission
-            # cache so that allowed() calls made inside the plugin hooks
-            # below are served from the cache
-            await datasette.allowed_many(
-                actions=[
-                    name
-                    for name, action in datasette.actions.items()
-                    if action.resource_class is DatabaseResource
-                ],
-                resource=DatabaseResource(database),
-                actor=request.actor,
-            )
             links = []
+            if create_table_ui:
+                links.append(
+                    {
+                        "type": "button",
+                        "label": "Create table",
+                        "description": "Create a new table in this database.",
+                        "attrs": {
+                            "aria-label": "Create table in {}".format(database),
+                            "data-database-action": "create-table",
+                        },
+                    }
+                )
             for hook in pm.hook.database_actions(
                 datasette=datasette,
                 database=database,
@@ -211,6 +239,9 @@ class DatabaseView(View):
                     ),
                     metadata=metadata,
                     database_color=db.color,
+                    database_page_data=(
+                        {"createTable": create_table_ui} if create_table_ui else {}
+                    ),
                     database_actions=database_actions,
                     show_hidden=request.args.get("_show_hidden"),
                     editable=True,
@@ -263,6 +294,9 @@ class DatabaseContext(Context):
     )
     metadata: dict = field(metadata={"help": "Metadata for the database"})
     database_color: str = field(metadata={"help": "The color assigned to the database"})
+    database_page_data: dict = field(
+        metadata={"help": "JSON data used by JavaScript on the database page"}
+    )
     database_actions: callable = field(
         metadata={
             "help": "Callable returning list of action links for the database menu"
@@ -290,6 +324,57 @@ class DatabaseContext(Context):
     top_database: callable = field(
         metadata={"help": "Callable to render the top_database slot"}
     )
+
+
+async def _database_create_table_ui(
+    datasette, request, db, database_name, database_action_permissions
+):
+    if not db.is_mutable:
+        return None
+    if not database_action_permissions.get("create-table"):
+        return None
+    data = {
+        "path": "{}/-/create".format(datasette.urls.database(database_name)),
+        "databaseName": database_name,
+        "columnTypes": CREATE_TABLE_COLUMN_TYPES,
+    }
+    can_set_column_type = await datasette.allowed(
+        action="set-column-type",
+        resource=TableResource(database=database_name, table="__new_table__"),
+        actor=request.actor,
+    )
+    if can_set_column_type:
+        data["customColumnTypes"] = _custom_column_type_options_for_create_table(
+            datasette
+        )
+    return data
+
+
+def _custom_column_type_options_for_create_table(datasette):
+    options = []
+    for name, ct_cls in sorted(datasette._column_types.items()):
+        sqlite_types = getattr(ct_cls, "sqlite_types", None)
+        if sqlite_types is None:
+            option_sqlite_types = CREATE_TABLE_COLUMN_TYPES[:]
+        else:
+            option_sqlite_types = [
+                create_table_type
+                for create_table_type, sqlite_type in CREATE_TABLE_SQLITE_TYPES.items()
+                if sqlite_type in sqlite_types
+            ]
+        if not option_sqlite_types:
+            continue
+        option = {
+            "name": name,
+            "description": ct_cls.description,
+            "sqliteTypes": option_sqlite_types,
+        }
+        if sqlite_types is not None and len(sqlite_types) == 1:
+            fixed_sqlite_type = CREATE_TABLE_TYPE_FOR_SQLITE_TYPE.get(sqlite_types[0])
+            if fixed_sqlite_type is not None:
+                option["fixedSqliteType"] = fixed_sqlite_type
+        options.append(option)
+    return options
 
 
 @dataclass
@@ -1069,12 +1154,7 @@ class TableCreateView(BaseView):
         "replace",
         "alter",
     }
-    _supported_column_types = {
-        "text",
-        "integer",
-        "float",
-        "blob",
-    }
+    _supported_column_types = set(CREATE_TABLE_COLUMN_TYPES)
     # Any string that does not contain a newline or start with sqlite_
     _table_name_re = re.compile(r"^(?!sqlite_)[^\n]+$")
 

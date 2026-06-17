@@ -2,6 +2,8 @@ var ROW_DELETE_DIALOG_ID = "row-delete-dialog";
 var rowDeleteDialogState = null;
 var ROW_EDIT_DIALOG_ID = "row-edit-dialog";
 var rowEditDialogState = null;
+var TABLE_CREATE_DIALOG_ID = "table-create-dialog";
+var tableCreateDialogState = null;
 
 function ensureRowMutationStatus(manager) {
   var status = document.querySelector(".row-mutation-status");
@@ -41,6 +43,682 @@ function hideRowMutationStatus() {
   status.hidden = true;
   status.classList.remove("row-mutation-status-error");
   status.textContent = "";
+}
+
+function databaseCreateTableData() {
+  return (
+    window._datasetteDatabaseData &&
+    window._datasetteDatabaseData.createTable
+  );
+}
+
+function tableCreateColumnTypes() {
+  var data = databaseCreateTableData() || {};
+  return data.columnTypes && data.columnTypes.length
+    ? data.columnTypes
+    : ["text", "integer", "float", "blob"];
+}
+
+function tableCreateCustomColumnTypes() {
+  var data = databaseCreateTableData() || {};
+  return data.customColumnTypes || [];
+}
+
+function tableCreateCustomColumnType(name) {
+  var options = tableCreateCustomColumnTypes();
+  for (var i = 0; i < options.length; i += 1) {
+    if (options[i].name === name) {
+      return options[i];
+    }
+  }
+  return null;
+}
+
+function tableCreateCustomTypeAppliesToSqliteType(option, sqliteType) {
+  return (
+    option &&
+    option.sqliteTypes &&
+    option.sqliteTypes.indexOf(sqliteType) !== -1
+  );
+}
+
+function tableCreateDialogSignature(state) {
+  if (!state || !state.form) {
+    return "";
+  }
+  var columns = [];
+  state.columnList
+    .querySelectorAll(".table-create-column-row")
+    .forEach(function (row) {
+      columns.push({
+        name: row.querySelector(".table-create-column-name").value,
+        type: row.querySelector(".table-create-column-type").value,
+        customType:
+          (
+            row.querySelector(".table-create-custom-column-type") || {
+              value: "",
+            }
+          ).value || "",
+        pk: row.querySelector(".table-create-primary-key-input").checked,
+      });
+    });
+  return JSON.stringify({
+    table: state.tableName.value,
+    columns: columns,
+  });
+}
+
+function tableCreateDialogHasChanges(state) {
+  return (
+    !!state &&
+    !state.isSaving &&
+    tableCreateDialogSignature(state) !== state.initialSignature
+  );
+}
+
+function clearTableCreateDialogError(state) {
+  state.error.hidden = true;
+  state.error.textContent = "";
+  state.dialog.removeAttribute("aria-describedby");
+}
+
+function showTableCreateDialogError(state, message) {
+  state.error.hidden = false;
+  state.error.textContent = message;
+  state.dialog.setAttribute("aria-describedby", "table-create-error");
+  state.error.focus();
+}
+
+function setTableCreateDialogSaving(state, isSaving) {
+  state.isSaving = isSaving;
+  state.cancelButton.disabled = isSaving;
+  state.saveButton.disabled = isSaving;
+  state.addColumnButton.disabled = isSaving;
+  state.saveButton.textContent = isSaving ? "Creating..." : "Create table";
+  state.columnList
+    .querySelectorAll("input, select, button")
+    .forEach(function (control) {
+      control.disabled = isSaving;
+    });
+}
+
+function tableCreateSelectTypeValue(select, type) {
+  var options = tableCreateColumnTypes();
+  options.forEach(function (option) {
+    var optionElement = document.createElement("option");
+    optionElement.value = option;
+    optionElement.textContent = option;
+    select.appendChild(optionElement);
+  });
+  select.value = options.indexOf(type) === -1 ? options[0] : type;
+}
+
+function updateTableCreateCustomColumnTypePlaceholder(select) {
+  select.classList.toggle(
+    "table-create-input-placeholder",
+    !select.value,
+  );
+}
+
+function createTableCustomColumnTypeSelect() {
+  var options = tableCreateCustomColumnTypes();
+  var select = document.createElement("select");
+  select.className = "table-create-input table-create-custom-column-type";
+  select.setAttribute("aria-label", "Custom column type");
+  var blankOption = document.createElement("option");
+  blankOption.value = "";
+  blankOption.textContent = "- custom type -";
+  select.appendChild(blankOption);
+  options.forEach(function (option) {
+    var optionElement = document.createElement("option");
+    optionElement.value = option.name;
+    optionElement.textContent = option.description
+      ? option.description + " (" + option.name + ")"
+      : option.name;
+    select.appendChild(optionElement);
+  });
+  updateTableCreateCustomColumnTypePlaceholder(select);
+  return select;
+}
+
+function syncTableCreateCustomTypeForSqliteType(row) {
+  var typeSelect = row.querySelector(".table-create-column-type");
+  var customTypeSelect = row.querySelector(".table-create-custom-column-type");
+  if (!typeSelect || !customTypeSelect || !customTypeSelect.value) {
+    return;
+  }
+  var option = tableCreateCustomColumnType(customTypeSelect.value);
+  if (!tableCreateCustomTypeAppliesToSqliteType(option, typeSelect.value)) {
+    customTypeSelect.value = "";
+    updateTableCreateCustomColumnTypePlaceholder(customTypeSelect);
+  }
+}
+
+function createTableColumnRow(state, column) {
+  var index = state.nextColumnIndex;
+  state.nextColumnIndex += 1;
+
+  var row = document.createElement("div");
+  row.className = "table-create-column-row";
+
+  var nameId = "table-create-column-name-" + index;
+  var nameLabel = document.createElement("label");
+  nameLabel.className = "table-create-column-label";
+  nameLabel.setAttribute("for", nameId);
+  nameLabel.textContent = "Column";
+
+  var nameInput = document.createElement("input");
+  nameInput.id = nameId;
+  nameInput.className = "table-create-input table-create-column-name";
+  nameInput.type = "text";
+  nameInput.required = true;
+  nameInput.autocomplete = "off";
+  nameInput.value = column && column.name ? column.name : "";
+
+  var typeSelect = document.createElement("select");
+  typeSelect.className = "table-create-input table-create-column-type";
+  typeSelect.setAttribute("aria-label", "Column type");
+  tableCreateSelectTypeValue(typeSelect, column && column.type);
+
+  var customTypeSelect = createTableCustomColumnTypeSelect();
+  if (column && column.customType) {
+    customTypeSelect.value = column.customType;
+  }
+  updateTableCreateCustomColumnTypePlaceholder(customTypeSelect);
+
+  var pkLabel = document.createElement("label");
+  pkLabel.className = "table-create-primary-key";
+  var pkInput = document.createElement("input");
+  pkInput.type = "checkbox";
+  pkInput.className = "table-create-primary-key-input";
+  pkInput.checked = !!(column && column.primaryKey);
+  var pkText = document.createElement("span");
+  pkText.textContent = "PK";
+  pkText.title = "Primary key";
+  pkLabel.appendChild(pkInput);
+  pkLabel.appendChild(pkText);
+
+  var removeButton = document.createElement("button");
+  removeButton.type = "button";
+  removeButton.className = "table-create-remove-column";
+  removeButton.setAttribute("aria-label", "Remove column");
+  removeButton.title = "Remove column";
+  removeButton.innerHTML =
+    '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg>';
+
+  row.appendChild(nameLabel);
+  row.appendChild(nameInput);
+  row.appendChild(typeSelect);
+  if (tableCreateCustomColumnTypes().length) {
+    row.appendChild(customTypeSelect);
+  }
+  row.appendChild(pkLabel);
+  row.appendChild(removeButton);
+
+  removeButton.addEventListener("click", function () {
+    if (state.isSaving) {
+      return;
+    }
+    row.remove();
+    clearTableCreateDialogError(state);
+    var nextInput = state.columnList.querySelector(
+      ".table-create-column-name",
+    );
+    if (nextInput) {
+      nextInput.focus();
+    } else {
+      state.addColumnButton.focus();
+    }
+  });
+
+  nameInput.addEventListener("input", function () {
+    clearTableCreateDialogError(state);
+  });
+  typeSelect.addEventListener("change", function () {
+    clearTableCreateDialogError(state);
+    syncTableCreateCustomTypeForSqliteType(row);
+  });
+  customTypeSelect.addEventListener("change", function () {
+    clearTableCreateDialogError(state);
+    updateTableCreateCustomColumnTypePlaceholder(customTypeSelect);
+    var option = tableCreateCustomColumnType(customTypeSelect.value);
+    if (
+      option &&
+      option.fixedSqliteType &&
+      tableCreateColumnTypes().indexOf(option.fixedSqliteType) !== -1
+    ) {
+      typeSelect.value = option.fixedSqliteType;
+    }
+  });
+  pkInput.addEventListener("change", function () {
+    clearTableCreateDialogError(state);
+  });
+
+  return row;
+}
+
+function addTableCreateColumn(state, column) {
+  var row = createTableColumnRow(state, column || { type: "text" });
+  state.columnList.appendChild(row);
+  return row;
+}
+
+function resetTableCreateDialog(state) {
+  state.nextColumnIndex = 0;
+  state.tableName.value = "";
+  state.columnList.textContent = "";
+  addTableCreateColumn(state, {
+    name: "id",
+    type: "integer",
+    primaryKey: true,
+  });
+  addTableCreateColumn(state, {
+    name: "",
+    type: "text",
+    primaryKey: false,
+  });
+  state.initialSignature = tableCreateDialogSignature(state);
+}
+
+function collectTableCreatePayload(state) {
+  var payload = {
+    table: state.tableName.value.trim(),
+    columns: [],
+  };
+  var primaryKeys = [];
+  state.columnList
+    .querySelectorAll(".table-create-column-row")
+    .forEach(function (row) {
+      var name = row.querySelector(".table-create-column-name").value.trim();
+      var type = row.querySelector(".table-create-column-type").value;
+      payload.columns.push({ name: name, type: type });
+      if (row.querySelector(".table-create-primary-key-input").checked) {
+        primaryKeys.push(name);
+      }
+    });
+  if (primaryKeys.length === 1) {
+    payload.pk = primaryKeys[0];
+  } else if (primaryKeys.length > 1) {
+    payload.pks = primaryKeys;
+  }
+  return payload;
+}
+
+function collectTableCreateColumnTypeAssignments(state) {
+  var assignments = [];
+  state.columnList
+    .querySelectorAll(".table-create-column-row")
+    .forEach(function (row) {
+      var customTypeSelect = row.querySelector(
+        ".table-create-custom-column-type",
+      );
+      if (!customTypeSelect || !customTypeSelect.value) {
+        return;
+      }
+      assignments.push({
+        column: row.querySelector(".table-create-column-name").value.trim(),
+        columnType: customTypeSelect.value,
+        sqliteType: row.querySelector(".table-create-column-type").value,
+      });
+    });
+  return assignments;
+}
+
+function validateTableCreatePayload(payload) {
+  if (!payload.table) {
+    return "Table name is required.";
+  }
+  if (payload.table.indexOf("\n") !== -1) {
+    return "Table name cannot contain newlines.";
+  }
+  if (/^sqlite_/i.test(payload.table)) {
+    return "Table name cannot start with sqlite_.";
+  }
+  if (!payload.columns.length) {
+    return "At least one column is required.";
+  }
+  var seen = {};
+  var supportedTypes = tableCreateColumnTypes();
+  for (var i = 0; i < payload.columns.length; i += 1) {
+    var column = payload.columns[i];
+    if (!column.name) {
+      return "Column name is required.";
+    }
+    if (column.name.indexOf("\n") !== -1) {
+      return "Column names cannot contain newlines.";
+    }
+    var columnKey = column.name.toLowerCase();
+    if (seen[columnKey]) {
+      return "Duplicate column name: " + column.name;
+    }
+    seen[columnKey] = true;
+    if (supportedTypes.indexOf(column.type) === -1) {
+      return "Unsupported column type: " + column.type;
+    }
+  }
+  return null;
+}
+
+function validateTableCreateColumnTypeAssignments(assignments) {
+  for (var i = 0; i < assignments.length; i += 1) {
+    var assignment = assignments[i];
+    var option = tableCreateCustomColumnType(assignment.columnType);
+    if (!option) {
+      return "Unknown custom column type: " + assignment.columnType;
+    }
+    if (!tableCreateCustomTypeAppliesToSqliteType(option, assignment.sqliteType)) {
+      return (
+        "Custom type " +
+        assignment.columnType +
+        " cannot be used with SQLite type " +
+        assignment.sqliteType +
+        "."
+      );
+    }
+  }
+  return null;
+}
+
+function fallbackTableUrl(tableName) {
+  var data = databaseCreateTableData() || {};
+  if (!data.path) {
+    return null;
+  }
+  return data.path.replace(/\/-\/create$/, "/" + encodeURIComponent(tableName));
+}
+
+function tableCreateSetColumnTypeUrl(responseData, payload) {
+  var tableUrl =
+    responseData.table_url || fallbackTableUrl(responseData.table || payload.table);
+  if (!tableUrl) {
+    return null;
+  }
+  var url = new URL(tableUrl, location.href);
+  url.hash = "";
+  url.search = "";
+  url.pathname = url.pathname.replace(/\/$/, "") + "/-/set-column-type";
+  return url.toString();
+}
+
+async function assignTableCreateColumnTypes(responseData, payload, assignments) {
+  if (!assignments.length) {
+    return;
+  }
+  var url = tableCreateSetColumnTypeUrl(responseData, payload);
+  if (!url) {
+    throw new Error("Could not find the set column type URL.");
+  }
+  for (var i = 0; i < assignments.length; i += 1) {
+    var assignment = assignments[i];
+    var response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        column: assignment.column,
+        column_type: {
+          type: assignment.columnType,
+        },
+      }),
+    });
+    var data = null;
+    try {
+      data = await response.json();
+    } catch (_error) {
+      data = null;
+    }
+    if (!response.ok || (data && data.ok === false)) {
+      var error = rowMutationRequestError(response, data);
+      throw new Error(
+        "Created table, but could not set custom type for " +
+          assignment.column +
+          ": " +
+          error.message,
+      );
+    }
+  }
+}
+
+async function saveTableCreateDialog(state) {
+  if (state.isSaving) {
+    return;
+  }
+  var data = databaseCreateTableData();
+  if (!data || !data.path) {
+    showTableCreateDialogError(state, "Could not find the create table URL.");
+    return;
+  }
+  clearTableCreateDialogError(state);
+  var payload = collectTableCreatePayload(state);
+  var columnTypeAssignments = collectTableCreateColumnTypeAssignments(state);
+  var validationError = validateTableCreatePayload(payload);
+  if (validationError) {
+    showTableCreateDialogError(state, validationError);
+    return;
+  }
+  var columnTypeValidationError = validateTableCreateColumnTypeAssignments(
+    columnTypeAssignments,
+  );
+  if (columnTypeValidationError) {
+    showTableCreateDialogError(state, columnTypeValidationError);
+    return;
+  }
+  setTableCreateDialogSaving(state, true);
+  try {
+    var response = await fetch(data.path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    var responseData = null;
+    try {
+      responseData = await response.json();
+    } catch (_error) {
+      responseData = null;
+    }
+    if (!response.ok || (responseData && responseData.ok === false)) {
+      throw rowMutationRequestError(response, responseData);
+    }
+    await assignTableCreateColumnTypes(
+      responseData,
+      payload,
+      columnTypeAssignments,
+    );
+    var tableUrl =
+      responseData.table_url || fallbackTableUrl(responseData.table || payload.table);
+    state.shouldRestoreFocus = false;
+    state.dialog.close();
+    if (tableUrl) {
+      location.href = tableUrl;
+    } else {
+      location.reload();
+    }
+  } catch (error) {
+    setTableCreateDialogSaving(state, false);
+    showTableCreateDialogError(
+      state,
+      error.message || "Could not create table",
+    );
+  }
+}
+
+function confirmDiscardTableCreateChanges(state) {
+  if (!tableCreateDialogHasChanges(state)) {
+    return true;
+  }
+  return window.confirm("Discard this new table?");
+}
+
+function closeTableCreateDialogIfConfirmed(state) {
+  if (!state || state.isSaving) {
+    return false;
+  }
+  if (!confirmDiscardTableCreateChanges(state)) {
+    return false;
+  }
+  state.shouldRestoreFocus = true;
+  state.dialog.close();
+  return true;
+}
+
+function ensureTableCreateDialog(manager) {
+  if (tableCreateDialogState) {
+    return tableCreateDialogState;
+  }
+  if (!window.HTMLDialogElement) {
+    return null;
+  }
+
+  var dialog = document.createElement("dialog");
+  dialog.id = TABLE_CREATE_DIALOG_ID;
+  dialog.className = "table-create-dialog";
+  dialog.setAttribute("aria-labelledby", "table-create-title");
+  dialog.innerHTML = `
+    <div class="modal-header">
+      <span class="modal-title" id="table-create-title">Create table</span>
+    </div>
+    <form class="table-create-form" method="post" novalidate>
+      <p class="table-create-error" id="table-create-error" role="alert" tabindex="-1" hidden></p>
+      <div class="table-create-fields">
+        <div class="table-create-field">
+          <label class="table-create-label" for="table-create-name">Table name</label>
+          <input class="table-create-input table-create-table-name" id="table-create-name" type="text" name="table" required autocomplete="off">
+        </div>
+        <div class="table-create-columns">
+          <div class="table-create-columns-heading">Columns</div>
+          <div class="table-create-column-list"></div>
+          <button type="button" class="table-create-add-column">Add column</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost table-create-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary table-create-save">Create table</button>
+      </div>
+    </form>
+  `;
+  document.body.appendChild(dialog);
+
+  tableCreateDialogState = {
+    dialog: dialog,
+    form: dialog.querySelector(".table-create-form"),
+    title: dialog.querySelector(".modal-title"),
+    error: dialog.querySelector(".table-create-error"),
+    fields: dialog.querySelector(".table-create-fields"),
+    tableName: dialog.querySelector(".table-create-table-name"),
+    columnList: dialog.querySelector(".table-create-column-list"),
+    addColumnButton: dialog.querySelector(".table-create-add-column"),
+    cancelButton: dialog.querySelector(".table-create-cancel"),
+    saveButton: dialog.querySelector(".table-create-save"),
+    currentButton: null,
+    shouldRestoreFocus: true,
+    isSaving: false,
+    initialSignature: "",
+    nextColumnIndex: 0,
+    manager: manager,
+  };
+
+  tableCreateDialogState.form.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    saveTableCreateDialog(tableCreateDialogState);
+  });
+
+  tableCreateDialogState.addColumnButton.addEventListener("click", function () {
+    if (tableCreateDialogState.isSaving) {
+      return;
+    }
+    var row = addTableCreateColumn(tableCreateDialogState, { type: "text" });
+    clearTableCreateDialogError(tableCreateDialogState);
+    row.querySelector(".table-create-column-name").focus();
+  });
+
+  tableCreateDialogState.cancelButton.addEventListener("click", function () {
+    closeTableCreateDialogIfConfirmed(tableCreateDialogState);
+  });
+
+  tableCreateDialogState.tableName.addEventListener("input", function () {
+    clearTableCreateDialogError(tableCreateDialogState);
+  });
+
+  dialog.addEventListener("click", function (ev) {
+    if (ev.target === dialog) {
+      closeTableCreateDialogIfConfirmed(tableCreateDialogState);
+    }
+  });
+
+  dialog.addEventListener("keydown", function (ev) {
+    if (ev.key !== "Escape") {
+      return;
+    }
+    ev.preventDefault();
+    closeTableCreateDialogIfConfirmed(tableCreateDialogState);
+  });
+
+  dialog.addEventListener("cancel", function (ev) {
+    ev.preventDefault();
+    closeTableCreateDialogIfConfirmed(tableCreateDialogState);
+  });
+
+  dialog.addEventListener("close", function () {
+    var state = tableCreateDialogState;
+    clearTableCreateDialogError(state);
+    setTableCreateDialogSaving(state, false);
+    if (
+      state.shouldRestoreFocus &&
+      state.currentButton &&
+      document.contains(state.currentButton)
+    ) {
+      state.currentButton.focus();
+    }
+  });
+
+  return tableCreateDialogState;
+}
+
+function openTableCreateDialog(button, manager) {
+  var data = databaseCreateTableData();
+  if (!data) {
+    return;
+  }
+  var state = ensureTableCreateDialog(manager);
+  if (!state) {
+    return;
+  }
+
+  var menu = button.closest("details");
+  if (menu) {
+    menu.open = false;
+  }
+  state.manager = manager;
+  state.currentButton = button;
+  state.shouldRestoreFocus = true;
+  state.title.textContent = "Create a table in " + data.databaseName;
+  clearTableCreateDialogError(state);
+  resetTableCreateDialog(state);
+  if (!state.dialog.open) {
+    state.dialog.showModal();
+  }
+  state.tableName.focus();
+}
+
+function initTableCreateActions(manager) {
+  if (!window.fetch || !window.HTMLDialogElement || !databaseCreateTableData()) {
+    return;
+  }
+  document.addEventListener("click", function (ev) {
+    var button = ev.target.closest(
+      'button[data-database-action="create-table"]',
+    );
+    if (!button) {
+      return;
+    }
+    ev.preventDefault();
+    openTableCreateDialog(button, manager);
+  });
 }
 
 function setRowDeleteDialogBusy(state, isBusy) {
@@ -2017,6 +2695,7 @@ document.addEventListener("datasette_init", function (evt) {
   const { detail: manager } = evt;
 
   registerBuiltinColumnFieldPlugins(manager);
+  initTableCreateActions(manager);
   initRowInsertActions(manager);
   initRowEditActions(manager);
   initRowDeleteActions(manager);

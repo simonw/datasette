@@ -1981,6 +1981,7 @@ The JSON here describes the table that will be created:
 
   - ``name`` is the name of the column. This is required.
   - ``type`` is the type of the column. This is optional - if not provided, ``text`` will be assumed. The valid types are ``text``, ``integer``, ``float`` and ``blob``.
+  - ``fk_table`` can be used to create a single-column foreign key constraint referencing another table. ``fk_column`` is optional and can be used to specify the referenced column - if omitted, Datasette will use the single primary key of ``fk_table``.
 
 * ``pk`` is the primary key for the table. This is optional - if not provided, Datasette will create a SQLite table with a hidden ``rowid`` column.
 
@@ -1992,6 +1993,30 @@ The JSON here describes the table that will be created:
 * ``ignore`` can be set to ``true`` to ignore existing rows by primary key if the table already exists.
 * ``replace`` can be set to ``true`` to replace existing rows by primary key if the table already exists. This requires the :ref:`actions_update_row` permission.
 * ``alter`` can be set to ``true`` if you want to automatically add any missing columns to the table. This requires the :ref:`actions_alter_table` permission.
+
+This example creates a foreign key from ``projects.owner_id`` to the single primary key of ``owners``:
+
+.. code-block:: json
+
+    {
+        "table": "projects",
+        "columns": [
+            {
+                "name": "id",
+                "type": "integer"
+            },
+            {
+                "name": "owner_id",
+                "type": "integer",
+                "fk_table": "owners"
+            },
+            {
+                "name": "title",
+                "type": "text"
+            }
+        ],
+        "pk": "id"
+    }
 
 If the table is successfully created this will return a ``201`` status code and the following response:
 

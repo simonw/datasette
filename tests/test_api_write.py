@@ -1615,6 +1615,121 @@ async def test_create_table(
 
 
 @pytest.mark.asyncio
+async def test_create_table_with_foreign_key(ds_write):
+    token = write_token(ds_write)
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "owners",
+            "columns": [
+                {"name": "id", "type": "integer"},
+                {"name": "name", "type": "text"},
+            ],
+            "pk": "id",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201
+
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "projects",
+            "columns": [
+                {"name": "id", "type": "integer"},
+                {
+                    "name": "owner_id",
+                    "type": "integer",
+                    "fk_table": "owners",
+                },
+                {"name": "title", "type": "text"},
+            ],
+            "pk": "id",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert "[owner_id] INTEGER REFERENCES [owners]([id])" in data["schema"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "column,expected_error",
+    (
+        (
+            {"name": "owner_id", "type": "integer", "fk_table": "owners"},
+            None,
+        ),
+        (
+            {"name": "owner_id", "type": "integer", "fk_column": "id"},
+            "columns.0: fk_column requires fk_table",
+        ),
+    ),
+)
+async def test_create_table_foreign_key_validation(ds_write, column, expected_error):
+    token = write_token(ds_write)
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "projects",
+            "columns": [column],
+        },
+        headers=_headers(token),
+    )
+    if expected_error:
+        assert response.status_code == 400
+        assert response.json() == {"ok": False, "errors": [expected_error]}
+    else:
+        assert response.status_code == 400
+        assert response.json() == {
+            "ok": False,
+            "errors": ["Could not detect single primary key for table 'owners'"],
+        }
+
+
+@pytest.mark.asyncio
+async def test_create_table_foreign_key_without_fk_column_requires_single_pk(ds_write):
+    token = write_token(ds_write)
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "accounts",
+            "columns": [
+                {"name": "tenant_id", "type": "integer"},
+                {"name": "id", "type": "integer"},
+                {"name": "name", "type": "text"},
+            ],
+            "pks": ["tenant_id", "id"],
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201
+
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "projects",
+            "columns": [
+                {"name": "id", "type": "integer"},
+                {
+                    "name": "account_id",
+                    "type": "integer",
+                    "fk_table": "accounts",
+                },
+            ],
+            "pk": "id",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 400
+    assert response.json() == {
+        "ok": False,
+        "errors": ["Could not detect single primary key for table 'accounts'"],
+    }
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "permissions,body,expected_status,expected_errors",
     (

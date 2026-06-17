@@ -1,12 +1,10 @@
 import asyncio
 import itertools
 import json
-from typing import Annotated, Any, Literal, Union
 import urllib
 import urllib.parse
 
 import markupsafe
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from datasette.column_types import SQLiteType
 from datasette.extras import extra_names_from_request
@@ -48,9 +46,14 @@ from datasette.utils import (
 from datasette.utils.asgi import BadRequest, Forbidden, NotFound, Request, Response
 from datasette.filters import Filters
 import sqlite_utils
-from sqlite_utils.db import DEFAULT as SQLITE_UTILS_DEFAULT
 from .base import BaseView, DatasetteError, _error, stream_csv
-from .database import QueryView, _custom_column_type_options_for_create_table
+from .database import QueryView
+from .table_create_alter import (
+    ALTER_TABLE_COLUMN_TYPES,
+    ALTER_TABLE_TYPE_FOR_SQLITE_TYPE,
+    DEFAULT_EXPR_SQL,
+    _custom_column_type_options_for_create_table,
+)
 from .table_extras import (
     TABLE_EXTRA_BUNDLES,
     TableExtraContext,
@@ -64,13 +67,6 @@ LINK_WITH_LABEL = (
     '<a href="{base_url}{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'
 )
 LINK_WITH_VALUE = '<a href="{base_url}{database}/{table}/{link_id}">{id}</a>'
-ALTER_TABLE_COLUMN_TYPES = ["text", "integer", "float", "blob"]
-ALTER_TABLE_TYPE_FOR_SQLITE_TYPE = {
-    SQLiteType.TEXT: "text",
-    SQLiteType.INTEGER: "integer",
-    SQLiteType.REAL: "float",
-    SQLiteType.BLOB: "blob",
-}
 
 
 class Row:
@@ -727,154 +723,6 @@ async def display_columns_and_rows(
     return columns, cell_rows
 
 
-SqliteApiType = Literal["text", "integer", "float", "blob"]
-DefaultExpr = Literal["current_timestamp", "current_date", "current_time"]
-DEFAULT_EXPR_SQL = {
-    "current_timestamp": "CURRENT_TIMESTAMP",
-    "current_date": "CURRENT_DATE",
-    "current_time": "CURRENT_TIME",
-}
-
-
-class _StrictPydanticModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-
-class _DefaultArgsMixin(_StrictPydanticModel):
-    default: Any | None = None
-    default_expr: DefaultExpr | None = None
-
-    @model_validator(mode="after")
-    def validate_default_fields(self):
-        has_default = "default" in self.model_fields_set
-        has_default_expr = "default_expr" in self.model_fields_set
-        if has_default and has_default_expr:
-            raise ValueError("default and default_expr cannot both be provided")
-        if has_default_expr and self.default_expr is None:
-            raise ValueError("default_expr cannot be null")
-        return self
-
-
-class AddColumnArgs(_DefaultArgsMixin):
-    name: str
-    type: SqliteApiType = "text"
-    not_null: bool = False
-
-
-class RenameColumnArgs(_StrictPydanticModel):
-    name: str
-    to: str
-
-
-class AlterColumnArgs(_DefaultArgsMixin):
-    name: str
-    type: SqliteApiType | None = None
-    not_null: bool | None = None
-
-    @model_validator(mode="after")
-    def require_change(self):
-        if not (
-            {"type", "not_null", "default", "default_expr"} & self.model_fields_set
-        ):
-            raise ValueError(
-                "At least one of type, not_null, default or default_expr must be provided"
-            )
-        return self
-
-
-class DropColumnArgs(_StrictPydanticModel):
-    name: str
-
-
-class SetPrimaryKeyArgs(_StrictPydanticModel):
-    columns: list[str] = Field(min_length=1)
-
-
-class ReorderColumnsArgs(_StrictPydanticModel):
-    columns: list[str] = Field(min_length=1)
-
-
-class AddColumnOperation(_StrictPydanticModel):
-    op: Literal["add_column"]
-    args: AddColumnArgs
-
-
-class RenameColumnOperation(_StrictPydanticModel):
-    op: Literal["rename_column"]
-    args: RenameColumnArgs
-
-
-class AlterColumnOperation(_StrictPydanticModel):
-    op: Literal["alter_column"]
-    args: AlterColumnArgs
-
-
-class DropColumnOperation(_StrictPydanticModel):
-    op: Literal["drop_column"]
-    args: DropColumnArgs
-
-
-class SetPrimaryKeyOperation(_StrictPydanticModel):
-    op: Literal["set_primary_key"]
-    args: SetPrimaryKeyArgs
-
-
-class ReorderColumnsOperation(_StrictPydanticModel):
-    op: Literal["reorder_columns"]
-    args: ReorderColumnsArgs
-
-
-AlterTableOperation = Annotated[
-    Union[
-        AddColumnOperation,
-        RenameColumnOperation,
-        AlterColumnOperation,
-        DropColumnOperation,
-        SetPrimaryKeyOperation,
-        ReorderColumnsOperation,
-    ],
-    Field(discriminator="op"),
-]
-
-
-class AlterTableRequest(_StrictPydanticModel):
-    operations: list[AlterTableOperation] = Field(min_length=1)
-    dry_run: bool = False
-
-
-def _pydantic_errors(validation_error):
-    errors = []
-    for error in validation_error.errors():
-        location = ".".join(str(item) for item in error["loc"])
-        message = error["msg"]
-        errors.append("{}: {}".format(location, message) if location else message)
-    return errors
-
-
-def _table_schema_from_conn(conn, table_name):
-    row = conn.execute(
-        "select sql from sqlite_master where type = 'table' and name = ?",
-        [table_name],
-    ).fetchone()
-    return row[0] if row else None
-
-
-def _primary_key_value(columns):
-    if len(columns) == 1:
-        return columns[0]
-    return tuple(columns)
-
-
-def _default_expression_sql(default_expr):
-    return DEFAULT_EXPR_SQL[default_expr]
-
-
-def _literal_default(db, value):
-    if isinstance(value, str):
-        return db.quote(value)
-    return value
-
-
 class TableInsertView(BaseView):
     name = "table-insert"
 
@@ -1170,211 +1018,6 @@ class TableUpsertView(TableInsertView):
 
     async def post(self, request):
         return await super().post(request, upsert=True)
-
-
-class TableAlterView(BaseView):
-    name = "table-alter"
-
-    def __init__(self, datasette):
-        self.ds = datasette
-
-    async def post(self, request):
-        try:
-            resolved = await self.ds.resolve_table(request)
-        except NotFound as e:
-            return _error([e.args[0]], 404)
-
-        db = resolved.db
-        database_name = db.name
-        table_name = resolved.table
-
-        if not await self.ds.allowed(
-            action="alter-table",
-            resource=TableResource(database=database_name, table=table_name),
-            actor=request.actor,
-        ):
-            return _error(["Permission denied: need alter-table"], 403)
-
-        if not db.is_mutable:
-            return _error(["Database is immutable"], 403)
-
-        content_type = request.headers.get("content-type") or ""
-        if not content_type.startswith("application/json"):
-            return _error(["Invalid content-type, must be application/json"], 400)
-
-        try:
-            data = await request.json()
-        except json.JSONDecodeError as e:
-            return _error(["Invalid JSON: {}".format(e)], 400)
-
-        if not isinstance(data, dict):
-            return _error(["JSON must be a dictionary"], 400)
-
-        try:
-            alter_request = AlterTableRequest.model_validate(data)
-        except ValidationError as e:
-            return _error(_pydantic_errors(e), 400)
-
-        def alter_table(conn):
-            before_schema = _table_schema_from_conn(conn, table_name)
-
-            def apply_operations(operation_conn):
-                db_for_write = sqlite_utils.Database(operation_conn)
-                table = db_for_write[table_name]
-
-                add_columns = []
-                types = {}
-                rename = {}
-                drop = set()
-                not_null = {}
-                defaults = {}
-                column_order = None
-                pk = SQLITE_UTILS_DEFAULT
-
-                for operation in alter_request.operations:
-                    args = operation.args
-                    if operation.op == "add_column":
-                        if args.not_null and not (
-                            (
-                                "default" in args.model_fields_set
-                                and args.default is not None
-                            )
-                            or "default_expr" in args.model_fields_set
-                        ):
-                            raise ValueError(
-                                "add_column args.default or args.default_expr is required when not_null is true"
-                            )
-                        add_columns.append(args)
-                        if "default" in args.model_fields_set and not args.not_null:
-                            defaults[args.name] = _literal_default(
-                                db_for_write, args.default
-                            )
-                        if (
-                            "default_expr" in args.model_fields_set
-                            and not args.not_null
-                        ):
-                            defaults[args.name] = _default_expression_sql(
-                                args.default_expr
-                            )
-                    elif operation.op == "rename_column":
-                        rename[args.name] = args.to
-                    elif operation.op == "alter_column":
-                        if args.type is not None:
-                            types[args.name] = args.type
-                        if args.not_null is not None:
-                            not_null[args.name] = args.not_null
-                        if "default" in args.model_fields_set:
-                            defaults[args.name] = (
-                                None
-                                if args.default is None
-                                else _literal_default(db_for_write, args.default)
-                            )
-                        if "default_expr" in args.model_fields_set:
-                            defaults[args.name] = _default_expression_sql(
-                                args.default_expr
-                            )
-                    elif operation.op == "drop_column":
-                        drop.add(args.name)
-                    elif operation.op == "set_primary_key":
-                        pk = _primary_key_value(args.columns)
-                    elif operation.op == "reorder_columns":
-                        column_order = args.columns
-
-                with operation_conn:
-                    for column in add_columns:
-                        not_null_default = None
-                        if column.not_null:
-                            if "default_expr" in column.model_fields_set:
-                                not_null_default = _default_expression_sql(
-                                    column.default_expr
-                                )
-                            else:
-                                not_null_default = _literal_default(
-                                    db_for_write, column.default
-                                )
-                        table.add_column(
-                            column.name,
-                            column.type,
-                            not_null_default=not_null_default,
-                        )
-
-                    should_transform = any(
-                        (
-                            types,
-                            rename,
-                            drop,
-                            not_null,
-                            defaults,
-                            column_order is not None,
-                            pk is not SQLITE_UTILS_DEFAULT,
-                        )
-                    )
-                    if should_transform:
-                        table.transform(
-                            types=types or None,
-                            rename=rename or None,
-                            drop=drop or None,
-                            pk=pk,
-                            not_null=not_null or None,
-                            defaults=defaults or None,
-                            column_order=column_order,
-                        )
-
-                return _table_schema_from_conn(operation_conn, table_name)
-
-            if alter_request.dry_run:
-                memory_conn = sqlite3.connect(":memory:")
-                try:
-                    conn.backup(memory_conn)
-                    return before_schema, apply_operations(memory_conn)
-                finally:
-                    memory_conn.close()
-
-            after_schema = apply_operations(conn)
-            return before_schema, after_schema
-
-        try:
-            before_schema, after_schema = await db.execute_write_fn(
-                alter_table, request=request
-            )
-        except Exception as e:
-            return _error([str(e)], 400)
-
-        altered = before_schema != after_schema
-        if altered and not alter_request.dry_run:
-            await self.ds.track_event(
-                AlterTableEvent(
-                    request.actor,
-                    database=database_name,
-                    table=table_name,
-                    before_schema=before_schema,
-                    after_schema=after_schema,
-                )
-            )
-
-        table_url = self.ds.absolute_url(
-            request, self.ds.urls.table(database_name, table_name)
-        )
-        table_api_url = self.ds.absolute_url(
-            request, self.ds.urls.table(database_name, table_name, format="json")
-        )
-        return Response.json(
-            {
-                "ok": True,
-                "database": database_name,
-                "table": table_name,
-                "table_url": table_url,
-                "table_api_url": table_api_url,
-                "altered": altered,
-                "schema": after_schema,
-                "before_schema": before_schema,
-                "operations_applied": (
-                    0 if alter_request.dry_run else len(alter_request.operations)
-                ),
-                "dry_run": alter_request.dry_run,
-            },
-            status=200,
-        )
 
 
 class TableSetColumnTypeView(BaseView):

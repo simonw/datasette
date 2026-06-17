@@ -6,15 +6,11 @@ import itertools
 import json
 import markupsafe
 import os
-import re
-import sqlite_utils
 import textwrap
 
-from datasette.events import AlterTableEvent, CreateTableEvent, InsertRowsEvent
 from datasette.extras import extra_names_from_request
 from datasette.database import QueryInterrupted
-from datasette.column_types import SQLiteType
-from datasette.resources import DatabaseResource, QueryResource, TableResource
+from datasette.resources import DatabaseResource, QueryResource
 from datasette.stored_queries import stored_query_to_dict
 from datasette.write_sql import QueryWriteRejected
 from datasette.utils import (
@@ -38,26 +34,15 @@ from datasette.utils import (
 from datasette.utils.asgi import AsgiFileDownload, NotFound, Response, Forbidden
 from datasette.plugins import pm
 
-from .base import BaseView, DatasetteError, View, _error, stream_csv
+from .base import DatasetteError, View, stream_csv
 from .query_helpers import _ensure_stored_query_execution_permissions, _table_columns
 from .table_extras import (
     QueryExtraContext,
     resolve_query_extras,
     table_extra_registry,
 )
+from .table_create_alter import _create_table_ui_context
 from . import Context
-
-CREATE_TABLE_COLUMN_TYPES = ["text", "integer", "float", "blob"]
-CREATE_TABLE_SQLITE_TYPES = {
-    "text": SQLiteType.TEXT,
-    "integer": SQLiteType.INTEGER,
-    "float": SQLiteType.REAL,
-    "blob": SQLiteType.BLOB,
-}
-CREATE_TABLE_TYPE_FOR_SQLITE_TYPE = {
-    sqlite_type: column_type
-    for column_type, sqlite_type in CREATE_TABLE_SQLITE_TYPES.items()
-}
 
 
 class DatabaseView(View):
@@ -142,7 +127,7 @@ class DatabaseView(View):
             resource=DatabaseResource(database),
             actor=request.actor,
         )
-        create_table_ui = await _database_create_table_ui(
+        create_table_ui = await _create_table_ui_context(
             datasette, request, db, database, database_action_permissions
         )
 
@@ -324,57 +309,6 @@ class DatabaseContext(Context):
     top_database: callable = field(
         metadata={"help": "Callable to render the top_database slot"}
     )
-
-
-async def _database_create_table_ui(
-    datasette, request, db, database_name, database_action_permissions
-):
-    if not db.is_mutable:
-        return None
-    if not database_action_permissions.get("create-table"):
-        return None
-    data = {
-        "path": "{}/-/create".format(datasette.urls.database(database_name)),
-        "databaseName": database_name,
-        "columnTypes": CREATE_TABLE_COLUMN_TYPES,
-    }
-    can_set_column_type = await datasette.allowed(
-        action="set-column-type",
-        resource=TableResource(database=database_name, table="__new_table__"),
-        actor=request.actor,
-    )
-    if can_set_column_type:
-        data["customColumnTypes"] = _custom_column_type_options_for_create_table(
-            datasette
-        )
-    return data
-
-
-def _custom_column_type_options_for_create_table(datasette):
-    options = []
-    for name, ct_cls in sorted(datasette._column_types.items()):
-        sqlite_types = getattr(ct_cls, "sqlite_types", None)
-        if sqlite_types is None:
-            option_sqlite_types = CREATE_TABLE_COLUMN_TYPES[:]
-        else:
-            option_sqlite_types = [
-                create_table_type
-                for create_table_type, sqlite_type in CREATE_TABLE_SQLITE_TYPES.items()
-                if sqlite_type in sqlite_types
-            ]
-        if not option_sqlite_types:
-            continue
-        option = {
-            "name": name,
-            "description": ct_cls.description,
-            "sqliteTypes": option_sqlite_types,
-        }
-        if sqlite_types is not None and len(sqlite_types) == 1:
-            fixed_sqlite_type = CREATE_TABLE_TYPE_FOR_SQLITE_TYPE.get(sqlite_types[0])
-            if fixed_sqlite_type is not None:
-                option["fixedSqliteType"] = fixed_sqlite_type
-        options.append(option)
-    return options
 
 
 @dataclass
@@ -1138,255 +1072,6 @@ class MagicParameters(dict):
                     return super().__getitem__(key)
         else:
             return super().__getitem__(key)
-
-
-class TableCreateView(BaseView):
-    name = "table-create"
-
-    _valid_keys = {
-        "table",
-        "rows",
-        "row",
-        "columns",
-        "pk",
-        "pks",
-        "ignore",
-        "replace",
-        "alter",
-    }
-    _supported_column_types = set(CREATE_TABLE_COLUMN_TYPES)
-    # Any string that does not contain a newline or start with sqlite_
-    _table_name_re = re.compile(r"^(?!sqlite_)[^\n]+$")
-
-    def __init__(self, datasette):
-        self.ds = datasette
-
-    async def post(self, request):
-        db = await self.ds.resolve_database(request)
-        database_name = db.name
-
-        # Must have create-table permission
-        if not await self.ds.allowed(
-            action="create-table",
-            resource=DatabaseResource(database=database_name),
-            actor=request.actor,
-        ):
-            return _error(["Permission denied"], 403)
-
-        try:
-            data = await request.json()
-        except json.JSONDecodeError as e:
-            return _error(["Invalid JSON: {}".format(e)])
-
-        if not isinstance(data, dict):
-            return _error(["JSON must be an object"])
-
-        invalid_keys = set(data.keys()) - self._valid_keys
-        if invalid_keys:
-            return _error(["Invalid keys: {}".format(", ".join(invalid_keys))])
-
-        # ignore and replace are mutually exclusive
-        if data.get("ignore") and data.get("replace"):
-            return _error(["ignore and replace are mutually exclusive"])
-
-        # ignore and replace only allowed with row or rows
-        if "ignore" in data or "replace" in data:
-            if not data.get("row") and not data.get("rows"):
-                return _error(["ignore and replace require row or rows"])
-
-        # ignore and replace require pk or pks
-        if "ignore" in data or "replace" in data:
-            if not data.get("pk") and not data.get("pks"):
-                return _error(["ignore and replace require pk or pks"])
-
-        ignore = data.get("ignore")
-        replace = data.get("replace")
-
-        if replace:
-            # Must have update-row permission
-            if not await self.ds.allowed(
-                action="update-row",
-                resource=DatabaseResource(database=database_name),
-                actor=request.actor,
-            ):
-                return _error(["Permission denied: need update-row"], 403)
-
-        table_name = data.get("table")
-        if not table_name:
-            return _error(["Table is required"])
-
-        if not self._table_name_re.match(table_name):
-            return _error(["Invalid table name"])
-
-        table_exists = await db.table_exists(data["table"])
-        columns = data.get("columns")
-        rows = data.get("rows")
-        row = data.get("row")
-        if not columns and not rows and not row:
-            return _error(["columns, rows or row is required"])
-
-        if rows and row:
-            return _error(["Cannot specify both rows and row"])
-
-        if rows or row:
-            # Must have insert-row permission
-            if not await self.ds.allowed(
-                action="insert-row",
-                resource=DatabaseResource(database=database_name),
-                actor=request.actor,
-            ):
-                return _error(["Permission denied: need insert-row"], 403)
-
-        alter = False
-        if rows or row:
-            if not table_exists:
-                # if table is being created for the first time, alter=True
-                alter = True
-            else:
-                # alter=True only if they request it AND they have permission
-                if data.get("alter"):
-                    if not await self.ds.allowed(
-                        action="alter-table",
-                        resource=DatabaseResource(database=database_name),
-                        actor=request.actor,
-                    ):
-                        return _error(["Permission denied: need alter-table"], 403)
-                    alter = True
-
-        if columns:
-            if rows or row:
-                return _error(["Cannot specify columns with rows or row"])
-            if not isinstance(columns, list):
-                return _error(["columns must be a list"])
-            for column in columns:
-                if not isinstance(column, dict):
-                    return _error(["columns must be a list of objects"])
-                if not column.get("name") or not isinstance(column.get("name"), str):
-                    return _error(["Column name is required"])
-                if not column.get("type"):
-                    column["type"] = "text"
-                if column["type"] not in self._supported_column_types:
-                    return _error(
-                        ["Unsupported column type: {}".format(column["type"])]
-                    )
-            # No duplicate column names
-            dupes = {c["name"] for c in columns if columns.count(c) > 1}
-            if dupes:
-                return _error(["Duplicate column name: {}".format(", ".join(dupes))])
-
-        if row:
-            rows = [row]
-
-        if rows:
-            if not isinstance(rows, list):
-                return _error(["rows must be a list"])
-            for row in rows:
-                if not isinstance(row, dict):
-                    return _error(["rows must be a list of objects"])
-
-        pk = data.get("pk")
-        pks = data.get("pks")
-
-        if pk and pks:
-            return _error(["Cannot specify both pk and pks"])
-        if pk:
-            if not isinstance(pk, str):
-                return _error(["pk must be a string"])
-        if pks:
-            if not isinstance(pks, list):
-                return _error(["pks must be a list"])
-            for pk in pks:
-                if not isinstance(pk, str):
-                    return _error(["pks must be a list of strings"])
-
-        # If table exists already, read pks from that instead
-        if table_exists:
-            actual_pks = await db.primary_keys(table_name)
-            # if pk passed and table already exists check it does not change
-            bad_pks = False
-            if len(actual_pks) == 1 and data.get("pk") and data["pk"] != actual_pks[0]:
-                bad_pks = True
-            elif (
-                len(actual_pks) > 1
-                and data.get("pks")
-                and set(data["pks"]) != set(actual_pks)
-            ):
-                bad_pks = True
-            if bad_pks:
-                return _error(["pk cannot be changed for existing table"])
-            pks = actual_pks
-
-        initial_schema = None
-        if table_exists:
-            initial_schema = await db.execute_fn(
-                lambda conn: sqlite_utils.Database(conn)[table_name].schema
-            )
-
-        def create_table(conn):
-            table = sqlite_utils.Database(conn)[table_name]
-            if rows:
-                table.insert_all(
-                    rows, pk=pks or pk, ignore=ignore, replace=replace, alter=alter
-                )
-            else:
-                table.create(
-                    {c["name"]: c["type"] for c in columns},
-                    pk=pks or pk,
-                )
-            return table.schema
-
-        try:
-            schema = await db.execute_write_fn(create_table, request=request)
-        except Exception as e:
-            return _error([str(e)])
-
-        if initial_schema is not None and initial_schema != schema:
-            await self.ds.track_event(
-                AlterTableEvent(
-                    request.actor,
-                    database=database_name,
-                    table=table_name,
-                    before_schema=initial_schema,
-                    after_schema=schema,
-                )
-            )
-
-        table_url = self.ds.absolute_url(
-            request, self.ds.urls.table(db.name, table_name)
-        )
-        table_api_url = self.ds.absolute_url(
-            request, self.ds.urls.table(db.name, table_name, format="json")
-        )
-        details = {
-            "ok": True,
-            "database": db.name,
-            "table": table_name,
-            "table_url": table_url,
-            "table_api_url": table_api_url,
-            "schema": schema,
-        }
-        if rows:
-            details["row_count"] = len(rows)
-
-        if not table_exists:
-            # Only log creation if we created a table
-            await self.ds.track_event(
-                CreateTableEvent(
-                    request.actor, database=db.name, table=table_name, schema=schema
-                )
-            )
-        if rows:
-            await self.ds.track_event(
-                InsertRowsEvent(
-                    request.actor,
-                    database=db.name,
-                    table=table_name,
-                    num_rows=len(rows),
-                    ignore=ignore,
-                    replace=replace,
-                )
-            )
-        return Response.json(details, status=201)
 
 
 async def display_rows(datasette, database, request, rows, columns):

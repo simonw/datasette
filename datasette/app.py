@@ -47,9 +47,9 @@ from .views import Context
 from .views.database import (
     database_download,
     DatabaseView,
-    TableCreateView,
     QueryView,
 )
+from .views.table_create_alter import TableAlterView, TableCreateView
 from .views.execute_write import ExecuteWriteAnalyzeView, ExecuteWriteView
 from .views.stored_queries import (
     QueryCreateAnalyzeView,
@@ -84,7 +84,6 @@ from .views.special import (
 )
 from .views.table import (
     TableAutocompleteView,
-    TableAlterView,
     TableInsertView,
     TableUpsertView,
     TableSetColumnTypeView,

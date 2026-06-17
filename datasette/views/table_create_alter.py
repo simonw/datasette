@@ -52,6 +52,34 @@ ALTER_TABLE_TYPE_FOR_SQLITE_TYPE = {
 FOREIGN_KEY_SUGGESTION_ROW_LIMIT = 500
 FOREIGN_KEY_SUGGESTION_TIME_LIMIT_MS = 50
 FOREIGN_KEY_SUGGESTION_TOTAL_TIME_LIMIT_MS = 200
+FOREIGN_KEY_TARGETS_SQL = """
+select
+  m.name as fk_table,
+  p.name as fk_column,
+  case
+    when upper(coalesce(p.type, '')) like '%INT%' then 'integer'
+    when upper(coalesce(p.type, '')) like '%CHAR%'
+      or upper(coalesce(p.type, '')) like '%CLOB%'
+      or upper(coalesce(p.type, '')) like '%TEXT%' then 'text'
+    when upper(coalesce(p.type, '')) like '%BLOB%'
+      or coalesce(p.type, '') = '' then 'blob'
+    when upper(coalesce(p.type, '')) like '%REAL%'
+      or upper(coalesce(p.type, '')) like '%FLOA%'
+      or upper(coalesce(p.type, '')) like '%' || 'DOU' || 'B' || '%' then 'real'
+    else 'numeric'
+  end as type
+from sqlite_master as m
+cross join pragma_table_info(m.name) as p
+where m.type = 'table'
+  and m.name not like 'sqlite_%'
+  and p.pk > 0
+  and (
+    select count(*)
+    from pragma_table_info(m.name) as p2
+    where p2.pk > 0
+  ) = 1
+order by m.name
+"""
 
 
 class ForeignKeySuggestionTimedOut(Exception):
@@ -66,7 +94,10 @@ def _sqlite_type_affinity(type_name):
         return "text"
     if "BLOB" in type_name or not type_name:
         return "blob"
-    if any(token in type_name for token in ("REAL", "FLOA", "DOUB")):
+    if any(
+        token in type_name
+        for token in ("REAL", "FLOA", "DOUB")  # codespell:ignore doub
+    ):
         return "real"
     return "numeric"
 
@@ -786,6 +817,33 @@ class TableCreateView(BaseView):
                 )
             )
         return Response.json(details, status=201)
+
+
+class DatabaseForeignKeyTargetsView(BaseView):
+    name = "database-foreign-key-targets"
+
+    def __init__(self, datasette):
+        self.ds = datasette
+
+    async def get(self, request):
+        db = await self.ds.resolve_database(request)
+        database_name = db.name
+
+        if not await self.ds.allowed(
+            action="create-table",
+            resource=DatabaseResource(database=database_name),
+            actor=request.actor,
+        ):
+            return _error(["Permission denied: need create-table"], 403)
+
+        targets = (await db.execute(FOREIGN_KEY_TARGETS_SQL)).dicts()
+        return Response.json(
+            {
+                "ok": True,
+                "database": database_name,
+                "targets": targets,
+            }
+        )
 
 
 class TableForeignKeySuggestionsView(BaseView):

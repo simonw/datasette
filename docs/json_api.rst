@@ -2097,6 +2097,40 @@ To use the ``"replace": true`` option you will also need the :ref:`actions_updat
 
 Pass ``"alter": true`` to automatically add any missing columns to the existing table that are present in the rows you are submitting. This requires the :ref:`actions_alter_table` permission.
 
+.. _DatabaseForeignKeyTargetsView:
+
+Database foreign key targets
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``/<database>/-/foreign-key-targets`` endpoint returns the list of tables in a database that can be referenced by a single-column foreign key. This requires the :ref:`actions_create_table` permission.
+
+::
+
+    GET /<database>/-/foreign-key-targets
+
+The response includes only tables with exactly one primary key column. Tables with compound primary keys and tables with no explicit primary key are omitted.
+
+Each target includes the normalized SQLite type affinity for the primary key column in ``type``. The type is calculated using SQLite's documented affinity rules: ``INT`` maps to ``integer``; ``CHAR``, ``CLOB`` or ``TEXT`` maps to ``text``; ``BLOB`` or no type maps to ``blob``; ``REAL`` and floating-point declared types map to ``real``; everything else maps to ``numeric``.
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "database": "data",
+        "targets": [
+            {
+                "fk_table": "owners",
+                "fk_column": "id",
+                "type": "integer"
+            },
+            {
+                "fk_table": "categories",
+                "fk_column": "slug",
+                "type": "text"
+            }
+        ]
+    }
+
 .. _TableForeignKeySuggestionsView:
 
 Table foreign key suggestions

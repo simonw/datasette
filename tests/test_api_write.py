@@ -1145,6 +1145,81 @@ async def test_foreign_key_suggestions_fail_open(ds_write, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_foreign_key_targets(ds_write):
+    token = write_token(ds_write, permissions=["ct"])
+    db = ds_write.get_database("data")
+    await db.execute_write("create table owners (id integer primary key)")
+    await db.execute_write("create table categories (slug varchar(30) primary key)")
+    await db.execute_write("create table blob_things (hash blob primary key)")
+    await db.execute_write(
+        "create table numeric_codes (code decimal(10,5) primary key)"
+    )
+    await db.execute_write(
+        'create table floating_point (value "FLOATING POINT" primary key)'
+    )
+    await db.execute_write(
+        "create table compound (a integer, b integer, primary key (a, b))"
+    )
+    await db.execute_write("create table no_pk (name text)")
+
+    response = await ds_write.client.get(
+        "/data/-/foreign-key-targets",
+        headers=_headers(token),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "ok": True,
+        "database": "data",
+        "targets": [
+            {
+                "fk_table": "blob_things",
+                "fk_column": "hash",
+                "type": "blob",
+            },
+            {
+                "fk_table": "categories",
+                "fk_column": "slug",
+                "type": "text",
+            },
+            {
+                "fk_table": "docs",
+                "fk_column": "id",
+                "type": "integer",
+            },
+            {
+                "fk_table": "floating_point",
+                "fk_column": "value",
+                "type": "integer",
+            },
+            {
+                "fk_table": "numeric_codes",
+                "fk_column": "code",
+                "type": "numeric",
+            },
+            {
+                "fk_table": "owners",
+                "fk_column": "id",
+                "type": "integer",
+            },
+        ],
+    }
+
+
+@pytest.mark.asyncio
+async def test_foreign_key_targets_permission_denied(ds_write):
+    token = write_token(ds_write, permissions=["ir"])
+    response = await ds_write.client.get(
+        "/data/-/foreign-key-targets",
+        headers=_headers(token),
+    )
+    assert response.status_code == 403
+    assert response.json() == {
+        "ok": False,
+        "errors": ["Permission denied: need create-table"],
+    }
+
+
+@pytest.mark.asyncio
 async def test_alter_table_permission_denied(ds_write):
     token = write_token(ds_write, permissions=["ir"])
     response = await ds_write.client.post(

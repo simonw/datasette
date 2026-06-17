@@ -50,6 +50,7 @@ from .views.database import (
     QueryView,
 )
 from .views.table_create_alter import (
+    DatabaseForeignKeyTargetsView,
     TableAlterView,
     TableCreateView,
     TableForeignKeySuggestionsView,
@@ -2566,6 +2567,10 @@ class Datasette:
             r"/(?P<database>[^\/\.]+)(\.(?P<format>\w+))?$",
         )
         add_route(TableCreateView.as_view(self), r"/(?P<database>[^\/\.]+)/-/create$")
+        add_route(
+            DatabaseForeignKeyTargetsView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/foreign-key-targets$",
+        )
         add_route(
             QueryListView.as_view(self),
             r"/(?P<database>[^\/\.]+)/-/queries(\.(?P<format>json))?$",

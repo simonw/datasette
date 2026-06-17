@@ -795,6 +795,211 @@ async def test_update_row_alter(ds_write):
 
 
 @pytest.mark.asyncio
+async def test_alter_table_operations(ds_write):
+    token = write_token(ds_write, permissions=["at"])
+    db = ds_write.get_database("data")
+    before_schema = await db.execute_fn(
+        lambda conn: conn.execute(
+            "select sql from sqlite_master where type = 'table' and name = 'docs'"
+        ).fetchone()[0]
+    )
+
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json={
+            "operations": [
+                {
+                    "op": "add_column",
+                    "args": {
+                        "name": "slug",
+                        "type": "text",
+                        "not_null": True,
+                        "default": "",
+                    },
+                },
+                {
+                    "op": "add_column",
+                    "args": {
+                        "name": "created",
+                        "type": "text",
+                        "default_expr": "current_timestamp",
+                    },
+                },
+                {
+                    "op": "add_column",
+                    "args": {
+                        "name": "literal_default",
+                        "type": "text",
+                        "default": "hello)",
+                    },
+                },
+                {"op": "rename_column", "args": {"name": "title", "to": "headline"}},
+                {
+                    "op": "alter_column",
+                    "args": {"name": "age", "type": "text", "default": "0"},
+                },
+                {"op": "drop_column", "args": {"name": "score"}},
+                {
+                    "op": "reorder_columns",
+                    "args": {
+                        "columns": [
+                            "id",
+                            "headline",
+                            "slug",
+                            "created",
+                            "literal_default",
+                            "age",
+                        ]
+                    },
+                },
+                {"op": "set_primary_key", "args": {"columns": ["id"]}},
+            ]
+        },
+        headers=_headers(token),
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["ok"] is True
+    assert data["database"] == "data"
+    assert data["table"] == "docs"
+    assert data["altered"] is True
+    assert data["operations_applied"] == 8
+    assert data["before_schema"] == before_schema
+    assert "headline" in data["schema"]
+    assert "score" not in data["schema"]
+    assert "DEFAULT CURRENT_TIMESTAMP" in data["schema"]
+    assert "DEFAULT 'hello)'" in data["schema"]
+
+    columns = (
+        await db.execute("select * from pragma_table_info('docs') order by cid")
+    ).dicts()
+    assert [column["name"] for column in columns] == [
+        "id",
+        "headline",
+        "slug",
+        "created",
+        "literal_default",
+        "age",
+    ]
+    assert columns[0]["pk"] == 1
+    assert columns[2]["notnull"] == 1
+    assert columns[2]["dflt_value"] == "''"
+    assert columns[3]["dflt_value"] == "CURRENT_TIMESTAMP"
+    assert columns[4]["dflt_value"] == "'hello)'"
+    assert columns[5]["type"] == "TEXT"
+    assert columns[5]["dflt_value"] == "'0'"
+
+    event = last_event(ds_write)
+    assert event.name == "alter-table"
+    assert event.database == "data"
+    assert event.table == "docs"
+    assert event.before_schema == before_schema
+    assert event.after_schema == data["schema"]
+
+
+@pytest.mark.asyncio
+async def test_alter_table_dry_run(ds_write):
+    token = write_token(ds_write, permissions=["at"])
+    db = ds_write.get_database("data")
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json={
+            "dry_run": True,
+            "operations": [
+                {"op": "add_column", "args": {"name": "slug", "type": "text"}}
+            ],
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["ok"] is True
+    assert data["dry_run"] is True
+    assert data["altered"] is True
+    assert data["operations_applied"] == 0
+    assert "slug" in data["schema"]
+    columns = (
+        await db.execute("select name from pragma_table_info('docs') order by cid")
+    ).dicts()
+    assert [column["name"] for column in columns] == ["id", "title", "score", "age"]
+    assert last_event(ds_write) is None
+
+
+@pytest.mark.asyncio
+async def test_alter_table_permission_denied(ds_write):
+    token = write_token(ds_write, permissions=["ir"])
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json={"operations": [{"op": "add_column", "args": {"name": "slug"}}]},
+        headers=_headers(token),
+    )
+    assert response.status_code == 403
+    assert response.json() == {
+        "ok": False,
+        "errors": ["Permission denied: need alter-table"],
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body,expected_error",
+    (
+        (
+            {"operations": [{"op": "add_column", "args": {"type": "text"}}]},
+            "operations.0.add_column.args.name: Field required",
+        ),
+        (
+            {
+                "operations": [
+                    {"op": "add_column", "args": {"name": "x", "type": "bad"}}
+                ]
+            },
+            "operations.0.add_column.args.type: Input should be 'text', 'integer', 'float' or 'blob'",
+        ),
+        (
+            {
+                "operations": [
+                    {
+                        "op": "add_column",
+                        "args": {
+                            "name": "x",
+                            "default_expr": "datetime('now')",
+                        },
+                    }
+                ]
+            },
+            "operations.0.add_column.args.default_expr: Input should be 'current_timestamp', 'current_date' or 'current_time'",
+        ),
+        (
+            {
+                "operations": [
+                    {
+                        "op": "add_column",
+                        "args": {
+                            "name": "x",
+                            "default": "x",
+                            "default_expr": "current_timestamp",
+                        },
+                    }
+                ]
+            },
+            "operations.0.add_column.args: Value error, default and default_expr cannot both be provided",
+        ),
+    ),
+)
+async def test_alter_table_validation_errors(ds_write, body, expected_error):
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json=body,
+        headers=_headers(write_token(ds_write, permissions=["at"])),
+    )
+    assert response.status_code == 400
+    assert response.json()["ok"] is False
+    assert response.json()["errors"] == [expected_error]
+
+
+@pytest.mark.asyncio
 async def test_execute_write_form_parameter_called_sql():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True

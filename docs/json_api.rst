@@ -2072,6 +2072,109 @@ To use the ``"replace": true`` option you will also need the :ref:`actions_updat
 
 Pass ``"alter": true`` to automatically add any missing columns to the existing table that are present in the rows you are submitting. This requires the :ref:`actions_alter_table` permission.
 
+.. _TableAlterView:
+
+Altering tables
+~~~~~~~~~~~~~~~
+
+To alter an existing table, make a ``POST`` to ``/<database>/<table>/-/alter``. This requires the :ref:`actions_alter_table` permission.
+
+::
+
+    POST /<database>/<table>/-/alter
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+
+The request body should include an ``operations`` array. Each operation has the same top-level shape: an ``op`` string and an ``args`` object.
+
+.. code-block:: json
+
+    {
+        "operations": [
+            {
+                "op": "add_column",
+                "args": {
+                    "name": "slug",
+                    "type": "text",
+                    "not_null": true,
+                    "default": ""
+                }
+            },
+            {
+                "op": "add_column",
+                "args": {
+                    "name": "created",
+                    "type": "text",
+                    "default_expr": "current_timestamp"
+                }
+            },
+            {
+                "op": "rename_column",
+                "args": {
+                    "name": "title",
+                    "to": "headline"
+                }
+            },
+            {
+                "op": "alter_column",
+                "args": {
+                    "name": "score",
+                    "type": "float"
+                }
+            },
+            {
+                "op": "drop_column",
+                "args": {
+                    "name": "draft_notes"
+                }
+            },
+            {
+                "op": "set_primary_key",
+                "args": {
+                    "columns": ["id"]
+                }
+            },
+            {
+                "op": "reorder_columns",
+                "args": {
+                    "columns": ["id", "headline", "slug", "created", "score"]
+                }
+            }
+        ]
+    }
+
+Set ``"dry_run": true`` to validate the operations and return the schema that would be created without modifying the table.
+
+Supported operations:
+
+* ``add_column`` adds a new column. ``args`` accepts ``name``, optional ``type`` of ``text``, ``integer``, ``float`` or ``blob``, optional ``not_null``, optional literal ``default`` and optional ``default_expr``. If ``not_null`` is ``true`` either a non-null ``default`` or ``default_expr`` is required.
+* ``rename_column`` renames a column. ``args`` accepts ``name`` and ``to``.
+* ``alter_column`` changes column properties. ``args`` accepts ``name`` and at least one of ``type``, ``not_null``, literal ``default`` or ``default_expr``. Passing ``"default": null`` removes an existing default.
+* ``drop_column`` drops a column. ``args`` accepts ``name``.
+* ``set_primary_key`` changes the table primary key. ``args`` accepts ``columns``, a list of one or more column names.
+* ``reorder_columns`` reorders columns. ``args`` accepts ``columns``, a list of one or more column names. Columns omitted from this list will appear afterwards in their existing order.
+
+``default`` is always treated as a literal value. ``default_expr`` accepts one of ``current_timestamp``, ``current_date`` or ``current_time`` and is rendered as the corresponding SQLite default expression.
+
+A successful response returns the new schema and the previous schema:
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "database": "data",
+        "table": "posts",
+        "table_url": "http://127.0.0.1:8001/data/posts",
+        "table_api_url": "http://127.0.0.1:8001/data/posts.json",
+        "altered": true,
+        "schema": "CREATE TABLE ...",
+        "before_schema": "CREATE TABLE ...",
+        "operations_applied": 7,
+        "dry_run": false
+    }
+
+Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
+
 .. _TableSetColumnTypeView:
 
 Setting a column type

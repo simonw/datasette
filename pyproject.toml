@@ -39,6 +39,7 @@ dependencies = [
     "asyncinject>=0.7",
     "setuptools",
     "pip",
+    "pydantic>=2",
 ]
 
 [project.urls]

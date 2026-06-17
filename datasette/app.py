@@ -84,6 +84,7 @@ from .views.special import (
 )
 from .views.table import (
     TableAutocompleteView,
+    TableAlterView,
     TableInsertView,
     TableUpsertView,
     TableSetColumnTypeView,
@@ -2625,6 +2626,10 @@ class Datasette:
         add_route(
             TableUpsertView.as_view(self),
             r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/upsert$",
+        )
+        add_route(
+            TableAlterView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/alter$",
         )
         add_route(
             TableSetColumnTypeView.as_view(self),

@@ -49,8 +49,7 @@ function hideRowMutationStatus() {
 
 function databaseCreateTableData() {
   return (
-    window._datasetteDatabaseData &&
-    window._datasetteDatabaseData.createTable
+    window._datasetteDatabaseData && window._datasetteDatabaseData.createTable
   );
 }
 
@@ -166,10 +165,7 @@ function tableCreateSelectTypeValue(select, type) {
 }
 
 function updateTableCreateCustomColumnTypePlaceholder(select) {
-  select.classList.toggle(
-    "table-create-input-placeholder",
-    !select.value,
-  );
+  select.classList.toggle("table-create-input-placeholder", !select.value);
 }
 
 function createTableCustomColumnTypeSelect() {
@@ -273,9 +269,7 @@ function createTableColumnRow(state, column) {
     }
     row.remove();
     clearTableCreateDialogError(state);
-    var nextInput = state.columnList.querySelector(
-      ".table-create-column-name",
-    );
+    var nextInput = state.columnList.querySelector(".table-create-column-name");
     if (nextInput) {
       nextInput.focus();
     } else {
@@ -418,7 +412,9 @@ function validateTableCreateColumnTypeAssignments(assignments) {
     if (!option) {
       return "Unknown custom column type: " + assignment.columnType;
     }
-    if (!tableCreateCustomTypeAppliesToSqliteType(option, assignment.sqliteType)) {
+    if (
+      !tableCreateCustomTypeAppliesToSqliteType(option, assignment.sqliteType)
+    ) {
       return (
         "Custom type " +
         assignment.columnType +
@@ -441,7 +437,8 @@ function fallbackTableUrl(tableName) {
 
 function tableCreateSetColumnTypeUrl(responseData, payload) {
   var tableUrl =
-    responseData.table_url || fallbackTableUrl(responseData.table || payload.table);
+    responseData.table_url ||
+    fallbackTableUrl(responseData.table || payload.table);
   if (!tableUrl) {
     return null;
   }
@@ -452,7 +449,11 @@ function tableCreateSetColumnTypeUrl(responseData, payload) {
   return url.toString();
 }
 
-async function assignTableCreateColumnTypes(responseData, payload, assignments) {
+async function assignTableCreateColumnTypes(
+  responseData,
+  payload,
+  assignments,
+) {
   if (!assignments.length) {
     return;
   }
@@ -542,7 +543,8 @@ async function saveTableCreateDialog(state) {
       columnTypeAssignments,
     );
     var tableUrl =
-      responseData.table_url || fallbackTableUrl(responseData.table || payload.table);
+      responseData.table_url ||
+      fallbackTableUrl(responseData.table || payload.table);
     state.shouldRestoreFocus = false;
     state.dialog.close();
     if (tableUrl) {
@@ -718,7 +720,11 @@ function openTableCreateDialog(button, manager) {
 }
 
 function initTableCreateActions(manager) {
-  if (!window.fetch || !window.HTMLDialogElement || !databaseCreateTableData()) {
+  if (
+    !window.fetch ||
+    !window.HTMLDialogElement ||
+    !databaseCreateTableData()
+  ) {
     return;
   }
   document.addEventListener("click", function (ev) {
@@ -952,15 +958,15 @@ function updateTableAlterMoveButtons(state) {
     var isPrimaryKey = tableAlterRowIsPrimaryKey(row);
     var previous = row.previousElementSibling;
     var next = row.nextElementSibling;
-    row.querySelectorAll(".table-alter-move-controls button").forEach(
-      function (button) {
+    row
+      .querySelectorAll(".table-alter-move-controls button")
+      .forEach(function (button) {
         button.title = button.dataset.defaultTitle || button.title;
         button.disabled = state.isSaving || isPrimaryKey;
         if (isPrimaryKey) {
           button.title = primaryKeyMoveTitle;
         }
-      },
-    );
+      });
     if (!isPrimaryKey) {
       var topButton = row.querySelector(".table-alter-move-top");
       var upButton = row.querySelector(".table-alter-move-up");
@@ -1028,7 +1034,9 @@ function setTableAlterDialogSaving(state, isSaving) {
     state.columnList
       .querySelectorAll(".table-alter-default-expr")
       .forEach(function (select) {
-        syncTableAlterDefaultControls(select.closest(".table-alter-column-row"));
+        syncTableAlterDefaultControls(
+          select.closest(".table-alter-column-row"),
+        );
       });
   }
   updateTableAlterMoveButtons(state);
@@ -1051,10 +1059,7 @@ function tableAlterSelectTypeValue(select, type) {
 }
 
 function updateTableAlterCustomColumnTypePlaceholder(select) {
-  select.classList.toggle(
-    "table-alter-input-placeholder",
-    !select.value,
-  );
+  select.classList.toggle("table-alter-input-placeholder", !select.value);
 }
 
 function createTableAlterCustomColumnTypeSelect() {
@@ -1159,10 +1164,7 @@ function createTableAlterColumnRow(state, column) {
   expandButton.className = "table-alter-more-options";
   expandButton.setAttribute("aria-label", "Toggle column settings");
   expandButton.setAttribute("aria-controls", details.id);
-  expandButton.setAttribute(
-    "aria-expanded",
-    details.hidden ? "false" : "true",
-  );
+  expandButton.setAttribute("aria-expanded", details.hidden ? "false" : "true");
   function updateExpandButton() {
     var isExpanded = expandButton.getAttribute("aria-expanded") === "true";
     expandButton.textContent = isExpanded
@@ -1243,8 +1245,7 @@ function createTableAlterColumnRow(state, column) {
   defaultExprLabel.textContent = "or default to a specific time";
   var defaultExprSelect = document.createElement("select");
   defaultExprSelect.id = defaultExprId;
-  defaultExprSelect.className =
-    "table-alter-input table-alter-default-expr";
+  defaultExprSelect.className = "table-alter-input table-alter-default-expr";
   defaultExprSelect.setAttribute("aria-label", "or default to a specific time");
   tableAlterSelectDefaultExprValue(defaultExprSelect, "");
   defaultExprField.appendChild(defaultExprLabel);
@@ -1298,7 +1299,8 @@ function createTableAlterColumnRow(state, column) {
 
   var moveBottomButton = document.createElement("button");
   moveBottomButton.type = "button";
-  moveBottomButton.className = "table-alter-icon-button table-alter-move-bottom";
+  moveBottomButton.className =
+    "table-alter-icon-button table-alter-move-bottom";
   moveBottomButton.setAttribute("aria-label", "Move column to bottom");
   moveBottomButton.title = "Move column to bottom";
   moveBottomButton.dataset.defaultTitle = moveBottomButton.title;
@@ -1349,15 +1351,15 @@ function createTableAlterColumnRow(state, column) {
     controls.push(customTypeSelect);
   }
   controls.forEach(function (control) {
-      control.addEventListener("input", function () {
-        clearTableAlterDialogError(state);
-        updateTableAlterSaveButtonState(state);
-      });
-      control.addEventListener("change", function () {
-        clearTableAlterDialogError(state);
-        updateTableAlterSaveButtonState(state);
-      });
+    control.addEventListener("input", function () {
+      clearTableAlterDialogError(state);
+      updateTableAlterSaveButtonState(state);
     });
+    control.addEventListener("change", function () {
+      clearTableAlterDialogError(state);
+      updateTableAlterSaveButtonState(state);
+    });
+  });
 
   defaultInput.addEventListener("input", function () {
     if (defaultInput.value) {
@@ -1407,7 +1409,12 @@ function createTableAlterColumnRow(state, column) {
 
   moveTopButton.addEventListener("click", function () {
     var first = tableAlterFirstNonPrimaryRow(state);
-    if (state.isSaving || tableAlterRowIsPrimaryKey(row) || !first || first === row) {
+    if (
+      state.isSaving ||
+      tableAlterRowIsPrimaryKey(row) ||
+      !first ||
+      first === row
+    ) {
       return;
     }
     state.columnList.insertBefore(row, first);
@@ -1448,7 +1455,12 @@ function createTableAlterColumnRow(state, column) {
 
   moveBottomButton.addEventListener("click", function () {
     var last = state.columnList.lastElementChild;
-    if (state.isSaving || tableAlterRowIsPrimaryKey(row) || !last || last === row) {
+    if (
+      state.isSaving ||
+      tableAlterRowIsPrimaryKey(row) ||
+      !last ||
+      last === row
+    ) {
       return;
     }
     state.columnList.appendChild(row);
@@ -1797,9 +1809,7 @@ function tableAlterOperationSummary(operation) {
     }
     if (Object.prototype.hasOwnProperty.call(args, "not_null")) {
       changes.push(
-        args.not_null
-          ? "not null (require values)"
-          : "allow unset values",
+        args.not_null ? "not null (require values)" : "allow unset values",
       );
     }
     if (args.default_expr) {

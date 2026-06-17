@@ -2097,6 +2097,64 @@ To use the ``"replace": true`` option you will also need the :ref:`actions_updat
 
 Pass ``"alter": true`` to automatically add any missing columns to the existing table that are present in the rows you are submitting. This requires the :ref:`actions_alter_table` permission.
 
+.. _TableForeignKeySuggestionsView:
+
+Table foreign key suggestions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``/<database>/<table>/-/foreign-key-suggestions`` endpoint suggests possible single-column foreign key relationships for a table. This requires the :ref:`actions_alter_table` permission.
+
+::
+
+    GET /<database>/<table>/-/foreign-key-suggestions
+
+The response includes every type-compatible single-column primary key target for each column in ``options``. Datasette also performs a bounded data check against up to 500 rows in the table: if the sampled non-null values for a column all exist in a target primary key, that target is included in ``suggestions``.
+
+If the bounded check takes too long, the endpoint fails open. It still returns the type-compatible ``options`` for each column, but ``row_check.status`` will be ``"timed_out"`` and there may be no ``suggestions``.
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "database": "data",
+        "table": "projects",
+        "row_check": {
+            "attempted": true,
+            "status": "completed",
+            "row_limit": 500,
+            "sampled_rows": 3,
+            "checked_options": 4
+        },
+        "columns": [
+            {
+                "column": "owner_id",
+                "type": "INTEGER",
+                "affinity": "integer",
+                "current": null,
+                "suggestions": [
+                    {
+                        "fk_table": "owners",
+                        "fk_column": "id",
+                        "confidence": "sampled",
+                        "sampled_values": 3,
+                        "reasons": [
+                            "type_match",
+                            "sample_values_exist",
+                            "name_match"
+                        ]
+                    }
+                ],
+                "options": [
+                    {
+                        "fk_table": "owners",
+                        "fk_column": "id",
+                        "type": "INTEGER"
+                    }
+                ]
+            }
+        ]
+    }
+
 .. _TableAlterView:
 
 Altering tables

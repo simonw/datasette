@@ -1045,6 +1045,106 @@ async def test_alter_table_foreign_key_without_fk_column_requires_single_pk(ds_w
 
 
 @pytest.mark.asyncio
+async def test_foreign_key_suggestions(ds_write):
+    token = write_token(ds_write, permissions=["at"])
+    db = ds_write.get_database("data")
+    await db.execute_write("create table owners (id integer primary key)")
+    await db.execute_write("insert into owners (id) values (1), (2), (3)")
+    await db.execute_write("create table categories (slug text primary key)")
+    await db.execute_write("insert into categories (slug) values ('one'), ('two')")
+    await db.execute_write("create table numbers (id integer primary key)")
+    await db.execute_write("insert into numbers (id) values (10), (20)")
+    await db.execute_write("create table weights (id real primary key)")
+    await db.execute_write("insert into weights (id) values (1.5), (2.5)")
+    await db.execute_write(
+        "insert into docs (id, title, score, age) values "
+        "(1, 'one', 1.5, 1), (2, 'two', 999.5, 2), (3, null, null, null)"
+    )
+
+    response = await ds_write.client.get(
+        "/data/docs/-/foreign-key-suggestions",
+        headers=_headers(token),
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["ok"] is True
+    assert data["database"] == "data"
+    assert data["table"] == "docs"
+    assert data["row_check"]["attempted"] is True
+    assert data["row_check"]["status"] == "completed"
+    assert data["row_check"]["row_limit"] == 500
+    assert data["row_check"]["sampled_rows"] == 3
+
+    columns = {column["column"]: column for column in data["columns"]}
+    assert columns["age"]["options"] == [
+        {"fk_table": "numbers", "fk_column": "id", "type": "INTEGER"},
+        {"fk_table": "owners", "fk_column": "id", "type": "INTEGER"},
+    ]
+    assert columns["age"]["suggestions"] == [
+        {
+            "fk_table": "owners",
+            "fk_column": "id",
+            "confidence": "sampled",
+            "sampled_values": 2,
+            "reasons": ["type_match", "sample_values_exist"],
+        }
+    ]
+    assert columns["title"]["options"] == [
+        {"fk_table": "categories", "fk_column": "slug", "type": "TEXT"}
+    ]
+    assert columns["title"]["suggestions"][0]["fk_table"] == "categories"
+    assert columns["score"]["options"] == [
+        {"fk_table": "weights", "fk_column": "id", "type": "REAL"}
+    ]
+    assert columns["score"]["suggestions"] == []
+
+
+@pytest.mark.asyncio
+async def test_foreign_key_suggestions_permission_denied(ds_write):
+    token = write_token(ds_write, permissions=["ir"])
+    response = await ds_write.client.get(
+        "/data/docs/-/foreign-key-suggestions",
+        headers=_headers(token),
+    )
+    assert response.status_code == 403
+    assert response.json() == {
+        "ok": False,
+        "errors": ["Permission denied: need alter-table"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_foreign_key_suggestions_fail_open(ds_write, monkeypatch):
+    token = write_token(ds_write, permissions=["at"])
+    db = ds_write.get_database("data")
+    await db.execute_write("create table owners (id integer primary key)")
+
+    async def raise_timeout(*args, **kwargs):
+        raise table_create_alter.ForeignKeySuggestionTimedOut
+
+    from datasette.views import table_create_alter
+
+    monkeypatch.setattr(
+        table_create_alter,
+        "_foreign_key_suggestion_samples",
+        raise_timeout,
+    )
+
+    response = await ds_write.client.get(
+        "/data/docs/-/foreign-key-suggestions",
+        headers=_headers(token),
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["row_check"]["status"] == "timed_out"
+    columns = {column["column"]: column for column in data["columns"]}
+    assert columns["age"]["options"] == [
+        {"fk_table": "owners", "fk_column": "id", "type": "INTEGER"}
+    ]
+    assert columns["age"]["suggestions"] == []
+
+
+@pytest.mark.asyncio
 async def test_alter_table_permission_denied(ds_write):
     token = write_token(ds_write, permissions=["ir"])
     response = await ds_write.client.post(

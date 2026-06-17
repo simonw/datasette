@@ -49,7 +49,11 @@ from .views.database import (
     DatabaseView,
     QueryView,
 )
-from .views.table_create_alter import TableAlterView, TableCreateView
+from .views.table_create_alter import (
+    TableAlterView,
+    TableCreateView,
+    TableForeignKeySuggestionsView,
+)
 from .views.execute_write import ExecuteWriteAnalyzeView, ExecuteWriteView
 from .views.stored_queries import (
     QueryCreateAnalyzeView,
@@ -2629,6 +2633,10 @@ class Datasette:
         add_route(
             TableAlterView.as_view(self),
             r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/alter$",
+        )
+        add_route(
+            TableForeignKeySuggestionsView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/foreign-key-suggestions$",
         )
         add_route(
             TableSetColumnTypeView.as_view(self),

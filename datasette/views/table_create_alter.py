@@ -1,7 +1,9 @@
 import json
 import re
+import time
 from typing import Annotated, Any, Literal, Union
 
+from datasette.database import QueryInterrupted
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -17,8 +19,14 @@ from sqlite_utils.db import DEFAULT as SQLITE_UTILS_DEFAULT
 from datasette.column_types import SQLiteType
 from datasette.events import AlterTableEvent, CreateTableEvent, InsertRowsEvent
 from datasette.resources import DatabaseResource, TableResource
-from datasette.utils import sqlite3
+from datasette.utils import (
+    escape_sqlite,
+    get_outbound_foreign_keys,
+    sqlite3,
+    table_column_details,
+)
 from datasette.utils.asgi import NotFound, Response
+from datasette.utils.sqlite import sqlite_hidden_table_names
 
 from .base import BaseView, _error
 
@@ -41,6 +49,177 @@ ALTER_TABLE_TYPE_FOR_SQLITE_TYPE = {
     SQLiteType.REAL: "float",
     SQLiteType.BLOB: "blob",
 }
+FOREIGN_KEY_SUGGESTION_ROW_LIMIT = 500
+FOREIGN_KEY_SUGGESTION_TIME_LIMIT_MS = 50
+FOREIGN_KEY_SUGGESTION_TOTAL_TIME_LIMIT_MS = 200
+
+
+class ForeignKeySuggestionTimedOut(Exception):
+    pass
+
+
+def _sqlite_type_affinity(type_name):
+    type_name = (type_name or "").upper()
+    if "INT" in type_name:
+        return "integer"
+    if any(token in type_name for token in ("CHAR", "CLOB", "TEXT")):
+        return "text"
+    if "BLOB" in type_name or not type_name:
+        return "blob"
+    if any(token in type_name for token in ("REAL", "FLOA", "DOUB")):
+        return "real"
+    return "numeric"
+
+
+def _foreign_key_type_compatible(source_affinity, target_affinity):
+    if source_affinity == target_affinity:
+        return True
+    numeric_affinities = {"integer", "real", "numeric"}
+    if source_affinity == "numeric":
+        return target_affinity in numeric_affinities
+    if target_affinity == "numeric":
+        return source_affinity in numeric_affinities
+    return False
+
+
+def _public_foreign_key_target(target):
+    return {
+        "fk_table": target["fk_table"],
+        "fk_column": target["fk_column"],
+        "type": target["type"],
+    }
+
+
+def _singular(name):
+    if name.endswith("ies") and len(name) > 3:
+        return name[:-3] + "y"
+    if name.endswith("s") and len(name) > 1:
+        return name[:-1]
+    return name
+
+
+def _foreign_key_name_reasons(source_column, target):
+    source = source_column.lower()
+    table = target["fk_table"].lower()
+    singular_table = _singular(table)
+    column = target["fk_column"].lower()
+    possible_names = {
+        "{}_{}".format(table, column),
+        "{}_{}".format(singular_table, column),
+    }
+    if column == "id":
+        possible_names.update(
+            {
+                "{}_id".format(table),
+                "{}_id".format(singular_table),
+            }
+        )
+    return ["name_match"] if source in possible_names else []
+
+
+def _foreign_key_option_sort_key(source_column, target):
+    has_name_match = bool(_foreign_key_name_reasons(source_column, target))
+    return (
+        0 if has_name_match else 1,
+        target["fk_table"],
+        target["fk_column"],
+    )
+
+
+def _foreign_key_suggestion_metadata(conn, table_name):
+    hidden_tables = set(sqlite_hidden_table_names(conn))
+    source_columns = [
+        {
+            "column": column.name,
+            "type": (column.type or "").upper(),
+            "affinity": _sqlite_type_affinity(column.type),
+        }
+        for column in table_column_details(conn, table_name)
+        if not column.hidden
+    ]
+    current_by_column = {
+        fk["column"]: {
+            "fk_table": fk["other_table"],
+            "fk_column": fk["other_column"],
+        }
+        for fk in get_outbound_foreign_keys(conn, table_name)
+    }
+    table_names = [
+        row[0]
+        for row in conn.execute(
+            "select name from sqlite_master where type = 'table' order by name"
+        ).fetchall()
+        if not row[0].startswith("sqlite_")
+    ]
+    targets = []
+    for candidate_table in table_names:
+        if candidate_table == table_name or candidate_table in hidden_tables:
+            continue
+        columns = [column for column in table_column_details(conn, candidate_table)]
+        pks = [column for column in columns if column.is_pk and not column.hidden]
+        pks.sort(key=lambda column: column.is_pk)
+        if len(pks) != 1:
+            continue
+        pk = pks[0]
+        targets.append(
+            {
+                "fk_table": candidate_table,
+                "fk_column": pk.name,
+                "type": (pk.type or "").upper(),
+                "affinity": _sqlite_type_affinity(pk.type),
+            }
+        )
+    return source_columns, targets, current_by_column
+
+
+async def _foreign_key_suggestion_samples(db, table_name, columns):
+    if not columns:
+        return 0, {}
+    sql = "select {} from {} limit {}".format(
+        ", ".join(escape_sqlite(column) for column in columns),
+        escape_sqlite(table_name),
+        FOREIGN_KEY_SUGGESTION_ROW_LIMIT,
+    )
+    try:
+        results = await db.execute(
+            sql,
+            custom_time_limit=FOREIGN_KEY_SUGGESTION_TIME_LIMIT_MS,
+            log_sql_errors=False,
+        )
+    except QueryInterrupted as e:
+        raise ForeignKeySuggestionTimedOut from e
+    values_by_column = {column: [] for column in columns}
+    seen_by_column = {column: set() for column in columns}
+    for row in results.rows:
+        for column in columns:
+            value = row[column]
+            if value is None or value in seen_by_column[column]:
+                continue
+            seen_by_column[column].add(value)
+            values_by_column[column].append(value)
+    return len(results.rows), values_by_column
+
+
+async def _foreign_key_suggestion_values_exist(db, target, values, time_limit_ms):
+    if not values:
+        return False
+    sql = "select {} from {} where {} in ({})".format(
+        escape_sqlite(target["fk_column"]),
+        escape_sqlite(target["fk_table"]),
+        escape_sqlite(target["fk_column"]),
+        ", ".join("?" for _ in values),
+    )
+    try:
+        results = await db.execute(
+            sql,
+            params=values,
+            custom_time_limit=time_limit_ms,
+            log_sql_errors=False,
+        )
+    except QueryInterrupted as e:
+        raise ForeignKeySuggestionTimedOut from e
+    found = {row[0] for row in results.rows}
+    return all(value in found for value in values)
 
 
 async def _create_table_ui_context(
@@ -607,6 +786,128 @@ class TableCreateView(BaseView):
                 )
             )
         return Response.json(details, status=201)
+
+
+class TableForeignKeySuggestionsView(BaseView):
+    name = "table-foreign-key-suggestions"
+
+    def __init__(self, datasette):
+        self.ds = datasette
+
+    async def get(self, request):
+        try:
+            resolved = await self.ds.resolve_table(request)
+        except NotFound as e:
+            return _error([e.args[0]], 404)
+
+        db = resolved.db
+        database_name = db.name
+        table_name = resolved.table
+
+        if resolved.is_view:
+            return _error(["Cannot suggest foreign keys for a view"], 400)
+
+        if not await self.ds.allowed(
+            action="alter-table",
+            resource=TableResource(database=database_name, table=table_name),
+            actor=request.actor,
+        ):
+            return _error(["Permission denied: need alter-table"], 403)
+
+        source_columns, targets, current_by_column = await db.execute_fn(
+            lambda conn: _foreign_key_suggestion_metadata(conn, table_name)
+        )
+
+        columns = []
+        options_by_column = {}
+        for source_column in source_columns:
+            options = sorted(
+                [
+                    target
+                    for target in targets
+                    if _foreign_key_type_compatible(
+                        source_column["affinity"], target["affinity"]
+                    )
+                ],
+                key=lambda target: _foreign_key_option_sort_key(
+                    source_column["column"], target
+                ),
+            )
+            options_by_column[source_column["column"]] = options
+            columns.append(
+                {
+                    "column": source_column["column"],
+                    "type": source_column["type"],
+                    "affinity": source_column["affinity"],
+                    "current": current_by_column.get(source_column["column"]),
+                    "suggestions": [],
+                    "options": [
+                        _public_foreign_key_target(option) for option in options
+                    ],
+                }
+            )
+
+        columns_to_sample = [
+            column["column"]
+            for column in columns
+            if options_by_column[column["column"]]
+        ]
+        row_check = {
+            "attempted": bool(columns_to_sample),
+            "status": "completed" if columns_to_sample else "skipped",
+            "row_limit": FOREIGN_KEY_SUGGESTION_ROW_LIMIT,
+            "sampled_rows": 0,
+            "checked_options": 0,
+        }
+
+        try:
+            sampled_rows, values_by_column = await _foreign_key_suggestion_samples(
+                db, table_name, columns_to_sample
+            )
+            row_check["sampled_rows"] = sampled_rows
+            deadline = time.perf_counter() + (
+                FOREIGN_KEY_SUGGESTION_TOTAL_TIME_LIMIT_MS / 1000
+            )
+            for column_info in columns:
+                values = values_by_column.get(column_info["column"]) or []
+                if not values:
+                    continue
+                for option in options_by_column[column_info["column"]]:
+                    remaining_ms = int((deadline - time.perf_counter()) * 1000)
+                    if remaining_ms <= 0:
+                        raise ForeignKeySuggestionTimedOut
+                    if await _foreign_key_suggestion_values_exist(
+                        db,
+                        option,
+                        values,
+                        min(FOREIGN_KEY_SUGGESTION_TIME_LIMIT_MS, remaining_ms),
+                    ):
+                        reasons = [
+                            "type_match",
+                            "sample_values_exist",
+                        ] + _foreign_key_name_reasons(column_info["column"], option)
+                        column_info["suggestions"].append(
+                            {
+                                "fk_table": option["fk_table"],
+                                "fk_column": option["fk_column"],
+                                "confidence": "sampled",
+                                "sampled_values": len(values),
+                                "reasons": reasons,
+                            }
+                        )
+                    row_check["checked_options"] += 1
+        except ForeignKeySuggestionTimedOut:
+            row_check["status"] = "timed_out"
+
+        return Response.json(
+            {
+                "ok": True,
+                "database": database_name,
+                "table": table_name,
+                "row_check": row_check,
+                "columns": columns,
+            }
+        )
 
 
 class TableAlterView(BaseView):

@@ -54,6 +54,8 @@ from .database import QueryView, _custom_column_type_options_for_create_table
 from .table_extras import (
     TABLE_EXTRA_BUNDLES,
     TableExtraContext,
+    precompute_database_action_permissions,
+    precompute_table_action_permissions,
     resolve_table_extras,
     table_extra_registry,
 )
@@ -1247,7 +1249,10 @@ class TableAlterView(BaseView):
                             defaults[args.name] = _literal_default(
                                 db_for_write, args.default
                             )
-                        if "default_expr" in args.model_fields_set and not args.not_null:
+                        if (
+                            "default_expr" in args.model_fields_set
+                            and not args.not_null
+                        ):
                             defaults[args.name] = _default_expression_sql(
                                 args.default_expr
                             )
@@ -1363,9 +1368,9 @@ class TableAlterView(BaseView):
                 "altered": altered,
                 "schema": after_schema,
                 "before_schema": before_schema,
-                "operations_applied": 0
-                if alter_request.dry_run
-                else len(alter_request.operations),
+                "operations_applied": (
+                    0 if alter_request.dry_run else len(alter_request.operations)
+                ),
                 "dry_run": alter_request.dry_run,
             },
             status=200,
@@ -2067,6 +2072,15 @@ async def table_view_data(
     redirect_response = await _redirect_if_needed(datasette, request, resolved)
     if redirect_response:
         return redirect_response
+
+    if context_for_html_hack:
+        await precompute_database_action_permissions(
+            datasette, request.actor, database_name
+        )
+        if not is_view:
+            await precompute_table_action_permissions(
+                datasette, request.actor, database_name, table_name
+            )
 
     # Introspect columns and primary keys for table
     pks = await db.primary_keys(table_name)

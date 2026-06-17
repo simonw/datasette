@@ -350,7 +350,9 @@ def test_alter_table_flow(page, datasette_server):
     assert first_more_options.inner_text() == "> Advanced options"
     first_more_options.click()
     assert first_more_options.inner_text() == "v Hide options"
-    expanded_options_text = dialog.locator(".table-alter-column-details").first.inner_text()
+    expanded_options_text = dialog.locator(
+        ".table-alter-column-details"
+    ).first.inner_text()
     assert dialog.locator(".table-alter-fields").evaluate(
         "node => node.scrollWidth <= node.clientWidth + 1"
     )
@@ -500,8 +502,7 @@ def test_alter_table_cancel_skips_discard_prompt(page, datasette_server):
         return dialog
 
     page.goto(f"{datasette_server}data/projects")
-    page.evaluate(
-        """
+    page.evaluate("""
         () => {
             window.__discardConfirmMessages = [];
             window.confirm = (message) => {
@@ -509,8 +510,7 @@ def test_alter_table_cancel_skips_discard_prompt(page, datasette_server):
                 return false;
             };
         }
-        """
-    )
+        """)
 
     dialog = open_alter_dialog()
     dialog.locator(".table-alter-add-column").click()

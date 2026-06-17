@@ -113,12 +113,23 @@ You can pass extra ``pytest`` options after the browser name:
     just playwright chromium -k permissions
     just playwright-all -x
 
-If you are not using ``just``, the equivalent Chromium commands are:
+You can add the ``--headed`` option to have Playwright open a browser window that you can see while it runs the tests. This only works if you specify a browser, for example:
+
+.. code-block:: bash
+
+    just playwright firefox --headed
+
+Combine this with ``-k`` to watch a specific test:
+
+.. code-block:: bash
+
+    just playwright chromium --headed -k test_insert_row
+
+If you are not using ``just``, the equivalent ``uv run`` commands are:
 
 .. code-block:: bash
 
     uv run --group playwright playwright install chromium
-
     uv run --group playwright pytest tests/test_playwright.py --playwright --browser chromium
 
 .. _contributing_using_fixtures:

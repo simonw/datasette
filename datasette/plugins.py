@@ -31,6 +31,7 @@ DEFAULT_PLUGINS = (
     "datasette.default_debug_menu",
     "datasette.default_jump_items",
     "datasette.default_database_actions",
+    "datasette.default_table_actions",
     "datasette.default_query_actions",
     "datasette.handle_exception",
     "datasette.forbidden",

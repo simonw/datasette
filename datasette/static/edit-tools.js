@@ -4,6 +4,8 @@ var ROW_EDIT_DIALOG_ID = "row-edit-dialog";
 var rowEditDialogState = null;
 var TABLE_CREATE_DIALOG_ID = "table-create-dialog";
 var tableCreateDialogState = null;
+var TABLE_ALTER_DIALOG_ID = "table-alter-dialog";
+var tableAlterDialogState = null;
 
 function ensureRowMutationStatus(manager) {
   var status = document.querySelector(".row-mutation-status");
@@ -57,6 +59,16 @@ function tableCreateColumnTypes() {
   return data.columnTypes && data.columnTypes.length
     ? data.columnTypes
     : ["text", "integer", "float", "blob"];
+}
+
+function sqliteColumnTypeLabel(type) {
+  if (type === "float") {
+    return "floating point number";
+  }
+  if (type === "blob") {
+    return "blob - binary data";
+  }
+  return type;
 }
 
 function tableCreateCustomColumnTypes() {
@@ -147,7 +159,7 @@ function tableCreateSelectTypeValue(select, type) {
   options.forEach(function (option) {
     var optionElement = document.createElement("option");
     optionElement.value = option;
-    optionElement.textContent = option;
+    optionElement.textContent = sqliteColumnTypeLabel(option);
     select.appendChild(optionElement);
   });
   select.value = options.indexOf(type) === -1 ? options[0] : type;
@@ -817,6 +829,1469 @@ function tablePageData() {
 
 function tableInsertData() {
   return tablePageData().insertRow;
+}
+
+function tableAlterData() {
+  return tablePageData().alterTable;
+}
+
+function tableAlterColumnTypes() {
+  var data = tableAlterData() || {};
+  return data.columnTypes && data.columnTypes.length
+    ? data.columnTypes
+    : ["text", "integer", "float", "blob"];
+}
+
+function tableAlterDefaultExpressions() {
+  var data = tableAlterData() || {};
+  return data.defaultExpressions || [];
+}
+
+function tableAlterCustomColumnTypes() {
+  var data = tableAlterData() || {};
+  return data.customColumnTypes || [];
+}
+
+function tableAlterCustomColumnType(name) {
+  var options = tableAlterCustomColumnTypes();
+  for (var i = 0; i < options.length; i += 1) {
+    if (options[i].name === name) {
+      return options[i];
+    }
+  }
+  return null;
+}
+
+function tableAlterCustomTypeAppliesToSqliteType(option, sqliteType) {
+  return (
+    option &&
+    option.sqliteTypes &&
+    option.sqliteTypes.indexOf(sqliteType) !== -1
+  );
+}
+
+function tableAlterDialogRows(state) {
+  return Array.prototype.slice.call(
+    state.columnList.querySelectorAll(".table-alter-column-row"),
+  );
+}
+
+function tableAlterRowSignature(row) {
+  return {
+    existing: row.dataset.existing === "1",
+    originalName: row.dataset.originalName || "",
+    name: row.querySelector(".table-alter-column-name").value,
+    type: row.querySelector(".table-alter-column-type").value,
+    customType:
+      (
+        row.querySelector(".table-alter-custom-column-type") || {
+          value: "",
+        }
+      ).value || "",
+    notNull: row.querySelector(".table-alter-not-null-input").checked,
+    defaultValue: row.querySelector(".table-alter-default").value,
+    defaultExpr: row.querySelector(".table-alter-default-expr").value,
+    pk: row.querySelector(".table-alter-primary-key-input").checked,
+  };
+}
+
+function tableAlterDialogSignature(state) {
+  if (!state || !state.form) {
+    return "";
+  }
+  return JSON.stringify({
+    columns: tableAlterDialogRows(state).map(tableAlterRowSignature),
+    deletedColumns: state.deletedColumns.slice(),
+  });
+}
+
+function tableAlterDialogHasChanges(state) {
+  return (
+    !!state &&
+    !state.isSaving &&
+    tableAlterDialogSignature(state) !== state.initialSignature
+  );
+}
+
+function updateTableAlterSaveButtonState(state) {
+  if (!state || !state.saveButton) {
+    return;
+  }
+  state.saveButton.disabled =
+    state.isSaving ||
+    (state.mode !== "review" &&
+      tableAlterDialogSignature(state) === state.initialSignature);
+}
+
+function tableAlterRowIsPrimaryKey(row) {
+  var input = row && row.querySelector(".table-alter-primary-key-input");
+  return !!(input && input.checked);
+}
+
+function tableAlterFirstNonPrimaryRow(state) {
+  var rows = tableAlterDialogRows(state);
+  for (var i = 0; i < rows.length; i += 1) {
+    if (!tableAlterRowIsPrimaryKey(rows[i])) {
+      return rows[i];
+    }
+  }
+  return null;
+}
+
+function updateTableAlterMoveButtons(state) {
+  if (!state || !state.columnList) {
+    return;
+  }
+  var firstNonPrimary = tableAlterFirstNonPrimaryRow(state);
+  var rows = tableAlterDialogRows(state);
+  var hasPrimaryKeys = rows.some(function (row) {
+    return tableAlterRowIsPrimaryKey(row);
+  });
+  var primaryKeyMoveTitle = "Primary key columns are always listed first";
+  rows.forEach(function (row) {
+    var isPrimaryKey = tableAlterRowIsPrimaryKey(row);
+    var previous = row.previousElementSibling;
+    var next = row.nextElementSibling;
+    row.querySelectorAll(".table-alter-move-controls button").forEach(
+      function (button) {
+        button.title = button.dataset.defaultTitle || button.title;
+        button.disabled = state.isSaving || isPrimaryKey;
+        if (isPrimaryKey) {
+          button.title = primaryKeyMoveTitle;
+        }
+      },
+    );
+    if (!isPrimaryKey) {
+      var topButton = row.querySelector(".table-alter-move-top");
+      var upButton = row.querySelector(".table-alter-move-up");
+      var downButton = row.querySelector(".table-alter-move-down");
+      var bottomButton = row.querySelector(".table-alter-move-bottom");
+      topButton.disabled =
+        state.isSaving || !firstNonPrimary || row === firstNonPrimary;
+      upButton.disabled =
+        state.isSaving || !previous || tableAlterRowIsPrimaryKey(previous);
+      downButton.disabled = state.isSaving || !next;
+      bottomButton.disabled = state.isSaving || !next;
+      if (hasPrimaryKeys && row === firstNonPrimary) {
+        topButton.title = primaryKeyMoveTitle;
+        upButton.title = primaryKeyMoveTitle;
+      }
+    }
+  });
+}
+
+function normalizeTableAlterPrimaryKeyRows(state) {
+  var rows = tableAlterDialogRows(state);
+  rows
+    .filter(function (row) {
+      return tableAlterRowIsPrimaryKey(row);
+    })
+    .concat(
+      rows.filter(function (row) {
+        return !tableAlterRowIsPrimaryKey(row);
+      }),
+    )
+    .forEach(function (row) {
+      state.columnList.appendChild(row);
+    });
+}
+
+function clearTableAlterDialogError(state) {
+  state.error.hidden = true;
+  state.error.textContent = "";
+  state.dialog.removeAttribute("aria-describedby");
+}
+
+function showTableAlterDialogError(state, message) {
+  state.error.hidden = false;
+  state.error.textContent = message;
+  state.dialog.setAttribute("aria-describedby", "table-alter-error");
+  state.error.focus();
+}
+
+function setTableAlterDialogSaving(state, isSaving) {
+  state.isSaving = isSaving;
+  state.cancelButton.disabled = isSaving;
+  state.addColumnButton.disabled = isSaving;
+  state.backButton.disabled = isSaving;
+  state.saveButton.textContent = isSaving
+    ? state.mode === "review"
+      ? "Applying..."
+      : "Preparing..."
+    : tableAlterSaveButtonText(state);
+  state.columnList
+    .querySelectorAll("input, select, button")
+    .forEach(function (control) {
+      control.disabled = isSaving;
+    });
+  if (!isSaving) {
+    state.columnList
+      .querySelectorAll(".table-alter-default-expr")
+      .forEach(function (select) {
+        syncTableAlterDefaultControls(select.closest(".table-alter-column-row"));
+      });
+  }
+  updateTableAlterMoveButtons(state);
+  updateTableAlterSaveButtonState(state);
+}
+
+function tableAlterSaveButtonText(state) {
+  return state && state.mode === "review" ? "Apply changes" : "Review changes";
+}
+
+function tableAlterSelectTypeValue(select, type) {
+  var options = tableAlterColumnTypes();
+  options.forEach(function (option) {
+    var optionElement = document.createElement("option");
+    optionElement.value = option;
+    optionElement.textContent = sqliteColumnTypeLabel(option);
+    select.appendChild(optionElement);
+  });
+  select.value = options.indexOf(type) === -1 ? options[0] : type;
+}
+
+function updateTableAlterCustomColumnTypePlaceholder(select) {
+  select.classList.toggle(
+    "table-alter-input-placeholder",
+    !select.value,
+  );
+}
+
+function createTableAlterCustomColumnTypeSelect() {
+  var options = tableAlterCustomColumnTypes();
+  var select = document.createElement("select");
+  select.className = "table-alter-input table-alter-custom-column-type";
+  select.setAttribute("aria-label", "Custom column type");
+  var blankOption = document.createElement("option");
+  blankOption.value = "";
+  blankOption.textContent = "- custom type -";
+  select.appendChild(blankOption);
+  options.forEach(function (option) {
+    var optionElement = document.createElement("option");
+    optionElement.value = option.name;
+    optionElement.textContent = option.description
+      ? option.description + " (" + option.name + ")"
+      : option.name;
+    select.appendChild(optionElement);
+  });
+  updateTableAlterCustomColumnTypePlaceholder(select);
+  return select;
+}
+
+function syncTableAlterCustomTypeForSqliteType(row) {
+  var typeSelect = row.querySelector(".table-alter-column-type");
+  var customTypeSelect = row.querySelector(".table-alter-custom-column-type");
+  if (!typeSelect || !customTypeSelect || !customTypeSelect.value) {
+    return;
+  }
+  var option = tableAlterCustomColumnType(customTypeSelect.value);
+  if (!tableAlterCustomTypeAppliesToSqliteType(option, typeSelect.value)) {
+    customTypeSelect.value = "";
+    updateTableAlterCustomColumnTypePlaceholder(customTypeSelect);
+  }
+}
+
+function tableAlterSelectDefaultExprValue(select, value) {
+  var blankOption = document.createElement("option");
+  blankOption.value = "";
+  blankOption.textContent = "- default expr -";
+  select.appendChild(blankOption);
+  tableAlterDefaultExpressions().forEach(function (option) {
+    var optionElement = document.createElement("option");
+    optionElement.value = option;
+    optionElement.textContent = option.replace(/_/g, " ");
+    select.appendChild(optionElement);
+  });
+  select.value = value || "";
+  updateTableAlterDefaultExprPlaceholder(select);
+}
+
+function updateTableAlterDefaultExprPlaceholder(select) {
+  select.classList.toggle("table-alter-input-placeholder", !select.value);
+}
+
+function syncTableAlterDefaultControls(row) {
+  if (!row) {
+    return;
+  }
+  var defaultInput = row.querySelector(".table-alter-default");
+  var defaultExprSelect = row.querySelector(".table-alter-default-expr");
+  if (!defaultInput || !defaultExprSelect) {
+    return;
+  }
+  defaultInput.disabled = !!defaultExprSelect.value;
+  updateTableAlterDefaultExprPlaceholder(defaultExprSelect);
+}
+
+function createTableAlterColumnRow(state, column) {
+  var index = state.nextColumnIndex;
+  state.nextColumnIndex += 1;
+  var existing = !!(column && column.existing);
+  var originalName = existing ? column.name || "" : "";
+  var originalCustomType =
+    existing && column.column_type ? column.column_type.type || "" : "";
+  var originalDefault =
+    existing && column.has_default && column.default !== null
+      ? String(column.default)
+      : "";
+
+  var row = document.createElement("div");
+  row.className = "table-alter-column-row";
+  row.dataset.existing = existing ? "1" : "0";
+  row.dataset.originalName = originalName;
+  row.dataset.originalType = existing ? column.type || "text" : "";
+  row.dataset.originalNotNull = existing && column.notnull ? "1" : "0";
+  row.dataset.originalHasDefault = existing && column.has_default ? "1" : "0";
+  row.dataset.originalDefault = originalDefault;
+  row.dataset.originalPk = existing && column.is_pk ? "1" : "0";
+  row.dataset.originalCustomType = originalCustomType;
+
+  var main = document.createElement("div");
+  main.className = "table-alter-column-main";
+
+  var details = document.createElement("div");
+  details.className = "table-alter-column-details";
+  details.id = "table-alter-column-details-" + index;
+  details.hidden = !(column && column.expanded);
+
+  var expandButton = document.createElement("button");
+  expandButton.type = "button";
+  expandButton.className = "table-alter-more-options";
+  expandButton.setAttribute("aria-label", "Toggle column settings");
+  expandButton.setAttribute("aria-controls", details.id);
+  expandButton.setAttribute(
+    "aria-expanded",
+    details.hidden ? "false" : "true",
+  );
+  function updateExpandButton() {
+    var isExpanded = expandButton.getAttribute("aria-expanded") === "true";
+    expandButton.textContent = isExpanded
+      ? "v Hide options"
+      : "> Advanced options";
+    expandButton.title = isExpanded
+      ? "Hide column settings"
+      : "Show column settings";
+  }
+  updateExpandButton();
+
+  var nameId = "table-alter-column-name-" + index;
+  var nameLabel = document.createElement("label");
+  nameLabel.className = "table-alter-column-label";
+  nameLabel.setAttribute("for", nameId);
+  nameLabel.textContent = "Column";
+
+  var nameInput = document.createElement("input");
+  nameInput.id = nameId;
+  nameInput.className = "table-alter-input table-alter-column-name";
+  nameInput.type = "text";
+  nameInput.required = true;
+  nameInput.autocomplete = "off";
+  nameInput.value = column && column.name ? column.name : "";
+
+  var typeSelect = document.createElement("select");
+  typeSelect.className = "table-alter-input table-alter-column-type";
+  typeSelect.setAttribute("aria-label", "Column type");
+  tableAlterSelectTypeValue(typeSelect, column && column.type);
+
+  var customTypeSelect = null;
+  if (tableAlterCustomColumnTypes().length) {
+    customTypeSelect = createTableAlterCustomColumnTypeSelect();
+    customTypeSelect.value = originalCustomType;
+    updateTableAlterCustomColumnTypePlaceholder(customTypeSelect);
+  }
+
+  var notNullLabel = document.createElement("label");
+  notNullLabel.className = "table-alter-detail-check table-alter-not-null";
+  var notNullInput = document.createElement("input");
+  notNullInput.type = "checkbox";
+  notNullInput.className = "table-alter-not-null-input";
+  notNullInput.checked = !!(column && column.notnull);
+  var notNullText = document.createElement("span");
+  var notNullStrong = document.createElement("strong");
+  notNullStrong.textContent = "Not null";
+  notNullText.appendChild(notNullStrong);
+  notNullText.appendChild(
+    document.createTextNode(" This value cannot be left unset"),
+  );
+  notNullLabel.appendChild(notNullInput);
+  notNullLabel.appendChild(notNullText);
+
+  var defaultId = "table-alter-column-default-" + index;
+  var defaultField = document.createElement("div");
+  defaultField.className = "table-alter-detail-field";
+  var defaultLabel = document.createElement("label");
+  defaultLabel.className = "table-alter-detail-label";
+  defaultLabel.setAttribute("for", defaultId);
+  defaultLabel.textContent = "Default value";
+  var defaultInput = document.createElement("input");
+  defaultInput.id = defaultId;
+  defaultInput.className = "table-alter-input table-alter-default";
+  defaultInput.type = "text";
+  defaultInput.autocomplete = "off";
+  defaultInput.placeholder = "default";
+  defaultInput.setAttribute("aria-label", "Default value");
+  defaultInput.value = originalDefault;
+  defaultField.appendChild(defaultLabel);
+  defaultField.appendChild(defaultInput);
+
+  var defaultExprId = "table-alter-column-default-expr-" + index;
+  var defaultExprField = document.createElement("div");
+  defaultExprField.className = "table-alter-detail-field";
+  var defaultExprLabel = document.createElement("label");
+  defaultExprLabel.className = "table-alter-detail-label";
+  defaultExprLabel.setAttribute("for", defaultExprId);
+  defaultExprLabel.textContent = "or default to a specific time";
+  var defaultExprSelect = document.createElement("select");
+  defaultExprSelect.id = defaultExprId;
+  defaultExprSelect.className =
+    "table-alter-input table-alter-default-expr";
+  defaultExprSelect.setAttribute("aria-label", "or default to a specific time");
+  tableAlterSelectDefaultExprValue(defaultExprSelect, "");
+  defaultExprField.appendChild(defaultExprLabel);
+  defaultExprField.appendChild(defaultExprSelect);
+
+  var pkLabel = document.createElement("label");
+  pkLabel.className = "table-alter-detail-check table-alter-primary-key";
+  var pkInput = document.createElement("input");
+  pkInput.type = "checkbox";
+  pkInput.className = "table-alter-primary-key-input";
+  pkInput.checked = !!(column && column.is_pk);
+  var pkText = document.createElement("span");
+  var pkStrong = document.createElement("strong");
+  pkStrong.textContent = "Primary key";
+  pkText.appendChild(pkStrong);
+  pkText.appendChild(
+    document.createTextNode(" An ID that uniquely identifies this record"),
+  );
+  pkLabel.appendChild(pkInput);
+  pkLabel.appendChild(pkText);
+
+  var moveControls = document.createElement("div");
+  moveControls.className = "table-alter-move-controls";
+
+  var moveTopButton = document.createElement("button");
+  moveTopButton.type = "button";
+  moveTopButton.className = "table-alter-icon-button table-alter-move-top";
+  moveTopButton.setAttribute("aria-label", "Move column to top");
+  moveTopButton.title = "Move column to top";
+  moveTopButton.dataset.defaultTitle = moveTopButton.title;
+  moveTopButton.innerHTML =
+    '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 17-6-6-6 6"></path><path d="m18 11-6-6-6 6"></path></svg>';
+
+  var moveUpButton = document.createElement("button");
+  moveUpButton.type = "button";
+  moveUpButton.className = "table-alter-icon-button table-alter-move-up";
+  moveUpButton.setAttribute("aria-label", "Move column up");
+  moveUpButton.title = "Move column up";
+  moveUpButton.dataset.defaultTitle = moveUpButton.title;
+  moveUpButton.innerHTML =
+    '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"></path></svg>';
+
+  var moveDownButton = document.createElement("button");
+  moveDownButton.type = "button";
+  moveDownButton.className = "table-alter-icon-button table-alter-move-down";
+  moveDownButton.setAttribute("aria-label", "Move column down");
+  moveDownButton.title = "Move column down";
+  moveDownButton.dataset.defaultTitle = moveDownButton.title;
+  moveDownButton.innerHTML =
+    '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>';
+
+  var moveBottomButton = document.createElement("button");
+  moveBottomButton.type = "button";
+  moveBottomButton.className = "table-alter-icon-button table-alter-move-bottom";
+  moveBottomButton.setAttribute("aria-label", "Move column to bottom");
+  moveBottomButton.title = "Move column to bottom";
+  moveBottomButton.dataset.defaultTitle = moveBottomButton.title;
+  moveBottomButton.innerHTML =
+    '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 7 6 6 6-6"></path><path d="m6 13 6 6 6-6"></path></svg>';
+
+  var removeButton = document.createElement("button");
+  removeButton.type = "button";
+  removeButton.className = "table-alter-icon-button table-alter-remove-column";
+  removeButton.setAttribute(
+    "aria-label",
+    existing ? "Drop column" : "Remove column",
+  );
+  removeButton.title = existing ? "Drop column" : "Remove column";
+  removeButton.innerHTML =
+    '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg>';
+
+  moveControls.appendChild(moveTopButton);
+  moveControls.appendChild(moveUpButton);
+  moveControls.appendChild(moveDownButton);
+  moveControls.appendChild(moveBottomButton);
+  main.appendChild(nameLabel);
+  main.appendChild(nameInput);
+  main.appendChild(typeSelect);
+  if (customTypeSelect) {
+    main.appendChild(customTypeSelect);
+  }
+  main.appendChild(moveControls);
+  main.appendChild(removeButton);
+  main.appendChild(expandButton);
+
+  details.appendChild(notNullLabel);
+  details.appendChild(defaultField);
+  details.appendChild(defaultExprField);
+  details.appendChild(pkLabel);
+  row.appendChild(main);
+  row.appendChild(details);
+
+  var controls = [
+    nameInput,
+    typeSelect,
+    notNullInput,
+    defaultInput,
+    defaultExprSelect,
+    pkInput,
+  ];
+  if (customTypeSelect) {
+    controls.push(customTypeSelect);
+  }
+  controls.forEach(function (control) {
+      control.addEventListener("input", function () {
+        clearTableAlterDialogError(state);
+        updateTableAlterSaveButtonState(state);
+      });
+      control.addEventListener("change", function () {
+        clearTableAlterDialogError(state);
+        updateTableAlterSaveButtonState(state);
+      });
+    });
+
+  defaultInput.addEventListener("input", function () {
+    if (defaultInput.value) {
+      defaultExprSelect.value = "";
+      syncTableAlterDefaultControls(row);
+    }
+    updateTableAlterSaveButtonState(state);
+  });
+  defaultExprSelect.addEventListener("change", function () {
+    if (defaultExprSelect.value) {
+      defaultInput.value = "";
+    }
+    syncTableAlterDefaultControls(row);
+    updateTableAlterSaveButtonState(state);
+  });
+  pkInput.addEventListener("change", function () {
+    normalizeTableAlterPrimaryKeyRows(state);
+    updateTableAlterMoveButtons(state);
+    updateTableAlterSaveButtonState(state);
+  });
+
+  expandButton.addEventListener("click", function () {
+    var isExpanded = expandButton.getAttribute("aria-expanded") === "true";
+    details.hidden = isExpanded;
+    expandButton.setAttribute("aria-expanded", isExpanded ? "false" : "true");
+    updateExpandButton();
+  });
+
+  typeSelect.addEventListener("change", function () {
+    syncTableAlterCustomTypeForSqliteType(row);
+    updateTableAlterSaveButtonState(state);
+  });
+  if (customTypeSelect) {
+    customTypeSelect.addEventListener("change", function () {
+      updateTableAlterCustomColumnTypePlaceholder(customTypeSelect);
+      var option = tableAlterCustomColumnType(customTypeSelect.value);
+      if (
+        option &&
+        option.fixedSqliteType &&
+        tableAlterColumnTypes().indexOf(option.fixedSqliteType) !== -1
+      ) {
+        typeSelect.value = option.fixedSqliteType;
+      }
+      updateTableAlterSaveButtonState(state);
+    });
+  }
+
+  moveTopButton.addEventListener("click", function () {
+    var first = tableAlterFirstNonPrimaryRow(state);
+    if (state.isSaving || tableAlterRowIsPrimaryKey(row) || !first || first === row) {
+      return;
+    }
+    state.columnList.insertBefore(row, first);
+    clearTableAlterDialogError(state);
+    updateTableAlterMoveButtons(state);
+    updateTableAlterSaveButtonState(state);
+    row.querySelector(".table-alter-column-name").focus();
+  });
+
+  moveUpButton.addEventListener("click", function () {
+    var previous = row.previousElementSibling;
+    if (
+      state.isSaving ||
+      tableAlterRowIsPrimaryKey(row) ||
+      !previous ||
+      tableAlterRowIsPrimaryKey(previous)
+    ) {
+      return;
+    }
+    state.columnList.insertBefore(row, previous);
+    clearTableAlterDialogError(state);
+    updateTableAlterMoveButtons(state);
+    updateTableAlterSaveButtonState(state);
+    row.querySelector(".table-alter-column-name").focus();
+  });
+
+  moveDownButton.addEventListener("click", function () {
+    var next = row.nextElementSibling;
+    if (state.isSaving || tableAlterRowIsPrimaryKey(row) || !next) {
+      return;
+    }
+    state.columnList.insertBefore(next, row);
+    clearTableAlterDialogError(state);
+    updateTableAlterMoveButtons(state);
+    updateTableAlterSaveButtonState(state);
+    row.querySelector(".table-alter-column-name").focus();
+  });
+
+  moveBottomButton.addEventListener("click", function () {
+    var last = state.columnList.lastElementChild;
+    if (state.isSaving || tableAlterRowIsPrimaryKey(row) || !last || last === row) {
+      return;
+    }
+    state.columnList.appendChild(row);
+    clearTableAlterDialogError(state);
+    updateTableAlterMoveButtons(state);
+    updateTableAlterSaveButtonState(state);
+    row.querySelector(".table-alter-column-name").focus();
+  });
+
+  removeButton.addEventListener("click", function () {
+    if (state.isSaving) {
+      return;
+    }
+    if (row.dataset.existing === "1") {
+      state.deletedColumns.push(row.dataset.originalName);
+    }
+    row.remove();
+    clearTableAlterDialogError(state);
+    updateTableAlterMoveButtons(state);
+    updateTableAlterSaveButtonState(state);
+    var nextInput = state.columnList.querySelector(".table-alter-column-name");
+    if (nextInput) {
+      nextInput.focus();
+    } else {
+      state.addColumnButton.focus();
+    }
+  });
+
+  syncTableAlterDefaultControls(row);
+  return row;
+}
+
+function addTableAlterColumn(state, column) {
+  var row = createTableAlterColumnRow(state, column || { type: "text" });
+  state.columnList.appendChild(row);
+  return row;
+}
+
+function resetTableAlterDialog(state, data) {
+  state.nextColumnIndex = 0;
+  state.deletedColumns = [];
+  state.originalPrimaryKeys = (data.primaryKeys || []).slice();
+  state.originalColumnNames = (data.columns || []).map(function (column) {
+    return column.name;
+  });
+  state.columnList.textContent = "";
+  (data.columns || []).forEach(function (column) {
+    addTableAlterColumn(
+      state,
+      Object.assign({}, column, {
+        existing: true,
+      }),
+    );
+  });
+  normalizeTableAlterPrimaryKeyRows(state);
+  state.initialSignature = tableAlterDialogSignature(state);
+  showTableAlterEditor(state);
+}
+
+function collectTableAlterRows(state) {
+  return tableAlterDialogRows(state).map(function (row) {
+    var signature = tableAlterRowSignature(row);
+    signature.originalType = row.dataset.originalType || "";
+    signature.originalNotNull = row.dataset.originalNotNull === "1";
+    signature.originalHasDefault = row.dataset.originalHasDefault === "1";
+    signature.originalDefault = row.dataset.originalDefault || "";
+    signature.originalPk = row.dataset.originalPk === "1";
+    signature.originalCustomType = row.dataset.originalCustomType || "";
+    return signature;
+  });
+}
+
+function validateTableAlterRows(state, rows) {
+  if (!rows.length) {
+    return "At least one column is required.";
+  }
+  var seen = {};
+  var supportedTypes = tableAlterColumnTypes();
+  for (var i = 0; i < rows.length; i += 1) {
+    var row = rows[i];
+    var name = row.name.trim();
+    if (!name) {
+      return "Column name is required.";
+    }
+    if (name.indexOf("\n") !== -1) {
+      return "Column names cannot contain newlines.";
+    }
+    var columnKey = name.toLowerCase();
+    if (seen[columnKey]) {
+      return "Duplicate column name: " + name;
+    }
+    seen[columnKey] = true;
+    if (supportedTypes.indexOf(row.type) === -1) {
+      return "Unsupported column type: " + row.type;
+    }
+    if (row.customType) {
+      var option = tableAlterCustomColumnType(row.customType);
+      if (!option) {
+        return "Unknown custom column type: " + row.customType;
+      }
+      if (!tableAlterCustomTypeAppliesToSqliteType(option, row.type)) {
+        return (
+          "Custom type " +
+          row.customType +
+          " cannot be used with SQLite type " +
+          row.type +
+          "."
+        );
+      }
+    }
+    if (row.defaultValue && row.defaultExpr) {
+      return "Use either a default value or a default expression.";
+    }
+    if (!row.existing && row.notNull && !row.defaultValue && !row.defaultExpr) {
+      return "New NOT NULL columns need a default or default expression.";
+    }
+  }
+  var pkColumns = rows.filter(function (row) {
+    return row.pk;
+  });
+  if (state.originalPrimaryKeys.length && !pkColumns.length) {
+    return "At least one primary key column is required.";
+  }
+  return null;
+}
+
+function collectTableAlterColumnTypeAssignments(rows) {
+  var assignments = [];
+  if (!tableAlterCustomColumnTypes().length) {
+    return assignments;
+  }
+  rows.forEach(function (row) {
+    var renamed = row.existing && row.name.trim() !== row.originalName;
+    if (row.customType === row.originalCustomType && !renamed) {
+      return;
+    }
+    if (!row.customType && !row.originalCustomType) {
+      return;
+    }
+    assignments.push({
+      column: row.name.trim(),
+      columnType: row.customType || null,
+      sqliteType: row.type,
+    });
+  });
+  return assignments;
+}
+
+function tableAlterPkIdentityColumns(rows) {
+  return rows
+    .filter(function (row) {
+      return row.pk;
+    })
+    .map(function (row) {
+      return row.existing ? row.originalName : row.name.trim();
+    });
+}
+
+function tableAlterPkChanged(state, rows) {
+  return (
+    JSON.stringify(tableAlterPkIdentityColumns(rows)) !==
+    JSON.stringify(state.originalPrimaryKeys)
+  );
+}
+
+function tableAlterNaturalColumnOrder(state, rows) {
+  var existingRowsByOriginalName = {};
+  var newRows = [];
+  rows.forEach(function (row) {
+    if (row.existing) {
+      existingRowsByOriginalName[row.originalName] = row;
+    } else {
+      newRows.push(row);
+    }
+  });
+  var naturalOrder = [];
+  state.originalColumnNames.forEach(function (originalName) {
+    var row = existingRowsByOriginalName[originalName];
+    if (row) {
+      naturalOrder.push(row.name.trim());
+    }
+  });
+  newRows.forEach(function (row) {
+    naturalOrder.push(row.name.trim());
+  });
+  return naturalOrder;
+}
+
+function tableAlterColumnsReordered(state, rows) {
+  var finalOrder = rows.map(function (row) {
+    return row.name.trim();
+  });
+  return (
+    JSON.stringify(finalOrder) !==
+    JSON.stringify(tableAlterNaturalColumnOrder(state, rows))
+  );
+}
+
+function collectTableAlterPayload(state) {
+  var rows = collectTableAlterRows(state);
+  var validationError = validateTableAlterRows(state, rows);
+  if (validationError) {
+    return { error: validationError };
+  }
+
+  var operations = [];
+  var columnTypeAssignments = collectTableAlterColumnTypeAssignments(rows);
+  rows.forEach(function (row) {
+    var name = row.name.trim();
+    if (!row.existing) {
+      var addArgs = {
+        name: name,
+        type: row.type,
+        not_null: row.notNull,
+      };
+      if (row.defaultExpr) {
+        addArgs.default_expr = row.defaultExpr;
+      } else if (row.defaultValue || row.notNull) {
+        addArgs.default = row.defaultValue;
+      }
+      operations.push({ op: "add_column", args: addArgs });
+      return;
+    }
+
+    var originalName = row.originalName;
+    if (name !== originalName) {
+      operations.push({
+        op: "rename_column",
+        args: { name: originalName, to: name },
+      });
+    }
+
+    var alterArgs = { name: originalName };
+    if (row.type !== row.originalType) {
+      alterArgs.type = row.type;
+    }
+    if (row.notNull !== row.originalNotNull) {
+      alterArgs.not_null = row.notNull;
+    }
+    if (row.defaultExpr) {
+      alterArgs.default_expr = row.defaultExpr;
+    } else if (row.originalHasDefault) {
+      if (row.defaultValue !== row.originalDefault) {
+        alterArgs.default = row.defaultValue === "" ? null : row.defaultValue;
+      }
+    } else if (row.defaultValue) {
+      alterArgs.default = row.defaultValue;
+    }
+    if (Object.keys(alterArgs).length > 1) {
+      operations.push({ op: "alter_column", args: alterArgs });
+    }
+  });
+
+  state.deletedColumns.forEach(function (name) {
+    operations.push({ op: "drop_column", args: { name: name } });
+  });
+
+  var pkColumns = rows
+    .filter(function (row) {
+      return row.pk;
+    })
+    .map(function (row) {
+      return row.name.trim();
+    });
+  if (tableAlterPkChanged(state, rows)) {
+    operations.push({ op: "set_primary_key", args: { columns: pkColumns } });
+  }
+
+  if (tableAlterColumnsReordered(state, rows)) {
+    operations.push({
+      op: "reorder_columns",
+      args: {
+        columns: rows.map(function (row) {
+          return row.name.trim();
+        }),
+      },
+    });
+  }
+
+  if (!operations.length && !columnTypeAssignments.length) {
+    return { error: "No changes to apply." };
+  }
+  return {
+    payload: operations.length ? { operations: operations } : null,
+    columnTypeAssignments: columnTypeAssignments,
+  };
+}
+
+function tableAlterQuotedName(name) {
+  return '"' + name + '"';
+}
+
+function tableAlterReadableDefaultExpression(value) {
+  return value ? value.replace(/_/g, " ") : "";
+}
+
+function tableAlterReadableValue(value) {
+  if (value === null) {
+    return "NULL";
+  }
+  return '"' + String(value) + '"';
+}
+
+function tableAlterOperationSummary(operation) {
+  var args = operation.args || {};
+  if (operation.op === "add_column") {
+    var addDetails = ["as " + args.type];
+    if (args.not_null) {
+      addDetails.push("with values required");
+    }
+    if (args.default_expr) {
+      addDetails.push(
+        "defaulting to " +
+          tableAlterReadableDefaultExpression(args.default_expr),
+      );
+    } else if (Object.prototype.hasOwnProperty.call(args, "default")) {
+      addDetails.push(
+        "with default value " + tableAlterReadableValue(args.default),
+      );
+    }
+    return {
+      text:
+        "Add column " +
+        tableAlterQuotedName(args.name) +
+        " " +
+        addDetails.join(", ") +
+        ".",
+      damaging: false,
+    };
+  }
+  if (operation.op === "rename_column") {
+    return {
+      text:
+        "Rename column " +
+        tableAlterQuotedName(args.name) +
+        " to " +
+        tableAlterQuotedName(args.to) +
+        ".",
+      damaging: false,
+    };
+  }
+  if (operation.op === "alter_column") {
+    var changes = [];
+    if (args.type) {
+      changes.push("set type to " + args.type);
+    }
+    if (Object.prototype.hasOwnProperty.call(args, "not_null")) {
+      changes.push(
+        args.not_null
+          ? "not null (require values)"
+          : "allow unset values",
+      );
+    }
+    if (args.default_expr) {
+      changes.push(
+        "default to " + tableAlterReadableDefaultExpression(args.default_expr),
+      );
+    } else if (Object.prototype.hasOwnProperty.call(args, "default")) {
+      changes.push(
+        args.default === null
+          ? "remove the default value"
+          : "set default value to " + tableAlterReadableValue(args.default),
+      );
+    }
+    return {
+      text:
+        "Change column " +
+        tableAlterQuotedName(args.name) +
+        ": " +
+        changes.join(", ") +
+        ".",
+      damaging: false,
+    };
+  }
+  if (operation.op === "drop_column") {
+    return {
+      text: "Drop column " + tableAlterQuotedName(args.name) + ".",
+      damaging: true,
+    };
+  }
+  if (operation.op === "set_primary_key") {
+    return {
+      text:
+        "Set primary key to " +
+        (args.columns || []).map(tableAlterQuotedName).join(", ") +
+        ".",
+      damaging: false,
+    };
+  }
+  if (operation.op === "reorder_columns") {
+    return {
+      text:
+        "Set column order to " +
+        (args.columns || []).map(tableAlterQuotedName).join(", ") +
+        ".",
+      damaging: false,
+    };
+  }
+  return {
+    text: "Run " + operation.op + ".",
+    damaging: false,
+  };
+}
+
+function tableAlterColumnTypeAssignmentSummary(assignment) {
+  return {
+    text: assignment.columnType
+      ? "Set custom type for column " +
+        tableAlterQuotedName(assignment.column) +
+        " to " +
+        assignment.columnType +
+        "."
+      : "Remove custom type from column " +
+        tableAlterQuotedName(assignment.column) +
+        ".",
+    damaging: false,
+  };
+}
+
+function tableAlterReviewItems(result) {
+  var items = [];
+  var operations = result.payload ? result.payload.operations || [] : [];
+  operations.forEach(function (operation) {
+    items.push(tableAlterOperationSummary(operation));
+  });
+  (result.columnTypeAssignments || []).forEach(function (assignment) {
+    items.push(tableAlterColumnTypeAssignmentSummary(assignment));
+  });
+  return items;
+}
+
+function tableAlterReviewHasDamagingItems(items) {
+  return items.some(function (item) {
+    return item.damaging;
+  });
+}
+
+function appendTableAlterReviewText(element, text) {
+  text.split(/("[^"]+")/g).forEach(function (part) {
+    if (!part) {
+      return;
+    }
+    if (part.charAt(0) === '"' && part.charAt(part.length - 1) === '"') {
+      var name = document.createElement("code");
+      name.className = "table-alter-review-name";
+      name.textContent = part.slice(1, -1);
+      element.appendChild(name);
+    } else {
+      element.appendChild(document.createTextNode(part));
+    }
+  });
+}
+
+function tableAlterSetColumnTypeUrl() {
+  var data = tableAlterData();
+  if (!data || !data.path) {
+    return null;
+  }
+  var url = new URL(data.path, location.href);
+  url.pathname = url.pathname.replace(/\/-\/alter\/?$/, "/-/set-column-type");
+  return url.toString();
+}
+
+async function assignTableAlterColumnTypes(assignments) {
+  if (!assignments.length) {
+    return;
+  }
+  var url = tableAlterSetColumnTypeUrl();
+  if (!url) {
+    throw new Error("Could not find the set column type URL.");
+  }
+  for (var i = 0; i < assignments.length; i += 1) {
+    var assignment = assignments[i];
+    var response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        column: assignment.column,
+        column_type: assignment.columnType
+          ? {
+              type: assignment.columnType,
+            }
+          : null,
+      }),
+    });
+    var data = null;
+    try {
+      data = await response.json();
+    } catch (_error) {
+      data = null;
+    }
+    if (!response.ok || (data && data.ok === false)) {
+      var error = rowMutationRequestError(response, data);
+      throw new Error(
+        "Saved schema changes, but could not set custom type for " +
+          assignment.column +
+          ": " +
+          error.message,
+      );
+    }
+  }
+}
+
+function showTableAlterEditor(state) {
+  state.mode = "edit";
+  state.reviewResult = null;
+  state.dialog.classList.remove("table-alter-reviewing");
+  state.fields.hidden = false;
+  state.review.hidden = true;
+  state.review.textContent = "";
+  state.backButton.hidden = true;
+  state.saveButton.textContent = tableAlterSaveButtonText(state);
+  updateTableAlterMoveButtons(state);
+  updateTableAlterSaveButtonState(state);
+}
+
+function showTableAlterReview(state, result) {
+  var items = tableAlterReviewItems(result);
+  state.mode = "review";
+  state.reviewResult = result;
+  state.dialog.classList.add("table-alter-reviewing");
+  state.fields.hidden = true;
+  state.review.hidden = false;
+  state.review.textContent = "";
+  state.backButton.hidden = false;
+  state.saveButton.textContent = tableAlterSaveButtonText(state);
+  updateTableAlterSaveButtonState(state);
+
+  var heading = document.createElement("h3");
+  heading.className = "table-alter-review-title";
+  heading.tabIndex = -1;
+  heading.textContent = "Review changes";
+  state.review.appendChild(heading);
+
+  var intro = document.createElement("p");
+  intro.className = "table-alter-review-intro";
+  intro.textContent = "These changes will be applied to the table.";
+  state.review.appendChild(intro);
+
+  if (tableAlterReviewHasDamagingItems(items)) {
+    var warning = document.createElement("p");
+    warning.className = "table-alter-review-warning";
+    warning.setAttribute("role", "alert");
+    warning.textContent =
+      "Warning: data in dropped columns will be permanently lost.";
+    state.review.appendChild(warning);
+  }
+
+  var list = document.createElement("ol");
+  list.className = "table-alter-review-list";
+  items.forEach(function (item) {
+    var listItem = document.createElement("li");
+    appendTableAlterReviewText(listItem, item.text);
+    if (item.damaging) {
+      listItem.className = "table-alter-review-damaging";
+    }
+    list.appendChild(listItem);
+  });
+  state.review.appendChild(list);
+  heading.focus();
+}
+
+async function applyTableAlterChanges(state, result) {
+  if (state.isSaving) {
+    return;
+  }
+  if (!result) {
+    showTableAlterDialogError(state, "Could not find the reviewed changes.");
+    return;
+  }
+  var data = tableAlterData();
+  if (!data || !data.path) {
+    showTableAlterDialogError(state, "Could not find the alter table URL.");
+    return;
+  }
+  clearTableAlterDialogError(state);
+  if (result.error) {
+    showTableAlterDialogError(state, result.error);
+    return;
+  }
+  setTableAlterDialogSaving(state, true);
+  try {
+    if (result.payload) {
+      var response = await fetch(data.path, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(result.payload),
+      });
+      var responseData = null;
+      try {
+        responseData = await response.json();
+      } catch (_error) {
+        responseData = null;
+      }
+      if (!response.ok || (responseData && responseData.ok === false)) {
+        throw rowMutationRequestError(response, responseData);
+      }
+    }
+    await assignTableAlterColumnTypes(result.columnTypeAssignments || []);
+    state.shouldRestoreFocus = false;
+    state.dialog.close();
+    location.reload();
+  } catch (error) {
+    setTableAlterDialogSaving(state, false);
+    showTableAlterDialogError(state, error.message || "Could not alter table");
+  }
+}
+
+async function saveTableAlterDialog(state) {
+  if (state.isSaving) {
+    return;
+  }
+  if (state.mode === "review") {
+    if (!state.reviewResult) {
+      showTableAlterDialogError(state, "Could not find the reviewed changes.");
+      return;
+    }
+    await applyTableAlterChanges(state, state.reviewResult);
+    return;
+  }
+  clearTableAlterDialogError(state);
+  var result = collectTableAlterPayload(state);
+  if (result.error) {
+    showTableAlterDialogError(state, result.error);
+    return;
+  }
+  showTableAlterReview(state, result);
+}
+
+function confirmDiscardTableAlterChanges(state) {
+  if (!tableAlterDialogHasChanges(state)) {
+    return true;
+  }
+  return window.confirm("Discard table changes?");
+}
+
+function closeTableAlterDialogIfConfirmed(state) {
+  if (!state || state.isSaving) {
+    return false;
+  }
+  if (!confirmDiscardTableAlterChanges(state)) {
+    return false;
+  }
+  state.shouldRestoreFocus = true;
+  state.dialog.close();
+  return true;
+}
+
+function closeTableAlterDialog(state) {
+  if (!state || state.isSaving) {
+    return false;
+  }
+  state.shouldRestoreFocus = true;
+  state.dialog.close();
+  return true;
+}
+
+function ensureTableAlterDialog(manager) {
+  if (tableAlterDialogState) {
+    return tableAlterDialogState;
+  }
+  if (!window.HTMLDialogElement) {
+    return null;
+  }
+
+  var dialog = document.createElement("dialog");
+  dialog.id = TABLE_ALTER_DIALOG_ID;
+  dialog.className = "table-alter-dialog";
+  dialog.setAttribute("aria-labelledby", "table-alter-title");
+  dialog.innerHTML = `
+    <div class="modal-header">
+      <span class="modal-title" id="table-alter-title">Alter table</span>
+    </div>
+    <form class="table-alter-form" method="post" novalidate>
+      <p class="table-alter-error" id="table-alter-error" role="alert" tabindex="-1" hidden></p>
+      <div class="table-alter-fields">
+        <div class="table-alter-columns">
+          <div class="table-alter-column-headings" aria-hidden="true">
+            <span>Column</span>
+            <span>Type</span>
+            <span>Custom Type</span>
+            <span>Move</span>
+            <span></span>
+          </div>
+          <div class="table-alter-column-list"></div>
+          <button type="button" class="table-alter-add-column">Add column</button>
+        </div>
+      </div>
+      <div class="table-alter-review" hidden></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost table-alter-back" hidden>Back</button>
+        <button type="button" class="btn btn-ghost table-alter-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary table-alter-save">Review changes</button>
+      </div>
+    </form>
+  `;
+  document.body.appendChild(dialog);
+
+  tableAlterDialogState = {
+    dialog: dialog,
+    form: dialog.querySelector(".table-alter-form"),
+    title: dialog.querySelector(".modal-title"),
+    error: dialog.querySelector(".table-alter-error"),
+    fields: dialog.querySelector(".table-alter-fields"),
+    review: dialog.querySelector(".table-alter-review"),
+    columnList: dialog.querySelector(".table-alter-column-list"),
+    addColumnButton: dialog.querySelector(".table-alter-add-column"),
+    backButton: dialog.querySelector(".table-alter-back"),
+    cancelButton: dialog.querySelector(".table-alter-cancel"),
+    saveButton: dialog.querySelector(".table-alter-save"),
+    currentButton: null,
+    shouldRestoreFocus: true,
+    isSaving: false,
+    initialSignature: "",
+    nextColumnIndex: 0,
+    deletedColumns: [],
+    originalColumnNames: [],
+    originalPrimaryKeys: [],
+    mode: "edit",
+    reviewResult: null,
+    manager: manager,
+  };
+
+  tableAlterDialogState.form.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    saveTableAlterDialog(tableAlterDialogState);
+  });
+
+  tableAlterDialogState.addColumnButton.addEventListener("click", function () {
+    if (tableAlterDialogState.isSaving) {
+      return;
+    }
+    var row = addTableAlterColumn(tableAlterDialogState, {
+      type: "text",
+      existing: false,
+      expanded: true,
+    });
+    clearTableAlterDialogError(tableAlterDialogState);
+    updateTableAlterMoveButtons(tableAlterDialogState);
+    updateTableAlterSaveButtonState(tableAlterDialogState);
+    row.querySelector(".table-alter-column-name").focus();
+  });
+
+  tableAlterDialogState.cancelButton.addEventListener("click", function () {
+    closeTableAlterDialog(tableAlterDialogState);
+  });
+
+  tableAlterDialogState.backButton.addEventListener("click", function () {
+    if (tableAlterDialogState.isSaving) {
+      return;
+    }
+    clearTableAlterDialogError(tableAlterDialogState);
+    showTableAlterEditor(tableAlterDialogState);
+    var firstName = tableAlterDialogState.columnList.querySelector(
+      ".table-alter-column-name",
+    );
+    if (firstName) {
+      firstName.focus();
+    }
+  });
+
+  dialog.addEventListener("click", function (ev) {
+    if (ev.target === dialog) {
+      closeTableAlterDialogIfConfirmed(tableAlterDialogState);
+    }
+  });
+
+  dialog.addEventListener("keydown", function (ev) {
+    if (ev.key !== "Escape") {
+      return;
+    }
+    ev.preventDefault();
+    closeTableAlterDialogIfConfirmed(tableAlterDialogState);
+  });
+
+  dialog.addEventListener("cancel", function (ev) {
+    ev.preventDefault();
+    closeTableAlterDialogIfConfirmed(tableAlterDialogState);
+  });
+
+  dialog.addEventListener("close", function () {
+    var state = tableAlterDialogState;
+    clearTableAlterDialogError(state);
+    setTableAlterDialogSaving(state, false);
+    if (
+      state.shouldRestoreFocus &&
+      state.currentButton &&
+      document.contains(state.currentButton)
+    ) {
+      state.currentButton.focus();
+    }
+  });
+
+  return tableAlterDialogState;
+}
+
+function openTableAlterDialog(button, manager) {
+  var data = tableAlterData();
+  if (!data) {
+    return;
+  }
+  var state = ensureTableAlterDialog(manager);
+  if (!state) {
+    return;
+  }
+
+  var menu = button.closest("details");
+  if (menu) {
+    menu.open = false;
+  }
+  state.manager = manager;
+  state.currentButton = button;
+  state.shouldRestoreFocus = true;
+  state.title.textContent = "Alter table " + data.tableName;
+  clearTableAlterDialogError(state);
+  resetTableAlterDialog(state, data);
+  if (!state.dialog.open) {
+    state.dialog.showModal();
+  }
+  var firstName = state.columnList.querySelector(".table-alter-column-name");
+  if (firstName) {
+    firstName.focus();
+  }
+}
+
+function initTableAlterActions(manager) {
+  if (!window.fetch || !window.HTMLDialogElement || !tableAlterData()) {
+    return;
+  }
+  document.addEventListener("click", function (ev) {
+    var button = ev.target.closest('button[data-table-action="alter-table"]');
+    if (!button) {
+      return;
+    }
+    ev.preventDefault();
+    openTableAlterDialog(button, manager);
+  });
 }
 
 function tableForeignKeys() {
@@ -2696,6 +4171,7 @@ document.addEventListener("datasette_init", function (evt) {
 
   registerBuiltinColumnFieldPlugins(manager);
   initTableCreateActions(manager);
+  initTableAlterActions(manager);
   initRowInsertActions(manager);
   initRowEditActions(manager);
   initRowDeleteActions(manager);

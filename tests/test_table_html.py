@@ -1079,6 +1079,123 @@ async def test_database_create_table_data_includes_custom_column_types():
 
 
 @pytest.mark.asyncio
+async def test_table_alter_action_button_and_data():
+    ds = Datasette(
+        [],
+        config={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "items": {
+                            "permissions": {
+                                "alter-table": {"id": "root"},
+                                "set-column-type": {"id": "root"},
+                            },
+                            "column_types": {"name": "textarea"},
+                        },
+                    },
+                },
+            },
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_table_alter_action"), name="data"
+        )
+        await db.execute_write_script("""
+            create table items (
+                id integer primary key,
+                name text not null,
+                score integer default 5
+            );
+            """)
+        response = await ds.client.get("/data/items", actor={"id": "root"})
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+
+        button = soup.select_one(
+            'button.action-menu-button[data-table-action="alter-table"]'
+        )
+        assert button is not None
+        assert button["aria-label"] == "Alter table items"
+        assert button["role"] == "menuitem"
+        description = button.find("span", class_="dropdown-description")
+        assert description.text.strip() == (
+            "Change columns and primary key for this table."
+        )
+        description.extract()
+        assert button.text.strip() == "Alter table"
+        assert any(
+            "edit-tools.js" in script.get("src", "")
+            for script in soup.find_all("script")
+        )
+
+        alter_data = table_data_from_soup(soup)["alterTable"]
+        assert alter_data["path"] == "/data/items/-/alter"
+        assert alter_data["tableName"] == "items"
+        assert alter_data["primaryKeys"] == ["id"]
+        assert alter_data["columnTypes"] == ["text", "integer", "float", "blob"]
+        assert alter_data["defaultExpressions"] == [
+            "current_timestamp",
+            "current_date",
+            "current_time",
+        ]
+        assert [option["name"] for option in alter_data["customColumnTypes"]] == [
+            "email",
+            "json",
+            "textarea",
+            "url",
+        ]
+        assert alter_data["columns"] == [
+            {
+                "name": "id",
+                "type": "integer",
+                "sqlite_type": "INTEGER",
+                "notnull": 0,
+                "default": None,
+                "has_default": False,
+                "is_pk": True,
+                "column_type": None,
+            },
+            {
+                "name": "name",
+                "type": "text",
+                "sqlite_type": "TEXT",
+                "notnull": 1,
+                "default": None,
+                "has_default": False,
+                "is_pk": False,
+                "column_type": {"type": "textarea", "config": None},
+            },
+            {
+                "name": "score",
+                "type": "integer",
+                "sqlite_type": "INTEGER",
+                "notnull": 0,
+                "default": "5",
+                "has_default": True,
+                "is_pk": False,
+                "column_type": None,
+            },
+        ]
+
+        response_without_permission = await ds.client.get(
+            "/data/items", actor={"id": "someone-else"}
+        )
+        assert response_without_permission.status_code == 200
+        soup_without_permission = Soup(response_without_permission.text, "html.parser")
+        assert (
+            soup_without_permission.select_one(
+                'button[data-table-action="alter-table"]'
+            )
+            is None
+        )
+        assert "alterTable" not in table_data_from_soup(soup_without_permission)
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
 async def test_table_insert_action_button_and_data():
     ds = Datasette(
         [],

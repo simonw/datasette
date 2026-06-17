@@ -212,6 +212,7 @@ class RowView(DataView):
                     table,
                     not is_table,
                     None,
+                    None,
                 ),
                 "row_actions": row_actions,
                 "top_row": make_slot_function(

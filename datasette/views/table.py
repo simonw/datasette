@@ -50,7 +50,7 @@ from datasette.filters import Filters
 import sqlite_utils
 from sqlite_utils.db import DEFAULT as SQLITE_UTILS_DEFAULT
 from .base import BaseView, DatasetteError, _error, stream_csv
-from .database import QueryView
+from .database import QueryView, _custom_column_type_options_for_create_table
 from .table_extras import (
     TABLE_EXTRA_BUNDLES,
     TableExtraContext,
@@ -62,6 +62,13 @@ LINK_WITH_LABEL = (
     '<a href="{base_url}{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'
 )
 LINK_WITH_VALUE = '<a href="{base_url}{database}/{table}/{link_id}">{id}</a>'
+ALTER_TABLE_COLUMN_TYPES = ["text", "integer", "float", "blob"]
+ALTER_TABLE_TYPE_FOR_SQLITE_TYPE = {
+    SQLiteType.TEXT: "text",
+    SQLiteType.INTEGER: "integer",
+    SQLiteType.REAL: "float",
+    SQLiteType.BLOB: "blob",
+}
 
 
 class Row:
@@ -283,7 +290,14 @@ async def _foreign_key_autocomplete_urls(
 
 
 async def _table_page_data(
-    datasette, request, db, database_name, table_name, is_view, table_insert_ui
+    datasette,
+    request,
+    db,
+    database_name,
+    table_name,
+    is_view,
+    table_insert_ui,
+    table_alter_ui,
 ):
     data = {
         "database": database_name,
@@ -292,6 +306,8 @@ async def _table_page_data(
     }
     if table_insert_ui:
         data["insertRow"] = table_insert_ui
+    if table_alter_ui:
+        data["alterTable"] = table_alter_ui
     if not is_view:
         foreign_keys = await _foreign_key_autocomplete_urls(
             datasette, request, db, database_name, table_name
@@ -352,6 +368,63 @@ async def _table_insert_ui(
         "columns": columns,
         "primaryKeys": pks,
     }
+
+
+async def _table_alter_ui(
+    datasette, request, db, database_name, table_name, is_view, pks
+):
+    if is_view or not db.is_mutable:
+        return None
+
+    if not await datasette.allowed(
+        action="alter-table",
+        resource=TableResource(database=database_name, table=table_name),
+        actor=request.actor,
+    ):
+        return None
+
+    column_types_map = await datasette.get_column_types(database_name, table_name)
+    columns = []
+    for column in await db.table_column_details(table_name):
+        if column.hidden:
+            continue
+        sqlite_type = SQLiteType.from_declared_type(column.type)
+        column_type = column_types_map.get(column.name)
+        columns.append(
+            {
+                "name": column.name,
+                "type": ALTER_TABLE_TYPE_FOR_SQLITE_TYPE.get(sqlite_type, "text"),
+                "sqlite_type": sqlite_type.value,
+                "notnull": column.notnull,
+                "default": column.default_value,
+                "has_default": column.default_value is not None,
+                "is_pk": column.name in pks,
+                "column_type": (
+                    {"type": column_type.name, "config": column_type.config}
+                    if column_type is not None
+                    else None
+                ),
+            }
+        )
+
+    data = {
+        "path": "{}/-/alter".format(datasette.urls.table(database_name, table_name)),
+        "tableName": table_name,
+        "columns": columns,
+        "primaryKeys": pks,
+        "columnTypes": ALTER_TABLE_COLUMN_TYPES,
+        "defaultExpressions": list(DEFAULT_EXPR_SQL),
+    }
+    can_set_column_type = await datasette.allowed(
+        action="set-column-type",
+        resource=TableResource(database=database_name, table=table_name),
+        actor=request.actor,
+    )
+    if can_set_column_type:
+        data["customColumnTypes"] = _custom_column_type_options_for_create_table(
+            datasette
+        )
+    return data
 
 
 async def display_columns_and_rows(
@@ -2421,7 +2494,11 @@ async def table_view_data(
         table_insert_ui = await _table_insert_ui(
             datasette, request, db, database_name, table_name, is_view, pks
         )
+        table_alter_ui = await _table_alter_ui(
+            datasette, request, db, database_name, table_name, is_view, pks
+        )
         data["table_insert_ui"] = table_insert_ui
+        data["table_alter_ui"] = table_alter_ui
         data["table_page_data"] = await _table_page_data(
             datasette,
             request,
@@ -2430,6 +2507,7 @@ async def table_view_data(
             table_name,
             is_view,
             table_insert_ui,
+            table_alter_ui,
         )
 
     return data, rows[:page_size], columns, expanded_columns, sql, next_url

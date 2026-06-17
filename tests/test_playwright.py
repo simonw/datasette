@@ -130,6 +130,7 @@ def write_playwright_config(config_path):
                                     "notes": "textarea",
                                 },
                                 "permissions": {
+                                    "alter-table": True,
                                     "insert-row": True,
                                     "update-row": True,
                                     "delete-row": True,
@@ -326,6 +327,215 @@ def test_create_table_flow(page, datasette_server):
     assert data["column_types"] == {
         "metadata": {"type": "json", "config": None},
     }
+
+
+@pytest.mark.playwright
+def test_alter_table_flow(page, datasette_server):
+    page.goto(f"{datasette_server}data/projects")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-table-action="alter-table"]').click()
+
+    dialog = page.locator("#table-alter-dialog")
+    dialog.wait_for()
+    assert dialog.locator(".modal-title").inner_text() == "Alter table projects"
+    assert dialog.locator(".table-alter-save").is_disabled()
+    type_options = dialog.locator(".table-alter-column-type").first.locator("option")
+    assert type_options.all_inner_texts() == [
+        "text",
+        "integer",
+        "floating point number",
+        "blob - binary data",
+    ]
+    first_more_options = dialog.locator(".table-alter-more-options").first
+    assert first_more_options.inner_text() == "> Advanced options"
+    first_more_options.click()
+    assert first_more_options.inner_text() == "v Hide options"
+    expanded_options_text = dialog.locator(".table-alter-column-details").first.inner_text()
+    assert dialog.locator(".table-alter-fields").evaluate(
+        "node => node.scrollWidth <= node.clientWidth + 1"
+    )
+    assert "Not null" in expanded_options_text
+    assert "This value cannot be left unset" in expanded_options_text
+    assert "Default value" in expanded_options_text
+    assert "or default to a specific time" in expanded_options_text
+    assert "Primary key" in expanded_options_text
+    assert "An ID that uniquely identifies this record" in expanded_options_text
+
+    dialog.locator(".table-alter-add-column").click()
+    assert dialog.locator(".table-alter-save").is_enabled()
+    dialog.locator(".table-alter-column-name").last.fill("status")
+    dialog.locator(".table-alter-column-type").last.select_option("text")
+    dialog.locator(".table-alter-default").last.fill("planned")
+    dialog.locator(".table-alter-save").click()
+    review = dialog.locator(".table-alter-review")
+    review.wait_for()
+    assert not dialog.locator(".table-alter-column-list").is_visible()
+    review_text = review.inner_text()
+    assert "Add column status as text, with default value planned." in review_text
+    assert "Set column order to" not in review_text
+    assert dialog.locator(".table-alter-back").is_visible()
+    assert dialog.locator(".table-alter-save").inner_text() == "Apply changes"
+    dialog.locator(".table-alter-save").click()
+
+    columns = []
+    for _ in range(20):
+        response = httpx.get(f"{datasette_server}data/projects.json?_extra=columns")
+        response.raise_for_status()
+        columns = response.json()["columns"]
+        if "status" in columns:
+            break
+        time.sleep(0.1)
+    assert "status" in columns
+
+
+@pytest.mark.playwright
+def test_alter_table_primary_key_columns_stay_at_top(page, datasette_server):
+    page.goto(f"{datasette_server}data/projects")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-table-action="alter-table"]').click()
+
+    dialog = page.locator("#table-alter-dialog")
+    dialog.wait_for()
+    rows = dialog.locator(".table-alter-column-row")
+    assert rows.nth(0).locator(".table-alter-column-name").input_value() == "id"
+    first_row_move_buttons = rows.nth(0).locator(".table-alter-move-controls button")
+    for i in range(first_row_move_buttons.count()):
+        assert first_row_move_buttons.nth(i).is_disabled()
+        assert (
+            first_row_move_buttons.nth(i).get_attribute("title")
+            == "Primary key columns are always listed first"
+        )
+
+    assert rows.nth(1).locator(".table-alter-move-up").is_disabled()
+    assert rows.nth(1).locator(".table-alter-move-top").get_attribute("title") == (
+        "Primary key columns are always listed first"
+    )
+    assert rows.nth(1).locator(".table-alter-move-up").get_attribute("title") == (
+        "Primary key columns are always listed first"
+    )
+    last_row = rows.nth(rows.count() - 1)
+    assert last_row.locator(".table-alter-column-name").input_value() == "score"
+    last_row.locator(".table-alter-move-top").click()
+    assert rows.nth(0).locator(".table-alter-column-name").input_value() == "id"
+    assert rows.nth(1).locator(".table-alter-column-name").input_value() == "score"
+
+
+@pytest.mark.playwright
+def test_alter_table_review_rename_primary_key_column(page, datasette_server):
+    page.goto(f"{datasette_server}data/projects")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-table-action="alter-table"]').click()
+
+    dialog = page.locator("#table-alter-dialog")
+    dialog.wait_for()
+    save = dialog.locator(".table-alter-save")
+    assert save.is_disabled()
+    dialog.locator(".table-alter-column-name").first.fill("id3")
+    assert save.is_enabled()
+    save.click()
+
+    review = dialog.locator(".table-alter-review")
+    review.wait_for()
+    review_text = review.inner_text()
+    assert "Rename column id to id3." in review_text
+    assert "Set primary key to" not in review_text
+    assert dialog.locator(".table-alter-review-name").all_inner_texts() == [
+        "id",
+        "id3",
+    ]
+
+
+@pytest.mark.playwright
+def test_alter_table_review_not_null_wording(page, datasette_server):
+    page.goto(f"{datasette_server}data/projects")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-table-action="alter-table"]').click()
+
+    dialog = page.locator("#table-alter-dialog")
+    dialog.wait_for()
+    dialog.locator(".table-alter-more-options").first.click()
+    dialog.locator(".table-alter-not-null-input").first.check()
+    dialog.locator(".table-alter-save").click()
+
+    review = dialog.locator(".table-alter-review")
+    review.wait_for()
+    assert "Change column id: not null (require values)." in review.inner_text()
+
+
+@pytest.mark.playwright
+def test_alter_table_review_warns_when_dropping_column(page, datasette_server):
+    page.goto(f"{datasette_server}data/projects")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-table-action="alter-table"]').click()
+
+    dialog = page.locator("#table-alter-dialog")
+    dialog.wait_for()
+    remove_buttons = dialog.locator(".table-alter-remove-column")
+    remove_buttons.nth(remove_buttons.count() - 1).click()
+    dialog.locator(".table-alter-save").click()
+
+    review = dialog.locator(".table-alter-review")
+    review.wait_for()
+    assert not dialog.locator(".table-alter-column-list").is_visible()
+    review_text = review.inner_text()
+    assert "Warning: data in dropped columns will be permanently lost." in review_text
+    assert "Drop column score." in review_text
+    assert "Set column order to" not in review_text
+    assert dialog.locator(".table-alter-review-damaging").inner_text() == (
+        "Drop column score."
+    )
+
+    dialog.locator(".table-alter-back").click()
+    assert dialog.locator(".table-alter-column-list").is_visible()
+    assert dialog.locator(".table-alter-save").inner_text() == "Review changes"
+
+
+@pytest.mark.playwright
+def test_alter_table_cancel_skips_discard_prompt(page, datasette_server):
+    def open_alter_dialog():
+        page.locator("details.actions-menu-links").evaluate("node => node.open = true")
+        page.locator('button[data-table-action="alter-table"]').click()
+        dialog = page.locator("#table-alter-dialog")
+        dialog.wait_for()
+        return dialog
+
+    page.goto(f"{datasette_server}data/projects")
+    page.evaluate(
+        """
+        () => {
+            window.__discardConfirmMessages = [];
+            window.confirm = (message) => {
+                window.__discardConfirmMessages.push(message);
+                return false;
+            };
+        }
+        """
+    )
+
+    dialog = open_alter_dialog()
+    dialog.locator(".table-alter-add-column").click()
+    dialog.locator(".table-alter-column-name").last.fill("cancel_me")
+    dialog.locator(".table-alter-cancel").click()
+    assert dialog.evaluate("node => node.open") is False
+    assert page.evaluate("() => window.__discardConfirmMessages") == []
+
+    dialog = open_alter_dialog()
+    dialog.locator(".table-alter-add-column").click()
+    dialog.locator(".table-alter-column-name").last.fill("escape_me")
+    page.keyboard.press("Escape")
+    assert page.evaluate("() => window.__discardConfirmMessages") == [
+        "Discard table changes?"
+    ]
+    assert dialog.evaluate("node => node.open") is True
+
+    page.evaluate("() => window.__discardConfirmMessages = []")
+    dialog.evaluate(
+        """node => node.dispatchEvent(new MouseEvent("click", {bubbles: true}))"""
+    )
+    assert page.evaluate("() => window.__discardConfirmMessages") == [
+        "Discard table changes?"
+    ]
+    assert dialog.evaluate("node => node.open") is True
 
 
 @pytest.mark.playwright

@@ -292,6 +292,40 @@ class ReorderColumnsArgs(_StrictPydanticModel):
     columns: list[str] = Field(min_length=1)
 
 
+class ForeignKeyArgs(_StrictPydanticModel):
+    column: str
+    fk_table: str | None = None
+    fk_column: str | None = None
+
+    @model_validator(mode="after")
+    def validate_foreign_key(self):
+        if self.fk_column and not self.fk_table:
+            raise PydanticCustomError(
+                "alter_table_foreign_key",
+                "fk_column requires fk_table",
+            )
+        if not self.fk_table:
+            raise PydanticCustomError(
+                "alter_table_foreign_key",
+                "fk_table is required",
+            )
+        return self
+
+    @property
+    def tuple(self):
+        if self.fk_column:
+            return (self.column, self.fk_table, self.fk_column)
+        return (self.column, self.fk_table)
+
+
+class DropForeignKeyArgs(_StrictPydanticModel):
+    column: str
+
+
+class SetForeignKeysArgs(_StrictPydanticModel):
+    foreign_keys: list[ForeignKeyArgs]
+
+
 class AddColumnOperation(_StrictPydanticModel):
     op: Literal["add_column"]
     args: AddColumnArgs
@@ -322,6 +356,21 @@ class ReorderColumnsOperation(_StrictPydanticModel):
     args: ReorderColumnsArgs
 
 
+class AddForeignKeyOperation(_StrictPydanticModel):
+    op: Literal["add_foreign_key"]
+    args: ForeignKeyArgs
+
+
+class DropForeignKeyOperation(_StrictPydanticModel):
+    op: Literal["drop_foreign_key"]
+    args: DropForeignKeyArgs
+
+
+class SetForeignKeysOperation(_StrictPydanticModel):
+    op: Literal["set_foreign_keys"]
+    args: SetForeignKeysArgs
+
+
 AlterTableOperation = Annotated[
     Union[
         AddColumnOperation,
@@ -330,6 +379,9 @@ AlterTableOperation = Annotated[
         DropColumnOperation,
         SetPrimaryKeyOperation,
         ReorderColumnsOperation,
+        AddForeignKeyOperation,
+        DropForeignKeyOperation,
+        SetForeignKeysOperation,
     ],
     Field(discriminator="op"),
 ]
@@ -615,6 +667,9 @@ class TableAlterView(BaseView):
                 defaults = {}
                 column_order = None
                 pk = SQLITE_UTILS_DEFAULT
+                add_foreign_keys = []
+                drop_foreign_keys = []
+                foreign_keys = None
 
                 for operation in alter_request.operations:
                     args = operation.args
@@ -664,6 +719,12 @@ class TableAlterView(BaseView):
                         pk = _primary_key_value(args.columns)
                     elif operation.op == "reorder_columns":
                         column_order = args.columns
+                    elif operation.op == "add_foreign_key":
+                        add_foreign_keys.append(args.tuple)
+                    elif operation.op == "drop_foreign_key":
+                        drop_foreign_keys.append(args.column)
+                    elif operation.op == "set_foreign_keys":
+                        foreign_keys = [fk.tuple for fk in args.foreign_keys]
 
                 with operation_conn:
                     for column in add_columns:
@@ -692,6 +753,9 @@ class TableAlterView(BaseView):
                             defaults,
                             column_order is not None,
                             pk is not SQLITE_UTILS_DEFAULT,
+                            add_foreign_keys,
+                            drop_foreign_keys,
+                            foreign_keys is not None,
                         )
                     )
                     if should_transform:
@@ -703,6 +767,9 @@ class TableAlterView(BaseView):
                             not_null=not_null or None,
                             defaults=defaults or None,
                             column_order=column_order,
+                            add_foreign_keys=add_foreign_keys or None,
+                            drop_foreign_keys=drop_foreign_keys or None,
+                            foreign_keys=foreign_keys,
                         )
 
                 return _table_schema_from_conn(operation_conn, table_name)

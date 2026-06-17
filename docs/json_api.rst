@@ -2160,6 +2160,31 @@ The request body should include an ``operations`` array. Each operation has the 
                 }
             },
             {
+                "op": "add_foreign_key",
+                "args": {
+                    "column": "owner_id",
+                    "fk_table": "owners"
+                }
+            },
+            {
+                "op": "drop_foreign_key",
+                "args": {
+                    "column": "old_owner_id"
+                }
+            },
+            {
+                "op": "set_foreign_keys",
+                "args": {
+                    "foreign_keys": [
+                        {
+                            "column": "owner_id",
+                            "fk_table": "owners",
+                            "fk_column": "id"
+                        }
+                    ]
+                }
+            },
+            {
                 "op": "reorder_columns",
                 "args": {
                     "columns": ["id", "headline", "slug", "created", "score"]
@@ -2177,9 +2202,14 @@ Supported operations:
 * ``alter_column`` changes column properties. ``args`` accepts ``name`` and at least one of ``type``, ``not_null``, literal ``default`` or ``default_expr``. Passing ``"default": null`` removes an existing default.
 * ``drop_column`` drops a column. ``args`` accepts ``name``.
 * ``set_primary_key`` changes the table primary key. ``args`` accepts ``columns``, a list of one or more column names.
+* ``add_foreign_key`` adds a single-column foreign key constraint. ``args`` accepts ``column``, ``fk_table`` and optional ``fk_column``. If ``fk_column`` is omitted, Datasette will use the single primary key of ``fk_table``.
+* ``drop_foreign_key`` removes the foreign key constraint for a column. ``args`` accepts ``column``.
+* ``set_foreign_keys`` replaces all foreign key constraints on the table. ``args`` accepts ``foreign_keys``, a list of objects that each have ``column``, ``fk_table`` and optional ``fk_column``. An empty list removes all foreign key constraints.
 * ``reorder_columns`` reorders columns. ``args`` accepts ``columns``, a list of one or more column names. Columns omitted from this list will appear afterwards in their existing order.
 
 ``default`` is always treated as a literal value. ``default_expr`` accepts one of ``current_timestamp``, ``current_date`` or ``current_time`` and is rendered as the corresponding SQLite default expression.
+
+For foreign key operations that omit ``fk_column``, the referenced ``fk_table`` must have a single-column primary key. Datasette will return an error if it cannot identify a single primary key column for that table.
 
 A successful response returns the new schema and the previous schema:
 

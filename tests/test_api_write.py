@@ -927,6 +927,124 @@ async def test_alter_table_dry_run(ds_write):
 
 
 @pytest.mark.asyncio
+async def test_alter_table_foreign_key_operations(ds_write):
+    token = write_token(ds_write, permissions=["at"])
+    db = ds_write.get_database("data")
+    await db.execute_write("create table owners (id integer primary key)")
+    await db.execute_write("create table categories (id integer primary key)")
+
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json={
+            "operations": [
+                {"op": "add_column", "args": {"name": "owner_id", "type": "integer"}},
+                {
+                    "op": "add_foreign_key",
+                    "args": {"column": "owner_id", "fk_table": "owners"},
+                },
+            ]
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["operations_applied"] == 2
+    assert "[owner_id] INTEGER REFERENCES [owners]([id])" in data["schema"]
+
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json={
+            "operations": [{"op": "drop_foreign_key", "args": {"column": "owner_id"}}]
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert "[owner_id] INTEGER REFERENCES" not in data["schema"]
+
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json={
+            "operations": [
+                {
+                    "op": "set_foreign_keys",
+                    "args": {
+                        "foreign_keys": [
+                            {
+                                "column": "owner_id",
+                                "fk_table": "categories",
+                                "fk_column": "id",
+                            }
+                        ]
+                    },
+                }
+            ]
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert "[owner_id] INTEGER REFERENCES [categories]([id])" in data["schema"]
+
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json={"operations": [{"op": "set_foreign_keys", "args": {"foreign_keys": []}}]},
+        headers=_headers(token),
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert "[owner_id] INTEGER REFERENCES" not in data["schema"]
+
+
+@pytest.mark.asyncio
+async def test_alter_table_foreign_key_requires_fk_table_for_fk_column(ds_write):
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json={
+            "operations": [
+                {
+                    "op": "add_foreign_key",
+                    "args": {"column": "age", "fk_column": "id"},
+                }
+            ]
+        },
+        headers=_headers(write_token(ds_write, permissions=["at"])),
+    )
+    assert response.status_code == 400
+    assert response.json() == {
+        "ok": False,
+        "errors": ["operations.0.add_foreign_key.args: fk_column requires fk_table"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_alter_table_foreign_key_without_fk_column_requires_single_pk(ds_write):
+    token = write_token(ds_write, permissions=["at"])
+    db = ds_write.get_database("data")
+    await db.execute_write(
+        "create table accounts (tenant_id integer, id integer, primary key (tenant_id, id))"
+    )
+
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json={
+            "operations": [
+                {
+                    "op": "add_foreign_key",
+                    "args": {"column": "age", "fk_table": "accounts"},
+                }
+            ]
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 400
+    assert response.json() == {
+        "ok": False,
+        "errors": ["Could not detect single primary key for table 'accounts'"],
+    }
+
+
+@pytest.mark.asyncio
 async def test_alter_table_permission_denied(ds_write):
     token = write_token(ds_write, permissions=["ir"])
     response = await ds_write.client.post(

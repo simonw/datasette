@@ -994,6 +994,7 @@ async def test_database_create_table_action_button_and_data():
         assert database_data_from_soup(soup) == {
             "createTable": {
                 "path": "/data/-/create",
+                "foreignKeyTargetsPath": "/data/-/foreign-key-targets",
                 "databaseName": "data",
                 "columnTypes": ["text", "integer", "float", "blob"],
             },

@@ -2108,7 +2108,7 @@ The ``/<database>/-/foreign-key-targets`` endpoint returns the list of tables in
 
     GET /<database>/-/foreign-key-targets
 
-The response includes only tables with exactly one primary key column. Tables with compound primary keys and tables with no explicit primary key are omitted.
+The response includes only tables with exactly one primary key column. Hidden tables, tables with compound primary keys and tables with no explicit primary key are omitted.
 
 Each target includes the normalized SQLite type affinity for the primary key column in ``type``. The type is calculated using SQLite's documented affinity rules: ``INT`` maps to ``integer``; ``CHAR``, ``CLOB`` or ``TEXT`` maps to ``text``; ``BLOB`` or no type maps to ``blob``; ``REAL`` and floating-point declared types map to ``real``; everything else maps to ``numeric``.
 

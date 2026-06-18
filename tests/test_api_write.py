@@ -1161,6 +1161,10 @@ async def test_foreign_key_targets(ds_write):
         "create table compound (a integer, b integer, primary key (a, b))"
     )
     await db.execute_write("create table no_pk (name text)")
+    try:
+        await db.execute_write("create virtual table search_docs using fts5(body)")
+    except Exception:
+        pass
 
     response = await ds_write.client.get(
         "/data/-/foreign-key-targets",
@@ -1203,6 +1207,10 @@ async def test_foreign_key_targets(ds_write):
             },
         ],
     }
+    assert not any(
+        target["fk_table"].startswith("search_docs_")
+        for target in response.json()["targets"]
+    )
 
 
 @pytest.mark.asyncio

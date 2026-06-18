@@ -262,6 +262,9 @@ async def _create_table_ui_context(
         return None
     data = {
         "path": "{}/-/create".format(datasette.urls.database(database_name)),
+        "foreignKeyTargetsPath": "{}/-/foreign-key-targets".format(
+            datasette.urls.database(database_name)
+        ),
         "databaseName": database_name,
         "columnTypes": CREATE_TABLE_COLUMN_TYPES,
     }
@@ -836,7 +839,14 @@ class DatabaseForeignKeyTargetsView(BaseView):
         ):
             return _error(["Permission denied: need create-table"], 403)
 
-        targets = (await db.execute(FOREIGN_KEY_TARGETS_SQL)).dicts()
+        hidden_tables = await db.execute_fn(
+            lambda conn: set(sqlite_hidden_table_names(conn))
+        )
+        targets = [
+            target
+            for target in (await db.execute(FOREIGN_KEY_TARGETS_SQL)).dicts()
+            if target["fk_table"] not in hidden_tables
+        ]
         return Response.json(
             {
                 "ok": True,

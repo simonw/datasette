@@ -171,6 +171,24 @@ def test_functions_marked_with_documented_are_documented(documented_labels, subt
             assert fn._datasette_docs_label in documented_labels
 
 
+def test_display_actor_logic_is_documented():
+    # The keys used by datasette.utils.display_actor should be reflected
+    # in the authentication documentation - see issue #2002
+    content = (docs_path / "authentication.rst").read_text()
+    section = content.split(".. _authentication_actor_display:")[-1].split(
+        ".. _authentication_root:"
+    )[0]
+    for key in utils.display_actor.__code__.co_consts:
+        if isinstance(key, tuple):
+            display_keys = key
+            break
+    else:
+        raise AssertionError("Could not find display_actor key tuple")
+    assert display_keys == ("display", "name", "username", "login", "id")
+    for key in display_keys:
+        assert f"``{key}``" in section, f"{key} not documented in actor display section"
+
+
 def test_rst_heading_underlines_match_title_length():
     """Test that RST heading underlines are the same length as their titles."""
     # Common RST underline characters

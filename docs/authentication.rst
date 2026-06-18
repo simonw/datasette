@@ -21,6 +21,23 @@ The actor dictionary can be any shape - the design of that data structure is lef
 
 Plugins can use the :ref:`plugin_hook_actor_from_request` hook to implement custom logic for authenticating an actor based on the incoming HTTP request.
 
+.. _authentication_actor_display:
+
+How actors are displayed
+------------------------
+
+In a number of places - such as the navigation menu and the ``/-/logout`` page - Datasette needs to display a short label representing the currently authenticated actor.
+
+To decide what to show, Datasette looks through the following keys in the actor dictionary and uses the value of the first one that is present and not empty:
+
+* ``display``
+* ``name``
+* ``username``
+* ``login``
+* ``id``
+
+If none of those keys have a value the actor dictionary is displayed as a string instead.
+
 .. _authentication_root:
 
 Using the "root" actor

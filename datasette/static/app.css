@@ -1760,7 +1760,7 @@ dialog.table-create-dialog {
     border-radius: var(--modal-border-radius, 0.75rem);
     padding: 0;
     margin: auto;
-    width: min(760px, calc(100vw - 32px));
+    width: min(980px, calc(100vw - 32px));
     max-width: 95vw;
     max-height: min(780px, calc(100vh - 32px));
     box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
@@ -1839,7 +1839,7 @@ dialog.table-create-dialog::backdrop {
 }
 
 .table-create-label,
-.table-create-columns-heading {
+.table-create-column-headings {
     color: var(--ink);
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 0.82rem;
@@ -1876,10 +1876,12 @@ dialog.table-create-dialog::backdrop {
     color: var(--muted);
 }
 
+.table-create-foreign-key-target option,
 .table-create-custom-column-type option {
     color: var(--ink);
 }
 
+.table-create-foreign-key-target option[value=""],
 .table-create-custom-column-type option[value=""] {
     color: var(--muted);
 }
@@ -1898,40 +1900,130 @@ dialog.table-create-dialog::backdrop {
     gap: 10px;
 }
 
-.table-create-columns-heading {
-    font-weight: 600;
-}
-
 .table-create-column-list {
     display: grid;
     gap: 8px;
 }
 
-.table-create-column-row {
+.table-create-column-headings,
+.table-create-column-main {
     display: grid;
-    grid-template-columns: minmax(140px, 1.2fr) minmax(7.5rem, 0.7fr) minmax(12rem, 1fr) minmax(3.5rem, max-content) 32px;
+    grid-template-columns: minmax(140px, 1.2fr) minmax(7.5rem, 0.7fr) max-content 32px;
     align-items: center;
     gap: 8px;
     min-width: 0;
-    position: relative;
 }
 
-.table-create-primary-key {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--ink);
-    font-size: 0.85rem;
+.table-create-column-row {
+    display: grid;
+    gap: 8px;
     min-width: 0;
-    white-space: nowrap;
-    justify-self: center;
 }
 
-.table-create-primary-key-input {
+.table-create-column-headings {
+    color: var(--muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.72rem;
+    padding: 0 1px;
+}
+
+.table-create-column-details {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 12px 16px;
+    padding: 12px;
+    border-left: 3px solid var(--rule);
+    background: #f8fafc;
+}
+
+.table-create-column-details[hidden] {
+    display: none;
+}
+
+.table-create-detail-field {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+
+.table-create-detail-label {
+    color: var(--muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.72rem;
+}
+
+.table-create-detail-help {
+    color: var(--muted);
+    font-size: 0.82rem;
+    line-height: 1.35;
     margin: 0;
 }
 
-.table-create-remove-column {
+.table-create-detail-check {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 8px;
+    color: var(--ink);
+    font-size: 0.85rem;
+    line-height: 1.35;
+    min-width: 0;
+    white-space: normal;
+}
+
+.table-create-primary-key,
+.table-create-foreign-key-field {
+    grid-column: 1 / -1;
+}
+
+.table-create-detail-check input {
+    flex: 0 0 auto;
+    margin: 0.15rem 0 0;
+}
+
+.table-create-detail-check span {
+    min-width: 0;
+    overflow-wrap: break-word;
+}
+
+.table-create-move-controls {
+    display: grid;
+    grid-template-columns: repeat(4, 32px);
+    gap: 4px;
+    justify-content: start;
+}
+
+.table-create-more-options {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--accent);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.85rem;
+    justify-self: start;
+    padding: 0;
+    grid-column: 1 / -1;
+    text-align: left;
+}
+
+.table-create-more-options:hover,
+.table-create-more-options:focus {
+    text-decoration: underline;
+}
+
+.table-create-more-options:focus {
+    outline: 3px solid rgba(26, 86, 219, 0.12);
+    outline-offset: 2px;
+}
+
+.table-create-more-options:disabled {
+    color: var(--muted);
+    cursor: default;
+    text-decoration: none;
+}
+
+.table-create-icon-button {
     appearance: none;
     border: 1px solid rgba(74, 85, 104, 0.24);
     background: transparent;
@@ -1945,17 +2037,17 @@ dialog.table-create-dialog::backdrop {
     padding: 0;
 }
 
-.table-create-remove-column:hover,
-.table-create-remove-column:focus {
+.table-create-icon-button:hover,
+.table-create-icon-button:focus {
     background: rgba(74, 85, 104, 0.07);
 }
 
-.table-create-remove-column:focus {
+.table-create-icon-button:focus {
     outline: 3px solid #b3d4ff;
     outline-offset: 1px;
 }
 
-.table-create-remove-column svg {
+.table-create-icon-button svg {
     display: block;
 }
 
@@ -1967,9 +2059,17 @@ dialog.table-create-dialog::backdrop {
     background: #fff;
     color: var(--accent);
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     font: inherit;
     font-size: 0.85rem;
     padding: 7px 10px;
+}
+
+.table-create-add-column svg {
+    display: block;
+    flex: 0 0 auto;
 }
 
 .table-create-add-column:hover,
@@ -2027,7 +2127,7 @@ dialog.table-create-dialog::backdrop {
 
 .table-create-dialog .btn:disabled,
 .table-create-add-column:disabled,
-.table-create-remove-column:disabled {
+.table-create-icon-button:disabled {
     opacity: 0.55;
     cursor: not-allowed;
 }
@@ -2198,7 +2298,7 @@ dialog.table-alter-dialog::backdrop {
 .table-alter-column-headings,
 .table-alter-column-main {
     display: grid;
-    grid-template-columns: minmax(140px, 1.2fr) minmax(7.5rem, 0.7fr) minmax(12rem, 1fr) max-content 32px;
+    grid-template-columns: minmax(140px, 1.2fr) minmax(7.5rem, 0.7fr) max-content 32px;
     align-items: center;
     gap: 8px;
     min-width: 0;
@@ -2384,9 +2484,17 @@ dialog.table-alter-dialog::backdrop {
     background: #fff;
     color: var(--accent);
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     font: inherit;
     font-size: 0.85rem;
     padding: 7px 10px;
+}
+
+.table-alter-add-column svg {
+    display: block;
+    flex: 0 0 auto;
 }
 
 .table-alter-add-column:hover,
@@ -2504,21 +2612,16 @@ dialog.table-alter-dialog::backdrop {
         justify-self: end;
     }
 
-    .table-alter-custom-column-type {
-        grid-column: 1 / 3;
-        grid-row: 2;
-    }
-
     .table-alter-move-controls {
         grid-column: 1;
-        grid-row: 3;
+        grid-row: 2;
         justify-self: start;
     }
 
     .table-alter-more-options {
         align-self: center;
         grid-column: 2 / 4;
-        grid-row: 3;
+        grid-row: 2;
     }
 
     .table-alter-column-details {
@@ -2700,13 +2803,50 @@ dialog.table-alter-dialog::backdrop {
         padding-top: 0;
     }
 
+    .table-create-column-headings {
+        display: none;
+    }
+
     .table-create-column-row {
-        grid-template-columns: minmax(0, 1fr) 8.5rem 3.5rem 32px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--rule);
+    }
+
+    .table-create-column-main {
+        grid-template-columns: minmax(0, 1fr) minmax(7.5rem, 0.8fr) 32px;
         align-items: end;
     }
 
-    .table-create-custom-column-type {
-        grid-column: 1 / -1;
+    .table-create-column-name {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .table-create-column-type {
+        grid-column: 2;
+        grid-row: 1;
+    }
+
+    .table-create-remove-column {
+        grid-column: 3;
+        grid-row: 1;
+        justify-self: end;
+    }
+
+    .table-create-move-controls {
+        grid-column: 1;
+        grid-row: 2;
+        justify-self: start;
+    }
+
+    .table-create-more-options {
+        align-self: center;
+        grid-column: 2 / 4;
+        grid-row: 2;
+    }
+
+    .table-create-column-details {
+        grid-template-columns: 1fr;
     }
 
     .table-create-dialog .modal-footer {

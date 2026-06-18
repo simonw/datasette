@@ -64,10 +64,218 @@ function sqliteColumnTypeLabel(type) {
   if (type === "float") {
     return "floating point number";
   }
+  if (type === "real") {
+    return "floating point number";
+  }
   if (type === "blob") {
     return "blob - binary data";
   }
   return type;
+}
+
+function populateSqliteColumnTypeSelect(select, type, options) {
+  options.forEach(function (option) {
+    var optionElement = document.createElement("option");
+    optionElement.value = option;
+    optionElement.textContent = sqliteColumnTypeLabel(option);
+    select.appendChild(optionElement);
+  });
+  select.value = options.indexOf(type) === -1 ? options[0] : type;
+}
+
+function updateSelectPlaceholder(select, placeholderClass) {
+  select.classList.toggle(placeholderClass, !select.value);
+}
+
+function createCustomColumnTypeSelect(options, className, placeholderClass) {
+  var select = document.createElement("select");
+  select.className = className;
+  select.setAttribute("aria-label", "Custom column type");
+  var blankOption = document.createElement("option");
+  blankOption.value = "";
+  blankOption.textContent = "- custom type -";
+  select.appendChild(blankOption);
+  options.forEach(function (option) {
+    var optionElement = document.createElement("option");
+    optionElement.value = option.name;
+    optionElement.textContent = option.description
+      ? option.description + " (" + option.name + ")"
+      : option.name;
+    select.appendChild(optionElement);
+  });
+  updateSelectPlaceholder(select, placeholderClass);
+  return select;
+}
+
+var COLUMN_MOVE_ICONS = {
+  top: '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 17-6-6-6 6"></path><path d="m18 11-6-6-6 6"></path></svg>',
+  up: '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"></path></svg>',
+  down: '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>',
+  bottom:
+    '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 7 6 6 6-6"></path><path d="m6 13 6 6 6-6"></path></svg>',
+  remove:
+    '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg>',
+};
+
+function createSchemaDialogIconButton(prefix, modifier, ariaLabel, title, svg) {
+  var button = document.createElement("button");
+  button.type = "button";
+  button.className = prefix + "-icon-button " + prefix + "-" + modifier;
+  button.setAttribute("aria-label", ariaLabel);
+  button.title = title;
+  button.dataset.defaultTitle = title;
+  button.innerHTML = svg;
+  return button;
+}
+
+function createSchemaDialogMoveControls(prefix) {
+  var moveControls = document.createElement("div");
+  moveControls.className = prefix + "-move-controls";
+
+  var moveTopButton = createSchemaDialogIconButton(
+    prefix,
+    "move-top",
+    "Move column to top",
+    "Move column to top",
+    COLUMN_MOVE_ICONS.top,
+  );
+  var moveUpButton = createSchemaDialogIconButton(
+    prefix,
+    "move-up",
+    "Move column up",
+    "Move column up",
+    COLUMN_MOVE_ICONS.up,
+  );
+  var moveDownButton = createSchemaDialogIconButton(
+    prefix,
+    "move-down",
+    "Move column down",
+    "Move column down",
+    COLUMN_MOVE_ICONS.down,
+  );
+  var moveBottomButton = createSchemaDialogIconButton(
+    prefix,
+    "move-bottom",
+    "Move column to bottom",
+    "Move column to bottom",
+    COLUMN_MOVE_ICONS.bottom,
+  );
+
+  moveControls.appendChild(moveTopButton);
+  moveControls.appendChild(moveUpButton);
+  moveControls.appendChild(moveDownButton);
+  moveControls.appendChild(moveBottomButton);
+
+  return {
+    controls: moveControls,
+    topButton: moveTopButton,
+    upButton: moveUpButton,
+    downButton: moveDownButton,
+    bottomButton: moveBottomButton,
+  };
+}
+
+function createSchemaDialogMoreOptionsButton(prefix, details) {
+  var expandButton = document.createElement("button");
+  expandButton.type = "button";
+  expandButton.className = prefix + "-more-options";
+  expandButton.setAttribute("aria-label", "Toggle column settings");
+  expandButton.setAttribute("aria-controls", details.id);
+  expandButton.setAttribute("aria-expanded", details.hidden ? "false" : "true");
+  updateSchemaDialogMoreOptionsButton(expandButton);
+  return expandButton;
+}
+
+function updateSchemaDialogMoreOptionsButton(button) {
+  var isExpanded = button.getAttribute("aria-expanded") === "true";
+  button.textContent = isExpanded ? "v Hide options" : "> Advanced options";
+  button.title = isExpanded ? "Hide column settings" : "Show column settings";
+}
+
+function toggleSchemaDialogMoreOptions(button, details) {
+  var isExpanded = button.getAttribute("aria-expanded") === "true";
+  details.hidden = isExpanded;
+  button.setAttribute("aria-expanded", isExpanded ? "false" : "true");
+  updateSchemaDialogMoreOptionsButton(button);
+}
+
+function schemaDialogRows(state, prefix) {
+  return Array.prototype.slice.call(
+    state.columnList.querySelectorAll("." + prefix + "-column-row"),
+  );
+}
+
+function schemaDialogRowIsPrimaryKey(row, prefix) {
+  var input = row && row.querySelector("." + prefix + "-primary-key-input");
+  return !!(input && input.checked);
+}
+
+function schemaDialogFirstNonPrimaryRow(state, prefix) {
+  var rows = schemaDialogRows(state, prefix);
+  for (var i = 0; i < rows.length; i += 1) {
+    if (!schemaDialogRowIsPrimaryKey(rows[i], prefix)) {
+      return rows[i];
+    }
+  }
+  return null;
+}
+
+function updateSchemaDialogMoveButtons(state, prefix) {
+  if (!state || !state.columnList) {
+    return;
+  }
+  var firstNonPrimary = schemaDialogFirstNonPrimaryRow(state, prefix);
+  var rows = schemaDialogRows(state, prefix);
+  var hasPrimaryKeys = rows.some(function (row) {
+    return schemaDialogRowIsPrimaryKey(row, prefix);
+  });
+  var primaryKeyMoveTitle = "Primary key columns are always listed first";
+  rows.forEach(function (row) {
+    var isPrimaryKey = schemaDialogRowIsPrimaryKey(row, prefix);
+    var previous = row.previousElementSibling;
+    var next = row.nextElementSibling;
+    row
+      .querySelectorAll("." + prefix + "-move-controls button")
+      .forEach(function (button) {
+        button.title = button.dataset.defaultTitle || button.title;
+        button.disabled = state.isSaving || isPrimaryKey;
+        if (isPrimaryKey) {
+          button.title = primaryKeyMoveTitle;
+        }
+      });
+    if (!isPrimaryKey) {
+      var topButton = row.querySelector("." + prefix + "-move-top");
+      var upButton = row.querySelector("." + prefix + "-move-up");
+      var downButton = row.querySelector("." + prefix + "-move-down");
+      var bottomButton = row.querySelector("." + prefix + "-move-bottom");
+      topButton.disabled =
+        state.isSaving || !firstNonPrimary || row === firstNonPrimary;
+      upButton.disabled =
+        state.isSaving || !previous || schemaDialogRowIsPrimaryKey(previous, prefix);
+      downButton.disabled = state.isSaving || !next;
+      bottomButton.disabled = state.isSaving || !next;
+      if (hasPrimaryKeys && row === firstNonPrimary) {
+        topButton.title = primaryKeyMoveTitle;
+        upButton.title = primaryKeyMoveTitle;
+      }
+    }
+  });
+}
+
+function normalizeSchemaDialogPrimaryKeyRows(state, prefix) {
+  var rows = schemaDialogRows(state, prefix);
+  rows
+    .filter(function (row) {
+      return schemaDialogRowIsPrimaryKey(row, prefix);
+    })
+    .concat(
+      rows.filter(function (row) {
+        return !schemaDialogRowIsPrimaryKey(row, prefix);
+      }),
+    )
+    .forEach(function (row) {
+      state.columnList.appendChild(row);
+    });
 }
 
 function tableCreateCustomColumnTypes() {
@@ -93,15 +301,205 @@ function tableCreateCustomTypeAppliesToSqliteType(option, sqliteType) {
   );
 }
 
+function tableCreateDialogRows(state) {
+  return schemaDialogRows(state, "table-create");
+}
+
+function tableCreateRowIsPrimaryKey(row) {
+  return schemaDialogRowIsPrimaryKey(row, "table-create");
+}
+
+function tableCreateFirstNonPrimaryRow(state) {
+  return schemaDialogFirstNonPrimaryRow(state, "table-create");
+}
+
+function updateTableCreateMoveButtons(state) {
+  updateSchemaDialogMoveButtons(state, "table-create");
+}
+
+function tableCreateTypeAffinity(type) {
+  if (type === "float") {
+    return "real";
+  }
+  return type;
+}
+
+function foreignKeyTypesCompatible(sourceAffinity, targetAffinity) {
+  if (sourceAffinity === targetAffinity) {
+    return true;
+  }
+  var numericAffinities = ["integer", "real", "numeric"];
+  if (sourceAffinity === "numeric") {
+    return numericAffinities.indexOf(targetAffinity) !== -1;
+  }
+  if (targetAffinity === "numeric") {
+    return numericAffinities.indexOf(sourceAffinity) !== -1;
+  }
+  return false;
+}
+
+function tableCreateForeignKeyTargetKey(target) {
+  return target.fk_table + "\u001f" + target.fk_column;
+}
+
+function tableCreateForeignKeyTargetLabel(target) {
+  return (
+    target.fk_table +
+    "." +
+    target.fk_column +
+    " (" +
+    sqliteColumnTypeLabel(target.type) +
+    ")"
+  );
+}
+
+function tableCreateForeignKeyTargetsUrl() {
+  var data = databaseCreateTableData() || {};
+  if (data.foreignKeyTargetsPath) {
+    return data.foreignKeyTargetsPath;
+  }
+  if (!data.path) {
+    return null;
+  }
+  return data.path.replace(/\/-\/create$/, "/-/foreign-key-targets");
+}
+
+function populateTableCreateForeignKeySelect(select, state, sourceType) {
+  var previousKey = select.value || select.dataset.selectedKey || "";
+  select.textContent = "";
+
+  var blankOption = document.createElement("option");
+  blankOption.value = "";
+  blankOption.textContent = "- no foreign key -";
+  select.appendChild(blankOption);
+
+  if (state.foreignKeyTargetsLoading) {
+    var loadingOption = document.createElement("option");
+    loadingOption.value = "";
+    loadingOption.disabled = true;
+    loadingOption.textContent = "Loading foreign keys...";
+    select.appendChild(loadingOption);
+  } else if (state.foreignKeyTargetsError) {
+    var errorOption = document.createElement("option");
+    errorOption.value = "";
+    errorOption.disabled = true;
+    errorOption.textContent = "Could not load foreign keys";
+    select.appendChild(errorOption);
+  } else {
+    var sourceAffinity = tableCreateTypeAffinity(sourceType);
+    (state.foreignKeyTargets || []).forEach(function (target) {
+      if (!foreignKeyTypesCompatible(sourceAffinity, target.type)) {
+        return;
+      }
+      var optionElement = document.createElement("option");
+      optionElement.value = tableCreateForeignKeyTargetKey(target);
+      optionElement.dataset.fkTable = target.fk_table;
+      optionElement.dataset.fkColumn = target.fk_column;
+      optionElement.textContent = tableCreateForeignKeyTargetLabel(target);
+      select.appendChild(optionElement);
+    });
+  }
+
+  select.value = previousKey;
+  if (select.value !== previousKey) {
+    select.value = "";
+  }
+  select.dataset.selectedKey = select.value;
+  select.disabled = state.isSaving || select.options.length <= 1;
+  updateSelectPlaceholder(select, "table-create-input-placeholder");
+}
+
+function syncTableCreateForeignKeyOptions(row, state) {
+  var typeSelect = row.querySelector(".table-create-column-type");
+  var foreignKeySelect = row.querySelector(".table-create-foreign-key-target");
+  if (!typeSelect || !foreignKeySelect) {
+    return;
+  }
+  populateTableCreateForeignKeySelect(
+    foreignKeySelect,
+    state,
+    typeSelect.value,
+  );
+}
+
+function refreshTableCreateForeignKeyControls(state) {
+  tableCreateDialogRows(state).forEach(function (row, index) {
+    if (index > 0) {
+      syncTableCreateForeignKeyOptions(row, state);
+    }
+  });
+}
+
+function updateTableCreateColumnRules(state) {
+  tableCreateDialogRows(state).forEach(function (row, index) {
+    var isFirstColumn = index === 0;
+    var pkLabel = row.querySelector(".table-create-primary-key");
+    var pkInput = row.querySelector(".table-create-primary-key-input");
+    var foreignKeyField = row.querySelector(".table-create-foreign-key-field");
+    var foreignKeySelect = row.querySelector(".table-create-foreign-key-target");
+
+    if (pkLabel && pkInput) {
+      pkLabel.hidden = !isFirstColumn;
+      if (!isFirstColumn) {
+        pkInput.checked = false;
+      }
+    }
+
+    if (foreignKeyField && foreignKeySelect) {
+      foreignKeyField.hidden = isFirstColumn;
+      if (isFirstColumn) {
+        foreignKeySelect.value = "";
+        foreignKeySelect.dataset.selectedKey = "";
+        foreignKeySelect.disabled = true;
+        updateTableCreateCustomColumnTypePlaceholder(foreignKeySelect);
+      } else {
+        syncTableCreateForeignKeyOptions(row, state);
+      }
+    }
+  });
+  updateTableCreateMoveButtons(state);
+}
+
+async function loadTableCreateForeignKeyTargets(state) {
+  var url = tableCreateForeignKeyTargetsUrl();
+  if (!url || !window.fetch) {
+    state.foreignKeyTargets = [];
+    state.foreignKeyTargetsLoading = false;
+    refreshTableCreateForeignKeyControls(state);
+    return;
+  }
+  state.foreignKeyTargets = [];
+  state.foreignKeyTargetsError = null;
+  state.foreignKeyTargetsLoading = true;
+  refreshTableCreateForeignKeyControls(state);
+  try {
+    var response = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+      },
+    });
+    var data = await response.json();
+    if (!response.ok || data.ok === false) {
+      throw rowMutationRequestError(response, data);
+    }
+    state.foreignKeyTargets = data.targets || [];
+  } catch (error) {
+    state.foreignKeyTargets = [];
+    state.foreignKeyTargetsError = error;
+  } finally {
+    state.foreignKeyTargetsLoading = false;
+    refreshTableCreateForeignKeyControls(state);
+  }
+}
+
 function tableCreateDialogSignature(state) {
   if (!state || !state.form) {
     return "";
   }
-  var columns = [];
-  state.columnList
-    .querySelectorAll(".table-create-column-row")
-    .forEach(function (row) {
-      columns.push({
+  return JSON.stringify({
+    table: state.tableName.value,
+    columns: tableCreateDialogRows(state).map(function (row) {
+      return {
         name: row.querySelector(".table-create-column-name").value,
         type: row.querySelector(".table-create-column-type").value,
         customType:
@@ -111,11 +509,14 @@ function tableCreateDialogSignature(state) {
             }
           ).value || "",
         pk: row.querySelector(".table-create-primary-key-input").checked,
-      });
-    });
-  return JSON.stringify({
-    table: state.tableName.value,
-    columns: columns,
+        foreignKey:
+          (
+            row.querySelector(".table-create-foreign-key-target") || {
+              value: "",
+            }
+          ).value || "",
+      };
+    }),
   });
 }
 
@@ -151,42 +552,28 @@ function setTableCreateDialogSaving(state, isSaving) {
     .forEach(function (control) {
       control.disabled = isSaving;
     });
+  if (!isSaving) {
+    updateTableCreateColumnRules(state);
+  }
+  updateTableCreateMoveButtons(state);
 }
 
 function tableCreateSelectTypeValue(select, type) {
   var options = tableCreateColumnTypes();
-  options.forEach(function (option) {
-    var optionElement = document.createElement("option");
-    optionElement.value = option;
-    optionElement.textContent = sqliteColumnTypeLabel(option);
-    select.appendChild(optionElement);
-  });
-  select.value = options.indexOf(type) === -1 ? options[0] : type;
+  populateSqliteColumnTypeSelect(select, type, options);
 }
 
 function updateTableCreateCustomColumnTypePlaceholder(select) {
-  select.classList.toggle("table-create-input-placeholder", !select.value);
+  updateSelectPlaceholder(select, "table-create-input-placeholder");
 }
 
 function createTableCustomColumnTypeSelect() {
   var options = tableCreateCustomColumnTypes();
-  var select = document.createElement("select");
-  select.className = "table-create-input table-create-custom-column-type";
-  select.setAttribute("aria-label", "Custom column type");
-  var blankOption = document.createElement("option");
-  blankOption.value = "";
-  blankOption.textContent = "- custom type -";
-  select.appendChild(blankOption);
-  options.forEach(function (option) {
-    var optionElement = document.createElement("option");
-    optionElement.value = option.name;
-    optionElement.textContent = option.description
-      ? option.description + " (" + option.name + ")"
-      : option.name;
-    select.appendChild(optionElement);
-  });
-  updateTableCreateCustomColumnTypePlaceholder(select);
-  return select;
+  return createCustomColumnTypeSelect(
+    options,
+    "table-create-input table-create-custom-column-type",
+    "table-create-input-placeholder",
+  );
 }
 
 function syncTableCreateCustomTypeForSqliteType(row) {
@@ -209,6 +596,19 @@ function createTableColumnRow(state, column) {
   var row = document.createElement("div");
   row.className = "table-create-column-row";
 
+  var main = document.createElement("div");
+  main.className = "table-create-column-main";
+
+  var details = document.createElement("div");
+  details.className = "table-create-column-details";
+  details.id = "table-create-column-details-" + index;
+  details.hidden = !(column && column.expanded);
+
+  var expandButton = createSchemaDialogMoreOptionsButton(
+    "table-create",
+    details,
+  );
+
   var nameId = "table-create-column-name-" + index;
   var nameLabel = document.createElement("label");
   nameLabel.className = "table-create-column-label";
@@ -228,40 +628,88 @@ function createTableColumnRow(state, column) {
   typeSelect.setAttribute("aria-label", "Column type");
   tableCreateSelectTypeValue(typeSelect, column && column.type);
 
-  var customTypeSelect = createTableCustomColumnTypeSelect();
-  if (column && column.customType) {
-    customTypeSelect.value = column.customType;
+  var customTypeSelect = null;
+  var customTypeField = null;
+  if (tableCreateCustomColumnTypes().length) {
+    var customTypeId = "table-create-column-custom-type-" + index;
+    customTypeField = document.createElement("div");
+    customTypeField.className =
+      "table-create-detail-field table-create-custom-type-field";
+    var customTypeLabel = document.createElement("label");
+    customTypeLabel.className = "table-create-detail-label";
+    customTypeLabel.setAttribute("for", customTypeId);
+    customTypeLabel.textContent = "Custom type";
+    customTypeSelect = createTableCustomColumnTypeSelect();
+    customTypeSelect.id = customTypeId;
+    customTypeSelect.value = column && column.customType ? column.customType : "";
+    updateTableCreateCustomColumnTypePlaceholder(customTypeSelect);
+    customTypeField.appendChild(customTypeLabel);
+    customTypeField.appendChild(customTypeSelect);
   }
-  updateTableCreateCustomColumnTypePlaceholder(customTypeSelect);
 
   var pkLabel = document.createElement("label");
-  pkLabel.className = "table-create-primary-key";
+  pkLabel.className = "table-create-detail-check table-create-primary-key";
   var pkInput = document.createElement("input");
   pkInput.type = "checkbox";
   pkInput.className = "table-create-primary-key-input";
   pkInput.checked = !!(column && column.primaryKey);
   var pkText = document.createElement("span");
-  pkText.textContent = "PK";
-  pkText.title = "Primary key";
+  var pkStrong = document.createElement("strong");
+  pkStrong.textContent = "Primary key";
+  pkText.appendChild(pkStrong);
+  pkText.appendChild(
+    document.createTextNode(" This ID uniquely identifies the record"),
+  );
   pkLabel.appendChild(pkInput);
   pkLabel.appendChild(pkText);
 
-  var removeButton = document.createElement("button");
-  removeButton.type = "button";
-  removeButton.className = "table-create-remove-column";
-  removeButton.setAttribute("aria-label", "Remove column");
-  removeButton.title = "Remove column";
-  removeButton.innerHTML =
-    '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg>';
+  var foreignKeyId = "table-create-column-foreign-key-" + index;
+  var foreignKeyHelpId = "table-create-column-foreign-key-help-" + index;
+  var foreignKeyField = document.createElement("div");
+  foreignKeyField.className =
+    "table-create-detail-field table-create-foreign-key-field";
+  var foreignKeyLabel = document.createElement("label");
+  foreignKeyLabel.className = "table-create-detail-label";
+  foreignKeyLabel.setAttribute("for", foreignKeyId);
+  foreignKeyLabel.textContent = "Foreign key";
+  var foreignKeyHelp = document.createElement("p");
+  foreignKeyHelp.id = foreignKeyHelpId;
+  foreignKeyHelp.className = "table-create-detail-help";
+  foreignKeyHelp.textContent = "Link this column to another table.";
+  var foreignKeySelect = document.createElement("select");
+  foreignKeySelect.id = foreignKeyId;
+  foreignKeySelect.className =
+    "table-create-input table-create-foreign-key-target";
+  foreignKeySelect.setAttribute("aria-label", "Foreign key target");
+  foreignKeySelect.setAttribute("aria-describedby", foreignKeyHelpId);
+  foreignKeyField.appendChild(foreignKeyLabel);
+  foreignKeyField.appendChild(foreignKeyHelp);
+  foreignKeyField.appendChild(foreignKeySelect);
 
-  row.appendChild(nameLabel);
-  row.appendChild(nameInput);
-  row.appendChild(typeSelect);
-  if (tableCreateCustomColumnTypes().length) {
-    row.appendChild(customTypeSelect);
+  var moveControls = createSchemaDialogMoveControls("table-create");
+
+  var removeButton = createSchemaDialogIconButton(
+    "table-create",
+    "remove-column",
+    "Remove column",
+    "Remove column",
+    COLUMN_MOVE_ICONS.remove,
+  );
+
+  main.appendChild(nameLabel);
+  main.appendChild(nameInput);
+  main.appendChild(typeSelect);
+  main.appendChild(moveControls.controls);
+  main.appendChild(removeButton);
+  main.appendChild(expandButton);
+
+  if (customTypeField) {
+    details.appendChild(customTypeField);
   }
-  row.appendChild(pkLabel);
-  row.appendChild(removeButton);
+  details.appendChild(foreignKeyField);
+  details.appendChild(pkLabel);
+  row.appendChild(main);
+  row.appendChild(details);
 
   removeButton.addEventListener("click", function () {
     if (state.isSaving) {
@@ -269,6 +717,7 @@ function createTableColumnRow(state, column) {
     }
     row.remove();
     clearTableCreateDialogError(state);
+    updateTableCreateColumnRules(state);
     var nextInput = state.columnList.querySelector(".table-create-column-name");
     if (nextInput) {
       nextInput.focus();
@@ -283,21 +732,94 @@ function createTableColumnRow(state, column) {
   typeSelect.addEventListener("change", function () {
     clearTableCreateDialogError(state);
     syncTableCreateCustomTypeForSqliteType(row);
+    syncTableCreateForeignKeyOptions(row, state);
   });
-  customTypeSelect.addEventListener("change", function () {
-    clearTableCreateDialogError(state);
-    updateTableCreateCustomColumnTypePlaceholder(customTypeSelect);
-    var option = tableCreateCustomColumnType(customTypeSelect.value);
-    if (
-      option &&
-      option.fixedSqliteType &&
-      tableCreateColumnTypes().indexOf(option.fixedSqliteType) !== -1
-    ) {
-      typeSelect.value = option.fixedSqliteType;
-    }
-  });
+  if (customTypeSelect) {
+    customTypeSelect.addEventListener("change", function () {
+      clearTableCreateDialogError(state);
+      updateTableCreateCustomColumnTypePlaceholder(customTypeSelect);
+      var option = tableCreateCustomColumnType(customTypeSelect.value);
+      if (
+        option &&
+        option.fixedSqliteType &&
+        tableCreateColumnTypes().indexOf(option.fixedSqliteType) !== -1
+      ) {
+        typeSelect.value = option.fixedSqliteType;
+        syncTableCreateForeignKeyOptions(row, state);
+      }
+    });
+  }
   pkInput.addEventListener("change", function () {
     clearTableCreateDialogError(state);
+    updateTableCreateColumnRules(state);
+  });
+  foreignKeySelect.addEventListener("change", function () {
+    foreignKeySelect.dataset.selectedKey = foreignKeySelect.value;
+    clearTableCreateDialogError(state);
+    updateTableCreateCustomColumnTypePlaceholder(foreignKeySelect);
+  });
+
+  expandButton.addEventListener("click", function () {
+    toggleSchemaDialogMoreOptions(expandButton, details);
+  });
+
+  moveControls.topButton.addEventListener("click", function () {
+    var first = tableCreateFirstNonPrimaryRow(state);
+    if (
+      state.isSaving ||
+      tableCreateRowIsPrimaryKey(row) ||
+      !first ||
+      first === row
+    ) {
+      return;
+    }
+    state.columnList.insertBefore(row, first);
+    clearTableCreateDialogError(state);
+    updateTableCreateColumnRules(state);
+    row.querySelector(".table-create-column-name").focus();
+  });
+
+  moveControls.upButton.addEventListener("click", function () {
+    var previous = row.previousElementSibling;
+    if (
+      state.isSaving ||
+      tableCreateRowIsPrimaryKey(row) ||
+      !previous ||
+      tableCreateRowIsPrimaryKey(previous)
+    ) {
+      return;
+    }
+    state.columnList.insertBefore(row, previous);
+    clearTableCreateDialogError(state);
+    updateTableCreateColumnRules(state);
+    row.querySelector(".table-create-column-name").focus();
+  });
+
+  moveControls.downButton.addEventListener("click", function () {
+    var next = row.nextElementSibling;
+    if (state.isSaving || tableCreateRowIsPrimaryKey(row) || !next) {
+      return;
+    }
+    state.columnList.insertBefore(next, row);
+    clearTableCreateDialogError(state);
+    updateTableCreateColumnRules(state);
+    row.querySelector(".table-create-column-name").focus();
+  });
+
+  moveControls.bottomButton.addEventListener("click", function () {
+    var last = state.columnList.lastElementChild;
+    if (
+      state.isSaving ||
+      tableCreateRowIsPrimaryKey(row) ||
+      !last ||
+      last === row
+    ) {
+      return;
+    }
+    state.columnList.appendChild(row);
+    clearTableCreateDialogError(state);
+    updateTableCreateColumnRules(state);
+    row.querySelector(".table-create-column-name").focus();
   });
 
   return row;
@@ -306,6 +828,7 @@ function createTableColumnRow(state, column) {
 function addTableCreateColumn(state, column) {
   var row = createTableColumnRow(state, column || { type: "text" });
   state.columnList.appendChild(row);
+  updateTableCreateColumnRules(state);
   return row;
 }
 
@@ -323,6 +846,7 @@ function resetTableCreateDialog(state) {
     type: "text",
     primaryKey: false,
   });
+  updateTableCreateColumnRules(state);
   state.initialSignature = tableCreateDialogSignature(state);
 }
 
@@ -332,16 +856,32 @@ function collectTableCreatePayload(state) {
     columns: [],
   };
   var primaryKeys = [];
-  state.columnList
-    .querySelectorAll(".table-create-column-row")
-    .forEach(function (row) {
-      var name = row.querySelector(".table-create-column-name").value.trim();
-      var type = row.querySelector(".table-create-column-type").value;
-      payload.columns.push({ name: name, type: type });
-      if (row.querySelector(".table-create-primary-key-input").checked) {
-        primaryKeys.push(name);
-      }
-    });
+  tableCreateDialogRows(state).forEach(function (row, index) {
+    var name = row.querySelector(".table-create-column-name").value.trim();
+    var type = row.querySelector(".table-create-column-type").value;
+    var column = { name: name, type: type };
+    var foreignKeySelect = row.querySelector(".table-create-foreign-key-target");
+    var foreignKeyOption =
+      foreignKeySelect && foreignKeySelect.selectedOptions
+        ? foreignKeySelect.selectedOptions[0]
+        : null;
+    if (
+      index > 0 &&
+      foreignKeyOption &&
+      foreignKeyOption.dataset.fkTable &&
+      foreignKeyOption.dataset.fkColumn
+    ) {
+      column.fk_table = foreignKeyOption.dataset.fkTable;
+      column.fk_column = foreignKeyOption.dataset.fkColumn;
+    }
+    payload.columns.push(column);
+    if (
+      index === 0 &&
+      row.querySelector(".table-create-primary-key-input").checked
+    ) {
+      primaryKeys.push(name);
+    }
+  });
   if (primaryKeys.length === 1) {
     payload.pk = primaryKeys[0];
   } else if (primaryKeys.length > 1) {
@@ -352,21 +892,19 @@ function collectTableCreatePayload(state) {
 
 function collectTableCreateColumnTypeAssignments(state) {
   var assignments = [];
-  state.columnList
-    .querySelectorAll(".table-create-column-row")
-    .forEach(function (row) {
-      var customTypeSelect = row.querySelector(
-        ".table-create-custom-column-type",
-      );
-      if (!customTypeSelect || !customTypeSelect.value) {
-        return;
-      }
-      assignments.push({
-        column: row.querySelector(".table-create-column-name").value.trim(),
-        columnType: customTypeSelect.value,
-        sqliteType: row.querySelector(".table-create-column-type").value,
-      });
+  tableCreateDialogRows(state).forEach(function (row) {
+    var customTypeSelect = row.querySelector(
+      ".table-create-custom-column-type",
+    );
+    if (!customTypeSelect || !customTypeSelect.value) {
+      return;
+    }
+    assignments.push({
+      column: row.querySelector(".table-create-column-name").value.trim(),
+      columnType: customTypeSelect.value,
+      sqliteType: row.querySelector(".table-create-column-type").value,
     });
+  });
   return assignments;
 }
 
@@ -604,9 +1142,14 @@ function ensureTableCreateDialog(manager) {
           <input class="table-create-input table-create-table-name" id="table-create-name" type="text" name="table" required autocomplete="off">
         </div>
         <div class="table-create-columns">
-          <div class="table-create-columns-heading">Columns</div>
+          <div class="table-create-column-headings" aria-hidden="true">
+            <span>Column</span>
+            <span>Type</span>
+            <span>Move</span>
+            <span></span>
+          </div>
           <div class="table-create-column-list"></div>
-          <button type="button" class="table-create-add-column">Add column</button>
+          <button type="button" class="table-create-add-column"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg><span>Add column</span></button>
         </div>
       </div>
       <div class="modal-footer">
@@ -633,6 +1176,9 @@ function ensureTableCreateDialog(manager) {
     isSaving: false,
     initialSignature: "",
     nextColumnIndex: 0,
+    foreignKeyTargets: [],
+    foreignKeyTargetsError: null,
+    foreignKeyTargetsLoading: false,
     manager: manager,
   };
 
@@ -713,6 +1259,7 @@ function openTableCreateDialog(button, manager) {
   state.title.textContent = "Create a table in " + data.databaseName;
   clearTableCreateDialogError(state);
   resetTableCreateDialog(state);
+  loadTableCreateForeignKeyTargets(state);
   if (!state.dialog.open) {
     state.dialog.showModal();
   }
@@ -877,9 +1424,7 @@ function tableAlterCustomTypeAppliesToSqliteType(option, sqliteType) {
 }
 
 function tableAlterDialogRows(state) {
-  return Array.prototype.slice.call(
-    state.columnList.querySelectorAll(".table-alter-column-row"),
-  );
+  return schemaDialogRows(state, "table-alter");
 }
 
 function tableAlterRowSignature(row) {
@@ -930,76 +1475,19 @@ function updateTableAlterSaveButtonState(state) {
 }
 
 function tableAlterRowIsPrimaryKey(row) {
-  var input = row && row.querySelector(".table-alter-primary-key-input");
-  return !!(input && input.checked);
+  return schemaDialogRowIsPrimaryKey(row, "table-alter");
 }
 
 function tableAlterFirstNonPrimaryRow(state) {
-  var rows = tableAlterDialogRows(state);
-  for (var i = 0; i < rows.length; i += 1) {
-    if (!tableAlterRowIsPrimaryKey(rows[i])) {
-      return rows[i];
-    }
-  }
-  return null;
+  return schemaDialogFirstNonPrimaryRow(state, "table-alter");
 }
 
 function updateTableAlterMoveButtons(state) {
-  if (!state || !state.columnList) {
-    return;
-  }
-  var firstNonPrimary = tableAlterFirstNonPrimaryRow(state);
-  var rows = tableAlterDialogRows(state);
-  var hasPrimaryKeys = rows.some(function (row) {
-    return tableAlterRowIsPrimaryKey(row);
-  });
-  var primaryKeyMoveTitle = "Primary key columns are always listed first";
-  rows.forEach(function (row) {
-    var isPrimaryKey = tableAlterRowIsPrimaryKey(row);
-    var previous = row.previousElementSibling;
-    var next = row.nextElementSibling;
-    row
-      .querySelectorAll(".table-alter-move-controls button")
-      .forEach(function (button) {
-        button.title = button.dataset.defaultTitle || button.title;
-        button.disabled = state.isSaving || isPrimaryKey;
-        if (isPrimaryKey) {
-          button.title = primaryKeyMoveTitle;
-        }
-      });
-    if (!isPrimaryKey) {
-      var topButton = row.querySelector(".table-alter-move-top");
-      var upButton = row.querySelector(".table-alter-move-up");
-      var downButton = row.querySelector(".table-alter-move-down");
-      var bottomButton = row.querySelector(".table-alter-move-bottom");
-      topButton.disabled =
-        state.isSaving || !firstNonPrimary || row === firstNonPrimary;
-      upButton.disabled =
-        state.isSaving || !previous || tableAlterRowIsPrimaryKey(previous);
-      downButton.disabled = state.isSaving || !next;
-      bottomButton.disabled = state.isSaving || !next;
-      if (hasPrimaryKeys && row === firstNonPrimary) {
-        topButton.title = primaryKeyMoveTitle;
-        upButton.title = primaryKeyMoveTitle;
-      }
-    }
-  });
+  updateSchemaDialogMoveButtons(state, "table-alter");
 }
 
 function normalizeTableAlterPrimaryKeyRows(state) {
-  var rows = tableAlterDialogRows(state);
-  rows
-    .filter(function (row) {
-      return tableAlterRowIsPrimaryKey(row);
-    })
-    .concat(
-      rows.filter(function (row) {
-        return !tableAlterRowIsPrimaryKey(row);
-      }),
-    )
-    .forEach(function (row) {
-      state.columnList.appendChild(row);
-    });
+  normalizeSchemaDialogPrimaryKeyRows(state, "table-alter");
 }
 
 function clearTableAlterDialogError(state) {
@@ -1049,38 +1537,20 @@ function tableAlterSaveButtonText(state) {
 
 function tableAlterSelectTypeValue(select, type) {
   var options = tableAlterColumnTypes();
-  options.forEach(function (option) {
-    var optionElement = document.createElement("option");
-    optionElement.value = option;
-    optionElement.textContent = sqliteColumnTypeLabel(option);
-    select.appendChild(optionElement);
-  });
-  select.value = options.indexOf(type) === -1 ? options[0] : type;
+  populateSqliteColumnTypeSelect(select, type, options);
 }
 
 function updateTableAlterCustomColumnTypePlaceholder(select) {
-  select.classList.toggle("table-alter-input-placeholder", !select.value);
+  updateSelectPlaceholder(select, "table-alter-input-placeholder");
 }
 
 function createTableAlterCustomColumnTypeSelect() {
   var options = tableAlterCustomColumnTypes();
-  var select = document.createElement("select");
-  select.className = "table-alter-input table-alter-custom-column-type";
-  select.setAttribute("aria-label", "Custom column type");
-  var blankOption = document.createElement("option");
-  blankOption.value = "";
-  blankOption.textContent = "- custom type -";
-  select.appendChild(blankOption);
-  options.forEach(function (option) {
-    var optionElement = document.createElement("option");
-    optionElement.value = option.name;
-    optionElement.textContent = option.description
-      ? option.description + " (" + option.name + ")"
-      : option.name;
-    select.appendChild(optionElement);
-  });
-  updateTableAlterCustomColumnTypePlaceholder(select);
-  return select;
+  return createCustomColumnTypeSelect(
+    options,
+    "table-alter-input table-alter-custom-column-type",
+    "table-alter-input-placeholder",
+  );
 }
 
 function syncTableAlterCustomTypeForSqliteType(row) {
@@ -1112,7 +1582,7 @@ function tableAlterSelectDefaultExprValue(select, value) {
 }
 
 function updateTableAlterDefaultExprPlaceholder(select) {
-  select.classList.toggle("table-alter-input-placeholder", !select.value);
+  updateSelectPlaceholder(select, "table-alter-input-placeholder");
 }
 
 function syncTableAlterDefaultControls(row) {
@@ -1159,22 +1629,10 @@ function createTableAlterColumnRow(state, column) {
   details.id = "table-alter-column-details-" + index;
   details.hidden = !(column && column.expanded);
 
-  var expandButton = document.createElement("button");
-  expandButton.type = "button";
-  expandButton.className = "table-alter-more-options";
-  expandButton.setAttribute("aria-label", "Toggle column settings");
-  expandButton.setAttribute("aria-controls", details.id);
-  expandButton.setAttribute("aria-expanded", details.hidden ? "false" : "true");
-  function updateExpandButton() {
-    var isExpanded = expandButton.getAttribute("aria-expanded") === "true";
-    expandButton.textContent = isExpanded
-      ? "v Hide options"
-      : "> Advanced options";
-    expandButton.title = isExpanded
-      ? "Hide column settings"
-      : "Show column settings";
-  }
-  updateExpandButton();
+  var expandButton = createSchemaDialogMoreOptionsButton(
+    "table-alter",
+    details,
+  );
 
   var nameId = "table-alter-column-name-" + index;
   var nameLabel = document.createElement("label");
@@ -1196,10 +1654,22 @@ function createTableAlterColumnRow(state, column) {
   tableAlterSelectTypeValue(typeSelect, column && column.type);
 
   var customTypeSelect = null;
+  var customTypeField = null;
   if (tableAlterCustomColumnTypes().length) {
+    var customTypeId = "table-alter-column-custom-type-" + index;
+    customTypeField = document.createElement("div");
+    customTypeField.className =
+      "table-alter-detail-field table-alter-custom-type-field";
+    var customTypeLabel = document.createElement("label");
+    customTypeLabel.className = "table-alter-detail-label";
+    customTypeLabel.setAttribute("for", customTypeId);
+    customTypeLabel.textContent = "Custom type";
     customTypeSelect = createTableAlterCustomColumnTypeSelect();
+    customTypeSelect.id = customTypeId;
     customTypeSelect.value = originalCustomType;
     updateTableAlterCustomColumnTypePlaceholder(customTypeSelect);
+    customTypeField.appendChild(customTypeLabel);
+    customTypeField.appendChild(customTypeSelect);
   }
 
   var notNullLabel = document.createElement("label");
@@ -1262,76 +1732,30 @@ function createTableAlterColumnRow(state, column) {
   pkStrong.textContent = "Primary key";
   pkText.appendChild(pkStrong);
   pkText.appendChild(
-    document.createTextNode(" An ID that uniquely identifies this record"),
+    document.createTextNode(" This ID uniquely identifies the record"),
   );
   pkLabel.appendChild(pkInput);
   pkLabel.appendChild(pkText);
 
-  var moveControls = document.createElement("div");
-  moveControls.className = "table-alter-move-controls";
+  var moveControls = createSchemaDialogMoveControls("table-alter");
 
-  var moveTopButton = document.createElement("button");
-  moveTopButton.type = "button";
-  moveTopButton.className = "table-alter-icon-button table-alter-move-top";
-  moveTopButton.setAttribute("aria-label", "Move column to top");
-  moveTopButton.title = "Move column to top";
-  moveTopButton.dataset.defaultTitle = moveTopButton.title;
-  moveTopButton.innerHTML =
-    '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 17-6-6-6 6"></path><path d="m18 11-6-6-6 6"></path></svg>';
-
-  var moveUpButton = document.createElement("button");
-  moveUpButton.type = "button";
-  moveUpButton.className = "table-alter-icon-button table-alter-move-up";
-  moveUpButton.setAttribute("aria-label", "Move column up");
-  moveUpButton.title = "Move column up";
-  moveUpButton.dataset.defaultTitle = moveUpButton.title;
-  moveUpButton.innerHTML =
-    '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"></path></svg>';
-
-  var moveDownButton = document.createElement("button");
-  moveDownButton.type = "button";
-  moveDownButton.className = "table-alter-icon-button table-alter-move-down";
-  moveDownButton.setAttribute("aria-label", "Move column down");
-  moveDownButton.title = "Move column down";
-  moveDownButton.dataset.defaultTitle = moveDownButton.title;
-  moveDownButton.innerHTML =
-    '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>';
-
-  var moveBottomButton = document.createElement("button");
-  moveBottomButton.type = "button";
-  moveBottomButton.className =
-    "table-alter-icon-button table-alter-move-bottom";
-  moveBottomButton.setAttribute("aria-label", "Move column to bottom");
-  moveBottomButton.title = "Move column to bottom";
-  moveBottomButton.dataset.defaultTitle = moveBottomButton.title;
-  moveBottomButton.innerHTML =
-    '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 7 6 6 6-6"></path><path d="m6 13 6 6 6-6"></path></svg>';
-
-  var removeButton = document.createElement("button");
-  removeButton.type = "button";
-  removeButton.className = "table-alter-icon-button table-alter-remove-column";
-  removeButton.setAttribute(
-    "aria-label",
+  var removeButton = createSchemaDialogIconButton(
+    "table-alter",
+    "remove-column",
     existing ? "Drop column" : "Remove column",
+    existing ? "Drop column" : "Remove column",
+    COLUMN_MOVE_ICONS.remove,
   );
-  removeButton.title = existing ? "Drop column" : "Remove column";
-  removeButton.innerHTML =
-    '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg>';
-
-  moveControls.appendChild(moveTopButton);
-  moveControls.appendChild(moveUpButton);
-  moveControls.appendChild(moveDownButton);
-  moveControls.appendChild(moveBottomButton);
   main.appendChild(nameLabel);
   main.appendChild(nameInput);
   main.appendChild(typeSelect);
-  if (customTypeSelect) {
-    main.appendChild(customTypeSelect);
-  }
-  main.appendChild(moveControls);
+  main.appendChild(moveControls.controls);
   main.appendChild(removeButton);
   main.appendChild(expandButton);
 
+  if (customTypeField) {
+    details.appendChild(customTypeField);
+  }
   details.appendChild(notNullLabel);
   details.appendChild(defaultField);
   details.appendChild(defaultExprField);
@@ -1382,10 +1806,7 @@ function createTableAlterColumnRow(state, column) {
   });
 
   expandButton.addEventListener("click", function () {
-    var isExpanded = expandButton.getAttribute("aria-expanded") === "true";
-    details.hidden = isExpanded;
-    expandButton.setAttribute("aria-expanded", isExpanded ? "false" : "true");
-    updateExpandButton();
+    toggleSchemaDialogMoreOptions(expandButton, details);
   });
 
   typeSelect.addEventListener("change", function () {
@@ -1407,7 +1828,7 @@ function createTableAlterColumnRow(state, column) {
     });
   }
 
-  moveTopButton.addEventListener("click", function () {
+  moveControls.topButton.addEventListener("click", function () {
     var first = tableAlterFirstNonPrimaryRow(state);
     if (
       state.isSaving ||
@@ -1424,7 +1845,7 @@ function createTableAlterColumnRow(state, column) {
     row.querySelector(".table-alter-column-name").focus();
   });
 
-  moveUpButton.addEventListener("click", function () {
+  moveControls.upButton.addEventListener("click", function () {
     var previous = row.previousElementSibling;
     if (
       state.isSaving ||
@@ -1441,7 +1862,7 @@ function createTableAlterColumnRow(state, column) {
     row.querySelector(".table-alter-column-name").focus();
   });
 
-  moveDownButton.addEventListener("click", function () {
+  moveControls.downButton.addEventListener("click", function () {
     var next = row.nextElementSibling;
     if (state.isSaving || tableAlterRowIsPrimaryKey(row) || !next) {
       return;
@@ -1453,7 +1874,7 @@ function createTableAlterColumnRow(state, column) {
     row.querySelector(".table-alter-column-name").focus();
   });
 
-  moveBottomButton.addEventListener("click", function () {
+  moveControls.bottomButton.addEventListener("click", function () {
     var last = state.columnList.lastElementChild;
     if (
       state.isSaving ||
@@ -2145,12 +2566,11 @@ function ensureTableAlterDialog(manager) {
           <div class="table-alter-column-headings" aria-hidden="true">
             <span>Column</span>
             <span>Type</span>
-            <span>Custom Type</span>
             <span>Move</span>
             <span></span>
           </div>
           <div class="table-alter-column-list"></div>
-          <button type="button" class="table-alter-add-column">Add column</button>
+          <button type="button" class="table-alter-add-column"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg><span>Add column</span></button>
         </div>
       </div>
       <div class="table-alter-review" hidden></div>

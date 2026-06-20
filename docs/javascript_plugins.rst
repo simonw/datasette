@@ -40,17 +40,87 @@ The ``datasetteManager`` object
 ``VERSION`` - string
     The version of Datasette
 
+``path(path)`` - function
+    Returns a Datasette path, taking any configured :ref:`base URL prefix <setting_base_url>` into account.
+
 ``plugins`` - ``Map()``
     A Map of currently loaded plugin names to plugin implementations
 
 ``registerPlugin(name, implementation)``
     Call this to register a plugin, passing its name and implementation
 
+``loadEditTools()`` - function
+    Loads Datasette's row insert/edit JavaScript on demand, returning a promise that resolves when those tools are ready. Calling this more than once is safe; subsequent calls reuse the already-loaded tools.
+
+``loadAutocomplete()`` - function
+    Loads Datasette's foreign-key autocomplete custom element on demand, returning a promise that resolves when it is ready. Calling this more than once is safe; subsequent calls reuse the already-loaded element.
+
+``insertDialog(database, table, row, message)`` - function
+    Opens Datasette's row insert dialog for ``database`` and ``table``, pre-filled with suggested values from ``row``. This returns a promise, described in :ref:`javascript_datasette_insert_dialog`.
+
 ``makeColumnField(context)``
     Calls the ``makeColumnField()`` hook on registered plugins, returning the first custom insert/edit field control that matches the provided field context. This is used internally by Datasette's row insert and edit dialogs.
 
 ``selectors`` - object
     An object providing named aliases to useful CSS selectors, :ref:`listed below <javascript_datasette_manager_selectors>`
+
+The same object is available as ``window.datasette`` for code that needs to call these APIs outside of the ``datasette_init`` event handler.
+
+.. _javascript_datasette_insert_dialog:
+
+insertDialog(database, table, row, message)
+-------------------------------------------
+
+``await datasette.insertDialog(database, table, row, message)`` opens Datasette's row insert dialog for the specified table.
+
+The ``row`` argument must be an object. Its keys are column names and its values are the suggested values that should be pre-filled in the form. The row is not inserted immediately: the user can review and edit the values before clicking **Insert row**, or cancel the dialog.
+
+``message`` is optional. If provided, it is shown at the top of the insert dialog to explain why the row is being suggested.
+
+This example suggests a new ``repos`` row for a license:
+
+.. code-block:: javascript
+
+    const result = await datasette.insertDialog(
+        "content",
+        "repos",
+        { license: "apache-2.0" },
+        "Create a repo using the Apache 2.0 license."
+    );
+
+    if (result.ok) {
+        console.log("Inserted row:", result.row);
+    } else if (result.status === "cancelled") {
+        console.log("The user cancelled the insert.");
+    }
+
+The promise resolves to an object. If the user inserts the row it resolves to:
+
+.. code-block:: javascript
+
+    {
+        ok: true,
+        status: "inserted",
+        database: "content",
+        table: "repos",
+        row: { id: 1, name: "datasette", license: "apache-2.0" },
+        row_id: "1",
+        row_path: "1",
+        row_url: "/content/repos/1"
+    }
+
+If the user cancels the dialog it resolves to:
+
+.. code-block:: javascript
+
+    {
+        ok: false,
+        status: "cancelled",
+        database: "content",
+        table: "repos"
+    }
+
+The method fetches the insert dialog metadata from ``GET /{database}/{table}/-/insert``. If the actor does not have ``insert-row`` permission for that table, or if ``row`` contains keys that are not available in the insert form, the promise rejects.
 
 .. _javascript_plugin_objects:
 

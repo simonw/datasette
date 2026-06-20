@@ -1243,6 +1243,76 @@ async def test_table_data_includes_foreign_key_autocomplete_urls():
 
 
 @pytest.mark.asyncio
+async def test_row_foreign_key_tables_include_insert_dialog_button():
+    import json
+
+    ds = Datasette(
+        [],
+        config={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "repos": {
+                            "permissions": {
+                                "insert-row": {"id": "root"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_row_fk_insert_dialog_button"),
+            name="data",
+        )
+        await db.execute_write_script("""
+            create table licenses (
+                key text primary key,
+                name text
+            );
+            create table repos (
+                id integer primary key,
+                name text,
+                license text references licenses(key)
+            );
+            insert into licenses (key, name)
+                values ('apache-2.0', 'Apache License 2.0');
+            insert into repos (name, license)
+                values ('datasette', 'apache-2.0');
+            """)
+
+        response = await ds.client.get(
+            "/data/licenses/apache-2~2E0", actor={"id": "root"}
+        )
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        button = soup.select_one('button[data-insert-dialog][data-table="repos"]')
+        assert button is not None
+        assert button.text.strip() == "Insert"
+        assert button["class"] == ["core", "row-foreign-key-insert"]
+        assert button.has_attr("data-insert-dialog-reload")
+        assert button["data-database"] == "data"
+        assert json.loads(button["data-row"]) == {"license": "apache-2.0"}
+        assert (
+            button["data-message"]
+            == "Insert a row in repos with license set to apache-2.0."
+        )
+        assert not any(
+            "edit-tools.js" in (script.get("src") or "")
+            for script in soup.find_all("script")
+        )
+
+        response = await ds.client.get("/data/licenses/apache-2~2E0")
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        assert soup.select_one("button[data-insert-dialog]") is None
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
 async def test_table_fragment_endpoint(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key/-/fragment?_row=1")
     assert response.status_code == 200
@@ -1379,6 +1449,48 @@ async def test_row_delete_redirect_to_table_sets_message():
         assert response.json() == {"ok": True, "redirect": "/data/items"}
         assert ds.unsign(response.cookies["ds_messages"], "messages") == [
             ["Deleted row 1 (One)", ds.INFO]
+        ]
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_table_insert_sets_message():
+    ds = Datasette(
+        [],
+        config={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "items": {
+                            "permissions": {
+                                "insert-row": {"id": "root"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_table_insert_message"), name="data"
+        )
+        await db.execute_write_script("""
+            create table items (id integer primary key, name text);
+            """)
+        response = await ds.client.post(
+            "/data/items/-/insert?_message=1",
+            actor={"id": "root"},
+            json={"row": {"name": "One"}},
+        )
+        assert response.status_code == 201
+        assert response.json() == {
+            "ok": True,
+            "rows": [{"id": 1, "name": "One"}],
+        }
+        assert ds.unsign(response.cookies["ds_messages"], "messages") == [
+            ["Inserted row 1 (One)", ds.INFO]
         ]
     finally:
         ds.close()

@@ -700,7 +700,7 @@ def test_config_force_https_urls():
         ("/fixtures/-/query.json?sql=select+blah", 400),
         # Write APIs
         ("/fixtures/-/create", 405),
-        ("/fixtures/facetable/-/insert", 405),
+        ("/fixtures/facetable/-/insert", 403),
         ("/fixtures/facetable/-/drop", 405),
     ],
 )

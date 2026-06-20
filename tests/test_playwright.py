@@ -90,20 +90,29 @@ def write_playwright_database(db_path):
     conn = sqlite3.connect(db_path)
     try:
         conn.executescript("""
+        create table licenses (
+            key text primary key,
+            name text
+        );
+        insert into licenses (key, name) values
+            ('mit', 'MIT License'),
+            ('apache-2.0', 'Apache License 2.0');
         create table projects (
             id integer primary key,
             title text not null,
             metadata text,
             logo text,
             notes text,
+            license text references licenses(key),
             score integer default 5
         );
-        insert into projects (title, metadata, logo, notes, score) values
+        insert into projects (title, metadata, logo, notes, license, score) values
             (
                 'Build Datasette',
                 '{"ok": true}',
                 'asset-original',
                 'Initial notes',
+                'mit',
                 5
             );
         """)
@@ -345,6 +354,75 @@ def test_insert_row_flow_uses_custom_column_field(page, datasette_server):
     assert data["logo"] == "asset-from-plugin"
     assert data["notes"] == "Inserted from Playwright"
     assert data["score"] == 5
+
+
+@pytest.mark.playwright
+def test_insert_dialog_javascript_api_returns_inserted_row(page, datasette_server):
+    page.goto(datasette_server)
+    page.wait_for_function("window.datasette && window.datasette.insertDialog")
+    assert not page.locator('script[src*="edit-tools.js"]').count()
+
+    page.evaluate("""
+    () => {
+      window.insertDialogResult = window.datasette.insertDialog(
+        "data",
+        "projects",
+        {
+          title: "Suggested from JavaScript",
+          metadata: '{"suggested": true}',
+          notes: "Created through insertDialog()",
+          license: "apache-2.0",
+          score: 7
+        },
+        "Review this suggested project before inserting it."
+      );
+    }
+    """)
+
+    dialog = page.locator("#row-edit-dialog")
+    dialog.wait_for()
+    assert "Insert row into projects" in dialog.locator("#row-edit-title").inner_text()
+    assert (
+        dialog.locator("#row-edit-summary").inner_text()
+        == "Review this suggested project before inserting it."
+    )
+    assert dialog.locator('input[name="title"]').input_value() == (
+        "Suggested from JavaScript"
+    )
+    assert dialog.locator('textarea[name="metadata"]').input_value() == (
+        '{"suggested": true}'
+    )
+    assert dialog.locator('textarea[name="notes"]').input_value() == (
+        "Created through insertDialog()"
+    )
+    assert page.evaluate("() => !!customElements.get('datasette-autocomplete')")
+    assert (
+        dialog.locator('datasette-autocomplete input[name="license"]').input_value()
+        == "apache-2.0"
+    )
+    assert dialog.locator('input[name="score"]').input_value() == "7"
+
+    dialog.locator(".row-edit-save").click()
+    result = page.evaluate("() => window.insertDialogResult")
+    assert result["ok"] is True
+    assert result["status"] == "inserted"
+    assert result["database"] == "data"
+    assert result["table"] == "projects"
+    assert result["row_id"] == "2"
+    assert result["row_path"] == "2"
+    assert result["row_url"].endswith("/data/projects/2")
+    assert result["row"]["title"] == "Suggested from JavaScript"
+    assert result["row"]["metadata"] == '{"suggested": true}'
+    assert result["row"]["notes"] == "Created through insertDialog()"
+    assert result["row"]["license"] == "apache-2.0"
+    assert result["row"]["score"] == 7
+
+    data = project_row(datasette_server, 2)
+    assert data["title"] == "Suggested from JavaScript"
+    assert data["metadata"] == '{"suggested": true}'
+    assert data["notes"] == "Created through insertDialog()"
+    assert data["license"] == "apache-2.0"
+    assert data["score"] == 7
 
 
 @pytest.mark.playwright

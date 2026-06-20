@@ -25,6 +25,29 @@ const DOM_SELECTORS = {
   facetResults: ".facet-results [data-column]",
 };
 
+let editToolsPromise = null;
+let autocompletePromise = null;
+
+function datasettePath(path) {
+  const baseUrl = window.datasetteBaseUrl || "/";
+  return baseUrl.replace(/\/?$/, "/") + String(path || "").replace(/^\/+/, "");
+}
+
+function parseInsertDialogRow(value) {
+  if (!value) {
+    return {};
+  }
+  try {
+    const row = JSON.parse(value);
+    if (!row || typeof row !== "object" || Array.isArray(row)) {
+      throw new Error("row must be an object");
+    }
+    return row;
+  } catch (error) {
+    throw new Error("Invalid insert dialog row: " + error.message);
+  }
+}
+
 /**
  * Monolith class for interacting with Datasette JS API
  * Imported with DEFER, runs after main document parsed
@@ -38,6 +61,62 @@ const datasetteManager = {
   // Should plugins be allowed to clobber others or is it last-in takes priority?
   // Does pluginMetadata need to be serializable, or can we let it be stateful / have functions?
   plugins: new Map(),
+
+  path: datasettePath,
+
+  loadAutocomplete: () => {
+    if (!window.customElements) {
+      return Promise.resolve(null);
+    }
+    if (customElements.get("datasette-autocomplete")) {
+      return Promise.resolve(customElements.get("datasette-autocomplete"));
+    }
+    if (!autocompletePromise) {
+      const url =
+        window.datasetteAutocompleteUrl ||
+        datasettePath("/-/static/autocomplete.js");
+      autocompletePromise = import(url).then(() =>
+        customElements.get("datasette-autocomplete"),
+      );
+    }
+    return autocompletePromise;
+  },
+
+  loadEditTools: () => {
+    if (window.__DATASETTE_EDIT_TOOLS__) {
+      if (window.__DATASETTE_EDIT_TOOLS__.install) {
+        window.__DATASETTE_EDIT_TOOLS__.install(datasetteManager);
+      }
+      return Promise.resolve(window.__DATASETTE_EDIT_TOOLS__);
+    }
+    if (!editToolsPromise) {
+      const url =
+        window.datasetteEditToolsUrl ||
+        datasettePath("/-/static/edit-tools.js");
+      editToolsPromise = import(url).then(() => {
+        if (!window.__DATASETTE_EDIT_TOOLS__) {
+          throw new Error("edit-tools.js did not register its API");
+        }
+        if (window.__DATASETTE_EDIT_TOOLS__.install) {
+          window.__DATASETTE_EDIT_TOOLS__.install(datasetteManager);
+        }
+        return window.__DATASETTE_EDIT_TOOLS__;
+      });
+    }
+    return editToolsPromise;
+  },
+
+  insertDialog: async (database, table, row, message, options) => {
+    const editTools = await datasetteManager.loadEditTools();
+    return editTools.insertDialog(
+      datasetteManager,
+      database,
+      table,
+      row,
+      message,
+      options,
+    );
+  },
 
   registerPlugin: (name, pluginMetadata) => {
     if (datasetteManager.plugins.has(name)) {
@@ -230,9 +309,7 @@ const datasetteManager = {
 };
 
 const initializeDatasette = () => {
-  // Hide the global behind __ prefix. Ideally they should be listening for the
-  // DATASETTE_EVENTS.INIT event to avoid the habit of reading from the window.
-
+  window.datasette = datasetteManager;
   window.__DATASETTE__ = datasetteManager;
 
   const initDatasetteEvent = new CustomEvent(DATASETTE_EVENTS.INIT, {
@@ -240,6 +317,43 @@ const initializeDatasette = () => {
   });
 
   document.dispatchEvent(initDatasetteEvent);
+
+  document.addEventListener("click", function (event) {
+    const button = event.target.closest("[data-insert-dialog]");
+    if (!button) {
+      return;
+    }
+    event.preventDefault();
+    let row;
+    try {
+      row = parseInsertDialogRow(button.dataset.row || "{}");
+    } catch (error) {
+      console.error(error);
+      return;
+    }
+    const reloadOnInsert = button.hasAttribute("data-insert-dialog-reload");
+    datasetteManager
+      .insertDialog(
+        button.dataset.database,
+        button.dataset.table,
+        row,
+        button.dataset.message || "",
+        { flashMessage: reloadOnInsert },
+      )
+      .then((result) => {
+        if (
+          reloadOnInsert &&
+          result &&
+          result.ok &&
+          result.status === "inserted"
+        ) {
+          window.location.reload();
+        }
+      })
+      .catch((error) => {
+        console.error(error);
+      });
+  });
 };
 
 /**

@@ -1714,6 +1714,8 @@ If successful, this will return a ``201`` status code and the newly inserted row
         ]
     }
 
+Add ``?_message=1`` to the URL to set a Datasette flash message describing the inserted row. The JSON response body is unchanged, but the response will include a ``ds_messages`` cookie which Datasette will display on the next page the user visits.
+
 To insert multiple rows at a time, use the same API method but send a list of dictionaries as the ``"rows"`` key:
 
 ::

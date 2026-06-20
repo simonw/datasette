@@ -1224,6 +1224,25 @@ button.table-insert-row svg {
     flex-shrink: 0;
 }
 
+ul.row-foreign-key-tables {
+    display: grid;
+    gap: 0.35rem;
+}
+
+ul.row-foreign-key-tables li {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+}
+
+button.core.row-foreign-key-insert {
+    margin-left: 0;
+    padding: 0.15rem 0.45rem;
+    font-size: 0.78rem;
+    line-height: 1.15;
+}
+
 dialog.row-delete-dialog {
     --ink: #0f0f0f;
     --paper: #eef6ff;

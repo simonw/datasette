@@ -113,6 +113,35 @@ def row_label_from_label_column(row, label_column):
     return str(value)
 
 
+ROW_FLASH_LABEL_MAX_LENGTH = 80
+
+
+def _truncated_row_flash_label(label):
+    label = " ".join(str(label).split())
+    if len(label) <= ROW_FLASH_LABEL_MAX_LENGTH:
+        return label
+    return label[: ROW_FLASH_LABEL_MAX_LENGTH - 1] + "\u2026"
+
+
+async def _inserted_row_flash_message(db, table_name, pks, row):
+    pk_label = path_from_row_pks(row, pks, pks == ["rowid"], False)
+    label_column = await db.label_column_for_table(table_name)
+    label = row_label_from_label_column(row, label_column)
+    if label:
+        label = _truncated_row_flash_label(label)
+    if label and label != pk_label:
+        return "Inserted row {} ({})".format(pk_label, label)
+    return "Inserted row {}".format(pk_label)
+
+
+def _inserted_rows_flash_message(table_name, num_rows):
+    return "Inserted {:,} row{} in {}".format(
+        num_rows,
+        "" if num_rows == 1 else "s",
+        table_name,
+    )
+
+
 async def run_sequential(*args):
     # This used to be swappable for asyncio.gather() to run things in
     # parallel, but this lead to hard-to-debug locking issues with
@@ -977,6 +1006,16 @@ class TableInsertView(BaseView):
                         after_schema=after_schema,
                     )
                 )
+
+        if request.args.get("_message") and not upsert:
+            returned_rows = result.get("rows") or []
+            if len(returned_rows) == 1:
+                message = await _inserted_row_flash_message(
+                    db, table_name, pks, returned_rows[0]
+                )
+            else:
+                message = _inserted_rows_flash_message(table_name, num_rows)
+            self.ds.add_message(request, message, self.ds.INFO)
 
         return Response.json(result, status=200 if upsert else 201)
 

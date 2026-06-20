@@ -193,7 +193,7 @@ class RowView(DataView):
                 "private": private,
                 "columns": reordered_columns,
                 "foreign_key_tables": await self.foreign_key_tables(
-                    database, table, pk_values
+                    database, table, pk_values, actor=request.actor, include_insert=True
                 ),
                 "database_color": db.color,
                 "display_columns": display_columns,
@@ -266,7 +266,9 @@ class RowView(DataView):
             ),
         )
 
-    async def foreign_key_tables(self, database, table, pk_values):
+    async def foreign_key_tables(
+        self, database, table, pk_values, actor=None, include_insert=False
+    ):
         if len(pk_values) != 1:
             return []
         db = self.ds.databases[database]
@@ -309,7 +311,24 @@ class RowView(DataView):
                 key,
                 ",".join(pk_values),
             )
-            foreign_key_tables.append({**fk, **{"count": count, "link": link}})
+            item = {**fk, **{"count": count, "link": link}}
+            if include_insert:
+                can_insert = db.is_mutable and await self.ds.allowed(
+                    action="insert-row",
+                    resource=TableResource(database=database, table=fk["other_table"]),
+                    actor=actor,
+                )
+                item["can_insert"] = can_insert
+                if can_insert:
+                    item["insert_row"] = {fk["other_column"]: pk_values[0]}
+                    item["insert_message"] = (
+                        "Insert a row in {} with {} set to {}.".format(
+                            fk["other_table"],
+                            fk["other_column"],
+                            pk_values[0],
+                        )
+                    )
+            foreign_key_tables.append(item)
         return foreign_key_tables
 
 

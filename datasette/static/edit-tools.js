@@ -3,6 +3,14 @@ var rowDeleteDialogState = null;
 var ROW_EDIT_DIALOG_ID = "row-edit-dialog";
 var rowEditDialogState = null;
 
+function datasetteManagerPath(manager, path) {
+  if (manager && manager.path) {
+    return manager.path(path);
+  }
+  var baseUrl = window.datasetteBaseUrl || "/";
+  return baseUrl.replace(/\/?$/, "/") + String(path || "").replace(/^\/+/, "");
+}
+
 function ensureRowMutationStatus(manager) {
   var status = document.querySelector(".row-mutation-status");
   if (status) {
@@ -124,9 +132,10 @@ function insertedRowStatusMessage(rowId, rowLabel) {
   return message + ".";
 }
 
-function tableBaseUrl() {
+function tableBaseUrl(state) {
   var tableUrl =
-    window._datasetteTableData && window._datasetteTableData.tableUrl;
+    (state && state.currentTableUrl) ||
+    (window._datasetteTableData && window._datasetteTableData.tableUrl);
   var url = new URL(tableUrl || location.href, location.href);
   url.hash = "";
   url.search = "";
@@ -156,7 +165,10 @@ function rowElementForActionButton(button) {
   );
 }
 
-function foreignKeyAutocompleteUrl(column) {
+function foreignKeyAutocompleteUrl(column, state) {
+  if (state && state.currentForeignKeys && state.currentForeignKeys[column]) {
+    return state.currentForeignKeys[column];
+  }
   return tableForeignKeys()[column] || null;
 }
 
@@ -304,13 +316,19 @@ async function resolveForeignKeyMetaLink(control, autocompleteUrl, meta) {
   }
 }
 
-function tableInsertUrl() {
-  var data = tableInsertData();
+function tableInsertUrl(data, options) {
+  data = data || tableInsertData();
+  options = options || {};
+  var url;
   if (data && data.path) {
-    return new URL(data.path, location.href).toString();
+    url = new URL(data.path, location.href);
+  } else {
+    url = tableBaseUrl();
+    url.pathname = url.pathname.replace(/\/$/, "") + "/-/insert";
   }
-  var url = tableBaseUrl();
-  url.pathname = url.pathname.replace(/\/$/, "") + "/-/insert";
+  if (options.flashMessage) {
+    url.searchParams.set("_message", "1");
+  }
   return url.toString();
 }
 
@@ -363,11 +381,11 @@ function rowFragmentUrl(row) {
   return rowFragmentUrlById(rowId);
 }
 
-function rowFragmentUrlById(rowId) {
+function rowFragmentUrlById(rowId, state) {
   if (!rowId) {
     return "";
   }
-  var url = tableBaseUrl();
+  var url = tableBaseUrl(state);
   url.search = new URL(location.href).search;
   url.pathname = url.pathname.replace(/\/$/, "") + "/-/fragment";
   url.searchParams.delete("_next");
@@ -673,18 +691,20 @@ function defaultExpressionForContext(expression) {
 }
 
 function columnFormControlContext(column, isPk, columnType, options) {
+  options = options || {};
   var pageData = tablePageData();
   var defaultExpression = defaultExpressionForContext(
     options.defaultExpression,
   );
   return {
     mode: options.mode || "edit",
-    database: pageData.database || null,
+    database: options.database || pageData.database || null,
     table:
+      options.table ||
       pageData.table ||
       (tableInsertData() && tableInsertData().table_name) ||
       null,
-    tableUrl: pageData.tableUrl || null,
+    tableUrl: options.tableUrl || pageData.tableUrl || null,
     column: column,
     columnType: columnTypeForContext(columnType),
     sqliteType: options.sqliteType || null,
@@ -1471,6 +1491,40 @@ function rowPathFromRowData(row, primaryKeys) {
   return bits.join(",");
 }
 
+function rowUrlById(rowId, state) {
+  if (!rowId) {
+    return null;
+  }
+  var url = tableBaseUrl(state);
+  url.pathname = url.pathname.replace(/\/$/, "") + "/" + rowId;
+  return url.toString();
+}
+
+function insertDialogResult(state, row, rowId) {
+  var result = {
+    ok: true,
+    status: "inserted",
+    database: state.currentDatabase || null,
+    table: state.currentTable || null,
+    row: row || null,
+  };
+  if (rowId) {
+    result.row_id = tildeDecode(rowId);
+    result.row_path = rowId;
+    result.row_url = rowUrlById(rowId, state);
+  }
+  return result;
+}
+
+function resolveInsertDialog(state, result) {
+  if (!state.currentInsertDialogResolve) {
+    return;
+  }
+  var resolve = state.currentInsertDialogResolve;
+  state.currentInsertDialogResolve = null;
+  resolve(result);
+}
+
 function addInsertedRowToPage(rowElement) {
   var importedRow = document.importNode(rowElement, true);
   var firstRow = document.querySelector("[data-row]");
@@ -1537,15 +1591,30 @@ async function saveRowEditDialog(state) {
     }
 
     if (state.mode === "insert") {
-      var insertData = tableInsertData() || {};
+      var insertData = state.currentInsertData || tableInsertData() || {};
       var insertedRowData =
         data && data.rows && data.rows.length ? data.rows[0] : null;
       var insertedRowId = rowPathFromRowData(
         insertedRowData,
         insertData.primary_keys || [],
       );
+      var result = insertDialogResult(state, insertedRowData, insertedRowId);
       state.shouldRestoreFocus = false;
+      if (!state.refreshAfterInsert) {
+        resolveInsertDialog(state, result);
+        state.dialog.close();
+        var status = showRowMutationStatus(
+          state.manager,
+          insertedRowId
+            ? insertedRowStatusMessage(tildeDecode(insertedRowId), null)
+            : "Inserted row.",
+          false,
+        );
+        status.focus();
+        return;
+      }
       if (!insertedRowId) {
+        resolveInsertDialog(state, result);
         state.dialog.close();
         var missingIdStatus = showRowMutationStatus(
           state.manager,
@@ -1557,11 +1626,12 @@ async function saveRowEditDialog(state) {
       }
 
       state.currentRowId = insertedRowId;
-      state.currentFragmentUrl = rowFragmentUrlById(insertedRowId);
+      state.currentFragmentUrl = rowFragmentUrlById(insertedRowId, state);
       var insertedRow = null;
       try {
         insertedRow = await fetchUpdatedRowElement(state);
       } catch (_error) {
+        resolveInsertDialog(state, result);
         state.dialog.close();
         var refreshFailedStatus = showRowMutationStatus(
           state.manager,
@@ -1577,6 +1647,7 @@ async function saveRowEditDialog(state) {
           rowTitleLabel(insertedRow),
         );
         var addedRow = addInsertedRowToPage(insertedRow);
+        resolveInsertDialog(state, result);
         state.dialog.close();
         showRowMutationStatus(state.manager, insertedStatusMessage, false);
         if (addedRow) {
@@ -1586,6 +1657,7 @@ async function saveRowEditDialog(state) {
           insertedFocusTarget.focus();
         }
       } else {
+        resolveInsertDialog(state, result);
         state.dialog.close();
         var filteredStatus = showRowMutationStatus(
           state.manager,
@@ -1662,7 +1734,7 @@ function renderRowEditFields(state, data) {
         columnTypes[column],
         index,
         {
-          autocompleteUrl: foreignKeyAutocompleteUrl(column),
+          autocompleteUrl: foreignKeyAutocompleteUrl(column, state),
           dialog: state.dialog,
           form: state.form,
           manager: state.manager,
@@ -1680,20 +1752,28 @@ function renderRowEditFields(state, data) {
   }
 }
 
-function renderRowInsertFields(state, data) {
+function renderRowInsertFields(state, data, suggestedRow) {
   var columns = data.columns || [];
+  suggestedRow = suggestedRow || {};
 
   destroyRowEditFields(state);
   columns.forEach(function (column, index) {
+    var hasSuggestedValue = Object.prototype.hasOwnProperty.call(
+      suggestedRow,
+      column.name,
+    );
+    var value = hasSuggestedValue ? suggestedRow[column.name] : "";
+    var useSqliteDefault = column.default !== null && !hasSuggestedValue;
     state.fields.appendChild(
       createRowEditField(
         column.name,
-        "",
+        value,
         !!column.is_pk,
         column.column_type,
         index,
         {
-          autocompleteUrl: foreignKeyAutocompleteUrl(column.name),
+          autocompleteUrl: foreignKeyAutocompleteUrl(column.name, state),
+          database: state.currentDatabase,
           dialog: state.dialog,
           form: state.form,
           defaultExpression: column.default,
@@ -1702,8 +1782,12 @@ function renderRowInsertFields(state, data) {
           notnull: column.notnull,
           primaryKeyReadonly: false,
           sqliteType: column.sqlite_type,
-          useSqliteDefault: column.default !== null,
-          valueKind: column.value_kind,
+          table: state.currentTable,
+          tableUrl: state.currentTableUrl,
+          useSqliteDefault: useSqliteDefault,
+          valueKind: hasSuggestedValue
+            ? rowEditValueKind(value)
+            : column.value_kind,
         },
       ),
     );
@@ -1751,6 +1835,18 @@ function setRowDialogTitle(title, text, codeText, labelText) {
   }
 }
 
+function setRowEditDialogSummary(state, message) {
+  if (message) {
+    state.summary.hidden = false;
+    state.summary.textContent = message;
+    state.dialog.setAttribute("aria-describedby", state.summary.id);
+  } else {
+    state.summary.hidden = true;
+    state.summary.textContent = "";
+    state.dialog.removeAttribute("aria-describedby");
+  }
+}
+
 function ensureRowEditDialog(manager) {
   if (rowEditDialogState) {
     return rowEditDialogState;
@@ -1794,10 +1890,17 @@ function ensureRowEditDialog(manager) {
     currentRow: null,
     currentRowId: null,
     currentPkPath: null,
+    currentDatabase: null,
+    currentTable: null,
+    currentTableUrl: null,
+    currentForeignKeys: null,
+    currentInsertData: null,
+    currentInsertDialogResolve: null,
     currentInsertUrl: null,
     currentUpdateUrl: null,
     currentFragmentUrl: null,
     mode: "edit",
+    refreshAfterInsert: false,
     loadId: 0,
     manager: manager,
     isLoading: false,
@@ -1840,6 +1943,14 @@ function ensureRowEditDialog(manager) {
 
   dialog.addEventListener("close", function () {
     var state = rowEditDialogState;
+    if (state.currentInsertDialogResolve) {
+      resolveInsertDialog(state, {
+        ok: false,
+        status: "cancelled",
+        database: state.currentDatabase || null,
+        table: state.currentTable || null,
+      });
+    }
     state.loadId += 1;
     state.isClosePending = false;
     clearRowEditDialogError(state);
@@ -1847,6 +1958,18 @@ function ensureRowEditDialog(manager) {
     destroyRowEditFields(state);
     setRowEditDialogLoading(state, false);
     setRowEditDialogSaving(state, false);
+    state.currentRow = null;
+    state.currentRowId = null;
+    state.currentPkPath = null;
+    state.currentDatabase = null;
+    state.currentTable = null;
+    state.currentTableUrl = null;
+    state.currentForeignKeys = null;
+    state.currentInsertData = null;
+    state.currentInsertUrl = null;
+    state.currentUpdateUrl = null;
+    state.currentFragmentUrl = null;
+    state.refreshAfterInsert = false;
     if (
       state.shouldRestoreFocus &&
       state.currentButton &&
@@ -1875,9 +1998,16 @@ async function openRowEditDialog(button, manager) {
   state.currentRow = row;
   state.currentRowId = row.getAttribute("data-row") || "";
   state.currentPkPath = rowDisplayLabel(row);
+  state.currentDatabase = tablePageData().database || null;
+  state.currentTable = tablePageData().table || null;
+  state.currentTableUrl = tablePageData().tableUrl || null;
+  state.currentForeignKeys = tableForeignKeys();
+  state.currentInsertData = null;
+  state.currentInsertDialogResolve = null;
   state.currentInsertUrl = null;
   state.currentUpdateUrl = rowUpdateUrl(row);
   state.currentFragmentUrl = rowFragmentUrl(row);
+  state.refreshAfterInsert = false;
   if (state.currentUpdateUrl) {
     state.form.action = new URL(
       state.currentUpdateUrl,
@@ -1894,15 +2024,13 @@ async function openRowEditDialog(button, manager) {
   clearRowEditDialogError(state);
   setRowEditDialogLoading(state, true);
   destroyRowEditFields(state);
-  state.dialog.removeAttribute("aria-describedby");
   setRowDialogTitle(
     state.title,
     "Edit row",
     state.currentPkPath || "this row",
     rowTitleLabel(row),
   );
-  state.summary.hidden = true;
-  state.summary.textContent = "";
+  setRowEditDialogSummary(state, "");
 
   if (!state.dialog.open) {
     state.dialog.showModal();
@@ -1934,26 +2062,102 @@ async function openRowEditDialog(button, manager) {
   }
 }
 
-function openRowInsertDialog(button, manager) {
-  var insertData = tableInsertData();
-  if (!insertData) {
+function validateSuggestedInsertRow(insertData, row) {
+  row = row || {};
+  var columns = (insertData && insertData.columns) || [];
+  var columnNames = {};
+  columns.forEach(function (column) {
+    columnNames[column.name] = true;
+  });
+  var unknownColumns = Object.keys(row).filter(function (column) {
+    return !columnNames[column];
+  });
+  if (unknownColumns.length) {
+    throw new Error("Unknown column: " + unknownColumns.join(", "));
+  }
+}
+
+function insertDialogMetadataUrl(manager, database, table) {
+  return datasetteManagerPath(
+    manager,
+    "/" + tildeEncode(database) + "/" + tildeEncode(table) + "/-/insert",
+  );
+}
+
+async function fetchInsertDialogMetadata(manager, database, table) {
+  var response = await fetch(
+    insertDialogMetadataUrl(manager, database, table),
+    {
+      headers: {
+        Accept: "application/json",
+      },
+    },
+  );
+  var data = null;
+  try {
+    data = await response.json();
+  } catch (_error) {
+    data = null;
+  }
+  if (!response.ok || (data && data.ok === false)) {
+    throw rowMutationRequestError(response, data);
+  }
+  if (!data || !data.insert_row) {
+    throw new Error("Insert dialog metadata was not returned");
+  }
+  return data;
+}
+
+function hasForeignKeyAutocomplete(foreignKeys) {
+  return foreignKeys && Object.keys(foreignKeys).length > 0;
+}
+
+async function ensureAutocompleteLoaded(manager, foreignKeys) {
+  if (!hasForeignKeyAutocomplete(foreignKeys)) {
     return;
   }
-  var state = ensureRowEditDialog(manager);
-  if (!state) {
+  if (window.customElements && customElements.get("datasette-autocomplete")) {
     return;
+  }
+  if (manager && manager.loadAutocomplete) {
+    await manager.loadAutocomplete();
+  }
+}
+
+function openRowInsertDialogWithData(options) {
+  var insertData = options.insertData;
+  if (!insertData) {
+    return false;
+  }
+  var state = ensureRowEditDialog(options.manager);
+  if (!state) {
+    return false;
+  }
+  if (state.dialog.open) {
+    return false;
   }
 
-  state.manager = manager;
+  var pageData = tablePageData();
+  state.manager = options.manager;
   state.mode = "insert";
-  state.currentButton = button;
+  state.currentButton = options.button || null;
   state.currentRow = null;
   state.currentRowId = null;
   state.currentPkPath = null;
-  state.currentInsertUrl = tableInsertUrl();
+  state.currentDatabase = options.database || pageData.database || null;
+  state.currentTable =
+    options.table || insertData.table_name || pageData.table || null;
+  state.currentTableUrl = options.tableUrl || pageData.tableUrl || null;
+  state.currentForeignKeys = options.foreignKeys || tableForeignKeys();
+  state.currentInsertData = insertData;
+  state.currentInsertDialogResolve = options.resolve || null;
+  state.currentInsertUrl = tableInsertUrl(insertData, {
+    flashMessage: options.flashMessage,
+  });
   state.currentUpdateUrl = null;
   state.currentFragmentUrl = null;
-  state.shouldRestoreFocus = true;
+  state.refreshAfterInsert = !!options.refreshAfterInsert;
+  state.shouldRestoreFocus = !!options.button;
   state.hasLoaded = false;
   state.loadId += 1;
 
@@ -1969,20 +2173,70 @@ function openRowInsertDialog(button, manager) {
   clearRowEditDialogError(state);
   setRowEditDialogLoading(state, false);
   destroyRowEditFields(state);
-  state.dialog.removeAttribute("aria-describedby");
   setRowDialogTitle(
     state.title,
-    insertData.table_name
-      ? "Insert row into " + insertData.table_name
-      : "Insert row",
+    insertData.table_name ? "Insert row into" : "Insert row",
+    insertData.table_name,
   );
-  state.summary.hidden = true;
-  state.summary.textContent = "";
+  setRowEditDialogSummary(state, options.message || "");
 
   if (!state.dialog.open) {
     state.dialog.showModal();
   }
-  renderRowInsertFields(state, insertData);
+  renderRowInsertFields(state, insertData, options.suggestedRow || {});
+  return true;
+}
+
+function openRowInsertDialog(button, manager) {
+  openRowInsertDialogWithData({
+    button: button,
+    manager: manager,
+    insertData: tableInsertData(),
+    database: tablePageData().database,
+    table: tablePageData().table,
+    tableUrl: tablePageData().tableUrl,
+    foreignKeys: tableForeignKeys(),
+    refreshAfterInsert: true,
+  });
+}
+
+async function insertDialog(manager, database, table, row, message, options) {
+  options = options || {};
+  if (typeof database !== "string" || !database) {
+    throw new Error("database must be a string");
+  }
+  if (typeof table !== "string" || !table) {
+    throw new Error("table must be a string");
+  }
+  if (!row) {
+    row = {};
+  }
+  if (typeof row !== "object" || Array.isArray(row)) {
+    throw new Error("row must be an object");
+  }
+  var metadata = await fetchInsertDialogMetadata(manager, database, table);
+  var insertData = metadata.insert_row;
+  var foreignKeys = metadata.foreign_keys || {};
+  validateSuggestedInsertRow(insertData, row);
+  await ensureAutocompleteLoaded(manager, foreignKeys);
+  return new Promise(function (resolve, reject) {
+    var opened = openRowInsertDialogWithData({
+      manager: manager,
+      insertData: insertData,
+      database: metadata.table && metadata.table.database,
+      table: metadata.table && metadata.table.name,
+      tableUrl: metadata.table && metadata.table.url,
+      foreignKeys: foreignKeys,
+      suggestedRow: row,
+      message: message || "",
+      resolve: resolve,
+      flashMessage: !!options.flashMessage,
+      refreshAfterInsert: false,
+    });
+    if (!opened) {
+      reject(new Error("Could not open the insert dialog"));
+    }
+  });
 }
 
 function initRowEditActions(manager) {
@@ -2013,11 +2267,27 @@ function initRowInsertActions(manager) {
   });
 }
 
-document.addEventListener("datasette_init", function (evt) {
-  const { detail: manager } = evt;
+function installEditTools(manager) {
+  if (!manager || manager.__editToolsInstalled) {
+    return;
+  }
+  manager.__editToolsInstalled = true;
 
   registerBuiltinColumnFieldPlugins(manager);
   initRowInsertActions(manager);
   initRowEditActions(manager);
   initRowDeleteActions(manager);
+}
+
+window.__DATASETTE_EDIT_TOOLS__ = {
+  install: installEditTools,
+  insertDialog: insertDialog,
+};
+
+if (window.__DATASETTE__) {
+  installEditTools(window.__DATASETTE__);
+}
+
+document.addEventListener("datasette_init", function (evt) {
+  installEditTools(evt.detail);
 });

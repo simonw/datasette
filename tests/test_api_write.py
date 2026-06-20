@@ -1595,7 +1595,6 @@ async def test_create_table_error_rows_twice_with_duplicates(ds_write):
     (
         "/data/-/create",
         "/data/docs/-/drop",
-        "/data/docs/-/insert",
     ),
 )
 async def test_method_not_allowed(ds_write, path):

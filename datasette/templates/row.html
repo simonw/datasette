@@ -42,12 +42,24 @@
 
 {% if foreign_key_tables %}
     <h2>Links from other tables</h2>
-    <ul>
+    <ul class="row-foreign-key-tables">
         {% for other in foreign_key_tables %}
             <li>
                 <a href="{{ other.link }}">
                     {{ "{:,}".format(other.count) }} row{% if other.count == 1 %}{% else %}s{% endif %}</a>
                 from {{ other.other_column }} in {{ other.other_table }}
+                {% if other.can_insert %}
+                    <button
+                        type="button"
+                        class="core row-foreign-key-insert"
+                        data-insert-dialog
+                        data-insert-dialog-reload
+                        data-database="{{ database }}"
+                        data-table="{{ other.other_table }}"
+                        data-row="{{ other.insert_row|tojson|forceescape }}"
+                        data-message="{{ other.insert_message }}"
+                    >Insert</button>
+                {% endif %}
             </li>
         {% endfor %}
     </ul>

@@ -422,6 +422,15 @@ async def _table_alter_ui(
         data["customColumnTypes"] = _custom_column_type_options_for_create_table(
             datasette
         )
+    can_drop_table = await datasette.allowed(
+        action="drop-table",
+        resource=TableResource(database=database_name, table=table_name),
+        actor=request.actor,
+    )
+    if can_drop_table:
+        data["dropPath"] = "{}/-/drop".format(
+            datasette.urls.table(database_name, table_name)
+        )
     return data
 
 
@@ -1192,6 +1201,11 @@ class TableDropView(BaseView):
             DropTableEvent(
                 actor=request.actor, database=database_name, table=table_name
             )
+        )
+        self.ds.add_message(
+            request,
+            "Table {} dropped".format(table_name),
+            self.ds.WARNING,
         )
         return Response.json({"ok": True}, status=200)
 

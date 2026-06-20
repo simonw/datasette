@@ -1089,8 +1089,9 @@ async def test_table_alter_action_button_and_data():
                     "tables": {
                         "items": {
                             "permissions": {
-                                "alter-table": {"id": "root"},
+                                "alter-table": {"id": ["root", "alter-only"]},
                                 "set-column-type": {"id": "root"},
+                                "drop-table": {"id": "root"},
                             },
                             "column_types": {"name": "textarea"},
                         },
@@ -1147,6 +1148,7 @@ async def test_table_alter_action_button_and_data():
             "textarea",
             "url",
         ]
+        assert alter_data["dropPath"] == "/data/items/-/drop"
         assert alter_data["columns"] == [
             {
                 "name": "id",
@@ -1192,6 +1194,16 @@ async def test_table_alter_action_button_and_data():
             is None
         )
         assert "alterTable" not in table_data_from_soup(soup_without_permission)
+
+        # An actor that can alter but not drop should not get a dropPath
+        response_alter_only = await ds.client.get(
+            "/data/items", actor={"id": "alter-only"}
+        )
+        assert response_alter_only.status_code == 200
+        alter_only_data = table_data_from_soup(
+            Soup(response_alter_only.text, "html.parser")
+        )["alterTable"]
+        assert "dropPath" not in alter_only_data
     finally:
         ds.close()
 

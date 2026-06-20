@@ -1571,6 +1571,7 @@ function setTableAlterDialogSaving(state, isSaving) {
   state.cancelButton.disabled = isSaving;
   state.addColumnButton.disabled = isSaving;
   state.backButton.disabled = isSaving;
+  state.dropButton.disabled = isSaving;
   state.saveButton.textContent = isSaving
     ? state.mode === "review"
       ? "Applying..."
@@ -2465,6 +2466,8 @@ function showTableAlterEditor(state) {
   state.review.hidden = true;
   state.review.textContent = "";
   state.backButton.hidden = true;
+  var data = tableAlterData();
+  state.dropButton.hidden = !(data && data.dropPath);
   state.saveButton.textContent = tableAlterSaveButtonText(state);
   updateTableAlterMoveButtons(state);
   updateTableAlterSaveButtonState(state);
@@ -2479,6 +2482,7 @@ function showTableAlterReview(state, result) {
   state.review.hidden = false;
   state.review.textContent = "";
   state.backButton.hidden = false;
+  state.dropButton.hidden = true;
   state.saveButton.textContent = tableAlterSaveButtonText(state);
   updateTableAlterSaveButtonState(state);
 
@@ -2565,6 +2569,64 @@ async function applyTableAlterChanges(state, result) {
   }
 }
 
+function tableAlterDatabaseUrl() {
+  var data = tableAlterData();
+  if (!data || !data.path) {
+    return null;
+  }
+  var url = new URL(data.path, location.href);
+  url.pathname = url.pathname.replace(/\/[^/]+\/-\/alter\/?$/, "");
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+async function dropTableFromAlterDialog(state) {
+  if (state.isSaving) {
+    return;
+  }
+  var data = tableAlterData();
+  if (!data || !data.dropPath) {
+    return;
+  }
+  if (
+    !window.confirm(
+      'Permanently delete the table "' +
+        data.tableName +
+        '"? This will delete all of its data and cannot be undone.',
+    )
+  ) {
+    return;
+  }
+  clearTableAlterDialogError(state);
+  setTableAlterDialogSaving(state, true);
+  try {
+    var response = await fetch(data.dropPath, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ confirm: true }),
+    });
+    var responseData = null;
+    try {
+      responseData = await response.json();
+    } catch (_error) {
+      responseData = null;
+    }
+    if (!response.ok || (responseData && responseData.ok === false)) {
+      throw rowMutationRequestError(response, responseData);
+    }
+    state.shouldRestoreFocus = false;
+    state.dialog.close();
+    window.location.href = tableAlterDatabaseUrl() || "/";
+  } catch (error) {
+    setTableAlterDialogSaving(state, false);
+    showTableAlterDialogError(state, error.message || "Could not drop table");
+  }
+}
+
 async function saveTableAlterDialog(state) {
   if (state.isSaving) {
     return;
@@ -2646,6 +2708,7 @@ function ensureTableAlterDialog(manager) {
       </div>
       <div class="table-alter-review" hidden></div>
       <div class="modal-footer">
+        <button type="button" class="btn btn-danger table-alter-drop" hidden>Drop table</button>
         <button type="button" class="btn btn-ghost table-alter-back" hidden>Back</button>
         <button type="button" class="btn btn-ghost table-alter-cancel">Cancel</button>
         <button type="submit" class="btn btn-primary table-alter-save">Review changes</button>
@@ -2664,6 +2727,7 @@ function ensureTableAlterDialog(manager) {
     columnList: dialog.querySelector(".table-alter-column-list"),
     addColumnButton: dialog.querySelector(".table-alter-add-column"),
     backButton: dialog.querySelector(".table-alter-back"),
+    dropButton: dialog.querySelector(".table-alter-drop"),
     cancelButton: dialog.querySelector(".table-alter-cancel"),
     saveButton: dialog.querySelector(".table-alter-save"),
     currentButton: null,
@@ -2701,6 +2765,10 @@ function ensureTableAlterDialog(manager) {
 
   tableAlterDialogState.cancelButton.addEventListener("click", function () {
     closeTableAlterDialog(tableAlterDialogState);
+  });
+
+  tableAlterDialogState.dropButton.addEventListener("click", function () {
+    dropTableFromAlterDialog(tableAlterDialogState);
   });
 
   tableAlterDialogState.backButton.addEventListener("click", function () {

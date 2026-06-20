@@ -2542,6 +2542,22 @@ dialog.table-alter-dialog::backdrop {
     color: var(--ink);
 }
 
+.table-alter-dialog .btn-danger {
+    background: #b91c1c;
+    color: #fff;
+    margin-right: auto;
+}
+
+.table-alter-dialog .btn-danger:hover {
+    background: #991b1b;
+}
+
+.table-alter-dialog .btn-danger:disabled,
+.table-alter-dialog .btn-danger:disabled:hover {
+    background: #d98c8c;
+    color: #fff;
+}
+
 .table-alter-dialog .btn-primary {
     background: var(--accent);
     color: #fff;

@@ -682,7 +682,7 @@ function columnFormControlContext(column, isPk, columnType, options) {
     database: pageData.database || null,
     table:
       pageData.table ||
-      (tableInsertData() && tableInsertData().tableName) ||
+      (tableInsertData() && tableInsertData().table_name) ||
       null,
     tableUrl: pageData.tableUrl || null,
     column: column,
@@ -1542,7 +1542,7 @@ async function saveRowEditDialog(state) {
         data && data.rows && data.rows.length ? data.rows[0] : null;
       var insertedRowId = rowPathFromRowData(
         insertedRowData,
-        insertData.primaryKeys || [],
+        insertData.primary_keys || [],
       );
       state.shouldRestoreFocus = false;
       if (!insertedRowId) {
@@ -1972,8 +1972,8 @@ function openRowInsertDialog(button, manager) {
   state.dialog.removeAttribute("aria-describedby");
   setRowDialogTitle(
     state.title,
-    insertData.tableName
-      ? "Insert row into " + insertData.tableName
+    insertData.table_name
+      ? "Insert row into " + insertData.table_name
       : "Insert row",
   );
   state.summary.hidden = true;

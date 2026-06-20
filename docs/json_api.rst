@@ -1530,7 +1530,7 @@ Here's how to serve ``data.db`` with CORS enabled::
 The JSON write API
 ------------------
 
-Datasette provides a write API for JSON data. This is a POST-only API that requires an authenticated API token, see :ref:`CreateTokenView`. The token will need to have the specified :ref:`authentication_permissions`.
+Datasette provides a write API for JSON data. Write operations use ``POST`` and require an authenticated API token, see :ref:`CreateTokenView`. The token will need to have the specified :ref:`authentication_permissions`.
 
 .. _ExecuteWriteView:
 
@@ -1642,6 +1642,46 @@ Inserting rows
 ~~~~~~~~~~~~~~
 
 This requires the :ref:`actions_insert_row` permission.
+
+To return metadata describing the insert form for a table, make a ``GET`` request:
+
+::
+
+    GET /<database>/<table>/-/insert
+    Authorization: Bearer dstok_<rest-of-token>
+
+This returns a JSON object describing the table, the columns that can be inserted and any foreign key autocomplete URLs available to the actor:
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "insert_row": {
+            "path": "/data/dogs/-/insert",
+            "table_name": "dogs",
+            "columns": [
+                {
+                    "name": "name",
+                    "sqlite_type": "TEXT",
+                    "notnull": 1,
+                    "default": null,
+                    "has_default": false,
+                    "is_pk": false,
+                    "value_kind": "string",
+                    "column_type": null
+                }
+            ],
+            "primary_keys": ["id"]
+        },
+        "table": {
+            "database": "data",
+            "name": "dogs",
+            "url": "/data/dogs"
+        },
+        "foreign_keys": {}
+    }
+
+Integer primary key columns that SQLite can populate automatically are omitted from ``insert_row.columns``. If the actor does not have ``insert-row`` permission this endpoint returns a ``403`` response.
 
 A single row can be inserted using the ``"row"`` key:
 

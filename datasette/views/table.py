@@ -345,9 +345,9 @@ async def _table_insert_ui(
 
     return {
         "path": "{}/-/insert".format(datasette.urls.table(database_name, table_name)),
-        "tableName": table_name,
+        "table_name": table_name,
         "columns": columns,
-        "primaryKeys": pks,
+        "primary_keys": pks,
     }
 
 
@@ -654,6 +654,48 @@ class TableInsertView(BaseView):
 
     def __init__(self, datasette):
         self.ds = datasette
+
+    async def get(self, request):
+        try:
+            resolved = await self.ds.resolve_table(request)
+        except NotFound as e:
+            return _error([e.args[0]], 404)
+
+        db = resolved.db
+        database_name = db.name
+        table_name = resolved.table
+
+        if resolved.is_view:
+            return _error(["Cannot insert rows into a view"], 403)
+
+        if not db.is_mutable:
+            return _error(["Database is immutable"], 403)
+
+        if not await self.ds.allowed(
+            action="insert-row",
+            resource=TableResource(database=database_name, table=table_name),
+            actor=request.actor,
+        ):
+            return _error(["Permission denied"], 403)
+
+        pks = await db.primary_keys(table_name)
+        table_insert_ui = await _table_insert_ui(
+            self.ds, request, db, database_name, table_name, resolved.is_view, pks
+        )
+        return Response.json(
+            {
+                "ok": True,
+                "insert_row": table_insert_ui,
+                "table": {
+                    "database": database_name,
+                    "name": table_name,
+                    "url": self.ds.urls.table(database_name, table_name),
+                },
+                "foreign_keys": await _foreign_key_autocomplete_urls(
+                    self.ds, request, db, database_name, table_name
+                ),
+            }
+        )
 
     async def _validate_data(self, request, db, table_name, pks, upsert):
         errors = []

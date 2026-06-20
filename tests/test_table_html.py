@@ -982,8 +982,8 @@ async def test_table_insert_action_button_and_data():
 
         insert_data = table_data_from_soup(soup)["insertRow"]
         assert insert_data["path"] == "/data/items/-/insert"
-        assert insert_data["tableName"] == "items"
-        assert insert_data["primaryKeys"] == ["id"]
+        assert insert_data["table_name"] == "items"
+        assert insert_data["primary_keys"] == ["id"]
         assert [column["name"] for column in insert_data["columns"]] == [
             "name",
             "score",
@@ -1050,8 +1050,8 @@ async def test_table_insert_action_includes_compound_primary_keys():
         insert_data = table_data_from_soup(Soup(response.text, "html.parser"))[
             "insertRow"
         ]
-        assert insert_data["tableName"] == "memberships"
-        assert insert_data["primaryKeys"] == ["account", "username"]
+        assert insert_data["table_name"] == "memberships"
+        assert insert_data["primary_keys"] == ["account", "username"]
         assert [column["name"] for column in insert_data["columns"]] == [
             "account",
             "username",
@@ -1062,6 +1062,127 @@ async def test_table_insert_action_includes_compound_primary_keys():
             True,
             False,
         ]
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_table_insert_metadata_api():
+    ds = Datasette(
+        [],
+        config={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "items": {
+                            "permissions": {
+                                "insert-row": {"id": "root"},
+                            },
+                            "column_types": {"body": "textarea"},
+                        },
+                    },
+                },
+            },
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_table_insert_metadata_api"), name="data"
+        )
+        await db.execute_write_script("""
+            create table authors (
+                id integer primary key,
+                name text
+            );
+            create table items (
+                id integer primary key,
+                author_id integer references authors(id),
+                name text not null,
+                score integer default 5,
+                body text
+            );
+            """)
+        response = await ds.client.get("/data/items/-/insert", actor={"id": "root"})
+        assert response.status_code == 200
+        assert response.json() == {
+            "ok": True,
+            "insert_row": {
+                "path": "/data/items/-/insert",
+                "table_name": "items",
+                "columns": [
+                    {
+                        "name": "author_id",
+                        "sqlite_type": "INTEGER",
+                        "notnull": 0,
+                        "default": None,
+                        "has_default": False,
+                        "is_pk": False,
+                        "value_kind": "number",
+                        "column_type": None,
+                    },
+                    {
+                        "name": "name",
+                        "sqlite_type": "TEXT",
+                        "notnull": 1,
+                        "default": None,
+                        "has_default": False,
+                        "is_pk": False,
+                        "value_kind": "string",
+                        "column_type": None,
+                    },
+                    {
+                        "name": "score",
+                        "sqlite_type": "INTEGER",
+                        "notnull": 0,
+                        "default": "5",
+                        "has_default": True,
+                        "is_pk": False,
+                        "value_kind": "number",
+                        "column_type": None,
+                    },
+                    {
+                        "name": "body",
+                        "sqlite_type": "TEXT",
+                        "notnull": 0,
+                        "default": None,
+                        "has_default": False,
+                        "is_pk": False,
+                        "value_kind": "string",
+                        "column_type": {"type": "textarea", "config": None},
+                    },
+                ],
+                "primary_keys": ["id"],
+            },
+            "table": {
+                "database": "data",
+                "name": "items",
+                "url": "/data/items",
+            },
+            "foreign_keys": {
+                "author_id": "/data/authors/-/autocomplete",
+            },
+        }
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_table_insert_metadata_api_requires_insert_permission():
+    ds = Datasette([])
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_table_insert_metadata_permission"),
+            name="data",
+        )
+        await db.execute_write_script("""
+            create table items (id integer primary key, name text);
+            """)
+        response = await ds.client.get("/data/items/-/insert")
+        assert response.status_code == 403
+        assert response.json() == {
+            "ok": False,
+            "errors": ["Permission denied"],
+        }
     finally:
         ds.close()
 

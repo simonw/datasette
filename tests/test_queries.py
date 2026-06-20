@@ -14,6 +14,15 @@ from datasette.utils.sqlite import sqlite3, supports_returning
 requires_sqlite_returning = pytest.mark.skipif(
     not supports_returning(), reason="SQLite does not support RETURNING"
 )
+EXPECTED_CREATE_TABLE_TEMPLATE_SQL = "\n".join(
+    (
+        "create table new_table (",
+        "  id integer primary key,",
+        "  name text",
+        "  -- created text default (datetime('now'))",
+        ")",
+    )
+)
 
 
 def _template_option_attributes(html, table):
@@ -27,6 +36,16 @@ def _template_sql(html, table, operation):
     match = re.search(r'data-template-{}-sql="([^"]*)"'.format(operation), attrs)
     assert match, "Could not find {} template for {}".format(operation, table)
     return unescape(match.group(1))
+
+
+def _template_button_sql(html, operation):
+    soup = Soup(html, "html.parser")
+    button = soup.select_one('button[data-sql-template="{}"]'.format(operation))
+    assert button, "Could not find {} template button".format(operation)
+    assert button.get(
+        "data-template-sql"
+    ), "Could not find SQL for {} template button".format(operation)
+    return button["data-template-sql"]
 
 
 async def add_numbered_queries(ds, database, count):
@@ -1645,6 +1664,14 @@ async def test_execute_write_get_prepopulates_without_executing():
     )
     assert "<h2>Query operations</h2>" in response.text
     assert "<summary>Start with a template</summary>" in response.text
+    assert 'data-sql-template="create"' in response.text
+    assert _template_button_sql(response.text, "create") == (
+        EXPECTED_CREATE_TABLE_TEMPLATE_SQL
+    )
+    assert ">Create table</button>" in response.text
+    assert '<label for="execute-write-template-table">or table:</label>' in (
+        response.text
+    )
     assert '<option value="dogs"' in response.text
     assert "data-template-insert-sql=" in response.text
     assert 'data-sql-template="insert"' in response.text
@@ -1660,6 +1687,9 @@ async def test_execute_write_get_prepopulates_without_executing():
     assert 'addEventListener("paste"' in response.text
     assert "setupSqlParameterRefresh" in response.text
     assert "datasetteSqlAnalysis.renderAnalysis" in response.text
+    assert "window.editor.dispatch" in response.text
+    assert "window.history.replaceState" in response.text
+    assert "window.location.href = url.toString();" not in response.text
     assert "input[data-execute-write-submit]:disabled" in response.text
     assert (
         'data-execute-write-disabled-reason aria-live="polite" hidden' in response.text
@@ -1813,6 +1843,7 @@ async def test_execute_write_templates_are_filtered_by_permission_and_server_gen
     assert '<option value="dogs"' in writer_response.text
     assert '<option value="manual"' in writer_response.text
     assert '<option value="cats"' not in writer_response.text
+    assert 'data-sql-template="create"' not in writer_response.text
     assert "function insertSql(" not in writer_response.text
     assert "function updateSql(" not in writer_response.text
     assert "function deleteSql(" not in writer_response.text
@@ -1842,6 +1873,7 @@ async def test_execute_write_templates_are_filtered_by_permission_and_server_gen
     assert 'data-sql-template="delete"' in deleter_response.text
     assert 'data-sql-template="insert"' not in deleter_response.text
     assert 'data-sql-template="update"' not in deleter_response.text
+    assert 'data-sql-template="create"' not in deleter_response.text
 
     assert viewer_response.status_code == 200
     assert "<summary>Start with a template</summary>" not in viewer_response.text
@@ -1849,6 +1881,101 @@ async def test_execute_write_templates_are_filtered_by_permission_and_server_gen
     assert "data-template-insert-sql" not in viewer_response.text
     assert "data-template-update-sql" not in viewer_response.text
     assert "data-template-delete-sql" not in viewer_response.text
+
+
+@pytest.mark.asyncio
+async def test_execute_write_create_table_template_is_filtered_by_permission():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": ["creator", "editor", "both"]},
+                        "execute-write-sql": {"id": ["creator", "editor", "both"]},
+                        "create-table": {"id": ["creator", "both"]},
+                    },
+                    "tables": {
+                        "dogs": {
+                            "permissions": {
+                                "view-table": {"id": ["editor", "both"]},
+                                "insert-row": {"id": ["editor", "both"]},
+                                "update-row": {"id": ["editor", "both"]},
+                                "delete-row": {"id": ["editor", "both"]},
+                            }
+                        },
+                    },
+                }
+            }
+        },
+    )
+    db = ds.add_memory_database("execute_write_create_template", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    creator_response = await ds.client.get(
+        "/data/-/execute-write", actor={"id": "creator"}
+    )
+    editor_response = await ds.client.get(
+        "/data/-/execute-write", actor={"id": "editor"}
+    )
+    both_response = await ds.client.get("/data/-/execute-write", actor={"id": "both"})
+
+    assert creator_response.status_code == 200
+    assert "<summary>Start with a template</summary>" in creator_response.text
+    assert _template_button_sql(creator_response.text, "create") == (
+        EXPECTED_CREATE_TABLE_TEMPLATE_SQL
+    )
+    assert "There are no tables that you can currently edit." not in (
+        creator_response.text
+    )
+    assert 'id="execute-write-template-table"' not in creator_response.text
+    assert 'data-sql-template="insert"' not in creator_response.text
+    assert 'data-sql-template="update"' not in creator_response.text
+    assert 'data-sql-template="delete"' not in creator_response.text
+
+    assert editor_response.status_code == 200
+    assert 'data-sql-template="create"' not in editor_response.text
+    assert '<label for="execute-write-template-table">Table</label>' in (
+        editor_response.text
+    )
+    assert 'data-sql-template="insert"' in editor_response.text
+    assert 'data-sql-template="update"' in editor_response.text
+    assert 'data-sql-template="delete"' in editor_response.text
+
+    assert both_response.status_code == 200
+    assert _template_button_sql(both_response.text, "create") == (
+        EXPECTED_CREATE_TABLE_TEMPLATE_SQL
+    )
+    assert '<label for="execute-write-template-table">or table:</label>' in (
+        both_response.text
+    )
+    assert 'data-sql-template="insert"' in both_response.text
+    assert 'data-sql-template="update"' in both_response.text
+    assert 'data-sql-template="delete"' in both_response.text
+
+
+@pytest.mark.asyncio
+async def test_execute_write_create_table_refreshes_template_tables():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_create_template_refresh", name="data")
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        data={"sql": "create table selectable (id integer primary key, name text)"},
+    )
+
+    assert response.status_code == 200
+    assert "Query executed" in response.text
+    assert '<option value="selectable"' in response.text
+    assert _template_sql(response.text, "selectable", "insert") == (
+        'insert into "selectable" (\n' '  "name"\n' ")\n" "values (\n" "  :name\n" ")"
+    )
+    assert await db.table_exists("selectable")
 
 
 @pytest.mark.asyncio

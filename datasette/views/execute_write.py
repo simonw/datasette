@@ -31,6 +31,15 @@ WRITE_TEMPLATE_LABELS = {
     "delete": "Delete rows",
 }
 WRITE_TEMPLATE_OPERATIONS = tuple(WRITE_TEMPLATE_LABELS)
+CREATE_TABLE_TEMPLATE_SQL = "\n".join(
+    (
+        "create table new_table (",
+        "  id integer primary key,",
+        "  name text",
+        "  -- created text default (datetime('now'))",
+        ")",
+    )
+)
 
 
 def _parameter_names(columns):
@@ -207,6 +216,23 @@ def _write_template_operations(write_template_tables):
     return operations
 
 
+async def _create_table_template_sql(datasette, db, actor):
+    if await datasette.allowed(
+        action="create-table",
+        resource=DatabaseResource(db.name),
+        actor=actor,
+    ):
+        return CREATE_TABLE_TEMPLATE_SQL
+    return None
+
+
+def _analysis_changes_schema(analysis):
+    return any(
+        operation.operation in {"create", "alter", "drop"}
+        for operation in analysis.operations
+    )
+
+
 class ExecuteWriteView(BaseView):
     name = "execute-write"
     has_json_alternate = False
@@ -241,6 +267,9 @@ class ExecuteWriteView(BaseView):
             self.ds, db, table_columns, hidden_table_names, request.actor
         )
         write_template_operations = _write_template_operations(write_template_tables)
+        write_create_table_template_sql = await _create_table_template_sql(
+            self.ds, db, request.actor
+        )
         if sql and analysis_error is None:
             try:
                 parameter_names = _derived_query_parameters(sql)
@@ -302,6 +331,7 @@ class ExecuteWriteView(BaseView):
                 "table_columns": table_columns,
                 "write_template_tables": write_template_tables,
                 "write_template_operations": write_template_operations,
+                "write_create_table_template_sql": write_create_table_template_sql,
                 "save_query_url": save_query_url,
                 "save_query_base_url": save_query_base_url,
             },
@@ -386,6 +416,9 @@ class ExecuteWriteView(BaseView):
                 execution_ok=False,
                 status=400,
             )
+
+        if _analysis_changes_schema(analysis):
+            await self.ds.refresh_schemas(force=True)
 
         if cursor.rowcount == -1:
             message = "Query executed"

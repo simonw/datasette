@@ -1953,7 +1953,8 @@ dialog.table-create-dialog::backdrop {
     font-size: 0.72rem;
 }
 
-.table-create-detail-help {
+.table-create-detail-help,
+.table-alter-detail-help {
     color: var(--muted);
     font-size: 0.82rem;
     line-height: 1.35;

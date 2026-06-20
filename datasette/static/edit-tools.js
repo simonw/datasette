@@ -422,11 +422,42 @@ function syncTableCreateForeignKeyOptions(row, state) {
   );
 }
 
+function syncTableCreateCustomTypeAndForeignKey(row, state, isFirstColumn) {
+  var customTypeSelect = row.querySelector(".table-create-custom-column-type");
+  var foreignKeySelect = row.querySelector(".table-create-foreign-key-target");
+  if (!foreignKeySelect) {
+    return;
+  }
+
+  var hasCustomType = customTypeSelect && !!customTypeSelect.value;
+  var hasForeignKey = !!foreignKeySelect.value;
+
+  if (customTypeSelect && hasForeignKey) {
+    customTypeSelect.value = "";
+    updateTableCreateCustomColumnTypePlaceholder(customTypeSelect);
+    hasCustomType = false;
+  }
+
+  if (isFirstColumn || hasCustomType) {
+    foreignKeySelect.value = "";
+    foreignKeySelect.dataset.selectedKey = "";
+    updateTableCreateCustomColumnTypePlaceholder(foreignKeySelect);
+    hasForeignKey = false;
+  }
+
+  if (customTypeSelect) {
+    customTypeSelect.disabled = state.isSaving;
+  }
+  foreignKeySelect.disabled =
+    state.isSaving || isFirstColumn || foreignKeySelect.options.length <= 1;
+}
+
 function refreshTableCreateForeignKeyControls(state) {
   tableCreateDialogRows(state).forEach(function (row, index) {
     if (index > 0) {
       syncTableCreateForeignKeyOptions(row, state);
     }
+    syncTableCreateCustomTypeAndForeignKey(row, state, index === 0);
   });
 }
 
@@ -455,6 +486,7 @@ function updateTableCreateColumnRules(state) {
       } else {
         syncTableCreateForeignKeyOptions(row, state);
       }
+      syncTableCreateCustomTypeAndForeignKey(row, state, isFirstColumn);
     }
   });
   updateTableCreateMoveButtons(state);
@@ -639,11 +671,19 @@ function createTableColumnRow(state, column) {
     customTypeLabel.className = "table-create-detail-label";
     customTypeLabel.setAttribute("for", customTypeId);
     customTypeLabel.textContent = "Custom type";
+    var customTypeHelpId = "table-create-column-custom-type-help-" + index;
+    var customTypeHelp = document.createElement("p");
+    customTypeHelp.id = customTypeHelpId;
+    customTypeHelp.className = "table-create-detail-help";
+    customTypeHelp.textContent =
+      "Controls how Datasette displays and edits this column";
     customTypeSelect = createTableCustomColumnTypeSelect();
     customTypeSelect.id = customTypeId;
+    customTypeSelect.setAttribute("aria-describedby", customTypeHelpId);
     customTypeSelect.value = column && column.customType ? column.customType : "";
     updateTableCreateCustomColumnTypePlaceholder(customTypeSelect);
     customTypeField.appendChild(customTypeLabel);
+    customTypeField.appendChild(customTypeHelp);
     customTypeField.appendChild(customTypeSelect);
   }
 
@@ -733,11 +773,20 @@ function createTableColumnRow(state, column) {
     clearTableCreateDialogError(state);
     syncTableCreateCustomTypeForSqliteType(row);
     syncTableCreateForeignKeyOptions(row, state);
+    syncTableCreateCustomTypeAndForeignKey(
+      row,
+      state,
+      row === state.columnList.firstElementChild,
+    );
   });
   if (customTypeSelect) {
     customTypeSelect.addEventListener("change", function () {
       clearTableCreateDialogError(state);
       updateTableCreateCustomColumnTypePlaceholder(customTypeSelect);
+      if (customTypeSelect.value) {
+        foreignKeySelect.value = "";
+        foreignKeySelect.dataset.selectedKey = "";
+      }
       var option = tableCreateCustomColumnType(customTypeSelect.value);
       if (
         option &&
@@ -747,6 +796,11 @@ function createTableColumnRow(state, column) {
         typeSelect.value = option.fixedSqliteType;
         syncTableCreateForeignKeyOptions(row, state);
       }
+      syncTableCreateCustomTypeAndForeignKey(
+        row,
+        state,
+        row === state.columnList.firstElementChild,
+      );
     });
   }
   pkInput.addEventListener("change", function () {
@@ -757,6 +811,15 @@ function createTableColumnRow(state, column) {
     foreignKeySelect.dataset.selectedKey = foreignKeySelect.value;
     clearTableCreateDialogError(state);
     updateTableCreateCustomColumnTypePlaceholder(foreignKeySelect);
+    if (customTypeSelect && foreignKeySelect.value) {
+      customTypeSelect.value = "";
+      updateTableCreateCustomColumnTypePlaceholder(customTypeSelect);
+    }
+    syncTableCreateCustomTypeAndForeignKey(
+      row,
+      state,
+      row === state.columnList.firstElementChild,
+    );
   });
 
   expandButton.addEventListener("click", function () {
@@ -1664,11 +1727,19 @@ function createTableAlterColumnRow(state, column) {
     customTypeLabel.className = "table-alter-detail-label";
     customTypeLabel.setAttribute("for", customTypeId);
     customTypeLabel.textContent = "Custom type";
+    var customTypeHelpId = "table-alter-column-custom-type-help-" + index;
+    var customTypeHelp = document.createElement("p");
+    customTypeHelp.id = customTypeHelpId;
+    customTypeHelp.className = "table-alter-detail-help";
+    customTypeHelp.textContent =
+      "Controls how Datasette displays and edits this column";
     customTypeSelect = createTableAlterCustomColumnTypeSelect();
     customTypeSelect.id = customTypeId;
+    customTypeSelect.setAttribute("aria-describedby", customTypeHelpId);
     customTypeSelect.value = originalCustomType;
     updateTableAlterCustomColumnTypePlaceholder(customTypeSelect);
     customTypeField.appendChild(customTypeLabel);
+    customTypeField.appendChild(customTypeHelp);
     customTypeField.appendChild(customTypeSelect);
   }
 

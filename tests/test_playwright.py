@@ -416,6 +416,15 @@ def test_insert_dialog_javascript_api_returns_inserted_row(page, datasette_serve
     assert result["row"]["notes"] == "Created through insertDialog()"
     assert result["row"]["license"] == "apache-2.0"
     assert result["row"]["score"] == 7
+    page.locator(".row-mutation-status", has_text="Inserted row 2").wait_for()
+    assert page.evaluate("""
+    () => {
+      const status = document.querySelector(".row-mutation-status");
+      const footer = document.querySelector("footer.ft");
+      return !!(status.compareDocumentPosition(footer) &
+        Node.DOCUMENT_POSITION_FOLLOWING);
+    }
+    """)
 
     data = project_row(datasette_server, 2)
     assert data["title"] == "Suggested from JavaScript"
@@ -423,6 +432,59 @@ def test_insert_dialog_javascript_api_returns_inserted_row(page, datasette_serve
     assert data["notes"] == "Created through insertDialog()"
     assert data["license"] == "apache-2.0"
     assert data["score"] == 7
+
+
+@pytest.mark.playwright
+def test_insert_dialog_submit_delay_blocks_submit_until_elapsed(page, datasette_server):
+    page.goto(datasette_server)
+    page.wait_for_function("window.datasette && window.datasette.insertDialog")
+
+    page.evaluate("""
+    () => {
+      window.delayedInsertSettled = false;
+      window.delayedInsertResult = window.datasette.insertDialog(
+        "data",
+        "projects",
+        {
+          title: "Delayed JavaScript insert",
+          metadata: '{"delayed": true}',
+          notes: "The submit button starts disabled.",
+          license: "mit"
+        },
+        "Review this suggested project before inserting it.",
+        {submitDelayMs: 1000}
+      );
+      window.delayedInsertResult.then(() => {
+        window.delayedInsertSettled = true;
+      });
+    }
+    """)
+
+    dialog = page.locator("#row-edit-dialog")
+    dialog.wait_for()
+    save = dialog.locator(".row-edit-save")
+    save.wait_for()
+    assert save.is_disabled()
+
+    page.evaluate("""
+    () => document.querySelector("#row-edit-dialog form").requestSubmit()
+    """)
+    page.wait_for_timeout(100)
+    assert page.evaluate("() => window.delayedInsertSettled") is False
+    assert not project_rows(datasette_server, title="Delayed JavaScript insert")
+
+    page.wait_for_function("""
+    () => !document.querySelector("#row-edit-dialog .row-edit-save").disabled
+    """)
+    save.click()
+    result = page.evaluate("() => window.delayedInsertResult")
+    assert result["ok"] is True
+    assert result["status"] == "inserted"
+    assert result["row"]["title"] == "Delayed JavaScript insert"
+
+    data = project_row(datasette_server, 2)
+    assert data["title"] == "Delayed JavaScript insert"
+    assert data["license"] == "mit"
 
 
 @pytest.mark.playwright

@@ -13,22 +13,27 @@ function datasetteManagerPath(manager, path) {
 
 function ensureRowMutationStatus(manager) {
   var status = document.querySelector(".row-mutation-status");
-  if (status) {
-    return status;
+  var tableWrapper = document.querySelector(manager.selectors.tableWrapper);
+  var content = document.querySelector("section.content");
+  var fallbackParent = content && content.parentNode;
+
+  if (!status) {
+    status = document.createElement("p");
+    status.className = "row-mutation-status";
+    status.hidden = true;
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    status.setAttribute("tabindex", "-1");
   }
 
-  status = document.createElement("p");
-  status.className = "row-mutation-status";
-  status.hidden = true;
-  status.setAttribute("role", "status");
-  status.setAttribute("aria-live", "polite");
-  status.setAttribute("tabindex", "-1");
-
-  var tableWrapper = document.querySelector(manager.selectors.tableWrapper);
   if (tableWrapper && tableWrapper.parentNode) {
     tableWrapper.parentNode.insertBefore(status, tableWrapper);
-  } else {
+  } else if (content && fallbackParent) {
+    fallbackParent.insertBefore(status, content);
+  } else if (!status.parentNode) {
     document.body.appendChild(status);
+  } else {
+    document.body.insertBefore(status, document.body.firstChild);
   }
   return status;
 }
@@ -1189,7 +1194,10 @@ function showRowEditDialogError(state, message) {
 
 function updateRowEditDialogButtons(state) {
   state.saveButton.disabled =
-    state.isLoading || state.isSaving || !state.hasLoaded;
+    state.isLoading ||
+    state.isSaving ||
+    !state.hasLoaded ||
+    state.submitDelayActive;
   state.cancelButton.disabled = state.isSaving;
   var saveLabel = state.mode === "insert" ? "Insert row" : "Save";
   state.saveButton.textContent = state.isSaving ? "Saving..." : saveLabel;
@@ -1207,6 +1215,30 @@ function setRowEditDialogLoading(state, isLoading) {
 
 function setRowEditDialogSaving(state, isSaving) {
   state.isSaving = isSaving;
+  updateRowEditDialogButtons(state);
+}
+
+function clearRowEditDialogSubmitDelay(state) {
+  if (state.submitDelayTimer) {
+    clearTimeout(state.submitDelayTimer);
+  }
+  state.submitDelayTimer = null;
+  state.submitDelayActive = false;
+}
+
+function setRowEditDialogSubmitDelay(state, delayMs) {
+  clearRowEditDialogSubmitDelay(state);
+  delayMs = Number(delayMs) || 0;
+  if (delayMs <= 0) {
+    updateRowEditDialogButtons(state);
+    return;
+  }
+  state.submitDelayActive = true;
+  state.submitDelayTimer = setTimeout(function () {
+    state.submitDelayTimer = null;
+    state.submitDelayActive = false;
+    updateRowEditDialogButtons(state);
+  }, delayMs);
   updateRowEditDialogButtons(state);
 }
 
@@ -1545,7 +1577,12 @@ function addInsertedRowToPage(rowElement) {
 }
 
 async function saveRowEditDialog(state) {
-  if (state.isLoading || state.isSaving || !state.hasLoaded) {
+  if (
+    state.isLoading ||
+    state.isSaving ||
+    !state.hasLoaded ||
+    state.submitDelayActive
+  ) {
     return;
   }
   clearRowEditDialogError(state);
@@ -1907,6 +1944,8 @@ function ensureRowEditDialog(manager) {
     isSaving: false,
     isClosePending: false,
     hasLoaded: false,
+    submitDelayActive: false,
+    submitDelayTimer: null,
     shouldRestoreFocus: true,
   };
 
@@ -1955,6 +1994,7 @@ function ensureRowEditDialog(manager) {
     state.isClosePending = false;
     clearRowEditDialogError(state);
     state.hasLoaded = false;
+    clearRowEditDialogSubmitDelay(state);
     destroyRowEditFields(state);
     setRowEditDialogLoading(state, false);
     setRowEditDialogSaving(state, false);
@@ -2173,6 +2213,7 @@ function openRowInsertDialogWithData(options) {
   clearRowEditDialogError(state);
   setRowEditDialogLoading(state, false);
   destroyRowEditFields(state);
+  setRowEditDialogSubmitDelay(state, options.submitDelayMs);
   setRowDialogTitle(
     state.title,
     insertData.table_name ? "Insert row into" : "Insert row",
@@ -2232,6 +2273,7 @@ async function insertDialog(manager, database, table, row, message, options) {
       resolve: resolve,
       flashMessage: !!options.flashMessage,
       refreshAfterInsert: false,
+      submitDelayMs: options.submitDelayMs,
     });
     if (!opened) {
       reject(new Error("Could not open the insert dialog"));

@@ -1,4 +1,5 @@
 import httpx
+import importlib.metadata
 import os
 import pathlib
 import pytest
@@ -93,7 +94,11 @@ def pytest_report_header(config):
     conn = sqlite3.connect(":memory:")
     version = conn.execute("select sqlite_version()").fetchone()[0]
     conn.close()
-    headers = ["SQLite: {}".format(version)]
+    sqlite_utils_version = importlib.metadata.version("sqlite-utils")
+    headers = [
+        "SQLite: {}".format(version),
+        "sqlite-utils: {}".format(sqlite_utils_version),
+    ]
     if config.getoption("--playwright"):
         try:
             browsers = config.getoption("--browser")

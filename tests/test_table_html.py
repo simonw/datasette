@@ -1137,6 +1137,9 @@ async def test_table_alter_action_button_and_data():
         assert alter_data["tableName"] == "items"
         assert alter_data["primaryKeys"] == ["id"]
         assert alter_data["columnTypes"] == ["text", "integer", "float", "blob"]
+        assert alter_data["foreignKeyTargetsPath"] == (
+            "/data/-/foreign-key-targets?table=items"
+        )
         assert alter_data["defaultExpressions"] == [
             "current_timestamp",
             "current_date",
@@ -1158,6 +1161,7 @@ async def test_table_alter_action_button_and_data():
                 "default": None,
                 "has_default": False,
                 "is_pk": True,
+                "foreign_key": None,
                 "column_type": None,
             },
             {
@@ -1168,6 +1172,7 @@ async def test_table_alter_action_button_and_data():
                 "default": None,
                 "has_default": False,
                 "is_pk": False,
+                "foreign_key": None,
                 "column_type": {"type": "textarea", "config": None},
             },
             {
@@ -1178,6 +1183,7 @@ async def test_table_alter_action_button_and_data():
                 "default": "5",
                 "has_default": True,
                 "is_pk": False,
+                "foreign_key": None,
                 "column_type": None,
             },
         ]

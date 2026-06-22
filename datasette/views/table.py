@@ -382,6 +382,19 @@ async def _table_alter_ui(
         return None
 
     column_types_map = await datasette.get_column_types(database_name, table_name)
+    foreign_keys_by_column = {}
+    for fk in await db.foreign_keys_for_table(table_name):
+        other_column = fk["other_column"]
+        if other_column is None and await db.table_exists(fk["other_table"]):
+            other_pks = await db.primary_keys(fk["other_table"])
+            if len(other_pks) == 1:
+                other_column = other_pks[0]
+        if other_column is None:
+            continue
+        foreign_keys_by_column[fk["column"]] = {
+            "fk_table": fk["other_table"],
+            "fk_column": other_column,
+        }
     columns = []
     for column in await db.table_column_details(table_name):
         if column.hidden:
@@ -397,6 +410,7 @@ async def _table_alter_ui(
                 "default": column.default_value,
                 "has_default": column.default_value is not None,
                 "is_pk": column.name in pks,
+                "foreign_key": foreign_keys_by_column.get(column.name),
                 "column_type": (
                     {"type": column_type.name, "config": column_type.config}
                     if column_type is not None
@@ -412,6 +426,10 @@ async def _table_alter_ui(
         "primaryKeys": pks,
         "columnTypes": ALTER_TABLE_COLUMN_TYPES,
         "defaultExpressions": list(DEFAULT_EXPR_SQL),
+        "foreignKeyTargetsPath": "{}/-/foreign-key-targets?table={}".format(
+            datasette.urls.database(database_name),
+            urllib.parse.quote(table_name, safe=""),
+        ),
     }
     can_set_column_type = await datasette.allowed(
         action="set-column-type",

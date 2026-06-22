@@ -1253,6 +1253,17 @@ async def test_foreign_key_targets_permission_denied(ds_write):
 
 
 @pytest.mark.asyncio
+async def test_foreign_key_targets_allowed_for_alter_table(ds_write):
+    token = write_token(ds_write, permissions=["at"])
+    response = await ds_write.client.get(
+        "/data/-/foreign-key-targets?table=docs",
+        headers=_headers(token),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["ok"] is True
+
+
+@pytest.mark.asyncio
 async def test_alter_table_permission_denied(ds_write):
     token = write_token(ds_write, permissions=["ir"])
     response = await ds_write.client.post(

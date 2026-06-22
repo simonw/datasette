@@ -867,11 +867,20 @@ class DatabaseForeignKeyTargetsView(BaseView):
         db = await self.ds.resolve_database(request)
         database_name = db.name
 
-        if not await self.ds.allowed(
+        table_name = request.args.get("table")
+        can_create_table = await self.ds.allowed(
             action="create-table",
             resource=DatabaseResource(database=database_name),
             actor=request.actor,
-        ):
+        )
+        can_alter_table = False
+        if table_name and await db.table_exists(table_name):
+            can_alter_table = await self.ds.allowed(
+                action="alter-table",
+                resource=TableResource(database=database_name, table=table_name),
+                actor=request.actor,
+            )
+        if not (can_create_table or can_alter_table):
             return _error(["Permission denied: need create-table"], 403)
 
         hidden_tables = await db.execute_fn(

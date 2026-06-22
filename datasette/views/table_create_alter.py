@@ -319,13 +319,28 @@ class _StrictPydanticModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class CreateTableColumn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class _DefaultArgsMixin(_StrictPydanticModel):
+    default: Any | None = None
+    default_expr: DefaultExpr | None = None
+
+    @model_validator(mode="after")
+    def validate_default_fields(self):
+        has_default = "default" in self.model_fields_set
+        has_default_expr = "default_expr" in self.model_fields_set
+        if has_default and has_default_expr:
+            raise ValueError("default and default_expr cannot both be provided")
+        if has_default_expr and self.default_expr is None:
+            raise ValueError("default_expr cannot be null")
+        return self
+
+
+class CreateTableColumn(_DefaultArgsMixin):
 
     name: Any = None
     type: Any = "text"
     fk_table: str | None = None
     fk_column: str | None = None
+    not_null: bool = False
 
     @model_validator(mode="after")
     def validate_column(self):
@@ -448,21 +463,6 @@ class CreateTableRequest(_StrictPydanticModel):
             elif column.fk_table:
                 foreign_keys.append((column.name, column.fk_table))
         return foreign_keys or None
-
-
-class _DefaultArgsMixin(_StrictPydanticModel):
-    default: Any | None = None
-    default_expr: DefaultExpr | None = None
-
-    @model_validator(mode="after")
-    def validate_default_fields(self):
-        has_default = "default" in self.model_fields_set
-        has_default_expr = "default_expr" in self.model_fields_set
-        if has_default and has_default_expr:
-            raise ValueError("default and default_expr cannot both be provided")
-        if has_default_expr and self.default_expr is None:
-            raise ValueError("default_expr cannot be null")
-        return self
 
 
 class AddColumnArgs(_DefaultArgsMixin):
@@ -753,16 +753,33 @@ class TableCreateView(BaseView):
             )
 
         def create_table(conn):
-            table = sqlite_utils.Database(conn)[table_name]
+            db_for_write = sqlite_utils.Database(conn)
+            table = db_for_write[table_name]
             if rows:
                 table.insert_all(
                     rows, pk=pks or pk, ignore=ignore, replace=replace, alter=alter
                 )
             else:
+                not_null = [column.name for column in columns if column.not_null]
+                defaults = {}
+                for column in columns:
+                    if "default_expr" in column.model_fields_set:
+                        defaults[column.name] = _default_expression_sql(
+                            column.default_expr
+                        )
+                    elif (
+                        "default" in column.model_fields_set
+                        and column.default is not None
+                    ):
+                        defaults[column.name] = _literal_default(
+                            db_for_write, column.default
+                        )
                 table.create(
                     {column.name: column.type for column in columns},
                     pk=pks or pk,
                     foreign_keys=create_request.foreign_keys,
+                    not_null=not_null or None,
+                    defaults=defaults or None,
                 )
             return table.schema
 

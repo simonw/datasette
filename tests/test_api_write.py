@@ -1936,6 +1936,60 @@ async def test_create_table_with_foreign_key(ds_write):
 
 
 @pytest.mark.asyncio
+async def test_create_table_with_column_constraints(ds_write):
+    token = write_token(ds_write)
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "constrained",
+            "columns": [
+                {"name": "id", "type": "integer"},
+                {
+                    "name": "title",
+                    "type": "text",
+                    "not_null": True,
+                    "default": "Untitled",
+                },
+                {
+                    "name": "created",
+                    "type": "text",
+                    "default_expr": "current_timestamp",
+                },
+                {"name": "score", "type": "integer", "default": 0},
+                {"name": "literal_default", "type": "text", "default": "hello)"},
+            ],
+            "pk": "id",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201, response.text
+    data = response.json()
+    assert data["ok"] is True
+    assert "NOT NULL DEFAULT 'Untitled'" in data["schema"]
+    assert "DEFAULT CURRENT_TIMESTAMP" in data["schema"]
+    assert "DEFAULT 0" in data["schema"]
+    assert "DEFAULT 'hello)'" in data["schema"]
+
+    db = ds_write.get_database("data")
+    columns = (
+        await db.execute("select * from pragma_table_info('constrained') order by cid")
+    ).dicts()
+    assert [column["name"] for column in columns] == [
+        "id",
+        "title",
+        "created",
+        "score",
+        "literal_default",
+    ]
+    assert columns[0]["pk"] == 1
+    assert columns[1]["notnull"] == 1
+    assert columns[1]["dflt_value"] == "'Untitled'"
+    assert columns[2]["dflt_value"] == "CURRENT_TIMESTAMP"
+    assert columns[3]["dflt_value"] == "0"
+    assert columns[4]["dflt_value"] == "'hello)'"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "column,expected_error",
     (
@@ -1947,9 +2001,26 @@ async def test_create_table_with_foreign_key(ds_write):
             {"name": "owner_id", "type": "integer", "fk_column": "id"},
             "columns.0: fk_column requires fk_table",
         ),
+        (
+            {
+                "name": "created",
+                "type": "text",
+                "default_expr": "datetime('now')",
+            },
+            "columns.0.default_expr: Input should be 'current_timestamp', 'current_date' or 'current_time'",
+        ),
+        (
+            {
+                "name": "created",
+                "type": "text",
+                "default": "x",
+                "default_expr": "current_timestamp",
+            },
+            "columns.0: Value error, default and default_expr cannot both be provided",
+        ),
     ),
 )
-async def test_create_table_foreign_key_validation(ds_write, column, expected_error):
+async def test_create_table_column_validation(ds_write, column, expected_error):
     token = write_token(ds_write)
     response = await ds_write.client.post(
         "/data/-/create",

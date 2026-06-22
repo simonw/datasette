@@ -1968,7 +1968,14 @@ To create a table, make a ``POST`` to ``/<database>/-/create``. This requires th
             },
             {
                 "name": "title",
-                "type": "text"
+                "type": "text",
+                "not_null": true,
+                "default": "Untitled"
+            },
+            {
+                "name": "created",
+                "type": "text",
+                "default_expr": "current_timestamp"
             }
         ],
         "pk": "id"
@@ -1981,6 +1988,9 @@ The JSON here describes the table that will be created:
 
   - ``name`` is the name of the column. This is required.
   - ``type`` is the type of the column. This is optional - if not provided, ``text`` will be assumed. The valid types are ``text``, ``integer``, ``float`` and ``blob``.
+  - ``not_null`` can be set to ``true`` to create this column with a ``NOT NULL`` constraint.
+  - ``default`` can be used to set a literal default value for this column.
+  - ``default_expr`` can be used instead of ``default`` to set a SQLite default expression. The supported values are ``current_timestamp``, ``current_date`` and ``current_time``.
   - ``fk_table`` can be used to create a single-column foreign key constraint referencing another table. ``fk_column`` is optional and can be used to specify the referenced column - if omitted, Datasette will use the single primary key of ``fk_table``.
 
 * ``pk`` is the primary key for the table. This is optional - if not provided, Datasette will create a SQLite table with a hidden ``rowid`` column.
@@ -2028,7 +2038,7 @@ If the table is successfully created this will return a ``201`` status code and 
         "table": "name_of_new_table",
         "table_url": "http://127.0.0.1:8001/data/name_of_new_table",
         "table_api_url": "http://127.0.0.1:8001/data/name_of_new_table.json",
-        "schema": "CREATE TABLE [name_of_new_table] (\n   [id] INTEGER PRIMARY KEY,\n   [title] TEXT\n)"
+        "schema": "CREATE TABLE [name_of_new_table] (\n   [id] INTEGER PRIMARY KEY,\n   [title] TEXT NOT NULL DEFAULT 'Untitled',\n   [created] TEXT DEFAULT CURRENT_TIMESTAMP\n)"
     }
 
 .. _TableCreateView_example:

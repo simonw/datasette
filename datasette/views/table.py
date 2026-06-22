@@ -2171,14 +2171,14 @@ async def table_view_data(
         data["table_insert_ui"] = table_insert_ui
         data["table_alter_ui"] = table_alter_ui
         data["table_page_data"] = await _table_page_data(
-            datasette,
-            request,
-            db,
-            database_name,
-            table_name,
-            is_view,
-            table_insert_ui,
-            table_alter_ui,
+            datasette=datasette,
+            request=request,
+            db=db,
+            database_name=database_name,
+            table_name=table_name,
+            is_view=is_view,
+            table_insert_ui=table_insert_ui,
+            table_alter_ui=table_alter_ui,
         )
 
     return data, rows[:page_size], columns, expanded_columns, sql, next_url

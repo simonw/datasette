@@ -60,17 +60,14 @@ function tableCreateColumnTypes() {
     : ["text", "integer", "float", "blob"];
 }
 
+var SQLITE_COLUMN_TYPE_LABELS = {
+  float: "floating point number",
+  real: "floating point number",
+  blob: "blob - binary data",
+};
+
 function sqliteColumnTypeLabel(type) {
-  if (type === "float") {
-    return "floating point number";
-  }
-  if (type === "real") {
-    return "floating point number";
-  }
-  if (type === "blob") {
-    return "blob - binary data";
-  }
-  return type;
+  return SQLITE_COLUMN_TYPE_LABELS[type] || type;
 }
 
 function populateSqliteColumnTypeSelect(select, type, options) {

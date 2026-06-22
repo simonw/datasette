@@ -367,23 +367,14 @@ class ActionsExtra(Extra):
                 # that allowed() calls made inside the plugin hooks below
                 # are served from the cache
                 datasette = context.datasette
-                await datasette.allowed_many(
-                    actions=[
-                        name
-                        for name, action in datasette.actions.items()
-                        if action.resource_class is TableResource
-                    ],
-                    resource=TableResource(context.database_name, context.table_name),
-                    actor=context.request.actor,
+                await precompute_table_action_permissions(
+                    datasette,
+                    context.request.actor,
+                    context.database_name,
+                    context.table_name,
                 )
-                await datasette.allowed_many(
-                    actions=[
-                        name
-                        for name, action in datasette.actions.items()
-                        if action.resource_class is DatabaseResource
-                    ],
-                    resource=DatabaseResource(context.database_name),
-                    actor=context.request.actor,
+                await precompute_database_action_permissions(
+                    datasette, context.request.actor, context.database_name
                 )
             for hook in method(**kwargs):
                 extra_links = await await_me_maybe(hook)
@@ -392,6 +383,32 @@ class ActionsExtra(Extra):
             return links
 
         return actions
+
+
+async def precompute_table_action_permissions(
+    datasette, actor, database_name, table_name
+):
+    await datasette.allowed_many(
+        actions=[
+            name
+            for name, action in datasette.actions.items()
+            if action.resource_class is TableResource
+        ],
+        resource=TableResource(database_name, table_name),
+        actor=actor,
+    )
+
+
+async def precompute_database_action_permissions(datasette, actor, database_name):
+    await datasette.allowed_many(
+        actions=[
+            name
+            for name, action in datasette.actions.items()
+            if action.resource_class is DatabaseResource
+        ],
+        resource=DatabaseResource(database_name),
+        actor=actor,
+    )
 
 
 class IsViewExtra(Extra):

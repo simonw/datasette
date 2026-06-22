@@ -260,8 +260,12 @@ def ds_unix_domain_socket_server(tmp_path_factory):
     # This used to use tmp_path_factory.mktemp("uds") but that turned out to
     # produce paths that were too long to use as UDS on macOS, see
     # https://github.com/simonw/datasette/issues/1407 - so I switched to
-    # using tempfile.gettempdir()
-    uds = str(pathlib.Path(tempfile.gettempdir()) / "datasette.sock")
+    # using tempfile.gettempdir() with a per-process filename.
+    uds = str(pathlib.Path(tempfile.gettempdir()) / f"datasette-{os.getpid()}.sock")
+    try:
+        os.unlink(uds)
+    except FileNotFoundError:
+        pass
     ds_proc = subprocess.Popen(
         [sys.executable, "-m", "datasette", "--memory", "--uds", uds],
         stdout=subprocess.PIPE,
@@ -271,12 +275,26 @@ def ds_unix_domain_socket_server(tmp_path_factory):
     # Poll until available
     transport = httpx.HTTPTransport(uds=uds)
     client = httpx.Client(transport=transport)
-    wait_until_responds("http://localhost/_memory.json", client=client)
-    # Check it started successfully
-    assert not ds_proc.poll(), ds_proc.stdout.read().decode("utf-8")
-    yield ds_proc, uds
-    # Shut it down at the end of the pytest session
-    ds_proc.terminate()
+    try:
+        wait_until_responds(
+            "http://localhost/_memory.json", timeout=30.0, client=client
+        )
+        # Check it started successfully
+        assert not ds_proc.poll(), ds_proc.stdout.read().decode("utf-8")
+        yield ds_proc, uds
+    finally:
+        client.close()
+        # Shut it down at the end of the pytest session
+        ds_proc.terminate()
+        try:
+            ds_proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            ds_proc.kill()
+            ds_proc.wait()
+        try:
+            os.unlink(uds)
+        except FileNotFoundError:
+            pass
 
 
 # Import fixtures from fixtures.py to make them available

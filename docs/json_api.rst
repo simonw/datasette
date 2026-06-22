@@ -44,7 +44,7 @@ looks like this:
 
 ``"ok"`` is always ``true`` if an error did not occur.
 
-The ``"rows"`` key is a list of objects, each one representing a row. 
+The ``"rows"`` key is a list of objects, each one representing a row.
 
 The ``"truncated"`` key lets you know if the query was truncated. This can happen if a SQL query returns more than 1,000 results (or the :ref:`setting_max_returned_rows` setting).
 
@@ -1968,7 +1968,14 @@ To create a table, make a ``POST`` to ``/<database>/-/create``. This requires th
             },
             {
                 "name": "title",
-                "type": "text"
+                "type": "text",
+                "not_null": true,
+                "default": "Untitled"
+            },
+            {
+                "name": "created",
+                "type": "text",
+                "default_expr": "current_timestamp"
             }
         ],
         "pk": "id"
@@ -1981,6 +1988,10 @@ The JSON here describes the table that will be created:
 
   - ``name`` is the name of the column. This is required.
   - ``type`` is the type of the column. This is optional - if not provided, ``text`` will be assumed. The valid types are ``text``, ``integer``, ``float`` and ``blob``.
+  - ``not_null`` can be set to ``true`` to create this column with a ``NOT NULL`` constraint.
+  - ``default`` can be used to set a literal default value for this column.
+  - ``default_expr`` can be used instead of ``default`` to set a SQLite default expression. See :ref:`default_expr values <json_api_default_expr_values>`.
+  - ``fk_table`` can be used to create a single-column foreign key constraint referencing another table. ``fk_column`` is optional and can be used to specify the referenced column - if omitted, Datasette will use the single primary key of ``fk_table``.
 
 * ``pk`` is the primary key for the table. This is optional - if not provided, Datasette will create a SQLite table with a hidden ``rowid`` column.
 
@@ -1993,6 +2004,56 @@ The JSON here describes the table that will be created:
 * ``replace`` can be set to ``true`` to replace existing rows by primary key if the table already exists. This requires the :ref:`actions_update_row` permission.
 * ``alter`` can be set to ``true`` if you want to automatically add any missing columns to the table. This requires the :ref:`actions_alter_table` permission.
 
+.. _json_api_default_expr_values:
+
+``default_expr`` accepts these values:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Value
+     - Recommended column type
+     - Example inserted value
+   * - ``current_timestamp``
+     - ``text``
+     - ``2026-05-01 13:34:00``
+   * - ``current_date``
+     - ``text``
+     - ``2026-05-01``
+   * - ``current_time``
+     - ``text``
+     - ``13:34:00``
+   * - ``current_unixtime``
+     - ``integer``
+     - ``1777642440``
+   * - ``current_unixtime_ms``
+     - ``integer``
+     - ``1777642440000``
+
+This example creates a foreign key from ``projects.owner_id`` to the single primary key of ``owners``:
+
+.. code-block:: json
+
+    {
+        "table": "projects",
+        "columns": [
+            {
+                "name": "id",
+                "type": "integer"
+            },
+            {
+                "name": "owner_id",
+                "type": "integer",
+                "fk_table": "owners"
+            },
+            {
+                "name": "title",
+                "type": "text"
+            }
+        ],
+        "pk": "id"
+    }
+
 If the table is successfully created this will return a ``201`` status code and the following response:
 
 .. code-block:: json
@@ -2003,7 +2064,7 @@ If the table is successfully created this will return a ``201`` status code and 
         "table": "name_of_new_table",
         "table_url": "http://127.0.0.1:8001/data/name_of_new_table",
         "table_api_url": "http://127.0.0.1:8001/data/name_of_new_table.json",
-        "schema": "CREATE TABLE [name_of_new_table] (\n   [id] INTEGER PRIMARY KEY,\n   [title] TEXT\n)"
+        "schema": "CREATE TABLE [name_of_new_table] (\n   [id] INTEGER PRIMARY KEY,\n   [title] TEXT NOT NULL DEFAULT 'Untitled',\n   [created] TEXT DEFAULT CURRENT_TIMESTAMP\n)"
     }
 
 .. _TableCreateView_example:
@@ -2071,6 +2132,235 @@ You can avoid this error by passing the same ``"ignore": true`` or ``"replace": 
 To use the ``"replace": true`` option you will also need the :ref:`actions_update_row` permission.
 
 Pass ``"alter": true`` to automatically add any missing columns to the existing table that are present in the rows you are submitting. This requires the :ref:`actions_alter_table` permission.
+
+.. _DatabaseForeignKeyTargetsView:
+
+Database foreign key targets
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``/<database>/-/foreign-key-targets`` endpoint returns the list of tables in a database that can be referenced by a single-column foreign key. This requires the :ref:`actions_create_table` permission.
+
+::
+
+    GET /<database>/-/foreign-key-targets
+
+The response includes only tables with exactly one primary key column. Hidden tables, tables with compound primary keys and tables with no explicit primary key are omitted.
+
+Each target includes the normalized SQLite type affinity for the primary key column in ``type``. The type is calculated using SQLite's documented affinity rules: ``INT`` maps to ``integer``; ``CHAR``, ``CLOB`` or ``TEXT`` maps to ``text``; ``BLOB`` or no type maps to ``blob``; ``REAL`` and floating-point declared types map to ``real``; everything else maps to ``numeric``.
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "database": "data",
+        "targets": [
+            {
+                "fk_table": "owners",
+                "fk_column": "id",
+                "type": "integer"
+            },
+            {
+                "fk_table": "categories",
+                "fk_column": "slug",
+                "type": "text"
+            }
+        ]
+    }
+
+.. _TableForeignKeySuggestionsView:
+
+Table foreign key suggestions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``/<database>/<table>/-/foreign-key-suggestions`` endpoint suggests possible single-column foreign key relationships for a table. This requires the :ref:`actions_alter_table` permission.
+
+::
+
+    GET /<database>/<table>/-/foreign-key-suggestions
+
+The response includes every type-compatible single-column primary key target for each column in ``options``. Datasette also performs a bounded data check against up to 500 rows in the table: if the sampled non-null values for a column all exist in a target primary key, that target is included in ``suggestions``.
+
+If the bounded check takes too long, the endpoint fails open. It still returns the type-compatible ``options`` for each column, but ``row_check.status`` will be ``"timed_out"`` and there may be no ``suggestions``.
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "database": "data",
+        "table": "projects",
+        "row_check": {
+            "attempted": true,
+            "status": "completed",
+            "row_limit": 500,
+            "sampled_rows": 3,
+            "checked_options": 4
+        },
+        "columns": [
+            {
+                "column": "owner_id",
+                "type": "INTEGER",
+                "affinity": "integer",
+                "current": null,
+                "suggestions": [
+                    {
+                        "fk_table": "owners",
+                        "fk_column": "id",
+                        "confidence": "sampled",
+                        "sampled_values": 3,
+                        "reasons": [
+                            "type_match",
+                            "sample_values_exist",
+                            "name_match"
+                        ]
+                    }
+                ],
+                "options": [
+                    {
+                        "fk_table": "owners",
+                        "fk_column": "id",
+                        "type": "INTEGER"
+                    }
+                ]
+            }
+        ]
+    }
+
+.. _TableAlterView:
+
+Altering tables
+~~~~~~~~~~~~~~~
+
+To alter an existing table, make a ``POST`` to ``/<database>/<table>/-/alter``. This requires the :ref:`actions_alter_table` permission.
+
+::
+
+    POST /<database>/<table>/-/alter
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+
+The request body should include an ``operations`` array. Each operation has the same top-level shape: an ``op`` string and an ``args`` object.
+
+.. code-block:: json
+
+    {
+        "operations": [
+            {
+                "op": "add_column",
+                "args": {
+                    "name": "slug",
+                    "type": "text",
+                    "not_null": true,
+                    "default": ""
+                }
+            },
+            {
+                "op": "add_column",
+                "args": {
+                    "name": "created",
+                    "type": "text",
+                    "default_expr": "current_timestamp"
+                }
+            },
+            {
+                "op": "rename_column",
+                "args": {
+                    "name": "title",
+                    "to": "headline"
+                }
+            },
+            {
+                "op": "rename_table",
+                "args": {
+                    "to": "published_posts"
+                }
+            },
+            {
+                "op": "alter_column",
+                "args": {
+                    "name": "score",
+                    "type": "float"
+                }
+            },
+            {
+                "op": "drop_column",
+                "args": {
+                    "name": "draft_notes"
+                }
+            },
+            {
+                "op": "set_primary_key",
+                "args": {
+                    "columns": ["id"]
+                }
+            },
+            {
+                "op": "add_foreign_key",
+                "args": {
+                    "column": "owner_id",
+                    "fk_table": "owners"
+                }
+            },
+            {
+                "op": "drop_foreign_key",
+                "args": {
+                    "column": "old_owner_id"
+                }
+            },
+            {
+                "op": "set_foreign_keys",
+                "args": {
+                    "foreign_keys": [
+                        {
+                            "column": "owner_id",
+                            "fk_table": "owners",
+                            "fk_column": "id"
+                        }
+                    ]
+                }
+            },
+            {
+                "op": "reorder_columns",
+                "args": {
+                    "columns": ["id", "headline", "slug", "created", "score"]
+                }
+            }
+        ]
+    }
+
+Supported operations:
+
+* ``add_column`` adds a new column. ``args`` accepts ``name``, optional ``type`` of ``text``, ``integer``, ``float`` or ``blob``, optional ``not_null``, optional literal ``default`` and optional ``default_expr``. If ``not_null`` is ``true`` either a non-null ``default`` or ``default_expr`` is required.
+* ``rename_column`` renames a column. ``args`` accepts ``name`` and ``to``.
+* ``rename_table`` renames the table. ``args`` accepts ``to``, the new table name. If combined with other operations, Datasette applies the column, primary key, foreign key and column order changes before renaming the table.
+* ``alter_column`` changes column properties. ``args`` accepts ``name`` and at least one of ``type``, ``not_null``, literal ``default`` or ``default_expr``. Passing ``"default": null`` removes an existing default.
+* ``drop_column`` drops a column. ``args`` accepts ``name``.
+* ``set_primary_key`` changes the table primary key. ``args`` accepts ``columns``, a list of one or more column names.
+* ``add_foreign_key`` adds a single-column foreign key constraint. ``args`` accepts ``column``, ``fk_table`` and optional ``fk_column``. If ``fk_column`` is omitted, Datasette will use the single primary key of ``fk_table``.
+* ``drop_foreign_key`` removes the foreign key constraint for a column. ``args`` accepts ``column``.
+* ``set_foreign_keys`` replaces all foreign key constraints on the table. ``args`` accepts ``foreign_keys``, a list of objects that each have ``column``, ``fk_table`` and optional ``fk_column``. An empty list removes all foreign key constraints.
+* ``reorder_columns`` reorders columns. ``args`` accepts ``columns``, a list of one or more column names. Columns omitted from this list will appear afterwards in their existing order.
+
+``default`` is always treated as a literal value. ``default_expr`` accepts the values shown in :ref:`default_expr values <json_api_default_expr_values>` and is rendered as the corresponding SQLite default expression.
+
+For foreign key operations that omit ``fk_column``, the referenced ``fk_table`` must have a single-column primary key. Datasette will return an error if it cannot identify a single primary key column for that table.
+
+A successful response returns the new schema and the previous schema. If the request used ``rename_table``, ``table``, ``table_url`` and ``table_api_url`` will use the new table name. Renaming a table through this endpoint triggers the :class:`~datasette.events.RenameTableEvent` event.
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "database": "data",
+        "table": "published_posts",
+        "table_url": "http://127.0.0.1:8001/data/published_posts",
+        "table_api_url": "http://127.0.0.1:8001/data/published_posts.json",
+        "altered": true,
+        "schema": "CREATE TABLE ...",
+        "before_schema": "CREATE TABLE ...",
+        "operations_applied": 11
+    }
+
+Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
 
 .. _TableSetColumnTypeView:
 

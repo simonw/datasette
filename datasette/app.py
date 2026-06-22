@@ -47,8 +47,13 @@ from .views import Context
 from .views.database import (
     database_download,
     DatabaseView,
-    TableCreateView,
     QueryView,
+)
+from .views.table_create_alter import (
+    DatabaseForeignKeyTargetsView,
+    TableAlterView,
+    TableCreateView,
+    TableForeignKeySuggestionsView,
 )
 from .views.execute_write import ExecuteWriteAnalyzeView, ExecuteWriteView
 from .views.stored_queries import (
@@ -2563,6 +2568,10 @@ class Datasette:
         )
         add_route(TableCreateView.as_view(self), r"/(?P<database>[^\/\.]+)/-/create$")
         add_route(
+            DatabaseForeignKeyTargetsView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/foreign-key-targets$",
+        )
+        add_route(
             QueryListView.as_view(self),
             r"/(?P<database>[^\/\.]+)/-/queries(\.(?P<format>json))?$",
         )
@@ -2625,6 +2634,14 @@ class Datasette:
         add_route(
             TableUpsertView.as_view(self),
             r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/upsert$",
+        )
+        add_route(
+            TableAlterView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/alter$",
+        )
+        add_route(
+            TableForeignKeySuggestionsView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/foreign-key-suggestions$",
         )
         add_route(
             TableSetColumnTypeView.as_view(self),

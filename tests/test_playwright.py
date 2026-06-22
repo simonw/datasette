@@ -303,6 +303,7 @@ def test_create_table_flow(page, datasette_server):
     dialog.locator(".table-create-add-column").click()
     dialog.locator(".table-create-column-name").nth(3).fill("metadata")
     dialog.locator(".table-create-column-type").nth(3).select_option("integer")
+    dialog.locator(".table-create-more-options").nth(3).click()
     dialog.locator(".table-create-custom-column-type").nth(3).select_option("json")
     assert dialog.locator(".table-create-column-type").nth(3).input_value() == "text"
     assert "table-create-input-placeholder" not in dialog.locator(
@@ -361,7 +362,7 @@ def test_alter_table_flow(page, datasette_server):
     assert "Default value" in expanded_options_text
     assert "or default to a specific time" in expanded_options_text
     assert "Primary key" in expanded_options_text
-    assert "An ID that uniquely identifies this record" in expanded_options_text
+    assert "This ID uniquely identifies the record" in expanded_options_text
 
     dialog.locator(".table-alter-add-column").click()
     assert dialog.locator(".table-alter-save").is_enabled()

@@ -22,7 +22,6 @@ from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
     escape_sqlite,
     get_outbound_foreign_keys,
-    sqlite3,
     table_column_details,
 )
 from datasette.utils.asgi import NotFound, Response
@@ -602,7 +601,6 @@ AlterTableOperation = Annotated[
 
 class AlterTableRequest(_StrictPydanticModel):
     operations: list[AlterTableOperation] = Field(min_length=1)
-    dry_run: bool = False
 
 
 def _pydantic_errors(validation_error):
@@ -1143,14 +1141,6 @@ class TableAlterView(BaseView):
 
                 return _table_schema_from_conn(operation_conn, table_name)
 
-            if alter_request.dry_run:
-                memory_conn = sqlite3.connect(":memory:")
-                try:
-                    conn.backup(memory_conn)
-                    return before_schema, apply_operations(memory_conn)
-                finally:
-                    memory_conn.close()
-
             after_schema = apply_operations(conn)
             return before_schema, after_schema
 
@@ -1162,7 +1152,7 @@ class TableAlterView(BaseView):
             return _error([str(e)], 400)
 
         altered = before_schema != after_schema
-        if altered and not alter_request.dry_run:
+        if altered:
             await self.ds.track_event(
                 AlterTableEvent(
                     request.actor,
@@ -1189,10 +1179,7 @@ class TableAlterView(BaseView):
                 "altered": altered,
                 "schema": after_schema,
                 "before_schema": before_schema,
-                "operations_applied": (
-                    0 if alter_request.dry_run else len(alter_request.operations)
-                ),
-                "dry_run": alter_request.dry_run,
+                "operations_applied": len(alter_request.operations),
             },
             status=200,
         )

@@ -2285,8 +2285,6 @@ The request body should include an ``operations`` array. Each operation has the 
         ]
     }
 
-Set ``"dry_run": true`` to validate the operations and return the schema that would be created without modifying the table.
-
 Supported operations:
 
 * ``add_column`` adds a new column. ``args`` accepts ``name``, optional ``type`` of ``text``, ``integer``, ``float`` or ``blob``, optional ``not_null``, optional literal ``default`` and optional ``default_expr``. If ``not_null`` is ``true`` either a non-null ``default`` or ``default_expr`` is required.
@@ -2316,8 +2314,7 @@ A successful response returns the new schema and the previous schema:
         "altered": true,
         "schema": "CREATE TABLE ...",
         "before_schema": "CREATE TABLE ...",
-        "operations_applied": 7,
-        "dry_run": false
+        "operations_applied": 7
     }
 
 Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.

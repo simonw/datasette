@@ -899,34 +899,6 @@ async def test_alter_table_operations(ds_write):
 
 
 @pytest.mark.asyncio
-async def test_alter_table_dry_run(ds_write):
-    token = write_token(ds_write, permissions=["at"])
-    db = ds_write.get_database("data")
-    response = await ds_write.client.post(
-        "/data/docs/-/alter",
-        json={
-            "dry_run": True,
-            "operations": [
-                {"op": "add_column", "args": {"name": "slug", "type": "text"}}
-            ],
-        },
-        headers=_headers(token),
-    )
-    assert response.status_code == 200, response.text
-    data = response.json()
-    assert data["ok"] is True
-    assert data["dry_run"] is True
-    assert data["altered"] is True
-    assert data["operations_applied"] == 0
-    assert "slug" in data["schema"]
-    columns = (
-        await db.execute("select name from pragma_table_info('docs') order by cid")
-    ).dicts()
-    assert [column["name"] for column in columns] == ["id", "title", "score", "age"]
-    assert last_event(ds_write) is None
-
-
-@pytest.mark.asyncio
 async def test_alter_table_foreign_key_operations(ds_write):
     token = write_token(ds_write, permissions=["at"])
     db = ds_write.get_database("data")
@@ -1246,6 +1218,15 @@ async def test_alter_table_permission_denied(ds_write):
 @pytest.mark.parametrize(
     "body,expected_error",
     (
+        (
+            {
+                "dry_run": True,
+                "operations": [
+                    {"op": "add_column", "args": {"name": "slug", "type": "text"}}
+                ],
+            },
+            "dry_run: Extra inputs are not permitted",
+        ),
         (
             {"operations": [{"op": "add_column", "args": {"type": "text"}}]},
             "operations.0.add_column.args.name: Field required",

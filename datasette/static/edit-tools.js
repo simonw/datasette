@@ -248,7 +248,9 @@ function updateSchemaDialogMoveButtons(state, prefix) {
       topButton.disabled =
         state.isSaving || !firstNonPrimary || row === firstNonPrimary;
       upButton.disabled =
-        state.isSaving || !previous || schemaDialogRowIsPrimaryKey(previous, prefix);
+        state.isSaving ||
+        !previous ||
+        schemaDialogRowIsPrimaryKey(previous, prefix);
       downButton.disabled = state.isSaving || !next;
       bottomButton.disabled = state.isSaving || !next;
       if (hasPrimaryKeys && row === firstNonPrimary) {
@@ -464,7 +466,9 @@ function updateTableCreateColumnRules(state) {
     var pkLabel = row.querySelector(".table-create-primary-key");
     var pkInput = row.querySelector(".table-create-primary-key-input");
     var foreignKeyField = row.querySelector(".table-create-foreign-key-field");
-    var foreignKeySelect = row.querySelector(".table-create-foreign-key-target");
+    var foreignKeySelect = row.querySelector(
+      ".table-create-foreign-key-target",
+    );
 
     if (pkLabel && pkInput) {
       pkLabel.hidden = !isFirstColumn;
@@ -677,7 +681,8 @@ function createTableColumnRow(state, column) {
     customTypeSelect = createTableCustomColumnTypeSelect();
     customTypeSelect.id = customTypeId;
     customTypeSelect.setAttribute("aria-describedby", customTypeHelpId);
-    customTypeSelect.value = column && column.customType ? column.customType : "";
+    customTypeSelect.value =
+      column && column.customType ? column.customType : "";
     updateTableCreateCustomColumnTypePlaceholder(customTypeSelect);
     customTypeField.appendChild(customTypeLabel);
     customTypeField.appendChild(customTypeHelp);
@@ -920,7 +925,9 @@ function collectTableCreatePayload(state) {
     var name = row.querySelector(".table-create-column-name").value.trim();
     var type = row.querySelector(".table-create-column-type").value;
     var column = { name: name, type: type };
-    var foreignKeySelect = row.querySelector(".table-create-foreign-key-target");
+    var foreignKeySelect = row.querySelector(
+      ".table-create-foreign-key-target",
+    );
     var foreignKeyOption =
       foreignKeySelect && foreignKeySelect.selectedOptions
         ? foreignKeySelect.selectedOptions[0]

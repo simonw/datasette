@@ -2243,6 +2243,12 @@ The request body should include an ``operations`` array. Each operation has the 
                 }
             },
             {
+                "op": "rename_table",
+                "args": {
+                    "to": "published_posts"
+                }
+            },
+            {
                 "op": "alter_column",
                 "args": {
                     "name": "score",
@@ -2299,6 +2305,7 @@ Supported operations:
 
 * ``add_column`` adds a new column. ``args`` accepts ``name``, optional ``type`` of ``text``, ``integer``, ``float`` or ``blob``, optional ``not_null``, optional literal ``default`` and optional ``default_expr``. If ``not_null`` is ``true`` either a non-null ``default`` or ``default_expr`` is required.
 * ``rename_column`` renames a column. ``args`` accepts ``name`` and ``to``.
+* ``rename_table`` renames the table. ``args`` accepts ``to``, the new table name. If combined with other operations, Datasette applies the column, primary key, foreign key and column order changes before renaming the table.
 * ``alter_column`` changes column properties. ``args`` accepts ``name`` and at least one of ``type``, ``not_null``, literal ``default`` or ``default_expr``. Passing ``"default": null`` removes an existing default.
 * ``drop_column`` drops a column. ``args`` accepts ``name``.
 * ``set_primary_key`` changes the table primary key. ``args`` accepts ``columns``, a list of one or more column names.
@@ -2311,20 +2318,20 @@ Supported operations:
 
 For foreign key operations that omit ``fk_column``, the referenced ``fk_table`` must have a single-column primary key. Datasette will return an error if it cannot identify a single primary key column for that table.
 
-A successful response returns the new schema and the previous schema:
+A successful response returns the new schema and the previous schema. If the request used ``rename_table``, ``table``, ``table_url`` and ``table_api_url`` will use the new table name. Renaming a table through this endpoint triggers the :class:`~datasette.events.RenameTableEvent` event.
 
 .. code-block:: json
 
     {
         "ok": true,
         "database": "data",
-        "table": "posts",
-        "table_url": "http://127.0.0.1:8001/data/posts",
-        "table_api_url": "http://127.0.0.1:8001/data/posts.json",
+        "table": "published_posts",
+        "table_url": "http://127.0.0.1:8001/data/published_posts",
+        "table_api_url": "http://127.0.0.1:8001/data/published_posts.json",
         "altered": true,
         "schema": "CREATE TABLE ...",
         "before_schema": "CREATE TABLE ...",
-        "operations_applied": 7
+        "operations_applied": 11
     }
 
 Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.

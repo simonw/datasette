@@ -1,4 +1,5 @@
 from datasette.app import Datasette
+from datasette.events import RenameTableEvent
 from datasette.utils import sqlite3
 from .utils import last_event
 import pytest
@@ -896,6 +897,58 @@ async def test_alter_table_operations(ds_write):
     assert event.table == "docs"
     assert event.before_schema == before_schema
     assert event.after_schema == data["schema"]
+
+
+@pytest.mark.asyncio
+async def test_alter_table_rename_table(ds_write):
+    token = write_token(ds_write, permissions=["at"])
+    db = ds_write.get_database("data")
+    before_schema = await db.execute_fn(
+        lambda conn: conn.execute(
+            "select sql from sqlite_master where type = 'table' and name = 'docs'"
+        ).fetchone()[0]
+    )
+
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json={
+            "operations": [
+                {"op": "rename_table", "args": {"to": "documents"}},
+            ]
+        },
+        headers=_headers(token),
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["ok"] is True
+    assert data["database"] == "data"
+    assert data["table"] == "documents"
+    assert data["table_url"].endswith("/data/documents")
+    assert data["table_api_url"].endswith("/data/documents.json")
+    assert data["altered"] is True
+    assert data["operations_applied"] == 1
+    assert data["before_schema"] == before_schema
+    assert 'CREATE TABLE "documents"' in data["schema"]
+
+    tables = (
+        await db.execute(
+            "select name from sqlite_master where type = 'table' order by name"
+        )
+    ).dicts()
+    table_names = [table["name"] for table in tables]
+    assert "docs" not in table_names
+    assert "documents" in table_names
+
+    rename_events = [
+        event
+        for event in ds_write._tracked_events
+        if isinstance(event, RenameTableEvent)
+    ]
+    assert len(rename_events) == 1
+    assert rename_events[0].database == "data"
+    assert rename_events[0].old_table == "docs"
+    assert rename_events[0].new_table == "documents"
 
 
 @pytest.mark.asyncio

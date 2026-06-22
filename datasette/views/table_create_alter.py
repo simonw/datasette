@@ -476,6 +476,20 @@ class RenameColumnArgs(_StrictPydanticModel):
     to: str
 
 
+class RenameTableArgs(_StrictPydanticModel):
+    to: str
+
+    @field_validator("to")
+    @classmethod
+    def validate_table_name(cls, v):
+        if not TABLE_NAME_RE.match(v):
+            raise PydanticCustomError(
+                "alter_table_rename_table",
+                "Invalid table name",
+            )
+        return v
+
+
 class AlterColumnArgs(_DefaultArgsMixin):
     name: str
     type: SqliteApiType | None = None
@@ -548,6 +562,11 @@ class RenameColumnOperation(_StrictPydanticModel):
     args: RenameColumnArgs
 
 
+class RenameTableOperation(_StrictPydanticModel):
+    op: Literal["rename_table"]
+    args: RenameTableArgs
+
+
 class AlterColumnOperation(_StrictPydanticModel):
     op: Literal["alter_column"]
     args: AlterColumnArgs
@@ -587,6 +606,7 @@ AlterTableOperation = Annotated[
     Union[
         AddColumnOperation,
         RenameColumnOperation,
+        RenameTableOperation,
         AlterColumnOperation,
         DropColumnOperation,
         SetPrimaryKeyOperation,
@@ -1042,10 +1062,12 @@ class TableAlterView(BaseView):
             def apply_operations(operation_conn):
                 db_for_write = sqlite_utils.Database(operation_conn)
                 table = db_for_write[table_name]
+                current_table_name = table_name
 
                 add_columns = []
                 types = {}
                 rename = {}
+                rename_table_to = None
                 drop = set()
                 not_null = {}
                 defaults = {}
@@ -1080,6 +1102,8 @@ class TableAlterView(BaseView):
                             defaults[args.name] = _default_expression_sql(
                                 args.default_expr
                             )
+                    elif operation.op == "rename_table":
+                        rename_table_to = args.to
                     elif operation.op == "rename_column":
                         rename[args.name] = args.to
                     elif operation.op == "alter_column":
@@ -1155,14 +1179,27 @@ class TableAlterView(BaseView):
                             drop_foreign_keys=drop_foreign_keys or None,
                             foreign_keys=foreign_keys,
                         )
+                    if (
+                        rename_table_to is not None
+                        and rename_table_to != current_table_name
+                    ):
+                        operation_conn.execute(
+                            "alter table {} rename to {}".format(
+                                escape_sqlite(current_table_name),
+                                escape_sqlite(rename_table_to),
+                            )
+                        )
+                        current_table_name = rename_table_to
 
-                return _table_schema_from_conn(operation_conn, table_name)
+                return current_table_name, _table_schema_from_conn(
+                    operation_conn, current_table_name
+                )
 
-            after_schema = apply_operations(conn)
-            return before_schema, after_schema
+            after_table_name, after_schema = apply_operations(conn)
+            return before_schema, after_schema, after_table_name
 
         try:
-            before_schema, after_schema = await db.execute_write_fn(
+            before_schema, after_schema, after_table_name = await db.execute_write_fn(
                 alter_table, request=request
             )
         except Exception as e:
@@ -1174,23 +1211,23 @@ class TableAlterView(BaseView):
                 AlterTableEvent(
                     request.actor,
                     database=database_name,
-                    table=table_name,
+                    table=after_table_name,
                     before_schema=before_schema,
                     after_schema=after_schema,
                 )
             )
 
         table_url = self.ds.absolute_url(
-            request, self.ds.urls.table(database_name, table_name)
+            request, self.ds.urls.table(database_name, after_table_name)
         )
         table_api_url = self.ds.absolute_url(
-            request, self.ds.urls.table(database_name, table_name, format="json")
+            request, self.ds.urls.table(database_name, after_table_name, format="json")
         )
         return Response.json(
             {
                 "ok": True,
                 "database": database_name,
-                "table": table_name,
+                "table": after_table_name,
                 "table_url": table_url,
                 "table_api_url": table_api_url,
                 "altered": altered,

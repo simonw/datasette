@@ -562,6 +562,36 @@ def test_alter_table_review_rename_primary_key_column(page, datasette_server):
 
 
 @pytest.mark.playwright
+def test_alter_table_review_rename_table(page, datasette_server):
+    page.goto(f"{datasette_server}data/projects")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-table-action="alter-table"]').click()
+
+    dialog = page.locator("#table-alter-dialog")
+    dialog.wait_for()
+    save = dialog.locator(".table-alter-save")
+    rename_details = dialog.locator(".table-alter-table-options")
+    assert rename_details.locator("summary").inner_text() == "Rename table"
+    assert not dialog.locator(".table-alter-table-name").is_visible()
+    assert save.is_disabled()
+
+    rename_details.locator("summary").click()
+    table_name = dialog.locator(".table-alter-table-name")
+    assert table_name.input_value() == "projects"
+    assert table_name.get_attribute("placeholder") == "table name"
+    table_name.fill("projects_archive")
+    assert save.is_enabled()
+    save.click()
+
+    review = dialog.locator(".table-alter-review")
+    review.wait_for()
+    assert "Rename table to projects_archive." in review.inner_text()
+    assert dialog.locator(".table-alter-review-name").all_inner_texts() == [
+        "projects_archive",
+    ]
+
+
+@pytest.mark.playwright
 def test_alter_table_review_not_null_wording(page, datasette_server):
     page.goto(f"{datasette_server}data/projects")
     page.locator("details.actions-menu-links summary").click()

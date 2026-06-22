@@ -1822,6 +1822,7 @@ function tableAlterDialogSignature(state) {
     return "";
   }
   return JSON.stringify({
+    tableName: state.tableNameInput ? state.tableNameInput.value.trim() : "",
     columns: tableAlterDialogRows(state).map(tableAlterRowSignature),
     deletedColumns: state.deletedColumns.slice(),
   });
@@ -2307,6 +2308,9 @@ function addTableAlterColumn(state, column) {
 function resetTableAlterDialog(state, data) {
   state.nextColumnIndex = 0;
   state.deletedColumns = [];
+  state.originalTableName = data.tableName || "";
+  state.tableNameInput.value = state.originalTableName;
+  state.tableOptions.open = false;
   state.originalPrimaryKeys = (data.primaryKeys || []).slice();
   state.originalColumnNames = (data.columns || []).map(function (column) {
     return column.name;
@@ -2340,6 +2344,16 @@ function collectTableAlterRows(state) {
 }
 
 function validateTableAlterRows(state, rows) {
+  var tableName = state.tableNameInput.value.trim();
+  if (!tableName) {
+    return "Table name is required.";
+  }
+  if (tableName.indexOf("\n") !== -1) {
+    return "Table names cannot contain newlines.";
+  }
+  if (/^sqlite_/.test(tableName)) {
+    return "Table names cannot start with sqlite_.";
+  }
   if (!rows.length) {
     return "At least one column is required.";
   }
@@ -2513,6 +2527,13 @@ function collectTableAlterPayload(state) {
   }
 
   var operations = [];
+  var tableName = state.tableNameInput.value.trim();
+  if (tableName !== state.originalTableName) {
+    operations.push({
+      op: "rename_table",
+      args: { to: tableName },
+    });
+  }
   var columnTypeAssignments = collectTableAlterColumnTypeAssignments(rows);
   rows.forEach(function (row) {
     var name = row.name.trim();
@@ -2621,6 +2642,12 @@ function tableAlterReadableValue(value) {
 
 function tableAlterOperationSummary(operation) {
   var args = operation.args || {};
+  if (operation.op === "rename_table") {
+    return {
+      text: "Rename table to " + tableAlterQuotedName(args.to) + ".",
+      damaging: false,
+    };
+  }
   if (operation.op === "add_column") {
     var addDetails = ["as " + args.type];
     if (args.not_null) {
@@ -2788,7 +2815,10 @@ function appendTableAlterReviewText(element, text) {
   });
 }
 
-function tableAlterSetColumnTypeUrl() {
+function tableAlterSetColumnTypeUrl(tableUrl) {
+  if (tableUrl) {
+    return tableUrl.replace(/\/$/, "") + "/-/set-column-type";
+  }
   var data = tableAlterData();
   if (!data || !data.path) {
     return null;
@@ -2798,11 +2828,11 @@ function tableAlterSetColumnTypeUrl() {
   return url.toString();
 }
 
-async function assignTableAlterColumnTypes(assignments) {
+async function assignTableAlterColumnTypes(assignments, tableUrl) {
   if (!assignments.length) {
     return;
   }
-  var url = tableAlterSetColumnTypeUrl();
+  var url = tableAlterSetColumnTypeUrl(tableUrl);
   if (!url) {
     throw new Error("Could not find the set column type URL.");
   }
@@ -2839,6 +2869,16 @@ async function assignTableAlterColumnTypes(assignments) {
       );
     }
   }
+}
+
+function tableAlterResultRenamesTable(result) {
+  return !!(
+    result &&
+    result.payload &&
+    (result.payload.operations || []).some(function (operation) {
+      return operation.op === "rename_table";
+    })
+  );
 }
 
 function showTableAlterEditor(state) {
@@ -2923,6 +2963,7 @@ async function applyTableAlterChanges(state, result) {
   }
   setTableAlterDialogSaving(state, true);
   try {
+    var responseData = null;
     if (result.payload) {
       var response = await fetch(data.path, {
         method: "POST",
@@ -2932,7 +2973,6 @@ async function applyTableAlterChanges(state, result) {
         },
         body: JSON.stringify(result.payload),
       });
-      var responseData = null;
       try {
         responseData = await response.json();
       } catch (_error) {
@@ -2942,10 +2982,18 @@ async function applyTableAlterChanges(state, result) {
         throw rowMutationRequestError(response, responseData);
       }
     }
-    await assignTableAlterColumnTypes(result.columnTypeAssignments || []);
+    var tableUrl = responseData && responseData.table_url;
+    await assignTableAlterColumnTypes(
+      result.columnTypeAssignments || [],
+      tableUrl,
+    );
     state.shouldRestoreFocus = false;
     state.dialog.close();
-    location.reload();
+    if (tableAlterResultRenamesTable(result) && tableUrl) {
+      window.location.href = tableUrl;
+    } else {
+      location.reload();
+    }
   } catch (error) {
     setTableAlterDialogSaving(state, false);
     showTableAlterDialogError(state, error.message || "Could not alter table");
@@ -3088,6 +3136,13 @@ function ensureTableAlterDialog(manager) {
           <div class="table-alter-column-list"></div>
           <button type="button" class="table-alter-add-column"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg><span>Add column</span></button>
         </div>
+        <details class="table-alter-table-options">
+          <summary>Rename table</summary>
+          <div class="table-alter-table-name-field">
+            <label class="table-alter-detail-label" for="table-alter-table-name">New table name</label>
+            <input id="table-alter-table-name" class="table-alter-input table-alter-table-name" type="text" autocomplete="off" placeholder="table name" required>
+          </div>
+        </details>
       </div>
       <div class="table-alter-review" hidden></div>
       <div class="modal-footer">
@@ -3106,6 +3161,8 @@ function ensureTableAlterDialog(manager) {
     title: dialog.querySelector(".modal-title"),
     error: dialog.querySelector(".table-alter-error"),
     fields: dialog.querySelector(".table-alter-fields"),
+    tableOptions: dialog.querySelector(".table-alter-table-options"),
+    tableNameInput: dialog.querySelector(".table-alter-table-name"),
     review: dialog.querySelector(".table-alter-review"),
     columnList: dialog.querySelector(".table-alter-column-list"),
     addColumnButton: dialog.querySelector(".table-alter-add-column"),
@@ -3117,6 +3174,7 @@ function ensureTableAlterDialog(manager) {
     shouldRestoreFocus: true,
     isSaving: false,
     initialSignature: "",
+    originalTableName: "",
     nextColumnIndex: 0,
     deletedColumns: [],
     originalColumnNames: [],
@@ -3132,6 +3190,11 @@ function ensureTableAlterDialog(manager) {
   tableAlterDialogState.form.addEventListener("submit", function (ev) {
     ev.preventDefault();
     saveTableAlterDialog(tableAlterDialogState);
+  });
+
+  tableAlterDialogState.tableNameInput.addEventListener("input", function () {
+    clearTableAlterDialogError(tableAlterDialogState);
+    updateTableAlterSaveButtonState(tableAlterDialogState);
   });
 
   tableAlterDialogState.addColumnButton.addEventListener("click", function () {

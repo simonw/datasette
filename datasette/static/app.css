@@ -2256,6 +2256,28 @@ dialog.table-alter-dialog::backdrop {
     overflow-y: auto;
 }
 
+.table-alter-table-options {
+    border-top: 1px solid var(--rule);
+    padding-top: 12px;
+}
+
+.table-alter-table-options > summary {
+    color: var(--ink);
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.table-alter-table-options > summary:focus {
+    outline: 3px solid rgba(26, 86, 219, 0.12);
+    outline-offset: 3px;
+}
+
+.table-alter-table-name-field {
+    display: grid;
+    gap: 4px;
+    margin-top: 10px;
+    max-width: 24rem;
+}
 
 .table-alter-fields[hidden],
 .table-alter-dialog .modal-footer [hidden] {

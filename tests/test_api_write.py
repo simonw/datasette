@@ -1005,12 +1005,12 @@ async def test_drop_table(ds_write, scenario):
                 "table_url": "http://localhost/data/one",
                 "table_api_url": "http://localhost/data/one.json",
                 "schema": (
-                    "CREATE TABLE [one] (\n"
-                    "   [id] INTEGER PRIMARY KEY,\n"
-                    "   [title] TEXT,\n"
-                    "   [score] INTEGER,\n"
-                    "   [weight] FLOAT,\n"
-                    "   [thumbnail] BLOB\n"
+                    'CREATE TABLE "one" (\n'
+                    '   "id" INTEGER PRIMARY KEY,\n'
+                    '   "title" TEXT,\n'
+                    '   "score" INTEGER,\n'
+                    '   "weight" REAL,\n'
+                    '   "thumbnail" BLOB\n'
                     ")"
                 ),
             },
@@ -1042,10 +1042,10 @@ async def test_drop_table(ds_write, scenario):
                 "table_url": "http://localhost/data/two",
                 "table_api_url": "http://localhost/data/two.json",
                 "schema": (
-                    "CREATE TABLE [two] (\n"
-                    "   [id] INTEGER PRIMARY KEY,\n"
-                    "   [title] TEXT,\n"
-                    "   [score] FLOAT\n"
+                    'CREATE TABLE "two" (\n'
+                    '   "id" INTEGER PRIMARY KEY,\n'
+                    '   "title" TEXT,\n'
+                    '   "score" REAL\n'
                     ")"
                 ),
                 "row_count": 2,
@@ -1071,10 +1071,10 @@ async def test_drop_table(ds_write, scenario):
                 "table_url": "http://localhost/data/three",
                 "table_api_url": "http://localhost/data/three.json",
                 "schema": (
-                    "CREATE TABLE [three] (\n"
-                    "   [id] INTEGER PRIMARY KEY,\n"
-                    "   [title] TEXT,\n"
-                    "   [score] FLOAT\n"
+                    'CREATE TABLE "three" (\n'
+                    '   "id" INTEGER PRIMARY KEY,\n'
+                    '   "title" TEXT,\n'
+                    '   "score" REAL\n'
                     ")"
                 ),
                 "row_count": 1,
@@ -1096,7 +1096,7 @@ async def test_drop_table(ds_write, scenario):
                 "table": "four",
                 "table_url": "http://localhost/data/four",
                 "table_api_url": "http://localhost/data/four.json",
-                "schema": ("CREATE TABLE [four] (\n" "   [name] TEXT\n" ")"),
+                "schema": ('CREATE TABLE "four" (\n' '   "name" TEXT\n' ")"),
                 "row_count": 1,
             },
             ["create-table", "insert-rows"],
@@ -1116,8 +1116,8 @@ async def test_drop_table(ds_write, scenario):
                 "table_url": "http://localhost/data/five",
                 "table_api_url": "http://localhost/data/five.json",
                 "schema": (
-                    "CREATE TABLE [five] (\n   [type] TEXT,\n   [key] INTEGER,\n"
-                    "   [title] TEXT,\n   PRIMARY KEY ([type], [key])\n)"
+                    'CREATE TABLE "five" (\n   "type" TEXT,\n   "key" INTEGER,\n'
+                    '   "title" TEXT,\n   PRIMARY KEY ("type", "key")\n)'
                 ),
                 "row_count": 1,
             },

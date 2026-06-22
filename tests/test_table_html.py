@@ -40,6 +40,35 @@ def database_data_from_soup(soup):
     return json.loads(match.group(1))
 
 
+DEFAULT_EXPRESSION_OPTIONS = [
+    {
+        "value": "current_timestamp",
+        "label": "Current timestamp in UTC, e.g. 2026-05-01 13:34:00",
+        "sqliteType": "text",
+    },
+    {
+        "value": "current_date",
+        "label": "Current date in UTC, e.g. 2026-05-01",
+        "sqliteType": "text",
+    },
+    {
+        "value": "current_time",
+        "label": "Current time in UTC, e.g. 13:34:00",
+        "sqliteType": "text",
+    },
+    {
+        "value": "current_unixtime",
+        "label": "Current Unix time, integer seconds since the epoch",
+        "sqliteType": "integer",
+    },
+    {
+        "value": "current_unixtime_ms",
+        "label": "Current Unix time, integer milliseconds since the epoch",
+        "sqliteType": "integer",
+    },
+]
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_definition_sql",
@@ -997,11 +1026,7 @@ async def test_database_create_table_action_button_and_data():
                 "foreignKeyTargetsPath": "/data/-/foreign-key-targets",
                 "databaseName": "data",
                 "columnTypes": ["text", "integer", "float", "blob"],
-                "defaultExpressions": [
-                    "current_timestamp",
-                    "current_date",
-                    "current_time",
-                ],
+                "defaultExpressions": DEFAULT_EXPRESSION_OPTIONS,
             },
         }
         assert "customColumnTypes" not in database_data_from_soup(soup)["createTable"]
@@ -1113,7 +1138,9 @@ async def test_table_alter_action_button_and_data():
             create table items (
                 id integer primary key,
                 name text not null,
-                score integer default 5
+                score integer default 5,
+                created text default current_timestamp,
+                created_ms integer default (CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER))
             );
             """)
         response = await ds.client.get("/data/items", actor={"id": "root"})
@@ -1145,11 +1172,7 @@ async def test_table_alter_action_button_and_data():
         assert alter_data["foreignKeyTargetsPath"] == (
             "/data/-/foreign-key-targets?table=items"
         )
-        assert alter_data["defaultExpressions"] == [
-            "current_timestamp",
-            "current_date",
-            "current_time",
-        ]
+        assert alter_data["defaultExpressions"] == DEFAULT_EXPRESSION_OPTIONS
         assert [option["name"] for option in alter_data["customColumnTypes"]] == [
             "email",
             "json",
@@ -1186,6 +1209,30 @@ async def test_table_alter_action_button_and_data():
                 "sqlite_type": "INTEGER",
                 "notnull": 0,
                 "default": "5",
+                "has_default": True,
+                "is_pk": False,
+                "foreign_key": None,
+                "column_type": None,
+            },
+            {
+                "name": "created",
+                "type": "text",
+                "sqlite_type": "TEXT",
+                "notnull": 0,
+                "default": None,
+                "default_expr": "current_timestamp",
+                "has_default": True,
+                "is_pk": False,
+                "foreign_key": None,
+                "column_type": None,
+            },
+            {
+                "name": "created_ms",
+                "type": "integer",
+                "sqlite_type": "INTEGER",
+                "notnull": 0,
+                "default": None,
+                "default_expr": "current_unixtime_ms",
                 "has_default": True,
                 "is_pk": False,
                 "foreign_key": None,

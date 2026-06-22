@@ -109,14 +109,64 @@ function createCustomColumnTypeSelect(options, className, placeholderClass) {
   return select;
 }
 
-var DEFAULT_EXPRESSION_LABELS = {
-  current_timestamp: "Current timestamp in UTC, e.g. 2026-05-01 13:34:00",
-  current_date: "Current date in UTC, e.g. 2026-05-01",
-  current_time: "Current time in UTC, e.g. 13:34:00",
-};
+function normalizeDefaultExpressionOption(option) {
+  if (typeof option === "string") {
+    return {
+      value: option,
+      label: option.replace(/_/g, " "),
+      sqliteType: "",
+    };
+  }
+  option = option || {};
+  return {
+    value: option.value || "",
+    label: option.label || option.value || "",
+    sqliteType: option.sqliteType || "",
+  };
+}
 
-function defaultExpressionLabel(value) {
-  return DEFAULT_EXPRESSION_LABELS[value] || value.replace(/_/g, " ");
+function defaultExpressionOptionForValue(options, value) {
+  var match = null;
+  (options || []).some(function (option) {
+    var normalized = normalizeDefaultExpressionOption(option);
+    if (normalized.value === value) {
+      match = normalized;
+      return true;
+    }
+    return false;
+  });
+  return match;
+}
+
+function defaultExpressionLabelForValue(options, value) {
+  var option = defaultExpressionOptionForValue(options, value);
+  return option && option.label
+    ? option.label
+    : value
+      ? value.replace(/_/g, " ")
+      : "";
+}
+
+function applyDefaultExpressionColumnType(row, prefix, options, columnTypes) {
+  var defaultExprSelect = row.querySelector("." + prefix + "-default-expr");
+  var typeSelect = row.querySelector("." + prefix + "-column-type");
+  if (!defaultExprSelect || !typeSelect || !defaultExprSelect.value) {
+    return false;
+  }
+  var option = defaultExpressionOptionForValue(
+    options,
+    defaultExprSelect.value,
+  );
+  if (
+    option &&
+    option.sqliteType &&
+    (columnTypes || []).indexOf(option.sqliteType) !== -1 &&
+    typeSelect.value !== option.sqliteType
+  ) {
+    typeSelect.value = option.sqliteType;
+    return true;
+  }
+  return false;
 }
 
 function createDefaultExpressionSelect(
@@ -132,9 +182,13 @@ function createDefaultExpressionSelect(
   blankOption.textContent = "- default expr -";
   select.appendChild(blankOption);
   options.forEach(function (option) {
+    var normalized = normalizeDefaultExpressionOption(option);
+    if (!normalized.value) {
+      return;
+    }
     var optionElement = document.createElement("option");
-    optionElement.value = option;
-    optionElement.textContent = defaultExpressionLabel(option);
+    optionElement.value = normalized.value;
+    optionElement.textContent = normalized.label;
     select.appendChild(optionElement);
   });
   select.value = value || "";
@@ -1078,6 +1132,18 @@ function createTableColumnRow(state, column) {
     if (defaultControls.defaultExprSelect.value) {
       defaultControls.defaultInput.value = "";
     }
+    if (
+      applyDefaultExpressionColumnType(
+        row,
+        "table-create",
+        tableCreateDefaultExpressions(),
+        tableCreateColumnTypes(),
+      )
+    ) {
+      syncTableCreateCustomTypeForSqliteType(row);
+      syncTableCreateForeignKeyOptions(row, state);
+      syncTableCreateCustomTypeAndForeignKey(row, state);
+    }
     syncSchemaDialogDefaultControls(row, "table-create");
     clearTableCreateDialogError(state);
   });
@@ -1948,8 +2014,15 @@ function createTableAlterColumnRow(state, column) {
   var originalName = existing ? column.name || "" : "";
   var originalCustomType =
     existing && column.column_type ? column.column_type.type || "" : "";
+  var originalDefaultExpr =
+    existing && column.has_default && column.default_expr
+      ? column.default_expr
+      : "";
   var originalDefault =
-    existing && column.has_default && column.default !== null
+    existing &&
+    column.has_default &&
+    !originalDefaultExpr &&
+    column.default !== null
       ? String(column.default)
       : "";
   var originalForeignKey =
@@ -1965,6 +2038,7 @@ function createTableAlterColumnRow(state, column) {
   row.dataset.originalNotNull = existing && column.notnull ? "1" : "0";
   row.dataset.originalHasDefault = existing && column.has_default ? "1" : "0";
   row.dataset.originalDefault = originalDefault;
+  row.dataset.originalDefaultExpr = originalDefaultExpr;
   row.dataset.originalPk = existing && column.is_pk ? "1" : "0";
   row.dataset.originalCustomType = originalCustomType;
   row.dataset.originalForeignKey = originalForeignKey;
@@ -2051,7 +2125,7 @@ function createTableAlterColumnRow(state, column) {
     tableAlterDefaultExpressions(),
     {
       defaultValue: originalDefault,
-      defaultExpr: "",
+      defaultExpr: originalDefaultExpr,
     },
   );
   var defaultInput = defaultControls.defaultInput;
@@ -2166,6 +2240,18 @@ function createTableAlterColumnRow(state, column) {
   defaultExprSelect.addEventListener("change", function () {
     if (defaultExprSelect.value) {
       defaultInput.value = "";
+    }
+    if (
+      applyDefaultExpressionColumnType(
+        row,
+        "table-alter",
+        tableAlterDefaultExpressions(),
+        tableAlterColumnTypes(),
+      )
+    ) {
+      syncTableAlterCustomTypeForSqliteType(row);
+      syncTableAlterForeignKeyOptions(row, state);
+      syncSchemaDialogCustomTypeAndForeignKey(row, state, "table-alter");
     }
     syncSchemaDialogDefaultControls(row, "table-alter");
     updateTableAlterSaveButtonState(state);
@@ -2336,6 +2422,7 @@ function collectTableAlterRows(state) {
     signature.originalNotNull = row.dataset.originalNotNull === "1";
     signature.originalHasDefault = row.dataset.originalHasDefault === "1";
     signature.originalDefault = row.dataset.originalDefault || "";
+    signature.originalDefaultExpr = row.dataset.originalDefaultExpr || "";
     signature.originalPk = row.dataset.originalPk === "1";
     signature.originalCustomType = row.dataset.originalCustomType || "";
     signature.originalForeignKey = row.dataset.originalForeignKey || "";
@@ -2567,8 +2654,12 @@ function collectTableAlterPayload(state) {
     if (row.notNull !== row.originalNotNull) {
       alterArgs.not_null = row.notNull;
     }
-    if (row.defaultExpr) {
-      alterArgs.default_expr = row.defaultExpr;
+    if (row.defaultExpr !== row.originalDefaultExpr) {
+      if (row.defaultExpr) {
+        alterArgs.default_expr = row.defaultExpr;
+      } else {
+        alterArgs.default = row.defaultValue === "" ? null : row.defaultValue;
+      }
     } else if (row.originalHasDefault) {
       if (row.defaultValue !== row.originalDefault) {
         alterArgs.default = row.defaultValue === "" ? null : row.defaultValue;
@@ -2630,7 +2721,7 @@ function tableAlterQuotedName(name) {
 }
 
 function tableAlterReadableDefaultExpression(value) {
-  return value ? value.replace(/_/g, " ") : "";
+  return defaultExpressionLabelForValue(tableAlterDefaultExpressions(), value);
 }
 
 function tableAlterReadableValue(value) {

@@ -900,6 +900,64 @@ async def test_alter_table_operations(ds_write):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "default_expr,minimum_value,expected_schema",
+    (
+        (
+            "current_unixtime",
+            1_600_000_000,
+            "strftime('%s', 'now')",
+        ),
+        (
+            "current_unixtime_ms",
+            1_600_000_000_000,
+            "julianday('now')",
+        ),
+    ),
+)
+async def test_alter_table_integer_default_expr(
+    ds_write, default_expr, minimum_value, expected_schema
+):
+    token = write_token(ds_write, permissions=["at"])
+    db = ds_write.get_database("data")
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json={
+            "operations": [
+                {
+                    "op": "add_column",
+                    "args": {
+                        "name": "created",
+                        "type": "integer",
+                        "default_expr": default_expr,
+                    },
+                }
+            ]
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert expected_schema in data["schema"]
+
+    columns = await db.execute("select * from pragma_table_info('docs')")
+    created_column = [
+        column for column in columns.dicts() if column["name"] == "created"
+    ][0]
+    assert created_column["type"] == "INTEGER"
+    assert expected_schema in created_column["dflt_value"]
+
+    row = await db.execute_write_fn(
+        lambda conn: conn.execute(
+            "insert into docs (title) values ('with default') "
+            "returning created, typeof(created)"
+        ).fetchone()
+    )
+    assert row[0] > minimum_value
+    assert row[1] == "integer"
+
+
+@pytest.mark.asyncio
 async def test_alter_table_rename_table(ds_write):
     token = write_token(ds_write, permissions=["at"])
     db = ds_write.get_database("data")
@@ -1315,7 +1373,7 @@ async def test_alter_table_permission_denied(ds_write):
                     }
                 ]
             },
-            "operations.0.add_column.args.default_expr: Input should be 'current_timestamp', 'current_date' or 'current_time'",
+            "operations.0.add_column.args.default_expr: Input should be 'current_timestamp', 'current_date', 'current_time', 'current_unixtime' or 'current_unixtime_ms'",
         ),
         (
             {
@@ -2055,6 +2113,63 @@ async def test_create_table_with_column_constraints(ds_write):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    "default_expr,minimum_value,expected_schema",
+    (
+        (
+            "current_unixtime",
+            1_600_000_000,
+            "strftime('%s', 'now')",
+        ),
+        (
+            "current_unixtime_ms",
+            1_600_000_000_000,
+            "julianday('now')",
+        ),
+    ),
+)
+async def test_create_table_integer_default_expr(
+    ds_write, default_expr, minimum_value, expected_schema
+):
+    token = write_token(ds_write)
+    table = "default_{}".format(default_expr)
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": table,
+            "columns": [
+                {"name": "id", "type": "integer"},
+                {
+                    "name": "created",
+                    "type": "integer",
+                    "default_expr": default_expr,
+                },
+            ],
+            "pk": "id",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201, response.text
+    data = response.json()
+    assert expected_schema in data["schema"]
+
+    db = ds_write.get_database("data")
+    columns = (await db.execute("select * from pragma_table_info(?)", [table])).dicts()
+    assert columns[1]["type"] == "INTEGER"
+    assert expected_schema in columns[1]["dflt_value"]
+
+    row = await db.execute_write_fn(
+        lambda conn: conn.execute(
+            "insert into [{}] default values returning created, typeof(created)".format(
+                table
+            )
+        ).fetchone()
+    )
+    assert row[0] > minimum_value
+    assert row[1] == "integer"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     "column,expected_error",
     (
         (
@@ -2071,7 +2186,7 @@ async def test_create_table_with_column_constraints(ds_write):
                 "type": "text",
                 "default_expr": "datetime('now')",
             },
-            "columns.0.default_expr: Input should be 'current_timestamp', 'current_date' or 'current_time'",
+            "columns.0.default_expr: Input should be 'current_timestamp', 'current_date', 'current_time', 'current_unixtime' or 'current_unixtime_ms'",
         ),
         (
             {

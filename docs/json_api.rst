@@ -44,7 +44,7 @@ looks like this:
 
 ``"ok"`` is always ``true`` if an error did not occur.
 
-The ``"rows"`` key is a list of objects, each one representing a row. 
+The ``"rows"`` key is a list of objects, each one representing a row.
 
 The ``"truncated"`` key lets you know if the query was truncated. This can happen if a SQL query returns more than 1,000 results (or the :ref:`setting_max_returned_rows` setting).
 
@@ -1990,7 +1990,7 @@ The JSON here describes the table that will be created:
   - ``type`` is the type of the column. This is optional - if not provided, ``text`` will be assumed. The valid types are ``text``, ``integer``, ``float`` and ``blob``.
   - ``not_null`` can be set to ``true`` to create this column with a ``NOT NULL`` constraint.
   - ``default`` can be used to set a literal default value for this column.
-  - ``default_expr`` can be used instead of ``default`` to set a SQLite default expression. The supported values are ``current_timestamp``, ``current_date`` and ``current_time``.
+  - ``default_expr`` can be used instead of ``default`` to set a SQLite default expression. See :ref:`default_expr values <json_api_default_expr_values>`.
   - ``fk_table`` can be used to create a single-column foreign key constraint referencing another table. ``fk_column`` is optional and can be used to specify the referenced column - if omitted, Datasette will use the single primary key of ``fk_table``.
 
 * ``pk`` is the primary key for the table. This is optional - if not provided, Datasette will create a SQLite table with a hidden ``rowid`` column.
@@ -2003,6 +2003,32 @@ The JSON here describes the table that will be created:
 * ``ignore`` can be set to ``true`` to ignore existing rows by primary key if the table already exists.
 * ``replace`` can be set to ``true`` to replace existing rows by primary key if the table already exists. This requires the :ref:`actions_update_row` permission.
 * ``alter`` can be set to ``true`` if you want to automatically add any missing columns to the table. This requires the :ref:`actions_alter_table` permission.
+
+.. _json_api_default_expr_values:
+
+``default_expr`` accepts these values:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Value
+     - Recommended column type
+     - Example inserted value
+   * - ``current_timestamp``
+     - ``text``
+     - ``2026-05-01 13:34:00``
+   * - ``current_date``
+     - ``text``
+     - ``2026-05-01``
+   * - ``current_time``
+     - ``text``
+     - ``13:34:00``
+   * - ``current_unixtime``
+     - ``integer``
+     - ``1777642440``
+   * - ``current_unixtime_ms``
+     - ``integer``
+     - ``1777642440000``
 
 This example creates a foreign key from ``projects.owner_id`` to the single primary key of ``owners``:
 
@@ -2314,7 +2340,7 @@ Supported operations:
 * ``set_foreign_keys`` replaces all foreign key constraints on the table. ``args`` accepts ``foreign_keys``, a list of objects that each have ``column``, ``fk_table`` and optional ``fk_column``. An empty list removes all foreign key constraints.
 * ``reorder_columns`` reorders columns. ``args`` accepts ``columns``, a list of one or more column names. Columns omitted from this list will appear afterwards in their existing order.
 
-``default`` is always treated as a literal value. ``default_expr`` accepts one of ``current_timestamp``, ``current_date`` or ``current_time`` and is rendered as the corresponding SQLite default expression.
+``default`` is always treated as a literal value. ``default_expr`` accepts the values shown in :ref:`default_expr values <json_api_default_expr_values>` and is rendered as the corresponding SQLite default expression.
 
 For foreign key operations that omit ``fk_column``, the referenced ``fk_table`` must have a single-column primary key. Datasette will return an error if it cannot identify a single primary key column for that table.
 

@@ -51,8 +51,9 @@ from .database import QueryView
 from .table_create_alter import (
     ALTER_TABLE_COLUMN_TYPES,
     ALTER_TABLE_TYPE_FOR_SQLITE_TYPE,
-    DEFAULT_EXPR_SQL,
     _custom_column_type_options_for_create_table,
+    default_expr_for_sql,
+    default_expression_options,
 )
 from .table_extras import (
     TABLE_EXTRA_BUNDLES,
@@ -401,23 +402,25 @@ async def _table_alter_ui(
             continue
         sqlite_type = SQLiteType.from_declared_type(column.type)
         column_type = column_types_map.get(column.name)
-        columns.append(
-            {
-                "name": column.name,
-                "type": ALTER_TABLE_TYPE_FOR_SQLITE_TYPE.get(sqlite_type, "text"),
-                "sqlite_type": sqlite_type.value,
-                "notnull": column.notnull,
-                "default": column.default_value,
-                "has_default": column.default_value is not None,
-                "is_pk": column.name in pks,
-                "foreign_key": foreign_keys_by_column.get(column.name),
-                "column_type": (
-                    {"type": column_type.name, "config": column_type.config}
-                    if column_type is not None
-                    else None
-                ),
-            }
-        )
+        default_expr = default_expr_for_sql(column.default_value)
+        column_data = {
+            "name": column.name,
+            "type": ALTER_TABLE_TYPE_FOR_SQLITE_TYPE.get(sqlite_type, "text"),
+            "sqlite_type": sqlite_type.value,
+            "notnull": column.notnull,
+            "default": None if default_expr else column.default_value,
+            "has_default": column.default_value is not None,
+            "is_pk": column.name in pks,
+            "foreign_key": foreign_keys_by_column.get(column.name),
+            "column_type": (
+                {"type": column_type.name, "config": column_type.config}
+                if column_type is not None
+                else None
+            ),
+        }
+        if default_expr:
+            column_data["default_expr"] = default_expr
+        columns.append(column_data)
 
     data = {
         "path": "{}/-/alter".format(datasette.urls.table(database_name, table_name)),
@@ -425,7 +428,7 @@ async def _table_alter_ui(
         "columns": columns,
         "primaryKeys": pks,
         "columnTypes": ALTER_TABLE_COLUMN_TYPES,
-        "defaultExpressions": list(DEFAULT_EXPR_SQL),
+        "defaultExpressions": default_expression_options(),
         "foreignKeyTargetsPath": "{}/-/foreign-key-targets?table={}".format(
             datasette.urls.database(database_name),
             urllib.parse.quote(table_name, safe=""),

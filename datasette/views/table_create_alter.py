@@ -266,7 +266,7 @@ async def _create_table_ui_context(
         ),
         "databaseName": database_name,
         "columnTypes": CREATE_TABLE_COLUMN_TYPES,
-        "defaultExpressions": list(DEFAULT_EXPR_SQL),
+        "defaultExpressions": default_expression_options(),
     }
     can_set_column_type = await datasette.allowed(
         action="set-column-type",
@@ -308,12 +308,109 @@ def _custom_column_type_options_for_create_table(datasette):
 
 
 SqliteApiType = Literal["text", "integer", "float", "blob"]
-DefaultExpr = Literal["current_timestamp", "current_date", "current_time"]
-DEFAULT_EXPR_SQL = {
-    "current_timestamp": "CURRENT_TIMESTAMP",
-    "current_date": "CURRENT_DATE",
-    "current_time": "CURRENT_TIME",
+DEFAULT_EXPRESSIONS = {
+    "current_timestamp": {
+        "sql": "CURRENT_TIMESTAMP",
+        "label": "Current timestamp in UTC, e.g. 2026-05-01 13:34:00",
+        "sqliteType": "text",
+    },
+    "current_date": {
+        "sql": "CURRENT_DATE",
+        "label": "Current date in UTC, e.g. 2026-05-01",
+        "sqliteType": "text",
+    },
+    "current_time": {
+        "sql": "CURRENT_TIME",
+        "label": "Current time in UTC, e.g. 13:34:00",
+        "sqliteType": "text",
+    },
+    "current_unixtime": {
+        "sql": "(CAST(strftime('%s', 'now') AS INTEGER))",
+        "label": "Current Unix time, integer seconds since the epoch",
+        "sqliteType": "integer",
+    },
+    "current_unixtime_ms": {
+        "sql": "(CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER))",
+        "label": "Current Unix time, integer milliseconds since the epoch",
+        "sqliteType": "integer",
+    },
 }
+DefaultExpr = str
+DEFAULT_EXPR_SQL = {
+    name: metadata["sql"] for name, metadata in DEFAULT_EXPRESSIONS.items()
+}
+
+
+def _strip_wrapping_parentheses(expression):
+    expression = expression.strip()
+    while expression.startswith("(") and expression.endswith(")"):
+        depth = 0
+        in_single_quote = False
+        wraps_whole_expression = True
+        i = 0
+        while i < len(expression):
+            char = expression[i]
+            if char == "'":
+                if (
+                    in_single_quote
+                    and i + 1 < len(expression)
+                    and expression[i + 1] == "'"
+                ):
+                    i += 2
+                    continue
+                in_single_quote = not in_single_quote
+            elif not in_single_quote:
+                if char == "(":
+                    depth += 1
+                elif char == ")":
+                    depth -= 1
+                    if depth == 0 and i != len(expression) - 1:
+                        wraps_whole_expression = False
+                        break
+            i += 1
+        if not wraps_whole_expression or depth != 0 or in_single_quote:
+            break
+        expression = expression[1:-1].strip()
+    return expression
+
+
+def _default_expression_lookup_key(expression):
+    return re.sub(r"\s+", " ", _strip_wrapping_parentheses(expression)).lower()
+
+
+DEFAULT_EXPR_BY_SQL = {
+    _default_expression_lookup_key(sql): name for name, sql in DEFAULT_EXPR_SQL.items()
+}
+
+
+def default_expr_for_sql(expression):
+    if expression is None:
+        return None
+    return DEFAULT_EXPR_BY_SQL.get(_default_expression_lookup_key(expression))
+
+
+def _quoted_options(options):
+    if len(options) == 1:
+        return "'{}'".format(options[0])
+    return "{} or '{}'".format(
+        ", ".join("'{}'".format(option) for option in options[:-1]),
+        options[-1],
+    )
+
+
+def _default_expr_error_message():
+    return "Input should be {}".format(_quoted_options(list(DEFAULT_EXPRESSIONS)))
+
+
+def default_expression_options():
+    return [
+        {
+            "value": value,
+            "label": metadata["label"],
+            "sqliteType": metadata["sqliteType"],
+        }
+        for value, metadata in DEFAULT_EXPRESSIONS.items()
+    ]
 
 
 class _StrictPydanticModel(BaseModel):
@@ -323,6 +420,13 @@ class _StrictPydanticModel(BaseModel):
 class _DefaultArgsMixin(_StrictPydanticModel):
     default: Any | None = None
     default_expr: DefaultExpr | None = None
+
+    @field_validator("default_expr")
+    @classmethod
+    def validate_default_expr_value(cls, value):
+        if value is not None and value not in DEFAULT_EXPRESSIONS:
+            raise PydanticCustomError("default_expr", _default_expr_error_message())
+        return value
 
     @model_validator(mode="after")
     def validate_default_fields(self):

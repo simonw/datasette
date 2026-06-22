@@ -98,6 +98,10 @@ def write_playwright_database(db_path):
             notes text,
             score integer default 5
         );
+        create table defaults_demo (
+            id integer primary key,
+            created_ms integer default (CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER))
+        );
         insert into projects (title, metadata, logo, notes, score) values
             (
                 'Build Datasette',
@@ -134,6 +138,11 @@ def write_playwright_config(config_path):
                                     "insert-row": True,
                                     "update-row": True,
                                     "delete-row": True,
+                                },
+                            },
+                            "defaults_demo": {
+                                "permissions": {
+                                    "alter-table": True,
                                 },
                             },
                         },
@@ -395,6 +404,32 @@ def test_create_table_foreign_key_selection_updates_column_type(page, datasette_
 
 
 @pytest.mark.playwright
+def test_create_table_unix_default_expression_updates_column_type(
+    page, datasette_server
+):
+    page.goto(f"{datasette_server}data")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-database-action="create-table"]').click()
+
+    dialog = page.locator("#table-create-dialog")
+    dialog.wait_for()
+    row = dialog.locator(".table-create-column-row").nth(1)
+    row.locator(".table-create-more-options").click()
+    row.locator(".table-create-default-options summary").click()
+
+    type_select = row.locator(".table-create-column-type")
+    default_expr = row.locator(".table-create-default-expr")
+    assert type_select.input_value() == "text"
+    assert (
+        "Current Unix time, integer milliseconds since the epoch"
+        in default_expr.locator("option").last.inner_text()
+    )
+
+    default_expr.select_option("current_unixtime_ms")
+    assert type_select.input_value() == "integer"
+
+
+@pytest.mark.playwright
 def test_alter_table_foreign_key_selection_updates_blank_column(page, datasette_server):
     page.goto(f"{datasette_server}data/projects")
     page.locator("details.actions-menu-links summary").click()
@@ -414,6 +449,52 @@ def test_alter_table_foreign_key_selection_updates_blank_column(page, datasette_
     assert column_name.input_value() == "projects_id"
     assert type_select.input_value() == "integer"
     assert foreign_key_select.input_value() == "projects\u001fid"
+
+
+@pytest.mark.playwright
+def test_alter_table_unix_default_expression_updates_column_type(
+    page, datasette_server
+):
+    page.goto(f"{datasette_server}data/projects")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-table-action="alter-table"]').click()
+
+    dialog = page.locator("#table-alter-dialog")
+    dialog.wait_for()
+    dialog.locator(".table-alter-add-column").click()
+    row = dialog.locator(".table-alter-column-row").last
+    row.locator(".table-alter-default-options summary").click()
+
+    type_select = row.locator(".table-alter-column-type")
+    default_expr = row.locator(".table-alter-default-expr")
+    assert type_select.input_value() == "text"
+    assert (
+        "Current Unix time, integer seconds since the epoch"
+        in default_expr.locator("option").all_inner_texts()
+    )
+
+    default_expr.select_option("current_unixtime")
+    assert type_select.input_value() == "integer"
+
+
+@pytest.mark.playwright
+def test_alter_table_existing_default_expression_populates_select(
+    page, datasette_server
+):
+    page.goto(f"{datasette_server}data/defaults_demo")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-table-action="alter-table"]').click()
+
+    dialog = page.locator("#table-alter-dialog")
+    dialog.wait_for()
+    row = dialog.locator(".table-alter-column-row").nth(1)
+    row.locator(".table-alter-more-options").click()
+    row.locator(".table-alter-default-options summary").click()
+
+    assert row.locator(".table-alter-default-expr").input_value() == (
+        "current_unixtime_ms"
+    )
+    assert row.locator(".table-alter-default").input_value() == ""
 
 
 @pytest.mark.playwright

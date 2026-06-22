@@ -1,6 +1,6 @@
 from datasette.app import Datasette
 from datasette.events import RenameTableEvent
-from datasette.utils import sqlite3
+from datasette.utils import escape_sqlite, sqlite3
 from .utils import last_event
 import pytest
 import time
@@ -38,6 +38,16 @@ def _headers(token):
         "Authorization": "Bearer {}".format(token),
         "Content-Type": "application/json",
     }
+
+
+def _insert_and_fetch_created(conn, table, insert_sql):
+    cursor = conn.execute(insert_sql)
+    return conn.execute(
+        "select created, typeof(created) from {} where rowid = ?".format(
+            escape_sqlite(table)
+        ),
+        (cursor.lastrowid,),
+    ).fetchone()
 
 
 @pytest.mark.asyncio
@@ -948,10 +958,9 @@ async def test_alter_table_integer_default_expr(
     assert expected_schema in created_column["dflt_value"]
 
     row = await db.execute_write_fn(
-        lambda conn: conn.execute(
-            "insert into docs (title) values ('with default') "
-            "returning created, typeof(created)"
-        ).fetchone()
+        lambda conn: _insert_and_fetch_created(
+            conn, "docs", "insert into docs (title) values ('with default')"
+        )
     )
     assert row[0] > minimum_value
     assert row[1] == "integer"
@@ -2158,11 +2167,9 @@ async def test_create_table_integer_default_expr(
     assert expected_schema in columns[1]["dflt_value"]
 
     row = await db.execute_write_fn(
-        lambda conn: conn.execute(
-            "insert into [{}] default values returning created, typeof(created)".format(
-                table
-            )
-        ).fetchone()
+        lambda conn: _insert_and_fetch_created(
+            conn, table, "insert into {} default values".format(escape_sqlite(table))
+        )
     )
     assert row[0] > minimum_value
     assert row[1] == "integer"

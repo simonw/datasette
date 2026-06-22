@@ -1864,12 +1864,18 @@ dialog.table-create-dialog::backdrop {
 .table-create-input {
     box-sizing: border-box;
     min-width: 0;
+    min-height: 46px;
     border: 1px solid var(--rule);
     border-radius: 5px;
     padding: 8px 10px;
     color: var(--ink);
     background: #fff;
     font: inherit;
+    line-height: 1.35;
+}
+
+select.table-create-input {
+    height: 46px;
 }
 
 .table-create-input-placeholder {
@@ -2333,12 +2339,18 @@ dialog.table-alter-dialog::backdrop {
 .table-alter-input {
     box-sizing: border-box;
     min-width: 0;
+    min-height: 46px;
     border: 1px solid var(--rule);
     border-radius: 5px;
     padding: 8px 10px;
     color: var(--ink);
     background: #fff;
     font: inherit;
+    line-height: 1.35;
+}
+
+select.table-alter-input {
+    height: 46px;
 }
 
 .table-alter-input-placeholder {

@@ -295,6 +295,15 @@ def test_create_table_flow(page, datasette_server):
         placeholder_select.locator("option:checked").inner_text() == "- custom type -"
     )
     assert "table-create-input-placeholder" in placeholder_select.get_attribute("class")
+    assert dialog.locator(".table-create-column-main").first.evaluate("""node => {
+            const inputHeight = node.querySelector(
+                ".table-create-column-name"
+            ).getBoundingClientRect().height;
+            const selectHeight = node.querySelector(
+                ".table-create-column-type"
+            ).getBoundingClientRect().height;
+            return Math.abs(inputHeight - selectHeight) <= 1;
+        }""")
     dialog.locator('input[name="table"]').fill("playwright_created")
     dialog.locator(".table-create-column-name").nth(1).fill("title")
     dialog.locator(".table-create-add-column").click()
@@ -340,6 +349,15 @@ def test_alter_table_flow(page, datasette_server):
     dialog.wait_for()
     assert dialog.locator(".modal-title").inner_text() == "Alter table projects"
     assert dialog.locator(".table-alter-save").is_disabled()
+    assert dialog.locator(".table-alter-column-main").first.evaluate("""node => {
+            const inputHeight = node.querySelector(
+                ".table-alter-column-name"
+            ).getBoundingClientRect().height;
+            const selectHeight = node.querySelector(
+                ".table-alter-column-type"
+            ).getBoundingClientRect().height;
+            return Math.abs(inputHeight - selectHeight) <= 1;
+        }""")
     type_options = dialog.locator(".table-alter-column-type").first.locator("option")
     assert type_options.all_inner_texts() == [
         "text",

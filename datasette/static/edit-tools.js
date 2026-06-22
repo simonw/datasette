@@ -60,6 +60,11 @@ function tableCreateColumnTypes() {
     : ["text", "integer", "float", "blob"];
 }
 
+function tableCreateDefaultExpressions() {
+  var data = databaseCreateTableData() || {};
+  return data.defaultExpressions || [];
+}
+
 var SQLITE_COLUMN_TYPE_LABELS = {
   float: "floating point number",
   real: "floating point number",
@@ -102,6 +107,112 @@ function createCustomColumnTypeSelect(options, className, placeholderClass) {
   });
   updateSelectPlaceholder(select, placeholderClass);
   return select;
+}
+
+var DEFAULT_EXPRESSION_LABELS = {
+  current_timestamp: "Current timestamp in UTC, e.g. 2026-05-01 13:34:00",
+  current_date: "Current date in UTC, e.g. 2026-05-01",
+  current_time: "Current time in UTC, e.g. 13:34:00",
+};
+
+function defaultExpressionLabel(value) {
+  return DEFAULT_EXPRESSION_LABELS[value] || value.replace(/_/g, " ");
+}
+
+function createDefaultExpressionSelect(
+  options,
+  className,
+  placeholderClass,
+  value,
+) {
+  var select = document.createElement("select");
+  select.className = className;
+  var blankOption = document.createElement("option");
+  blankOption.value = "";
+  blankOption.textContent = "- default expr -";
+  select.appendChild(blankOption);
+  options.forEach(function (option) {
+    var optionElement = document.createElement("option");
+    optionElement.value = option;
+    optionElement.textContent = defaultExpressionLabel(option);
+    select.appendChild(optionElement);
+  });
+  select.value = value || "";
+  updateSelectPlaceholder(select, placeholderClass);
+  return select;
+}
+
+function createSchemaDialogDefaultControls(prefix, index, expressions, column) {
+  var defaultDetails = document.createElement("details");
+  defaultDetails.className = prefix + "-default-options";
+  defaultDetails.open = !!(
+    column &&
+    (column.defaultValue || column.defaultExpr)
+  );
+  var summary = document.createElement("summary");
+  summary.textContent = "Set a default value";
+  defaultDetails.appendChild(summary);
+
+  var defaultGrid = document.createElement("div");
+  defaultGrid.className = prefix + "-default-grid";
+
+  var defaultExprId = prefix + "-column-default-expr-" + index;
+  var defaultExprField = document.createElement("div");
+  defaultExprField.className = prefix + "-detail-field";
+  var defaultExprLabel = document.createElement("label");
+  defaultExprLabel.className = prefix + "-detail-label";
+  defaultExprLabel.setAttribute("for", defaultExprId);
+  defaultExprLabel.textContent = "Default expression";
+  var defaultExprSelect = createDefaultExpressionSelect(
+    expressions,
+    prefix + "-input " + prefix + "-default-expr",
+    prefix + "-input-placeholder",
+    column && column.defaultExpr,
+  );
+  defaultExprSelect.id = defaultExprId;
+  defaultExprSelect.setAttribute("aria-label", "Default expression");
+  defaultExprField.appendChild(defaultExprLabel);
+  defaultExprField.appendChild(defaultExprSelect);
+
+  var defaultId = prefix + "-column-default-" + index;
+  var defaultField = document.createElement("div");
+  defaultField.className = prefix + "-detail-field";
+  var defaultLabel = document.createElement("label");
+  defaultLabel.className = prefix + "-detail-label";
+  defaultLabel.setAttribute("for", defaultId);
+  defaultLabel.textContent = "or default to a specific value";
+  var defaultInput = document.createElement("input");
+  defaultInput.id = defaultId;
+  defaultInput.className = prefix + "-input " + prefix + "-default";
+  defaultInput.type = "text";
+  defaultInput.autocomplete = "off";
+  defaultInput.placeholder = "default";
+  defaultInput.setAttribute("aria-label", "or default to a specific value");
+  defaultInput.value = column && column.defaultValue ? column.defaultValue : "";
+  defaultField.appendChild(defaultLabel);
+  defaultField.appendChild(defaultInput);
+
+  defaultGrid.appendChild(defaultExprField);
+  defaultGrid.appendChild(defaultField);
+  defaultDetails.appendChild(defaultGrid);
+
+  return {
+    controls: defaultDetails,
+    defaultInput: defaultInput,
+    defaultExprSelect: defaultExprSelect,
+  };
+}
+
+function syncSchemaDialogDefaultControls(row, prefix) {
+  if (!row) {
+    return;
+  }
+  var defaultInput = row.querySelector("." + prefix + "-default");
+  var defaultExprSelect = row.querySelector("." + prefix + "-default-expr");
+  if (!defaultInput || !defaultExprSelect) {
+    return;
+  }
+  updateSelectPlaceholder(defaultExprSelect, prefix + "-input-placeholder");
 }
 
 var COLUMN_MOVE_ICONS = {
@@ -316,7 +427,7 @@ function updateTableCreateMoveButtons(state) {
   updateSchemaDialogMoveButtons(state, "table-create");
 }
 
-function tableCreateTypeAffinity(type) {
+function schemaDialogTypeAffinity(type) {
   if (type === "float") {
     return "real";
   }
@@ -337,11 +448,11 @@ function foreignKeyTypesCompatible(sourceAffinity, targetAffinity) {
   return false;
 }
 
-function tableCreateForeignKeyTargetKey(target) {
+function foreignKeyTargetKey(target) {
   return target.fk_table + "\u001f" + target.fk_column;
 }
 
-function tableCreateForeignKeyTargetLabel(target) {
+function foreignKeyTargetLabel(target) {
   return (
     target.fk_table +
     "." +
@@ -350,6 +461,54 @@ function tableCreateForeignKeyTargetLabel(target) {
     sqliteColumnTypeLabel(target.type) +
     ")"
   );
+}
+
+function appendForeignKeyTargetOption(select, target) {
+  var optionElement = document.createElement("option");
+  optionElement.value = foreignKeyTargetKey(target);
+  optionElement.dataset.fkTable = target.fk_table;
+  optionElement.dataset.fkColumn = target.fk_column;
+  optionElement.dataset.fkType = target.type;
+  optionElement.textContent = foreignKeyTargetLabel(target);
+  select.appendChild(optionElement);
+  return optionElement;
+}
+
+function sqliteColumnTypeForForeignKeyTarget(type) {
+  var affinity = schemaDialogTypeAffinity(type);
+  if (affinity === "real" || affinity === "numeric") {
+    return "float";
+  }
+  if (["text", "integer", "blob"].indexOf(affinity) !== -1) {
+    return affinity;
+  }
+  return "";
+}
+
+function selectedSchemaDialogForeignKeyOption(foreignKeySelect) {
+  return foreignKeySelect && foreignKeySelect.selectedOptions
+    ? foreignKeySelect.selectedOptions[0]
+    : null;
+}
+
+function setBlankSchemaDialogColumnNameFromForeignKey(
+  row,
+  prefix,
+  foreignKeyOption,
+) {
+  var nameInput = row.querySelector("." + prefix + "-column-name");
+  if (
+    nameInput &&
+    !nameInput.value.trim() &&
+    foreignKeyOption &&
+    foreignKeyOption.dataset.fkTable &&
+    foreignKeyOption.dataset.fkColumn
+  ) {
+    nameInput.value =
+      foreignKeyOption.dataset.fkTable +
+      "_" +
+      foreignKeyOption.dataset.fkColumn;
+  }
 }
 
 function tableCreateForeignKeyTargetsUrl() {
@@ -363,7 +522,14 @@ function tableCreateForeignKeyTargetsUrl() {
   return data.path.replace(/\/-\/create$/, "/-/foreign-key-targets");
 }
 
-function populateTableCreateForeignKeySelect(select, state, sourceType) {
+function populateSchemaDialogForeignKeySelect(
+  select,
+  state,
+  prefix,
+  sourceType,
+  options,
+) {
+  options = options || {};
   var previousKey = select.value || select.dataset.selectedKey || "";
   select.textContent = "";
 
@@ -385,45 +551,64 @@ function populateTableCreateForeignKeySelect(select, state, sourceType) {
     errorOption.textContent = "Could not load foreign keys";
     select.appendChild(errorOption);
   } else {
-    var sourceAffinity = tableCreateTypeAffinity(sourceType);
+    var sourceAffinity = schemaDialogTypeAffinity(sourceType);
     (state.foreignKeyTargets || []).forEach(function (target) {
-      if (!foreignKeyTypesCompatible(sourceAffinity, target.type)) {
+      if (
+        options.filterByType !== false &&
+        !foreignKeyTypesCompatible(sourceAffinity, target.type)
+      ) {
         return;
       }
-      var optionElement = document.createElement("option");
-      optionElement.value = tableCreateForeignKeyTargetKey(target);
-      optionElement.dataset.fkTable = target.fk_table;
-      optionElement.dataset.fkColumn = target.fk_column;
-      optionElement.textContent = tableCreateForeignKeyTargetLabel(target);
-      select.appendChild(optionElement);
+      appendForeignKeyTargetOption(select, target);
     });
   }
 
   select.value = previousKey;
+  if (
+    previousKey &&
+    select.value !== previousKey &&
+    select.dataset.currentFkTable &&
+    select.dataset.currentFkColumn
+  ) {
+    appendForeignKeyTargetOption(select, {
+      fk_table: select.dataset.currentFkTable,
+      fk_column: select.dataset.currentFkColumn,
+      type: select.dataset.currentFkType || sourceType,
+    });
+    select.value = previousKey;
+  }
   if (select.value !== previousKey) {
     select.value = "";
   }
   select.dataset.selectedKey = select.value;
   select.disabled = state.isSaving || select.options.length <= 1;
-  updateSelectPlaceholder(select, "table-create-input-placeholder");
+  updateSelectPlaceholder(select, prefix + "-input-placeholder");
 }
 
-function syncTableCreateForeignKeyOptions(row, state) {
-  var typeSelect = row.querySelector(".table-create-column-type");
-  var foreignKeySelect = row.querySelector(".table-create-foreign-key-target");
+function syncSchemaDialogForeignKeyOptions(row, state, prefix, options) {
+  var typeSelect = row.querySelector("." + prefix + "-column-type");
+  var foreignKeySelect = row.querySelector(
+    "." + prefix + "-foreign-key-target",
+  );
   if (!typeSelect || !foreignKeySelect) {
     return;
   }
-  populateTableCreateForeignKeySelect(
+  populateSchemaDialogForeignKeySelect(
     foreignKeySelect,
     state,
+    prefix,
     typeSelect.value,
+    options,
   );
 }
 
-function syncTableCreateCustomTypeAndForeignKey(row, state, isFirstColumn) {
-  var customTypeSelect = row.querySelector(".table-create-custom-column-type");
-  var foreignKeySelect = row.querySelector(".table-create-foreign-key-target");
+function syncSchemaDialogCustomTypeAndForeignKey(row, state, prefix) {
+  var customTypeSelect = row.querySelector(
+    "." + prefix + "-custom-column-type",
+  );
+  var foreignKeySelect = row.querySelector(
+    "." + prefix + "-foreign-key-target",
+  );
   if (!foreignKeySelect) {
     return;
   }
@@ -433,14 +618,14 @@ function syncTableCreateCustomTypeAndForeignKey(row, state, isFirstColumn) {
 
   if (customTypeSelect && hasForeignKey) {
     customTypeSelect.value = "";
-    updateTableCreateCustomColumnTypePlaceholder(customTypeSelect);
+    updateSelectPlaceholder(customTypeSelect, prefix + "-input-placeholder");
     hasCustomType = false;
   }
 
-  if (isFirstColumn || hasCustomType) {
+  if (hasCustomType) {
     foreignKeySelect.value = "";
     foreignKeySelect.dataset.selectedKey = "";
-    updateTableCreateCustomColumnTypePlaceholder(foreignKeySelect);
+    updateSelectPlaceholder(foreignKeySelect, prefix + "-input-placeholder");
     hasForeignKey = false;
   }
 
@@ -448,63 +633,73 @@ function syncTableCreateCustomTypeAndForeignKey(row, state, isFirstColumn) {
     customTypeSelect.disabled = state.isSaving;
   }
   foreignKeySelect.disabled =
-    state.isSaving || isFirstColumn || foreignKeySelect.options.length <= 1;
+    state.isSaving || foreignKeySelect.options.length <= 1;
 }
 
-function refreshTableCreateForeignKeyControls(state) {
-  tableCreateDialogRows(state).forEach(function (row, index) {
-    if (index > 0) {
-      syncTableCreateForeignKeyOptions(row, state);
-    }
-    syncTableCreateCustomTypeAndForeignKey(row, state, index === 0);
-  });
-}
+function handleSchemaDialogForeignKeyChange(row, state, prefix, options) {
+  options = options || {};
+  var foreignKeySelect = row.querySelector(
+    "." + prefix + "-foreign-key-target",
+  );
+  var typeSelect = row.querySelector("." + prefix + "-column-type");
+  var customTypeSelect = row.querySelector(
+    "." + prefix + "-custom-column-type",
+  );
+  if (!foreignKeySelect) {
+    return;
+  }
+  foreignKeySelect.dataset.selectedKey = foreignKeySelect.value;
+  updateSelectPlaceholder(foreignKeySelect, prefix + "-input-placeholder");
 
-function updateTableCreateColumnRules(state) {
-  tableCreateDialogRows(state).forEach(function (row, index) {
-    var isFirstColumn = index === 0;
-    var pkLabel = row.querySelector(".table-create-primary-key");
-    var pkInput = row.querySelector(".table-create-primary-key-input");
-    var foreignKeyField = row.querySelector(".table-create-foreign-key-field");
-    var foreignKeySelect = row.querySelector(
-      ".table-create-foreign-key-target",
+  var foreignKeyOption = selectedSchemaDialogForeignKeyOption(foreignKeySelect);
+  setBlankSchemaDialogColumnNameFromForeignKey(row, prefix, foreignKeyOption);
+
+  var columnTypes = options.columnTypes || [];
+  var foreignKeyColumnType =
+    foreignKeyOption && foreignKeyOption.dataset.fkType
+      ? sqliteColumnTypeForForeignKeyTarget(foreignKeyOption.dataset.fkType)
+      : "";
+  if (
+    options.matchType &&
+    typeSelect &&
+    foreignKeyColumnType &&
+    columnTypes.indexOf(foreignKeyColumnType) !== -1 &&
+    typeSelect.value !== foreignKeyColumnType
+  ) {
+    typeSelect.value = foreignKeyColumnType;
+    syncSchemaDialogForeignKeyOptions(
+      row,
+      state,
+      prefix,
+      options.foreignKeyOptions,
     );
+  }
 
-    if (pkLabel && pkInput) {
-      pkLabel.hidden = !isFirstColumn;
-      if (!isFirstColumn) {
-        pkInput.checked = false;
-      }
-    }
-
-    if (foreignKeyField && foreignKeySelect) {
-      foreignKeyField.hidden = isFirstColumn;
-      if (isFirstColumn) {
-        foreignKeySelect.value = "";
-        foreignKeySelect.dataset.selectedKey = "";
-        foreignKeySelect.disabled = true;
-        updateTableCreateCustomColumnTypePlaceholder(foreignKeySelect);
-      } else {
-        syncTableCreateForeignKeyOptions(row, state);
-      }
-      syncTableCreateCustomTypeAndForeignKey(row, state, isFirstColumn);
-    }
-  });
-  updateTableCreateMoveButtons(state);
+  if (customTypeSelect && foreignKeySelect.value) {
+    customTypeSelect.value = "";
+    updateSelectPlaceholder(customTypeSelect, prefix + "-input-placeholder");
+  }
+  syncSchemaDialogCustomTypeAndForeignKey(row, state, prefix);
 }
 
-async function loadTableCreateForeignKeyTargets(state) {
-  var url = tableCreateForeignKeyTargetsUrl();
+function refreshSchemaDialogForeignKeyControls(state, prefix, options) {
+  schemaDialogRows(state, prefix).forEach(function (row) {
+    syncSchemaDialogForeignKeyOptions(row, state, prefix, options);
+    syncSchemaDialogCustomTypeAndForeignKey(row, state, prefix);
+  });
+}
+
+async function loadSchemaDialogForeignKeyTargets(state, prefix, url, options) {
   if (!url || !window.fetch) {
     state.foreignKeyTargets = [];
     state.foreignKeyTargetsLoading = false;
-    refreshTableCreateForeignKeyControls(state);
+    refreshSchemaDialogForeignKeyControls(state, prefix, options);
     return;
   }
   state.foreignKeyTargets = [];
   state.foreignKeyTargetsError = null;
   state.foreignKeyTargetsLoading = true;
-  refreshTableCreateForeignKeyControls(state);
+  refreshSchemaDialogForeignKeyControls(state, prefix, options);
   try {
     var response = await fetch(url, {
       headers: {
@@ -521,8 +716,44 @@ async function loadTableCreateForeignKeyTargets(state) {
     state.foreignKeyTargetsError = error;
   } finally {
     state.foreignKeyTargetsLoading = false;
-    refreshTableCreateForeignKeyControls(state);
+    refreshSchemaDialogForeignKeyControls(state, prefix, options);
   }
+}
+
+function syncTableCreateForeignKeyOptions(row, state) {
+  syncSchemaDialogForeignKeyOptions(row, state, "table-create", {
+    filterByType: false,
+  });
+}
+
+function syncTableCreateCustomTypeAndForeignKey(row, state) {
+  syncSchemaDialogCustomTypeAndForeignKey(row, state, "table-create");
+}
+
+function refreshTableCreateForeignKeyControls(state) {
+  tableCreateDialogRows(state).forEach(function (row) {
+    syncTableCreateForeignKeyOptions(row, state);
+    syncTableCreateCustomTypeAndForeignKey(row, state);
+  });
+}
+
+function updateTableCreateColumnRules(state) {
+  normalizeSchemaDialogPrimaryKeyRows(state, "table-create");
+  tableCreateDialogRows(state).forEach(function (row) {
+    syncTableCreateForeignKeyOptions(row, state);
+    syncTableCreateCustomTypeAndForeignKey(row, state);
+    syncSchemaDialogDefaultControls(row, "table-create");
+  });
+  updateTableCreateMoveButtons(state);
+}
+
+async function loadTableCreateForeignKeyTargets(state) {
+  return loadSchemaDialogForeignKeyTargets(
+    state,
+    "table-create",
+    tableCreateForeignKeyTargetsUrl(),
+    { filterByType: false },
+  );
 }
 
 function tableCreateDialogSignature(state) {
@@ -542,6 +773,9 @@ function tableCreateDialogSignature(state) {
             }
           ).value || "",
         pk: row.querySelector(".table-create-primary-key-input").checked,
+        notNull: row.querySelector(".table-create-not-null-input").checked,
+        defaultValue: row.querySelector(".table-create-default").value,
+        defaultExpr: row.querySelector(".table-create-default-expr").value,
         foreignKey:
           (
             row.querySelector(".table-create-foreign-key-target") || {
@@ -654,6 +888,7 @@ function createTableColumnRow(state, column) {
   nameInput.type = "text";
   nameInput.required = true;
   nameInput.autocomplete = "off";
+  nameInput.placeholder = "column name";
   nameInput.value = column && column.name ? column.name : "";
 
   var typeSelect = document.createElement("select");
@@ -728,6 +963,32 @@ function createTableColumnRow(state, column) {
   foreignKeyField.appendChild(foreignKeyHelp);
   foreignKeyField.appendChild(foreignKeySelect);
 
+  var notNullLabel = document.createElement("label");
+  notNullLabel.className = "table-create-detail-check table-create-not-null";
+  var notNullInput = document.createElement("input");
+  notNullInput.type = "checkbox";
+  notNullInput.className = "table-create-not-null-input";
+  notNullInput.checked = !!(column && column.notNull);
+  var notNullText = document.createElement("span");
+  var notNullStrong = document.createElement("strong");
+  notNullStrong.textContent = "Not null";
+  notNullText.appendChild(notNullStrong);
+  notNullText.appendChild(
+    document.createTextNode(" This value cannot be left unset"),
+  );
+  notNullLabel.appendChild(notNullInput);
+  notNullLabel.appendChild(notNullText);
+
+  var defaultControls = createSchemaDialogDefaultControls(
+    "table-create",
+    index,
+    tableCreateDefaultExpressions(),
+    {
+      defaultValue: column && column.defaultValue,
+      defaultExpr: column && column.defaultExpr,
+    },
+  );
+
   var moveControls = createSchemaDialogMoveControls("table-create");
 
   var removeButton = createSchemaDialogIconButton(
@@ -748,8 +1009,10 @@ function createTableColumnRow(state, column) {
   if (customTypeField) {
     details.appendChild(customTypeField);
   }
-  details.appendChild(foreignKeyField);
+  details.appendChild(defaultControls.controls);
+  details.appendChild(notNullLabel);
   details.appendChild(pkLabel);
+  details.appendChild(foreignKeyField);
   row.appendChild(main);
   row.appendChild(details);
 
@@ -775,11 +1038,7 @@ function createTableColumnRow(state, column) {
     clearTableCreateDialogError(state);
     syncTableCreateCustomTypeForSqliteType(row);
     syncTableCreateForeignKeyOptions(row, state);
-    syncTableCreateCustomTypeAndForeignKey(
-      row,
-      state,
-      row === state.columnList.firstElementChild,
-    );
+    syncTableCreateCustomTypeAndForeignKey(row, state);
   });
   if (customTypeSelect) {
     customTypeSelect.addEventListener("change", function () {
@@ -798,30 +1057,37 @@ function createTableColumnRow(state, column) {
         typeSelect.value = option.fixedSqliteType;
         syncTableCreateForeignKeyOptions(row, state);
       }
-      syncTableCreateCustomTypeAndForeignKey(
-        row,
-        state,
-        row === state.columnList.firstElementChild,
-      );
+      syncTableCreateCustomTypeAndForeignKey(row, state);
     });
   }
   pkInput.addEventListener("change", function () {
     clearTableCreateDialogError(state);
     updateTableCreateColumnRules(state);
   });
-  foreignKeySelect.addEventListener("change", function () {
-    foreignKeySelect.dataset.selectedKey = foreignKeySelect.value;
+  notNullInput.addEventListener("change", function () {
     clearTableCreateDialogError(state);
-    updateTableCreateCustomColumnTypePlaceholder(foreignKeySelect);
-    if (customTypeSelect && foreignKeySelect.value) {
-      customTypeSelect.value = "";
-      updateTableCreateCustomColumnTypePlaceholder(customTypeSelect);
+  });
+  defaultControls.defaultInput.addEventListener("input", function () {
+    if (defaultControls.defaultInput.value) {
+      defaultControls.defaultExprSelect.value = "";
+      syncSchemaDialogDefaultControls(row, "table-create");
     }
-    syncTableCreateCustomTypeAndForeignKey(
-      row,
-      state,
-      row === state.columnList.firstElementChild,
-    );
+    clearTableCreateDialogError(state);
+  });
+  defaultControls.defaultExprSelect.addEventListener("change", function () {
+    if (defaultControls.defaultExprSelect.value) {
+      defaultControls.defaultInput.value = "";
+    }
+    syncSchemaDialogDefaultControls(row, "table-create");
+    clearTableCreateDialogError(state);
+  });
+  foreignKeySelect.addEventListener("change", function () {
+    clearTableCreateDialogError(state);
+    handleSchemaDialogForeignKeyChange(row, state, "table-create", {
+      columnTypes: tableCreateColumnTypes(),
+      foreignKeyOptions: { filterByType: false },
+      matchType: true,
+    });
   });
 
   expandButton.addEventListener("click", function () {
@@ -887,6 +1153,7 @@ function createTableColumnRow(state, column) {
     row.querySelector(".table-create-column-name").focus();
   });
 
+  syncSchemaDialogDefaultControls(row, "table-create");
   return row;
 }
 
@@ -921,7 +1188,7 @@ function collectTableCreatePayload(state) {
     columns: [],
   };
   var primaryKeys = [];
-  tableCreateDialogRows(state).forEach(function (row, index) {
+  tableCreateDialogRows(state).forEach(function (row) {
     var name = row.querySelector(".table-create-column-name").value.trim();
     var type = row.querySelector(".table-create-column-type").value;
     var column = { name: name, type: type };
@@ -933,7 +1200,6 @@ function collectTableCreatePayload(state) {
         ? foreignKeySelect.selectedOptions[0]
         : null;
     if (
-      index > 0 &&
       foreignKeyOption &&
       foreignKeyOption.dataset.fkTable &&
       foreignKeyOption.dataset.fkColumn
@@ -941,11 +1207,18 @@ function collectTableCreatePayload(state) {
       column.fk_table = foreignKeyOption.dataset.fkTable;
       column.fk_column = foreignKeyOption.dataset.fkColumn;
     }
+    if (row.querySelector(".table-create-not-null-input").checked) {
+      column.not_null = true;
+    }
+    var defaultExpr = row.querySelector(".table-create-default-expr").value;
+    var defaultValue = row.querySelector(".table-create-default").value;
+    if (defaultExpr) {
+      column.default_expr = defaultExpr;
+    } else if (defaultValue) {
+      column.default = defaultValue;
+    }
     payload.columns.push(column);
-    if (
-      index === 0 &&
-      row.querySelector(".table-create-primary-key-input").checked
-    ) {
+    if (row.querySelector(".table-create-primary-key-input").checked) {
       primaryKeys.push(name);
     }
   });
@@ -1005,6 +1278,9 @@ function validateTableCreatePayload(payload) {
     seen[columnKey] = true;
     if (supportedTypes.indexOf(column.type) === -1) {
       return "Unsupported column type: " + column.type;
+    }
+    if (column.default && column.default_expr) {
+      return "Use either a default value or a default expression.";
     }
   }
   return null;
@@ -1467,6 +1743,11 @@ function tableAlterDefaultExpressions() {
   return data.defaultExpressions || [];
 }
 
+function tableAlterForeignKeyTargetsUrl() {
+  var data = tableAlterData() || {};
+  return data.foreignKeyTargetsPath || null;
+}
+
 function tableAlterCustomColumnTypes() {
   var data = tableAlterData() || {};
   return data.customColumnTypes || [];
@@ -1494,7 +1775,21 @@ function tableAlterDialogRows(state) {
   return schemaDialogRows(state, "table-alter");
 }
 
+function syncTableAlterForeignKeyOptions(row, state) {
+  syncSchemaDialogForeignKeyOptions(row, state, "table-alter", {
+    filterByType: false,
+  });
+}
+
 function tableAlterRowSignature(row) {
+  var foreignKeySelect = row.querySelector(".table-alter-foreign-key-target");
+  var foreignKeyValue = foreignKeySelect
+    ? foreignKeySelect.value || foreignKeySelect.dataset.selectedKey || ""
+    : "";
+  var foreignKeyOption =
+    foreignKeySelect && foreignKeySelect.selectedOptions
+      ? foreignKeySelect.selectedOptions[0]
+      : null;
   return {
     existing: row.dataset.existing === "1",
     originalName: row.dataset.originalName || "",
@@ -1510,6 +1805,15 @@ function tableAlterRowSignature(row) {
     defaultValue: row.querySelector(".table-alter-default").value,
     defaultExpr: row.querySelector(".table-alter-default-expr").value,
     pk: row.querySelector(".table-alter-primary-key-input").checked,
+    foreignKey: foreignKeyValue,
+    foreignKeyTable:
+      foreignKeyOption && foreignKeyOption.dataset.fkTable
+        ? foreignKeyOption.dataset.fkTable
+        : "",
+    foreignKeyColumn:
+      foreignKeyOption && foreignKeyOption.dataset.fkColumn
+        ? foreignKeyOption.dataset.fkColumn
+        : "",
   };
 }
 
@@ -1581,7 +1885,7 @@ function setTableAlterDialogSaving(state, isSaving) {
       ? "Applying..."
       : "Preparing..."
     : tableAlterSaveButtonText(state);
-  state.columnList
+  state.fields
     .querySelectorAll("input, select, button")
     .forEach(function (control) {
       control.disabled = isSaving;
@@ -1590,10 +1894,12 @@ function setTableAlterDialogSaving(state, isSaving) {
     state.columnList
       .querySelectorAll(".table-alter-default-expr")
       .forEach(function (select) {
-        syncTableAlterDefaultControls(
+        syncSchemaDialogDefaultControls(
           select.closest(".table-alter-column-row"),
+          "table-alter",
         );
       });
+    refreshSchemaDialogForeignKeyControls(state, "table-alter");
   }
   updateTableAlterMoveButtons(state);
   updateTableAlterSaveButtonState(state);
@@ -1634,38 +1940,6 @@ function syncTableAlterCustomTypeForSqliteType(row) {
   }
 }
 
-function tableAlterSelectDefaultExprValue(select, value) {
-  var blankOption = document.createElement("option");
-  blankOption.value = "";
-  blankOption.textContent = "- default expr -";
-  select.appendChild(blankOption);
-  tableAlterDefaultExpressions().forEach(function (option) {
-    var optionElement = document.createElement("option");
-    optionElement.value = option;
-    optionElement.textContent = option.replace(/_/g, " ");
-    select.appendChild(optionElement);
-  });
-  select.value = value || "";
-  updateTableAlterDefaultExprPlaceholder(select);
-}
-
-function updateTableAlterDefaultExprPlaceholder(select) {
-  updateSelectPlaceholder(select, "table-alter-input-placeholder");
-}
-
-function syncTableAlterDefaultControls(row) {
-  if (!row) {
-    return;
-  }
-  var defaultInput = row.querySelector(".table-alter-default");
-  var defaultExprSelect = row.querySelector(".table-alter-default-expr");
-  if (!defaultInput || !defaultExprSelect) {
-    return;
-  }
-  defaultInput.disabled = !!defaultExprSelect.value;
-  updateTableAlterDefaultExprPlaceholder(defaultExprSelect);
-}
-
 function createTableAlterColumnRow(state, column) {
   var index = state.nextColumnIndex;
   state.nextColumnIndex += 1;
@@ -1676,6 +1950,10 @@ function createTableAlterColumnRow(state, column) {
   var originalDefault =
     existing && column.has_default && column.default !== null
       ? String(column.default)
+      : "";
+  var originalForeignKey =
+    existing && column.foreign_key
+      ? foreignKeyTargetKey(column.foreign_key)
       : "";
 
   var row = document.createElement("div");
@@ -1688,6 +1966,7 @@ function createTableAlterColumnRow(state, column) {
   row.dataset.originalDefault = originalDefault;
   row.dataset.originalPk = existing && column.is_pk ? "1" : "0";
   row.dataset.originalCustomType = originalCustomType;
+  row.dataset.originalForeignKey = originalForeignKey;
 
   var main = document.createElement("div");
   main.className = "table-alter-column-main";
@@ -1714,6 +1993,7 @@ function createTableAlterColumnRow(state, column) {
   nameInput.type = "text";
   nameInput.required = true;
   nameInput.autocomplete = "off";
+  nameInput.placeholder = "column name";
   nameInput.value = column && column.name ? column.name : "";
 
   var typeSelect = document.createElement("select");
@@ -1764,38 +2044,51 @@ function createTableAlterColumnRow(state, column) {
   notNullLabel.appendChild(notNullInput);
   notNullLabel.appendChild(notNullText);
 
-  var defaultId = "table-alter-column-default-" + index;
-  var defaultField = document.createElement("div");
-  defaultField.className = "table-alter-detail-field";
-  var defaultLabel = document.createElement("label");
-  defaultLabel.className = "table-alter-detail-label";
-  defaultLabel.setAttribute("for", defaultId);
-  defaultLabel.textContent = "Default value";
-  var defaultInput = document.createElement("input");
-  defaultInput.id = defaultId;
-  defaultInput.className = "table-alter-input table-alter-default";
-  defaultInput.type = "text";
-  defaultInput.autocomplete = "off";
-  defaultInput.placeholder = "default";
-  defaultInput.setAttribute("aria-label", "Default value");
-  defaultInput.value = originalDefault;
-  defaultField.appendChild(defaultLabel);
-  defaultField.appendChild(defaultInput);
+  var defaultControls = createSchemaDialogDefaultControls(
+    "table-alter",
+    index,
+    tableAlterDefaultExpressions(),
+    {
+      defaultValue: originalDefault,
+      defaultExpr: "",
+    },
+  );
+  var defaultInput = defaultControls.defaultInput;
+  var defaultExprSelect = defaultControls.defaultExprSelect;
 
-  var defaultExprId = "table-alter-column-default-expr-" + index;
-  var defaultExprField = document.createElement("div");
-  defaultExprField.className = "table-alter-detail-field";
-  var defaultExprLabel = document.createElement("label");
-  defaultExprLabel.className = "table-alter-detail-label";
-  defaultExprLabel.setAttribute("for", defaultExprId);
-  defaultExprLabel.textContent = "or default to a specific time";
-  var defaultExprSelect = document.createElement("select");
-  defaultExprSelect.id = defaultExprId;
-  defaultExprSelect.className = "table-alter-input table-alter-default-expr";
-  defaultExprSelect.setAttribute("aria-label", "or default to a specific time");
-  tableAlterSelectDefaultExprValue(defaultExprSelect, "");
-  defaultExprField.appendChild(defaultExprLabel);
-  defaultExprField.appendChild(defaultExprSelect);
+  var foreignKeyId = "table-alter-column-foreign-key-" + index;
+  var foreignKeyHelpId = "table-alter-column-foreign-key-help-" + index;
+  var foreignKeyField = document.createElement("div");
+  foreignKeyField.className =
+    "table-alter-detail-field table-alter-foreign-key-field";
+  var foreignKeyLabel = document.createElement("label");
+  foreignKeyLabel.className = "table-alter-detail-label";
+  foreignKeyLabel.setAttribute("for", foreignKeyId);
+  foreignKeyLabel.textContent = "Foreign key";
+  var foreignKeyHelp = document.createElement("p");
+  foreignKeyHelp.id = foreignKeyHelpId;
+  foreignKeyHelp.className = "table-alter-detail-help";
+  foreignKeyHelp.textContent = "Link this column to another table.";
+  var foreignKeySelect = document.createElement("select");
+  foreignKeySelect.id = foreignKeyId;
+  foreignKeySelect.className =
+    "table-alter-input table-alter-foreign-key-target";
+  foreignKeySelect.setAttribute("aria-label", "Foreign key target");
+  foreignKeySelect.setAttribute("aria-describedby", foreignKeyHelpId);
+  foreignKeySelect.dataset.selectedKey = originalForeignKey;
+  if (column && column.foreign_key) {
+    foreignKeySelect.dataset.currentFkTable = column.foreign_key.fk_table;
+    foreignKeySelect.dataset.currentFkColumn = column.foreign_key.fk_column;
+    appendForeignKeyTargetOption(foreignKeySelect, {
+      fk_table: column.foreign_key.fk_table,
+      fk_column: column.foreign_key.fk_column,
+      type: column.type || "text",
+    });
+    foreignKeySelect.value = originalForeignKey;
+  }
+  foreignKeyField.appendChild(foreignKeyLabel);
+  foreignKeyField.appendChild(foreignKeyHelp);
+  foreignKeyField.appendChild(foreignKeySelect);
 
   var pkLabel = document.createElement("label");
   pkLabel.className = "table-alter-detail-check table-alter-primary-key";
@@ -1832,10 +2125,10 @@ function createTableAlterColumnRow(state, column) {
   if (customTypeField) {
     details.appendChild(customTypeField);
   }
+  details.appendChild(defaultControls.controls);
   details.appendChild(notNullLabel);
-  details.appendChild(defaultField);
-  details.appendChild(defaultExprField);
   details.appendChild(pkLabel);
+  details.appendChild(foreignKeyField);
   row.appendChild(main);
   row.appendChild(details);
 
@@ -1846,6 +2139,7 @@ function createTableAlterColumnRow(state, column) {
     defaultInput,
     defaultExprSelect,
     pkInput,
+    foreignKeySelect,
   ];
   if (customTypeSelect) {
     controls.push(customTypeSelect);
@@ -1864,7 +2158,7 @@ function createTableAlterColumnRow(state, column) {
   defaultInput.addEventListener("input", function () {
     if (defaultInput.value) {
       defaultExprSelect.value = "";
-      syncTableAlterDefaultControls(row);
+      syncSchemaDialogDefaultControls(row, "table-alter");
     }
     updateTableAlterSaveButtonState(state);
   });
@@ -1872,7 +2166,7 @@ function createTableAlterColumnRow(state, column) {
     if (defaultExprSelect.value) {
       defaultInput.value = "";
     }
-    syncTableAlterDefaultControls(row);
+    syncSchemaDialogDefaultControls(row, "table-alter");
     updateTableAlterSaveButtonState(state);
   });
   pkInput.addEventListener("change", function () {
@@ -1887,6 +2181,8 @@ function createTableAlterColumnRow(state, column) {
 
   typeSelect.addEventListener("change", function () {
     syncTableAlterCustomTypeForSqliteType(row);
+    syncTableAlterForeignKeyOptions(row, state);
+    syncSchemaDialogCustomTypeAndForeignKey(row, state, "table-alter");
     updateTableAlterSaveButtonState(state);
   });
   if (customTypeSelect) {
@@ -1899,10 +2195,20 @@ function createTableAlterColumnRow(state, column) {
         tableAlterColumnTypes().indexOf(option.fixedSqliteType) !== -1
       ) {
         typeSelect.value = option.fixedSqliteType;
+        syncTableAlterForeignKeyOptions(row, state);
       }
+      syncSchemaDialogCustomTypeAndForeignKey(row, state, "table-alter");
       updateTableAlterSaveButtonState(state);
     });
   }
+  foreignKeySelect.addEventListener("change", function () {
+    handleSchemaDialogForeignKeyChange(row, state, "table-alter", {
+      columnTypes: tableAlterColumnTypes(),
+      foreignKeyOptions: { filterByType: false },
+      matchType: true,
+    });
+    updateTableAlterSaveButtonState(state);
+  });
 
   moveControls.topButton.addEventListener("click", function () {
     var first = tableAlterFirstNonPrimaryRow(state);
@@ -1986,7 +2292,9 @@ function createTableAlterColumnRow(state, column) {
     }
   });
 
-  syncTableAlterDefaultControls(row);
+  syncSchemaDialogDefaultControls(row, "table-alter");
+  syncTableAlterForeignKeyOptions(row, state);
+  syncSchemaDialogCustomTypeAndForeignKey(row, state, "table-alter");
   return row;
 }
 
@@ -2026,6 +2334,7 @@ function collectTableAlterRows(state) {
     signature.originalDefault = row.dataset.originalDefault || "";
     signature.originalPk = row.dataset.originalPk === "1";
     signature.originalCustomType = row.dataset.originalCustomType || "";
+    signature.originalForeignKey = row.dataset.originalForeignKey || "";
     return signature;
   });
 }
@@ -2156,6 +2465,46 @@ function tableAlterColumnsReordered(state, rows) {
   );
 }
 
+function tableAlterForeignKeyIdentity(row) {
+  return [
+    row.name.trim(),
+    row.foreignKeyTable || "",
+    row.foreignKeyColumn || "",
+  ].join("\u001f");
+}
+
+function tableAlterOriginalForeignKeyIdentity(row) {
+  return [row.originalName || "", row.originalForeignKey].join("\u001f");
+}
+
+function tableAlterForeignKeyRows(rows) {
+  return rows
+    .filter(function (row) {
+      return row.foreignKey && row.foreignKeyTable && row.foreignKeyColumn;
+    })
+    .map(function (row) {
+      return {
+        column: row.name.trim(),
+        fk_table: row.foreignKeyTable,
+        fk_column: row.foreignKeyColumn,
+      };
+    });
+}
+
+function tableAlterForeignKeysChanged(rows) {
+  var original = rows
+    .filter(function (row) {
+      return row.existing && row.originalForeignKey;
+    })
+    .map(tableAlterOriginalForeignKeyIdentity);
+  var final = rows
+    .filter(function (row) {
+      return row.foreignKey && row.foreignKeyTable && row.foreignKeyColumn;
+    })
+    .map(tableAlterForeignKeyIdentity);
+  return JSON.stringify(original) !== JSON.stringify(final);
+}
+
 function collectTableAlterPayload(state) {
   var rows = collectTableAlterRows(state);
   var validationError = validateTableAlterRows(state, rows);
@@ -2233,6 +2582,15 @@ function collectTableAlterPayload(state) {
         columns: rows.map(function (row) {
           return row.name.trim();
         }),
+      },
+    });
+  }
+
+  if (tableAlterForeignKeysChanged(rows)) {
+    operations.push({
+      op: "set_foreign_keys",
+      args: {
+        foreign_keys: tableAlterForeignKeyRows(rows),
       },
     });
   }
@@ -2351,6 +2709,27 @@ function tableAlterOperationSummary(operation) {
         "Set column order to " +
         (args.columns || []).map(tableAlterQuotedName).join(", ") +
         ".",
+      damaging: false,
+    };
+  }
+  if (operation.op === "set_foreign_keys") {
+    var foreignKeys = args.foreign_keys || [];
+    return {
+      text: foreignKeys.length
+        ? "Set foreign keys to " +
+          foreignKeys
+            .map(function (foreignKey) {
+              return (
+                tableAlterQuotedName(foreignKey.column) +
+                " -> " +
+                foreignKey.fk_table +
+                "." +
+                foreignKey.fk_column
+              );
+            })
+            .join(", ") +
+          "."
+        : "Remove all foreign keys.",
       damaging: false,
     };
   }
@@ -2742,6 +3121,9 @@ function ensureTableAlterDialog(manager) {
     deletedColumns: [],
     originalColumnNames: [],
     originalPrimaryKeys: [],
+    foreignKeyTargets: [],
+    foreignKeyTargetsError: null,
+    foreignKeyTargetsLoading: false,
     mode: "edit",
     reviewResult: null,
     manager: manager,
@@ -2844,6 +3226,12 @@ function openTableAlterDialog(button, manager) {
   state.title.textContent = "Alter table " + data.tableName;
   clearTableAlterDialogError(state);
   resetTableAlterDialog(state, data);
+  loadSchemaDialogForeignKeyTargets(
+    state,
+    "table-alter",
+    tableAlterForeignKeyTargetsUrl(),
+    { filterByType: false },
+  );
   if (!state.dialog.open) {
     state.dialog.showModal();
   }

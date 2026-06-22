@@ -266,6 +266,7 @@ async def _create_table_ui_context(
         ),
         "databaseName": database_name,
         "columnTypes": CREATE_TABLE_COLUMN_TYPES,
+        "defaultExpressions": list(DEFAULT_EXPR_SQL),
     }
     can_set_column_type = await datasette.allowed(
         action="set-column-type",

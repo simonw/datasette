@@ -997,6 +997,11 @@ async def test_database_create_table_action_button_and_data():
                 "foreignKeyTargetsPath": "/data/-/foreign-key-targets",
                 "databaseName": "data",
                 "columnTypes": ["text", "integer", "float", "blob"],
+                "defaultExpressions": [
+                    "current_timestamp",
+                    "current_date",
+                    "current_time",
+                ],
             },
         }
         assert "customColumnTypes" not in database_data_from_soup(soup)["createTable"]

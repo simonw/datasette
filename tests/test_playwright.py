@@ -295,6 +295,10 @@ def test_create_table_flow(page, datasette_server):
         placeholder_select.locator("option:checked").inner_text() == "- custom type -"
     )
     assert "table-create-input-placeholder" in placeholder_select.get_attribute("class")
+    assert (
+        dialog.locator(".table-create-column-name").nth(0).get_attribute("placeholder")
+        == "column name"
+    )
     assert dialog.locator(".table-create-column-main").first.evaluate("""node => {
             const inputHeight = node.querySelector(
                 ".table-create-column-name"
@@ -306,6 +310,22 @@ def test_create_table_flow(page, datasette_server):
         }""")
     dialog.locator('input[name="table"]').fill("playwright_created")
     dialog.locator(".table-create-column-name").nth(1).fill("title")
+    dialog.locator(".table-create-more-options").nth(1).click()
+    dialog.locator(".table-create-not-null-input").nth(1).check()
+    title_defaults = dialog.locator(".table-create-default-options").nth(1)
+    assert title_defaults.locator("summary").inner_text() == "Set a default value"
+    title_defaults.locator("summary").click()
+    assert "or default to a specific value" in title_defaults.inner_text()
+    title_default_expr = title_defaults.locator(".table-create-default-expr")
+    title_default_input = title_defaults.locator(".table-create-default")
+    assert (
+        "Current timestamp in UTC, e.g. 2026-05-01 13:34:00"
+        in title_default_expr.locator("option").nth(1).inner_text()
+    )
+    title_default_expr.select_option("current_timestamp")
+    assert title_default_input.is_enabled()
+    title_default_input.fill("Untitled")
+    assert title_default_expr.input_value() == ""
     dialog.locator(".table-create-add-column").click()
     dialog.locator(".table-create-column-name").nth(2).fill("score")
     dialog.locator(".table-create-column-type").nth(2).select_option("integer")
@@ -337,6 +357,63 @@ def test_create_table_flow(page, datasette_server):
     assert data["column_types"] == {
         "metadata": {"type": "json", "config": None},
     }
+    schema_response = httpx.get(
+        f"{datasette_server}data/-/query.json",
+        params={
+            "sql": (
+                "select sql from sqlite_master where type = 'table' "
+                "and name = 'playwright_created'"
+            )
+        },
+    )
+    schema_response.raise_for_status()
+    schema = schema_response.json()["rows"][0]["sql"]
+    assert "title" in schema
+    assert "NOT NULL DEFAULT 'Untitled'" in schema
+
+
+@pytest.mark.playwright
+def test_create_table_foreign_key_selection_updates_column_type(page, datasette_server):
+    page.goto(f"{datasette_server}data")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-database-action="create-table"]').click()
+
+    dialog = page.locator("#table-create-dialog")
+    dialog.wait_for()
+    dialog.locator(".table-create-more-options").nth(1).click()
+
+    column_name = dialog.locator(".table-create-column-name").nth(1)
+    type_select = dialog.locator(".table-create-column-type").nth(1)
+    foreign_key_select = dialog.locator(".table-create-foreign-key-target").nth(1)
+    assert column_name.input_value() == ""
+    assert type_select.input_value() == "text"
+
+    foreign_key_select.select_option("projects\u001fid")
+    assert column_name.input_value() == "projects_id"
+    assert type_select.input_value() == "integer"
+    assert foreign_key_select.input_value() == "projects\u001fid"
+
+
+@pytest.mark.playwright
+def test_alter_table_foreign_key_selection_updates_blank_column(page, datasette_server):
+    page.goto(f"{datasette_server}data/projects")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-table-action="alter-table"]').click()
+
+    dialog = page.locator("#table-alter-dialog")
+    dialog.wait_for()
+    dialog.locator(".table-alter-add-column").click()
+
+    column_name = dialog.locator(".table-alter-column-name").last
+    type_select = dialog.locator(".table-alter-column-type").last
+    foreign_key_select = dialog.locator(".table-alter-foreign-key-target").last
+    assert column_name.input_value() == ""
+    assert type_select.input_value() == "text"
+
+    foreign_key_select.select_option("projects\u001fid")
+    assert column_name.input_value() == "projects_id"
+    assert type_select.input_value() == "integer"
+    assert foreign_key_select.input_value() == "projects\u001fid"
 
 
 @pytest.mark.playwright
@@ -349,6 +426,10 @@ def test_alter_table_flow(page, datasette_server):
     dialog.wait_for()
     assert dialog.locator(".modal-title").inner_text() == "Alter table projects"
     assert dialog.locator(".table-alter-save").is_disabled()
+    assert (
+        dialog.locator(".table-alter-column-name").first.get_attribute("placeholder")
+        == "column name"
+    )
     assert dialog.locator(".table-alter-column-main").first.evaluate("""node => {
             const inputHeight = node.querySelector(
                 ".table-alter-column-name"
@@ -377,15 +458,29 @@ def test_alter_table_flow(page, datasette_server):
     )
     assert "Not null" in expanded_options_text
     assert "This value cannot be left unset" in expanded_options_text
-    assert "Default value" in expanded_options_text
-    assert "or default to a specific time" in expanded_options_text
+    assert "Set a default value" in expanded_options_text
     assert "Primary key" in expanded_options_text
     assert "This ID uniquely identifies the record" in expanded_options_text
+    assert "Foreign key" in expanded_options_text
+    first_defaults = dialog.locator(".table-alter-default-options").first
+    first_defaults.locator("summary").click()
+    assert "or default to a specific value" in first_defaults.inner_text()
+    first_default_expr = first_defaults.locator(".table-alter-default-expr")
+    first_default_input = first_defaults.locator(".table-alter-default")
+    assert (
+        "Current timestamp in UTC, e.g. 2026-05-01 13:34:00"
+        in first_default_expr.locator("option").nth(1).inner_text()
+    )
+    first_default_expr.select_option("current_timestamp")
+    assert first_default_input.is_enabled()
+    first_default_input.fill("manual")
+    assert first_default_expr.input_value() == ""
 
     dialog.locator(".table-alter-add-column").click()
     assert dialog.locator(".table-alter-save").is_enabled()
     dialog.locator(".table-alter-column-name").last.fill("status")
     dialog.locator(".table-alter-column-type").last.select_option("text")
+    dialog.locator(".table-alter-default-options").last.locator("summary").click()
     dialog.locator(".table-alter-default").last.fill("planned")
     dialog.locator(".table-alter-save").click()
     review = dialog.locator(".table-alter-review")

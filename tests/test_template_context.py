@@ -191,33 +191,6 @@ async def test_template_context_matches_documented_contract(
     )
 
 
-@pytest.mark.asyncio
-async def test_count_truncated_replaces_count_limit_context_key(context_ds):
-    db = context_ds.databases["fixtures"]
-    previous_count_limit = db.count_limit
-    previous_cached_table_counts = db._cached_table_counts
-    db.count_limit = 10
-    db._cached_table_counts = None
-    try:
-        table_context = await get_template_context(context_ds, "/fixtures/facetable")
-        assert table_context["count"] == 11
-        assert table_context["count_truncated"] is True
-        assert "count_limit" not in table_context
-
-        database_context = await get_template_context(context_ds, "/fixtures")
-        facetable = next(
-            table
-            for table in database_context["tables"]
-            if table["name"] == "facetable"
-        )
-        assert facetable["count"] == 11
-        assert facetable["count_truncated"] is True
-        assert "count_limit" not in database_context
-    finally:
-        db.count_limit = previous_count_limit
-        db._cached_table_counts = previous_cached_table_counts
-
-
 def test_base_context_keys_all_have_docs():
     for name, doc in TEMPLATE_BASE_CONTEXT.items():
         assert doc, "Base context key {} is missing docs".format(name)

@@ -11,6 +11,7 @@ from datasette.utils.sqlite import (
     sqlite_table_type,
     supports_returning,
 )
+import hashlib
 import json
 import os
 import pathlib
@@ -833,6 +834,12 @@ def test_truncate_url(url, length, expected):
 def test_pairs_to_nested_config(pairs, expected):
     actual = utils.pairs_to_nested_config(pairs)
     assert actual == expected
+
+
+def test_sha256_file(tmp_path):
+    path = tmp_path / "test.txt"
+    path.write_text("hello")
+    assert utils.sha256_file(path, chunk_size=2) == hashlib.sha256(b"hello").hexdigest()
 
 
 @pytest.mark.asyncio

@@ -151,6 +151,45 @@ You can reference those files from ``datasette.yaml`` like this, see :ref:`custo
         }
 .. [[[end]]]
 
+If you reference those files from a custom template, use the ``static()``
+template function to create a cache-busting URL based on the file contents.
+Pass the mount point as the ``mount=`` argument, and pass a path relative to
+that mounted directory:
+
+.. code-block:: html+jinja
+
+    <link rel="stylesheet" href="{{ static('styles.css', mount='assets') }}">
+    <script src="{{ static('app.js', mount='assets') }}" defer></script>
+
+The returned URL will include a ``?_hash=`` parameter and will take the
+``base_url`` setting into account. When that hash matches the current file
+contents, Datasette will serve the static asset with a far-future immutable
+``Cache-Control`` header. You can also use ``urls.path()`` if you want to link
+to the mounted file without adding a content hash:
+
+.. code-block:: html+jinja
+
+    <link rel="stylesheet" href="{{ urls.path('/assets/styles.css') }}">
+
+When Datasette is run using ``--reload``, the file contents are hashed every time
+the template is rendered, so edits to static files will update their URLs
+without restarting Datasette. Without ``--reload``, the hash is cached for the
+lifetime of the Datasette process.
+
+You can use the same function for Datasette's bundled static assets, omitting
+``mount=``:
+
+.. code-block:: html+jinja
+
+    <link rel="stylesheet" href="{{ static('app.css') }}">
+
+For plugin static assets, pass the plugin name using ``plugin=`` and a path
+relative to the plugin's ``static/`` directory:
+
+.. code-block:: html+jinja
+
+    <script src="{{ static('plugin.js', plugin='datasette_plugin_name') }}" defer></script>
+
 Publishing static assets
 ~~~~~~~~~~~~~~~~~~~~~~~~
 

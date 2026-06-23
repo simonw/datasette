@@ -1,6 +1,6 @@
 import json
 from typing import Optional
-from datasette.utils import MultiParams, calculate_etag
+from datasette.utils import MultiParams, calculate_etag, sha256_file
 from datasette.utils.multipart import (
     parse_form_data,
     MultipartParseError,
@@ -397,6 +397,9 @@ async def asgi_send_file(
             )
 
 
+HASHED_STATIC_CACHE_CONTROL = "max-age=31536000, immutable, public"
+
+
 def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
     root_path = Path(root_path)
     static_headers = {}
@@ -423,11 +426,17 @@ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
             return
         try:
             # Calculate ETag for filepath
+            hash_value = request.args.get("_hash")
+            if (
+                hash_value
+                and hash_value == sha256_file(full_path, chunk_size=chunk_size)[:12]
+            ):
+                headers["Cache-Control"] = HASHED_STATIC_CACHE_CONTROL
             etag = await calculate_etag(full_path, chunk_size=chunk_size)
             headers["ETag"] = etag
             if_none_match = request.headers.get("if-none-match")
             if if_none_match and if_none_match == etag:
-                return await asgi_send(send, "", 304)
+                return await asgi_send(send, "", 304, headers=headers)
             await asgi_send_file(
                 send, full_path, chunk_size=chunk_size, headers=headers
             )

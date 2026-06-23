@@ -451,6 +451,54 @@ await .render_template(template, context=None, request=None)
 
 Renders a `Jinja template <https://jinja.palletsprojects.com/en/2.11.x/>`__ using Datasette's preconfigured instance of Jinja and returns the resulting string. The template will have access to Datasette's default template functions and any functions that have been made available by other plugins.
 
+.. _datasette_static:
+
+.static(path, plugin=None, mount=None)
+--------------------------------------
+
+``path`` - string
+    The path to the static asset, relative to the selected static directory.
+
+``plugin`` - string, optional
+    The plugin name, for linking to an asset in that plugin's ``static/``
+    directory.
+
+``mount`` - string, optional
+    The ``--static`` mount name, for linking to an asset in a directory mounted
+    using ``datasette --static mount_name:directory``.
+
+Returns a URL for a static asset with a ``?_hash=`` parameter based on the file
+contents. That URL takes the ``base_url`` setting into account.
+
+When the ``?_hash=`` parameter matches the current file contents, Datasette will
+serve the asset with ``Cache-Control: max-age=31536000, immutable, public``.
+
+Call this with just ``path`` for one of Datasette's bundled static assets:
+
+.. code-block:: python
+
+    datasette.static("app.css")
+
+Use ``plugin=`` for plugin static assets:
+
+.. code-block:: python
+
+    datasette.static("plugin.js", plugin="datasette_plugin_name")
+
+Use ``mount=`` for static directories mounted using the ``--static`` option:
+
+.. code-block:: python
+
+    datasette.static("styles.css", mount="assets")
+
+``plugin`` and ``mount`` are mutually exclusive. The same feature is available
+to Jinja templates as the ``static()`` template function, described in
+:ref:`customization_static_files`.
+
+When Datasette is running in development mode using ``--reload``, the hash is
+recalculated every time. Otherwise it is cached for the lifetime of the
+Datasette process.
+
 .. _datasette_actors_from_ids:
 
 await .actors_from_ids(actor_ids)

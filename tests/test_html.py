@@ -4,6 +4,7 @@ from datasette.utils import allowed_pragmas
 from .fixtures import make_app_client
 from .utils import assert_footer_links, inner_html
 import copy
+import hashlib
 import json
 import pathlib
 import pytest
@@ -101,6 +102,24 @@ async def test_static(ds_client):
     assert response.status_code == 304
 
 
+@pytest.mark.asyncio
+async def test_static_hash_cache_control(ds_client):
+    hashed_url = ds_client.ds.static("app.css")
+    response = await ds_client.get(hashed_url)
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "max-age=31536000, immutable, public"
+
+    response = await ds_client.get(
+        hashed_url, headers={"if-none-match": response.headers["etag"]}
+    )
+    assert response.status_code == 304
+    assert response.headers["cache-control"] == "max-age=31536000, immutable, public"
+
+    response = await ds_client.get("/-/static/app.css?_hash=incorrect")
+    assert response.status_code == 200
+    assert "cache-control" not in response.headers
+
+
 def test_static_mounts():
     with make_app_client(
         static_mounts=[("custom-static", str(pathlib.Path(__file__).parent))]
@@ -111,6 +130,23 @@ def test_static_mounts():
         assert response.status_code == 404
         response = client.get("/custom-static/../LICENSE")
         assert response.status_code == 404
+
+
+def test_static_mounts_hash_cache_control():
+    mount_path = pathlib.Path(__file__).parent
+    with make_app_client(static_mounts=[("custom-static", str(mount_path))]) as client:
+        response = client.get(client.ds.static("test_html.py", mount="custom-static"))
+        assert response.status_code == 200
+        assert (
+            response.headers["cache-control"] == "max-age=31536000, immutable, public"
+        )
+
+        incorrect_hash = hashlib.sha256(b"incorrect").hexdigest()[:12]
+        response = client.get(
+            "/custom-static/test_html.py?_hash={}".format(incorrect_hash)
+        )
+        assert response.status_code == 200
+        assert "cache-control" not in response.headers
 
 
 def test_memory_database_page():
@@ -609,7 +645,7 @@ async def test_404(ds_client, path):
     response = await ds_client.get(path)
     assert response.status_code == 404
     assert (
-        f'<link rel="stylesheet" href="/-/static/app.css?{ds_client.ds.app_css_hash()}'
+        '<link rel="stylesheet" href="{}"'.format(ds_client.ds.static("app.css"))
         in response.text
     )
 
@@ -1082,7 +1118,9 @@ async def test_navigation_menu_links(
     navigation_search_script = soup.find(
         "script", {"src": re.compile(r"navigation-search\.js")}
     )
-    assert navigation_search_script["src"] == "/-/static/navigation-search.js"
+    assert navigation_search_script["src"] == ds_client.ds.static(
+        "navigation-search.js"
+    )
     assert details.find("li").find("button") == search_button
     if not actor_id:
         # The app menu is always visible, but anonymous users do not see logout

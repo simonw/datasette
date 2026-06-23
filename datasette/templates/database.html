@@ -8,7 +8,7 @@
 {% include "_sql_parameter_styles.html" %}
 {% if database_page_data.createTable %}
 <script>window._datasetteDatabaseData = {{ database_page_data|tojson }};</script>
-<script src="{{ urls.static('edit-tools.js') }}?hash={{ edit_tools_js_hash }}" defer></script>
+<script src="{{ static('edit-tools.js') }}" defer></script>
 {% endif %}
 {% endblock %}
 

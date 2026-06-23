@@ -1968,10 +1968,7 @@ Here is a minimal plugin example that adds a button to a table page and loads Ja
     @hookimpl
     def extra_js_urls(datasette):
         return [
-            datasette.urls.static_plugins(
-                "datasette_show_table",
-                "show-table.js",
-            )
+            datasette.static("show-table.js", plugin="datasette_show_table")
         ]
 
 The ``static/show-table.js`` file in that plugin could look like this:

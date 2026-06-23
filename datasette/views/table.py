@@ -1606,8 +1606,8 @@ async def _columns_to_select(table_columns, pks, request):
                 "_col={} - invalid columns".format(", ".join(bad_columns)),
                 status=400,
             )
-        # De-duplicate maintaining order:
-        columns.extend(dict.fromkeys(_cols))
+        # De-duplicate maintaining order, skipping columns already added (pks):
+        columns.extend(c for c in dict.fromkeys(_cols) if c not in columns)
     if "_nocol" in request.args:
         # Return all columns EXCEPT these
         bad_columns = [

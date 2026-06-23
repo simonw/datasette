@@ -203,6 +203,16 @@ class TableContext(Context):
             "help": "JSON data used by JavaScript on the table page. Includes ``database``, ``table`` and ``tableUrl``, plus optional ``foreignKeys`` mapping column names to autocomplete URLs, optional ``insertRow`` data and optional ``alterTable`` data."
         }
     )
+    table_insert_ui: dict = field(
+        metadata={
+            "help": "Information needed to enable the row insertion UI, or ``None`` if row insertion is not available to the current actor. When present it has ``path``, ``tableName``, ``columns`` and ``primaryKeys`` keys; each column includes ``name``, ``sqlite_type``, ``notnull``, ``default``, ``has_default``, ``is_pk``, ``value_kind`` and ``column_type`` keys."
+        }
+    )
+    table_alter_ui: dict = field(
+        metadata={
+            "help": "Information needed to enable the alter table UI, or ``None`` if altering this table is not available to the current actor. When present it has ``path``, ``tableName``, ``columns``, ``primaryKeys``, ``columnTypes``, ``defaultExpressions`` and ``foreignKeyTargetsPath`` keys, plus optional ``customColumnTypes`` and ``dropPath`` keys."
+        }
+    )
 
 
 LINK_WITH_LABEL = (

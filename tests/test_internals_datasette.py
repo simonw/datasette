@@ -4,6 +4,8 @@ Tests for the datasette.app.Datasette class
 
 import asyncio
 import dataclasses
+import hashlib
+import importlib
 import os
 import sqlite3
 import time
@@ -11,6 +13,7 @@ from datasette import Context
 from datasette.app import Datasette, Database, ResourcesSQL
 from datasette.database import DatasetteClosedError
 from datasette.resources import DatabaseResource
+from datasette.utils import PrefixedUrlString
 from itsdangerous import BadSignature
 import pytest
 
@@ -54,6 +57,111 @@ def test_sign_unsign(datasette, value, namespace):
 )
 def test_datasette_setting(datasette, setting, expected):
     assert datasette.setting(setting) == expected
+
+
+def _setup_static_app_root(tmp_path, monkeypatch, filename, content):
+    app_module = importlib.import_module("datasette.app")
+    app_root = tmp_path / "app-root"
+    static_path = app_root / "datasette" / "static"
+    static_path.mkdir(parents=True)
+    asset_path = static_path / filename
+    asset_path.write_bytes(content)
+    monkeypatch.setattr(app_module, "app_root", app_root)
+    return asset_path
+
+
+@pytest.mark.asyncio
+async def test_static_template_function_hashes_core_asset(tmp_path, monkeypatch):
+    _setup_static_app_root(tmp_path, monkeypatch, "demo.js", b"const demo = true;")
+    ds = Datasette()
+    template = ds.get_jinja_environment().from_string("{{ static('demo.js') }}")
+    expected_hash = hashlib.sha256(b"const demo = true;").hexdigest()[:12]
+
+    assert await template.render_async() == "/-/static/demo.js?_hash={}".format(
+        expected_hash
+    )
+    assert isinstance(ds.static("demo.js"), PrefixedUrlString)
+
+
+def test_static_hash_cached_when_cache_headers_enabled(tmp_path, monkeypatch):
+    asset_path = _setup_static_app_root(tmp_path, monkeypatch, "demo.js", b"let a = 1;")
+    ds = Datasette(cache_headers=True)
+    first_url = ds.static("demo.js")
+
+    asset_path.write_bytes(b"let a = 2;")
+
+    assert ds.static("demo.js") == first_url
+
+
+def test_static_hash_recalculated_when_cache_headers_disabled(tmp_path, monkeypatch):
+    asset_path = _setup_static_app_root(tmp_path, monkeypatch, "demo.js", b"let a = 1;")
+    ds = Datasette(cache_headers=False)
+    first_url = ds.static("demo.js")
+
+    asset_path.write_bytes(b"let a = 2;")
+
+    expected_hash = hashlib.sha256(b"let a = 2;").hexdigest()[:12]
+    assert ds.static("demo.js") == "/-/static/demo.js?_hash={}".format(expected_hash)
+    assert ds.static("demo.js") != first_url
+
+
+def test_static_hashes_mounted_static_file(tmp_path):
+    static_path = tmp_path / "static-files"
+    static_path.mkdir()
+    asset_path = static_path / "styles.css"
+    asset_path.write_bytes(b"body { color: black; }")
+    ds = Datasette(static_mounts=[("assets", str(static_path))])
+    expected_hash = hashlib.sha256(b"body { color: black; }").hexdigest()[:12]
+
+    assert ds.static("styles.css", mount="assets") == (
+        "/assets/styles.css?_hash={}".format(expected_hash)
+    )
+
+    ds._settings["base_url"] = "/prefix/"
+    assert ds.static("styles.css", mount="assets") == (
+        "/prefix/assets/styles.css?_hash={}".format(expected_hash)
+    )
+
+
+def test_static_hashes_plugin_static_file(tmp_path, monkeypatch):
+    plugin_static_path = tmp_path / "plugin-static"
+    plugin_static_path.mkdir()
+    asset_path = plugin_static_path / "plugin.js"
+    asset_path.write_bytes(b"console.log('plugin');")
+    app_module = importlib.import_module("datasette.app")
+    monkeypatch.setattr(
+        app_module,
+        "get_plugins",
+        lambda: [
+            {
+                "name": "datasette-cluster-map",
+                "static_path": str(plugin_static_path),
+                "templates_path": None,
+            }
+        ],
+    )
+    ds = Datasette()
+    expected_hash = hashlib.sha256(b"console.log('plugin');").hexdigest()[:12]
+
+    assert ds.static("plugin.js", plugin="datasette_cluster_map") == (
+        "/-/static-plugins/datasette_cluster_map/plugin.js?_hash={}".format(
+            expected_hash
+        )
+    )
+
+
+def test_static_rejects_plugin_and_mount():
+    ds = Datasette()
+    with pytest.raises(ValueError):
+        ds.static("styles.css", plugin="datasette_cluster_map", mount="assets")
+
+
+def test_static_rejects_path_traversal(tmp_path, monkeypatch):
+    _setup_static_app_root(tmp_path, monkeypatch, "demo.js", b"")
+    ds = Datasette()
+
+    with pytest.raises(ValueError, match="cannot escape static root"):
+        ds.static("../secret.js")
 
 
 @pytest.mark.asyncio

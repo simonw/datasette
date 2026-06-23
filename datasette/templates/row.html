@@ -7,9 +7,9 @@
 {% if row_mutation_ui %}
 <script>window._datasetteTableData = {{ table_page_data|tojson }};</script>
 {% if table_page_data.foreignKeys %}
-<script src="{{ urls.static('autocomplete.js') }}" defer></script>
+<script src="{{ static('autocomplete.js') }}" defer></script>
 {% endif %}
-<script src="{{ urls.static('edit-tools.js') }}?hash={{ edit_tools_js_hash }}" defer></script>
+<script src="{{ static('edit-tools.js') }}" defer></script>
 {% endif %}
 <style>
 @media only screen and (max-width: 576px) {

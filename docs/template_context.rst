@@ -47,15 +47,6 @@ These variables are available on every page rendered by Datasette, including pag
 ``show_logout``
     True if the logout link should be shown in the navigation menu
 
-``app_css_hash``
-    Hash of Datasette's app.css contents, used for cache busting
-
-``edit_tools_js_hash``
-    Hash of Datasette's edit-tools.js contents, used for cache busting
-
-``table_js_hash``
-    Hash of Datasette's table.js contents, used for cache busting
-
 ``zip``
     Python's ``zip()`` builtin, made available to template logic
 

@@ -12,7 +12,6 @@ import dataclasses
 import datetime
 import functools
 import glob
-import hashlib
 import httpx
 import importlib.metadata
 import inspect
@@ -123,6 +122,7 @@ from .utils import (
     parse_metadata,
     resolve_env_secrets,
     resolve_routes,
+    sha256_file,
     tilde_decode,
     tilde_encode,
     to_css_class,
@@ -314,7 +314,7 @@ async def favicon(request, send):
         send,
         str(FAVICON_PATH),
         content_type="image/png",
-        headers={"Cache-Control": "max-age=3600, immutable, public"},
+        headers={"Cache-Control": "max-age=3600, public"},
     )
 
 
@@ -348,6 +348,16 @@ def _legacy_template_csrftoken(context):
     return ""
 
 
+def _resolve_static_asset_path(root_path, path):
+    root = Path(root_path).resolve()
+    full_path = (root / path).resolve()
+    try:
+        full_path.relative_to(root)
+    except ValueError:
+        raise ValueError("Static asset path cannot escape static root") from None
+    return full_path
+
+
 # Documentation for the variables Datasette.render_template() adds to the
 # context for every page. This is part of the documented template contract:
 # keys added in render_template() must be documented here - the contract
@@ -361,9 +371,6 @@ TEMPLATE_BASE_CONTEXT = {
     "menu_links": "Async function returning links for the Datasette application menu, including links added by plugins. Each item is a link dictionary with ``href`` and ``label`` keys. See :ref:`plugin_hook_menu_links`; for page action menus that can also include JavaScript-backed buttons, see :ref:`plugin_actions`.",
     "display_actor": "Function that accepts an actor dictionary and returns the display string used in the navigation menu.",
     "show_logout": "True if the logout link should be shown in the navigation menu",
-    "app_css_hash": "Hash of Datasette's app.css contents, used for cache busting",
-    "edit_tools_js_hash": "Hash of Datasette's edit-tools.js contents, used for cache busting",
-    "table_js_hash": "Hash of Datasette's table.js contents, used for cache busting",
     "zip": "Python's ``zip()`` builtin, made available to template logic",
     "body_scripts": 'List of JavaScript snippets contributed by plugins using :ref:`plugin_hook_extra_body_script`. Each item is a dictionary with ``script`` containing JavaScript source and ``module`` indicating whether Datasette will wrap it in ``<script type="module">``; otherwise Datasette wraps it in a regular ``<script>`` block.',
     "format_bytes": "Function that accepts a byte count integer and returns a human-readable string such as ``1.2 MB``.",
@@ -467,6 +474,7 @@ class Datasette:
         self._internal_database.name = INTERNAL_DB_NAME
 
         self.cache_headers = cache_headers
+        self._static_asset_hashes = {}
         self.cors = cors
         config_files = []
         metadata_files = []
@@ -608,6 +616,7 @@ class Datasette:
         environment.filters["escape_css_string"] = escape_css_string
         environment.filters["quote_plus"] = urllib.parse.quote_plus
         environment.globals["csrftoken"] = _legacy_template_csrftoken
+        environment.globals["static"] = self.static
         self._jinja_env = environment
         environment.filters["escape_sqlite"] = escape_sqlite
         environment.filters["to_css_class"] = to_css_class
@@ -1481,24 +1490,55 @@ class Datasette:
 
         return db_plugin_config
 
-    def static_hash(self, filename):
-        if not hasattr(self, "_static_hashes"):
-            self._static_hashes = {}
-        path = os.path.join(str(app_root), "datasette/static", filename)
-        signature = (os.path.getmtime(path), os.path.getsize(path))
-        cached = self._static_hashes.get(filename)
-        if cached and cached["signature"] == signature:
-            return cached["hash"]
-        with open(path) as fp:
-            static_hash = hashlib.sha1(fp.read().encode("utf8")).hexdigest()[:6]
-        self._static_hashes[filename] = {
-            "signature": signature,
-            "hash": static_hash,
-        }
-        return static_hash
+    def _static_asset_path(self, path):
+        return _resolve_static_asset_path(app_root / "datasette" / "static", path)
 
-    def app_css_hash(self):
-        return self.static_hash("app.css")
+    def _static_plugin_asset_path(self, plugin_name, path):
+        for plugin in get_plugins():
+            if not plugin["static_path"]:
+                continue
+            possible_names = {plugin["name"], plugin["name"].replace("-", "_")}
+            if plugin_name in possible_names:
+                return _resolve_static_asset_path(plugin["static_path"], path)
+        raise FileNotFoundError(
+            "No static assets found for plugin {}".format(plugin_name)
+        )
+
+    def _static_mounted_asset(self, mount_name, path):
+        mount_name = mount_name.strip("/")
+        for mount, dirname in self.static_mounts:
+            if mount.strip("/") == mount_name:
+                return (
+                    _resolve_static_asset_path(dirname, path),
+                    self.urls.path("/{}/{}".format(mount_name, path.lstrip("/"))),
+                )
+        raise FileNotFoundError("No static mount found for {}".format(mount_name))
+
+    def _static_asset_hash(self, filepath):
+        filepath = Path(filepath)
+        if self.cache_headers:
+            cached = self._static_asset_hashes.get(filepath)
+            if cached:
+                return cached
+        digest = sha256_file(filepath)[:12]
+        if self.cache_headers:
+            self._static_asset_hashes[filepath] = digest
+        return digest
+
+    def static(self, path, plugin=None, mount=None):
+        if plugin and mount:
+            raise ValueError("Use either plugin= or mount=, not both")
+        if plugin:
+            filepath = self._static_plugin_asset_path(plugin, path)
+            url = self.urls.static_plugins(plugin, path)
+        elif mount:
+            filepath, url = self._static_mounted_asset(mount, path)
+        else:
+            filepath = self._static_asset_path(path)
+            url = self.urls.static(path)
+        hash_value = self._static_asset_hash(filepath)
+        separator = "&" if "?" in url else "?"
+        return url + separator + urllib.parse.urlencode({"_hash": hash_value})
 
     def _prepare_connection(self, conn, database):
         conn.row_factory = sqlite3.Row
@@ -2379,9 +2419,6 @@ class Datasette:
                 "show_logout": request is not None
                 and "ds_actor" in request.cookies
                 and request.actor,
-                "app_css_hash": self.app_css_hash(),
-                "edit_tools_js_hash": self.static_hash("edit-tools.js"),
-                "table_js_hash": self.static_hash("table.js"),
                 "zip": zip,
                 "body_scripts": body_scripts,
                 "format_bytes": format_bytes,
@@ -2480,7 +2517,6 @@ class Datasette:
         add_route(IndexView.as_view(self), r"/(\.(?P<format>jsono?))?$")
         add_route(IndexView.as_view(self), r"/-/(\.(?P<format>jsono?))?$")
         add_route(permanent_redirect("/-/"), r"/-$")
-        # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
         add_route(favicon, "/favicon.ico")
 
         add_route(

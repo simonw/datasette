@@ -5,13 +5,13 @@
 {% block extra_head %}
 {{- super() -}}
 <script>window._datasetteTableData = {{ table_page_data|tojson }};</script>
-<script src="{{ urls.static('column-chooser.js') }}" defer></script>
+<script src="{{ static('column-chooser.js') }}" defer></script>
 {% if table_page_data.foreignKeys %}
-<script src="{{ urls.static('autocomplete.js') }}" defer></script>
+<script src="{{ static('autocomplete.js') }}" defer></script>
 {% endif %}
-<script src="{{ urls.static('edit-tools.js') }}?hash={{ edit_tools_js_hash }}" defer></script>
-<script src="{{ urls.static('table.js') }}?hash={{ table_js_hash }}" defer></script>
-<script src="{{ urls.static('mobile-column-actions.js') }}" defer></script>
+<script src="{{ static('edit-tools.js') }}" defer></script>
+<script src="{{ static('table.js') }}" defer></script>
+<script src="{{ static('mobile-column-actions.js') }}" defer></script>
 <script>DATASETTE_ALLOW_FACET = {{ datasette_allow_facet }};</script>
 <style>
 @media only screen and (max-width: 576px) {

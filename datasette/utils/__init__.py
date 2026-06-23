@@ -1548,6 +1548,17 @@ def md5_not_usedforsecurity(s):
 _etag_cache = {}
 
 
+def sha256_file(filepath, chunk_size=4096):
+    hasher = hashlib.sha256()
+    with open(filepath, "rb") as fp:
+        while True:
+            chunk = fp.read(chunk_size)
+            if not chunk:
+                break
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
 async def calculate_etag(filepath, chunk_size=4096):
     if filepath in _etag_cache:
         return _etag_cache[filepath]

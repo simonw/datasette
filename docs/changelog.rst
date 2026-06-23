@@ -9,12 +9,13 @@ Changelog
 1.0a35 (2026-06-23)
 -------------------
 
+This release adds UI for **creating tables** and **altering tables**, to complement the insert and update row interfaces added in :ref:`v1_0_a34`.
+
 - New "Create table" interface in the database actions menu, backed by the ``/<database>/-/create`` :ref:`JSON API <TableCreateView>`. It can define columns, primary keys, custom column types, ``NOT NULL`` constraints, literal defaults, expression defaults and single-column foreign keys. (:issue:`2787`)
 - New "Alter table" table action and ``/<database>/<table>/-/alter`` :ref:`JSON API <TableAlterView>` for changing existing tables: add, rename, reorder and drop columns; change column types, defaults, ``NOT NULL`` constraints, primary keys and foreign keys; and rename the table. The alter table dialog also includes a "Drop table" button. (:issue:`2788`)
 - New ``/<database>/-/foreign-key-targets`` and ``/<database>/<table>/-/foreign-key-suggestions`` JSON APIs for discovering valid single-column foreign key targets and suggested relationships.
-- Create and alter table dialogs share their column-editing controls, including literal and expression defaults, custom column types, foreign keys and column ordering.
-- The "Write to this database" page now includes a Create table starter template, alongside the existing Insert, Update and Delete templates. (:pr:`2794`)
 - New :ref:`template_context` documentation listing the variables available to custom templates for Datasette's core pages. Variables documented there are treated as a stable API for custom templates until Datasette 2.0. The documentation is generated from dataclass definitions next to the view code, with tests that compare the documented fields against the actual contexts rendered by the database, table, query and row pages. (:issue:`1510`, :issue:`2127`, :issue:`1477`, :pr:`2803`)
+- The "Write to this database" page now includes a Create table starter template, alongside the existing Insert, Update and Delete templates. (:pr:`2794`)
 - New ``static()`` template function and ``datasette.static()`` method for generating cache-busting static asset URLs based on the file contents. Static assets served with a matching ``?_hash=`` parameter now receive far-future immutable cache headers. This works for Datasette's bundled static assets, plugin static assets and directories mounted using ``--static``. See :ref:`customization_static_files`.
 - Database and table pages now use the ``count_truncated`` template context value to display capped row counts as ``>N rows``.
 - Significant visual improvements to the table filter form UI, plus working add/remove filter buttons. (:issue:`2798`)

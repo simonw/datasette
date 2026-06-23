@@ -1,21 +1,36 @@
+import asyncio
+import json
+import textwrap
+import time
+import urllib.parse
+from dataclasses import dataclass, field
+
+import markupsafe
+import sqlite_utils
+
 from datasette.utils.asgi import NotFound, Forbidden, Response
 from datasette.database import QueryInterrupted
 from datasette.events import UpdateRowEvent, DeleteRowEvent
 from datasette.resources import TableResource
-from .base import DataView, BaseView, _error
+from .base import BaseView, DatasetteError, _error, stream_csv
 from datasette.utils import (
+    add_cors_headers,
     await_me_maybe,
+    call_with_supported_arguments,
     CustomRow,
+    InvalidSql,
     make_slot_function,
     path_from_row_pks,
+    path_with_added_args,
+    path_with_format,
+    path_with_removed_args,
     to_css_class,
     escape_sqlite,
+    sqlite3,
 )
 from datasette.plugins import pm
-import json
-import markupsafe
-import sqlite_utils
-from datasette.extras import extra_names_from_request
+from datasette.extras import extra_names_from_request, ExtraScope
+from . import Context, from_extra
 from .table import (
     display_columns_and_rows,
     _table_page_data,
@@ -24,8 +39,365 @@ from .table import (
 from .table_extras import RowExtraContext, resolve_row_extras, table_extra_registry
 
 
-class RowView(DataView):
+@dataclass
+class RowContext(Context):
+    "The page showing an individual row, e.g. /fixtures/facetable/1."
+
+    documented_template = "row.html"
+    extras_scope = ExtraScope.ROW
+
+    # Fields resolved by registered extras - their documentation comes
+    # from the description on each Extra class in table_extras.py
+    columns: list = from_extra()
+    database: str = from_extra()
+    database_color: str = from_extra()
+    foreign_key_tables: list = from_extra()
+    metadata: dict = from_extra()
+    primary_keys: list = from_extra()
+    private: bool = from_extra()
+    table: str = from_extra()
+
+    # Fields added by the view code
+    ok: bool = field(
+        metadata={"help": "True if the data for this page was retrieved without errors"}
+    )
+    rows: list = field(
+        metadata={
+            "help": "A single-item list containing this row as a dictionary mapping column name to raw value."
+        }
+    )
+    primary_key_values: list = field(
+        metadata={"help": "Values of the primary keys for this row, from the URL"}
+    )
+    query_ms: float = field(
+        metadata={
+            "help": "Time taken by the SQL queries for this page, in milliseconds"
+        }
+    )
+    display_columns: list = field(
+        metadata={
+            "help": "Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type`` and ``column_type_config`` keys."
+        }
+    )
+    display_rows: list = field(
+        metadata={
+            "help": "Rows formatted for the HTML table display. Each row is iterable and contains cell dictionaries with ``column``, ``value``, ``raw`` and ``value_type`` keys."
+        }
+    )
+    custom_table_templates: list = field(
+        metadata={
+            "help": "Custom template names that were considered for displaying this row's table, in lookup order."
+        }
+    )
+    row_actions: list = field(
+        metadata={
+            "help": 'Row actions made available by core and plugin hooks. Each item is either a link with ``href``, ``label`` and optional ``description`` keys, or a button with ``type: "button"``, ``label``, optional ``description`` and optional ``attrs``. See :ref:`plugin_actions` and :ref:`plugin_hook_row_actions`.'
+        }
+    )
+    row_mutation_ui: bool = field(
+        metadata={"help": "True if the row edit/delete JavaScript UI should be enabled"}
+    )
+    table_page_data: dict = field(
+        metadata={
+            "help": "JSON data used by JavaScript on the row page. Includes ``database``, ``table`` and ``tableUrl``, plus optional ``foreignKeys`` mapping column names to autocomplete URLs."
+        }
+    )
+    top_row: callable = field(
+        metadata={
+            "help": "Async callable that renders the ``top_row`` plugin slot for this row and returns HTML."
+        }
+    )
+    renderers: dict = field(
+        metadata={
+            "help": "Dictionary mapping output format names such as ``json`` to URLs for this row in that format."
+        }
+    )
+    url_csv: str = field(metadata={"help": "URL for the CSV export of this page"})
+    url_csv_path: str = field(metadata={"help": "Path portion of the CSV export URL"})
+    url_csv_hidden_args: list = field(
+        metadata={
+            "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current options while forcing ``_size=max``."
+        }
+    )
+    settings: dict = field(
+        metadata={
+            "help": "Dictionary of Datasette's current settings, keyed by setting name."
+        }
+    )
+    select_templates: list = field(
+        metadata={
+            "help": "List of template names that were considered for this page, with the selected template prefixed by ``*``."
+        }
+    )
+    alternate_url_json: str = field(
+        metadata={"help": "URL for the JSON version of this page"}
+    )
+
+
+class RowView(BaseView):
     name = "row"
+
+    def redirect(self, request, path, forward_querystring=True, remove_args=None):
+        if request.query_string and "?" not in path and forward_querystring:
+            path = f"{path}?{request.query_string}"
+        if remove_args:
+            path = path_with_removed_args(request, remove_args, path=path)
+        response = Response.redirect(path)
+        response.headers["Link"] = f"<{path}>; rel=preload"
+        if self.ds.cors:
+            add_cors_headers(response.headers)
+        return response
+
+    async def as_csv(self, request, database):
+        return await stream_csv(self.ds, self.data, request, database)
+
+    async def get(self, request):
+        db = await self.ds.resolve_database(request)
+        database = db.name
+        database_route = db.route
+        format_ = request.url_vars.get("format") or "html"
+        data_kwargs = {}
+
+        if format_ == "csv":
+            return await self.as_csv(request, database_route)
+
+        if format_ == "html":
+            # HTML views default to expanding all foreign key labels
+            data_kwargs["default_labels"] = True
+
+        extra_template_data = {}
+        start = time.perf_counter()
+        status_code = None
+        templates = ()
+        try:
+            response_or_template_contexts = await self.data(request, **data_kwargs)
+            if isinstance(response_or_template_contexts, Response):
+                return response_or_template_contexts
+            # If it has four items, it includes an HTTP status code
+            if len(response_or_template_contexts) == 4:
+                (
+                    data,
+                    extra_template_data,
+                    templates,
+                    status_code,
+                ) = response_or_template_contexts
+            else:
+                data, extra_template_data, templates = response_or_template_contexts
+        except QueryInterrupted as ex:
+            raise DatasetteError(
+                textwrap.dedent("""
+                <p>SQL query took too long. The time limit is controlled by the
+                <a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>
+                configuration option.</p>
+                <textarea style="width: 90%">{}</textarea>
+                <script>
+                let ta = document.querySelector("textarea");
+                ta.style.height = ta.scrollHeight + "px";
+                </script>
+            """.format(markupsafe.escape(ex.sql))).strip(),
+                title="SQL Interrupted",
+                status=400,
+                message_is_html=True,
+            )
+        except (sqlite3.OperationalError, InvalidSql) as e:
+            raise DatasetteError(str(e), title="Invalid SQL", status=400)
+        except sqlite3.OperationalError as e:
+            raise DatasetteError(str(e))
+        except DatasetteError:
+            raise
+
+        end = time.perf_counter()
+        data["query_ms"] = (end - start) * 1000
+
+        # Special case for .jsono extension - redirect to _shape=objects
+        if format_ == "jsono":
+            return self.redirect(
+                request,
+                path_with_added_args(
+                    request,
+                    {"_shape": "objects"},
+                    path=request.path.rsplit(".jsono", 1)[0] + ".json",
+                ),
+                forward_querystring=False,
+            )
+
+        if format_ in self.ds.renderers.keys():
+            # Dispatch request to the correct output format renderer
+            # (CSV is not handled here due to streaming)
+            result = call_with_supported_arguments(
+                self.ds.renderers[format_][0],
+                datasette=self.ds,
+                columns=data.get("columns") or [],
+                rows=data.get("rows") or [],
+                sql=data.get("query", {}).get("sql", None),
+                query_name=data.get("query_name"),
+                database=database,
+                table=data.get("table"),
+                request=request,
+                view_name=self.name,
+                truncated=False,  # TODO: support this
+                error=data.get("error"),
+                # These will be deprecated in Datasette 1.0:
+                args=request.args,
+                data=data,
+            )
+            if asyncio.iscoroutine(result):
+                result = await result
+            if result is None:
+                raise NotFound("No data")
+            if isinstance(result, dict):
+                response = Response(
+                    body=result.get("body"),
+                    status=result.get("status_code", status_code or 200),
+                    content_type=result.get("content_type", "text/plain"),
+                    headers=result.get("headers"),
+                )
+            elif isinstance(result, Response):
+                response = result
+                if status_code is not None:
+                    # Over-ride the status code
+                    response.status = status_code
+            else:
+                assert False, f"{result} should be dict or Response"
+        elif format_ == "html":
+            response = await self.html(request, data, extra_template_data, templates)
+            if status_code is not None:
+                response.status = status_code
+        else:
+            raise NotFound("Invalid format: {}".format(format_))
+
+        ttl = request.args.get("_ttl", None)
+        if ttl is None or not ttl.isdigit():
+            ttl = self.ds.setting("default_cache_ttl")
+
+        return self.set_response_headers(response, ttl)
+
+    async def html(self, request, data, extra_template_data, templates):
+        extras = {}
+        if callable(extra_template_data):
+            extras = extra_template_data()
+            if asyncio.iscoroutine(extras):
+                extras = await extras
+        else:
+            extras = extra_template_data
+
+        url_labels_extra = {}
+        if data.get("expandable_columns"):
+            url_labels_extra = {"_labels": "on"}
+
+        renderers = {}
+        for key, (_, can_render) in self.ds.renderers.items():
+            it_can_render = call_with_supported_arguments(
+                can_render,
+                datasette=self.ds,
+                columns=data.get("columns") or [],
+                rows=data.get("rows") or [],
+                sql=data.get("query", {}).get("sql", None),
+                query_name=data.get("query_name"),
+                database=data.get("database"),
+                table=data.get("table"),
+                request=request,
+                view_name=self.name,
+            )
+            it_can_render = await await_me_maybe(it_can_render)
+            if it_can_render:
+                renderers[key] = self.ds.urls.path(
+                    path_with_format(
+                        request=request,
+                        path=request.scope.get("route_path"),
+                        format=key,
+                        extra_qs={**url_labels_extra},
+                    )
+                )
+
+        url_csv_args = {"_size": "max", **url_labels_extra}
+        url_csv = self.ds.urls.path(
+            path_with_format(
+                request=request,
+                path=request.scope.get("route_path"),
+                format="csv",
+                extra_qs=url_csv_args,
+            )
+        )
+        url_csv_path = url_csv.split("?")[0]
+        context = {**data, **extras}
+        if "metadata" not in context:
+            context["metadata"] = await self.ds.get_instance_metadata()
+
+        environment = self.ds.get_jinja_environment(request)
+        template = environment.select_template(templates)
+        alternate_url_json = self.ds.absolute_url(
+            request,
+            self.ds.urls.path(
+                path_with_format(
+                    request=request,
+                    path=request.scope.get("route_path"),
+                    format="json",
+                )
+            ),
+        )
+        return Response.html(
+            await self.ds.render_template(
+                template,
+                RowContext(
+                    columns=context["columns"],
+                    database=context["database"],
+                    database_color=context["database_color"],
+                    foreign_key_tables=context["foreign_key_tables"],
+                    metadata=context["metadata"],
+                    primary_keys=context["primary_keys"],
+                    private=context["private"],
+                    table=context["table"],
+                    ok=context["ok"],
+                    rows=context["rows"],
+                    primary_key_values=context["primary_key_values"],
+                    query_ms=context["query_ms"],
+                    display_columns=context["display_columns"],
+                    display_rows=context["display_rows"],
+                    custom_table_templates=context["custom_table_templates"],
+                    row_actions=context["row_actions"],
+                    row_mutation_ui=context["row_mutation_ui"],
+                    table_page_data=context["table_page_data"],
+                    top_row=context["top_row"],
+                    renderers=renderers,
+                    url_csv=url_csv,
+                    url_csv_path=url_csv_path,
+                    url_csv_hidden_args=[
+                        (key, value)
+                        for key, value in urllib.parse.parse_qsl(request.query_string)
+                        if key not in ("_labels", "_facet", "_size")
+                    ]
+                    + [("_size", "max")],
+                    settings=self.ds.settings_dict(),
+                    select_templates=[
+                        f"{'*' if template_name == template.name else ''}{template_name}"
+                        for template_name in templates
+                    ],
+                    alternate_url_json=alternate_url_json,
+                ),
+                request=request,
+                view_name=self.name,
+            ),
+            headers={
+                "Link": '<{}>; rel="alternate"; type="application/json+datasette"'.format(
+                    alternate_url_json
+                )
+            },
+        )
+
+    def set_response_headers(self, response, ttl):
+        # Set far-future cache expiry
+        if self.ds.cache_headers and response.status == 200:
+            ttl = int(ttl)
+            if ttl == 0:
+                ttl_header = "no-cache"
+            else:
+                ttl_header = f"max-age={ttl}"
+            response.headers["Cache-Control"] = ttl_header
+        response.headers["Referrer-Policy"] = "no-referrer"
+        if self.ds.cors:
+            add_cors_headers(response.headers)
+        return response
 
     async def data(self, request, default_labels=False):
         resolved = await self.ds.resolve_row(request)

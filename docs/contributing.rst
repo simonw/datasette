@@ -309,6 +309,19 @@ To update these pages, run the following command::
 
     uv run cog -r docs/*.rst
 
+.. _contributing_template_contexts:
+
+Documented template contexts
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Datasette's documented template contexts are part of the public API for custom templates. They are defined as dataclasses next to the view code that renders them, for example ``DatabaseContext`` and ``QueryContext`` in ``datasette/views/database.py``.
+
+Every documented context class inherits from ``datasette.views.Context``. Fields that are added directly by view code should be declared as dataclass fields with ``help`` metadata, which is used to generate :ref:`template_context`. Fields resolved through the page extras system should use ``from_extra()`` so their documentation comes from the matching ``Extra`` class.
+
+Use ``documented_template`` on each context class to record the canonical template named in the generated documentation. This should be a string such as ``"database.html"``. Runtime template selection still happens in the view code, since most pages consider more specific template names before falling back to the canonical one.
+
+When a context field contains repeated structured data, prefer a small nested dataclass over an anonymous dictionary. For example, a field containing table summaries should be annotated as ``list[DatabaseTable]`` where ``DatabaseTable`` is a dataclass describing the keys and value types. This keeps the Python contract and generated documentation clear. JSON responses and ``?_context=1`` debug output will convert nested dataclasses back to JSON objects at the response boundary.
+
 .. _contributing_continuous_deployment:
 
 Continuously deployed demo instances

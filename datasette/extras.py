@@ -81,6 +81,16 @@ class ExtraRegistry:
     def public_classes_for_scope(self, scope):
         return self.classes_for_scope(scope, include_internal=False)
 
+    def internal_classes_for_scope(self, scope):
+        # Extras that are available to HTML templates but excluded from
+        # JSON responses - plain Providers are dependency plumbing and
+        # never surface as keys, so they are not included
+        return [
+            cls
+            for cls in self.classes_for_scope(scope)
+            if issubclass(cls, Extra) and not cls.public
+        ]
+
     def _registry_for_scope(self, scope):
         registry = self._scope_registries.get(scope)
         if registry is None:

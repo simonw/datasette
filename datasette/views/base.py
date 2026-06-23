@@ -1,31 +1,19 @@
-import asyncio
 import csv
 import hashlib
 import sys
-import textwrap
-import time
-import urllib
-from markupsafe import escape
 
-
-from datasette.database import QueryInterrupted
 from datasette.utils.asgi import Request
 from datasette.utils import (
     add_cors_headers,
-    await_me_maybe,
     EscapeHtmlWriter,
     InvalidSql,
     LimitedWriter,
-    call_with_supported_arguments,
     path_from_row_pks,
-    path_with_added_args,
-    path_with_removed_args,
     path_with_format,
     sqlite3,
 )
 from datasette.utils.asgi import (
     AsgiStream,
-    NotFound,
     Response,
     BadRequest,
 )
@@ -190,227 +178,6 @@ class BaseView:
         view.__module__ = cls.__module__
         view.__name__ = cls.__name__
         return view
-
-
-class DataView(BaseView):
-    name = ""
-
-    def redirect(self, request, path, forward_querystring=True, remove_args=None):
-        if request.query_string and "?" not in path and forward_querystring:
-            path = f"{path}?{request.query_string}"
-        if remove_args:
-            path = path_with_removed_args(request, remove_args, path=path)
-        r = Response.redirect(path)
-        r.headers["Link"] = f"<{path}>; rel=preload"
-        if self.ds.cors:
-            add_cors_headers(r.headers)
-        return r
-
-    async def data(self, request):
-        raise NotImplementedError
-
-    async def as_csv(self, request, database):
-        return await stream_csv(self.ds, self.data, request, database)
-
-    async def get(self, request):
-        db = await self.ds.resolve_database(request)
-        database = db.name
-        database_route = db.route
-
-        _format = request.url_vars["format"]
-        data_kwargs = {}
-
-        if _format == "csv":
-            return await self.as_csv(request, database_route)
-
-        if _format is None:
-            # HTML views default to expanding all foreign key labels
-            data_kwargs["default_labels"] = True
-
-        extra_template_data = {}
-        start = time.perf_counter()
-        status_code = None
-        templates = []
-        try:
-            response_or_template_contexts = await self.data(request, **data_kwargs)
-            if isinstance(response_or_template_contexts, Response):
-                return response_or_template_contexts
-            # If it has four items, it includes an HTTP status code
-            if len(response_or_template_contexts) == 4:
-                (
-                    data,
-                    extra_template_data,
-                    templates,
-                    status_code,
-                ) = response_or_template_contexts
-            else:
-                data, extra_template_data, templates = response_or_template_contexts
-        except QueryInterrupted as ex:
-            raise DatasetteError(
-                textwrap.dedent("""
-                <p>SQL query took too long. The time limit is controlled by the
-                <a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>
-                configuration option.</p>
-                <textarea style="width: 90%">{}</textarea>
-                <script>
-                let ta = document.querySelector("textarea");
-                ta.style.height = ta.scrollHeight + "px";
-                </script>
-            """.format(escape(ex.sql))).strip(),
-                title="SQL Interrupted",
-                status=400,
-                message_is_html=True,
-            )
-        except (sqlite3.OperationalError, InvalidSql) as e:
-            raise DatasetteError(str(e), title="Invalid SQL", status=400)
-
-        except sqlite3.OperationalError as e:
-            raise DatasetteError(str(e))
-
-        except DatasetteError:
-            raise
-
-        end = time.perf_counter()
-        data["query_ms"] = (end - start) * 1000
-
-        # Special case for .jsono extension - redirect to _shape=objects
-        if _format == "jsono":
-            return self.redirect(
-                request,
-                path_with_added_args(
-                    request,
-                    {"_shape": "objects"},
-                    path=request.path.rsplit(".jsono", 1)[0] + ".json",
-                ),
-                forward_querystring=False,
-            )
-
-        if _format in self.ds.renderers.keys():
-            # Dispatch request to the correct output format renderer
-            # (CSV is not handled here due to streaming)
-            result = call_with_supported_arguments(
-                self.ds.renderers[_format][0],
-                datasette=self.ds,
-                columns=data.get("columns") or [],
-                rows=data.get("rows") or [],
-                sql=data.get("query", {}).get("sql", None),
-                query_name=data.get("query_name"),
-                database=database,
-                table=data.get("table"),
-                request=request,
-                view_name=self.name,
-                truncated=False,  # TODO: support this
-                error=data.get("error"),
-                # These will be deprecated in Datasette 1.0:
-                args=request.args,
-                data=data,
-            )
-            if asyncio.iscoroutine(result):
-                result = await result
-            if result is None:
-                raise NotFound("No data")
-            if isinstance(result, dict):
-                r = Response(
-                    body=result.get("body"),
-                    status=result.get("status_code", status_code or 200),
-                    content_type=result.get("content_type", "text/plain"),
-                    headers=result.get("headers"),
-                )
-            elif isinstance(result, Response):
-                r = result
-                if status_code is not None:
-                    # Over-ride the status code
-                    r.status = status_code
-            else:
-                assert False, f"{result} should be dict or Response"
-        else:
-            extras = {}
-            if callable(extra_template_data):
-                extras = extra_template_data()
-                if asyncio.iscoroutine(extras):
-                    extras = await extras
-            else:
-                extras = extra_template_data
-            url_labels_extra = {}
-            if data.get("expandable_columns"):
-                url_labels_extra = {"_labels": "on"}
-
-            renderers = {}
-            for key, (_, can_render) in self.ds.renderers.items():
-                it_can_render = call_with_supported_arguments(
-                    can_render,
-                    datasette=self.ds,
-                    columns=data.get("columns") or [],
-                    rows=data.get("rows") or [],
-                    sql=data.get("query", {}).get("sql", None),
-                    query_name=data.get("query_name"),
-                    database=database,
-                    table=data.get("table"),
-                    request=request,
-                    view_name=self.name,
-                )
-                it_can_render = await await_me_maybe(it_can_render)
-                if it_can_render:
-                    renderers[key] = self.ds.urls.path(
-                        path_with_format(
-                            request=request,
-                            path=request.scope.get("route_path"),
-                            format=key,
-                            extra_qs={**url_labels_extra},
-                        )
-                    )
-
-            url_csv_args = {"_size": "max", **url_labels_extra}
-            url_csv = self.ds.urls.path(
-                path_with_format(
-                    request=request,
-                    path=request.scope.get("route_path"),
-                    format="csv",
-                    extra_qs=url_csv_args,
-                )
-            )
-            url_csv_path = url_csv.split("?")[0]
-            context = {
-                **data,
-                **extras,
-                **{
-                    "renderers": renderers,
-                    "url_csv": url_csv,
-                    "url_csv_path": url_csv_path,
-                    "url_csv_hidden_args": [
-                        (key, value)
-                        for key, value in urllib.parse.parse_qsl(request.query_string)
-                        if key not in ("_labels", "_facet", "_size")
-                    ]
-                    + [("_size", "max")],
-                    "settings": self.ds.settings_dict(),
-                },
-            }
-            if "metadata" not in context:
-                context["metadata"] = await self.ds.get_instance_metadata()
-            r = await self.render(templates, request=request, context=context)
-            if status_code is not None:
-                r.status = status_code
-
-        ttl = request.args.get("_ttl", None)
-        if ttl is None or not ttl.isdigit():
-            ttl = self.ds.setting("default_cache_ttl")
-
-        return self.set_response_headers(r, ttl)
-
-    def set_response_headers(self, response, ttl):
-        # Set far-future cache expiry
-        if self.ds.cache_headers and response.status == 200:
-            ttl = int(ttl)
-            if ttl == 0:
-                ttl_header = "no-cache"
-            else:
-                ttl_header = f"max-age={ttl}"
-            response.headers["Cache-Control"] = ttl_header
-        response.headers["Referrer-Policy"] = "no-referrer"
-        if self.ds.cors:
-            add_cors_headers(response.headers)
-        return response
 
 
 def _error(messages, status=400):

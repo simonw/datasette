@@ -177,6 +177,11 @@ this::
 Datasette will now first look for templates in that directory, and fall back on
 the defaults if no matches are found.
 
+The variables made available to each template are documented on the
+:ref:`template_context` page. Variables documented there are a stable API:
+custom templates that use them will keep working in future Datasette
+releases, up until the next major version.
+
 It is also possible to over-ride templates on a per-database, per-row or per-
 table basis.
 

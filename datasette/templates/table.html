@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ database }}: {{ table }}: {% if count or count == 0 %}{{ "{:,}".format(count) }} row{% if count == 1 %}{% else %}s{% endif %}{% endif %}{% if human_description_en %} {{ human_description_en }}{% endif %}{% endblock %}
+{% block title %}{{ database }}: {{ table }}: {% if count_truncated %}&gt;{{ "{:,}".format(count - 1) }} rows{% elif count or count == 0 %}{{ "{:,}".format(count) }} row{% if count == 1 %}{% else %}s{% endif %}{% endif %}{% if human_description_en %} {{ human_description_en }}{% endif %}{% endblock %}
 
 {% block extra_head %}
 {{- super() -}}
@@ -48,7 +48,7 @@
 
 {% if count or human_description_en %}
     <h3>
-        {% if count == count_limit + 1 %}&gt;{{ "{:,}".format(count_limit) }} rows
+        {% if count_truncated %}&gt;{{ "{:,}".format(count - 1) }} rows
         {% if allow_execute_sql and query.sql %} <a class="count-sql" style="font-size: 0.8em;" href="{{ urls.database_query(database, count_sql) }}">count all</a>{% endif %}
         {% elif count or count == 0 %}{{ "{:,}".format(count) }} row{% if count == 1 %}{% else %}s{% endif %}{% endif %}
         {% if human_description_en %}{{ human_description_en }}{% endif %}

@@ -344,3 +344,28 @@ async def test_datasette_close_continues_past_db_error():
         ds.close()
     assert good._closed
     assert ds._internal_database._closed
+
+
+@pytest.mark.asyncio
+async def test_datasette_render_template_dataclass_values_not_deep_copied():
+    # display_rows can contain values like sqlite3.Row that cannot be
+    # deep-copied, so render_template must convert Context dataclasses
+    # shallowly - https://github.com/simonw/datasette/issues/2127
+    class RefusesDeepCopy:
+        def __deepcopy__(self, memo):
+            raise RuntimeError("deepcopy not supported")
+
+        def __str__(self):
+            return "shallow-copied-value"
+
+    @dataclasses.dataclass
+    class ExampleContext(Context):
+        title: str
+        status: int
+        error: RefusesDeepCopy
+
+    context = ExampleContext(title="Hello", status=200, error=RefusesDeepCopy())
+    ds = Datasette(memory=True)
+    await ds.invoke_startup()
+    rendered = await ds.render_template("error.html", context)
+    assert "shallow-copied-value" in rendered

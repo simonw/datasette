@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from urllib.parse import parse_qsl, urlencode
 import asyncio
 import hashlib
@@ -11,7 +11,7 @@ import textwrap
 from datasette.extras import extra_names_from_request
 from datasette.database import QueryInterrupted
 from datasette.resources import DatabaseResource, QueryResource
-from datasette.stored_queries import stored_query_to_dict
+from datasette.stored_queries import StoredQuery, stored_query_to_dict
 from datasette.write_sql import QueryWriteRejected
 from datasette.utils import (
     add_cors_headers,
@@ -43,6 +43,29 @@ from .table_extras import (
 )
 from .table_create_alter import _create_table_ui_context
 from . import Context
+
+
+@dataclass
+class DatabaseTable:
+    "Summary of a table or view shown on database and query pages."
+
+    name: str
+    columns: list[str]
+    primary_keys: list[str]
+    count: int | None
+    count_truncated: bool
+    hidden: bool
+    fts_table: str | None
+    foreign_keys: dict[str, list[dict[str, str]]]
+    private: bool
+
+
+@dataclass
+class DatabaseViewInfo:
+    "Summary of a SQLite view shown on the database page."
+
+    name: str
+    private: bool
 
 
 class DatabaseView(View):
@@ -94,7 +117,7 @@ class DatabaseView(View):
         # Filter to just views
         view_names_set = set(await db.view_names())
         sql_views = [
-            {"name": name, "private": allowed_dict[name].private}
+            DatabaseViewInfo(name=name, private=allowed_dict[name].private)
             for name in allowed_dict
             if name in view_names_set
         ]
@@ -169,9 +192,9 @@ class DatabaseView(View):
             "private": private,
             "path": datasette.urls.database(database),
             "size": db.size,
-            "tables": tables,
-            "hidden_count": len([t for t in tables if t["hidden"]]),
-            "views": sql_views,
+            "tables": [asdict(table) for table in tables],
+            "hidden_count": len([table for table in tables if table.hidden]),
+            "views": [asdict(view) for view in sql_views],
             "queries": [stored_query_to_dict(query) for query in stored_queries],
             "queries_more": queries_more,
             "queries_count": queries_count,
@@ -211,7 +234,7 @@ class DatabaseView(View):
                     path=datasette.urls.database(database),
                     size=db.size,
                     tables=tables,
-                    hidden_count=len([t for t in tables if t["hidden"]]),
+                    hidden_count=len([table for table in tables if table.hidden]),
                     views=sql_views,
                     queries=stored_queries,
                     queries_more=queries_more,
@@ -230,7 +253,6 @@ class DatabaseView(View):
                     database_actions=database_actions,
                     show_hidden=request.args.get("_show_hidden"),
                     editable=True,
-                    count_limit=db.count_limit,
                     allow_download=datasette.setting("allow_download")
                     and not db.is_mutable
                     and not db.is_memory,
@@ -257,16 +279,32 @@ class DatabaseView(View):
 
 @dataclass
 class DatabaseContext(Context):
+    "The page listing the tables, views and queries in a database, e.g. /fixtures."
+
+    documented_template = "database.html"
+
     database: str = field(metadata={"help": "The name of the database"})
     private: bool = field(
         metadata={"help": "Boolean indicating if this is a private database"}
     )
     path: str = field(metadata={"help": "The URL path to this database"})
     size: int = field(metadata={"help": "The size of the database in bytes"})
-    tables: list = field(metadata={"help": "List of table objects in the database"})
+    tables: list[DatabaseTable] = field(
+        metadata={
+            "help": "List of ``DatabaseTable`` objects describing tables in the database. Each item has ``name``, ``columns``, ``primary_keys``, ``count``, ``count_truncated``, ``hidden``, ``fts_table``, ``foreign_keys`` and ``private`` attributes. ``count_truncated`` is true if ``count`` is a capped lower bound rather than an exact total."
+        }
+    )
     hidden_count: int = field(metadata={"help": "Count of hidden tables"})
-    views: list = field(metadata={"help": "List of view objects in the database"})
-    queries: list = field(metadata={"help": "List of stored query objects"})
+    views: list[DatabaseViewInfo] = field(
+        metadata={
+            "help": "List of ``DatabaseViewInfo`` objects describing SQLite views in the database. Each item has ``name`` and ``private`` attributes."
+        }
+    )
+    queries: list[StoredQuery] = field(
+        metadata={
+            "help": "List of ``StoredQuery`` objects. Each has attributes including ``name``, ``sql``, ``title``, ``description``, ``description_html``, ``hide_sql``, ``fragment``, ``parameters``, ``is_write`` and ``private``."
+        }
+    )
     queries_more: bool = field(
         metadata={"help": "Boolean indicating if more stored queries are available"}
     )
@@ -275,48 +313,65 @@ class DatabaseContext(Context):
         metadata={"help": "Boolean indicating if custom SQL can be executed"}
     )
     table_columns: dict = field(
-        metadata={"help": "Dictionary mapping table names to their column lists"}
+        metadata={
+            "help": "Dictionary mapping table names to lists of column names, used to power SQL autocomplete."
+        }
     )
-    metadata: dict = field(metadata={"help": "Metadata for the database"})
+    metadata: dict = field(
+        metadata={
+            "help": "Metadata dictionary for the database, such as ``title``, ``description``, ``license`` and ``source`` values from Datasette metadata."
+        }
+    )
     database_color: str = field(metadata={"help": "The color assigned to the database"})
     database_page_data: dict = field(
-        metadata={"help": "JSON data used by JavaScript on the database page"}
+        metadata={
+            "help": 'JSON data used by JavaScript on the database page. Currently ``{}`` or ``{"createTable": {...}}`` where ``createTable`` includes ``path``, ``foreignKeyTargetsPath``, ``databaseName``, ``columnTypes``, ``defaultExpressions`` and optional ``customColumnTypes``.'
+        }
     )
     database_actions: callable = field(
         metadata={
-            "help": "Callable returning list of action links for the database menu"
+            "help": 'Async callable returning action items for the database menu. Each item is either a link with ``href``, ``label`` and optional ``description`` keys, or a button with ``type: "button"``, ``label``, optional ``description`` and optional ``attrs``. See :ref:`plugin_actions` and :ref:`plugin_hook_database_actions`.'
         }
     )
     show_hidden: str = field(metadata={"help": "Value of _show_hidden query parameter"})
     editable: bool = field(
         metadata={"help": "Boolean indicating if the database is editable"}
     )
-    count_limit: int = field(metadata={"help": "The maximum number of rows to count"})
     allow_download: bool = field(
         metadata={"help": "Boolean indicating if database download is allowed"}
     )
     attached_databases: list = field(
-        metadata={"help": "List of names of attached databases"}
+        metadata={
+            "help": "List of names of databases attached to this SQLite connection. This is only populated for the special ``/_memory`` database when Datasette is started with ``--crossdb`` for :ref:`cross_database_queries`."
+        }
     )
     alternate_url_json: str = field(
         metadata={"help": "URL for the alternate JSON version of this page"}
     )
     select_templates: list = field(
         metadata={
-            "help": "List of templates that were considered for rendering this page"
+            "help": "List of template names that were considered for this page, with the selected template prefixed by ``*``."
         }
     )
     top_database: callable = field(
-        metadata={"help": "Callable to render the top_database slot"}
+        metadata={
+            "help": "Async callable that renders the ``top_database`` plugin slot for this database and returns HTML."
+        }
     )
 
 
 @dataclass
 class QueryContext(Context):
+    "The page for arbitrary SQL queries (/database/-/query?sql=...) and stored queries (/database/query-name)."
+
+    documented_template = "query.html"
+
     database: str = field(metadata={"help": "The name of the database being queried"})
     database_color: str = field(metadata={"help": "The color of the database"})
     query: dict = field(
-        metadata={"help": "The SQL query object containing the `sql` string"}
+        metadata={
+            "help": "Dictionary describing the SQL query being executed, with ``sql`` and ``params`` keys."
+        }
     )
     stored_query: str = field(
         metadata={"help": "The name of the stored query if this is a stored query"}
@@ -333,7 +388,9 @@ class QueryContext(Context):
         }
     )
     metadata: dict = field(
-        metadata={"help": "Metadata about the database or the stored query"}
+        metadata={
+            "help": "Metadata dictionary for the database or stored query. Stored query metadata may include options such as ``hide_sql``, ``on_success_message`` and ``on_error_redirect``."
+        }
     )
     db_is_immutable: bool = field(
         metadata={"help": "Boolean indicating if this database is immutable"}
@@ -357,22 +414,44 @@ class QueryContext(Context):
     save_query_url: str = field(
         metadata={"help": "URL to save the current arbitrary SQL as a query"}
     )
-    tables: list = field(metadata={"help": "List of table objects in the database"})
+    tables: list[DatabaseTable] = field(
+        metadata={
+            "help": "List of ``DatabaseTable`` objects describing tables in the database. Each item has ``name``, ``columns``, ``primary_keys``, ``count``, ``count_truncated``, ``hidden``, ``fts_table``, ``foreign_keys`` and ``private`` attributes. ``count_truncated`` is true if ``count`` is a capped lower bound rather than an exact total."
+        }
+    )
     named_parameter_values: dict = field(
-        metadata={"help": "Dictionary of parameter names/values"}
+        metadata={
+            "help": "Dictionary of named SQL parameter values, keyed by parameter name without the leading ``:``."
+        }
     )
     edit_sql_url: str = field(
         metadata={"help": "URL to edit the SQL for a stored query"}
     )
-    display_rows: list = field(metadata={"help": "List of result rows to display"})
-    columns: list = field(metadata={"help": "List of column names"})
-    renderers: dict = field(metadata={"help": "Dictionary of renderer name to URL"})
+    display_rows: list = field(
+        metadata={
+            "help": "List of result rows formatted for HTML display. Each row is a list of rendered cell values in the same order as ``columns``."
+        }
+    )
+    columns: list = field(
+        metadata={
+            "help": "List of result column names in the order they appear in ``display_rows`` and ``rows``."
+        }
+    )
+    renderers: dict = field(
+        metadata={
+            "help": "Dictionary mapping output format names such as ``json`` to URLs for this query in that format."
+        }
+    )
     url_csv: str = field(metadata={"help": "URL for CSV export"})
     show_hide_hidden: str = field(
-        metadata={"help": "Hidden input field for the _show_sql parameter"}
+        metadata={
+            "help": "Rendered hidden ``<input>`` HTML preserving the current ``_hide_sql`` or ``_show_sql`` state."
+        }
     )
     table_columns: dict = field(
-        metadata={"help": "Dictionary of table name to list of column names"}
+        metadata={
+            "help": "Dictionary mapping table names to lists of column names, used to power SQL autocomplete."
+        }
     )
     alternate_url_json: str = field(
         metadata={"help": "URL for alternate JSON version of this page"}
@@ -380,23 +459,27 @@ class QueryContext(Context):
     # TODO: refactor this to somewhere else, probably ds.render_template()
     select_templates: list = field(
         metadata={
-            "help": "List of templates that were considered for rendering this page"
+            "help": "List of template names that were considered for this page, with the selected template prefixed by ``*``."
         }
     )
     top_query: callable = field(
-        metadata={"help": "Callable to render the top_query slot"}
+        metadata={
+            "help": "Async callable that renders the ``top_query`` plugin slot for this query and returns HTML."
+        }
     )
     top_stored_query: callable = field(
-        metadata={"help": "Callable to render the top_stored_query slot"}
+        metadata={
+            "help": "Async callable that renders the ``top_stored_query`` plugin slot for stored queries and returns HTML."
+        }
     )
     query_actions: callable = field(
         metadata={
-            "help": "Callable returning a list of links for the query action menu"
+            "help": 'Async callable returning action items for the query menu. Each item is either a link with ``href``, ``label`` and optional ``description`` keys, or a button with ``type: "button"``, ``label``, optional ``description`` and optional ``attrs``. See :ref:`plugin_actions` and :ref:`plugin_hook_query_actions`.'
         }
     )
 
 
-async def get_tables(datasette, request, db, allowed_dict):
+async def get_tables(datasette, request, db, allowed_dict) -> list[DatabaseTable]:
     """
     Get list of tables with metadata for the database view.
 
@@ -417,19 +500,34 @@ async def get_tables(datasette, request, db, allowed_dict):
 
         table_columns = await db.table_columns(table)
         tables.append(
-            {
-                "name": table,
-                "columns": table_columns,
-                "primary_keys": await db.primary_keys(table),
-                "count": table_counts[table],
-                "hidden": table in hidden_table_names,
-                "fts_table": await db.fts_table(table),
-                "foreign_keys": all_foreign_keys[table],
-                "private": allowed_dict[table].private,
-            }
+            DatabaseTable(
+                name=table,
+                columns=table_columns,
+                primary_keys=await db.primary_keys(table),
+                count=table_counts[table],
+                count_truncated=_table_count_truncated(
+                    datasette, db, table, table_counts[table]
+                ),
+                hidden=table in hidden_table_names,
+                fts_table=await db.fts_table(table),
+                foreign_keys=all_foreign_keys[table],
+                private=allowed_dict[table].private,
+            )
         )
-    tables.sort(key=lambda t: (t["hidden"], t["name"]))
+    tables.sort(key=lambda table: (table.hidden, table.name))
     return tables
+
+
+def _table_count_truncated(datasette, db, table, count):
+    if count != db.count_limit + 1:
+        return False
+    if not db.is_mutable and datasette.inspect_data:
+        try:
+            datasette.inspect_data[db.name]["tables"][table]["count"]
+            return False
+        except KeyError:
+            pass
+    return True
 
 
 async def database_download(request, datasette):

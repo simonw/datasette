@@ -46,6 +46,10 @@ from datasette.utils import (
 from datasette.utils.asgi import BadRequest, Forbidden, NotFound, Request, Response
 from datasette.filters import Filters
 import sqlite_utils
+from dataclasses import dataclass, field
+
+from datasette.extras import ExtraScope
+from . import Context, from_extra
 from .base import BaseView, DatasetteError, _error, stream_csv
 from .database import QueryView
 from .table_create_alter import (
@@ -63,6 +67,153 @@ from .table_extras import (
     resolve_table_extras,
     table_extra_registry,
 )
+
+
+@dataclass
+class TableContext(Context):
+    "The page showing the rows in a table or SQL view, e.g. /fixtures/facetable."
+
+    documented_template = "table.html"
+    extras_scope = ExtraScope.TABLE
+
+    # Fields resolved by registered extras - their documentation comes
+    # from the description on each Extra class in table_extras.py
+    actions: callable = from_extra()
+    all_columns: list = from_extra()
+    columns: list = from_extra()
+    count: int = from_extra()
+    count_sql: str = from_extra()
+    custom_table_templates: list = from_extra()
+    database: str = from_extra()
+    database_color: str = from_extra()
+    display_columns: list = from_extra()
+    display_rows: list = from_extra()
+    expandable_columns: list = from_extra()
+    facet_results: dict = from_extra()
+    facets_timed_out: list = from_extra()
+    filters: Filters = from_extra()
+    form_hidden_args: list = from_extra()
+    human_description_en: str = from_extra()
+    is_view: bool = from_extra()
+    metadata: dict = from_extra()
+    next_url: str = from_extra()
+    primary_keys: list = from_extra()
+    private: bool = from_extra()
+    query: dict = from_extra()
+    renderers: dict = from_extra()
+    set_column_type_ui: dict = from_extra()
+    sorted_facet_results: list = from_extra()
+    suggested_facets: list = from_extra()
+    table: str = from_extra()
+    table_definition: str = from_extra()
+    view_definition: str = from_extra()
+
+    # Fields added by the view code
+    ok: bool = field(
+        metadata={"help": "True if the data for this page was retrieved without errors"}
+    )
+    next: str = field(metadata={"help": "Pagination token for the next page, or None"})
+    count_truncated: bool = field(
+        metadata={
+            "help": "True if ``count`` is a capped lower bound rather than an exact total, because Datasette stopped counting after its configured row-count limit."
+        }
+    )
+    rows: list = field(
+        metadata={
+            "help": "The rows for this page, as a list of dictionaries mapping column name to raw value."
+        }
+    )
+    filter_columns: list = field(
+        metadata={
+            "help": "List of column names offered by the filter interface, including currently displayed columns and any hidden columns that can still be filtered."
+        }
+    )
+    supports_search: bool = field(
+        metadata={"help": "True if this table has full-text search configured"}
+    )
+    extra_wheres_for_ui: list = field(
+        metadata={
+            "help": "Extra where clauses from ``?_where=`` for display in the UI. Each item has ``text`` for the SQL fragment and ``remove_url`` for a URL that removes that fragment."
+        }
+    )
+    url_csv: str = field(metadata={"help": "URL for the CSV export of this page"})
+    url_csv_path: str = field(metadata={"help": "Path portion of the CSV export URL"})
+    url_csv_hidden_args: list = field(
+        metadata={
+            "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current filters while forcing ``_size=max``."
+        }
+    )
+    sort: str = field(metadata={"help": "Column the page is sorted by, or None"})
+    sort_desc: str = field(
+        metadata={"help": "Column the page is sorted by in descending order, or None"}
+    )
+    append_querystring: callable = field(
+        metadata={
+            "help": "Function ``append_querystring(url, querystring)`` that appends additional query string arguments to a URL, using ``?`` or ``&`` as appropriate."
+        }
+    )
+    path_with_replaced_args: callable = field(
+        metadata={
+            "help": "Function for building the current path with modified query string arguments. Pass the current ``request`` and a dictionary of argument names to replacement values, using ``None`` to remove an argument."
+        }
+    )
+    fix_path: callable = field(
+        metadata={
+            "help": "Function that applies the configured ``base_url`` prefix to a path."
+        }
+    )
+    settings: dict = field(
+        metadata={
+            "help": "Dictionary of Datasette's current settings, keyed by setting name."
+        }
+    )
+    alternate_url_json: str = field(
+        metadata={"help": "URL for the JSON version of this page"}
+    )
+    datasette_allow_facet: str = field(
+        metadata={
+            "help": 'The string "true" or "false" reflecting the allow_facet setting'
+        }
+    )
+    is_sortable: bool = field(
+        metadata={"help": "True if any of the displayed columns can be used to sort"}
+    )
+    allow_execute_sql: bool = field(
+        metadata={
+            "help": "True if the current actor can execute custom SQL against this database"
+        }
+    )
+    query_ms: float = field(
+        metadata={
+            "help": "Time taken by the SQL queries for this page, in milliseconds"
+        }
+    )
+    select_templates: list = field(
+        metadata={
+            "help": "List of template names that were considered for this page, with the selected template prefixed by ``*``."
+        }
+    )
+    top_table: callable = field(
+        metadata={
+            "help": "Async callable that renders the ``top_table`` plugin slot for this table or view and returns HTML."
+        }
+    )
+    table_page_data: dict = field(
+        metadata={
+            "help": "JSON data used by JavaScript on the table page. Includes ``database``, ``table`` and ``tableUrl``, plus optional ``foreignKeys`` mapping column names to autocomplete URLs, optional ``insertRow`` data and optional ``alterTable`` data."
+        }
+    )
+    table_insert_ui: dict = field(
+        metadata={
+            "help": "Information needed to enable the row insertion UI, or ``None`` if row insertion is not available to the current actor. When present it has ``path``, ``tableName``, ``columns`` and ``primaryKeys`` keys; each column includes ``name``, ``sqlite_type``, ``notnull``, ``default``, ``has_default``, ``is_pk``, ``value_kind`` and ``column_type`` keys."
+        }
+    )
+    table_alter_ui: dict = field(
+        metadata={
+            "help": "Information needed to enable the alter table UI, or ``None`` if altering this table is not available to the current actor. When present it has ``path``, ``tableName``, ``columns``, ``primaryKeys``, ``columnTypes``, ``defaultExpressions`` and ``foreignKeyTargetsPath`` keys, plus optional ``customColumnTypes`` and ``dropPath`` keys."
+        }
+    )
+
 
 LINK_WITH_LABEL = (
     '<a href="{base_url}{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'
@@ -1260,7 +1411,6 @@ class TableFragmentView(BaseView):
                 path_with_replaced_args=path_with_replaced_args,
                 fix_path=self.ds.urls.path,
                 settings=self.ds.settings_dict(),
-                count_limit=resolved.db.count_limit,
             ),
             request=request,
             view_name="table",
@@ -1675,40 +1825,82 @@ async def table_view_traced(datasette, request):
                 )
             }
         )
+        table_context = TableContext(
+            actions=data["actions"],
+            all_columns=data["all_columns"],
+            columns=data["columns"],
+            count=data["count"],
+            count_sql=data["count_sql"],
+            custom_table_templates=data["custom_table_templates"],
+            database=data["database"],
+            database_color=data["database_color"],
+            display_columns=data["display_columns"],
+            display_rows=data["display_rows"],
+            expandable_columns=data["expandable_columns"],
+            facet_results=data["facet_results"],
+            facets_timed_out=data["facets_timed_out"],
+            filters=data["filters"],
+            form_hidden_args=data["form_hidden_args"],
+            human_description_en=data["human_description_en"],
+            is_view=data["is_view"],
+            metadata=data["metadata"],
+            next_url=data["next_url"],
+            primary_keys=data["primary_keys"],
+            private=data["private"],
+            query=data["query"],
+            renderers=data["renderers"],
+            set_column_type_ui=data["set_column_type_ui"],
+            sorted_facet_results=data["sorted_facet_results"],
+            suggested_facets=data["suggested_facets"],
+            table=data["table"],
+            table_definition=data["table_definition"],
+            view_definition=data["view_definition"],
+            ok=data["ok"],
+            next=data["next"],
+            count_truncated=data["count_truncated"],
+            rows=data["rows"],
+            filter_columns=data["filter_columns"],
+            supports_search=data["supports_search"],
+            extra_wheres_for_ui=data["extra_wheres_for_ui"],
+            url_csv=data["url_csv"],
+            url_csv_path=data["url_csv_path"],
+            url_csv_hidden_args=data["url_csv_hidden_args"],
+            sort=data["sort"],
+            sort_desc=data["sort_desc"],
+            append_querystring=append_querystring,
+            path_with_replaced_args=path_with_replaced_args,
+            fix_path=datasette.urls.path,
+            settings=datasette.settings_dict(),
+            alternate_url_json=alternate_url_json,
+            datasette_allow_facet=(
+                "true" if datasette.setting("allow_facet") else "false"
+            ),
+            is_sortable=any(c["sortable"] for c in data["display_columns"]),
+            allow_execute_sql=await datasette.allowed(
+                action="execute-sql",
+                resource=DatabaseResource(database=resolved.db.name),
+                actor=request.actor,
+            ),
+            query_ms=1.2,
+            select_templates=[
+                f"{'*' if template_name == template.name else ''}{template_name}"
+                for template_name in templates
+            ],
+            top_table=make_slot_function(
+                "top_table",
+                datasette,
+                request,
+                database=resolved.db.name,
+                table=resolved.table,
+            ),
+            table_page_data=data["table_page_data"],
+            table_insert_ui=data["table_insert_ui"],
+            table_alter_ui=data["table_alter_ui"],
+        )
         r = Response.html(
             await datasette.render_template(
                 template,
-                dict(
-                    data,
-                    append_querystring=append_querystring,
-                    path_with_replaced_args=path_with_replaced_args,
-                    fix_path=datasette.urls.path,
-                    settings=datasette.settings_dict(),
-                    # TODO: review up all of these hacks:
-                    alternate_url_json=alternate_url_json,
-                    datasette_allow_facet=(
-                        "true" if datasette.setting("allow_facet") else "false"
-                    ),
-                    is_sortable=any(c["sortable"] for c in data["display_columns"]),
-                    allow_execute_sql=await datasette.allowed(
-                        action="execute-sql",
-                        resource=DatabaseResource(database=resolved.db.name),
-                        actor=request.actor,
-                    ),
-                    query_ms=1.2,
-                    select_templates=[
-                        f"{'*' if template_name == template.name else ''}{template_name}"
-                        for template_name in templates
-                    ],
-                    top_table=make_slot_function(
-                        "top_table",
-                        datasette,
-                        request,
-                        database=resolved.db.name,
-                        table=resolved.table,
-                    ),
-                    count_limit=resolved.db.count_limit,
-                ),
+                table_context,
                 request=request,
                 view_name="table",
             ),
@@ -2140,6 +2332,9 @@ async def table_view_data(
     data["rows"] = transformed_rows
 
     if context_for_html_hack:
+        data["count_truncated"] = _count_truncated_for_table_page(
+            datasette, db, database_name, table_name, count_sql, data.get("count")
+        )
         data.update(extra_context_from_filters)
         # filter_columns combine the columns we know are available
         # in the table with any additional columns (such as rowid)
@@ -2203,6 +2398,24 @@ async def table_view_data(
         )
 
     return data, rows[:page_size], columns, expanded_columns, sql, next_url
+
+
+def _count_truncated_for_table_page(
+    datasette, db, database_name, table_name, count_sql, count
+):
+    if count != db.count_limit + 1:
+        return False
+    if (
+        not db.is_mutable
+        and datasette.inspect_data
+        and count_sql == f"select count(*) from {table_name} "
+    ):
+        try:
+            datasette.inspect_data[database_name]["tables"][table_name]["count"]
+            return False
+        except KeyError:
+            pass
+    return True
 
 
 async def _next_value_and_url(

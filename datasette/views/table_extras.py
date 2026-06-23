@@ -98,7 +98,7 @@ class QueryExtraContext:
 
 
 class CountSqlExtra(Extra):
-    description = "SQL query used to calculate the total count"
+    description = "SQL query string used to calculate the total count for the current table view, including active filters."
     example = ExtraExample("/fixtures/facetable.json?_size=0&_extra=count_sql")
     scopes = {ExtraScope.TABLE}
 
@@ -127,8 +127,8 @@ class CountExtra(Extra):
                 pass
 
         if context.count_sql and count is None and not context.nocount:
-            count_sql_limited = (
-                f"select count(*) from (select * {context.from_sql} limit 10001)"
+            count_sql_limited = "select count(*) from (select * {} limit {})".format(
+                context.from_sql, context.db.count_limit + 1
             )
             try:
                 count_rows = list(
@@ -165,7 +165,7 @@ class FacetInstancesProvider(Provider):
 
 
 class FacetResultsExtra(Extra):
-    description = "Results of facets calculated against this data"
+    description = "Results of facets calculated against this data. A dictionary with ``results`` and ``timed_out`` keys: ``results`` maps facet names to facet dictionaries with ``name``, ``type``, ``results`` and URL keys, and each facet result item includes ``value``, ``label``, ``count`` and ``toggle_url``."
     example = ExtraExample(
         value={
             "results": {
@@ -214,7 +214,9 @@ class FacetResultsExtra(Extra):
 
 
 class FacetsTimedOutExtra(Extra):
-    description = "Facet calculations that timed out"
+    description = (
+        "List of names of facet calculations that exceeded the facet time limit."
+    )
     example = ExtraExample(
         "/fixtures/facetable.json?_facet=state&_extra=facets_timed_out",
         note=(
@@ -230,7 +232,7 @@ class FacetsTimedOutExtra(Extra):
 
 
 class SuggestedFacetsExtra(Extra):
-    description = "Suggestions for facets that might return interesting results"
+    description = "Suggestions for facets that might return interesting results. Each item is a dictionary with ``name`` and ``toggle_url`` keys, and may include extra keys such as ``type`` or ``label`` depending on the facet class."
     example = ExtraExample(
         value=[
             {
@@ -301,7 +303,7 @@ class NextUrlExtra(Extra):
 
 
 class ColumnsExtra(Extra):
-    description = "Column names returned by this query"
+    description = "List of column names returned by this table, row or query."
     example = ExtraExample("/fixtures/facetable.json?_extra=columns")
     examples = {
         ExtraScope.ROW: ExtraExample(
@@ -318,7 +320,7 @@ class ColumnsExtra(Extra):
 
 
 class AllColumnsExtra(Extra):
-    description = "All columns in the table, regardless of _col/_nocol filtering"
+    description = "List of all column names in the table, regardless of ``_col=`` or ``_nocol=`` filtering."
     example = ExtraExample("/fixtures/facetable.json?_col=pk&_extra=all_columns")
     scopes = {ExtraScope.TABLE}
 
@@ -327,7 +329,7 @@ class AllColumnsExtra(Extra):
 
 
 class PrimaryKeysExtra(Extra):
-    description = "Primary keys for this table"
+    description = "List of primary key column names for this table, or an empty list if the table has no explicit primary key."
     example = ExtraExample("/fixtures/facetable.json?_extra=primary_keys")
     examples = {
         ExtraScope.ROW: ExtraExample(
@@ -341,7 +343,7 @@ class PrimaryKeysExtra(Extra):
 
 
 class ActionsExtra(Extra):
-    description = "Table or view actions made available by plugin hooks"
+    description = 'Async callable returning table or view actions made available by core and plugin hooks. Each item is either a link with ``href``, ``label`` and optional ``description`` keys, or a button with ``type: "button"``, ``label``, optional ``description`` and optional ``attrs``. See :ref:`plugin_actions`, :ref:`plugin_hook_table_actions` and :ref:`plugin_hook_view_actions`.'
     scopes = {ExtraScope.TABLE}
     # Returns an async function for the HTML templates - not JSON serializable
     public = False
@@ -421,7 +423,7 @@ class IsViewExtra(Extra):
 
 
 class DebugExtra(Extra):
-    description = "Extra debug information"
+    description = "Extra debug information dictionary. This is intended for development only and its shape is not part of the stable template contract."
     docs_note = (
         "The contents of this block are not a stable part of the Datasette "
         "API and may change without warning."
@@ -457,7 +459,7 @@ class DebugExtra(Extra):
 
 
 class RequestExtra(Extra):
-    description = "Full information about the request"
+    description = "Dictionary with request details: ``url``, ``path``, ``full_path``, ``host`` and ``args`` where ``args`` maps query string parameter names to their values."
     example = ExtraExample("/fixtures/facetable.json?_extra=request")
     examples = {
         ExtraScope.ROW: ExtraExample(
@@ -501,7 +503,7 @@ class DisplayColumnsAndRowsProvider(Provider):
 
 
 class DisplayColumnsExtra(Extra):
-    description = "Column metadata used by the HTML table display"
+    description = "Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type`` and ``column_type_config`` keys."
     example = ExtraExample(
         value=[
             {
@@ -531,7 +533,7 @@ class DisplayColumnsExtra(Extra):
 
 
 class DisplayRowsExtra(Extra):
-    description = "Row data formatted for the HTML table display"
+    description = "Rows formatted for the HTML table display. Each row is iterable and contains cell dictionaries with ``column``, ``value``, ``raw`` and ``value_type`` keys; table pages may also provide ``pk_path``, ``row_path`` and ``row_label`` attributes on each row object."
     scopes = {ExtraScope.TABLE}
     # Contains markupsafe/sqlite3.Row values - not JSON serializable
     public = False
@@ -640,7 +642,7 @@ class RenderCellExtra(Extra):
 
 
 class QueryExtra(Extra):
-    description = "Details of the underlying SQL query"
+    description = "Details of the underlying SQL query as a dictionary with ``sql`` and ``params`` keys."
     example = ExtraExample("/fixtures/facetable.json?_size=1&_extra=query")
     examples = {
         ExtraScope.ROW: ExtraExample(
@@ -661,7 +663,7 @@ class QueryExtra(Extra):
 
 
 class ColumnTypesExtra(Extra):
-    description = "Column type assignments for this table"
+    description = 'Column type assignments for this table. A dictionary mapping column names to ``{"type": type_name, "config": config}`` dictionaries.'
     docs_note = (
         "An empty object if no column types have been assigned. Column types "
         "can be assigned in :ref:`configuration "
@@ -700,7 +702,7 @@ class ColumnTypesExtra(Extra):
 
 
 class SetColumnTypeUiExtra(Extra):
-    description = "Information needed to build an interface for assigning column types"
+    description = "Information needed to build an interface for assigning column types, or ``None`` if unavailable. When present it has ``path`` and ``columns`` keys; ``columns`` maps column names to ``current`` and ``options`` values."
     docs_note = (
         "``null`` unless the current actor is allowed to use the :ref:`set "
         "column type API <TableSetColumnTypeView>` for this table."
@@ -784,7 +786,7 @@ class SetColumnTypeUiExtra(Extra):
 
 
 class MetadataExtra(Extra):
-    description = "Metadata about the table, database or stored query"
+    description = "Metadata dictionary for the table, database or stored query. Table and row metadata include a ``columns`` dictionary mapping column names to descriptions; stored query metadata returns the stored query configuration."
     docs_note = "See :ref:`metadata` for how to attach metadata to tables."
     example = ExtraExample(
         "/fixtures/facetable.json?_extra=metadata",
@@ -891,7 +893,7 @@ class DatabaseColorExtra(Extra):
 
 
 class FormHiddenArgsExtra(Extra):
-    description = "Hidden form arguments used by the HTML table interface"
+    description = "List of ``(name, value)`` pairs for hidden form fields used by the HTML table interface to preserve current query string options."
     example = ExtraExample(
         "/fixtures/facetable.json?_facet=state&_size=1&_extra=form_hidden_args"
     )
@@ -911,7 +913,7 @@ class FormHiddenArgsExtra(Extra):
 
 
 class FiltersExtra(Extra):
-    description = "Filters object used by the HTML table interface"
+    description = "``Filters`` object used by the HTML table interface. Useful methods include ``filters.human_description_en()``; this is not JSON serializable."
     scopes = {ExtraScope.TABLE}
     # Returns a Filters instance for the HTML templates - not JSON serializable
     public = False
@@ -921,7 +923,7 @@ class FiltersExtra(Extra):
 
 
 class CustomTableTemplatesExtra(Extra):
-    description = "Custom template names considered for this table"
+    description = "List of custom template names considered for rendering table rows, in lookup order."
     docs_note = (
         "The first template in this list that exists will be used to render "
         "the table on the HTML version of this page. See "
@@ -939,7 +941,7 @@ class CustomTableTemplatesExtra(Extra):
 
 
 class SortedFacetResultsExtra(Extra):
-    description = "Facet results sorted for display"
+    description = "Facet result dictionaries sorted for display. Each item has the same shape as an entry from ``facet_results['results']``."
     docs_note = (
         "The same data as ``facet_results``, as a list in the order used by "
         "the HTML interface: facets from :ref:`facet configuration "
@@ -1001,7 +1003,7 @@ class ViewDefinitionExtra(Extra):
 
 
 class RenderersExtra(Extra):
-    description = "Alternative output renderers available for this table"
+    description = "Dictionary mapping output format names such as ``json`` or plugin-provided renderer names to URLs for this data in that format."
     example = ExtraExample(
         "/fixtures/facetable.json?_extra=renderers",
         note=(
@@ -1068,7 +1070,7 @@ class PrivateExtra(Extra):
 
 
 class ExpandableColumnsExtra(Extra):
-    description = "Foreign key columns that can be expanded with labels"
+    description = "List of foreign key columns that can be expanded with labels. Each item is a ``(foreign_key, label_column)`` pair where ``foreign_key`` is the SQLite foreign key dictionary and ``label_column`` is the label column in the referenced table, or ``None``."
     docs_note = "See :ref:`expand_foreign_keys` for how to expand these labels."
     example = ExtraExample(
         "/fixtures/facetable.json?_extra=expandable_columns",
@@ -1090,7 +1092,7 @@ class ExpandableColumnsExtra(Extra):
 
 
 class ForeignKeyTablesExtra(Extra):
-    description = "Tables that link to this row using foreign keys"
+    description = "List of tables that link to this row using foreign keys. Each item includes the foreign key fields plus ``count`` for matching rows and ``link`` for the filtered table URL."
     example = ExtraExample(
         "/fixtures/simple_primary_key/1.json?_extra=foreign_key_tables",
         note=(
@@ -1108,7 +1110,7 @@ class ForeignKeyTablesExtra(Extra):
 
 
 class ExtrasExtra(Extra):
-    description = "List of ?_extra= blocks that can be used on this page"
+    description = "List of ``?_extra=`` blocks that can be used on this page. Each item has ``name``, ``description``, ``toggle_url`` and ``selected`` keys."
     example = ExtraExample(
         value=[
             {

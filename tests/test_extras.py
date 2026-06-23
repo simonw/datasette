@@ -23,6 +23,38 @@ class DependentExtra(Extra):
         return slow_value + 1
 
 
+class InternalOnlyExtra(Extra):
+    description = "Internal extra for HTML templates only"
+    scopes = {ExtraScope.TABLE}
+    public = False
+
+    async def resolve(self, context):
+        return "internal"
+
+
+def test_internal_classes_for_scope():
+    registry = ExtraRegistry([SlowValueExtra, DependentExtra, InternalOnlyExtra])
+    assert registry.internal_classes_for_scope(ExtraScope.TABLE) == [InternalOnlyExtra]
+    assert registry.public_classes_for_scope(ExtraScope.TABLE) == [
+        SlowValueExtra,
+        DependentExtra,
+    ]
+
+
+def _registered_extra_classes():
+    # Plain Providers are internal dependency plumbing, only Extra
+    # subclasses surface as documented JSON/template keys
+    from datasette.views.table_extras import table_extra_registry
+
+    return [cls for cls in table_extra_registry.classes if issubclass(cls, Extra)]
+
+
+@pytest.mark.parametrize("cls", _registered_extra_classes(), ids=lambda cls: cls.key())
+def test_registered_extras_have_descriptions(cls):
+    # Every registered extra is part of the documented template/JSON contract
+    assert cls.description, "{} is missing a description".format(cls.__name__)
+
+
 def test_registry_is_built_once_per_scope():
     registry = ExtraRegistry([SlowValueExtra, DependentExtra])
     first = registry._registry_for_scope(ExtraScope.TABLE)

@@ -113,6 +113,11 @@ class TableContext(Context):
         metadata={"help": "True if the data for this page was retrieved without errors"}
     )
     next: str = field(metadata={"help": "Pagination token for the next page, or None"})
+    count_truncated: bool = field(
+        metadata={
+            "help": "True if ``count`` is a capped lower bound rather than an exact total, because Datasette stopped counting after its configured row-count limit."
+        }
+    )
     rows: list = field(
         metadata={
             "help": "The rows for this page, as a list of dictionaries mapping column name to value"
@@ -184,11 +189,6 @@ class TableContext(Context):
     )
     top_table: callable = field(
         metadata={"help": "Async function rendering the top_table plugin slot"}
-    )
-    count_limit: int = field(
-        metadata={
-            "help": "The maximum number of rows Datasette will count before showing an approximation"
-        }
     )
     table_page_data: dict = field(
         metadata={"help": "JSON data used by JavaScript on the table page"}
@@ -1391,7 +1391,6 @@ class TableFragmentView(BaseView):
                 path_with_replaced_args=path_with_replaced_args,
                 fix_path=self.ds.urls.path,
                 settings=self.ds.settings_dict(),
-                count_limit=resolved.db.count_limit,
             ),
             request=request,
             view_name="table",
@@ -1843,7 +1842,6 @@ async def table_view_traced(datasette, request):
                         database=resolved.db.name,
                         table=resolved.table,
                     ),
-                    count_limit=resolved.db.count_limit,
                 ),
                 request=request,
                 view_name="table",
@@ -2276,6 +2274,9 @@ async def table_view_data(
     data["rows"] = transformed_rows
 
     if context_for_html_hack:
+        data["count_truncated"] = _count_truncated_for_table_page(
+            datasette, db, database_name, table_name, count_sql, data.get("count")
+        )
         data.update(extra_context_from_filters)
         # filter_columns combine the columns we know are available
         # in the table with any additional columns (such as rowid)
@@ -2339,6 +2340,24 @@ async def table_view_data(
         )
 
     return data, rows[:page_size], columns, expanded_columns, sql, next_url
+
+
+def _count_truncated_for_table_page(
+    datasette, db, database_name, table_name, count_sql, count
+):
+    if count != db.count_limit + 1:
+        return False
+    if (
+        not db.is_mutable
+        and datasette.inspect_data
+        and count_sql == f"select count(*) from {table_name} "
+    ):
+        try:
+            datasette.inspect_data[database_name]["tables"][table_name]["count"]
+            return False
+        except KeyError:
+            pass
+    return True
 
 
 async def _next_value_and_url(

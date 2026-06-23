@@ -32,6 +32,8 @@ class Context:
         "List of ContextField describing the documented fields of this context"
         documented = []
         for f in dataclasses.fields(cls):
+            if f.name.startswith("_"):
+                continue
             from_extra = bool(f.metadata.get("from_extra"))
             if from_extra:
                 help_text = cls._extra_description(f.name)

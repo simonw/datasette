@@ -230,7 +230,6 @@ class DatabaseView(View):
                     database_actions=database_actions,
                     show_hidden=request.args.get("_show_hidden"),
                     editable=True,
-                    count_limit=db.count_limit,
                     allow_download=datasette.setting("allow_download")
                     and not db.is_mutable
                     and not db.is_memory,
@@ -267,7 +266,11 @@ class DatabaseContext(Context):
     )
     path: str = field(metadata={"help": "The URL path to this database"})
     size: int = field(metadata={"help": "The size of the database in bytes"})
-    tables: list = field(metadata={"help": "List of table objects in the database"})
+    tables: list = field(
+        metadata={
+            "help": "List of table objects in the database. Each item includes a ``count_truncated`` key that is true if ``count`` is a capped lower bound rather than an exact total."
+        }
+    )
     hidden_count: int = field(metadata={"help": "Count of hidden tables"})
     views: list = field(metadata={"help": "List of view objects in the database"})
     queries: list = field(metadata={"help": "List of stored query objects"})
@@ -295,7 +298,6 @@ class DatabaseContext(Context):
     editable: bool = field(
         metadata={"help": "Boolean indicating if the database is editable"}
     )
-    count_limit: int = field(metadata={"help": "The maximum number of rows to count"})
     allow_download: bool = field(
         metadata={"help": "Boolean indicating if database download is allowed"}
     )
@@ -365,7 +367,11 @@ class QueryContext(Context):
     save_query_url: str = field(
         metadata={"help": "URL to save the current arbitrary SQL as a query"}
     )
-    tables: list = field(metadata={"help": "List of table objects in the database"})
+    tables: list = field(
+        metadata={
+            "help": "List of table objects in the database. Each item includes a ``count_truncated`` key that is true if ``count`` is a capped lower bound rather than an exact total."
+        }
+    )
     named_parameter_values: dict = field(
         metadata={"help": "Dictionary of parameter names/values"}
     )
@@ -430,6 +436,9 @@ async def get_tables(datasette, request, db, allowed_dict):
                 "columns": table_columns,
                 "primary_keys": await db.primary_keys(table),
                 "count": table_counts[table],
+                "count_truncated": _table_count_truncated(
+                    datasette, db, table, table_counts[table]
+                ),
                 "hidden": table in hidden_table_names,
                 "fts_table": await db.fts_table(table),
                 "foreign_keys": all_foreign_keys[table],
@@ -438,6 +447,18 @@ async def get_tables(datasette, request, db, allowed_dict):
         )
     tables.sort(key=lambda t: (t["hidden"], t["name"]))
     return tables
+
+
+def _table_count_truncated(datasette, db, table, count):
+    if count != db.count_limit + 1:
+        return False
+    if not db.is_mutable and datasette.inspect_data:
+        try:
+            datasette.inspect_data[db.name]["tables"][table]["count"]
+            return False
+        except KeyError:
+            pass
+    return True
 
 
 async def database_download(request, datasette):

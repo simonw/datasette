@@ -127,8 +127,8 @@ class CountExtra(Extra):
                 pass
 
         if context.count_sql and count is None and not context.nocount:
-            count_sql_limited = (
-                f"select count(*) from (select * {context.from_sql} limit 10001)"
+            count_sql_limited = "select count(*) from (select * {} limit {})".format(
+                context.from_sql, context.db.count_limit + 1
             )
             try:
                 count_rows = list(

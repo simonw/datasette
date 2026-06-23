@@ -100,9 +100,6 @@ The page listing the tables, views and queries in a database, e.g. /fixtures. Re
 ``attached_databases`` - ``list``
     List of names of attached databases
 
-``count_limit`` - ``int``
-    The maximum number of rows to count
-
 ``database`` - ``str``
     The name of the database
 
@@ -152,7 +149,7 @@ The page listing the tables, views and queries in a database, e.g. /fixtures. Re
     Dictionary mapping table names to their column lists
 
 ``tables`` - ``list``
-    List of table objects in the database
+    List of table objects in the database. Each item includes a ``count_truncated`` key that is true if ``count`` is a capped lower bound rather than an exact total.
 
 ``top_database`` - ``callable``
     Callable to render the top_database slot
@@ -241,7 +238,7 @@ The page for arbitrary SQL queries (/database/-/query?sql=...) and stored querie
     Dictionary of table name to list of column names
 
 ``tables`` - ``list``
-    List of table objects in the database
+    List of table objects in the database. Each item includes a ``count_truncated`` key that is true if ``count`` is a capped lower bound rather than an exact total.
 
 ``top_query`` - ``callable``
     Callable to render the top_query slot
@@ -280,11 +277,11 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 ``count`` - ``int``
     Total count of rows matching these filters
 
-``count_limit`` - ``int``
-    The maximum number of rows Datasette will count before showing an approximation
-
 ``count_sql`` - ``str``
     SQL query used to calculate the total count
+
+``count_truncated`` - ``bool``
+    True if ``count`` is a capped lower bound rather than an exact total, because Datasette stopped counting after its configured row-count limit.
 
 ``custom_table_templates`` - ``list``
     Custom template names considered for this table

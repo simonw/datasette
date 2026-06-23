@@ -21,6 +21,7 @@ def test_documented_fields():
     @dataclass
     class DemoContext(Context):
         name: str = field(metadata={"help": "The name"})
+        _internal: str = field()
         count: int = field(metadata={"help": "How many there are"})
 
     fields = DemoContext.documented_fields()
@@ -165,7 +166,11 @@ async def test_template_context_matches_documented_contract(
     # The full contract: every key in the rendered template context is
     # documented, and every documented key is present in the context
     documented = documented_context_keys(page_name)
-    actual = set(await get_template_context(context_ds, path))
+    actual = {
+        key
+        for key in await get_template_context(context_ds, path)
+        if not key.startswith("_")
+    }
     undocumented = actual - documented
     no_longer_present = documented - actual
     assert not undocumented, (
@@ -176,6 +181,33 @@ async def test_template_context_matches_documented_contract(
         "Documented keys missing from {} template context: {} - this would "
         "break custom templates".format(page_name, sorted(no_longer_present))
     )
+
+
+@pytest.mark.asyncio
+async def test_count_truncated_replaces_count_limit_context_key(context_ds):
+    db = context_ds.databases["fixtures"]
+    previous_count_limit = db.count_limit
+    previous_cached_table_counts = db._cached_table_counts
+    db.count_limit = 10
+    db._cached_table_counts = None
+    try:
+        table_context = await get_template_context(context_ds, "/fixtures/facetable")
+        assert table_context["count"] == 11
+        assert table_context["count_truncated"] is True
+        assert "count_limit" not in table_context
+
+        database_context = await get_template_context(context_ds, "/fixtures")
+        facetable = next(
+            table
+            for table in database_context["tables"]
+            if table["name"] == "facetable"
+        )
+        assert facetable["count"] == 11
+        assert facetable["count_truncated"] is True
+        assert "count_limit" not in database_context
+    finally:
+        db.count_limit = previous_count_limit
+        db._cached_table_counts = previous_cached_table_counts
 
 
 def test_base_context_keys_all_have_docs():

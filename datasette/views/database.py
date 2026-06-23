@@ -47,7 +47,7 @@ from . import Context
 
 class DatabaseView(View):
     async def get(self, request, datasette):
-        format_ = request.url_vars.get("format") or "html"
+        format_ = request.url_vars.get("format") or request.args.get("_format") or "html"
 
         await datasette.refresh_schemas()
 
@@ -681,7 +681,7 @@ class QueryView(View):
         if params.get("_timelimit"):
             extra_args["custom_time_limit"] = int(params["_timelimit"])
 
-        format_ = request.url_vars.get("format") or "html"
+        format_ = request.url_vars.get("format") or request.args.get("_format") or "html"
 
         query_error = None
         results = None
@@ -750,6 +750,15 @@ class QueryView(View):
                 return data, None, None
 
             return await stream_csv(datasette, fetch_data_for_csv, request, db.name)
+        elif format_ == "markdown":
+
+            async def fetch_data_for_markdown(request, _next=None):
+                results = await db.execute(sql, params, truncate=True)
+                data = {"rows": results.rows, "columns": results.columns}
+                return data, None, None
+
+            from datasette.views.base import stream_markdown
+            return await stream_markdown(datasette, fetch_data_for_markdown, request, db.name)
         elif format_ in datasette.renderers.keys():
             data = {"ok": True, "rows": rows, "columns": columns}
             extras = extra_names_from_request(request)

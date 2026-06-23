@@ -19,6 +19,7 @@ Unreleased
 - Database and table pages now use the ``count_truncated`` template context value to display capped row counts as ``>N rows``.
 - Significant visual improvements to the table filter form UI, plus working add/remove filter buttons. (:issue:`2798`)
 - Improved edit row icon on table pages. (:issue:`2796`)
+- Documentation covers how actors are displayed. Thanks, [Sebastian Cao](https://github.com/cycsmail). (:issue:`2002`)
 
 .. _v1_0_a34:
 

@@ -633,32 +633,151 @@ const initDatasetteTable = function (manager) {
   });
 };
 
-/* Add x buttons to the filter rows */
-function addButtonsToFilterRows(manager) {
-  var x = "✖";
-  var rows = Array.from(
-    document.querySelectorAll(manager.selectors.filterRow),
+function filterRowSelector(manager) {
+  return manager.selectors.filterRows || manager.selectors.filterRow;
+}
+
+function filterRowsWithControls(manager) {
+  return Array.from(
+    document.querySelectorAll(filterRowSelector(manager)),
   ).filter((el) => el.querySelector(".filter-op"));
-  rows.forEach((row) => {
-    var a = document.createElement("a");
-    a.setAttribute("href", "#");
-    a.setAttribute("aria-label", "Remove this filter");
-    a.style.textDecoration = "none";
-    a.innerText = x;
-    a.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      let row = ev.target.closest("div");
-      row.querySelector("select").value = "";
-      row.querySelector(".filter-op select").value = "exact";
-      row.querySelector("input.filter-value").value = "";
-      ev.target.closest("a").style.display = "none";
-    });
-    row.appendChild(a);
+}
+
+function filterRowNumberFromName(name) {
+  var match = name && name.match(/^_filter_column_(\d+)$/);
+  return match ? parseInt(match[1], 10) : 0;
+}
+
+function nextFilterRowNumber(manager) {
+  return filterRowsWithControls(manager).reduce((max, row) => {
     var column = row.querySelector("select");
-    if (!column.value) {
-      a.style.display = "none";
+    return Math.max(max, filterRowNumberFromName(column && column.name));
+  }, 0) + 1;
+}
+
+function setFilterRowNumber(row, number) {
+  row.querySelector("select").name = `_filter_column_${number}`;
+  row.querySelector(".filter-op select").name = `_filter_op_${number}`;
+  row.querySelector("input.filter-value").name = `_filter_value_${number}`;
+}
+
+function resetFilterRow(row) {
+  row.querySelector("select").value = "";
+  row.querySelector(".filter-op select").value = "exact";
+  row.querySelector("input.filter-value").value = "";
+}
+
+function updateFilterRowButtons(manager) {
+  var rows = filterRowsWithControls(manager);
+  rows.forEach((row, index) => {
+    var removeButton = row.querySelector(".filter-row-remove");
+    var addButton = row.querySelector(".filter-row-add");
+    var column = row.querySelector("select");
+    if (removeButton) {
+      removeButton.hidden = index === 0;
+    }
+    if (addButton) {
+      addButton.hidden = index !== rows.length - 1 || !column.value;
+    }
+    var visibleButtonCount = [removeButton, addButton].filter(function (button) {
+      return button && !button.hidden;
+    }).length;
+    row.classList.toggle(
+      "filter-controls-row-has-buttons",
+      visibleButtonCount > 0,
+    );
+    row.classList.toggle(
+      "filter-controls-row-one-button",
+      visibleButtonCount === 1,
+    );
+    row.classList.toggle(
+      "filter-controls-row-two-buttons",
+      visibleButtonCount === 2,
+    );
+  });
+}
+
+function cloneFilterRow(row) {
+  var clone = row.cloneNode(true);
+  clone.querySelector("select").name = "_filter_column";
+  clone.querySelector(".filter-op select").name = "_filter_op";
+  clone.querySelector("input.filter-value").name = "_filter_value";
+  resetFilterRow(clone);
+  clone.querySelectorAll(".filter-row-icon").forEach((button) => button.remove());
+  return clone;
+}
+
+var FILTER_REMOVE_ICON_SVG = `<svg class="filter-row-remove-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M3 6h18"></path>
+  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+  <path d="M10 11v6"></path>
+  <path d="M14 11v6"></path>
+</svg>`;
+
+var FILTER_ADD_ICON_SVG = `<svg class="filter-row-add-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M5 12h14"></path>
+  <path d="M12 5v14"></path>
+</svg>`;
+
+function addFilterRowButtons(row, manager) {
+  var removeButton = document.createElement("button");
+  removeButton.type = "button";
+  removeButton.className = "filter-row-icon filter-row-remove";
+  removeButton.setAttribute("aria-label", "Remove this filter");
+  removeButton.title = "Remove this filter";
+  removeButton.tabIndex = 0;
+  removeButton.innerHTML = FILTER_REMOVE_ICON_SVG;
+  removeButton.addEventListener("click", (ev) => {
+    var row = ev.currentTarget.closest(filterRowSelector(manager));
+    var rows = filterRowsWithControls(manager);
+    var rowIndex = rows.indexOf(row);
+    var focusRow = rows[rowIndex + 1] || rows[rowIndex - 1] || null;
+    row.remove();
+    updateFilterRowButtons(manager);
+    if (focusRow) {
+      var focusTarget =
+        focusRow.querySelector(".filter-row-add:not([hidden])") ||
+        focusRow.querySelector("select");
+      if (focusTarget) {
+        focusTarget.focus();
+      }
     }
   });
+  row.appendChild(removeButton);
+
+  var addButton = document.createElement("button");
+  addButton.type = "button";
+  addButton.className = "filter-row-icon filter-row-add";
+  addButton.setAttribute("aria-label", "Add another filter");
+  addButton.title = "Add another filter";
+  addButton.tabIndex = 0;
+  addButton.innerHTML = FILTER_ADD_ICON_SVG;
+  addButton.addEventListener("click", (ev) => {
+    var row = ev.currentTarget.closest(filterRowSelector(manager));
+    if (row.querySelector("select").name === "_filter_column") {
+      setFilterRowNumber(row, nextFilterRowNumber(manager));
+    }
+    var clone = cloneFilterRow(row);
+    addFilterRowButtons(clone, manager);
+    row.parentNode.insertBefore(clone, row.nextSibling);
+    updateFilterRowButtons(manager);
+    clone.querySelector("select").focus();
+  });
+  row.appendChild(addButton);
+
+  row.querySelector("select").addEventListener("change", () => {
+    updateFilterRowButtons(manager);
+  });
+}
+
+/* Add buttons to the filter rows */
+function addButtonsToFilterRows(manager) {
+  var rows = filterRowsWithControls(manager);
+  rows.forEach((row) => {
+    addFilterRowButtons(row, manager);
+  });
+  updateFilterRowButtons(manager);
 }
 
 /* Set up datalist autocomplete for filter values */
@@ -687,11 +806,11 @@ function initAutocompleteForFilterValues(manager) {
     });
   }
   createDataLists();
-  // When any select with name=_filter_column changes, update the datalist
+  // When any filter column select changes, update the datalist
   document.body.addEventListener("change", function (event) {
-    if (event.target.name === "_filter_column") {
+    if (event.target.name && event.target.name.startsWith("_filter_column")) {
       event.target
-        .closest(manager.selectors.filterRow)
+        .closest(filterRowSelector(manager))
         .querySelector(".filter-value")
         .setAttribute("list", "datalist-" + event.target.value);
     }

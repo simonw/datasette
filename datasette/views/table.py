@@ -46,7 +46,7 @@ from datasette.utils import (
 from datasette.utils.asgi import BadRequest, Forbidden, NotFound, Request, Response
 from datasette.filters import Filters
 import sqlite_utils
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 
 from datasette.extras import ExtraScope
 from . import Context, from_extra
@@ -1825,44 +1825,82 @@ async def table_view_traced(datasette, request):
                 )
             }
         )
-        # Only keys declared on TableContext are part of the documented
-        # template contract - anything else in data (e.g. extras requested
-        # with ?_extra= on the HTML page, or extra filter context added by
-        # filters_from_request plugins) is dropped here
-        declared_fields = {f.name for f in fields(TableContext)}
+        table_context = TableContext(
+            actions=data["actions"],
+            all_columns=data["all_columns"],
+            columns=data["columns"],
+            count=data["count"],
+            count_sql=data["count_sql"],
+            custom_table_templates=data["custom_table_templates"],
+            database=data["database"],
+            database_color=data["database_color"],
+            display_columns=data["display_columns"],
+            display_rows=data["display_rows"],
+            expandable_columns=data["expandable_columns"],
+            facet_results=data["facet_results"],
+            facets_timed_out=data["facets_timed_out"],
+            filters=data["filters"],
+            form_hidden_args=data["form_hidden_args"],
+            human_description_en=data["human_description_en"],
+            is_view=data["is_view"],
+            metadata=data["metadata"],
+            next_url=data["next_url"],
+            primary_keys=data["primary_keys"],
+            private=data["private"],
+            query=data["query"],
+            renderers=data["renderers"],
+            set_column_type_ui=data["set_column_type_ui"],
+            sorted_facet_results=data["sorted_facet_results"],
+            suggested_facets=data["suggested_facets"],
+            table=data["table"],
+            table_definition=data["table_definition"],
+            view_definition=data["view_definition"],
+            ok=data["ok"],
+            next=data["next"],
+            count_truncated=data["count_truncated"],
+            rows=data["rows"],
+            filter_columns=data["filter_columns"],
+            supports_search=data["supports_search"],
+            extra_wheres_for_ui=data["extra_wheres_for_ui"],
+            url_csv=data["url_csv"],
+            url_csv_path=data["url_csv_path"],
+            url_csv_hidden_args=data["url_csv_hidden_args"],
+            sort=data["sort"],
+            sort_desc=data["sort_desc"],
+            append_querystring=append_querystring,
+            path_with_replaced_args=path_with_replaced_args,
+            fix_path=datasette.urls.path,
+            settings=datasette.settings_dict(),
+            alternate_url_json=alternate_url_json,
+            datasette_allow_facet=(
+                "true" if datasette.setting("allow_facet") else "false"
+            ),
+            is_sortable=any(c["sortable"] for c in data["display_columns"]),
+            allow_execute_sql=await datasette.allowed(
+                action="execute-sql",
+                resource=DatabaseResource(database=resolved.db.name),
+                actor=request.actor,
+            ),
+            query_ms=1.2,
+            select_templates=[
+                f"{'*' if template_name == template.name else ''}{template_name}"
+                for template_name in templates
+            ],
+            top_table=make_slot_function(
+                "top_table",
+                datasette,
+                request,
+                database=resolved.db.name,
+                table=resolved.table,
+            ),
+            table_page_data=data["table_page_data"],
+            table_insert_ui=data["table_insert_ui"],
+            table_alter_ui=data["table_alter_ui"],
+        )
         r = Response.html(
             await datasette.render_template(
                 template,
-                TableContext(
-                    **{k: v for k, v in data.items() if k in declared_fields},
-                    append_querystring=append_querystring,
-                    path_with_replaced_args=path_with_replaced_args,
-                    fix_path=datasette.urls.path,
-                    settings=datasette.settings_dict(),
-                    # TODO: review up all of these hacks:
-                    alternate_url_json=alternate_url_json,
-                    datasette_allow_facet=(
-                        "true" if datasette.setting("allow_facet") else "false"
-                    ),
-                    is_sortable=any(c["sortable"] for c in data["display_columns"]),
-                    allow_execute_sql=await datasette.allowed(
-                        action="execute-sql",
-                        resource=DatabaseResource(database=resolved.db.name),
-                        actor=request.actor,
-                    ),
-                    query_ms=1.2,
-                    select_templates=[
-                        f"{'*' if template_name == template.name else ''}{template_name}"
-                        for template_name in templates
-                    ],
-                    top_table=make_slot_function(
-                        "top_table",
-                        datasette,
-                        request,
-                        database=resolved.db.name,
-                        table=resolved.table,
-                    ),
-                ),
+                table_context,
                 request=request,
                 view_name="table",
             ),

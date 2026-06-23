@@ -230,6 +230,10 @@ Function that returns an awaitable function that returns a dictionary
 
 Datasette runs Jinja2 in `async mode <https://jinja.palletsprojects.com/en/2.10.x/api/#async-support>`__, which means you can add awaitable functions to the template scope and they will be automatically awaited when they are rendered by the template.
 
+.. warning::
+
+   Be careful not to accidentally define a variable that conflicts with one that Datasette is already using for something else. Check :ref:`the template context documentation <template_context>` to see the variables defined by Datasette core.
+
 Here's an example plugin that adds a ``"user_agent"`` variable to the template context containing the current request's User-Agent header:
 
 .. code-block:: python

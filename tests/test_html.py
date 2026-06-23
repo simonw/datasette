@@ -84,7 +84,7 @@ async def test_homepage_options(ds_client):
 async def test_favicon(ds_client):
     response = await ds_client.get("/favicon.ico")
     assert response.status_code == 200
-    assert response.headers["cache-control"] == "max-age=3600, immutable, public"
+    assert response.headers["cache-control"] == "max-age=3600, public"
     assert int(response.headers["content-length"]) > 100
     assert response.headers["content-type"] == "image/png"
 

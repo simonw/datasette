@@ -314,7 +314,7 @@ async def favicon(request, send):
         send,
         str(FAVICON_PATH),
         content_type="image/png",
-        headers={"Cache-Control": "max-age=3600, immutable, public"},
+        headers={"Cache-Control": "max-age=3600, public"},
     )
 
 

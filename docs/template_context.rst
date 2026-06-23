@@ -27,22 +27,22 @@ Base context
 These variables are available on every page rendered by Datasette, including pages rendered by plugins that use :ref:`datasette.render_template() <datasette_render_template>`. Plugins can add additional variables using the :ref:`plugin_hook_extra_template_vars` hook.
 
 ``request``
-    The current Request object, or None
+    The current :ref:`Request object <internals_request>`, or None. Common properties include ``request.path``, ``request.args``, ``request.actor``, ``request.url_vars`` and ``request.host``.
 
 ``crumb_items``
-    Async function returning breadcrumb navigation items for the current page
+    Async function returning breadcrumb navigation items for the current page. Call it with ``request=request`` plus optional ``database=`` and ``table=`` arguments; it returns a list of ``{"href": url, "label": label}`` dictionaries.
 
 ``urls``
-    Object with methods for constructing URLs to pages within Datasette - see datasette.urls in the internals documentation
+    Object with methods for constructing URLs within Datasette. Common methods include ``urls.instance()``, ``urls.database(database)``, ``urls.table(database, table)``, ``urls.query(database, query)``, ``urls.row(database, table, row_path)`` and ``urls.static(path)`` - see :ref:`internals_datasette_urls`.
 
 ``actor``
-    The currently authenticated actor dictionary, or None
+    The currently authenticated actor dictionary, or None. Actors usually include an ``id`` key and may include any other keys supplied by authentication plugins.
 
 ``menu_links``
-    Async function returning links for the Datasette application menu, including those added by plugins
+    Async function returning links for the Datasette application menu, including links added by plugins. Each item is a link dictionary with ``href`` and ``label`` keys. See :ref:`plugin_hook_menu_links`; for page action menus that can also include JavaScript-backed buttons, see :ref:`plugin_actions`.
 
 ``display_actor``
-    Function returning a display string for an actor dictionary
+    Function that accepts an actor dictionary and returns the display string used in the navigation menu.
 
 ``show_logout``
     True if the logout link should be shown in the navigation menu
@@ -57,28 +57,25 @@ These variables are available on every page rendered by Datasette, including pag
     Hash of Datasette's table.js contents, used for cache busting
 
 ``zip``
-    Python's zip() builtin, made available to template logic
+    Python's ``zip()`` builtin, made available to template logic
 
 ``body_scripts``
-    List of script blocks for the page body contributed by plugins
+    List of JavaScript snippets contributed by plugins using :ref:`plugin_hook_extra_body_script`. Each item is a dictionary with ``script`` containing JavaScript source and ``module`` indicating whether Datasette will wrap it in ``<script type="module">``; otherwise Datasette wraps it in a regular ``<script>`` block.
 
 ``format_bytes``
-    Function that formats a number of bytes as a human-readable size
+    Function that accepts a byte count integer and returns a human-readable string such as ``1.2 MB``.
 
 ``show_messages``
-    Function returning any messages set for the current user, clearing them in the process
+    Function returning any messages set for the current user, clearing them in the process. Returns a list of ``(message, type)`` pairs, where ``type`` is one of Datasette's ``INFO``, ``WARNING`` or ``ERROR`` constants.
 
 ``extra_css_urls``
-    List of {url, sri} dictionaries of extra CSS stylesheets to include on the page, from plugins and configuration
+    List of extra CSS stylesheets to include on the page. Each item is a dictionary with ``url`` and optional ``sri`` keys, from plugins and configuration.
 
 ``extra_js_urls``
-    List of {url, sri, module} dictionaries of extra JavaScript URLs to include on the page
+    List of extra JavaScript URLs to include on the page. Each item is a dictionary with ``url`` plus optional ``sri`` and ``module`` keys, from plugins and configuration.
 
 ``base_url``
-    The configured base_url setting
-
-``csrftoken``
-    Function returning the CSRF token for the current request
+    The configured :ref:`setting_base_url` setting
 
 ``datasette_version``
     The version of Datasette that is running

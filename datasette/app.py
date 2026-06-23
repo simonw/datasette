@@ -35,6 +35,7 @@ from jinja2 import (
     ChoiceLoader,
     Environment,
     FileSystemLoader,
+    pass_context,
     PrefixLoader,
 )
 from jinja2.environment import Template
@@ -330,30 +331,37 @@ def _to_string(value):
         return json.dumps(value, default=str)
 
 
+@pass_context
+def _legacy_template_csrftoken(context):
+    request = context.get("request")
+    if request and "csrftoken" in request.scope:
+        return request.scope["csrftoken"]()
+    return ""
+
+
 # Documentation for the variables Datasette.render_template() adds to the
 # context for every page. This is part of the documented template contract:
 # keys added in render_template() must be documented here - the contract
 # tests in tests/test_template_context.py enforce this, and the docs in
 # docs/template_context.rst are generated from it.
 TEMPLATE_BASE_CONTEXT = {
-    "request": "The current Request object, or None",
-    "crumb_items": "Async function returning breadcrumb navigation items for the current page",
-    "urls": "Object with methods for constructing URLs to pages within Datasette - see datasette.urls in the internals documentation",
-    "actor": "The currently authenticated actor dictionary, or None",
-    "menu_links": "Async function returning links for the Datasette application menu, including those added by plugins",
-    "display_actor": "Function returning a display string for an actor dictionary",
+    "request": "The current :ref:`Request object <internals_request>`, or None. Common properties include ``request.path``, ``request.args``, ``request.actor``, ``request.url_vars`` and ``request.host``.",
+    "crumb_items": 'Async function returning breadcrumb navigation items for the current page. Call it with ``request=request`` plus optional ``database=`` and ``table=`` arguments; it returns a list of ``{"href": url, "label": label}`` dictionaries.',
+    "urls": "Object with methods for constructing URLs within Datasette. Common methods include ``urls.instance()``, ``urls.database(database)``, ``urls.table(database, table)``, ``urls.query(database, query)``, ``urls.row(database, table, row_path)`` and ``urls.static(path)`` - see :ref:`internals_datasette_urls`.",
+    "actor": "The currently authenticated actor dictionary, or None. Actors usually include an ``id`` key and may include any other keys supplied by authentication plugins.",
+    "menu_links": "Async function returning links for the Datasette application menu, including links added by plugins. Each item is a link dictionary with ``href`` and ``label`` keys. See :ref:`plugin_hook_menu_links`; for page action menus that can also include JavaScript-backed buttons, see :ref:`plugin_actions`.",
+    "display_actor": "Function that accepts an actor dictionary and returns the display string used in the navigation menu.",
     "show_logout": "True if the logout link should be shown in the navigation menu",
     "app_css_hash": "Hash of Datasette's app.css contents, used for cache busting",
     "edit_tools_js_hash": "Hash of Datasette's edit-tools.js contents, used for cache busting",
     "table_js_hash": "Hash of Datasette's table.js contents, used for cache busting",
-    "zip": "Python's zip() builtin, made available to template logic",
-    "body_scripts": "List of script blocks for the page body contributed by plugins",
-    "format_bytes": "Function that formats a number of bytes as a human-readable size",
-    "show_messages": "Function returning any messages set for the current user, clearing them in the process",
-    "extra_css_urls": "List of {url, sri} dictionaries of extra CSS stylesheets to include on the page, from plugins and configuration",
-    "extra_js_urls": "List of {url, sri, module} dictionaries of extra JavaScript URLs to include on the page",
-    "base_url": "The configured base_url setting",
-    "csrftoken": "Function returning the CSRF token for the current request",
+    "zip": "Python's ``zip()`` builtin, made available to template logic",
+    "body_scripts": 'List of JavaScript snippets contributed by plugins using :ref:`plugin_hook_extra_body_script`. Each item is a dictionary with ``script`` containing JavaScript source and ``module`` indicating whether Datasette will wrap it in ``<script type="module">``; otherwise Datasette wraps it in a regular ``<script>`` block.',
+    "format_bytes": "Function that accepts a byte count integer and returns a human-readable string such as ``1.2 MB``.",
+    "show_messages": "Function returning any messages set for the current user, clearing them in the process. Returns a list of ``(message, type)`` pairs, where ``type`` is one of Datasette's ``INFO``, ``WARNING`` or ``ERROR`` constants.",
+    "extra_css_urls": "List of extra CSS stylesheets to include on the page. Each item is a dictionary with ``url`` and optional ``sri`` keys, from plugins and configuration.",
+    "extra_js_urls": "List of extra JavaScript URLs to include on the page. Each item is a dictionary with ``url`` plus optional ``sri`` and ``module`` keys, from plugins and configuration.",
+    "base_url": "The configured :ref:`setting_base_url` setting",
     "datasette_version": "The version of Datasette that is running",
 }
 
@@ -590,6 +598,7 @@ class Datasette:
         )
         environment.filters["escape_css_string"] = escape_css_string
         environment.filters["quote_plus"] = urllib.parse.quote_plus
+        environment.globals["csrftoken"] = _legacy_template_csrftoken
         self._jinja_env = environment
         environment.filters["escape_sqlite"] = escape_sqlite
         environment.filters["to_css_class"] = to_css_class
@@ -2375,11 +2384,6 @@ class Datasette:
                     "extra_js_urls", template, context, request, view_name
                 ),
                 "base_url": self.setting("base_url"),
-                "csrftoken": (
-                    request.scope["csrftoken"]
-                    if request and "csrftoken" in request.scope
-                    else lambda: ""
-                ),
                 "datasette_version": __version__,
             },
             **extra_template_vars,

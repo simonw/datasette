@@ -11,7 +11,7 @@ import textwrap
 from datasette.extras import extra_names_from_request
 from datasette.database import QueryInterrupted
 from datasette.resources import DatabaseResource, QueryResource
-from datasette.stored_queries import stored_query_to_dict
+from datasette.stored_queries import StoredQuery, stored_query_to_dict
 from datasette.write_sql import QueryWriteRejected
 from datasette.utils import (
     add_cors_headers,
@@ -57,6 +57,14 @@ class DatabaseTable:
     hidden: bool
     fts_table: str | None
     foreign_keys: dict[str, list[dict[str, str]]]
+    private: bool
+
+
+@dataclass
+class DatabaseViewInfo:
+    "Summary of a SQLite view shown on the database page."
+
+    name: str
     private: bool
 
 
@@ -109,7 +117,7 @@ class DatabaseView(View):
         # Filter to just views
         view_names_set = set(await db.view_names())
         sql_views = [
-            {"name": name, "private": allowed_dict[name].private}
+            DatabaseViewInfo(name=name, private=allowed_dict[name].private)
             for name in allowed_dict
             if name in view_names_set
         ]
@@ -186,7 +194,7 @@ class DatabaseView(View):
             "size": db.size,
             "tables": [asdict(table) for table in tables],
             "hidden_count": len([table for table in tables if table.hidden]),
-            "views": sql_views,
+            "views": [asdict(view) for view in sql_views],
             "queries": [stored_query_to_dict(query) for query in stored_queries],
             "queries_more": queries_more,
             "queries_count": queries_count,
@@ -287,14 +295,14 @@ class DatabaseContext(Context):
         }
     )
     hidden_count: int = field(metadata={"help": "Count of hidden tables"})
-    views: list = field(
+    views: list[DatabaseViewInfo] = field(
         metadata={
-            "help": "List of SQLite view dictionaries. Each item has ``name`` and ``private`` keys."
+            "help": "List of ``DatabaseViewInfo`` objects describing SQLite views in the database. Each item has ``name`` and ``private`` attributes."
         }
     )
-    queries: list = field(
+    queries: list[StoredQuery] = field(
         metadata={
-            "help": "List of stored query objects. Each has attributes including ``name``, ``sql``, ``title``, ``description``, ``description_html``, ``hide_sql``, ``fragment``, ``parameters``, ``is_write`` and ``private``."
+            "help": "List of ``StoredQuery`` objects. Each has attributes including ``name``, ``sql``, ``title``, ``description``, ``description_html``, ``hide_sql``, ``fragment``, ``parameters``, ``is_write`` and ``private``."
         }
     )
     queries_more: bool = field(

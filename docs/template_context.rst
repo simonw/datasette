@@ -124,8 +124,8 @@ The page listing the tables, views and queries in a database, e.g. /fixtures. Re
 ``private`` - ``bool``
     Boolean indicating if this is a private database
 
-``queries`` - ``list``
-    List of stored query objects. Each has attributes including ``name``, ``sql``, ``title``, ``description``, ``description_html``, ``hide_sql``, ``fragment``, ``parameters``, ``is_write`` and ``private``.
+``queries`` - ``list[StoredQuery]``
+    List of ``StoredQuery`` objects. Each has attributes including ``name``, ``sql``, ``title``, ``description``, ``description_html``, ``hide_sql``, ``fragment``, ``parameters``, ``is_write`` and ``private``.
 
 ``queries_count`` - ``int``
     Count of visible stored queries
@@ -151,8 +151,8 @@ The page listing the tables, views and queries in a database, e.g. /fixtures. Re
 ``top_database`` - ``callable``
     Async callable that renders the ``top_database`` plugin slot for this database and returns HTML.
 
-``views`` - ``list``
-    List of SQLite view dictionaries. Each item has ``name`` and ``private`` keys.
+``views`` - ``list[DatabaseViewInfo]``
+    List of ``DatabaseViewInfo`` objects describing SQLite views in the database. Each item has ``name`` and ``private`` attributes.
 
 Query page
 ----------

@@ -483,7 +483,9 @@ Use ``plugin=`` for plugin static assets:
 
 .. code-block:: python
 
-    datasette.static("plugin.js", plugin="datasette_plugin_name")
+    datasette.static(
+        "plugin.js", plugin="datasette_plugin_name"
+    )
 
 Use ``mount=`` for static directories mounted using the ``--static`` option:
 
@@ -494,10 +496,6 @@ Use ``mount=`` for static directories mounted using the ``--static`` option:
 ``plugin`` and ``mount`` are mutually exclusive. The same feature is available
 to Jinja templates as the ``static()`` template function, described in
 :ref:`customization_static_files`.
-
-When Datasette is running in development mode using ``--reload``, the hash is
-recalculated every time. Otherwise it is cached for the lifetime of the
-Datasette process.
 
 .. _datasette_actors_from_ids:
 

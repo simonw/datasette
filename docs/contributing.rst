@@ -157,12 +157,8 @@ If you want to change Datasette's Python code you can use the ``--reload`` optio
 
     uv run datasette --reload fixtures.db
 
-This also enables development mode for static asset cache busting. URLs generated
-by the ``static()`` template function or ``datasette.static()`` method will
-recalculate their content hash on every page render, so changes to files in
-``datasette/static`` will produce a new asset URL without needing to restart
-Datasette. Without ``--reload``, static asset hashes are cached for the lifetime
-of the process for better production performance.
+This also enables development mode for static asset cache busting, described in
+:ref:`customization_static_files`.
 
 You can also use the ``fixtures.py`` script to recreate the testing version of ``metadata.json`` used by the unit tests. To do that::
 

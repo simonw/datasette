@@ -331,6 +331,15 @@ def _to_string(value):
         return json.dumps(value, default=str)
 
 
+def _template_context_json_default(value):
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return {
+            field.name: getattr(value, field.name)
+            for field in dataclasses.fields(value)
+        }
+    return repr(value)
+
+
 @pass_context
 def _legacy_template_csrftoken(context):
     request = context.get("request")
@@ -2390,7 +2399,13 @@ class Datasette:
         }
         if request and request.args.get("_context") and self.setting("template_debug"):
             return "<pre>{}</pre>".format(
-                escape(json.dumps(template_context, default=repr, indent=4))
+                escape(
+                    json.dumps(
+                        template_context,
+                        default=_template_context_json_default,
+                        indent=4,
+                    )
+                )
             )
 
         return await template.render_async(template_context)

@@ -19,15 +19,21 @@ from datasette.views import Context
 
 def test_documented_fields():
     @dataclass
+    class DemoNested:
+        name: str
+
+    @dataclass
     class DemoContext(Context):
         name: str = field(metadata={"help": "The name"})
         _internal: str = field()
         count: int = field(metadata={"help": "How many there are"})
+        items: list[DemoNested] = field(metadata={"help": "Nested items"})
 
     fields = DemoContext.documented_fields()
     assert [(f.name, f.type_name, f.help) for f in fields] == [
         ("name", "str", "The name"),
         ("count", "int", "How many there are"),
+        ("items", "list[DemoNested]", "Nested items"),
     ]
 
 
@@ -230,3 +236,7 @@ def test_template_context_docs_cover_every_documented_key():
             assert "``{}``".format(context_field.name) in docs, "{} ({} page)".format(
                 context_field.name, page_name
             )
+            assert (
+                "``{}`` - ``{}``".format(context_field.name, context_field.type_name)
+                in docs
+            ), "{} type ({} page)".format(context_field.name, page_name)

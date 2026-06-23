@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 import dataclasses
+import types
+import typing
 
 
 @dataclass(frozen=True)
@@ -8,6 +10,19 @@ class ContextField:
     type_name: str
     help: str
     from_extra: bool = False
+
+
+def _type_name(type_):
+    if type_ is type(None):
+        return "None"
+    origin = typing.get_origin(type_)
+    args = typing.get_args(type_)
+    if origin in (typing.Union, types.UnionType):
+        return " | ".join(_type_name(arg) for arg in args)
+    if origin is not None:
+        name = getattr(origin, "__name__", str(origin).removeprefix("typing."))
+        return "{}[{}]".format(name, ", ".join(_type_name(arg) for arg in args))
+    return getattr(type_, "__name__", str(type_).removeprefix("typing."))
 
 
 def from_extra():
@@ -42,7 +57,7 @@ class Context:
             documented.append(
                 ContextField(
                     name=f.name,
-                    type_name=getattr(f.type, "__name__", str(f.type)),
+                    type_name=_type_name(f.type),
                     help=help_text,
                     from_extra=is_from_extra,
                 )

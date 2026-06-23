@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from urllib.parse import parse_qsl, urlencode
 import asyncio
 import hashlib
@@ -43,6 +43,21 @@ from .table_extras import (
 )
 from .table_create_alter import _create_table_ui_context
 from . import Context
+
+
+@dataclass
+class DatabaseTable:
+    "Summary of a table or view shown on database and query pages."
+
+    name: str
+    columns: list[str]
+    primary_keys: list[str]
+    count: int | None
+    count_truncated: bool
+    hidden: bool
+    fts_table: str | None
+    foreign_keys: dict[str, list[dict[str, str]]]
+    private: bool
 
 
 class DatabaseView(View):
@@ -169,8 +184,8 @@ class DatabaseView(View):
             "private": private,
             "path": datasette.urls.database(database),
             "size": db.size,
-            "tables": tables,
-            "hidden_count": len([t for t in tables if t["hidden"]]),
+            "tables": [asdict(table) for table in tables],
+            "hidden_count": len([table for table in tables if table.hidden]),
             "views": sql_views,
             "queries": [stored_query_to_dict(query) for query in stored_queries],
             "queries_more": queries_more,
@@ -211,7 +226,7 @@ class DatabaseView(View):
                     path=datasette.urls.database(database),
                     size=db.size,
                     tables=tables,
-                    hidden_count=len([t for t in tables if t["hidden"]]),
+                    hidden_count=len([table for table in tables if table.hidden]),
                     views=sql_views,
                     queries=stored_queries,
                     queries_more=queries_more,
@@ -266,9 +281,9 @@ class DatabaseContext(Context):
     )
     path: str = field(metadata={"help": "The URL path to this database"})
     size: int = field(metadata={"help": "The size of the database in bytes"})
-    tables: list = field(
+    tables: list[DatabaseTable] = field(
         metadata={
-            "help": "List of table dictionaries in the database. Each item has ``name``, ``columns``, ``primary_keys``, ``count``, ``count_truncated``, ``hidden``, ``fts_table``, ``foreign_keys`` and ``private`` keys. ``count_truncated`` is true if ``count`` is a capped lower bound rather than an exact total."
+            "help": "List of ``DatabaseTable`` objects describing tables in the database. Each item has ``name``, ``columns``, ``primary_keys``, ``count``, ``count_truncated``, ``hidden``, ``fts_table``, ``foreign_keys`` and ``private`` attributes. ``count_truncated`` is true if ``count`` is a capped lower bound rather than an exact total."
         }
     )
     hidden_count: int = field(metadata={"help": "Count of hidden tables"})
@@ -391,9 +406,9 @@ class QueryContext(Context):
     save_query_url: str = field(
         metadata={"help": "URL to save the current arbitrary SQL as a query"}
     )
-    tables: list = field(
+    tables: list[DatabaseTable] = field(
         metadata={
-            "help": "List of table dictionaries in the database. Each item has ``name``, ``columns``, ``primary_keys``, ``count``, ``count_truncated``, ``hidden``, ``fts_table``, ``foreign_keys`` and ``private`` keys. ``count_truncated`` is true if ``count`` is a capped lower bound rather than an exact total."
+            "help": "List of ``DatabaseTable`` objects describing tables in the database. Each item has ``name``, ``columns``, ``primary_keys``, ``count``, ``count_truncated``, ``hidden``, ``fts_table``, ``foreign_keys`` and ``private`` attributes. ``count_truncated`` is true if ``count`` is a capped lower bound rather than an exact total."
         }
     )
     named_parameter_values: dict = field(
@@ -456,7 +471,7 @@ class QueryContext(Context):
     )
 
 
-async def get_tables(datasette, request, db, allowed_dict):
+async def get_tables(datasette, request, db, allowed_dict) -> list[DatabaseTable]:
     """
     Get list of tables with metadata for the database view.
 
@@ -477,21 +492,21 @@ async def get_tables(datasette, request, db, allowed_dict):
 
         table_columns = await db.table_columns(table)
         tables.append(
-            {
-                "name": table,
-                "columns": table_columns,
-                "primary_keys": await db.primary_keys(table),
-                "count": table_counts[table],
-                "count_truncated": _table_count_truncated(
+            DatabaseTable(
+                name=table,
+                columns=table_columns,
+                primary_keys=await db.primary_keys(table),
+                count=table_counts[table],
+                count_truncated=_table_count_truncated(
                     datasette, db, table, table_counts[table]
                 ),
-                "hidden": table in hidden_table_names,
-                "fts_table": await db.fts_table(table),
-                "foreign_keys": all_foreign_keys[table],
-                "private": allowed_dict[table].private,
-            }
+                hidden=table in hidden_table_names,
+                fts_table=await db.fts_table(table),
+                foreign_keys=all_foreign_keys[table],
+                private=allowed_dict[table].private,
+            )
         )
-    tables.sort(key=lambda t: (t["hidden"], t["name"]))
+    tables.sort(key=lambda table: (table.hidden, table.name))
     return tables
 
 

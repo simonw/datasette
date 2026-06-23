@@ -145,8 +145,8 @@ The page listing the tables, views and queries in a database, e.g. /fixtures. Re
 ``table_columns`` - ``dict``
     Dictionary mapping table names to lists of column names, used to power SQL autocomplete.
 
-``tables`` - ``list``
-    List of table dictionaries in the database. Each item has ``name``, ``columns``, ``primary_keys``, ``count``, ``count_truncated``, ``hidden``, ``fts_table``, ``foreign_keys`` and ``private`` keys. ``count_truncated`` is true if ``count`` is a capped lower bound rather than an exact total.
+``tables`` - ``list[DatabaseTable]``
+    List of ``DatabaseTable`` objects describing tables in the database. Each item has ``name``, ``columns``, ``primary_keys``, ``count``, ``count_truncated``, ``hidden``, ``fts_table``, ``foreign_keys`` and ``private`` attributes. ``count_truncated`` is true if ``count`` is a capped lower bound rather than an exact total.
 
 ``top_database`` - ``callable``
     Async callable that renders the ``top_database`` plugin slot for this database and returns HTML.
@@ -234,8 +234,8 @@ The page for arbitrary SQL queries (/database/-/query?sql=...) and stored querie
 ``table_columns`` - ``dict``
     Dictionary mapping table names to lists of column names, used to power SQL autocomplete.
 
-``tables`` - ``list``
-    List of table dictionaries in the database. Each item has ``name``, ``columns``, ``primary_keys``, ``count``, ``count_truncated``, ``hidden``, ``fts_table``, ``foreign_keys`` and ``private`` keys. ``count_truncated`` is true if ``count`` is a capped lower bound rather than an exact total.
+``tables`` - ``list[DatabaseTable]``
+    List of ``DatabaseTable`` objects describing tables in the database. Each item has ``name``, ``columns``, ``primary_keys``, ``count``, ``count_truncated``, ``hidden``, ``fts_table``, ``foreign_keys`` and ``private`` attributes. ``count_truncated`` is true if ``count`` is a capped lower bound rather than an exact total.
 
 ``top_query`` - ``callable``
     Async callable that renders the ``top_query`` plugin slot for this query and returns HTML.

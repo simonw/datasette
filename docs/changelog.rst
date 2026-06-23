@@ -4,10 +4,10 @@
 Changelog
 =========
 
-.. _unreleased:
+.. _v1_0_a35:
 
-Unreleased
-----------
+1.0a35 (2026-06-23)
+-------------------
 
 - New "Create table" interface in the database actions menu, backed by the ``/<database>/-/create`` :ref:`JSON API <TableCreateView>`. It can define columns, primary keys, custom column types, ``NOT NULL`` constraints, literal defaults, expression defaults and single-column foreign keys. (:issue:`2787`)
 - New "Alter table" table action and ``/<database>/<table>/-/alter`` :ref:`JSON API <TableAlterView>` for changing existing tables: add, rename, reorder and drop columns; change column types, defaults, ``NOT NULL`` constraints, primary keys and foreign keys; and rename the table. The alter table dialog also includes a "Drop table" button. (:issue:`2788`)

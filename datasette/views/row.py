@@ -3,7 +3,7 @@ import json
 import textwrap
 import time
 import urllib.parse
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 
 import markupsafe
 import sqlite_utils
@@ -336,34 +336,45 @@ class RowView(BaseView):
                 )
             ),
         )
-        explicit_context = {
-            "renderers": renderers,
-            "url_csv": url_csv,
-            "url_csv_path": url_csv_path,
-            "url_csv_hidden_args": [
-                (key, value)
-                for key, value in urllib.parse.parse_qsl(request.query_string)
-                if key not in ("_labels", "_facet", "_size")
-            ]
-            + [("_size", "max")],
-            "settings": self.ds.settings_dict(),
-            "alternate_url_json": alternate_url_json,
-            "select_templates": [
-                f"{'*' if template_name == template.name else ''}{template_name}"
-                for template_name in templates
-            ],
-        }
-        declared_fields = {f.name for f in fields(RowContext)}
-        context = {
-            key: value
-            for key, value in context.items()
-            if key in declared_fields and key not in explicit_context
-        }
-
         return Response.html(
             await self.ds.render_template(
                 template,
-                RowContext(**context, **explicit_context),
+                RowContext(
+                    columns=context["columns"],
+                    database=context["database"],
+                    database_color=context["database_color"],
+                    foreign_key_tables=context["foreign_key_tables"],
+                    metadata=context["metadata"],
+                    primary_keys=context["primary_keys"],
+                    private=context["private"],
+                    table=context["table"],
+                    ok=context["ok"],
+                    rows=context["rows"],
+                    primary_key_values=context["primary_key_values"],
+                    query_ms=context["query_ms"],
+                    display_columns=context["display_columns"],
+                    display_rows=context["display_rows"],
+                    custom_table_templates=context["custom_table_templates"],
+                    row_actions=context["row_actions"],
+                    row_mutation_ui=context["row_mutation_ui"],
+                    table_page_data=context["table_page_data"],
+                    top_row=context["top_row"],
+                    renderers=renderers,
+                    url_csv=url_csv,
+                    url_csv_path=url_csv_path,
+                    url_csv_hidden_args=[
+                        (key, value)
+                        for key, value in urllib.parse.parse_qsl(request.query_string)
+                        if key not in ("_labels", "_facet", "_size")
+                    ]
+                    + [("_size", "max")],
+                    settings=self.ds.settings_dict(),
+                    select_templates=[
+                        f"{'*' if template_name == template.name else ''}{template_name}"
+                        for template_name in templates
+                    ],
+                    alternate_url_json=alternate_url_json,
+                ),
                 request=request,
                 view_name=self.name,
             ),

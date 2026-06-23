@@ -221,17 +221,35 @@ def test_detect_fts(open_quote, close_quote):
     "identifier,expected",
     (
         ("plain", "plain"),
-        ("select", "[select]"),
-        ("has space", "[has space]"),
-        ("has'quote", "[has'quote]"),
-        # Identifiers containing ] must fall back to double-quote quoting
-        # (SQLite does not support escaping ] inside [brackets]) - #2677
+        ("select", '"select"'),
+        ("has space", '"has space"'),
+        ("has'quote", '"has\'quote"'),
+        ('has"dquote', '"has""dquote"'),
         ("has]bracket", '"has]bracket"'),
         ('has"dquote]', '"has""dquote]"'),
     ),
 )
 def test_escape_sqlite(identifier, expected):
     assert utils.escape_sqlite(identifier) == expected
+
+
+def test_escape_sqlite_double_quotes_work_in_query():
+    conn = utils.sqlite3.connect(":memory:")
+    table = 'table with "double quotes"'
+    column = "select"
+    escaped_table = utils.escape_sqlite(table)
+    escaped_column = utils.escape_sqlite(column)
+    conn.execute(f"CREATE TABLE {escaped_table} ({escaped_column} TEXT)")
+    create_sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)
+    ).fetchone()[0]
+    assert create_sql == 'CREATE TABLE "table with ""double quotes""" ("select" TEXT)'
+    conn.execute(
+        f"INSERT INTO {escaped_table} ({escaped_column}) VALUES (?)", ("hello",)
+    )
+    results = conn.execute(f"SELECT {escaped_column} FROM {escaped_table}").fetchall()
+    conn.close()
+    assert results == [("hello",)]
 
 
 def test_escape_sqlite_prevents_injection():

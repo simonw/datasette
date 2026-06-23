@@ -1092,7 +1092,7 @@ Column types are assigned to columns via the :ref:`column_types <table_configura
                 config:
                   format: rgb
 
-Datasette includes three built-in column types: ``url``, ``email``, and ``json``.
+Datasette includes four built-in column types: ``url``, ``email``, ``json``, and ``textarea``. The ``textarea`` type is an editing hint that causes Datasette's insert/edit forms to use a multiline ``<textarea>`` control for that column.
 
 .. _plugin_asgi_wrapper:
 
@@ -1909,7 +1909,80 @@ Action hooks
 
 Action hooks can be used to add items to the action menus that appear at the top of different pages within Datasette. Unlike :ref:`menu_links() <plugin_hook_menu_links>`, actions which are displayed on every page, actions should only be relevant to the page the user is currently viewing.
 
-Each of these hooks should return return a list of ``{"href": "...", "label": "..."}`` menu items, with optional ``"description": "..."`` keys describing each action in more detail.
+Each of these hooks should return a list of menu items, with optional ``"description": "..."`` keys describing each action in more detail.
+
+The most common action item is a link to another page:
+
+.. code-block:: python
+
+    {
+        "href": datasette.urls.path("/-/custom-action"),
+        "label": "Custom action",
+        "description": "Run this action on a separate page.",
+    }
+
+Plugins can also return button actions for JavaScript-backed interactions:
+
+.. code-block:: python
+
+    {
+        "type": "button",
+        "label": "Open custom dialog",
+        "description": "Show a dialog without leaving this page.",
+        "attrs": {
+            "aria-label": "Open custom dialog",
+            "data-plugin-action": "open-custom-dialog",
+        },
+    }
+
+These are rendered as ``<button type="button" class="button-as-link action-menu-button" role="menuitem" tabindex="-1">``. The optional ``attrs`` dictionary is added to the button, and is useful for ``data-*`` attributes that your plugin's JavaScript can use to attach event handlers.
+
+Here is a minimal plugin example that adds a button to a table page and loads JavaScript to handle clicks on that button:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+
+    @hookimpl
+    def table_actions(datasette, database, table):
+        return [
+            {
+                "type": "button",
+                "label": "Show table name",
+                "description": "Open a JavaScript-powered plugin action.",
+                "attrs": {
+                    "aria-label": "Show table name",
+                    "data-plugin-action": "show-table-name",
+                    "data-database": database,
+                    "data-table": table,
+                },
+            }
+        ]
+
+
+    @hookimpl
+    def extra_js_urls(datasette):
+        return [
+            datasette.urls.static_plugins(
+                "datasette_show_table",
+                "show-table.js",
+            )
+        ]
+
+The ``static/show-table.js`` file in that plugin could look like this:
+
+.. code-block:: javascript
+
+    document.addEventListener("click", (event) => {
+      const button = event.target.closest(
+        "button[data-plugin-action='show-table-name']"
+      );
+      if (!button) {
+        return;
+      }
+      alert(`${button.dataset.database}.${button.dataset.table}`);
+    });
 
 They can alternatively return an ``async def`` awaitable function which, when called, returns a list of those menu items.
 

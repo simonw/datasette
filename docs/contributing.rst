@@ -62,6 +62,76 @@ You can run the tests faster using multiple CPU cores with `pytest-xdist <https:
 
     uv run pytest -m "serial"
 
+.. _contributing_playwright:
+
+Running Playwright tests
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Datasette includes a small number of browser automation tests using Playwright_.
+These tests are skipped by default, so you can run the main test suite with
+``uv run pytest`` without installing Playwright or any browser binaries.
+
+.. _Playwright: https://playwright.dev/python/
+
+The Playwright tests use a separate dependency group. The easiest way to run
+them is using ``just``. First install the browser engine you want to test
+against. Chromium is used by default:
+
+.. code-block:: bash
+
+    just playwright-install
+
+Then run the Playwright test module:
+
+.. code-block:: bash
+
+    just playwright
+
+You can also run the same tests against Firefox or WebKit by installing that
+browser engine and passing it to ``just playwright``:
+
+.. code-block:: bash
+
+    just playwright-install firefox
+    just playwright firefox
+
+    just playwright-install webkit
+    just playwright webkit
+
+To install every supported browser engine and run the tests against all of
+them, use:
+
+.. code-block:: bash
+
+    just playwright-install-all
+    just playwright-all
+
+You can pass extra ``pytest`` options after the browser name:
+
+.. code-block:: bash
+
+    just playwright chromium -k permissions
+    just playwright-all -x
+
+You can add the ``--headed`` option to have Playwright open a browser window that you can see while it runs the tests. This only works if you specify a browser, for example:
+
+.. code-block:: bash
+
+    just playwright firefox --headed
+
+Combine this with ``-k`` to watch a specific test:
+
+.. code-block:: bash
+
+    just playwright chromium --headed -k test_insert_row
+
+If you are not using ``just``, the equivalent ``uv run`` commands are:
+
+.. code-block:: bash
+
+    uv run --group playwright playwright install chromium
+    uv run --group playwright pytest tests/test_playwright.py --playwright --browser chromium
+
 .. _contributing_using_fixtures:
 
 Using fixtures

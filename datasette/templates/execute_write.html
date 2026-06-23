@@ -56,6 +56,11 @@ form.sql.core input[data-execute-write-submit]:disabled {
     cursor: not-allowed;
     opacity: 1;
 }
+.execute-write form.sql .sql-editor-min-lines .cm-content,
+.execute-write form.sql .sql-editor-min-lines .cm-gutter {
+    /* Four visible editor lines without adding blank lines to the SQL value. */
+    min-height: calc(5.6em + 8px);
+}
 .execute-write-disabled-reason {
     color: #4f5b6d;
     font-size: 0.85rem;
@@ -93,20 +98,25 @@ form.sql.core input[data-execute-write-submit]:disabled {
 {% endif %}
 
 <form class="sql core" action="{{ urls.database(database) }}/-/execute-write" method="post" data-analyze-url="{{ urls.database(database) }}/-/execute-write/analyze">
-    {% if write_template_tables %}
+    {% if write_create_table_template_sql or write_template_tables %}
         <div class="execute-write-template-menu">
             <details>
                 <summary>Start with a template</summary>
                 <p class="execute-write-template-controls">
-                    <label for="execute-write-template-table">Table</label>
-                    <select id="execute-write-template-table">
-                        {% for table_name, table in write_template_tables|dictsort %}
-                            <option value="{{ table_name }}"{% for operation, template_sql in table.templates|dictsort %} data-template-{{ operation }}-sql="{{ template_sql }}"{% endfor %}>{{ table_name }}</option>
+                    {% if write_create_table_template_sql %}
+                        <button type="button" data-sql-template="create" data-template-sql="{{ write_create_table_template_sql }}">Create table</button>
+                    {% endif %}
+                    {% if write_template_tables %}
+                        <label for="execute-write-template-table">{% if write_create_table_template_sql %}or table:{% else %}Table{% endif %}</label>
+                        <select id="execute-write-template-table">
+                            {% for table_name, table in write_template_tables|dictsort %}
+                                <option value="{{ table_name }}"{% for operation, template_sql in table.templates|dictsort %} data-template-{{ operation }}-sql="{{ template_sql }}"{% endfor %}>{{ table_name }}</option>
+                            {% endfor %}
+                        </select>
+                        {% for operation in write_template_operations %}
+                            <button type="button" data-sql-template="{{ operation.name }}">{{ operation.label }}</button>
                         {% endfor %}
-                    </select>
-                    {% for operation in write_template_operations %}
-                        <button type="button" data-sql-template="{{ operation.name }}">{{ operation.label }}</button>
-                    {% endfor %}
+                    {% endif %}
                 </p>
             </details>
         </div>
@@ -114,7 +124,7 @@ form.sql.core input[data-execute-write-submit]:disabled {
         <p class="message-warning execute-write-template-unavailable">There are no tables that you can currently edit.</p>
     {% endif %}
 
-    <p class="sql-editor"><textarea id="sql-editor" name="sql"{% if sql %} style="height: {{ sql.split("\n")|length + 2 }}em"{% endif %}>{{ sql }}</textarea></p>
+    <p class="sql-editor{% if not sql %} sql-editor-min-lines{% endif %}"><textarea id="sql-editor" name="sql"{% if sql %} style="height: {{ sql.split("\n")|length + 2 }}em"{% endif %}>{{ sql }}</textarea></p>
 
     {% set sql_parameters_section_id = "execute-write-parameters-section" %}
     {% set sql_parameters_allow_expand = true %}
@@ -159,19 +169,13 @@ form.sql.core input[data-execute-write-submit]:disabled {
     </p>
 </form>
 
-<script>
-const executeWriteSqlInput = document.querySelector("textarea#sql-editor");
-if (executeWriteSqlInput && !executeWriteSqlInput.value) {
-  executeWriteSqlInput.value = "\n\n\n";
-}
-</script>
-
 {% include "_codemirror_foot.html" %}
 {% include "_sql_parameter_scripts.html" %}
 {% include "_execute_write_analysis_scripts.html" %}
 
 <script>
 window.addEventListener("DOMContentLoaded", () => {
+  const executeWriteSqlInput = document.querySelector("textarea#sql-editor");
   const form = document.querySelector("form.sql.core");
   const analysisSection = document.querySelector("#execute-write-analysis-section");
   const submitButton = form
@@ -252,11 +256,12 @@ window.addEventListener("DOMContentLoaded", () => {
 });
 </script>
 
-{% if write_template_tables %}
+{% if write_create_table_template_sql or write_template_tables %}
 <script>
 window.addEventListener("DOMContentLoaded", () => {
   const tableSelect = document.querySelector("#execute-write-template-table");
   const templateButtons = document.querySelectorAll("[data-sql-template]");
+  const sqlInput = document.querySelector("textarea#sql-editor");
 
   function dataKey(operation) {
     return `template${operation.charAt(0).toUpperCase()}${operation.slice(1)}Sql`;
@@ -266,26 +271,59 @@ window.addEventListener("DOMContentLoaded", () => {
     return tableSelect ? tableSelect.options[tableSelect.selectedIndex] : null;
   }
 
-  function templateSql(operation) {
+  function templateSql(button) {
+    if (button.dataset.templateSql) {
+      return button.dataset.templateSql;
+    }
+    const operation = button.dataset.sqlTemplate;
     const option = selectedOption();
     return option ? option.dataset[dataKey(operation)] || "" : "";
   }
 
   function updateTemplateButtons() {
     templateButtons.forEach((button) => {
-      button.hidden = !templateSql(button.dataset.sqlTemplate);
+      button.hidden = !templateSql(button);
     });
+  }
+
+  function updateSqlUrl(sql) {
+    if (!window.history || !window.history.replaceState) {
+      return;
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.set("sql", sql);
+    window.history.replaceState(null, "", url.toString());
+  }
+
+  function setEditorSql(sql) {
+    if (window.editor) {
+      window.editor.dispatch({
+        changes: {
+          from: 0,
+          to: window.editor.state.doc.length,
+          insert: sql,
+        },
+        selection: { anchor: sql.length },
+      });
+      window.editor.focus();
+      if (sqlInput) {
+        sqlInput.value = sql;
+      }
+    } else if (sqlInput) {
+      sqlInput.value = sql;
+      sqlInput.dispatchEvent(new Event("input", { bubbles: true }));
+      sqlInput.focus();
+    }
+    updateSqlUrl(sql);
   }
 
   templateButtons.forEach((button) => {
     button.addEventListener("click", () => {
-      const sql = templateSql(button.dataset.sqlTemplate);
+      const sql = templateSql(button);
       if (!sql) {
         return;
       }
-      const url = new URL(window.location.href);
-      url.searchParams.set("sql", sql);
-      window.location.href = url.toString();
+      setEditorSql(sql);
     });
   });
   if (tableSelect) {

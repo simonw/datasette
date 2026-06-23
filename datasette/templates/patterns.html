@@ -202,9 +202,9 @@
     <h3>3 rows
         where characteristic_id = 2
     </h3>
-    <form class="filters" action="{{ base_url }}fixtures/roadside_attraction_characteristics" method="get">
+    <form class="core filters" action="{{ base_url }}fixtures/roadside_attraction_characteristics" method="get">
     <div class="search-row"><label for="_search">Search:</label><input id="_search" type="search" name="_search" value=""></div>
-        <div class="filter-row">
+        <div class="filter-row filter-controls-row">
             <div class="select-wrapper">
                 <select name="_filter_column_1">
                     <option value="">- remove filter -</option>
@@ -238,7 +238,7 @@
                 </select>
             </div><input type="text" name="_filter_value_1" class="filter-value" value="2">
         </div>
-    <div class="filter-row">
+    <div class="filter-row filter-controls-row">
         <div class="select-wrapper">
             <select name="_filter_column">
                 <option value="">- column -</option>
@@ -272,8 +272,8 @@
             </select>
         </div><input type="text" name="_filter_value" class="filter-value">
     </div>
-    <div class="filter-row">
-            <div class="select-wrapper small-screen-only">
+    <div class="filter-row filter-actions-row">
+            <div class="select-wrapper">
                 <select name="_sort" id="sort_by">
                     <option value="">Sort...</option>
                     <option value="rowid" selected>Sort by rowid</option>
@@ -281,8 +281,8 @@
                     <option value="characteristic_id">Sort by characteristic_id</option>
                 </select>
             </div>
-            <label class="sort_by_desc small-screen-only"><input type="checkbox" name="_sort_by_desc"> descending</label>
-        <input type="submit" value="Apply">
+            <label class="sort_by_desc"><input type="checkbox" name="_sort_by_desc"> descending</label>
+        <input type="submit" value="Apply filters">
     </div>
   </form>
 

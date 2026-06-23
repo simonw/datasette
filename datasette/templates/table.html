@@ -4,8 +4,13 @@
 
 {% block extra_head %}
 {{- super() -}}
+<script>window._datasetteTableData = {{ table_page_data|tojson }};</script>
 <script src="{{ urls.static('column-chooser.js') }}" defer></script>
-<script src="{{ urls.static('table.js') }}" defer></script>
+{% if table_page_data.foreignKeys %}
+<script src="{{ urls.static('autocomplete.js') }}" defer></script>
+{% endif %}
+<script src="{{ urls.static('edit-tools.js') }}?hash={{ edit_tools_js_hash }}" defer></script>
+<script src="{{ urls.static('table.js') }}?hash={{ table_js_hash }}" defer></script>
 <script src="{{ urls.static('mobile-column-actions.js') }}" defer></script>
 <script>DATASETTE_ALLOW_FACET = {{ datasette_allow_facet }};</script>
 <style>
@@ -50,12 +55,12 @@
     </h3>
 {% endif %}
 
-<form class="core" class="filters" action="{{ urls.table(database, table) }}" method="get">
+<form class="core filters" action="{{ urls.table(database, table) }}" method="get">
     {% if supports_search %}
         <div class="search-row"><label for="_search">Search:</label><input id="_search" type="search" name="_search" value="{{ search }}"></div>
     {% endif %}
     {% for column, lookup, value in filters.selections() %}
-        <div class="filter-row">
+        <div class="filter-row filter-controls-row">
             <div class="select-wrapper">
                 <select name="_filter_column_{{ loop.index }}">
                     <option value="">- remove filter -</option>
@@ -72,7 +77,7 @@
             </div><input type="text" name="_filter_value_{{ loop.index }}" class="filter-value" value="{{ value }}">
         </div>
     {% endfor %}
-    <div class="filter-row">
+    <div class="filter-row filter-controls-row">
         <div class="select-wrapper">
             <select name="_filter_column">
                 <option value="">- column -</option>
@@ -88,9 +93,9 @@
             </select>
         </div><input type="text" name="_filter_value" class="filter-value">
     </div>
-    <div class="filter-row">
+    <div class="filter-row filter-actions-row">
         {% if is_sortable %}
-            <div class="select-wrapper small-screen-only">
+            <div class="select-wrapper">
                 <select name="_sort" id="sort_by">
                     <option value="">Sort...</option>
                     {% for column in display_columns %}
@@ -100,12 +105,12 @@
                     {% endfor %}
                 </select>
             </div>
-            <label class="sort_by_desc small-screen-only"><input type="checkbox" name="_sort_by_desc"{% if sort_desc %} checked{% endif %}> descending</label>
+            <label class="sort_by_desc"><input type="checkbox" name="_sort_by_desc" tabindex="0"{% if sort_desc %} checked{% endif %}> descending</label>
         {% endif %}
         {% for key, value in form_hidden_args %}
             <input type="hidden" name="{{ key }}" value="{{ value }}">
         {% endfor %}
-        <input type="submit" value="Apply">
+        <input type="submit" value="Apply filters" tabindex="0">
     </div>
 </form>
 
@@ -156,6 +161,19 @@ window._columnChooserData = {{ {"allColumns": all_columns, "selectedColumns": di
 <script>
 window._setColumnTypeData = {{ set_column_type_ui|tojson }};
 </script>
+{% endif %}
+
+{% if table_insert_ui %}
+<div class="table-row-toolbar">
+    <button type="button" class="core table-insert-row" data-table-action="insert-row">
+        <svg class="row-inline-action-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="18" height="18" x="3" y="3" rx="2"></rect>
+            <path d="M8 12h8"></path>
+            <path d="M12 8v8"></path>
+        </svg>
+        <span>Insert row</span>
+    </button>
+</div>
 {% endif %}
 
 {% include custom_table_templates %}

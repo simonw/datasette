@@ -1,5 +1,6 @@
 from datasette.app import Datasette
-from datasette.utils import sqlite3
+from datasette.events import RenameTableEvent
+from datasette.utils import escape_sqlite, sqlite3
 from .utils import last_event
 import pytest
 import time
@@ -37,6 +38,16 @@ def _headers(token):
         "Authorization": "Bearer {}".format(token),
         "Content-Type": "application/json",
     }
+
+
+def _insert_and_fetch_created(conn, table, insert_sql):
+    cursor = conn.execute(insert_sql)
+    return conn.execute(
+        "select created, typeof(created) from {} where rowid = ?".format(
+            escape_sqlite(table)
+        ),
+        (cursor.lastrowid,),
+    ).fetchone()
 
 
 @pytest.mark.asyncio
@@ -795,6 +806,613 @@ async def test_update_row_alter(ds_write):
 
 
 @pytest.mark.asyncio
+async def test_alter_table_operations(ds_write):
+    token = write_token(ds_write, permissions=["at"])
+    db = ds_write.get_database("data")
+    before_schema = await db.execute_fn(
+        lambda conn: conn.execute(
+            "select sql from sqlite_master where type = 'table' and name = 'docs'"
+        ).fetchone()[0]
+    )
+
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json={
+            "operations": [
+                {
+                    "op": "add_column",
+                    "args": {
+                        "name": "slug",
+                        "type": "text",
+                        "not_null": True,
+                        "default": "",
+                    },
+                },
+                {
+                    "op": "add_column",
+                    "args": {
+                        "name": "created",
+                        "type": "text",
+                        "default_expr": "current_timestamp",
+                    },
+                },
+                {
+                    "op": "add_column",
+                    "args": {
+                        "name": "literal_default",
+                        "type": "text",
+                        "default": "hello)",
+                    },
+                },
+                {"op": "rename_column", "args": {"name": "title", "to": "headline"}},
+                {
+                    "op": "alter_column",
+                    "args": {"name": "age", "type": "text", "default": "0"},
+                },
+                {"op": "drop_column", "args": {"name": "score"}},
+                {
+                    "op": "reorder_columns",
+                    "args": {
+                        "columns": [
+                            "id",
+                            "headline",
+                            "slug",
+                            "created",
+                            "literal_default",
+                            "age",
+                        ]
+                    },
+                },
+                {"op": "set_primary_key", "args": {"columns": ["id"]}},
+            ]
+        },
+        headers=_headers(token),
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["ok"] is True
+    assert data["database"] == "data"
+    assert data["table"] == "docs"
+    assert data["altered"] is True
+    assert data["operations_applied"] == 8
+    assert data["before_schema"] == before_schema
+    assert "headline" in data["schema"]
+    assert "score" not in data["schema"]
+    assert "DEFAULT CURRENT_TIMESTAMP" in data["schema"]
+    assert "DEFAULT 'hello)'" in data["schema"]
+
+    columns = (
+        await db.execute("select * from pragma_table_info('docs') order by cid")
+    ).dicts()
+    assert [column["name"] for column in columns] == [
+        "id",
+        "headline",
+        "slug",
+        "created",
+        "literal_default",
+        "age",
+    ]
+    assert columns[0]["pk"] == 1
+    assert columns[2]["notnull"] == 1
+    assert columns[2]["dflt_value"] == "''"
+    assert columns[3]["dflt_value"] == "CURRENT_TIMESTAMP"
+    assert columns[4]["dflt_value"] == "'hello)'"
+    assert columns[5]["type"] == "TEXT"
+    assert columns[5]["dflt_value"] == "'0'"
+
+    event = last_event(ds_write)
+    assert event.name == "alter-table"
+    assert event.database == "data"
+    assert event.table == "docs"
+    assert event.before_schema == before_schema
+    assert event.after_schema == data["schema"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "default_expr,minimum_value,expected_schema",
+    (
+        (
+            "current_unixtime",
+            1_600_000_000,
+            "strftime('%s', 'now')",
+        ),
+        (
+            "current_unixtime_ms",
+            1_600_000_000_000,
+            "julianday('now')",
+        ),
+    ),
+)
+async def test_alter_table_integer_default_expr(
+    ds_write, default_expr, minimum_value, expected_schema
+):
+    token = write_token(ds_write, permissions=["at"])
+    db = ds_write.get_database("data")
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json={
+            "operations": [
+                {
+                    "op": "add_column",
+                    "args": {
+                        "name": "created",
+                        "type": "integer",
+                        "default_expr": default_expr,
+                    },
+                }
+            ]
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert expected_schema in data["schema"]
+
+    columns = await db.execute("select * from pragma_table_info('docs')")
+    created_column = [
+        column for column in columns.dicts() if column["name"] == "created"
+    ][0]
+    assert created_column["type"] == "INTEGER"
+    assert expected_schema in created_column["dflt_value"]
+
+    row = await db.execute_write_fn(
+        lambda conn: _insert_and_fetch_created(
+            conn, "docs", "insert into docs (title) values ('with default')"
+        )
+    )
+    assert row[0] > minimum_value
+    assert row[1] == "integer"
+
+
+@pytest.mark.asyncio
+async def test_alter_table_rename_table(ds_write):
+    token = write_token(ds_write, permissions=["at"])
+    db = ds_write.get_database("data")
+    before_schema = await db.execute_fn(
+        lambda conn: conn.execute(
+            "select sql from sqlite_master where type = 'table' and name = 'docs'"
+        ).fetchone()[0]
+    )
+
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json={
+            "operations": [
+                {"op": "rename_table", "args": {"to": "documents"}},
+            ]
+        },
+        headers=_headers(token),
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["ok"] is True
+    assert data["database"] == "data"
+    assert data["table"] == "documents"
+    assert data["table_url"].endswith("/data/documents")
+    assert data["table_api_url"].endswith("/data/documents.json")
+    assert data["altered"] is True
+    assert data["operations_applied"] == 1
+    assert data["before_schema"] == before_schema
+    assert 'CREATE TABLE "documents"' in data["schema"]
+
+    tables = (
+        await db.execute(
+            "select name from sqlite_master where type = 'table' order by name"
+        )
+    ).dicts()
+    table_names = [table["name"] for table in tables]
+    assert "docs" not in table_names
+    assert "documents" in table_names
+
+    rename_events = [
+        event
+        for event in ds_write._tracked_events
+        if isinstance(event, RenameTableEvent)
+    ]
+    assert len(rename_events) == 1
+    assert rename_events[0].database == "data"
+    assert rename_events[0].old_table == "docs"
+    assert rename_events[0].new_table == "documents"
+
+
+@pytest.mark.asyncio
+async def test_alter_table_foreign_key_operations(ds_write):
+    token = write_token(ds_write, permissions=["at"])
+    db = ds_write.get_database("data")
+    await db.execute_write("create table owners (id integer primary key)")
+    await db.execute_write("create table categories (id integer primary key)")
+
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json={
+            "operations": [
+                {"op": "add_column", "args": {"name": "owner_id", "type": "integer"}},
+                {
+                    "op": "add_foreign_key",
+                    "args": {"column": "owner_id", "fk_table": "owners"},
+                },
+            ]
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["operations_applied"] == 2
+    assert "[owner_id] INTEGER REFERENCES [owners]([id])" in data["schema"]
+
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json={
+            "operations": [{"op": "drop_foreign_key", "args": {"column": "owner_id"}}]
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert "[owner_id] INTEGER REFERENCES" not in data["schema"]
+
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json={
+            "operations": [
+                {
+                    "op": "set_foreign_keys",
+                    "args": {
+                        "foreign_keys": [
+                            {
+                                "column": "owner_id",
+                                "fk_table": "categories",
+                                "fk_column": "id",
+                            }
+                        ]
+                    },
+                }
+            ]
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert "[owner_id] INTEGER REFERENCES [categories]([id])" in data["schema"]
+
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json={"operations": [{"op": "set_foreign_keys", "args": {"foreign_keys": []}}]},
+        headers=_headers(token),
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert "[owner_id] INTEGER REFERENCES" not in data["schema"]
+
+
+@pytest.mark.asyncio
+async def test_alter_table_foreign_key_requires_fk_table_for_fk_column(ds_write):
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json={
+            "operations": [
+                {
+                    "op": "add_foreign_key",
+                    "args": {"column": "age", "fk_column": "id"},
+                }
+            ]
+        },
+        headers=_headers(write_token(ds_write, permissions=["at"])),
+    )
+    assert response.status_code == 400
+    assert response.json() == {
+        "ok": False,
+        "errors": ["operations.0.add_foreign_key.args: fk_column requires fk_table"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_alter_table_foreign_key_without_fk_column_requires_single_pk(ds_write):
+    token = write_token(ds_write, permissions=["at"])
+    db = ds_write.get_database("data")
+    await db.execute_write(
+        "create table accounts (tenant_id integer, id integer, primary key (tenant_id, id))"
+    )
+
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json={
+            "operations": [
+                {
+                    "op": "add_foreign_key",
+                    "args": {"column": "age", "fk_table": "accounts"},
+                }
+            ]
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 400
+    assert response.json() == {
+        "ok": False,
+        "errors": ["Could not detect single primary key for table 'accounts'"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_foreign_key_suggestions(ds_write):
+    token = write_token(ds_write, permissions=["at"])
+    db = ds_write.get_database("data")
+    await db.execute_write("create table owners (id integer primary key)")
+    await db.execute_write("insert into owners (id) values (1), (2), (3)")
+    await db.execute_write("create table categories (slug text primary key)")
+    await db.execute_write("insert into categories (slug) values ('one'), ('two')")
+    await db.execute_write("create table numbers (id integer primary key)")
+    await db.execute_write("insert into numbers (id) values (10), (20)")
+    await db.execute_write("create table weights (id real primary key)")
+    await db.execute_write("insert into weights (id) values (1.5), (2.5)")
+    await db.execute_write(
+        "insert into docs (id, title, score, age) values "
+        "(1, 'one', 1.5, 1), (2, 'two', 999.5, 2), (3, null, null, null)"
+    )
+
+    response = await ds_write.client.get(
+        "/data/docs/-/foreign-key-suggestions",
+        headers=_headers(token),
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["ok"] is True
+    assert data["database"] == "data"
+    assert data["table"] == "docs"
+    assert data["row_check"]["attempted"] is True
+    assert data["row_check"]["status"] == "completed"
+    assert data["row_check"]["row_limit"] == 500
+    assert data["row_check"]["sampled_rows"] == 3
+
+    columns = {column["column"]: column for column in data["columns"]}
+    assert columns["age"]["options"] == [
+        {"fk_table": "numbers", "fk_column": "id", "type": "INTEGER"},
+        {"fk_table": "owners", "fk_column": "id", "type": "INTEGER"},
+    ]
+    assert columns["age"]["suggestions"] == [
+        {
+            "fk_table": "owners",
+            "fk_column": "id",
+            "confidence": "sampled",
+            "sampled_values": 2,
+            "reasons": ["type_match", "sample_values_exist"],
+        }
+    ]
+    assert columns["title"]["options"] == [
+        {"fk_table": "categories", "fk_column": "slug", "type": "TEXT"}
+    ]
+    assert columns["title"]["suggestions"][0]["fk_table"] == "categories"
+    assert columns["score"]["options"] == [
+        {"fk_table": "weights", "fk_column": "id", "type": "REAL"}
+    ]
+    assert columns["score"]["suggestions"] == []
+
+
+@pytest.mark.asyncio
+async def test_foreign_key_suggestions_permission_denied(ds_write):
+    token = write_token(ds_write, permissions=["ir"])
+    response = await ds_write.client.get(
+        "/data/docs/-/foreign-key-suggestions",
+        headers=_headers(token),
+    )
+    assert response.status_code == 403
+    assert response.json() == {
+        "ok": False,
+        "errors": ["Permission denied: need alter-table"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_foreign_key_suggestions_fail_open(ds_write, monkeypatch):
+    token = write_token(ds_write, permissions=["at"])
+    db = ds_write.get_database("data")
+    await db.execute_write("create table owners (id integer primary key)")
+
+    async def raise_timeout(*args, **kwargs):
+        raise table_create_alter.ForeignKeySuggestionTimedOut
+
+    from datasette.views import table_create_alter
+
+    monkeypatch.setattr(
+        table_create_alter,
+        "_foreign_key_suggestion_samples",
+        raise_timeout,
+    )
+
+    response = await ds_write.client.get(
+        "/data/docs/-/foreign-key-suggestions",
+        headers=_headers(token),
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["row_check"]["status"] == "timed_out"
+    columns = {column["column"]: column for column in data["columns"]}
+    assert columns["age"]["options"] == [
+        {"fk_table": "owners", "fk_column": "id", "type": "INTEGER"}
+    ]
+    assert columns["age"]["suggestions"] == []
+
+
+@pytest.mark.asyncio
+async def test_foreign_key_targets(ds_write):
+    token = write_token(ds_write, permissions=["ct"])
+    db = ds_write.get_database("data")
+    await db.execute_write("create table owners (id integer primary key)")
+    await db.execute_write("create table categories (slug varchar(30) primary key)")
+    await db.execute_write("create table blob_things (hash blob primary key)")
+    await db.execute_write(
+        "create table numeric_codes (code decimal(10,5) primary key)"
+    )
+    await db.execute_write(
+        'create table floating_point (value "FLOATING POINT" primary key)'
+    )
+    await db.execute_write(
+        "create table compound (a integer, b integer, primary key (a, b))"
+    )
+    await db.execute_write("create table no_pk (name text)")
+    try:
+        await db.execute_write("create virtual table search_docs using fts5(body)")
+    except Exception:
+        pass
+
+    response = await ds_write.client.get(
+        "/data/-/foreign-key-targets",
+        headers=_headers(token),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "ok": True,
+        "database": "data",
+        "targets": [
+            {
+                "fk_table": "blob_things",
+                "fk_column": "hash",
+                "type": "blob",
+            },
+            {
+                "fk_table": "categories",
+                "fk_column": "slug",
+                "type": "text",
+            },
+            {
+                "fk_table": "docs",
+                "fk_column": "id",
+                "type": "integer",
+            },
+            {
+                "fk_table": "floating_point",
+                "fk_column": "value",
+                "type": "integer",
+            },
+            {
+                "fk_table": "numeric_codes",
+                "fk_column": "code",
+                "type": "numeric",
+            },
+            {
+                "fk_table": "owners",
+                "fk_column": "id",
+                "type": "integer",
+            },
+        ],
+    }
+    assert not any(
+        target["fk_table"].startswith("search_docs_")
+        for target in response.json()["targets"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_foreign_key_targets_permission_denied(ds_write):
+    token = write_token(ds_write, permissions=["ir"])
+    response = await ds_write.client.get(
+        "/data/-/foreign-key-targets",
+        headers=_headers(token),
+    )
+    assert response.status_code == 403
+    assert response.json() == {
+        "ok": False,
+        "errors": ["Permission denied: need create-table"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_foreign_key_targets_allowed_for_alter_table(ds_write):
+    token = write_token(ds_write, permissions=["at"])
+    response = await ds_write.client.get(
+        "/data/-/foreign-key-targets?table=docs",
+        headers=_headers(token),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_alter_table_permission_denied(ds_write):
+    token = write_token(ds_write, permissions=["ir"])
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json={"operations": [{"op": "add_column", "args": {"name": "slug"}}]},
+        headers=_headers(token),
+    )
+    assert response.status_code == 403
+    assert response.json() == {
+        "ok": False,
+        "errors": ["Permission denied: need alter-table"],
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body,expected_error",
+    (
+        (
+            {
+                "dry_run": True,
+                "operations": [
+                    {"op": "add_column", "args": {"name": "slug", "type": "text"}}
+                ],
+            },
+            "dry_run: Extra inputs are not permitted",
+        ),
+        (
+            {"operations": [{"op": "add_column", "args": {"type": "text"}}]},
+            "operations.0.add_column.args.name: Field required",
+        ),
+        (
+            {
+                "operations": [
+                    {"op": "add_column", "args": {"name": "x", "type": "bad"}}
+                ]
+            },
+            "operations.0.add_column.args.type: Input should be 'text', 'integer', 'float' or 'blob'",
+        ),
+        (
+            {
+                "operations": [
+                    {
+                        "op": "add_column",
+                        "args": {
+                            "name": "x",
+                            "default_expr": "datetime('now')",
+                        },
+                    }
+                ]
+            },
+            "operations.0.add_column.args.default_expr: Input should be 'current_timestamp', 'current_date', 'current_time', 'current_unixtime' or 'current_unixtime_ms'",
+        ),
+        (
+            {
+                "operations": [
+                    {
+                        "op": "add_column",
+                        "args": {
+                            "name": "x",
+                            "default": "x",
+                            "default_expr": "current_timestamp",
+                        },
+                    }
+                ]
+            },
+            "operations.0.add_column.args: Value error, default and default_expr cannot both be provided",
+        ),
+    ),
+)
+async def test_alter_table_validation_errors(ds_write, body, expected_error):
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json=body,
+        headers=_headers(write_token(ds_write, permissions=["at"])),
+    )
+    assert response.status_code == 400
+    assert response.json()["ok"] is False
+    assert response.json()["errors"] == [expected_error]
+
+
+@pytest.mark.asyncio
 async def test_execute_write_form_parameter_called_sql():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -1407,6 +2025,247 @@ async def test_create_table(
     # Should have tracked the expected events
     events = ds_write._tracked_events
     assert [e.name for e in events] == expected_events
+
+
+@pytest.mark.asyncio
+async def test_create_table_with_foreign_key(ds_write):
+    token = write_token(ds_write)
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "owners",
+            "columns": [
+                {"name": "id", "type": "integer"},
+                {"name": "name", "type": "text"},
+            ],
+            "pk": "id",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201
+
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "projects",
+            "columns": [
+                {"name": "id", "type": "integer"},
+                {
+                    "name": "owner_id",
+                    "type": "integer",
+                    "fk_table": "owners",
+                },
+                {"name": "title", "type": "text"},
+            ],
+            "pk": "id",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert "[owner_id] INTEGER REFERENCES [owners]([id])" in data["schema"]
+
+
+@pytest.mark.asyncio
+async def test_create_table_with_column_constraints(ds_write):
+    token = write_token(ds_write)
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "constrained",
+            "columns": [
+                {"name": "id", "type": "integer"},
+                {
+                    "name": "title",
+                    "type": "text",
+                    "not_null": True,
+                    "default": "Untitled",
+                },
+                {
+                    "name": "created",
+                    "type": "text",
+                    "default_expr": "current_timestamp",
+                },
+                {"name": "score", "type": "integer", "default": 0},
+                {"name": "literal_default", "type": "text", "default": "hello)"},
+            ],
+            "pk": "id",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201, response.text
+    data = response.json()
+    assert data["ok"] is True
+    assert "NOT NULL DEFAULT 'Untitled'" in data["schema"]
+    assert "DEFAULT CURRENT_TIMESTAMP" in data["schema"]
+    assert "DEFAULT 0" in data["schema"]
+    assert "DEFAULT 'hello)'" in data["schema"]
+
+    db = ds_write.get_database("data")
+    columns = (
+        await db.execute("select * from pragma_table_info('constrained') order by cid")
+    ).dicts()
+    assert [column["name"] for column in columns] == [
+        "id",
+        "title",
+        "created",
+        "score",
+        "literal_default",
+    ]
+    assert columns[0]["pk"] == 1
+    assert columns[1]["notnull"] == 1
+    assert columns[1]["dflt_value"] == "'Untitled'"
+    assert columns[2]["dflt_value"] == "CURRENT_TIMESTAMP"
+    assert columns[3]["dflt_value"] == "0"
+    assert columns[4]["dflt_value"] == "'hello)'"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "default_expr,minimum_value,expected_schema",
+    (
+        (
+            "current_unixtime",
+            1_600_000_000,
+            "strftime('%s', 'now')",
+        ),
+        (
+            "current_unixtime_ms",
+            1_600_000_000_000,
+            "julianday('now')",
+        ),
+    ),
+)
+async def test_create_table_integer_default_expr(
+    ds_write, default_expr, minimum_value, expected_schema
+):
+    token = write_token(ds_write)
+    table = "default_{}".format(default_expr)
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": table,
+            "columns": [
+                {"name": "id", "type": "integer"},
+                {
+                    "name": "created",
+                    "type": "integer",
+                    "default_expr": default_expr,
+                },
+            ],
+            "pk": "id",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201, response.text
+    data = response.json()
+    assert expected_schema in data["schema"]
+
+    db = ds_write.get_database("data")
+    columns = (await db.execute("select * from pragma_table_info(?)", [table])).dicts()
+    assert columns[1]["type"] == "INTEGER"
+    assert expected_schema in columns[1]["dflt_value"]
+
+    row = await db.execute_write_fn(
+        lambda conn: _insert_and_fetch_created(
+            conn, table, "insert into {} default values".format(escape_sqlite(table))
+        )
+    )
+    assert row[0] > minimum_value
+    assert row[1] == "integer"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "column,expected_error",
+    (
+        (
+            {"name": "owner_id", "type": "integer", "fk_table": "owners"},
+            None,
+        ),
+        (
+            {"name": "owner_id", "type": "integer", "fk_column": "id"},
+            "columns.0: fk_column requires fk_table",
+        ),
+        (
+            {
+                "name": "created",
+                "type": "text",
+                "default_expr": "datetime('now')",
+            },
+            "columns.0.default_expr: Input should be 'current_timestamp', 'current_date', 'current_time', 'current_unixtime' or 'current_unixtime_ms'",
+        ),
+        (
+            {
+                "name": "created",
+                "type": "text",
+                "default": "x",
+                "default_expr": "current_timestamp",
+            },
+            "columns.0: Value error, default and default_expr cannot both be provided",
+        ),
+    ),
+)
+async def test_create_table_column_validation(ds_write, column, expected_error):
+    token = write_token(ds_write)
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "projects",
+            "columns": [column],
+        },
+        headers=_headers(token),
+    )
+    if expected_error:
+        assert response.status_code == 400
+        assert response.json() == {"ok": False, "errors": [expected_error]}
+    else:
+        assert response.status_code == 400
+        assert response.json() == {
+            "ok": False,
+            "errors": ["Could not detect single primary key for table 'owners'"],
+        }
+
+
+@pytest.mark.asyncio
+async def test_create_table_foreign_key_without_fk_column_requires_single_pk(ds_write):
+    token = write_token(ds_write)
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "accounts",
+            "columns": [
+                {"name": "tenant_id", "type": "integer"},
+                {"name": "id", "type": "integer"},
+                {"name": "name", "type": "text"},
+            ],
+            "pks": ["tenant_id", "id"],
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201
+
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "projects",
+            "columns": [
+                {"name": "id", "type": "integer"},
+                {
+                    "name": "account_id",
+                    "type": "integer",
+                    "fk_table": "accounts",
+                },
+            ],
+            "pk": "id",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 400
+    assert response.json() == {
+        "ok": False,
+        "errors": ["Could not detect single primary key for table 'accounts'"],
+    }
 
 
 @pytest.mark.asyncio

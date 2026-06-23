@@ -82,6 +82,35 @@ const datasetteManager = {
     return columnActions;
   },
 
+  /**
+   * Allows JavaScript plugins to replace or enhance insert/edit modal fields
+   * for specific Datasette column types.
+   *
+   * The first plugin to return a control object wins. Returning null or
+   * undefined means "I do not handle this field".
+   */
+  makeColumnField: (context) => {
+    for (const [pluginName, plugin] of datasetteManager.plugins) {
+      if (!plugin.makeColumnField) {
+        continue;
+      }
+      let control = null;
+      try {
+        control = plugin.makeColumnField(context);
+      } catch (error) {
+        console.error(
+          `Error in makeColumnField() for plugin ${pluginName}`,
+          error,
+        );
+        continue;
+      }
+      if (control) {
+        return Object.assign({ pluginName }, control);
+      }
+    }
+    return null;
+  },
+
   makeJumpSections: (context) => {
     let jumpSections = [];
 

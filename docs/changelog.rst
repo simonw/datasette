@@ -4,19 +4,79 @@
 Changelog
 =========
 
-.. _v1_0_a33:
+.. _unreleased:
 
-1.0a33 (unreleased)
+Unreleased
+----------
+
+- New "Create table" interface in the database actions menu, backed by the ``/<database>/-/create`` :ref:`JSON API <TableCreateView>`. It can define columns, primary keys, custom column types, ``NOT NULL`` constraints, literal defaults, expression defaults and single-column foreign keys. (:issue:`2787`)
+- New "Alter table" table action and ``/<database>/<table>/-/alter`` :ref:`JSON API <TableAlterView>` for changing existing tables: add, rename, reorder and drop columns; change column types, defaults, ``NOT NULL`` constraints, primary keys and foreign keys; and rename the table. The alter table dialog also includes a "Drop table" button. (:issue:`2788`)
+- New ``/<database>/-/foreign-key-targets`` and ``/<database>/<table>/-/foreign-key-suggestions`` JSON APIs for discovering valid single-column foreign key targets and suggested relationships.
+- Create and alter table dialogs share their column-editing controls, including literal and expression defaults, custom column types, foreign keys and column ordering.
+
+.. _v1_0_a34:
+
+1.0a34 (2026-06-16)
 -------------------
 
-- Stored queries can now be edited and deleted from the web interface. The stored query page gained a "Query actions" menu with **Edit this query** and **Delete this query** links for actors with the necessary permissions. The owner of a query can always edit or delete it; for queries that are not private, any actor with the :ref:`update-query <actions_update_query>` or :ref:`delete-query <actions_delete_query>` permission can do so too. Private queries remain editable and deletable only by their owner. See :ref:`stored_queries` for details. (:issue:`2735`)
-- Row and query JSON pages now support the same ``?_extra=`` mechanism as table pages. Row pages can request extras such as ``foreign_key_tables``, ``query``, ``metadata`` and ``database_color``; arbitrary SQL and stored query pages can request extras such as ``columns``, ``query``, ``metadata`` and ``private``. The implementation was refactored into a registry of extra classes shared by all three page types. See :ref:`json_api_extra` for the full list.
-- New generated reference documentation for every ``?_extra=`` parameter available on table, row and query JSON pages, with example output captured from a live Datasette instance at documentation build time. See :ref:`json_api_extra`.
-- ``?_extra=`` values can be separated by commas as well as repeated, e.g. ``?_extra=count,next_url``. Previously a comma-separated value that included ``columns`` failed to include the ``columns`` key in the response.
-- The ``?_extra=private`` extra on arbitrary SQL query pages now correctly reflects whether the SQL execution permission is private to the current actor - it previously always returned ``false``.
-- The ``?_extra=query`` extra on query pages now reports the named parameters that were actually bound when the query executed, including parameters declared in a stored query's ``params`` list. Magic ``_``-prefixed parameters are no longer echoed back with unbound values taken from the querystring.
+The big feature in this alpha is tools to **insert, edit and delete** rows within the Datasette interface. These features are available on table pages, and edit and delete are also available as action items on the row page.
+
+The edit interface takes :ref:`custom column types <table_configuration_column_types>` into account. Plugins that define their own column types can use JavaScript to customize how those column types are presented in the edit interface.
+
+- ``datasette.allowed_many()`` method for :ref:`resolving multiple permission checks at once <datasette_allowed_many>`. (:pr:`2775`)
+- Permission checks are now cached on a per-request basis, speeding up table pages with multiple plugins that check permissions in order to populate the :ref:`table actions menu <plugin_hook_table_actions>`.
+- Fixed a warning about ``gen.throw(*sys.exc_info())``. (:issue:`2776`)
+- New default custom column type ``textarea`` for multi-line text content. This is rendered as a ``<textarea>`` input in the edit UI.
+- The ``json`` column type now implements client-side validation in the edit UI.
+- The :ref:`makeColumnField() <javascript_plugins_makeColumnField>` JavaScript plugin hook allows plugins to define custom fields in the edit interface for their custom column types.
+- New UI for inserting, editing, and deleting rows within Datasette. (:issue:`2780`)
+- New ``/<database>/<table>/-/autocomplete?q=term`` :ref:`autocomplete JSON API <TableAutocompleteView>` for rapid autocomplete search against the contents of a table. This is used by the edit interface to select related rows for foreign keys. You can try it out on the ``/-/debug/autocomplete`` debug page.
+- New ``/<database>/<table>/-/fragment`` :ref:`HTML fragment endpoint  <TableFragmentView>` for returning the HTML used to display a specific row.
+- ``await request.json()`` utility method for consuming the request body as JSON. (:issue:`2767`)
+- Database, table, query and row action menus can now be modified by plugins to :ref:`display buttons in addition to links <plugin_actions>`. (:issue:`2782`)
+- Datasette :ref:`now uses Playwright <contributing_playwright>` for browser automation tests as part of the test suite. (:issue:`2779`)
+
+.. _v1_0_a33:
+
+1.0a33 (2026-06-11)
+-------------------
+
+Stored queries can now be edited and deleted through the web interface, and the JSON API ``?_extra=`` mechanism has been extended to cover row and query pages in addition to tables. This release also fixes two security issues: an identifier-quoting bug involving table and column names that contain ``]``, and an open redirect.
+
+Editing and deleting stored queries
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The stored query page gained a "Query actions" menu with **Edit this query** and **Delete this query** links for actors with the necessary permissions. The owner of a query can always edit or delete it; for queries that are not private, any actor with the :ref:`update-query <actions_update_query>` or :ref:`delete-query <actions_delete_query>` permission can do so too. Private queries remain editable and deletable only by their owner. See :ref:`stored_queries` for details. (:issue:`2735`)
+
+``?_extra=`` support for row and query pages
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Row and query JSON pages now support the same ``?_extra=`` mechanism as table pages. Row pages can request extras such as ``foreign_key_tables``, ``query``, ``metadata`` and ``database_color``; arbitrary SQL and stored query pages can request extras such as ``columns``, ``query``, ``metadata`` and ``private``. The implementation was refactored into a registry of extra classes shared by all three page types.
+
+New generated reference documentation describes every ``?_extra=`` parameter available on table, row and query JSON pages, with example output captured from a live Datasette instance at documentation build time. See :ref:`json_api_extra` for the full list.
+
+You can explore the new extras using this `Datasette extras API explorer tool <https://tools.simonwillison.net/datasette-extras-explorer>`__.
+
+Other improvements and fixes to the extras mechanism:
+
 - Extras that exist to serve the HTML interface (``filters``, ``actions``, ``display_rows``) are no longer advertised or reachable through the JSON API, where requesting them previously returned a 500 serialization error.
 - The pre-1.0 ``?_extras=`` (plural) parameter on row pages has been removed - use ``?_extra=foreign_key_tables`` instead.
+
+Security fixes
+~~~~~~~~~~~~~~
+
+- Fixed an identifier-quoting bug in ``datasette.utils.escape_sqlite()``. Datasette uses this helper when constructing SQL around table and column names; identifiers containing ``]`` could break out of SQLite bracket quoting and alter the generated SQL, for example by adding a ``UNION SELECT``. Identifiers containing ``]`` are now quoted using double quotes instead. (:issue:`2677`)
+- Fixed an open redirect vulnerability. Requesting a path such as ``/\example.com/`` produced a redirect with a ``Location: /\example.com`` header - browsers normalize backslashes to forward slashes, turning that into the protocol-relative URL ``//example.com`` and redirecting the user off-site. Any run of leading slashes and backslashes in a redirect path is now collapsed to a single slash. (:issue:`2680`)
+
+Bug fixes
+~~~~~~~~~
+
+- ``can_render()`` callbacks registered by the :ref:`register_output_renderer() <plugin_register_output_renderer>` plugin hook now receive the result ``rows`` and ``columns`` for stored queries. Previously renderers that inspect the available columns - such as `datasette-atom <https://github.com/simonw/datasette-atom>`__ and `datasette-ics <https://github.com/simonw/datasette-ics>`__ - never appeared as export options on stored query pages. (:issue:`2711`)
+- Fixed a 500 error from the :ref:`/-/check <PermissionCheckView>` permission debugging endpoint when checking query actions such as ``view-query``, ``update-query`` and ``delete-query``. (:issue:`2756`)
+- Write queries that use a named parameter called ``:sql`` no longer fail with an error. (:issue:`2761`)
+- :ref:`db.execute_isolated_fn() <database_execute_isolated_fn>` now works against immutable databases, using a read-only connection that bypasses the write thread. It previously always attempted to open a writable connection, which would fail - breaking features built on top of it, such as the SQL analysis step used when storing a query. An exception raised while opening the connection for an isolated function no longer crashes the write thread. (:issue:`2768`)
+- Facet counts are now displayed on the same line as the facet value instead of wrapping onto a second line. (:issue:`2754`)
+- Datasette's pytest plugin no longer imports the rest of Datasette at pytest startup time. This means plugin test suites using ``pytest-cov`` now correctly record coverage of code that runs when ``datasette`` modules are first imported.
 
 .. _v1_0_a32:
 

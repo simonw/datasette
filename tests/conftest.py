@@ -1,4 +1,5 @@
 import httpx
+import importlib.metadata
 import os
 import pathlib
 import pytest
@@ -93,7 +94,30 @@ def pytest_report_header(config):
     conn = sqlite3.connect(":memory:")
     version = conn.execute("select sqlite_version()").fetchone()[0]
     conn.close()
-    return "SQLite: {}".format(version)
+    sqlite_utils_version = importlib.metadata.version("sqlite-utils")
+    headers = [
+        "SQLite: {}".format(version),
+        "sqlite-utils: {}".format(sqlite_utils_version),
+    ]
+    if config.getoption("--playwright"):
+        try:
+            browsers = config.getoption("--browser")
+        except ValueError:
+            browsers = None
+        if isinstance(browsers, str):
+            browsers = [browsers]
+        if browsers:
+            headers.append("Playwright browsers: {}".format(", ".join(browsers)))
+    return headers
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--playwright",
+        action="store_true",
+        default=False,
+        help="run Playwright browser automation tests",
+    )
 
 
 def pytest_configure(config):
@@ -108,7 +132,13 @@ def pytest_unconfigure(config):
     del sys._called_from_test
 
 
-def pytest_collection_modifyitems(items):
+def pytest_collection_modifyitems(config, items):
+    if not config.getoption("--playwright"):
+        skip_playwright = pytest.mark.skip(reason="need --playwright option to run")
+        for item in items:
+            if "playwright" in item.keywords:
+                item.add_marker(skip_playwright)
+
     # Ensure test_cli.py and test_black.py and test_inspect.py run first before any asyncio code kicks in
     move_to_front(items, "test_cli")
     move_to_front(items, "test_black")
@@ -146,6 +176,7 @@ def restore_working_directory(tmpdir, request):
 @pytest.fixture(scope="session", autouse=True)
 def check_actions_are_documented():
     from datasette.plugins import pm
+    from datasette.default_actions import register_actions as default_register_actions
 
     content = (
         pathlib.Path(__file__).parent.parent / "docs" / "authentication.rst"
@@ -154,6 +185,9 @@ def check_actions_are_documented():
     documented_actions = set(permissions_re.findall(content)).union(
         UNDOCUMENTED_PERMISSIONS
     )
+    # Only Datasette core actions need to be documented - actions registered
+    # by (test) plugins are checked for registration but not documentation
+    core_actions = {action.name for action in default_register_actions()}
 
     def before(hook_name, hook_impls, kwargs):
         if hook_name == "permission_resources_sql":
@@ -165,9 +199,10 @@ def check_actions_are_documented():
                 + " (or maybe a test forgot to do await ds.invoke_startup())"
             )
             action = kwargs.get("action").replace("-", "_")
-            assert (
-                action in documented_actions
-            ), "Undocumented permission action: {}".format(action)
+            if kwargs["action"] in core_actions:
+                assert (
+                    action in documented_actions
+                ), "Undocumented permission action: {}".format(action)
 
     pm.add_hookcall_monitoring(
         before=before, after=lambda outcome, hook_name, hook_impls, kwargs: None
@@ -225,8 +260,12 @@ def ds_unix_domain_socket_server(tmp_path_factory):
     # This used to use tmp_path_factory.mktemp("uds") but that turned out to
     # produce paths that were too long to use as UDS on macOS, see
     # https://github.com/simonw/datasette/issues/1407 - so I switched to
-    # using tempfile.gettempdir()
-    uds = str(pathlib.Path(tempfile.gettempdir()) / "datasette.sock")
+    # using tempfile.gettempdir() with a per-process filename.
+    uds = str(pathlib.Path(tempfile.gettempdir()) / f"datasette-{os.getpid()}.sock")
+    try:
+        os.unlink(uds)
+    except FileNotFoundError:
+        pass
     ds_proc = subprocess.Popen(
         [sys.executable, "-m", "datasette", "--memory", "--uds", uds],
         stdout=subprocess.PIPE,
@@ -236,12 +275,26 @@ def ds_unix_domain_socket_server(tmp_path_factory):
     # Poll until available
     transport = httpx.HTTPTransport(uds=uds)
     client = httpx.Client(transport=transport)
-    wait_until_responds("http://localhost/_memory.json", client=client)
-    # Check it started successfully
-    assert not ds_proc.poll(), ds_proc.stdout.read().decode("utf-8")
-    yield ds_proc, uds
-    # Shut it down at the end of the pytest session
-    ds_proc.terminate()
+    try:
+        wait_until_responds(
+            "http://localhost/_memory.json", timeout=30.0, client=client
+        )
+        # Check it started successfully
+        assert not ds_proc.poll(), ds_proc.stdout.read().decode("utf-8")
+        yield ds_proc, uds
+    finally:
+        client.close()
+        # Shut it down at the end of the pytest session
+        ds_proc.terminate()
+        try:
+            ds_proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            ds_proc.kill()
+            ds_proc.wait()
+        try:
+            os.unlink(uds)
+        except FileNotFoundError:
+            pass
 
 
 # Import fixtures from fixtures.py to make them available

@@ -8,6 +8,14 @@ _skip_permission_checks = contextvars.ContextVar(
     "skip_permission_checks", default=False
 )
 
+# Request-scoped cache of permission check results. The ASGI router sets
+# this to a fresh dict at the start of each request, so cached verdicts
+# never outlive a request or leak between actors. Keys are
+# (actor_json, action, parent, child) tuples, values are booleans.
+_permission_check_cache: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
+    "permission_check_cache", default=None
+)
+
 
 class SkipPermissions:
     """Context manager to temporarily skip permission checks.

@@ -76,6 +76,12 @@ class JsonColumnType(ColumnType):
         return None
 
 
+class TextareaColumnType(ColumnType):
+    name = "textarea"
+    description = "Multiline text"
+    sqlite_types = (SQLiteType.TEXT,)
+
+
 @hookimpl
 def register_column_types(datasette):
-    return [UrlColumnType, EmailColumnType, JsonColumnType]
+    return [UrlColumnType, EmailColumnType, JsonColumnType, TextareaColumnType]

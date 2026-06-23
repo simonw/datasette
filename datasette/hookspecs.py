@@ -159,32 +159,32 @@ def jump_items_sql(datasette, actor, request):
 
 @hookspec
 def row_actions(datasette, actor, request, database, table, row):
-    """Links for the row actions menu"""
+    """Items for the row actions menu"""
 
 
 @hookspec
 def table_actions(datasette, actor, database, table, request):
-    """Links for the table actions menu"""
+    """Items for the table actions menu"""
 
 
 @hookspec
 def view_actions(datasette, actor, database, view, request):
-    """Links for the view actions menu"""
+    """Items for the view actions menu"""
 
 
 @hookspec
 def query_actions(datasette, actor, database, query_name, request, sql, params):
-    """Links for the query and stored query actions menu"""
+    """Items for the query and stored query actions menu"""
 
 
 @hookspec
 def database_actions(datasette, actor, database, request):
-    """Links for the database actions menu"""
+    """Items for the database actions menu"""
 
 
 @hookspec
 def homepage_actions(datasette, actor, request):
-    """Links for the homepage actions menu"""
+    """Items for the homepage actions menu"""
 
 
 @hookspec

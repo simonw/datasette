@@ -50,6 +50,12 @@ These variables are available on every page rendered by Datasette, including pag
 ``app_css_hash``
     Hash of Datasette's app.css contents, used for cache busting
 
+``edit_tools_js_hash``
+    Hash of Datasette's edit-tools.js contents, used for cache busting
+
+``table_js_hash``
+    Hash of Datasette's table.js contents, used for cache busting
+
 ``zip``
     Python's zip() builtin, made available to template logic
 
@@ -105,6 +111,9 @@ The page listing the tables, views and queries in a database, e.g. /fixtures. Re
 
 ``database_color`` - ``str``
     The color assigned to the database
+
+``database_page_data`` - ``dict``
+    JSON data used by JavaScript on the database page
 
 ``editable`` - ``bool``
     Boolean indicating if the database is editable
@@ -365,7 +374,7 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     List of template names that were considered for this page, the one used marked with an asterisk
 
 ``set_column_type_ui`` - ``dict``
-    Column type UI metadata for this table
+    Information needed to build an interface for assigning column types
 
 ``settings`` - ``dict``
     Dictionary of Datasette's current settings
@@ -390,6 +399,9 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 
 ``table_definition`` - ``str``
     SQL definition for this table
+
+``table_page_data`` - ``dict``
+    JSON data used by JavaScript on the table page
 
 ``top_table`` - ``callable``
     Async function rendering the top_table plugin slot
@@ -461,6 +473,9 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 ``row_actions`` - ``list``
     Row actions made available by plugin hooks
 
+``row_mutation_ui`` - ``bool``
+    True if the row edit/delete JavaScript UI should be enabled
+
 ``rows`` - ``list``
     The rows for this page, as a list of dictionaries mapping column name to value
 
@@ -472,6 +487,9 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 
 ``table`` - ``str``
     Table name
+
+``table_page_data`` - ``dict``
+    JSON data used by JavaScript on the row page
 
 ``top_row`` - ``callable``
     Async function rendering the top_row plugin slot

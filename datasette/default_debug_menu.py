@@ -38,6 +38,11 @@ DEBUG_MENU_ITEMS = (
         "Explore how allow blocks match actors against permission rules.",
     ),
     (
+        "/-/debug/autocomplete",
+        "Debug autocomplete",
+        "Try out table autocomplete against a detected label column.",
+    ),
+    (
         "/-/threads",
         "Debug threads",
         "Inspect worker threads and database tasks.",

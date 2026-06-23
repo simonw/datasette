@@ -268,12 +268,20 @@ class DatabaseContext(Context):
     size: int = field(metadata={"help": "The size of the database in bytes"})
     tables: list = field(
         metadata={
-            "help": "List of table objects in the database. Each item includes a ``count_truncated`` key that is true if ``count`` is a capped lower bound rather than an exact total."
+            "help": "List of table dictionaries in the database. Each item has ``name``, ``columns``, ``primary_keys``, ``count``, ``count_truncated``, ``hidden``, ``fts_table``, ``foreign_keys`` and ``private`` keys. ``count_truncated`` is true if ``count`` is a capped lower bound rather than an exact total."
         }
     )
     hidden_count: int = field(metadata={"help": "Count of hidden tables"})
-    views: list = field(metadata={"help": "List of view objects in the database"})
-    queries: list = field(metadata={"help": "List of stored query objects"})
+    views: list = field(
+        metadata={
+            "help": "List of SQLite view dictionaries. Each item has ``name`` and ``private`` keys."
+        }
+    )
+    queries: list = field(
+        metadata={
+            "help": "List of stored query objects. Each has attributes including ``name``, ``sql``, ``title``, ``description``, ``description_html``, ``hide_sql``, ``fragment``, ``parameters``, ``is_write`` and ``private``."
+        }
+    )
     queries_more: bool = field(
         metadata={"help": "Boolean indicating if more stored queries are available"}
     )
@@ -282,16 +290,24 @@ class DatabaseContext(Context):
         metadata={"help": "Boolean indicating if custom SQL can be executed"}
     )
     table_columns: dict = field(
-        metadata={"help": "Dictionary mapping table names to their column lists"}
+        metadata={
+            "help": "Dictionary mapping table names to lists of column names, used to power SQL autocomplete."
+        }
     )
-    metadata: dict = field(metadata={"help": "Metadata for the database"})
+    metadata: dict = field(
+        metadata={
+            "help": "Metadata dictionary for the database, such as ``title``, ``description``, ``license`` and ``source`` values from Datasette metadata."
+        }
+    )
     database_color: str = field(metadata={"help": "The color assigned to the database"})
     database_page_data: dict = field(
-        metadata={"help": "JSON data used by JavaScript on the database page"}
+        metadata={
+            "help": 'JSON data used by JavaScript on the database page. Currently ``{}`` or ``{"createTable": {...}}`` where ``createTable`` includes ``path``, ``foreignKeyTargetsPath``, ``databaseName``, ``columnTypes``, ``defaultExpressions`` and optional ``customColumnTypes``.'
+        }
     )
     database_actions: callable = field(
         metadata={
-            "help": "Callable returning list of action links for the database menu"
+            "help": 'Async callable returning action items for the database menu. Each item is either a link with ``href``, ``label`` and optional ``description`` keys, or a button with ``type: "button"``, ``label``, optional ``description`` and optional ``attrs``. See :ref:`plugin_actions` and :ref:`plugin_hook_database_actions`.'
         }
     )
     show_hidden: str = field(metadata={"help": "Value of _show_hidden query parameter"})
@@ -302,18 +318,22 @@ class DatabaseContext(Context):
         metadata={"help": "Boolean indicating if database download is allowed"}
     )
     attached_databases: list = field(
-        metadata={"help": "List of names of attached databases"}
+        metadata={
+            "help": "List of names of databases attached to this SQLite connection. This is only populated for the special ``/_memory`` database when Datasette is started with ``--crossdb`` for :ref:`cross_database_queries`."
+        }
     )
     alternate_url_json: str = field(
         metadata={"help": "URL for the alternate JSON version of this page"}
     )
     select_templates: list = field(
         metadata={
-            "help": "List of templates that were considered for rendering this page"
+            "help": "List of template names that were considered for this page, with the selected template prefixed by ``*``."
         }
     )
     top_database: callable = field(
-        metadata={"help": "Callable to render the top_database slot"}
+        metadata={
+            "help": "Async callable that renders the ``top_database`` plugin slot for this database and returns HTML."
+        }
     )
 
 
@@ -326,7 +346,9 @@ class QueryContext(Context):
     database: str = field(metadata={"help": "The name of the database being queried"})
     database_color: str = field(metadata={"help": "The color of the database"})
     query: dict = field(
-        metadata={"help": "The SQL query object containing the `sql` string"}
+        metadata={
+            "help": "Dictionary describing the SQL query being executed, with ``sql`` and ``params`` keys."
+        }
     )
     stored_query: str = field(
         metadata={"help": "The name of the stored query if this is a stored query"}
@@ -343,7 +365,9 @@ class QueryContext(Context):
         }
     )
     metadata: dict = field(
-        metadata={"help": "Metadata about the database or the stored query"}
+        metadata={
+            "help": "Metadata dictionary for the database or stored query. Stored query metadata may include options such as ``hide_sql``, ``on_success_message`` and ``on_error_redirect``."
+        }
     )
     db_is_immutable: bool = field(
         metadata={"help": "Boolean indicating if this database is immutable"}
@@ -369,24 +393,42 @@ class QueryContext(Context):
     )
     tables: list = field(
         metadata={
-            "help": "List of table objects in the database. Each item includes a ``count_truncated`` key that is true if ``count`` is a capped lower bound rather than an exact total."
+            "help": "List of table dictionaries in the database. Each item has ``name``, ``columns``, ``primary_keys``, ``count``, ``count_truncated``, ``hidden``, ``fts_table``, ``foreign_keys`` and ``private`` keys. ``count_truncated`` is true if ``count`` is a capped lower bound rather than an exact total."
         }
     )
     named_parameter_values: dict = field(
-        metadata={"help": "Dictionary of parameter names/values"}
+        metadata={
+            "help": "Dictionary of named SQL parameter values, keyed by parameter name without the leading ``:``."
+        }
     )
     edit_sql_url: str = field(
         metadata={"help": "URL to edit the SQL for a stored query"}
     )
-    display_rows: list = field(metadata={"help": "List of result rows to display"})
-    columns: list = field(metadata={"help": "List of column names"})
-    renderers: dict = field(metadata={"help": "Dictionary of renderer name to URL"})
+    display_rows: list = field(
+        metadata={
+            "help": "List of result rows formatted for HTML display. Each row is a list of rendered cell values in the same order as ``columns``."
+        }
+    )
+    columns: list = field(
+        metadata={
+            "help": "List of result column names in the order they appear in ``display_rows`` and ``rows``."
+        }
+    )
+    renderers: dict = field(
+        metadata={
+            "help": "Dictionary mapping output format names such as ``json`` to URLs for this query in that format."
+        }
+    )
     url_csv: str = field(metadata={"help": "URL for CSV export"})
     show_hide_hidden: str = field(
-        metadata={"help": "Hidden input field for the _show_sql parameter"}
+        metadata={
+            "help": "Rendered hidden ``<input>`` HTML preserving the current ``_hide_sql`` or ``_show_sql`` state."
+        }
     )
     table_columns: dict = field(
-        metadata={"help": "Dictionary of table name to list of column names"}
+        metadata={
+            "help": "Dictionary mapping table names to lists of column names, used to power SQL autocomplete."
+        }
     )
     alternate_url_json: str = field(
         metadata={"help": "URL for alternate JSON version of this page"}
@@ -394,18 +436,22 @@ class QueryContext(Context):
     # TODO: refactor this to somewhere else, probably ds.render_template()
     select_templates: list = field(
         metadata={
-            "help": "List of templates that were considered for rendering this page"
+            "help": "List of template names that were considered for this page, with the selected template prefixed by ``*``."
         }
     )
     top_query: callable = field(
-        metadata={"help": "Callable to render the top_query slot"}
+        metadata={
+            "help": "Async callable that renders the ``top_query`` plugin slot for this query and returns HTML."
+        }
     )
     top_stored_query: callable = field(
-        metadata={"help": "Callable to render the top_stored_query slot"}
+        metadata={
+            "help": "Async callable that renders the ``top_stored_query`` plugin slot for stored queries and returns HTML."
+        }
     )
     query_actions: callable = field(
         metadata={
-            "help": "Callable returning a list of links for the query action menu"
+            "help": 'Async callable returning action items for the query menu. Each item is either a link with ``href``, ``label`` and optional ``description`` keys, or a button with ``type: "button"``, ``label``, optional ``description`` and optional ``attrs``. See :ref:`plugin_actions` and :ref:`plugin_hook_query_actions`.'
         }
     )
 

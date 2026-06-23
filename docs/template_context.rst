@@ -95,19 +95,19 @@ The page listing the tables, views and queries in a database, e.g. /fixtures. Re
     URL for the alternate JSON version of this page
 
 ``attached_databases`` - ``list``
-    List of names of attached databases
+    List of names of databases attached to this SQLite connection. This is only populated for the special ``/_memory`` database when Datasette is started with ``--crossdb`` for :ref:`cross_database_queries`.
 
 ``database`` - ``str``
     The name of the database
 
 ``database_actions`` - ``callable``
-    Callable returning list of action links for the database menu
+    Async callable returning action items for the database menu. Each item is either a link with ``href``, ``label`` and optional ``description`` keys, or a button with ``type: "button"``, ``label``, optional ``description`` and optional ``attrs``. See :ref:`plugin_actions` and :ref:`plugin_hook_database_actions`.
 
 ``database_color`` - ``str``
     The color assigned to the database
 
 ``database_page_data`` - ``dict``
-    JSON data used by JavaScript on the database page
+    JSON data used by JavaScript on the database page. Currently ``{}`` or ``{"createTable": {...}}`` where ``createTable`` includes ``path``, ``foreignKeyTargetsPath``, ``databaseName``, ``columnTypes``, ``defaultExpressions`` and optional ``customColumnTypes``.
 
 ``editable`` - ``bool``
     Boolean indicating if the database is editable
@@ -116,7 +116,7 @@ The page listing the tables, views and queries in a database, e.g. /fixtures. Re
     Count of hidden tables
 
 ``metadata`` - ``dict``
-    Metadata for the database
+    Metadata dictionary for the database, such as ``title``, ``description``, ``license`` and ``source`` values from Datasette metadata.
 
 ``path`` - ``str``
     The URL path to this database
@@ -125,7 +125,7 @@ The page listing the tables, views and queries in a database, e.g. /fixtures. Re
     Boolean indicating if this is a private database
 
 ``queries`` - ``list``
-    List of stored query objects
+    List of stored query objects. Each has attributes including ``name``, ``sql``, ``title``, ``description``, ``description_html``, ``hide_sql``, ``fragment``, ``parameters``, ``is_write`` and ``private``.
 
 ``queries_count`` - ``int``
     Count of visible stored queries
@@ -134,7 +134,7 @@ The page listing the tables, views and queries in a database, e.g. /fixtures. Re
     Boolean indicating if more stored queries are available
 
 ``select_templates`` - ``list``
-    List of templates that were considered for rendering this page
+    List of template names that were considered for this page, with the selected template prefixed by ``*``.
 
 ``show_hidden`` - ``str``
     Value of _show_hidden query parameter
@@ -143,16 +143,16 @@ The page listing the tables, views and queries in a database, e.g. /fixtures. Re
     The size of the database in bytes
 
 ``table_columns`` - ``dict``
-    Dictionary mapping table names to their column lists
+    Dictionary mapping table names to lists of column names, used to power SQL autocomplete.
 
 ``tables`` - ``list``
-    List of table objects in the database. Each item includes a ``count_truncated`` key that is true if ``count`` is a capped lower bound rather than an exact total.
+    List of table dictionaries in the database. Each item has ``name``, ``columns``, ``primary_keys``, ``count``, ``count_truncated``, ``hidden``, ``fts_table``, ``foreign_keys`` and ``private`` keys. ``count_truncated`` is true if ``count`` is a capped lower bound rather than an exact total.
 
 ``top_database`` - ``callable``
-    Callable to render the top_database slot
+    Async callable that renders the ``top_database`` plugin slot for this database and returns HTML.
 
 ``views`` - ``list``
-    List of view objects in the database
+    List of SQLite view dictionaries. Each item has ``name`` and ``private`` keys.
 
 Query page
 ----------
@@ -166,7 +166,7 @@ The page for arbitrary SQL queries (/database/-/query?sql=...) and stored querie
     URL for alternate JSON version of this page
 
 ``columns`` - ``list``
-    List of column names
+    List of result column names in the order they appear in ``display_rows`` and ``rows``.
 
 ``database`` - ``str``
     The name of the database being queried
@@ -178,7 +178,7 @@ The page for arbitrary SQL queries (/database/-/query?sql=...) and stored querie
     Boolean indicating if this database is immutable
 
 ``display_rows`` - ``list``
-    List of result rows to display
+    List of result rows formatted for HTML display. Each row is a list of rendered cell values in the same order as ``columns``.
 
 ``edit_sql_url`` - ``str``
     URL to edit the SQL for a stored query
@@ -193,31 +193,31 @@ The page for arbitrary SQL queries (/database/-/query?sql=...) and stored querie
     Boolean indicating if the SQL should be hidden
 
 ``metadata`` - ``dict``
-    Metadata about the database or the stored query
+    Metadata dictionary for the database or stored query. Stored query metadata may include options such as ``hide_sql``, ``on_success_message`` and ``on_error_redirect``.
 
 ``named_parameter_values`` - ``dict``
-    Dictionary of parameter names/values
+    Dictionary of named SQL parameter values, keyed by parameter name without the leading ``:``.
 
 ``private`` - ``bool``
     Boolean indicating if this is a private database
 
 ``query`` - ``dict``
-    The SQL query object containing the `sql` string
+    Dictionary describing the SQL query being executed, with ``sql`` and ``params`` keys.
 
 ``query_actions`` - ``callable``
-    Callable returning a list of links for the query action menu
+    Async callable returning action items for the query menu. Each item is either a link with ``href``, ``label`` and optional ``description`` keys, or a button with ``type: "button"``, ``label``, optional ``description`` and optional ``attrs``. See :ref:`plugin_actions` and :ref:`plugin_hook_query_actions`.
 
 ``renderers`` - ``dict``
-    Dictionary of renderer name to URL
+    Dictionary mapping output format names such as ``json`` to URLs for this query in that format.
 
 ``save_query_url`` - ``str``
     URL to save the current arbitrary SQL as a query
 
 ``select_templates`` - ``list``
-    List of templates that were considered for rendering this page
+    List of template names that were considered for this page, with the selected template prefixed by ``*``.
 
 ``show_hide_hidden`` - ``str``
-    Hidden input field for the _show_sql parameter
+    Rendered hidden ``<input>`` HTML preserving the current ``_hide_sql`` or ``_show_sql`` state.
 
 ``show_hide_link`` - ``str``
     The URL to toggle showing/hiding the SQL
@@ -232,16 +232,16 @@ The page for arbitrary SQL queries (/database/-/query?sql=...) and stored querie
     Boolean indicating if this is a stored query that allows writes
 
 ``table_columns`` - ``dict``
-    Dictionary of table name to list of column names
+    Dictionary mapping table names to lists of column names, used to power SQL autocomplete.
 
 ``tables`` - ``list``
-    List of table objects in the database. Each item includes a ``count_truncated`` key that is true if ``count`` is a capped lower bound rather than an exact total.
+    List of table dictionaries in the database. Each item has ``name``, ``columns``, ``primary_keys``, ``count``, ``count_truncated``, ``hidden``, ``fts_table``, ``foreign_keys`` and ``private`` keys. ``count_truncated`` is true if ``count`` is a capped lower bound rather than an exact total.
 
 ``top_query`` - ``callable``
-    Callable to render the top_query slot
+    Async callable that renders the ``top_query`` plugin slot for this query and returns HTML.
 
 ``top_stored_query`` - ``callable``
-    Callable to render the top_stored_query slot
+    Async callable that renders the ``top_stored_query`` plugin slot for stored queries and returns HTML.
 
 ``url_csv`` - ``str``
     URL for CSV export
@@ -254,10 +254,10 @@ The page showing the rows in a table or SQL view, e.g. /fixtures/facetable. Rend
 Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
 
 ``actions`` - ``callable``
-    Table or view actions made available by plugin hooks
+    Async callable returning table or view actions made available by core and plugin hooks. Each item is either a link with ``href``, ``label`` and optional ``description`` keys, or a button with ``type: "button"``, ``label``, optional ``description`` and optional ``attrs``. See :ref:`plugin_actions`, :ref:`plugin_hook_table_actions` and :ref:`plugin_hook_view_actions`.
 
 ``all_columns`` - ``list``
-    All columns in the table, regardless of _col/_nocol filtering
+    List of all column names in the table, regardless of ``_col=`` or ``_nocol=`` filtering.
 
 ``allow_execute_sql`` - ``bool``
     True if the current actor can execute custom SQL against this database
@@ -266,22 +266,22 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     URL for the JSON version of this page
 
 ``append_querystring`` - ``callable``
-    Function that appends additional querystring arguments to a URL
+    Function ``append_querystring(url, querystring)`` that appends additional query string arguments to a URL, using ``?`` or ``&`` as appropriate.
 
 ``columns`` - ``list``
-    Column names returned by this query
+    List of column names returned by this table, row or query.
 
 ``count`` - ``int``
     Total count of rows matching these filters
 
 ``count_sql`` - ``str``
-    SQL query used to calculate the total count
+    SQL query string used to calculate the total count for the current table view, including active filters.
 
 ``count_truncated`` - ``bool``
     True if ``count`` is a capped lower bound rather than an exact total, because Datasette stopped counting after its configured row-count limit.
 
 ``custom_table_templates`` - ``list``
-    Custom template names considered for this table
+    List of custom template names considered for rendering table rows, in lookup order.
 
 ``database`` - ``str``
     Database name
@@ -293,34 +293,34 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     The string "true" or "false" reflecting the allow_facet setting
 
 ``display_columns`` - ``list``
-    Column metadata used by the HTML table display
+    Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type`` and ``column_type_config`` keys.
 
 ``display_rows`` - ``list``
-    Row data formatted for the HTML table display
+    Rows formatted for the HTML table display. Each row is iterable and contains cell dictionaries with ``column``, ``value``, ``raw`` and ``value_type`` keys; table pages may also provide ``pk_path``, ``row_path`` and ``row_label`` attributes on each row object.
 
 ``expandable_columns`` - ``list``
-    Foreign key columns that can be expanded with labels
+    List of foreign key columns that can be expanded with labels. Each item is a ``(foreign_key, label_column)`` pair where ``foreign_key`` is the SQLite foreign key dictionary and ``label_column`` is the label column in the referenced table, or ``None``.
 
 ``extra_wheres_for_ui`` - ``list``
-    Extra where clauses from ?_where=, with links to remove them
+    Extra where clauses from ``?_where=`` for display in the UI. Each item has ``text`` for the SQL fragment and ``remove_url`` for a URL that removes that fragment.
 
 ``facet_results`` - ``dict``
-    Results of facets calculated against this data
+    Results of facets calculated against this data. A dictionary with ``results`` and ``timed_out`` keys: ``results`` maps facet names to facet dictionaries with ``name``, ``type``, ``results`` and URL keys, and each facet result item includes ``value``, ``label``, ``count`` and ``toggle_url``.
 
 ``facets_timed_out`` - ``list``
-    Facet calculations that timed out
+    List of names of facet calculations that exceeded the facet time limit.
 
 ``filter_columns`` - ``list``
-    List of columns offered by the filter interface
+    List of column names offered by the filter interface, including currently displayed columns and any hidden columns that can still be filtered.
 
 ``filters`` - ``Filters``
-    Filters object used by the HTML table interface
+    ``Filters`` object used by the HTML table interface. Useful methods include ``filters.human_description_en()``; this is not JSON serializable.
 
 ``fix_path`` - ``callable``
-    Function that applies the base_url prefix to a path
+    Function that applies the configured ``base_url`` prefix to a path.
 
 ``form_hidden_args`` - ``list``
-    Hidden form arguments used by the HTML table interface
+    List of ``(name, value)`` pairs for hidden form fields used by the HTML table interface to preserve current query string options.
 
 ``human_description_en`` - ``str``
     Human-readable description of the filters
@@ -332,7 +332,7 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     Whether this resource is a view instead of a table
 
 ``metadata`` - ``dict``
-    Metadata about the table, database or stored query
+    Metadata dictionary for the table, database or stored query. Table and row metadata include a ``columns`` dictionary mapping column names to descriptions; stored query metadata returns the stored query configuration.
 
 ``next`` - ``str``
     Pagination token for the next page, or None
@@ -344,34 +344,34 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     True if the data for this page was retrieved without errors
 
 ``path_with_replaced_args`` - ``callable``
-    Function for building the current path with modified querystring arguments
+    Function for building the current path with modified query string arguments. Pass the current ``request`` and a dictionary of argument names to replacement values, using ``None`` to remove an argument.
 
 ``primary_keys`` - ``list``
-    Primary keys for this table
+    List of primary key column names for this table, or an empty list if the table has no explicit primary key.
 
 ``private`` - ``bool``
     Whether this resource is private to the current actor
 
 ``query`` - ``dict``
-    Details of the underlying SQL query
+    Details of the underlying SQL query as a dictionary with ``sql`` and ``params`` keys.
 
 ``query_ms`` - ``float``
     Time taken by the SQL queries for this page, in milliseconds
 
 ``renderers`` - ``dict``
-    Alternative output renderers available for this table
+    Dictionary mapping output format names such as ``json`` or plugin-provided renderer names to URLs for this data in that format.
 
 ``rows`` - ``list``
-    The rows for this page, as a list of dictionaries mapping column name to value
+    The rows for this page, as a list of dictionaries mapping column name to raw value.
 
 ``select_templates`` - ``list``
-    List of template names that were considered for this page, the one used marked with an asterisk
+    List of template names that were considered for this page, with the selected template prefixed by ``*``.
 
 ``set_column_type_ui`` - ``dict``
-    Information needed to build an interface for assigning column types
+    Information needed to build an interface for assigning column types, or ``None`` if unavailable. When present it has ``path`` and ``columns`` keys; ``columns`` maps column names to ``current`` and ``options`` values.
 
 ``settings`` - ``dict``
-    Dictionary of Datasette's current settings
+    Dictionary of Datasette's current settings, keyed by setting name.
 
 ``sort`` - ``str``
     Column the page is sorted by, or None
@@ -380,10 +380,10 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     Column the page is sorted by in descending order, or None
 
 ``sorted_facet_results`` - ``list``
-    Facet results sorted for display
+    Facet result dictionaries sorted for display. Each item has the same shape as an entry from ``facet_results['results']``.
 
 ``suggested_facets`` - ``list``
-    Suggestions for facets that might return interesting results
+    Suggestions for facets that might return interesting results. Each item is a dictionary with ``name`` and ``toggle_url`` keys, and may include extra keys such as ``type`` or ``label`` depending on the facet class.
 
 ``supports_search`` - ``bool``
     True if this table has full-text search configured
@@ -395,16 +395,16 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     SQL definition for this table
 
 ``table_page_data`` - ``dict``
-    JSON data used by JavaScript on the table page
+    JSON data used by JavaScript on the table page. Includes ``database``, ``table`` and ``tableUrl``, plus optional ``foreignKeys`` mapping column names to autocomplete URLs, optional ``insertRow`` data and optional ``alterTable`` data.
 
 ``top_table`` - ``callable``
-    Async function rendering the top_table plugin slot
+    Async callable that renders the ``top_table`` plugin slot for this table or view and returns HTML.
 
 ``url_csv`` - ``str``
     URL for the CSV export of this page
 
 ``url_csv_hidden_args`` - ``list``
-    (name, value) pairs for hidden form fields used by the CSV export form
+    List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current filters while forcing ``_size=max``.
 
 ``url_csv_path`` - ``str``
     Path portion of the CSV export URL
@@ -423,10 +423,10 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     URL for the JSON version of this page
 
 ``columns`` - ``list``
-    Column names returned by this query
+    List of column names returned by this table, row or query.
 
 ``custom_table_templates`` - ``list``
-    Custom template names that were considered for displaying this table
+    Custom template names that were considered for displaying this row's table, in lookup order.
 
 ``database`` - ``str``
     Database name
@@ -435,16 +435,16 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     Color assigned to the database
 
 ``display_columns`` - ``list``
-    Column objects formatted for the HTML table display
+    Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type`` and ``column_type_config`` keys.
 
 ``display_rows`` - ``list``
-    Row data formatted for the HTML table display
+    Rows formatted for the HTML table display. Each row is iterable and contains cell dictionaries with ``column``, ``value``, ``raw`` and ``value_type`` keys.
 
 ``foreign_key_tables`` - ``list``
-    Tables that link to this row using foreign keys
+    List of tables that link to this row using foreign keys. Each item includes the foreign key fields plus ``count`` for matching rows and ``link`` for the filtered table URL.
 
 ``metadata`` - ``dict``
-    Metadata about the table, database or stored query
+    Metadata dictionary for the table, database or stored query. Table and row metadata include a ``columns`` dictionary mapping column names to descriptions; stored query metadata returns the stored query configuration.
 
 ``ok`` - ``bool``
     True if the data for this page was retrieved without errors
@@ -453,7 +453,7 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     Values of the primary keys for this row, from the URL
 
 ``primary_keys`` - ``list``
-    Primary keys for this table
+    List of primary key column names for this table, or an empty list if the table has no explicit primary key.
 
 ``private`` - ``bool``
     Whether this resource is private to the current actor
@@ -462,37 +462,37 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     Time taken by the SQL queries for this page, in milliseconds
 
 ``renderers`` - ``dict``
-    Dictionary mapping output format names (e.g. json) to their URLs for this page
+    Dictionary mapping output format names such as ``json`` to URLs for this row in that format.
 
 ``row_actions`` - ``list``
-    Row actions made available by plugin hooks
+    Row actions made available by core and plugin hooks. Each item is either a link with ``href``, ``label`` and optional ``description`` keys, or a button with ``type: "button"``, ``label``, optional ``description`` and optional ``attrs``. See :ref:`plugin_actions` and :ref:`plugin_hook_row_actions`.
 
 ``row_mutation_ui`` - ``bool``
     True if the row edit/delete JavaScript UI should be enabled
 
 ``rows`` - ``list``
-    The rows for this page, as a list of dictionaries mapping column name to value
+    A single-item list containing this row as a dictionary mapping column name to raw value.
 
 ``select_templates`` - ``list``
-    List of template names that were considered for this page, the one used marked with an asterisk
+    List of template names that were considered for this page, with the selected template prefixed by ``*``.
 
 ``settings`` - ``dict``
-    Dictionary of Datasette's current settings
+    Dictionary of Datasette's current settings, keyed by setting name.
 
 ``table`` - ``str``
     Table name
 
 ``table_page_data`` - ``dict``
-    JSON data used by JavaScript on the row page
+    JSON data used by JavaScript on the row page. Includes ``database``, ``table`` and ``tableUrl``, plus optional ``foreignKeys`` mapping column names to autocomplete URLs.
 
 ``top_row`` - ``callable``
-    Async function rendering the top_row plugin slot
+    Async callable that renders the ``top_row`` plugin slot for this row and returns HTML.
 
 ``url_csv`` - ``str``
     URL for the CSV export of this page
 
 ``url_csv_hidden_args`` - ``list``
-    (name, value) pairs for hidden form fields used by the CSV export form
+    List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current options while forcing ``_size=max``.
 
 ``url_csv_path`` - ``str``
     Path portion of the CSV export URL

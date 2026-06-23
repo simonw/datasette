@@ -50,7 +50,7 @@ class RowContext(Context):
     )
     rows: list = field(
         metadata={
-            "help": "The rows for this page, as a list of dictionaries mapping column name to value"
+            "help": "A single-item list containing this row as a dictionary mapping column name to raw value."
         }
     )
     primary_key_values: list = field(
@@ -62,48 +62,58 @@ class RowContext(Context):
         }
     )
     display_columns: list = field(
-        metadata={"help": "Column objects formatted for the HTML table display"}
+        metadata={
+            "help": "Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type`` and ``column_type_config`` keys."
+        }
     )
     display_rows: list = field(
-        metadata={"help": "Row data formatted for the HTML table display"}
+        metadata={
+            "help": "Rows formatted for the HTML table display. Each row is iterable and contains cell dictionaries with ``column``, ``value``, ``raw`` and ``value_type`` keys."
+        }
     )
     custom_table_templates: list = field(
         metadata={
-            "help": "Custom template names that were considered for displaying this table"
+            "help": "Custom template names that were considered for displaying this row's table, in lookup order."
         }
     )
     row_actions: list = field(
-        metadata={"help": "Row actions made available by plugin hooks"}
-    )
-    row_mutation_ui: bool = field(
         metadata={
-            "help": "True if the row edit/delete JavaScript UI should be enabled"
+            "help": 'Row actions made available by core and plugin hooks. Each item is either a link with ``href``, ``label`` and optional ``description`` keys, or a button with ``type: "button"``, ``label``, optional ``description`` and optional ``attrs``. See :ref:`plugin_actions` and :ref:`plugin_hook_row_actions`.'
         }
     )
+    row_mutation_ui: bool = field(
+        metadata={"help": "True if the row edit/delete JavaScript UI should be enabled"}
+    )
     table_page_data: dict = field(
-        metadata={"help": "JSON data used by JavaScript on the row page"}
+        metadata={
+            "help": "JSON data used by JavaScript on the row page. Includes ``database``, ``table`` and ``tableUrl``, plus optional ``foreignKeys`` mapping column names to autocomplete URLs."
+        }
     )
     top_row: callable = field(
-        metadata={"help": "Async function rendering the top_row plugin slot"}
+        metadata={
+            "help": "Async callable that renders the ``top_row`` plugin slot for this row and returns HTML."
+        }
     )
     renderers: dict = field(
         metadata={
-            "help": "Dictionary mapping output format names (e.g. json) to their URLs for this page"
+            "help": "Dictionary mapping output format names such as ``json`` to URLs for this row in that format."
         }
     )
     url_csv: str = field(metadata={"help": "URL for the CSV export of this page"})
     url_csv_path: str = field(metadata={"help": "Path portion of the CSV export URL"})
     url_csv_hidden_args: list = field(
         metadata={
-            "help": "(name, value) pairs for hidden form fields used by the CSV export form"
+            "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current options while forcing ``_size=max``."
         }
     )
     settings: dict = field(
-        metadata={"help": "Dictionary of Datasette's current settings"}
+        metadata={
+            "help": "Dictionary of Datasette's current settings, keyed by setting name."
+        }
     )
     select_templates: list = field(
         metadata={
-            "help": "List of template names that were considered for this page, the one used marked with an asterisk"
+            "help": "List of template names that were considered for this page, with the selected template prefixed by ``*``."
         }
     )
     alternate_url_json: str = field(

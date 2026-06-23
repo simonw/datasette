@@ -120,25 +120,27 @@ class TableContext(Context):
     )
     rows: list = field(
         metadata={
-            "help": "The rows for this page, as a list of dictionaries mapping column name to value"
+            "help": "The rows for this page, as a list of dictionaries mapping column name to raw value."
         }
     )
     filter_columns: list = field(
-        metadata={"help": "List of columns offered by the filter interface"}
+        metadata={
+            "help": "List of column names offered by the filter interface, including currently displayed columns and any hidden columns that can still be filtered."
+        }
     )
     supports_search: bool = field(
         metadata={"help": "True if this table has full-text search configured"}
     )
     extra_wheres_for_ui: list = field(
         metadata={
-            "help": "Extra where clauses from ?_where=, with links to remove them"
+            "help": "Extra where clauses from ``?_where=`` for display in the UI. Each item has ``text`` for the SQL fragment and ``remove_url`` for a URL that removes that fragment."
         }
     )
     url_csv: str = field(metadata={"help": "URL for the CSV export of this page"})
     url_csv_path: str = field(metadata={"help": "Path portion of the CSV export URL"})
     url_csv_hidden_args: list = field(
         metadata={
-            "help": "(name, value) pairs for hidden form fields used by the CSV export form"
+            "help": "List of ``(name, value)`` pairs for hidden form fields used by the CSV export form, preserving current filters while forcing ``_size=max``."
         }
     )
     sort: str = field(metadata={"help": "Column the page is sorted by, or None"})
@@ -147,19 +149,23 @@ class TableContext(Context):
     )
     append_querystring: callable = field(
         metadata={
-            "help": "Function that appends additional querystring arguments to a URL"
+            "help": "Function ``append_querystring(url, querystring)`` that appends additional query string arguments to a URL, using ``?`` or ``&`` as appropriate."
         }
     )
     path_with_replaced_args: callable = field(
         metadata={
-            "help": "Function for building the current path with modified querystring arguments"
+            "help": "Function for building the current path with modified query string arguments. Pass the current ``request`` and a dictionary of argument names to replacement values, using ``None`` to remove an argument."
         }
     )
     fix_path: callable = field(
-        metadata={"help": "Function that applies the base_url prefix to a path"}
+        metadata={
+            "help": "Function that applies the configured ``base_url`` prefix to a path."
+        }
     )
     settings: dict = field(
-        metadata={"help": "Dictionary of Datasette's current settings"}
+        metadata={
+            "help": "Dictionary of Datasette's current settings, keyed by setting name."
+        }
     )
     alternate_url_json: str = field(
         metadata={"help": "URL for the JSON version of this page"}
@@ -184,14 +190,18 @@ class TableContext(Context):
     )
     select_templates: list = field(
         metadata={
-            "help": "List of template names that were considered for this page, the one used marked with an asterisk"
+            "help": "List of template names that were considered for this page, with the selected template prefixed by ``*``."
         }
     )
     top_table: callable = field(
-        metadata={"help": "Async function rendering the top_table plugin slot"}
+        metadata={
+            "help": "Async callable that renders the ``top_table`` plugin slot for this table or view and returns HTML."
+        }
     )
     table_page_data: dict = field(
-        metadata={"help": "JSON data used by JavaScript on the table page"}
+        metadata={
+            "help": "JSON data used by JavaScript on the table page. Includes ``database``, ``table`` and ``tableUrl``, plus optional ``foreignKeys`` mapping column names to autocomplete URLs, optional ``insertRow`` data and optional ``alterTable`` data."
+        }
     )
 
 

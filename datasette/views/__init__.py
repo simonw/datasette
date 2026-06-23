@@ -10,7 +10,7 @@ class ContextField:
     from_extra: bool = False
 
 
-def extra_field():
+def from_extra():
     """
     Declare a Context dataclass field whose value comes from a registered
     Extra of the same name - its documentation is the Extra description,
@@ -23,7 +23,7 @@ def extra_field():
 class Context:
     "Base class for all documented contexts"
 
-    # Set on subclasses whose extra_field() fields should be resolved
+    # Set on subclasses whose from_extra() fields should be resolved
     # against the extras registry for this scope
     extras_scope = None
 
@@ -34,8 +34,8 @@ class Context:
         for f in dataclasses.fields(cls):
             if f.name.startswith("_"):
                 continue
-            from_extra = bool(f.metadata.get("from_extra"))
-            if from_extra:
+            is_from_extra = bool(f.metadata.get("from_extra"))
+            if is_from_extra:
                 help_text = cls._extra_description(f.name)
             else:
                 help_text = f.metadata.get("help", "")
@@ -44,7 +44,7 @@ class Context:
                     name=f.name,
                     type_name=getattr(f.type, "__name__", str(f.type)),
                     help=help_text,
-                    from_extra=from_extra,
+                    from_extra=is_from_extra,
                 )
             )
         return documented
@@ -59,14 +59,14 @@ class Context:
             extra_class = table_extra_registry.classes_by_name[name]
         except KeyError:
             raise KeyError(
-                "{}.{} is declared with extra_field() but there is no "
+                "{}.{} is declared with from_extra() but there is no "
                 "registered extra of that name".format(cls.__name__, name)
             )
         if cls.extras_scope is not None and not extra_class.available_for(
             cls.extras_scope
         ):
             raise ValueError(
-                "{}.{} is declared with extra_field() but the {} extra is "
+                "{}.{} is declared with from_extra() but the {} extra is "
                 "not available for scope {}".format(
                     cls.__name__, name, name, cls.extras_scope
                 )

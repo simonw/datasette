@@ -40,20 +40,22 @@ def test_context_class_fields_all_have_help(klass):
 
 
 @pytest.mark.parametrize("klass", PAGES.values(), ids=lambda klass: klass.__name__)
-def test_context_class_has_docstring_and_template(klass):
+def test_context_class_has_docstring_and_documented_template(klass):
     assert klass.__doc__, "{} is missing a docstring".format(klass.__name__)
-    assert klass.template, "{} is missing a template".format(klass.__name__)
+    assert klass.documented_template, "{} is missing a documented_template".format(
+        klass.__name__
+    )
 
 
-def test_extra_field_documentation_comes_from_the_extra_class():
-    from datasette.views import extra_field
+def test_from_extra_documentation_comes_from_the_extra_class():
+    from datasette.views import from_extra
     from datasette.views.table_extras import CountExtra
 
     @dataclass
     class DemoContext(Context):
         extras_scope = ExtraScope.TABLE
 
-        count: int = extra_field()
+        count: int = from_extra()
         name: str = field(metadata={"help": "The name"})
 
     fields = {f.name: f for f in DemoContext.documented_fields()}
@@ -63,28 +65,28 @@ def test_extra_field_documentation_comes_from_the_extra_class():
     assert not fields["name"].from_extra
 
 
-def test_extra_field_must_match_a_registered_extra():
-    from datasette.views import extra_field
+def test_from_extra_must_match_a_registered_extra():
+    from datasette.views import from_extra
 
     @dataclass
     class BadContext(Context):
         extras_scope = ExtraScope.TABLE
 
-        not_a_real_extra: str = extra_field()
+        not_a_real_extra: str = from_extra()
 
     with pytest.raises(KeyError):
         BadContext.documented_fields()
 
 
-def test_extra_field_must_be_available_for_the_scope():
-    from datasette.views import extra_field
+def test_from_extra_must_be_available_for_the_scope():
+    from datasette.views import from_extra
 
     @dataclass
     class WrongScopeContext(Context):
         extras_scope = ExtraScope.ROW
 
         # count is a TABLE-scope extra, not available for ROW
-        count: int = extra_field()
+        count: int = from_extra()
 
     with pytest.raises(ValueError):
         WrongScopeContext.documented_fields()

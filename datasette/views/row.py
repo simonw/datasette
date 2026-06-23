@@ -30,7 +30,7 @@ from datasette.utils import (
 )
 from datasette.plugins import pm
 from datasette.extras import extra_names_from_request, ExtraScope
-from . import Context, extra_field
+from . import Context, from_extra
 from .table import (
     display_columns_and_rows,
     _table_page_data,
@@ -43,19 +43,19 @@ from .table_extras import RowExtraContext, resolve_row_extras, table_extra_regis
 class RowContext(Context):
     "The page showing an individual row, e.g. /fixtures/facetable/1."
 
-    template = "row.html"
+    documented_template = "row.html"
     extras_scope = ExtraScope.ROW
 
     # Fields resolved by registered extras - their documentation comes
     # from the description on each Extra class in table_extras.py
-    columns: list = extra_field()
-    database: str = extra_field()
-    database_color: str = extra_field()
-    foreign_key_tables: list = extra_field()
-    metadata: dict = extra_field()
-    primary_keys: list = extra_field()
-    private: bool = extra_field()
-    table: str = extra_field()
+    columns: list = from_extra()
+    database: str = from_extra()
+    database_color: str = from_extra()
+    foreign_key_tables: list = from_extra()
+    metadata: dict = from_extra()
+    primary_keys: list = from_extra()
+    private: bool = from_extra()
+    table: str = from_extra()
 
     # Fields added by the view code
     ok: bool = field(

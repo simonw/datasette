@@ -49,7 +49,7 @@ import sqlite_utils
 from dataclasses import dataclass, field, fields
 
 from datasette.extras import ExtraScope
-from . import Context, extra_field
+from . import Context, from_extra
 from .base import BaseView, DatasetteError, _error, stream_csv
 from .database import QueryView
 from .table_create_alter import (
@@ -73,40 +73,40 @@ from .table_extras import (
 class TableContext(Context):
     "The page showing the rows in a table or SQL view, e.g. /fixtures/facetable."
 
-    template = "table.html"
+    documented_template = "table.html"
     extras_scope = ExtraScope.TABLE
 
     # Fields resolved by registered extras - their documentation comes
     # from the description on each Extra class in table_extras.py
-    actions: callable = extra_field()
-    all_columns: list = extra_field()
-    columns: list = extra_field()
-    count: int = extra_field()
-    count_sql: str = extra_field()
-    custom_table_templates: list = extra_field()
-    database: str = extra_field()
-    database_color: str = extra_field()
-    display_columns: list = extra_field()
-    display_rows: list = extra_field()
-    expandable_columns: list = extra_field()
-    facet_results: dict = extra_field()
-    facets_timed_out: list = extra_field()
-    filters: Filters = extra_field()
-    form_hidden_args: list = extra_field()
-    human_description_en: str = extra_field()
-    is_view: bool = extra_field()
-    metadata: dict = extra_field()
-    next_url: str = extra_field()
-    primary_keys: list = extra_field()
-    private: bool = extra_field()
-    query: dict = extra_field()
-    renderers: dict = extra_field()
-    set_column_type_ui: dict = extra_field()
-    sorted_facet_results: list = extra_field()
-    suggested_facets: list = extra_field()
-    table: str = extra_field()
-    table_definition: str = extra_field()
-    view_definition: str = extra_field()
+    actions: callable = from_extra()
+    all_columns: list = from_extra()
+    columns: list = from_extra()
+    count: int = from_extra()
+    count_sql: str = from_extra()
+    custom_table_templates: list = from_extra()
+    database: str = from_extra()
+    database_color: str = from_extra()
+    display_columns: list = from_extra()
+    display_rows: list = from_extra()
+    expandable_columns: list = from_extra()
+    facet_results: dict = from_extra()
+    facets_timed_out: list = from_extra()
+    filters: Filters = from_extra()
+    form_hidden_args: list = from_extra()
+    human_description_en: str = from_extra()
+    is_view: bool = from_extra()
+    metadata: dict = from_extra()
+    next_url: str = from_extra()
+    primary_keys: list = from_extra()
+    private: bool = from_extra()
+    query: dict = from_extra()
+    renderers: dict = from_extra()
+    set_column_type_ui: dict = from_extra()
+    sorted_facet_results: list = from_extra()
+    suggested_facets: list = from_extra()
+    table: str = from_extra()
+    table_definition: str = from_extra()
+    view_definition: str = from_extra()
 
     # Fields added by the view code
     ok: bool = field(

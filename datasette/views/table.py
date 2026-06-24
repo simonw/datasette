@@ -1954,7 +1954,9 @@ async def table_view_data(
 
     # Introspect columns and primary keys for table
     pks = await db.primary_keys(table_name)
-    table_columns = await db.table_columns(table_name)
+    table_column_details = await db.table_column_details(table_name)
+    table_columns = [col.name for col in table_column_details]
+    column_details = {col.name: col for col in table_column_details}
 
     # Take ?_col= and ?_nocol= into account
     specified_columns = await _columns_to_select(table_columns, pks, request)
@@ -1998,7 +2000,9 @@ async def table_view_data(
 
     # Build where clauses from query string arguments
     filters = Filters(sorted(filter_args))
-    where_clauses, params = filters.build_where_clauses(table_name)
+    where_clauses, params = filters.build_where_clauses(
+        table_name, column_details=column_details
+    )
 
     # Execute filters_from_request plugin hooks - including the default
     # ones that live in datasette/filters.py

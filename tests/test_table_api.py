@@ -688,6 +688,67 @@ async def test_table_filter_queries_multiple_of_same_type(ds_client):
     ] == response.json()["rows"]
 
 
+@pytest.mark.asyncio
+async def test_table_filter_view_on_numeric_computed_column(bare_ds):
+    db = bare_ds.add_memory_database("computed_column_filter")
+    await db.execute_write_script("""
+        CREATE TABLE items(
+          id INTEGER PRIMARY KEY,
+          category TEXT,
+          valid INTEGER
+        );
+
+        INSERT INTO items VALUES (1, 'a', 0);
+        INSERT INTO items VALUES (2, 'a', 1);
+        INSERT INTO items VALUES (3, 'a', 0);
+        INSERT INTO items VALUES (4, 'b', 0);
+        INSERT INTO items VALUES (5, 'b', 0);
+
+        CREATE VIEW summary AS
+          SELECT category,
+            SUM(CASE WHEN valid THEN 1 ELSE 0 END) AS valid_count,
+            SUM(CASE WHEN NOT valid THEN 1 ELSE 0 END) AS invalid_count
+          FROM items
+          GROUP BY category;
+    """)
+    response = await bare_ds.client.get(
+        "/computed_column_filter/summary.json?_shape=objects&valid_count__exact=0"
+    )
+    assert response.json()["rows"] == [
+        {"category": "b", "valid_count": 0, "invalid_count": 2}
+    ]
+
+    response = await bare_ds.client.get(
+        "/computed_column_filter/summary.json?_shape=objects&valid_count__not=0"
+    )
+    assert response.json()["rows"] == [
+        {"category": "a", "valid_count": 1, "invalid_count": 2}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_table_filter_view_on_text_computed_column_preserves_exact_text(bare_ds):
+    db = bare_ds.add_memory_database("computed_text_column_filter")
+    await db.execute_write_script("""
+        CREATE TABLE items(
+          id INTEGER PRIMARY KEY,
+          code TEXT
+        );
+
+        INSERT INTO items VALUES (1, '0');
+        INSERT INTO items VALUES (2, '00');
+
+        CREATE VIEW summary AS
+          SELECT code,
+            code || '' AS code_text
+          FROM items;
+    """)
+    response = await bare_ds.client.get(
+        "/computed_text_column_filter/summary.json?_shape=objects&code_text__exact=00"
+    )
+    assert response.json()["rows"] == [{"code": "00", "code_text": "00"}]
+
+
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
 @pytest.mark.asyncio
 async def test_table_filter_json_arraycontains(ds_client):

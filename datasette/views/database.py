@@ -848,6 +848,15 @@ class QueryView(View):
                 return data, None, None
 
             return await stream_csv(datasette, fetch_data_for_csv, request, db.name)
+        elif format_ == "markdown":
+
+            async def fetch_data_for_markdown(request, _next=None):
+                results = await db.execute(sql, params, truncate=True)
+                data = {"rows": results.rows, "columns": results.columns}
+                return data, None, None
+
+            from datasette.views.base import stream_markdown
+            return await stream_markdown(datasette, fetch_data_for_markdown, request, db.name)
         elif format_ in datasette.renderers.keys():
             data = {"ok": True, "rows": rows, "columns": columns}
             extras = extra_names_from_request(request)

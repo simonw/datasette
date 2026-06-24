@@ -584,12 +584,12 @@ def test_database_download_for_immutable():
         content_length = download_response.headers["content-length"]
         assert content_length.isdigit()
         assert int(content_length) > 100
+        assert "transfer-encoding" not in download_response.headers
         assert "content-disposition" in download_response.headers
         assert (
             download_response.headers["content-disposition"]
             == 'attachment; filename="fixtures.db"'
         )
-        assert download_response.headers["transfer-encoding"] == "chunked"
         # ETag header should be present and match db.hash
         assert "etag" in download_response.headers
         etag = download_response.headers["etag"]

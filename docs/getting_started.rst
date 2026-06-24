@@ -1,6 +1,16 @@
 Getting started
 ===============
 
+Ultra-quickstart
+----------------
+
+Just want to get going? If you have Python installed::
+
+    uv tool install datasette  # or: pip install datasette
+    datasette my_database.db
+
+Then visit http://localhost:8001/ to explore your data.
+
 .. _getting_started_demo:
 
 Play with a live demo

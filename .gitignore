@@ -5,6 +5,8 @@ datasets.json
 
 scratchpad
 
+ignored/
+
 .vscode
 
 uv.lock

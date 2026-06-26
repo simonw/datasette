@@ -801,11 +801,77 @@ def test_navigation_search_renders_jump_sections_from_javascript_plugins(
 
 @pytest.mark.playwright
 def test_insert_row_flow_uses_custom_column_field(page, datasette_server):
+    page.context.grant_permissions(
+        ["clipboard-read", "clipboard-write"], origin=datasette_server.rstrip("/")
+    )
     page.goto(f"{datasette_server}data/projects")
     page.locator('button[data-table-action="insert-row"]').click()
 
     dialog = page.locator("#row-edit-dialog")
     dialog.wait_for()
+    bulk_insert = dialog.locator(".row-edit-bulk-insert")
+    bulk_insert.wait_for()
+    assert bulk_insert.inner_text() == "Insert multiple rows"
+    current_url = page.url
+    bulk_insert.click()
+    assert page.url == current_url
+    assert dialog.evaluate("node => node.open")
+    assert dialog.locator(".row-edit-fields").is_hidden()
+    assert dialog.locator(".row-edit-bulk").is_visible()
+    assert dialog.locator(".row-edit-save").inner_text() == "Preview rows"
+    assert (
+        dialog.locator(".row-edit-bulk-note").inner_text()
+        == "Paste TSV, CSV, or JSON. You can also drop a text file onto this textarea."
+    )
+    copy_template = dialog.locator(".row-edit-copy-template")
+    assert copy_template.inner_text() == "Copy spreadsheet template"
+    copy_template.click()
+    page.wait_for_function(
+        """() => document.querySelector(".row-edit-copy-template").textContent === "Copied" """
+    )
+    assert page.evaluate("navigator.clipboard.readText()") == (
+        "title\tmetadata\tlogo\tnotes\tscore"
+    )
+    textarea = dialog.locator(".row-edit-bulk-textarea")
+    textarea.fill("title\tmetadata\nFrom TSV\t{}")
+    assert textarea.input_value() == "title\tmetadata\nFrom TSV\t{}"
+    dropped_value = textarea.evaluate("""node => new Promise((resolve) => {
+            node.addEventListener("input", () => resolve(node.value), { once: true });
+            const file = new File(["\\n\\ntitle,metadata\\nFrom CSV,{}\\n,\\n  ,  \\n"], "rows.csv", { type: "text/csv" });
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(file);
+            node.dispatchEvent(new DragEvent("dragenter", { bubbles: true, cancelable: true, dataTransfer }));
+            node.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer }));
+            node.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
+        })""")
+    assert dropped_value == "\n\ntitle,metadata\nFrom CSV,{}\n,\n  ,  \n"
+    dialog.locator(".row-edit-save").click()
+    assert dialog.evaluate("node => node.open")
+    assert dialog.locator(".row-edit-bulk-textarea").is_hidden()
+    assert dialog.locator(".row-edit-save").inner_text() == "Insert these rows"
+    assert dialog.locator(".row-edit-bulk-preview-summary").inner_text() == (
+        "Previewing 1 row."
+    )
+    preview_text = dialog.locator(".row-edit-bulk-preview-table").inner_text()
+    assert "title" in preview_text
+    assert "metadata" in preview_text
+    assert "id" not in preview_text
+    assert "From CSV" in preview_text
+    assert "null" in preview_text
+    assert dialog.locator(".row-edit-cancel").inner_text() == "Back"
+    dialog.locator(".row-edit-cancel").click()
+    assert dialog.evaluate("node => node.open")
+    assert dialog.locator(".row-edit-bulk-textarea").is_visible()
+    assert dialog.locator(".row-edit-bulk-textarea").input_value() == (
+        "\n\ntitle,metadata\nFrom CSV,{}\n,\n  ,  \n"
+    )
+    assert dialog.locator(".row-edit-save").inner_text() == "Preview rows"
+    single_insert = dialog.locator(".row-edit-single-insert")
+    assert single_insert.inner_text() == "Insert single row"
+    single_insert.click()
+    assert dialog.locator(".row-edit-bulk").is_hidden()
+    assert dialog.locator(".row-edit-fields").is_visible()
+    assert dialog.locator(".row-edit-save").inner_text() == "Insert row"
     dialog.locator('input[name="title"]').fill("Launch Datasette Cloud")
     dialog.locator('textarea[name="metadata"]').fill(
         '{"ok": false, "source": "playwright"}'
@@ -836,12 +902,63 @@ def test_insert_row_flow_uses_custom_column_field(page, datasette_server):
 
 
 @pytest.mark.playwright
+def test_bulk_insert_preview_inserts_rows(page, datasette_server):
+    page.goto(f"{datasette_server}data/projects")
+    page.locator('button[data-table-action="insert-row"]').click()
+
+    dialog = page.locator("#row-edit-dialog")
+    dialog.wait_for()
+    dialog.locator(".row-edit-bulk-insert").click()
+    dialog.locator(".row-edit-bulk-textarea").fill(
+        "title\tmetadata\nBulk one\t{}\n\nBulk two\t{}"
+    )
+    dialog.locator(".row-edit-save").click()
+    assert dialog.locator(".row-edit-save").inner_text() == "Insert these rows"
+    dialog.locator(".row-edit-save").click()
+    dialog.locator(
+        ".row-edit-bulk-progress-status", has_text="2 rows inserted."
+    ).wait_for()
+    assert dialog.locator(".row-edit-cancel").inner_text() == "Close and view table"
+    dialog.locator(".row-edit-cancel").click()
+    page.wait_for_load_state("domcontentloaded")
+    assert page.url == f"{datasette_server}data/projects"
+
+    assert project_rows(datasette_server, title="Bulk one")
+    assert project_rows(datasette_server, title="Bulk two")
+
+
+@pytest.mark.playwright
+def test_bulk_insert_preview_accepts_single_column_input(page, datasette_server):
+    page.goto(f"{datasette_server}data/projects")
+    page.locator('button[data-table-action="insert-row"]').click()
+
+    dialog = page.locator("#row-edit-dialog")
+    dialog.wait_for()
+    dialog.locator(".row-edit-bulk-insert").click()
+    dialog.locator(".row-edit-bulk-textarea").fill("title\none\ntwo\nthree")
+    dialog.locator(".row-edit-save").click()
+
+    assert dialog.locator(".row-edit-save").inner_text() == "Insert these rows"
+    assert dialog.locator(".row-edit-bulk-preview-summary").inner_text() == (
+        "Previewing 3 rows."
+    )
+    preview_text = dialog.locator(".row-edit-bulk-preview-table").inner_text()
+    assert "one" in preview_text
+    assert "two" in preview_text
+    assert "three" in preview_text
+    assert "null" in preview_text
+
+
+@pytest.mark.playwright
 def test_edit_row_flow_validates_json_and_saves_changes(page, datasette_server):
     page.goto(f"{datasette_server}data/projects")
     page.locator('tr[data-row="1"] button[data-row-action="edit"]').click()
 
     dialog = page.locator("#row-edit-dialog")
     dialog.wait_for()
+    assert dialog.locator(".row-edit-bulk-insert").is_hidden()
+    assert dialog.locator(".row-edit-single-insert").is_hidden()
+    assert dialog.locator(".row-edit-bulk").is_hidden()
     title = dialog.locator('input[name="title"]')
     title.wait_for()
     title.fill("Build Datasette, edited")

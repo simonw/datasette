@@ -4435,12 +4435,51 @@ function showRowEditDialogError(state, message) {
   state.error.focus();
 }
 
+function rowEditIsMultipleInsert(state) {
+  return state.mode === "insert" && state.insertMode === "multiple";
+}
+
+function syncRowEditInsertModeUi(state) {
+  var isInsert = state.mode === "insert";
+  var isMultiple = rowEditIsMultipleInsert(state);
+  state.fields.hidden = isMultiple;
+  state.bulkInsertPanel.hidden = !isMultiple;
+  state.bulkInsertEditor.hidden = !isMultiple || state.bulkInsertPreviewReady;
+  state.bulkInsertPreview.hidden = !isMultiple || !state.bulkInsertPreviewReady;
+  state.bulkInsertLink.hidden = !isInsert || isMultiple;
+  state.singleInsertLink.hidden = !isInsert || !isMultiple;
+}
+
 function updateRowEditDialogButtons(state) {
   state.saveButton.disabled =
-    state.isLoading || state.isSaving || !state.hasLoaded;
+    state.isLoading ||
+    state.isSaving ||
+    !state.hasLoaded ||
+    state.bulkInsertInserted;
   state.cancelButton.disabled = state.isSaving;
-  var saveLabel = state.mode === "insert" ? "Insert row" : "Save";
-  state.saveButton.textContent = state.isSaving ? "Saving..." : saveLabel;
+  syncRowEditInsertModeUi(state);
+  state.cancelButton.textContent =
+    rowEditIsMultipleInsert(state) &&
+    state.bulkInsertPreviewReady &&
+    !state.bulkInsertInserted
+      ? "Back"
+      : state.bulkInsertInserted
+        ? "Close and view table"
+        : "Cancel";
+  var saveLabel = rowEditIsMultipleInsert(state)
+    ? state.bulkInsertInserted
+      ? "Inserted"
+      : state.bulkInsertPreviewReady
+        ? "Insert these rows"
+        : "Preview rows"
+    : state.mode === "insert"
+      ? "Insert row"
+      : "Save";
+  state.saveButton.textContent = state.isSaving
+    ? rowEditIsMultipleInsert(state)
+      ? "Inserting..."
+      : "Saving..."
+    : saveLabel;
   state.form.setAttribute(
     "aria-busy",
     state.isLoading || state.isSaving ? "true" : "false",
@@ -4631,6 +4670,16 @@ function rowEditDialogHasChanges(state) {
   if (!state || !state.hasLoaded || state.isLoading) {
     return false;
   }
+  if (state.bulkInsertInserted) {
+    return false;
+  }
+  if (
+    state.mode === "insert" &&
+    state.bulkInsertTextarea &&
+    state.bulkInsertTextarea.value.trim()
+  ) {
+    return true;
+  }
   var fields = state.fields.querySelectorAll(".row-edit-field");
   for (var i = 0; i < fields.length; i += 1) {
     var fieldApi = fields[i]._datasetteColumnFormField;
@@ -4662,6 +4711,549 @@ function closeRowEditDialogIfConfirmed(state) {
   state.shouldRestoreFocus = true;
   state.dialog.close();
   return true;
+}
+
+function setRowInsertDialogTitle(state) {
+  var insertData = tableInsertData() || {};
+  var title = rowEditIsMultipleInsert(state)
+    ? "Insert multiple rows"
+    : "Insert row";
+  setRowDialogTitle(
+    state.title,
+    insertData.tableName ? title + " into " + insertData.tableName : title,
+  );
+}
+
+function showMultipleRowInsert(state) {
+  if (!state || state.mode !== "insert" || state.isSaving) {
+    return;
+  }
+  state.insertMode = "multiple";
+  if (state.bulkInsertPreviewReady || state.bulkInsertInserted) {
+    resetBulkInsertPreview(state);
+  }
+  clearRowEditDialogError(state);
+  setRowInsertDialogTitle(state);
+  updateRowEditDialogButtons(state);
+  state.bulkInsertTextarea.focus();
+}
+
+function showSingleRowInsert(state) {
+  if (!state || state.mode !== "insert" || state.isSaving) {
+    return;
+  }
+  state.insertMode = "single";
+  clearRowEditDialogError(state);
+  setRowInsertDialogTitle(state);
+  updateRowEditDialogButtons(state);
+  if (!focusFirstRowEditControl(state, { skipReadonly: true })) {
+    state.saveButton.focus();
+  }
+}
+
+function readTextFile(file) {
+  if (file.text) {
+    return file.text();
+  }
+  return new Promise(function (resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      resolve(reader.result || "");
+    };
+    reader.onerror = function () {
+      reject(reader.error);
+    };
+    reader.readAsText(file);
+  });
+}
+
+function bulkInsertTemplateText(state) {
+  return (state.bulkInsertColumns || []).join("\t");
+}
+
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  var textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-1000px";
+  textarea.style.left = "-1000px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  var copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) {
+    throw new Error("copy failed");
+  }
+}
+
+function setBulkInsertCopyButtonCopied(state) {
+  state.copyTemplateButton.textContent = "Copied";
+  clearTimeout(state.copyTemplateResetTimer);
+  state.copyTemplateResetTimer = setTimeout(function () {
+    state.copyTemplateButton.textContent = "Copy spreadsheet template";
+  }, 1500);
+}
+
+function resetBulkInsertPreview(state) {
+  state.bulkInsertPreviewRows = null;
+  state.bulkInsertPreviewReady = false;
+  state.bulkInsertInserted = false;
+  state.bulkInsertInsertedCount = 0;
+  state.bulkInsertPreview.hidden = true;
+  state.bulkInsertPreview.textContent = "";
+  state.bulkInsertProgress.hidden = true;
+  state.bulkInsertProgressBar.value = 0;
+  state.bulkInsertProgressBar.max = 1;
+  state.bulkInsertProgressStatus.textContent = "";
+  syncRowEditInsertModeUi(state);
+}
+
+function normalizeBulkInsertCell(column, value, isMissing) {
+  if (isMissing || typeof value === "undefined") {
+    return column.notnull ? "" : null;
+  }
+  if (value === null) {
+    return column.notnull ? "" : null;
+  }
+  if (value === "" && column.notnull) {
+    return "";
+  }
+  if (column.value_kind === "number" && typeof value === "string") {
+    return valueFromRowEditText(column.name, value, "number");
+  }
+  return value;
+}
+
+function rowObjectForBulkInsert(valuesByColumn, columns) {
+  var row = {};
+  columns.forEach(function (column) {
+    var hasValue = Object.prototype.hasOwnProperty.call(
+      valuesByColumn,
+      column.name,
+    );
+    row[column.name] = normalizeBulkInsertCell(
+      column,
+      hasValue ? valuesByColumn[column.name] : undefined,
+      !hasValue,
+    );
+  });
+  return row;
+}
+
+function splitDelimitedRows(text, delimiter) {
+  var rows = [];
+  var row = [];
+  var cell = "";
+  var inQuotes = false;
+
+  for (var i = 0; i < text.length; i += 1) {
+    var character = text[i];
+    if (inQuotes) {
+      if (character === '"') {
+        if (text[i + 1] === '"') {
+          cell += '"';
+          i += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cell += character;
+      }
+      continue;
+    }
+
+    if (character === '"') {
+      inQuotes = true;
+    } else if (character === delimiter) {
+      row.push(cell);
+      cell = "";
+    } else if (character === "\n" || character === "\r") {
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+      if (character === "\r" && text[i + 1] === "\n") {
+        i += 1;
+      }
+    } else {
+      cell += character;
+    }
+  }
+
+  if (inQuotes) {
+    throw new Error("Unclosed quoted value.");
+  }
+  row.push(cell);
+  rows.push(row);
+
+  while (rows.length && bulkInsertDelimitedRowIsBlank(rows[rows.length - 1])) {
+    rows.pop();
+  }
+  return rows;
+}
+
+function bulkInsertDelimitedRowIsBlank(row) {
+  return row.every(function (value) {
+    return value.trim() === "";
+  });
+}
+
+function delimiterPreviewRows(text, delimiter) {
+  try {
+    return splitDelimitedRows(text, delimiter);
+  } catch (_error) {
+    return [];
+  }
+}
+
+function splitSingleColumnRows(text) {
+  var rows = text.split(/\r\n|\n|\r/).map(function (line) {
+    return [line];
+  });
+  while (rows.length && bulkInsertDelimitedRowIsBlank(rows[rows.length - 1])) {
+    rows.pop();
+  }
+  return rows;
+}
+
+function detectBulkInsertDelimiter(text, columns) {
+  var firstLine =
+    text.split(/\r\n|\n|\r/).find(function (line) {
+      return line.trim() !== "";
+    }) || "";
+  var csvRows = delimiterPreviewRows(firstLine, ",");
+  var tsvRows = delimiterPreviewRows(firstLine, "\t");
+  var csvColumns = csvRows.length ? csvRows[0].length : 0;
+  var tsvColumns = tsvRows.length ? tsvRows[0].length : 0;
+
+  if (firstLine.indexOf("\t") !== -1 && firstLine.indexOf(",") === -1) {
+    return "\t";
+  }
+  if (tsvColumns > csvColumns) {
+    return "\t";
+  }
+  if (csvColumns > 1) {
+    return ",";
+  }
+  if (tsvColumns > 1) {
+    return "\t";
+  }
+  if (columns.length === 1 || bulkInsertColumnMap(columns)[firstLine.trim()]) {
+    return null;
+  }
+  throw new Error("Could not detect CSV or TSV columns.");
+}
+
+function bulkInsertColumnMap(columns) {
+  var map = {};
+  columns.forEach(function (column) {
+    map[column.name] = column;
+  });
+  return map;
+}
+
+function parseJsonBulkInsertRows(text, columns) {
+  var parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw new Error("Invalid JSON: " + error.message);
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error("JSON must be an array of objects.");
+  }
+  if (!parsed.length) {
+    throw new Error("No rows found to preview.");
+  }
+
+  var columnMap = bulkInsertColumnMap(columns);
+  return parsed.map(function (item, index) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error("JSON row " + (index + 1) + " must be an object.");
+    }
+    Object.keys(item).forEach(function (key) {
+      if (!columnMap[key]) {
+        throw new Error(
+          "JSON row " + (index + 1) + " has unknown column " + key + ".",
+        );
+      }
+    });
+    return rowObjectForBulkInsert(item, columns);
+  });
+}
+
+function parseDelimitedBulkInsertRows(text, columns) {
+  var delimiter = detectBulkInsertDelimiter(text, columns);
+  var rows = (
+    delimiter === null
+      ? splitSingleColumnRows(text)
+      : splitDelimitedRows(text, delimiter)
+  ).filter(function (row) {
+    return !bulkInsertDelimitedRowIsBlank(row);
+  });
+  if (!rows.length) {
+    throw new Error("No rows found to preview.");
+  }
+
+  var columnMap = bulkInsertColumnMap(columns);
+  var header = rows[0].map(function (value) {
+    return value.trim();
+  });
+  var headerMatches = header.filter(function (name) {
+    return !!columnMap[name];
+  }).length;
+  var hasHeader = headerMatches > 0;
+  var dataRows = hasHeader ? rows.slice(1) : rows;
+  var headers = hasHeader
+    ? header
+    : columns.map(function (column) {
+        return column.name;
+      });
+  var seenHeaders = {};
+
+  if (hasHeader) {
+    headers.forEach(function (name) {
+      if (!name) {
+        return;
+      }
+      if (!columnMap[name]) {
+        throw new Error("Unknown column " + name + " in header row.");
+      }
+      if (seenHeaders[name]) {
+        throw new Error("Duplicate column " + name + " in header row.");
+      }
+      seenHeaders[name] = true;
+    });
+  }
+
+  if (!dataRows.length) {
+    throw new Error("No data rows found to preview.");
+  }
+
+  return dataRows.map(function (row, rowIndex) {
+    if (row.length > headers.length) {
+      throw new Error(
+        "Row " +
+          (rowIndex + 1) +
+          " has " +
+          row.length +
+          " values, but only " +
+          headers.length +
+          " columns were provided.",
+      );
+    }
+    var valuesByColumn = {};
+    row.forEach(function (value, index) {
+      var columnName = headers[index];
+      if (columnMap[columnName]) {
+        valuesByColumn[columnName] = value;
+      }
+    });
+    return rowObjectForBulkInsert(valuesByColumn, columns);
+  });
+}
+
+function parseBulkInsertRows(text, columns) {
+  var trimmed = text.trim();
+  if (!trimmed) {
+    throw new Error("Paste rows before previewing.");
+  }
+  if (trimmed[0] === "[" || trimmed[0] === "{") {
+    return parseJsonBulkInsertRows(trimmed, columns);
+  }
+  return parseDelimitedBulkInsertRows(trimmed, columns);
+}
+
+function bulkInsertPreviewValue(value) {
+  if (value === null) {
+    return "null";
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
+
+function renderBulkInsertPreview(state, rows) {
+  state.bulkInsertPreview.textContent = "";
+  var summary = document.createElement("p");
+  summary.className = "row-edit-bulk-preview-summary";
+  summary.textContent =
+    "Previewing " + rows.length + " row" + (rows.length === 1 ? "." : "s.");
+  state.bulkInsertPreview.appendChild(summary);
+
+  var tableWrap = document.createElement("div");
+  tableWrap.className = "row-edit-bulk-preview-table-wrap";
+  var table = document.createElement("table");
+  table.className = "row-edit-bulk-preview-table";
+  var thead = document.createElement("thead");
+  var headerRow = document.createElement("tr");
+  state.bulkInsertColumnDetails.forEach(function (column) {
+    var th = document.createElement("th");
+    th.scope = "col";
+    th.textContent = column.name;
+    headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  var tbody = document.createElement("tbody");
+  rows.forEach(function (row) {
+    var tr = document.createElement("tr");
+    state.bulkInsertColumnDetails.forEach(function (column) {
+      var td = document.createElement("td");
+      var value = row[column.name];
+      td.textContent = bulkInsertPreviewValue(value);
+      if (value === null) {
+        td.className = "row-edit-bulk-preview-null";
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  tableWrap.appendChild(table);
+  state.bulkInsertPreview.appendChild(tableWrap);
+  state.bulkInsertPreview.hidden = false;
+}
+
+function previewBulkInsertRows(state) {
+  clearRowEditDialogError(state);
+  resetBulkInsertPreview(state);
+  try {
+    var rows = parseBulkInsertRows(
+      state.bulkInsertTextarea.value,
+      state.bulkInsertColumnDetails,
+    );
+    state.bulkInsertPreviewRows = rows;
+    state.bulkInsertPreviewReady = true;
+    renderBulkInsertPreview(state, rows);
+    updateRowEditDialogButtons(state);
+  } catch (error) {
+    showRowEditDialogError(state, error.message || "Could not preview rows.");
+    updateRowEditDialogButtons(state);
+  }
+}
+
+function updateBulkInsertProgress(state, inserted, total) {
+  state.bulkInsertProgress.hidden = false;
+  state.bulkInsertProgressBar.max = total || 1;
+  state.bulkInsertProgressBar.value = inserted;
+  state.bulkInsertProgressStatus.textContent =
+    inserted >= total
+      ? total + " row" + (total === 1 ? " inserted." : "s inserted.")
+      : "Inserting " + inserted + " of " + total + " rows...";
+}
+
+function bulkInsertBatches(rows, batchSize) {
+  var batches = [];
+  var size = Math.max(1, batchSize || 1);
+  for (var index = 0; index < rows.length; index += size) {
+    batches.push(rows.slice(index, index + size));
+  }
+  return batches;
+}
+
+function animateBulkInsertProgress(state, from, to, total, duration) {
+  state.bulkInsertProgress.hidden = false;
+  state.bulkInsertProgressBar.max = total || 1;
+  if (duration <= 0 || !window.requestAnimationFrame) {
+    updateBulkInsertProgress(state, to, total);
+    return Promise.resolve();
+  }
+
+  return new Promise(function (resolve) {
+    var startTime = null;
+    var step = function (timestamp) {
+      if (startTime === null) {
+        startTime = timestamp;
+      }
+      var progress = Math.min((timestamp - startTime) / duration, 1);
+      var easedProgress = 1 - Math.pow(1 - progress, 3);
+      var value = from + (to - from) * easedProgress;
+      var displayValue = progress === 1 ? to : Math.floor(value);
+      state.bulkInsertProgressBar.value = value;
+      state.bulkInsertProgressStatus.textContent =
+        displayValue >= total
+          ? total + " row" + (total === 1 ? " inserted." : "s inserted.")
+          : "Inserting " + displayValue + " of " + total + " rows...";
+      if (progress < 1) {
+        window.requestAnimationFrame(step);
+      } else {
+        updateBulkInsertProgress(state, to, total);
+        resolve();
+      }
+    };
+    window.requestAnimationFrame(step);
+  });
+}
+
+async function insertBulkPreviewRows(state) {
+  if (!state.bulkInsertPreviewRows || state.bulkInsertInserted) {
+    return;
+  }
+  if (!state.currentInsertUrl) {
+    showRowEditDialogError(state, "Could not find the row insert URL.");
+    return;
+  }
+
+  var rows = state.bulkInsertPreviewRows;
+  var total = rows.length;
+  var inserted = state.bulkInsertInsertedCount || 0;
+  var batches = bulkInsertBatches(
+    rows.slice(inserted),
+    state.bulkInsertMaxRows,
+  );
+  var progressAnimationDuration = 500 / Math.max(batches.length, 1);
+
+  clearRowEditDialogError(state);
+  updateBulkInsertProgress(state, inserted, total);
+  setRowEditDialogSaving(state, true);
+  try {
+    for (var batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+      var batch = batches[batchIndex];
+      var response = await fetch(state.currentInsertUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ rows: batch }),
+      });
+      var data = null;
+      try {
+        data = await response.json();
+      } catch (_error) {
+        data = null;
+      }
+      if (!response.ok || (data && data.ok === false)) {
+        throw rowMutationRequestError(response, data);
+      }
+      var previousInserted = inserted;
+      inserted += batch.length;
+      state.bulkInsertInsertedCount = inserted;
+      await animateBulkInsertProgress(
+        state,
+        previousInserted,
+        inserted,
+        total,
+        progressAnimationDuration,
+      );
+    }
+    state.bulkInsertInserted = true;
+    state.shouldReloadOnClose = true;
+    state.redirectOnCloseUrl = tableBaseUrl().toString();
+    updateBulkInsertProgress(state, inserted, total);
+  } catch (error) {
+    showRowEditDialogError(state, error.message || "Could not insert rows.");
+  } finally {
+    setRowEditDialogSaving(state, false);
+  }
 }
 
 function scheduleCloseRowEditDialogIfConfirmed(state) {
@@ -4760,6 +5352,14 @@ function addInsertedRowToPage(rowElement) {
 
 async function saveRowEditDialog(state) {
   if (state.isLoading || state.isSaving || !state.hasLoaded) {
+    return;
+  }
+  if (rowEditIsMultipleInsert(state)) {
+    if (!state.bulkInsertPreviewReady) {
+      previewBulkInsertRows(state);
+    } else if (!state.bulkInsertInserted) {
+      await insertBulkPreviewRows(state);
+    }
     return;
   }
   clearRowEditDialogError(state);
@@ -4920,6 +5520,7 @@ function renderRowEditFields(state, data) {
   var primaryKeys = data.primary_keys || [];
   var columnTypes = data.column_types || {};
 
+  state.insertMode = "single";
   destroyRowEditFields(state);
   columns.forEach(function (column, index) {
     state.fields.appendChild(
@@ -4951,6 +5552,17 @@ function renderRowEditFields(state, data) {
 function renderRowInsertFields(state, data) {
   var columns = data.columns || [];
 
+  state.insertMode = "single";
+  state.bulkInsertColumnDetails = columns.slice();
+  state.bulkInsertMaxRows = data.maxInsertRows || 100;
+  state.bulkInsertColumns = columns.map(function (column) {
+    return column.name;
+  });
+  state.copyTemplateButton.disabled = !state.bulkInsertColumns.length;
+  state.copyTemplateButton.textContent = "Copy spreadsheet template";
+  clearTimeout(state.copyTemplateResetTimer);
+  state.copyTemplateResetTimer = null;
+  resetBulkInsertPreview(state);
   destroyRowEditFields(state);
   columns.forEach(function (column, index) {
     state.fields.appendChild(
@@ -5040,7 +5652,24 @@ function ensureRowEditDialog(manager) {
       <p class="row-edit-loading" role="status" aria-live="polite">Loading row...</p>
       <p class="row-edit-error" role="alert" tabindex="-1" hidden></p>
       <div class="row-edit-fields"></div>
+      <div class="row-edit-bulk" hidden>
+        <div class="row-edit-bulk-editor">
+          <label class="row-edit-bulk-label" for="row-edit-bulk-textarea">Rows to insert</label>
+          <div class="row-edit-bulk-actions">
+            <button type="button" class="btn btn-ghost row-edit-copy-template">Copy spreadsheet template</button>
+          </div>
+          <textarea class="row-edit-input row-edit-bulk-textarea" id="row-edit-bulk-textarea" name="_bulk_rows" rows="12" spellcheck="false"></textarea>
+          <p class="row-edit-bulk-note">Paste TSV, CSV, or JSON. You can also drop a text file onto this textarea.</p>
+        </div>
+        <div class="row-edit-bulk-preview" hidden></div>
+        <div class="row-edit-bulk-progress" hidden>
+          <progress class="row-edit-bulk-progress-bar" value="0" max="1"></progress>
+          <p class="row-edit-bulk-progress-status" role="status" aria-live="polite"></p>
+        </div>
+      </div>
       <div class="modal-footer">
+        <a href="#" class="row-edit-mode-link row-edit-bulk-insert" hidden>Insert multiple rows</a>
+        <a href="#" class="row-edit-mode-link row-edit-single-insert" hidden>Insert single row</a>
         <button type="button" class="btn btn-ghost row-edit-cancel">Cancel</button>
         <button type="submit" class="btn btn-primary row-edit-save" disabled>Save</button>
       </div>
@@ -5056,6 +5685,18 @@ function ensureRowEditDialog(manager) {
     loading: dialog.querySelector(".row-edit-loading"),
     error: dialog.querySelector(".row-edit-error"),
     fields: dialog.querySelector(".row-edit-fields"),
+    bulkInsertPanel: dialog.querySelector(".row-edit-bulk"),
+    bulkInsertEditor: dialog.querySelector(".row-edit-bulk-editor"),
+    bulkInsertTextarea: dialog.querySelector(".row-edit-bulk-textarea"),
+    bulkInsertPreview: dialog.querySelector(".row-edit-bulk-preview"),
+    bulkInsertProgress: dialog.querySelector(".row-edit-bulk-progress"),
+    bulkInsertProgressBar: dialog.querySelector(".row-edit-bulk-progress-bar"),
+    bulkInsertProgressStatus: dialog.querySelector(
+      ".row-edit-bulk-progress-status",
+    ),
+    copyTemplateButton: dialog.querySelector(".row-edit-copy-template"),
+    bulkInsertLink: dialog.querySelector(".row-edit-bulk-insert"),
+    singleInsertLink: dialog.querySelector(".row-edit-single-insert"),
     cancelButton: dialog.querySelector(".row-edit-cancel"),
     saveButton: dialog.querySelector(".row-edit-save"),
     currentButton: null,
@@ -5066,6 +5707,17 @@ function ensureRowEditDialog(manager) {
     currentUpdateUrl: null,
     currentFragmentUrl: null,
     mode: "edit",
+    insertMode: "single",
+    bulkInsertColumns: [],
+    bulkInsertColumnDetails: [],
+    bulkInsertPreviewRows: null,
+    bulkInsertPreviewReady: false,
+    bulkInsertInserted: false,
+    bulkInsertInsertedCount: 0,
+    bulkInsertMaxRows: 100,
+    shouldReloadOnClose: false,
+    redirectOnCloseUrl: null,
+    copyTemplateResetTimer: null,
     loadId: 0,
     manager: manager,
     isLoading: false,
@@ -5081,10 +5733,119 @@ function ensureRowEditDialog(manager) {
   });
 
   rowEditDialogState.cancelButton.addEventListener("click", function () {
+    if (
+      rowEditIsMultipleInsert(rowEditDialogState) &&
+      rowEditDialogState.bulkInsertPreviewReady &&
+      !rowEditDialogState.bulkInsertInserted &&
+      !rowEditDialogState.isSaving
+    ) {
+      resetBulkInsertPreview(rowEditDialogState);
+      updateRowEditDialogButtons(rowEditDialogState);
+      rowEditDialogState.bulkInsertTextarea.focus();
+      return;
+    }
     if (!rowEditDialogState.isSaving) {
       rowEditDialogState.shouldRestoreFocus = true;
       dialog.close();
     }
+  });
+
+  rowEditDialogState.bulkInsertLink.addEventListener("click", function (ev) {
+    ev.preventDefault();
+    showMultipleRowInsert(rowEditDialogState);
+  });
+
+  rowEditDialogState.singleInsertLink.addEventListener("click", function (ev) {
+    ev.preventDefault();
+    showSingleRowInsert(rowEditDialogState);
+  });
+
+  rowEditDialogState.copyTemplateButton.addEventListener(
+    "click",
+    async function () {
+      try {
+        await copyTextToClipboard(bulkInsertTemplateText(rowEditDialogState));
+        clearRowEditDialogError(rowEditDialogState);
+        setBulkInsertCopyButtonCopied(rowEditDialogState);
+      } catch (_error) {
+        showRowEditDialogError(
+          rowEditDialogState,
+          "Could not copy the spreadsheet template.",
+        );
+      }
+    },
+  );
+
+  rowEditDialogState.bulkInsertTextarea.addEventListener(
+    "dragenter",
+    function (ev) {
+      ev.preventDefault();
+      rowEditDialogState.bulkInsertTextarea.classList.add(
+        "row-edit-bulk-drop-target",
+      );
+    },
+  );
+
+  rowEditDialogState.bulkInsertTextarea.addEventListener(
+    "dragover",
+    function (ev) {
+      ev.preventDefault();
+      rowEditDialogState.bulkInsertTextarea.classList.add(
+        "row-edit-bulk-drop-target",
+      );
+    },
+  );
+
+  rowEditDialogState.bulkInsertTextarea.addEventListener(
+    "dragleave",
+    function () {
+      rowEditDialogState.bulkInsertTextarea.classList.remove(
+        "row-edit-bulk-drop-target",
+      );
+    },
+  );
+
+  rowEditDialogState.bulkInsertTextarea.addEventListener(
+    "drop",
+    async function (ev) {
+      ev.preventDefault();
+      rowEditDialogState.bulkInsertTextarea.classList.remove(
+        "row-edit-bulk-drop-target",
+      );
+      var files = ev.dataTransfer && ev.dataTransfer.files;
+      if (!files || !files.length) {
+        return;
+      }
+      try {
+        rowEditDialogState.bulkInsertTextarea.value = await readTextFile(
+          files[0],
+        );
+        rowEditDialogState.bulkInsertTextarea.dispatchEvent(
+          new Event("input", { bubbles: true }),
+        );
+        clearRowEditDialogError(rowEditDialogState);
+      } catch (_error) {
+        showRowEditDialogError(
+          rowEditDialogState,
+          "Could not read that text file.",
+        );
+      }
+    },
+  );
+
+  rowEditDialogState.bulkInsertTextarea.addEventListener(
+    "dragend",
+    function () {
+      rowEditDialogState.bulkInsertTextarea.classList.remove(
+        "row-edit-bulk-drop-target",
+      );
+    },
+  );
+
+  rowEditDialogState.bulkInsertTextarea.addEventListener("input", function () {
+    resetBulkInsertPreview(rowEditDialogState);
+    clearRowEditDialogError(rowEditDialogState);
+    updateRowEditDialogButtons(rowEditDialogState);
   });
 
   dialog.addEventListener("click", function (ev) {
@@ -5108,8 +5869,16 @@ function ensureRowEditDialog(manager) {
 
   dialog.addEventListener("close", function () {
     var state = rowEditDialogState;
+    var shouldReloadOnClose = state.shouldReloadOnClose;
+    var redirectOnCloseUrl = state.redirectOnCloseUrl;
     state.loadId += 1;
     state.isClosePending = false;
+    state.shouldReloadOnClose = false;
+    state.redirectOnCloseUrl = null;
+    clearTimeout(state.copyTemplateResetTimer);
+    state.copyTemplateResetTimer = null;
+    state.copyTemplateButton.textContent = "Copy spreadsheet template";
+    resetBulkInsertPreview(state);
     clearRowEditDialogError(state);
     state.hasLoaded = false;
     destroyRowEditFields(state);
@@ -5121,6 +5890,13 @@ function ensureRowEditDialog(manager) {
       document.contains(state.currentButton)
     ) {
       state.currentButton.focus();
+    }
+    if (shouldReloadOnClose) {
+      if (redirectOnCloseUrl) {
+        location.href = redirectOnCloseUrl;
+      } else {
+        location.reload();
+      }
     }
   });
 
@@ -5146,6 +5922,7 @@ async function openRowEditDialog(button, manager) {
   state.currentInsertUrl = null;
   state.currentUpdateUrl = rowUpdateUrl(row);
   state.currentFragmentUrl = rowFragmentUrl(row);
+  state.insertMode = "single";
   if (state.currentUpdateUrl) {
     state.form.action = new URL(
       state.currentUpdateUrl,
@@ -5171,6 +5948,7 @@ async function openRowEditDialog(button, manager) {
   );
   state.summary.hidden = true;
   state.summary.textContent = "";
+  syncRowEditInsertModeUi(state);
 
   if (!state.dialog.open) {
     state.dialog.showModal();
@@ -5221,6 +5999,11 @@ function openRowInsertDialog(button, manager) {
   state.currentInsertUrl = tableInsertUrl();
   state.currentUpdateUrl = null;
   state.currentFragmentUrl = null;
+  state.insertMode = "single";
+  state.bulkInsertTextarea.value = "";
+  state.shouldReloadOnClose = false;
+  state.redirectOnCloseUrl = null;
+  resetBulkInsertPreview(state);
   state.shouldRestoreFocus = true;
   state.hasLoaded = false;
   state.loadId += 1;
@@ -5238,14 +6021,10 @@ function openRowInsertDialog(button, manager) {
   setRowEditDialogLoading(state, false);
   destroyRowEditFields(state);
   state.dialog.removeAttribute("aria-describedby");
-  setRowDialogTitle(
-    state.title,
-    insertData.tableName
-      ? "Insert row into " + insertData.tableName
-      : "Insert row",
-  );
+  setRowInsertDialogTitle(state);
   state.summary.hidden = true;
   state.summary.textContent = "";
+  syncRowEditInsertModeUi(state);
 
   if (!state.dialog.open) {
     state.dialog.showModal();

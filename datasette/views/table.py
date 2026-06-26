@@ -517,6 +517,7 @@ async def _table_insert_ui(
         "tableName": table_name,
         "columns": columns,
         "primaryKeys": pks,
+        "maxInsertRows": datasette.setting("max_insert_rows"),
     }
 
 

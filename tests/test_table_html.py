@@ -1316,6 +1316,7 @@ async def test_table_insert_action_button_and_data():
         assert insert_data["path"] == "/data/items/-/insert"
         assert insert_data["tableName"] == "items"
         assert insert_data["primaryKeys"] == ["id"]
+        assert insert_data["maxInsertRows"] == 100
         assert [column["name"] for column in insert_data["columns"]] == [
             "name",
             "score",

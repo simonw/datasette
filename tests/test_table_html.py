@@ -897,6 +897,98 @@ async def test_mobile_column_actions_present(ds_client, path):
     assert len(ths) >= 1
 
 
+# Drives the real datasette/static/table.js buildColumnActionItems() in Node's
+# built-in vm against a minimal fake DOM, returning the list of menu labels for
+# a single column header (th).
+_TABLE_JS_COLUMN_ACTIONS_HARNESS = """
+import fs from "fs";
+import vm from "vm";
+
+const tableJs = fs.readFileSync(process.argv[2], "utf8");
+
+function labelsFor(dataset, pkCount) {
+  const th = {
+    dataset,
+    classList: [],
+    querySelector(sel) { return sel === "a" ? {} : null; },
+    closest() { return null; },
+  };
+  // parentElement so the legacy first-of-type heuristic runs cleanly; this th
+  // IS the first column in its row.
+  th.parentElement = {
+    querySelector(sel) { return sel === "th:first-of-type" ? th : null; },
+  };
+  const pkList = Array.from({ length: pkCount }, () => ({}));
+  const document = {
+    addEventListener() {},
+    querySelector() { return null; },
+    querySelectorAll(sel) {
+      return sel === 'th[data-is-pk="1"]' ? pkList : [];
+    },
+  };
+  const manager = {
+    selectors: { tableHeaders: "th" },
+    makeColumnActions() { return []; },
+  };
+  const sandbox = {
+    window: {},
+    document,
+    location: { search: "", pathname: "/db/view" },
+    URLSearchParams,
+    DATASETTE_ALLOW_FACET: true,
+    console,
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(tableJs, sandbox);
+  return sandbox.buildColumnActionItems(manager, th, {}).map((i) => i.label);
+}
+
+console.log(JSON.stringify({
+  // First column of a view: a regular data column (no special link column)
+  view: labelsFor({ column: "tool_name" }, 0),
+  // First column of a single-pk table: the primary key itself
+  single_pk: labelsFor({ column: "id", isPk: "1" }, 1),
+  // The synthetic link column on a compound-pk / rowid table
+  link_column: labelsFor({ column: "Link", isLinkColumn: "1" }, 0),
+}));
+"""
+
+
+def test_facet_by_this_offered_for_first_column_of_a_view(tmp_path):
+    # https://github.com/simonw/datasette/issues/2045
+    # The cog menu must offer "Facet by this" on the first column of a view,
+    # while still suppressing it for the special row-link column.
+    import json
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required to exercise table.js")
+
+    import datasette as datasette_package
+
+    table_js = (
+        pathlib.Path(datasette_package.__file__).parent / "static" / "table.js"
+    )
+    harness = tmp_path / "harness.mjs"
+    harness.write_text(_TABLE_JS_COLUMN_ACTIONS_HARNESS)
+
+    result = subprocess.run(
+        [node, str(harness), str(table_js)],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    labels = json.loads(result.stdout)
+
+    # The fix: first column of a view now gets a facet option
+    assert "Facet by this" in labels["view"]
+    # Regression guards: these should never offer faceting
+    assert "Facet by this" not in labels["single_pk"]
+    assert "Facet by this" not in labels["link_column"]
+
+
 @pytest.mark.asyncio
 async def test_row_delete_action_data_attributes():
     ds = Datasette(

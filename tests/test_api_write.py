@@ -911,6 +911,43 @@ async def test_alter_table_operations(ds_write):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    "table,pk_columns",
+    (
+        ("alter_single_pk", ["id"]),
+        ("alter_compound_pk", ["tenant", "id"]),
+    ),
+)
+async def test_alter_table_primary_keys_are_not_null(ds_write, table, pk_columns):
+    token = write_token(ds_write, permissions=["at"])
+    db = ds_write.get_database("data")
+    await db.execute_write(
+        "create table {} (id integer, tenant text, title text)".format(
+            escape_sqlite(table)
+        )
+    )
+
+    response = await ds_write.client.post(
+        "/data/{}/-/alter".format(table),
+        json={
+            "operations": [
+                {"op": "set_primary_key", "args": {"columns": pk_columns}},
+            ]
+        },
+        headers=_headers(token),
+    )
+
+    assert response.status_code == 200, response.text
+    columns = (
+        await db.execute(
+            "select * from pragma_table_info(?) where pk > 0 order by pk", [table]
+        )
+    ).dicts()
+    assert [column["name"] for column in columns] == pk_columns
+    assert [column["notnull"] for column in columns] == [1] * len(pk_columns)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     "default_expr,minimum_value,expected_schema",
     (
         (
@@ -1624,7 +1661,7 @@ async def test_drop_table(ds_write, scenario):
                 "table_api_url": "http://localhost/data/one.json",
                 "schema": (
                     "CREATE TABLE [one] (\n"
-                    "   [id] INTEGER PRIMARY KEY,\n"
+                    "   [id] INTEGER PRIMARY KEY NOT NULL,\n"
                     "   [title] TEXT,\n"
                     "   [score] INTEGER,\n"
                     "   [weight] FLOAT,\n"
@@ -1661,7 +1698,7 @@ async def test_drop_table(ds_write, scenario):
                 "table_api_url": "http://localhost/data/two.json",
                 "schema": (
                     "CREATE TABLE [two] (\n"
-                    "   [id] INTEGER PRIMARY KEY,\n"
+                    "   [id] INTEGER PRIMARY KEY NOT NULL,\n"
                     "   [title] TEXT,\n"
                     "   [score] FLOAT\n"
                     ")"
@@ -1690,7 +1727,7 @@ async def test_drop_table(ds_write, scenario):
                 "table_api_url": "http://localhost/data/three.json",
                 "schema": (
                     "CREATE TABLE [three] (\n"
-                    "   [id] INTEGER PRIMARY KEY,\n"
+                    "   [id] INTEGER PRIMARY KEY NOT NULL,\n"
                     "   [title] TEXT,\n"
                     "   [score] FLOAT\n"
                     ")"
@@ -1734,8 +1771,9 @@ async def test_drop_table(ds_write, scenario):
                 "table_url": "http://localhost/data/five",
                 "table_api_url": "http://localhost/data/five.json",
                 "schema": (
-                    "CREATE TABLE [five] (\n   [type] TEXT,\n   [key] INTEGER,\n"
-                    "   [title] TEXT,\n   PRIMARY KEY ([type], [key])\n)"
+                    "CREATE TABLE [five] (\n   [type] TEXT NOT NULL,\n"
+                    "   [key] INTEGER NOT NULL,\n   [title] TEXT,\n"
+                    "   PRIMARY KEY ([type], [key])\n)"
                 ),
                 "row_count": 1,
             },
@@ -2025,6 +2063,81 @@ async def test_create_table(
     # Should have tracked the expected events
     events = ds_write._tracked_events
     assert [e.name for e in events] == expected_events
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body,pk_columns",
+    (
+        (
+            {
+                "table": "pk_from_columns",
+                "columns": [
+                    {"name": "id", "type": "integer"},
+                    {"name": "title", "type": "text"},
+                ],
+                "pk": "id",
+            },
+            ["id"],
+        ),
+        (
+            {
+                "table": "compound_pk_from_columns",
+                "columns": [
+                    {"name": "tenant", "type": "text"},
+                    {"name": "id", "type": "integer"},
+                    {"name": "title", "type": "text"},
+                ],
+                "pks": ["tenant", "id"],
+            },
+            ["tenant", "id"],
+        ),
+        (
+            {
+                "table": "pk_omitted_from_columns",
+                "columns": [
+                    {"name": "title", "type": "text"},
+                ],
+                "pk": "id",
+            },
+            ["id"],
+        ),
+        (
+            {
+                "table": "pk_from_rows",
+                "rows": [{"id": 1, "title": "Row 1"}],
+                "pk": "id",
+            },
+            ["id"],
+        ),
+        (
+            {
+                "table": "compound_pk_from_rows",
+                "row": {"tenant": "datasette", "id": 1, "title": "Row 1"},
+                "pks": ["tenant", "id"],
+            },
+            ["tenant", "id"],
+        ),
+    ),
+)
+async def test_create_table_primary_keys_are_not_null(ds_write, body, pk_columns):
+    token = write_token(ds_write)
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json=body,
+        headers=_headers(token),
+    )
+
+    assert response.status_code == 201, response.text
+    db = ds_write.get_database("data")
+    columns = (
+        await db.execute(
+            "select * from pragma_table_info(?) where pk > 0 order by pk",
+            [body["table"]],
+        )
+    ).dicts()
+    assert [column["name"] for column in columns] == pk_columns
+    assert [column["notnull"] for column in columns] == [1] * len(pk_columns)
 
 
 @pytest.mark.asyncio

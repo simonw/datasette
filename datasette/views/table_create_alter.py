@@ -772,6 +772,14 @@ def _primary_key_value(columns):
     return tuple(columns)
 
 
+def _primary_key_columns(pk, pks):
+    if pks:
+        return list(pks)
+    if pk:
+        return [pk]
+    return []
+
+
 def _default_expression_sql(default_expr):
     return DEFAULT_EXPR_SQL[default_expr]
 
@@ -871,6 +879,8 @@ class TableCreateView(BaseView):
                 return _error(["pk cannot be changed for existing table"])
             pks = actual_pks
 
+        pk_columns = _primary_key_columns(pk, pks)
+
         initial_schema = None
         if table_exists:
             initial_schema = await db.execute_fn(
@@ -881,11 +891,41 @@ class TableCreateView(BaseView):
             db_for_write = sqlite_utils.Database(conn)
             table = db_for_write[table_name]
             if rows:
+                row_columns = set()
+                pk_columns_set = set(pk_columns)
+                insert_kwargs = {
+                    "pk": pks or pk,
+                    "ignore": ignore,
+                    "replace": replace,
+                    "alter": alter,
+                }
+                if not table_exists and pk_columns:
+                    row_columns = {key for row in rows for key in row}
+                    if pk_columns_set.issubset(row_columns):
+                        insert_kwargs["not_null"] = pk_columns
                 table.insert_all(
-                    rows, pk=pks or pk, ignore=ignore, replace=replace, alter=alter
+                    rows,
+                    **insert_kwargs,
                 )
+                if (
+                    not table_exists
+                    and pk_columns
+                    and not pk_columns_set.issubset(row_columns)
+                ):
+                    table.transform(
+                        not_null={column: True for column in pk_columns},
+                    )
             else:
-                not_null = [column.name for column in columns if column.not_null]
+                column_definitions = {column.name: column.type for column in columns}
+                if pk and pk not in column_definitions:
+                    column_definitions = {pk: "integer", **column_definitions}
+                not_null = [
+                    column.name
+                    for column in columns
+                    if column.not_null or column.name in pk_columns
+                ]
+                if pk and pk not in not_null:
+                    not_null.insert(0, pk)
                 defaults = {}
                 for column in columns:
                     if "default_expr" in column.model_fields_set:
@@ -900,7 +940,7 @@ class TableCreateView(BaseView):
                             db_for_write, column.default
                         )
                 table.create(
-                    {column.name: column.type for column in columns},
+                    column_definitions,
                     pk=pks or pk,
                     foreign_keys=create_request.foreign_keys,
                     not_null=not_null or None,
@@ -1187,6 +1227,7 @@ class TableAlterView(BaseView):
                 defaults = {}
                 column_order = None
                 pk = SQLITE_UTILS_DEFAULT
+                pk_columns = []
                 add_foreign_keys = []
                 drop_foreign_keys = []
                 foreign_keys = None
@@ -1239,6 +1280,7 @@ class TableAlterView(BaseView):
                         drop.add(args.name)
                     elif operation.op == "set_primary_key":
                         pk = _primary_key_value(args.columns)
+                        pk_columns = args.columns
                     elif operation.op == "reorder_columns":
                         column_order = args.columns
                     elif operation.op == "add_foreign_key":
@@ -1281,6 +1323,8 @@ class TableAlterView(BaseView):
                         )
                     )
                     if should_transform:
+                        for column in pk_columns:
+                            not_null[column] = True
                         table.transform(
                             types=types or None,
                             rename=rename or None,

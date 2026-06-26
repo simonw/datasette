@@ -855,17 +855,12 @@ function tableCreateDialogSignature(state) {
     return "";
   }
   var signature = {
-    mode: state.mode || "manual",
     table: state.tableName.value,
     data: state.dataTextarea ? state.dataTextarea.value : "",
     dataPrimaryKey: state.dataPkSelect
       ? state.dataPkSelect.value
       : TABLE_CREATE_AUTOMATIC_PK,
-  };
-  if (tableCreateIsDataMode(state)) {
-    signature.previewReady = !!state.dataPreviewReady;
-  } else {
-    signature.columns = tableCreateDialogRows(state).map(function (row) {
+    columns: tableCreateDialogRows(state).map(function (row) {
       return {
         name: row.querySelector(".table-create-column-name").value,
         type: row.querySelector(".table-create-column-type").value,
@@ -886,8 +881,8 @@ function tableCreateDialogSignature(state) {
             }
           ).value || "",
       };
-    });
-  }
+    }),
+  };
   return JSON.stringify(signature);
 }
 

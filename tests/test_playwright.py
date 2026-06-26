@@ -123,6 +123,7 @@ def write_playwright_config(config_path):
                     "data": {
                         "permissions": {
                             "create-table": True,
+                            "insert-row": True,
                             "set-column-type": True,
                         },
                         "tables": {
@@ -379,6 +380,78 @@ def test_create_table_flow(page, datasette_server):
     schema = schema_response.json()["rows"][0]["sql"]
     assert "title" in schema
     assert "NOT NULL DEFAULT 'Untitled'" in schema
+
+
+@pytest.mark.playwright
+def test_create_table_from_data_flow(page, datasette_server):
+    page.goto(f"{datasette_server}data")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-database-action="create-table"]').click()
+
+    dialog = page.locator("#table-create-dialog")
+    dialog.wait_for()
+    from_data = dialog.locator(".table-create-from-data")
+    assert from_data.inner_text() == "Create table from data"
+    from_data.click()
+
+    assert dialog.locator(".table-create-columns").is_hidden()
+    assert dialog.locator(".table-create-data").is_visible()
+    assert dialog.locator(".table-create-save").inner_text() == "Preview rows"
+    assert (
+        dialog.locator(".table-create-data-note").inner_text()
+        == "Paste TSV, CSV, or JSON. You can also drop a text file onto this textarea."
+    )
+    assert dialog.locator(".table-create-manual").inner_text() == (
+        "Create table manually"
+    )
+
+    dialog.locator(".table-create-table-name").fill("playwright_from_data")
+    textarea = dialog.locator(".table-create-data-textarea")
+    textarea.fill(
+        json.dumps(
+            {
+                "metadata": [{"short_id": "a", "name": "Ignored", "score": 9}],
+                "people": [
+                    {"short_id": "b", "name": "Ada", "score": 1},
+                    {"short_id": "c", "name": "Bob", "score": 2.5},
+                ],
+            }
+        )
+    )
+    dialog.locator(".table-create-save").click()
+
+    assert dialog.locator(".table-create-data-textarea").is_hidden()
+    assert dialog.locator(".table-create-save").inner_text() == "Create table"
+    assert dialog.locator(".table-create-cancel").inner_text() == "Back"
+    assert dialog.locator(".table-create-data-preview-summary").inner_text() == (
+        "Previewing 2 rows."
+    )
+    assert dialog.locator(".table-create-data-primary-key").input_value() == "short_id"
+    preview_text = dialog.locator(".table-create-data-preview-table").inner_text()
+    assert "short_id" in preview_text
+    assert "Ada" in preview_text
+    assert "2.5" in preview_text
+
+    dialog.locator(".table-create-cancel").click()
+    assert dialog.evaluate("node => node.open")
+    assert dialog.locator(".table-create-data-textarea").is_visible()
+    assert '"people"' in dialog.locator(".table-create-data-textarea").input_value()
+    assert dialog.locator(".table-create-save").inner_text() == "Preview rows"
+
+    dialog.locator(".table-create-save").click()
+    assert dialog.locator(".table-create-save").inner_text() == "Create table"
+    dialog.locator(".table-create-save").click()
+    page.wait_for_url("**/data/playwright_from_data")
+
+    response = httpx.get(
+        f"{datasette_server}data/playwright_from_data.json?_shape=objects"
+    )
+    response.raise_for_status()
+    data = response.json()
+    assert data["rows"] == [
+        {"short_id": "b", "name": "Ada", "score": 1},
+        {"short_id": "c", "name": "Bob", "score": 2.5},
+    ]
 
 
 @pytest.mark.playwright
@@ -910,7 +983,15 @@ def test_bulk_insert_preview_inserts_rows(page, datasette_server):
     dialog.wait_for()
     dialog.locator(".row-edit-bulk-insert").click()
     dialog.locator(".row-edit-bulk-textarea").fill(
-        "title\tmetadata\nBulk one\t{}\n\nBulk two\t{}"
+        json.dumps(
+            {
+                "metadata": [{"title": "Ignored", "metadata": "{}"}],
+                "projects": [
+                    {"title": "Bulk one", "metadata": "{}"},
+                    {"title": "Bulk two", "metadata": "{}"},
+                ],
+            }
+        )
     )
     dialog.locator(".row-edit-save").click()
     assert dialog.locator(".row-edit-save").inner_text() == "Insert these rows"

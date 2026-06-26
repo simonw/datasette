@@ -4,6 +4,7 @@ var ROW_EDIT_DIALOG_ID = "row-edit-dialog";
 var rowEditDialogState = null;
 var TABLE_CREATE_DIALOG_ID = "table-create-dialog";
 var tableCreateDialogState = null;
+var TABLE_CREATE_AUTOMATIC_PK = "__datasette_automatic_pk__";
 var TABLE_ALTER_DIALOG_ID = "table-alter-dialog";
 var tableAlterDialogState = null;
 
@@ -810,13 +811,61 @@ async function loadTableCreateForeignKeyTargets(state) {
   );
 }
 
+function tableCreateIsDataMode(state) {
+  return state && state.mode === "data";
+}
+
+function tableCreateSaveButtonText(state) {
+  if (tableCreateIsDataMode(state)) {
+    return state.dataPreviewReady ? "Create table" : "Preview rows";
+  }
+  return "Create table";
+}
+
+function syncTableCreateModeUi(state) {
+  if (!state) {
+    return;
+  }
+  var isDataMode = tableCreateIsDataMode(state);
+  state.columnsPanel.hidden = isDataMode;
+  state.dataPanel.hidden = !isDataMode;
+  state.dataEditor.hidden = !isDataMode || state.dataPreviewReady;
+  state.dataPreview.hidden = !isDataMode || !state.dataPreviewReady;
+  state.createFromDataLink.hidden = isDataMode;
+  state.manualCreateLink.hidden = !isDataMode;
+}
+
+function updateTableCreateDialogButtons(state) {
+  if (!state) {
+    return;
+  }
+  syncTableCreateModeUi(state);
+  state.cancelButton.disabled = state.isSaving;
+  state.saveButton.disabled = state.isSaving;
+  state.addColumnButton.disabled = state.isSaving;
+  state.cancelButton.textContent =
+    tableCreateIsDataMode(state) && state.dataPreviewReady ? "Back" : "Cancel";
+  state.saveButton.textContent = state.isSaving
+    ? "Creating..."
+    : tableCreateSaveButtonText(state);
+}
+
 function tableCreateDialogSignature(state) {
   if (!state || !state.form) {
     return "";
   }
-  return JSON.stringify({
+  var signature = {
+    mode: state.mode || "manual",
     table: state.tableName.value,
-    columns: tableCreateDialogRows(state).map(function (row) {
+    data: state.dataTextarea ? state.dataTextarea.value : "",
+    dataPrimaryKey: state.dataPkSelect
+      ? state.dataPkSelect.value
+      : TABLE_CREATE_AUTOMATIC_PK,
+  };
+  if (tableCreateIsDataMode(state)) {
+    signature.previewReady = !!state.dataPreviewReady;
+  } else {
+    signature.columns = tableCreateDialogRows(state).map(function (row) {
       return {
         name: row.querySelector(".table-create-column-name").value,
         type: row.querySelector(".table-create-column-type").value,
@@ -837,8 +886,9 @@ function tableCreateDialogSignature(state) {
             }
           ).value || "",
       };
-    }),
-  });
+    });
+  }
+  return JSON.stringify(signature);
 }
 
 function tableCreateDialogHasChanges(state) {
@@ -864,18 +914,23 @@ function showTableCreateDialogError(state, message) {
 
 function setTableCreateDialogSaving(state, isSaving) {
   state.isSaving = isSaving;
-  state.cancelButton.disabled = isSaving;
-  state.saveButton.disabled = isSaving;
-  state.addColumnButton.disabled = isSaving;
-  state.saveButton.textContent = isSaving ? "Creating..." : "Create table";
   state.columnList
     .querySelectorAll("input, select, button")
     .forEach(function (control) {
       control.disabled = isSaving;
     });
+  state.fields
+    .querySelectorAll(
+      ".table-create-data input, .table-create-data select, .table-create-data textarea, .table-create-data button",
+    )
+    .forEach(function (control) {
+      control.disabled = isSaving;
+    });
+  state.tableName.disabled = isSaving;
   if (!isSaving) {
     updateTableCreateColumnRules(state);
   }
+  updateTableCreateDialogButtons(state);
   updateTableCreateMoveButtons(state);
 }
 
@@ -1231,8 +1286,11 @@ function addTableCreateColumn(state, column) {
 }
 
 function resetTableCreateDialog(state) {
+  state.mode = "manual";
   state.nextColumnIndex = 0;
   state.tableName.value = "";
+  state.dataTextarea.value = "";
+  resetTableCreateDataPreview(state);
   state.columnList.textContent = "";
   addTableCreateColumn(state, {
     name: "id",
@@ -1245,7 +1303,37 @@ function resetTableCreateDialog(state) {
     primaryKey: false,
   });
   updateTableCreateColumnRules(state);
+  updateTableCreateDialogButtons(state);
   state.initialSignature = tableCreateDialogSignature(state);
+}
+
+function showTableCreateDataMode(state) {
+  if (!state || state.isSaving) {
+    return;
+  }
+  state.mode = "data";
+  clearTableCreateDialogError(state);
+  updateTableCreateDialogButtons(state);
+  if (state.dataPreviewReady && state.dataPkSelect) {
+    state.dataPkSelect.focus();
+  } else {
+    state.dataTextarea.focus();
+  }
+}
+
+function showTableCreateManualMode(state) {
+  if (!state || state.isSaving) {
+    return;
+  }
+  state.mode = "manual";
+  clearTableCreateDialogError(state);
+  updateTableCreateDialogButtons(state);
+  var firstInput = state.columnList.querySelector(".table-create-column-name");
+  if (firstInput) {
+    firstInput.focus();
+  } else {
+    state.tableName.focus();
+  }
 }
 
 function collectTableCreatePayload(state) {
@@ -1315,14 +1403,9 @@ function collectTableCreateColumnTypeAssignments(state) {
 }
 
 function validateTableCreatePayload(payload) {
-  if (!payload.table) {
-    return "Table name is required.";
-  }
-  if (payload.table.indexOf("\n") !== -1) {
-    return "Table name cannot contain newlines.";
-  }
-  if (/^sqlite_/i.test(payload.table)) {
-    return "Table name cannot start with sqlite_.";
+  var tableNameError = validateTableCreateTableName(payload.table);
+  if (tableNameError) {
+    return tableNameError;
   }
   if (!payload.columns.length) {
     return "At least one column is required.";
@@ -1352,6 +1435,19 @@ function validateTableCreatePayload(payload) {
   return null;
 }
 
+function validateTableCreateTableName(tableName) {
+  if (!tableName) {
+    return "Table name is required.";
+  }
+  if (tableName.indexOf("\n") !== -1) {
+    return "Table name cannot contain newlines.";
+  }
+  if (/^sqlite_/i.test(tableName)) {
+    return "Table name cannot start with sqlite_.";
+  }
+  return null;
+}
+
 function validateTableCreateColumnTypeAssignments(assignments) {
   for (var i = 0; i < assignments.length; i += 1) {
     var assignment = assignments[i];
@@ -1370,6 +1466,446 @@ function validateTableCreateColumnTypeAssignments(assignments) {
         "."
       );
     }
+  }
+  return null;
+}
+
+function normalizeCreateTableDataJsonValue(value) {
+  if (typeof value === "undefined") {
+    return null;
+  }
+  if (Array.isArray(value) || (value && typeof value === "object")) {
+    return JSON.stringify(value);
+  }
+  return value;
+}
+
+function createTableDataColumnObjects(names) {
+  return names.map(function (name) {
+    return { name: name };
+  });
+}
+
+function validateCreateTableDataHeaders(headers) {
+  if (!headers.length) {
+    throw new Error("No columns found to preview.");
+  }
+  var seen = {};
+  headers.forEach(function (name, index) {
+    if (!name) {
+      throw new Error("Column header " + (index + 1) + " is blank.");
+    }
+    if (name.indexOf("\n") !== -1) {
+      throw new Error("Column names cannot contain newlines.");
+    }
+    var key = name.toLowerCase();
+    if (seen[key]) {
+      throw new Error("Duplicate column name: " + name);
+    }
+    seen[key] = true;
+  });
+}
+
+function jsonRowIsObject(item) {
+  return !!(item && typeof item === "object" && !Array.isArray(item));
+}
+
+function extractJsonObjectRows(parsed) {
+  if (Array.isArray(parsed)) {
+    return parsed;
+  }
+  if (!jsonRowIsObject(parsed)) {
+    throw new Error(
+      "JSON must be an array of objects, or an object containing an array of objects.",
+    );
+  }
+
+  var bestRows = null;
+  Object.keys(parsed).forEach(function (key) {
+    var value = parsed[key];
+    if (!Array.isArray(value) || !value.every(jsonRowIsObject)) {
+      return;
+    }
+    if (!bestRows || value.length > bestRows.length) {
+      bestRows = value;
+    }
+  });
+  if (!bestRows) {
+    throw new Error(
+      "JSON object must contain at least one root key with an array of objects.",
+    );
+  }
+  return bestRows;
+}
+
+function parseJsonObjectRows(text) {
+  var parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw new Error("Invalid JSON: " + error.message);
+  }
+  var rows = extractJsonObjectRows(parsed);
+  if (!rows.length) {
+    throw new Error("No rows found to preview.");
+  }
+  return rows;
+}
+
+function parseJsonCreateTableRows(text) {
+  var parsed = parseJsonObjectRows(text);
+
+  var columnNames = [];
+  var columnMap = {};
+  parsed.forEach(function (item, index) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error("JSON row " + (index + 1) + " must be an object.");
+    }
+    Object.keys(item).forEach(function (name) {
+      if (!columnMap[name]) {
+        columnMap[name] = true;
+        columnNames.push(name);
+      }
+    });
+  });
+  validateCreateTableDataHeaders(columnNames);
+
+  var rows = parsed.map(function (item) {
+    var row = {};
+    columnNames.forEach(function (name) {
+      row[name] = Object.prototype.hasOwnProperty.call(item, name)
+        ? normalizeCreateTableDataJsonValue(item[name])
+        : null;
+    });
+    return row;
+  });
+  return {
+    columns: createTableDataColumnObjects(columnNames),
+    rows: rows,
+  };
+}
+
+function createTableDelimitedValueIsInteger(value) {
+  return /^[-+]?\d+$/.test(String(value).trim());
+}
+
+function createTableDelimitedValueIsFloat(value) {
+  var trimmed = String(value).trim();
+  if (!trimmed) {
+    return false;
+  }
+  var numberValue = Number(trimmed);
+  return Number.isFinite(numberValue);
+}
+
+function inferCreateTableDelimitedColumnType(values) {
+  var nonBlankValues = values.filter(function (value) {
+    return String(value).trim() !== "";
+  });
+  if (!nonBlankValues.length) {
+    return "text";
+  }
+  if (nonBlankValues.every(createTableDelimitedValueIsInteger)) {
+    return "integer";
+  }
+  if (nonBlankValues.every(createTableDelimitedValueIsFloat)) {
+    return "float";
+  }
+  return "text";
+}
+
+function coerceCreateTableDelimitedValue(value, type) {
+  var trimmed = String(value).trim();
+  if (trimmed === "") {
+    return "";
+  }
+  if (type === "integer") {
+    return parseInt(trimmed, 10);
+  }
+  if (type === "float") {
+    return Number(trimmed);
+  }
+  return value;
+}
+
+function detectCreateTableDataDelimiter(text) {
+  var firstLine =
+    text.split(/\r\n|\n|\r/).find(function (line) {
+      return line.trim() !== "";
+    }) || "";
+  var csvRows = delimiterPreviewRows(firstLine, ",");
+  var tsvRows = delimiterPreviewRows(firstLine, "\t");
+  var csvColumns = csvRows.length ? csvRows[0].length : 0;
+  var tsvColumns = tsvRows.length ? tsvRows[0].length : 0;
+
+  if (firstLine.indexOf("\t") !== -1 && firstLine.indexOf(",") === -1) {
+    return "\t";
+  }
+  if (tsvColumns > csvColumns) {
+    return "\t";
+  }
+  if (csvColumns > 1) {
+    return ",";
+  }
+  if (tsvColumns > 1) {
+    return "\t";
+  }
+  return null;
+}
+
+function parseDelimitedCreateTableRows(text) {
+  var delimiter = detectCreateTableDataDelimiter(text);
+  var rows = (
+    delimiter === null
+      ? splitSingleColumnRows(text)
+      : splitDelimitedRows(text, delimiter)
+  ).filter(function (row) {
+    return !bulkInsertDelimitedRowIsBlank(row);
+  });
+  if (!rows.length) {
+    throw new Error("No rows found to preview.");
+  }
+
+  var headers = rows[0].map(function (value) {
+    return value.trim();
+  });
+  validateCreateTableDataHeaders(headers);
+  var dataRows = rows.slice(1);
+  if (!dataRows.length) {
+    throw new Error("No data rows found to preview.");
+  }
+
+  dataRows.forEach(function (row, index) {
+    if (row.length > headers.length) {
+      throw new Error(
+        "Row " +
+          (index + 1) +
+          " has " +
+          row.length +
+          " values, but only " +
+          headers.length +
+          " columns were provided.",
+      );
+    }
+  });
+
+  var columnTypes = headers.map(function (_name, columnIndex) {
+    return inferCreateTableDelimitedColumnType(
+      dataRows.map(function (row) {
+        return row[columnIndex] || "";
+      }),
+    );
+  });
+
+  return {
+    columns: createTableDataColumnObjects(headers),
+    rows: dataRows.map(function (row) {
+      var rowObject = {};
+      headers.forEach(function (name, columnIndex) {
+        rowObject[name] = coerceCreateTableDelimitedValue(
+          row[columnIndex] || "",
+          columnTypes[columnIndex],
+        );
+      });
+      return rowObject;
+    }),
+  };
+}
+
+function parseCreateTableDataRows(text) {
+  var trimmed = text.trim();
+  if (!trimmed) {
+    throw new Error("Paste rows before previewing.");
+  }
+  if (trimmed[0] === "[" || trimmed[0] === "{") {
+    return parseJsonCreateTableRows(trimmed);
+  }
+  return parseDelimitedCreateTableRows(trimmed);
+}
+
+function tableCreateDataRecommendedPrimaryKey(columns, rows) {
+  var candidates = [];
+  columns.forEach(function (column, columnIndex) {
+    var distinctValues = {};
+    var maxLength = 0;
+    var valid = rows.length > 0;
+    rows.forEach(function (row) {
+      if (!valid) {
+        return;
+      }
+      var value = row[column.name];
+      if (value === null || typeof value === "undefined") {
+        valid = false;
+        return;
+      }
+      var text = String(value).trim();
+      if (!text || text.length >= 20 || /\s/.test(text)) {
+        valid = false;
+        return;
+      }
+      if (distinctValues[text]) {
+        valid = false;
+        return;
+      }
+      distinctValues[text] = true;
+      maxLength = Math.max(maxLength, text.length);
+    });
+    if (valid) {
+      candidates.push({
+        name: column.name,
+        maxLength: maxLength,
+        columnIndex: columnIndex,
+      });
+    }
+  });
+  candidates.sort(function (left, right) {
+    if (left.maxLength !== right.maxLength) {
+      return left.maxLength - right.maxLength;
+    }
+    return left.columnIndex - right.columnIndex;
+  });
+  return candidates.length ? candidates[0].name : TABLE_CREATE_AUTOMATIC_PK;
+}
+
+function renderTableCreateDataPreview(state, preview) {
+  state.dataPreview.textContent = "";
+
+  var summary = document.createElement("p");
+  summary.className = "table-create-data-preview-summary";
+  summary.textContent =
+    "Previewing " +
+    preview.rows.length +
+    " row" +
+    (preview.rows.length === 1 ? "." : "s.");
+  state.dataPreview.appendChild(summary);
+
+  var pkField = document.createElement("div");
+  pkField.className = "table-create-data-pk-field";
+  var pkLabel = document.createElement("label");
+  pkLabel.className = "table-create-data-label";
+  pkLabel.setAttribute("for", "table-create-data-primary-key");
+  pkLabel.textContent = "Primary key";
+  var pkSelect = document.createElement("select");
+  pkSelect.id = "table-create-data-primary-key";
+  pkSelect.className = "table-create-input table-create-data-primary-key";
+  var automaticOption = document.createElement("option");
+  automaticOption.value = TABLE_CREATE_AUTOMATIC_PK;
+  automaticOption.textContent = "Automatic ID column";
+  pkSelect.appendChild(automaticOption);
+  preview.columns.forEach(function (column) {
+    var option = document.createElement("option");
+    option.value = column.name;
+    option.textContent = column.name;
+    pkSelect.appendChild(option);
+  });
+  pkSelect.value = tableCreateDataRecommendedPrimaryKey(
+    preview.columns,
+    preview.rows,
+  );
+  pkSelect.addEventListener("change", function () {
+    clearTableCreateDialogError(state);
+  });
+  state.dataPkSelect = pkSelect;
+  pkField.appendChild(pkLabel);
+  pkField.appendChild(pkSelect);
+  state.dataPreview.appendChild(pkField);
+
+  var tableWrap = document.createElement("div");
+  tableWrap.className = "table-create-data-preview-table-wrap";
+  var table = document.createElement("table");
+  table.className = "table-create-data-preview-table";
+  var thead = document.createElement("thead");
+  var headerRow = document.createElement("tr");
+  preview.columns.forEach(function (column) {
+    var th = document.createElement("th");
+    th.scope = "col";
+    th.textContent = column.name;
+    headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  var tbody = document.createElement("tbody");
+  preview.rows.forEach(function (row) {
+    var tr = document.createElement("tr");
+    preview.columns.forEach(function (column) {
+      var td = document.createElement("td");
+      var value = row[column.name];
+      td.textContent = bulkInsertPreviewValue(value);
+      if (value === null) {
+        td.className = "table-create-data-preview-null";
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  tableWrap.appendChild(table);
+  state.dataPreview.appendChild(tableWrap);
+  state.dataPreview.hidden = false;
+}
+
+function resetTableCreateDataPreview(state) {
+  state.dataPreviewRows = null;
+  state.dataPreviewColumns = [];
+  state.dataPreviewReady = false;
+  state.dataPkSelect = null;
+  state.dataPreview.hidden = true;
+  state.dataPreview.textContent = "";
+  syncTableCreateModeUi(state);
+}
+
+function previewTableCreateDataRows(state) {
+  clearTableCreateDialogError(state);
+  resetTableCreateDataPreview(state);
+  try {
+    var preview = parseCreateTableDataRows(state.dataTextarea.value);
+    state.dataPreviewRows = preview.rows;
+    state.dataPreviewColumns = preview.columns;
+    state.dataPreviewReady = true;
+    renderTableCreateDataPreview(state, preview);
+    updateTableCreateDialogButtons(state);
+  } catch (error) {
+    showTableCreateDialogError(
+      state,
+      error.message || "Could not preview rows.",
+    );
+    updateTableCreateDialogButtons(state);
+  }
+}
+
+function collectTableCreateDataPayload(state) {
+  var payload = {
+    table: state.tableName.value.trim(),
+    rows: state.dataPreviewRows || [],
+  };
+  var primaryKey = state.dataPkSelect
+    ? state.dataPkSelect.value
+    : TABLE_CREATE_AUTOMATIC_PK;
+  payload.pk =
+    primaryKey === TABLE_CREATE_AUTOMATIC_PK ? "id" : primaryKey || undefined;
+  return payload;
+}
+
+function validateTableCreateDataPayload(payload, state) {
+  var tableNameError = validateTableCreateTableName(payload.table);
+  if (tableNameError) {
+    return tableNameError;
+  }
+  if (!payload.rows.length) {
+    return "No rows found to create.";
+  }
+  if (
+    state.dataPkSelect &&
+    state.dataPkSelect.value === TABLE_CREATE_AUTOMATIC_PK &&
+    payload.rows.some(function (row) {
+      return Object.prototype.hasOwnProperty.call(row, "id");
+    })
+  ) {
+    return (
+      "Automatic ID column cannot be used because the pasted data " +
+      "already has an id column."
+    );
   }
   return null;
 }
@@ -1441,6 +1977,57 @@ async function assignTableCreateColumnTypes(
   }
 }
 
+async function createTableFromDataPreview(state) {
+  var data = databaseCreateTableData();
+  if (!data || !data.path) {
+    showTableCreateDialogError(state, "Could not find the create table URL.");
+    return;
+  }
+  var payload = collectTableCreateDataPayload(state);
+  var validationError = validateTableCreateDataPayload(payload, state);
+  if (validationError) {
+    showTableCreateDialogError(state, validationError);
+    return;
+  }
+  clearTableCreateDialogError(state);
+  setTableCreateDialogSaving(state, true);
+  try {
+    var response = await fetch(data.path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    var responseData = null;
+    try {
+      responseData = await response.json();
+    } catch (_error) {
+      responseData = null;
+    }
+    if (!response.ok || (responseData && responseData.ok === false)) {
+      throw rowMutationRequestError(response, responseData);
+    }
+    var tableUrl =
+      responseData.table_url ||
+      fallbackTableUrl(responseData.table || payload.table);
+    state.shouldRestoreFocus = false;
+    state.dialog.close();
+    if (tableUrl) {
+      location.href = tableUrl;
+    } else {
+      location.reload();
+    }
+  } catch (error) {
+    setTableCreateDialogSaving(state, false);
+    showTableCreateDialogError(
+      state,
+      error.message || "Could not create table",
+    );
+  }
+}
+
 async function saveTableCreateDialog(state) {
   if (state.isSaving) {
     return;
@@ -1448,6 +2035,14 @@ async function saveTableCreateDialog(state) {
   var data = databaseCreateTableData();
   if (!data || !data.path) {
     showTableCreateDialogError(state, "Could not find the create table URL.");
+    return;
+  }
+  if (tableCreateIsDataMode(state)) {
+    if (!state.dataPreviewReady) {
+      previewTableCreateDataRows(state);
+    } else {
+      await createTableFromDataPreview(state);
+    }
     return;
   }
   clearTableCreateDialogError(state);
@@ -1560,8 +2155,18 @@ function ensureTableCreateDialog(manager) {
           <div class="table-create-column-list"></div>
           <button type="button" class="table-create-add-column"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg><span>Add column</span></button>
         </div>
+        <div class="table-create-data" hidden>
+          <div class="table-create-data-editor">
+            <label class="table-create-data-label" for="table-create-data-textarea">Rows for the new table</label>
+            <textarea class="table-create-input table-create-data-textarea" id="table-create-data-textarea" name="_create_rows" rows="12" spellcheck="false"></textarea>
+            <p class="table-create-data-note">Paste TSV, CSV, or JSON. You can also drop a text file onto this textarea.</p>
+          </div>
+          <div class="table-create-data-preview" hidden></div>
+        </div>
       </div>
       <div class="modal-footer">
+        <a href="#" class="table-create-mode-link table-create-from-data">Create table from data</a>
+        <a href="#" class="table-create-mode-link table-create-manual" hidden>Create table manually</a>
         <button type="button" class="btn btn-ghost table-create-cancel">Cancel</button>
         <button type="submit" class="btn btn-primary table-create-save">Create table</button>
       </div>
@@ -1576,13 +2181,25 @@ function ensureTableCreateDialog(manager) {
     error: dialog.querySelector(".table-create-error"),
     fields: dialog.querySelector(".table-create-fields"),
     tableName: dialog.querySelector(".table-create-table-name"),
+    columnsPanel: dialog.querySelector(".table-create-columns"),
     columnList: dialog.querySelector(".table-create-column-list"),
     addColumnButton: dialog.querySelector(".table-create-add-column"),
+    dataPanel: dialog.querySelector(".table-create-data"),
+    dataEditor: dialog.querySelector(".table-create-data-editor"),
+    dataTextarea: dialog.querySelector(".table-create-data-textarea"),
+    dataPreview: dialog.querySelector(".table-create-data-preview"),
+    createFromDataLink: dialog.querySelector(".table-create-from-data"),
+    manualCreateLink: dialog.querySelector(".table-create-manual"),
     cancelButton: dialog.querySelector(".table-create-cancel"),
     saveButton: dialog.querySelector(".table-create-save"),
     currentButton: null,
     shouldRestoreFocus: true,
     isSaving: false,
+    mode: "manual",
+    dataPreviewRows: null,
+    dataPreviewColumns: [],
+    dataPreviewReady: false,
+    dataPkSelect: null,
     initialSignature: "",
     nextColumnIndex: 0,
     foreignKeyTargets: [],
@@ -1606,11 +2223,106 @@ function ensureTableCreateDialog(manager) {
   });
 
   tableCreateDialogState.cancelButton.addEventListener("click", function () {
+    if (
+      tableCreateIsDataMode(tableCreateDialogState) &&
+      tableCreateDialogState.dataPreviewReady &&
+      !tableCreateDialogState.isSaving
+    ) {
+      resetTableCreateDataPreview(tableCreateDialogState);
+      updateTableCreateDialogButtons(tableCreateDialogState);
+      tableCreateDialogState.dataTextarea.focus();
+      return;
+    }
     closeTableCreateDialogIfConfirmed(tableCreateDialogState);
   });
 
+  tableCreateDialogState.createFromDataLink.addEventListener(
+    "click",
+    function (ev) {
+      ev.preventDefault();
+      showTableCreateDataMode(tableCreateDialogState);
+    },
+  );
+
+  tableCreateDialogState.manualCreateLink.addEventListener(
+    "click",
+    function (ev) {
+      ev.preventDefault();
+      showTableCreateManualMode(tableCreateDialogState);
+    },
+  );
+
   tableCreateDialogState.tableName.addEventListener("input", function () {
     clearTableCreateDialogError(tableCreateDialogState);
+  });
+
+  tableCreateDialogState.dataTextarea.addEventListener(
+    "dragenter",
+    function (ev) {
+      ev.preventDefault();
+      tableCreateDialogState.dataTextarea.classList.add(
+        "table-create-data-drop-target",
+      );
+    },
+  );
+
+  tableCreateDialogState.dataTextarea.addEventListener(
+    "dragover",
+    function (ev) {
+      ev.preventDefault();
+      tableCreateDialogState.dataTextarea.classList.add(
+        "table-create-data-drop-target",
+      );
+    },
+  );
+
+  tableCreateDialogState.dataTextarea.addEventListener(
+    "dragleave",
+    function () {
+      tableCreateDialogState.dataTextarea.classList.remove(
+        "table-create-data-drop-target",
+      );
+    },
+  );
+
+  tableCreateDialogState.dataTextarea.addEventListener(
+    "drop",
+    async function (ev) {
+      ev.preventDefault();
+      tableCreateDialogState.dataTextarea.classList.remove(
+        "table-create-data-drop-target",
+      );
+      var files = ev.dataTransfer && ev.dataTransfer.files;
+      if (!files || !files.length) {
+        return;
+      }
+      try {
+        tableCreateDialogState.dataTextarea.value = await readTextFile(
+          files[0],
+        );
+        tableCreateDialogState.dataTextarea.dispatchEvent(
+          new Event("input", { bubbles: true }),
+        );
+        clearTableCreateDialogError(tableCreateDialogState);
+      } catch (_error) {
+        showTableCreateDialogError(
+          tableCreateDialogState,
+          "Could not read that text file.",
+        );
+      }
+    },
+  );
+
+  tableCreateDialogState.dataTextarea.addEventListener("dragend", function () {
+    tableCreateDialogState.dataTextarea.classList.remove(
+      "table-create-data-drop-target",
+    );
+  });
+
+  tableCreateDialogState.dataTextarea.addEventListener("input", function () {
+    resetTableCreateDataPreview(tableCreateDialogState);
+    clearTableCreateDialogError(tableCreateDialogState);
+    updateTableCreateDialogButtons(tableCreateDialogState);
   });
 
   dialog.addEventListener("click", function (ev) {
@@ -4958,18 +5670,7 @@ function bulkInsertColumnMap(columns) {
 }
 
 function parseJsonBulkInsertRows(text, columns) {
-  var parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch (error) {
-    throw new Error("Invalid JSON: " + error.message);
-  }
-  if (!Array.isArray(parsed)) {
-    throw new Error("JSON must be an array of objects.");
-  }
-  if (!parsed.length) {
-    throw new Error("No rows found to preview.");
-  }
+  var parsed = parseJsonObjectRows(text);
 
   var columnMap = bulkInsertColumnMap(columns);
   return parsed.map(function (item, index) {

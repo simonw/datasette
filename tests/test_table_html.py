@@ -968,9 +968,7 @@ def test_facet_by_this_offered_for_first_column_of_a_view(tmp_path):
 
     import datasette as datasette_package
 
-    table_js = (
-        pathlib.Path(datasette_package.__file__).parent / "static" / "table.js"
-    )
+    table_js = pathlib.Path(datasette_package.__file__).parent / "static" / "table.js"
     harness = tmp_path / "harness.mjs"
     harness.write_text(_TABLE_JS_COLUMN_ACTIONS_HARNESS)
 

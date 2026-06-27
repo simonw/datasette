@@ -1,20 +1,17 @@
 from __future__ import annotations
 
-from asgi_csrf import Errors
 import asyncio
 import contextvars
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Sequence
 
 if TYPE_CHECKING:
     from datasette.permissions import Resource
     from datasette.tokens import TokenRestrictions
-import asgi_csrf
 import collections
 import dataclasses
 import datetime
 import functools
 import glob
-import hashlib
 import httpx
 import importlib.metadata
 import inspect
@@ -37,18 +34,44 @@ from jinja2 import (
     ChoiceLoader,
     Environment,
     FileSystemLoader,
+    pass_context,
     PrefixLoader,
 )
 from jinja2.environment import Template
 from jinja2.exceptions import TemplateNotFound
 
 from .events import Event
+from .column_types import SQLiteType
+from . import stored_queries, write_sql
 from .views import Context
-from .views.database import database_download, DatabaseView, TableCreateView, QueryView
+from .views.database import (
+    database_download,
+    DatabaseView,
+    QueryView,
+)
+from .views.table_create_alter import (
+    DatabaseForeignKeyTargetsView,
+    TableAlterView,
+    TableCreateView,
+    TableForeignKeySuggestionsView,
+)
+from .views.execute_write import ExecuteWriteAnalyzeView, ExecuteWriteView
+from .views.stored_queries import (
+    QueryCreateAnalyzeView,
+    QueryDeleteView,
+    QueryDefinitionView,
+    QueryEditView,
+    GlobalQueryListView,
+    QueryListView,
+    QueryParametersView,
+    QueryStoreView,
+    QueryUpdateView,
+)
 from .views.index import IndexView
 from .views.special import (
     JsonDataView,
     PatternPortfolioView,
+    AutocompleteDebugView,
     AuthTokenView,
     ApiExplorerView,
     CreateTokenView,
@@ -59,15 +82,18 @@ from .views.special import (
     AllowedResourcesView,
     PermissionRulesView,
     PermissionCheckView,
-    TablesView,
+    JumpView,
     InstanceSchemaView,
     DatabaseSchemaView,
     TableSchemaView,
 )
 from .views.table import (
+    TableAutocompleteView,
     TableInsertView,
     TableUpsertView,
+    TableSetColumnTypeView,
     TableDropView,
+    TableFragmentView,
     table_view,
 )
 from .views.row import RowView, RowDeleteView, RowUpdateView
@@ -96,6 +122,7 @@ from .utils import (
     parse_metadata,
     resolve_env_secrets,
     resolve_routes,
+    sha256_file,
     tilde_decode,
     tilde_encode,
     to_css_class,
@@ -118,6 +145,7 @@ from .utils.asgi import (
     asgi_send_file,
     asgi_send_redirect,
 )
+from .csrf import CrossOriginProtectionMiddleware
 from .utils.internal_db import init_internal_db, populate_schema_tables
 from .utils.sqlite import (
     sqlite3,
@@ -272,12 +300,21 @@ DEFAULT_NOT_SET = object()
 ResourcesSQL = collections.namedtuple("ResourcesSQL", ("sql", "params"))
 
 
+def _permission_cache_key(actor, action, parent, child):
+    # Key on the full serialized actor so actors differing in any field
+    # (e.g. token restrictions) never share cache entries
+    actor_key = (
+        json.dumps(actor, sort_keys=True, default=repr) if actor is not None else None
+    )
+    return (actor_key, action, parent, child)
+
+
 async def favicon(request, send):
     await asgi_send_file(
         send,
         str(FAVICON_PATH),
         content_type="image/png",
-        headers={"Cache-Control": "max-age=3600, immutable, public"},
+        headers={"Cache-Control": "max-age=3600, public"},
     )
 
 
@@ -292,6 +329,57 @@ def _to_string(value):
         return value
     else:
         return json.dumps(value, default=str)
+
+
+def _template_context_json_default(value):
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return {
+            field.name: getattr(value, field.name)
+            for field in dataclasses.fields(value)
+        }
+    return repr(value)
+
+
+@pass_context
+def _legacy_template_csrftoken(context):
+    request = context.get("request")
+    if request and "csrftoken" in request.scope:
+        return request.scope["csrftoken"]()
+    return ""
+
+
+def _resolve_static_asset_path(root_path, path):
+    root = Path(root_path).resolve()
+    full_path = (root / path).resolve()
+    try:
+        full_path.relative_to(root)
+    except ValueError:
+        raise ValueError("Static asset path cannot escape static root") from None
+    return full_path
+
+
+# Documentation for the variables Datasette.render_template() adds to the
+# context for every page. This is part of the documented template contract:
+# keys added in render_template() must be documented here - the contract
+# tests in tests/test_template_context.py enforce this, and the docs in
+# docs/template_context.rst are generated from it.
+TEMPLATE_BASE_CONTEXT = {
+    "request": "The current :ref:`Request object <internals_request>`, or None. Common properties include ``request.path``, ``request.args``, ``request.actor``, ``request.url_vars`` and ``request.host``.",
+    "crumb_items": 'Async function returning breadcrumb navigation items for the current page. Call it with ``request=request`` plus optional ``database=`` and ``table=`` arguments; it returns a list of ``{"href": url, "label": label}`` dictionaries.',
+    "urls": "Object with methods for constructing URLs within Datasette. Common methods include ``urls.instance()``, ``urls.database(database)``, ``urls.table(database, table)``, ``urls.query(database, query)``, ``urls.row(database, table, row_path)`` and ``urls.static(path)`` - see :ref:`internals_datasette_urls`.",
+    "actor": "The currently authenticated actor dictionary, or None. Actors usually include an ``id`` key and may include any other keys supplied by authentication plugins.",
+    "menu_links": "Async function returning links for the Datasette application menu, including links added by plugins. Each item is a link dictionary with ``href`` and ``label`` keys. See :ref:`plugin_hook_menu_links`; for page action menus that can also include JavaScript-backed buttons, see :ref:`plugin_actions`.",
+    "display_actor": "Function that accepts an actor dictionary and returns the display string used in the navigation menu.",
+    "show_logout": "True if the logout link should be shown in the navigation menu",
+    "zip": "Python's ``zip()`` builtin, made available to template logic",
+    "body_scripts": 'List of JavaScript snippets contributed by plugins using :ref:`plugin_hook_extra_body_script`. Each item is a dictionary with ``script`` containing JavaScript source and ``module`` indicating whether Datasette will wrap it in ``<script type="module">``; otherwise Datasette wraps it in a regular ``<script>`` block.',
+    "format_bytes": "Function that accepts a byte count integer and returns a human-readable string such as ``1.2 MB``.",
+    "show_messages": "Function returning any messages set for the current user, clearing them in the process. Returns a list of ``(message, type)`` pairs, where ``type`` is one of Datasette's ``INFO``, ``WARNING`` or ``ERROR`` constants.",
+    "extra_css_urls": "List of extra CSS stylesheets to include on the page. Each item is a dictionary with ``url`` and optional ``sri`` keys, from plugins and configuration.",
+    "extra_js_urls": "List of extra JavaScript URLs to include on the page. Each item is a dictionary with ``url`` plus optional ``sri`` and ``module`` keys, from plugins and configuration.",
+    "base_url": "The configured :ref:`setting_base_url` setting",
+    "datasette_version": "The version of Datasette that is running",
+}
 
 
 class Datasette:
@@ -325,6 +413,7 @@ class Datasette:
         default_deny=False,
     ):
         self._startup_invoked = False
+        self._closed = False
         assert config_dir is None or isinstance(
             config_dir, Path
         ), "config_dir= should be a pathlib.Path"
@@ -354,6 +443,7 @@ class Datasette:
         self.immutables = set(immutables or [])
         self.databases = collections.OrderedDict()
         self.actions = {}  # .invoke_startup() will populate this
+        self._column_types = {}  # .invoke_startup() will populate this
         try:
             self._refresh_schemas_lock = asyncio.Lock()
         except RuntimeError as rex:
@@ -378,12 +468,13 @@ class Datasette:
 
         self.internal_db_created = False
         if internal is None:
-            self._internal_database = Database(self, memory_name=secrets.token_hex())
+            self._internal_database = Database(self, is_temp_disk=True)
         else:
             self._internal_database = Database(self, path=internal, mode="rwc")
         self._internal_database.name = INTERNAL_DB_NAME
 
         self.cache_headers = cache_headers
+        self._static_asset_hashes = {}
         self.cors = cors
         config_files = []
         metadata_files = []
@@ -524,6 +615,8 @@ class Datasette:
         )
         environment.filters["escape_css_string"] = escape_css_string
         environment.filters["quote_plus"] = urllib.parse.quote_plus
+        environment.globals["csrftoken"] = _legacy_template_csrftoken
+        environment.globals["static"] = self.static
         self._jinja_env = environment
         environment.filters["escape_sqlite"] = escape_sqlite
         environment.filters["to_css_class"] = to_css_class
@@ -568,6 +661,9 @@ class Datasette:
             # TODO(alex) is metadata.json was loaded in, and --internal is not memory, then log
             # a warning to user that they should delete their metadata.json file
 
+    async def _save_queries_from_config(self):
+        await stored_queries.save_queries_from_config(self)
+
     def get_jinja_environment(self, request: Request = None) -> Environment:
         environment = self._jinja_env
         if request:
@@ -589,9 +685,12 @@ class Datasette:
                 return action
         return None
 
-    async def refresh_schemas(self):
+    async def refresh_schemas(self, *, force=False):
         # Throttle schema refreshes to at most once per second
-        if time.monotonic() - getattr(self, "_last_schema_refresh", 0) < 1.0:
+        if (
+            not force
+            and time.monotonic() - getattr(self, "_last_schema_refresh", 0) < 1.0
+        ):
             return
         self._last_schema_refresh = time.monotonic()
         if self._refresh_schemas_lock.locked():
@@ -611,15 +710,36 @@ class Datasette:
                 "select database_name, schema_version from catalog_databases"
             )
         }
-        # Delete stale entries for databases that are no longer attached
-        stale_databases = set(current_schema_versions.keys()) - set(
-            self.databases.keys()
+        catalog_table_names = (
+            "catalog_columns",
+            "catalog_foreign_keys",
+            "catalog_indexes",
+            "catalog_views",
+            "catalog_tables",
+            "catalog_databases",
         )
-        for stale_db_name in stale_databases:
-            await internal_db.execute_write(
-                "DELETE FROM catalog_databases WHERE database_name = ?",
-                [stale_db_name],
+        # Delete stale entries for databases that are no longer attached
+        catalog_database_names = set(current_schema_versions.keys())
+        for table in catalog_table_names[:-1]:
+            catalog_database_names.update(
+                row["database_name"]
+                for row in await internal_db.execute(
+                    "select distinct database_name from {}".format(table)
+                )
+                if row["database_name"] is not None
             )
+        stale_databases = catalog_database_names - set(self.databases.keys())
+        if stale_databases:
+
+            def delete_stale_database_catalog(conn):
+                for stale_db_name in stale_databases:
+                    for table in catalog_table_names:
+                        conn.execute(
+                            "DELETE FROM {} WHERE database_name = ?".format(table),
+                            [stale_db_name],
+                        )
+
+            await internal_db.execute_write_fn(delete_stale_database_catalog)
         for database_name, db in self.databases.items():
             schema_version = (await db.execute("PRAGMA schema_version")).first()[0]
             # Compare schema versions to see if we should skip it
@@ -692,10 +812,24 @@ class Datasette:
                         action_abbrs[action.abbr] = action
                     self.actions[action.name] = action
 
+        # Register column types (classes, not instances)
+        self._column_types = {}
+        for hook in pm.hook.register_column_types(datasette=self):
+            if hook:
+                for ct_cls in hook:
+                    if ct_cls.name in self._column_types:
+                        raise StartupError(f"Duplicate column type name: {ct_cls.name}")
+                    self._column_types[ct_cls.name] = ct_cls
+
         for hook in pm.hook.prepare_jinja2_environment(
             env=self._jinja_env, datasette=self
         ):
             await await_me_maybe(hook)
+        # Ensure internal tables and metadata are populated before startup hooks
+        await self._refresh_schemas()
+        await self._save_queries_from_config()
+        # Load column_types from config into internal DB
+        await self._apply_column_types_config()
         for hook in pm.hook.startup(datasette=self):
             await await_me_maybe(hook)
         self._startup_invoked = True
@@ -818,6 +952,33 @@ class Datasette:
         new_databases = self.databases.copy()
         new_databases.pop(name)
         self.databases = new_databases
+
+    def close(self):
+        """Release all resources held by this Datasette instance.
+
+        Closes every attached Database (including the internal database),
+        shuts down the executor, and unlinks the temporary file used for
+        the internal database if one was created. Idempotent and one-way.
+        """
+        if self._closed:
+            return
+        self._closed = True
+        first_exception = None
+        dbs = list(self.databases.values()) + [self._internal_database]
+        for db in dbs:
+            try:
+                db.close()
+            except Exception as e:
+                if first_exception is None:
+                    first_exception = e
+        if self.executor is not None:
+            try:
+                self.executor.shutdown(wait=True, cancel_futures=True)
+            except Exception as e:
+                if first_exception is None:
+                    first_exception = e
+        if first_exception is not None:
+            raise first_exception
 
     def setting(self, key):
         return self._settings.get(key, None)
@@ -943,6 +1104,349 @@ class Datasette:
             [database_name, resource_name, column_name, key, value],
         )
 
+    @staticmethod
+    def _query_row_to_stored_query(row) -> stored_queries.StoredQuery | None:
+        return stored_queries.query_row_to_stored_query(row)
+
+    @staticmethod
+    def _query_options_json(options):
+        return stored_queries.query_options_json(options)
+
+    async def add_query(
+        self,
+        database: str,
+        name: str,
+        sql: str,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        description_html: str | None = None,
+        hide_sql: bool = False,
+        fragment: str | None = None,
+        parameters: Iterable[str] | None = None,
+        is_write: bool = False,
+        is_private: bool = False,
+        is_trusted: bool = False,
+        source: str = "plugin",
+        owner_id: str | None = None,
+        on_success_message: str | None = None,
+        on_success_message_sql: str | None = None,
+        on_success_redirect: str | None = None,
+        on_error_message: str | None = None,
+        on_error_redirect: str | None = None,
+        replace: bool = True,
+    ) -> None:
+        return await stored_queries.add_query(
+            self,
+            database,
+            name,
+            sql,
+            title=title,
+            description=description,
+            description_html=description_html,
+            hide_sql=hide_sql,
+            fragment=fragment,
+            parameters=parameters,
+            is_write=is_write,
+            is_private=is_private,
+            is_trusted=is_trusted,
+            source=source,
+            owner_id=owner_id,
+            on_success_message=on_success_message,
+            on_success_message_sql=on_success_message_sql,
+            on_success_redirect=on_success_redirect,
+            on_error_message=on_error_message,
+            on_error_redirect=on_error_redirect,
+            replace=replace,
+        )
+
+    async def update_query(
+        self,
+        database: str,
+        name: str,
+        *,
+        sql=stored_queries.UNCHANGED,
+        title=stored_queries.UNCHANGED,
+        description=stored_queries.UNCHANGED,
+        description_html=stored_queries.UNCHANGED,
+        hide_sql=stored_queries.UNCHANGED,
+        fragment=stored_queries.UNCHANGED,
+        parameters=stored_queries.UNCHANGED,
+        is_write=stored_queries.UNCHANGED,
+        is_private=stored_queries.UNCHANGED,
+        is_trusted=stored_queries.UNCHANGED,
+        source=stored_queries.UNCHANGED,
+        owner_id=stored_queries.UNCHANGED,
+        on_success_message=stored_queries.UNCHANGED,
+        on_success_message_sql=stored_queries.UNCHANGED,
+        on_success_redirect=stored_queries.UNCHANGED,
+        on_error_message=stored_queries.UNCHANGED,
+        on_error_redirect=stored_queries.UNCHANGED,
+    ) -> None:
+        return await stored_queries.update_query(
+            self,
+            database,
+            name,
+            sql=sql,
+            title=title,
+            description=description,
+            description_html=description_html,
+            hide_sql=hide_sql,
+            fragment=fragment,
+            parameters=parameters,
+            is_write=is_write,
+            is_private=is_private,
+            is_trusted=is_trusted,
+            source=source,
+            owner_id=owner_id,
+            on_success_message=on_success_message,
+            on_success_message_sql=on_success_message_sql,
+            on_success_redirect=on_success_redirect,
+            on_error_message=on_error_message,
+            on_error_redirect=on_error_redirect,
+        )
+
+    async def remove_query(
+        self, database: str, name: str, source: str | None = None
+    ) -> None:
+        return await stored_queries.remove_query(self, database, name, source=source)
+
+    async def get_query(
+        self, database: str, name: str
+    ) -> stored_queries.StoredQuery | None:
+        return await stored_queries.get_query(self, database, name)
+
+    async def count_queries(
+        self,
+        database: str | None = None,
+        *,
+        actor: dict[str, Any] | None = None,
+        q: str | None = None,
+        is_write: bool | None = None,
+        is_private: bool | None = None,
+        is_trusted: bool | None = None,
+        source: str | None = None,
+        owner_id: str | None = None,
+    ) -> int:
+        return await stored_queries.count_queries(
+            self,
+            database,
+            actor=actor,
+            q=q,
+            is_write=is_write,
+            is_private=is_private,
+            is_trusted=is_trusted,
+            source=source,
+            owner_id=owner_id,
+        )
+
+    async def list_queries(
+        self,
+        database: str | None = None,
+        *,
+        actor: dict[str, Any] | None = None,
+        limit: int = 50,
+        cursor: str | None = None,
+        q: str | None = None,
+        is_write: bool | None = None,
+        is_private: bool | None = None,
+        is_trusted: bool | None = None,
+        source: str | None = None,
+        owner_id: str | None = None,
+        include_private: bool = False,
+    ) -> stored_queries.StoredQueryPage:
+        return await stored_queries.list_queries(
+            self,
+            database,
+            actor=actor,
+            limit=limit,
+            cursor=cursor,
+            q=q,
+            is_write=is_write,
+            is_private=is_private,
+            is_trusted=is_trusted,
+            source=source,
+            owner_id=owner_id,
+            include_private=include_private,
+        )
+
+    async def ensure_query_write_permissions(
+        self, database, sql, *, actor=None, params=None, analysis=None
+    ):
+        # Raise Forbidden or QueryWriteRejected if SQL should not run
+        return await write_sql.ensure_query_write_permissions(
+            self, database, sql, actor=actor, params=params, analysis=analysis
+        )
+
+    # Column types API
+
+    async def _get_resource_column_details(self, database: str, resource: str):
+        db = self.databases.get(database)
+        if db is None:
+            return {}
+        try:
+            return {
+                column.name: column
+                for column in await db.table_column_details(resource)
+            }
+        except sqlite3.OperationalError:
+            return {}
+
+    @staticmethod
+    def _column_type_is_applicable(ct_cls, column_detail) -> bool:
+        sqlite_types = getattr(ct_cls, "sqlite_types", None)
+        if sqlite_types is None:
+            return True
+        if column_detail is None:
+            return False
+        actual_sqlite_type = SQLiteType.from_declared_type(column_detail.type)
+        return actual_sqlite_type in sqlite_types
+
+    async def _validate_column_type_assignment(
+        self, database: str, resource: str, column: str, ct_cls
+    ) -> None:
+        sqlite_types = getattr(ct_cls, "sqlite_types", None)
+        if sqlite_types is None:
+            return
+
+        column_detail = (
+            await self._get_resource_column_details(database, resource)
+        ).get(column)
+        if column_detail is None:
+            return
+
+        actual_sqlite_type = SQLiteType.from_declared_type(column_detail.type)
+        if actual_sqlite_type in sqlite_types:
+            return
+
+        allowed = ", ".join(sqlite_type.value for sqlite_type in sqlite_types)
+        actual = (
+            actual_sqlite_type.value
+            if actual_sqlite_type is not None
+            else "unrecognized {!r}".format(column_detail.type)
+        )
+        raise ValueError(
+            "Column type {!r} is only applicable to SQLite types {} but {}.{}.{} "
+            "has SQLite type {}".format(
+                ct_cls.name,
+                allowed,
+                database,
+                resource,
+                column,
+                actual,
+            )
+        )
+
+    async def _apply_column_types_config(self):
+        """Load column_types from datasette.json config into the internal DB."""
+        import logging
+
+        for db_name, db_conf in (self.config or {}).get("databases", {}).items():
+            for table_name, table_conf in db_conf.get("tables", {}).items():
+                for col_name, ct in table_conf.get("column_types", {}).items():
+                    if isinstance(ct, str):
+                        col_type, config = ct, None
+                    else:
+                        col_type = ct["type"]
+                        config = ct.get("config")
+                    if col_type not in self._column_types:
+                        logging.warning(
+                            "column_types config references unknown type %r "
+                            "for %s.%s.%s",
+                            col_type,
+                            db_name,
+                            table_name,
+                            col_name,
+                        )
+                    try:
+                        await self.set_column_type(
+                            db_name, table_name, col_name, col_type, config
+                        )
+                    except ValueError as ex:
+                        logging.warning(str(ex))
+
+    async def get_column_type(self, database: str, resource: str, column: str):
+        """
+        Return a ColumnType instance (with config baked in) for a specific
+        column, or None if no column type is assigned.
+        """
+        row = await self.get_internal_database().execute(
+            "SELECT column_type, config FROM column_types "
+            "WHERE database_name = ? AND resource_name = ? AND column_name = ?",
+            [database, resource, column],
+        )
+        rows = row.rows
+        if not rows:
+            return None
+        ct_name, config = rows[0]
+        ct_cls = self._column_types.get(ct_name)
+        if ct_cls is None:
+            return None
+        column_detail = (
+            await self._get_resource_column_details(database, resource)
+        ).get(column)
+        if not self._column_type_is_applicable(ct_cls, column_detail):
+            return None
+        return ct_cls(config=json.loads(config) if config else None)
+
+    async def get_column_types(self, database: str, resource: str) -> dict:
+        """
+        Return {column_name: ColumnType instance (with config)}
+        for all columns with assigned types on the given resource.
+        """
+        rows = await self.get_internal_database().execute(
+            "SELECT column_name, column_type, config FROM column_types "
+            "WHERE database_name = ? AND resource_name = ?",
+            [database, resource],
+        )
+        column_details = await self._get_resource_column_details(database, resource)
+        result = {}
+        for row in rows.rows:
+            col_name, ct_name, config = row
+            ct_cls = self._column_types.get(ct_name)
+            if ct_cls is not None and self._column_type_is_applicable(
+                ct_cls, column_details.get(col_name)
+            ):
+                result[col_name] = ct_cls(config=json.loads(config) if config else None)
+        return result
+
+    async def set_column_type(
+        self,
+        database: str,
+        resource: str,
+        column: str,
+        column_type: str,
+        config: dict = None,
+    ) -> None:
+        """Assign a column type. Overwrites any existing assignment."""
+        ct_cls = self._column_types.get(column_type)
+        if ct_cls is not None:
+            await self._validate_column_type_assignment(
+                database, resource, column, ct_cls
+            )
+        await self.get_internal_database().execute_write(
+            """INSERT OR REPLACE INTO column_types
+               (database_name, resource_name, column_name, column_type, config)
+               VALUES (?, ?, ?, ?, ?)""",
+            [
+                database,
+                resource,
+                column,
+                column_type,
+                json.dumps(config) if config else None,
+            ],
+        )
+
+    async def remove_column_type(
+        self, database: str, resource: str, column: str
+    ) -> None:
+        """Remove a column type assignment."""
+        await self.get_internal_database().execute_write(
+            "DELETE FROM column_types "
+            "WHERE database_name = ? AND resource_name = ? AND column_name = ?",
+            [database, resource, column],
+        )
+
     def get_internal_database(self):
         return self._internal_database
 
@@ -986,36 +1490,55 @@ class Datasette:
 
         return db_plugin_config
 
-    def app_css_hash(self):
-        if not hasattr(self, "_app_css_hash"):
-            with open(os.path.join(str(app_root), "datasette/static/app.css")) as fp:
-                self._app_css_hash = hashlib.sha1(fp.read().encode("utf8")).hexdigest()[
-                    :6
-                ]
-        return self._app_css_hash
+    def _static_asset_path(self, path):
+        return _resolve_static_asset_path(app_root / "datasette" / "static", path)
 
-    async def get_canned_queries(self, database_name, actor):
-        queries = {}
-        for more_queries in pm.hook.canned_queries(
-            datasette=self,
-            database=database_name,
-            actor=actor,
-        ):
-            more_queries = await await_me_maybe(more_queries)
-            queries.update(more_queries or {})
-        # Fix any {"name": "select ..."} queries to be {"name": {"sql": "select ..."}}
-        for key in queries:
-            if not isinstance(queries[key], dict):
-                queries[key] = {"sql": queries[key]}
-            # Also make sure "name" is available:
-            queries[key]["name"] = key
-        return queries
+    def _static_plugin_asset_path(self, plugin_name, path):
+        for plugin in get_plugins():
+            if not plugin["static_path"]:
+                continue
+            possible_names = {plugin["name"], plugin["name"].replace("-", "_")}
+            if plugin_name in possible_names:
+                return _resolve_static_asset_path(plugin["static_path"], path)
+        raise FileNotFoundError(
+            "No static assets found for plugin {}".format(plugin_name)
+        )
 
-    async def get_canned_query(self, database_name, query_name, actor):
-        queries = await self.get_canned_queries(database_name, actor)
-        query = queries.get(query_name)
-        if query:
-            return query
+    def _static_mounted_asset(self, mount_name, path):
+        mount_name = mount_name.strip("/")
+        for mount, dirname in self.static_mounts:
+            if mount.strip("/") == mount_name:
+                return (
+                    _resolve_static_asset_path(dirname, path),
+                    self.urls.path("/{}/{}".format(mount_name, path.lstrip("/"))),
+                )
+        raise FileNotFoundError("No static mount found for {}".format(mount_name))
+
+    def _static_asset_hash(self, filepath):
+        filepath = Path(filepath)
+        if self.cache_headers:
+            cached = self._static_asset_hashes.get(filepath)
+            if cached:
+                return cached
+        digest = sha256_file(filepath)[:12]
+        if self.cache_headers:
+            self._static_asset_hashes[filepath] = digest
+        return digest
+
+    def static(self, path, plugin=None, mount=None):
+        if plugin and mount:
+            raise ValueError("Use either plugin= or mount=, not both")
+        if plugin:
+            filepath = self._static_plugin_asset_path(plugin, path)
+            url = self.urls.static_plugins(plugin, path)
+        elif mount:
+            filepath, url = self._static_mounted_asset(mount, path)
+        else:
+            filepath = self._static_asset_path(path)
+            url = self.urls.static(path)
+        hash_value = self._static_asset_hash(filepath)
+        separator = "&" if "?" in url else "?"
+        return url + separator + urllib.parse.urlencode({"_hash": hash_value})
 
     def _prepare_connection(self, conn, database):
         conn.row_factory = sqlite3.Row
@@ -1400,46 +1923,124 @@ class Datasette:
             # For global actions, resource can be omitted:
             can_debug = await datasette.allowed(action="permissions-debug", actor=actor)
         """
-        from datasette.utils.actions_sql import check_permission_for_resource
+        results = await self.allowed_many(
+            actions=[action], resource=resource, actor=actor
+        )
+        return results[action]
 
-        # For global actions, resource remains None
+    async def allowed_many(
+        self,
+        *,
+        actions: Sequence[str],
+        resource: "Resource" = None,
+        actor: dict | None = None,
+    ) -> dict[str, bool]:
+        """
+        Check several actions against one resource for one actor.
 
-        # Check if this action has also_requires - if so, check that action first
-        action_obj = self.actions.get(action)
-        if action_obj and action_obj.also_requires:
-            # Must have the required action first
-            if not await self.allowed(
-                action=action_obj.also_requires,
-                resource=resource,
+        Resolves every action (plus any also_requires dependencies) with a
+        single internal database query, instead of one or two queries per
+        action. Results are stored in the request-scoped permission cache,
+        so subsequent datasette.allowed() calls for the same checks within
+        the same request are served from the cache.
+
+        Example:
+            from datasette.resources import TableResource
+            results = await datasette.allowed_many(
+                actions=["edit-schema", "drop-table", "insert-row"],
+                resource=TableResource(database="data", table="exercise"),
                 actor=actor,
-            ):
-                return False
+            )
+            # {"edit-schema": True, "drop-table": True, "insert-row": False}
+        """
+        from datasette.utils.actions_sql import check_permissions_for_actions
+        from datasette.permissions import (
+            _permission_check_cache,
+            _skip_permission_checks,
+        )
 
         # For global actions, resource is None
         parent = resource.parent if resource else None
         child = resource.child if resource else None
 
-        result = await check_permission_for_resource(
-            datasette=self,
-            actor=actor,
-            action=action,
-            parent=parent,
-            child=child,
-        )
+        # Expand also_requires dependencies (transitively) so that each
+        # dependency is resolved within the same batch
+        expanded = []
 
-        # Log the permission check for debugging
-        self._permission_checks.append(
-            PermissionCheck(
-                when=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        def add_action(name):
+            if name in expanded:
+                return
+            action_obj = self.actions.get(name)
+            if action_obj is None:
+                raise ValueError(f"Unknown action: {name}")
+            expanded.append(name)
+            if action_obj.also_requires:
+                add_action(action_obj.also_requires)
+
+        requested = list(dict.fromkeys(actions))
+        for name in requested:
+            add_action(name)
+
+        # Consult the request-scoped cache, unless permission checks are
+        # being skipped (skip-mode verdicts must never be cached)
+        skip = _skip_permission_checks.get()
+        cache = None if skip else _permission_check_cache.get()
+
+        final = {}
+        to_check = []
+        for name in expanded:
+            if cache is not None:
+                key = _permission_cache_key(actor, name, parent, child)
+                if key in cache:
+                    final[name] = cache[key]
+                    continue
+            to_check.append(name)
+
+        raw = {}
+        if to_check:
+            raw = await check_permissions_for_actions(
+                datasette=self,
                 actor=actor,
-                action=action,
+                actions=to_check,
                 parent=parent,
                 child=child,
-                result=result,
             )
-        )
 
-        return result
+        def resolve(name):
+            # final verdict = own rules AND verdict of also_requires chain
+            if name in final:
+                return final[name]
+            result = raw[name]
+            action_obj = self.actions.get(name)
+            if result and action_obj.also_requires:
+                result = resolve(action_obj.also_requires)
+            final[name] = result
+            return result
+
+        for name in expanded:
+            resolve(name)
+
+        # Cache the freshly computed checks
+        if cache is not None:
+            for name in to_check:
+                cache[_permission_cache_key(actor, name, parent, child)] = final[name]
+
+        # Log every check (including cache hits) for the debug page,
+        # dependencies before the actions that required them
+        when = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        for name in reversed(expanded):
+            self._permission_checks.append(
+                PermissionCheck(
+                    when=when,
+                    actor=actor,
+                    action=name,
+                    parent=parent,
+                    child=child,
+                    result=final[name],
+                )
+            )
+
+        return {name: final[name] for name in requested}
 
     async def ensure_permission(
         self,
@@ -1512,6 +2113,11 @@ class Datasette:
 
         other_table = fk["other_table"]
         other_column = fk["other_column"]
+        if other_column is None:
+            other_pks = await db.primary_keys(other_table)
+            if len(other_pks) != 1:
+                return {}
+            other_column = other_pks[0]
         visible, _ = await self.check_visibility(
             actor,
             action="view-table",
@@ -1635,6 +2241,7 @@ class Datasette:
                     break
                 except importlib.metadata.PackageNotFoundError:
                     pass
+        conn.close()
         return info
 
     def _plugins(self, request=None, all=False):
@@ -1744,7 +2351,11 @@ class Datasette:
                 templates = [templates]
             template = self.get_jinja_environment(request).select_template(templates)
         if dataclasses.is_dataclass(context):
-            context = dataclasses.asdict(context)
+            # Shallow conversion - asdict() would deep-copy values, which
+            # is wasteful and fails on values like sqlite3.Row
+            context = {
+                f.name: getattr(context, f.name) for f in dataclasses.fields(context)
+            }
         body_scripts = []
         # pylint: disable=no-member
         for extra_script in pm.hook.extra_body_script(
@@ -1794,6 +2405,8 @@ class Datasette:
                     links.extend(extra_links)
             return links
 
+        # Keys added here must be documented in TEMPLATE_BASE_CONTEXT -
+        # the contract tests fail otherwise
         template_context = {
             **context,
             **{
@@ -1806,7 +2419,6 @@ class Datasette:
                 "show_logout": request is not None
                 and "ds_actor" in request.cookies
                 and request.actor,
-                "app_css_hash": self.app_css_hash(),
                 "zip": zip,
                 "body_scripts": body_scripts,
                 "format_bytes": format_bytes,
@@ -1818,14 +2430,19 @@ class Datasette:
                     "extra_js_urls", template, context, request, view_name
                 ),
                 "base_url": self.setting("base_url"),
-                "csrftoken": request.scope["csrftoken"] if request else lambda: "",
                 "datasette_version": __version__,
             },
             **extra_template_vars,
         }
         if request and request.args.get("_context") and self.setting("template_debug"):
             return "<pre>{}</pre>".format(
-                escape(json.dumps(template_context, default=repr, indent=4))
+                escape(
+                    json.dumps(
+                        template_context,
+                        default=_template_context_json_default,
+                        indent=4,
+                    )
+                )
             )
 
         return await template.render_async(template_context)
@@ -1900,7 +2517,6 @@ class Datasette:
         add_route(IndexView.as_view(self), r"/(\.(?P<format>jsono?))?$")
         add_route(IndexView.as_view(self), r"/-/(\.(?P<format>jsono?))?$")
         add_route(permanent_redirect("/-/"), r"/-$")
-        # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
         add_route(favicon, "/favicon.ico")
 
         add_route(
@@ -1984,8 +2600,12 @@ class Datasette:
             r"/-/api$",
         )
         add_route(
-            TablesView.as_view(self),
-            r"/-/tables(\.(?P<format>json))?$",
+            JumpView.as_view(self),
+            r"/-/jump(\.(?P<format>json))?$",
+        )
+        add_route(
+            GlobalQueryListView.as_view(self),
+            r"/-/queries(\.(?P<format>json))?$",
         )
         add_route(
             InstanceSchemaView.as_view(self),
@@ -2024,6 +2644,10 @@ class Datasette:
             r"/-/patterns$",
         )
         add_route(
+            AutocompleteDebugView.as_view(self),
+            r"/-/debug/autocomplete$",
+        )
+        add_route(
             wrap_view(database_download, self),
             r"/(?P<database>[^\/\.]+)\.db$",
         )
@@ -2033,12 +2657,56 @@ class Datasette:
         )
         add_route(TableCreateView.as_view(self), r"/(?P<database>[^\/\.]+)/-/create$")
         add_route(
+            DatabaseForeignKeyTargetsView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/foreign-key-targets$",
+        )
+        add_route(
+            QueryListView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/queries(\.(?P<format>json))?$",
+        )
+        add_route(
+            QueryCreateAnalyzeView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/queries/analyze$",
+        )
+        add_route(
+            QueryStoreView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/queries/store$",
+        )
+        add_route(
+            ExecuteWriteAnalyzeView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/execute-write/analyze$",
+        )
+        add_route(
+            ExecuteWriteView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/execute-write$",
+        )
+        add_route(
             DatabaseSchemaView.as_view(self),
             r"/(?P<database>[^\/\.]+)/-/schema(\.(?P<format>json|md))?$",
         )
         add_route(
+            QueryParametersView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/query/parameters$",
+        )
+        add_route(
             wrap_view(QueryView, self),
             r"/(?P<database>[^\/\.]+)/-/query(\.(?P<format>\w+))?$",
+        )
+        add_route(
+            QueryDefinitionView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<query>[^\/\.]+)/-/definition$",
+        )
+        add_route(
+            QueryEditView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<query>[^\/\.]+)/-/edit$",
+        )
+        add_route(
+            QueryUpdateView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<query>[^\/\.]+)/-/update$",
+        )
+        add_route(
+            QueryDeleteView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<query>[^\/\.]+)/-/delete$",
         )
         add_route(
             wrap_view(table_view, self),
@@ -2055,6 +2723,26 @@ class Datasette:
         add_route(
             TableUpsertView.as_view(self),
             r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/upsert$",
+        )
+        add_route(
+            TableAlterView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/alter$",
+        )
+        add_route(
+            TableForeignKeySuggestionsView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/foreign-key-suggestions$",
+        )
+        add_route(
+            TableSetColumnTypeView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/set-column-type$",
+        )
+        add_route(
+            TableFragmentView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/fragment$",
+        )
+        add_route(
+            TableAutocompleteView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/autocomplete$",
         )
         add_route(
             TableDropView.as_view(self),
@@ -2117,29 +2805,13 @@ class Datasette:
                 if not database.is_mutable:
                     await database.table_counts(limit=60 * 60 * 1000)
 
-        async def custom_csrf_error(scope, send, message_id):
-            await asgi_send(
-                send,
-                content=await self.render_template(
-                    "csrf_error.html",
-                    {"message_id": message_id, "message_name": Errors(message_id).name},
-                ),
-                status=403,
-                content_type="text/html; charset=utf-8",
-            )
+        async def _close_on_shutdown():
+            self.close()
 
-        asgi = asgi_csrf.asgi_csrf(
-            DatasetteRouter(self, routes),
-            signing_secret=self._secret,
-            cookie_name="ds_csrftoken",
-            skip_if_scope=lambda scope: any(
-                pm.hook.skip_csrf(datasette=self, scope=scope)
-            ),
-            send_csrf_failed=custom_csrf_error,
-        )
+        asgi = CrossOriginProtectionMiddleware(DatasetteRouter(self, routes), self)
         if self.setting("trace_debug"):
             asgi = AsgiTracer(asgi)
-        asgi = AsgiLifespan(asgi)
+        asgi = AsgiLifespan(asgi, on_shutdown=[_close_on_shutdown])
         asgi = AsgiRunOnFirstRequest(asgi, on_startup=[setup_db, self.invoke_startup])
         for wrapper in pm.hook.asgi_wrapper(datasette=self):
             asgi = wrapper(asgi)
@@ -2158,7 +2830,16 @@ class DatasetteRouter:
         if raw_path:
             path = raw_path.decode("ascii")
         path = path.partition("?")[0]
-        return await self.route_path(scope, receive, send, path)
+        # Give each request a fresh permission check cache, so repeated
+        # datasette.allowed() checks within the request are memoized but
+        # results never persist beyond it
+        from datasette.permissions import _permission_check_cache
+
+        cache_token = _permission_check_cache.set({})
+        try:
+            return await self.route_path(scope, receive, send, path)
+        finally:
+            _permission_check_cache.reset(cache_token)
 
     async def route_path(self, scope, receive, send, path):
         # Strip off base_url if present before routing
@@ -2421,19 +3102,22 @@ def wrap_view_function(view_fn, datasette):
 
 
 def permanent_redirect(path, forward_query_string=False, forward_rest=False):
-    return wrap_view(
-        lambda request, send: Response.redirect(
+    def view(request, send):
+        redirect_path = (
             path
             + (request.url_vars["rest"] if forward_rest else "")
             + (
                 ("?" + request.query_string)
                 if forward_query_string and request.query_string
                 else ""
-            ),
-            status=301,
-        ),
-        datasette=None,
-    )
+            )
+        )
+        route_path = request.scope.get("route_path")
+        if route_path and request.path.endswith(route_path):
+            redirect_path = request.path[: -len(route_path)] + redirect_path
+        return Response.redirect(redirect_path, status=301)
+
+    return wrap_view(view, datasette=None)
 
 
 _curly_re = re.compile(r"({.*?})")
@@ -2481,9 +3165,21 @@ class DatasetteClient:
             path = f"http://localhost{path}"
         return path
 
+    def _apply_actor(self, kwargs):
+        """If ``actor=`` was supplied, convert it into a signed ds_actor cookie."""
+        actor = kwargs.pop("actor", None)
+        if actor is None:
+            return
+        cookies = dict(kwargs.get("cookies") or {})
+        if "ds_actor" in cookies:
+            raise TypeError("Cannot pass both actor= and a ds_actor cookie")
+        cookies["ds_actor"] = self.actor_cookie(actor)
+        kwargs["cookies"] = cookies
+
     async def _request(self, method, path, skip_permission_checks=False, **kwargs):
         from datasette.permissions import SkipPermissions
 
+        self._apply_actor(kwargs)
         with _DatasetteClientContext():
             if skip_permission_checks:
                 with SkipPermissions():
@@ -2549,6 +3245,7 @@ class DatasetteClient:
         from datasette.permissions import SkipPermissions
 
         avoid_path_rewrites = kwargs.pop("avoid_path_rewrites", None)
+        self._apply_actor(kwargs)
         with _DatasetteClientContext():
             if skip_permission_checks:
                 with SkipPermissions():

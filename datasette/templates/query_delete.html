@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Delete query: {{ query.name }}{% endblock %}
+
+{% block extra_head %}
+{{- super() -}}
+<style>
+.query-delete-page {
+    max-width: 48rem;
+}
+.query-delete-summary {
+    background-color: #f7f7f9;
+    border: 1px solid #d7dde5;
+    border-radius: 4px;
+    margin: 0.75rem 0 1.25rem;
+    padding: 0.75rem 1rem;
+}
+.query-delete-summary dt {
+    color: #4f5b6d;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+.query-delete-summary dd {
+    margin: 0 0 0.6rem;
+}
+.query-delete-summary dd pre {
+    margin: 0.2rem 0 0;
+    white-space: pre-wrap;
+}
+.query-delete-actions {
+    align-items: center;
+    display: flex;
+    gap: 1rem;
+}
+.query-delete-form input[type=submit] {
+    background: linear-gradient(180deg, #d73a31 0%, #b42318 100%);
+    border-color: #b42318;
+    font-weight: 700;
+}
+.query-delete-form input[type=submit]:hover,
+.query-delete-form input[type=submit]:focus {
+    background: linear-gradient(180deg, #c3342b 0%, #971c14 100%);
+    border-color: #971c14;
+}
+</style>
+{% endblock %}
+
+{% block body_class %}query-delete db-{{ database|to_css_class }}{% endblock %}
+
+{% block crumbs %}
+{{ crumbs.nav(request=request, database=database) }}
+{% endblock %}
+
+{% block content %}
+
+<div class="query-delete-page">
+
+<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color }}">Delete query: {{ query.title or query.name }}</h1>
+
+<p>Are you sure you want to delete this saved query? This cannot be undone.</p>
+
+<dl class="query-delete-summary">
+    <dt>URL</dt>
+    <dd><a href="{{ query_url }}">{{ query_url }}</a></dd>
+    {% if query.description %}
+        <dt>Description</dt>
+        <dd>{{ query.description }}</dd>
+    {% endif %}
+    <dt>SQL</dt>
+    <dd><pre>{{ query.sql }}</pre></dd>
+</dl>
+
+<form class="core query-delete-form" action="{{ query_url }}/-/delete" method="post">
+    <p class="query-delete-actions">
+        <input type="submit" value="Delete query">
+        <a href="{{ query_url }}">Cancel</a>
+    </p>
+</form>
+
+</div>
+
+{% endblock %}

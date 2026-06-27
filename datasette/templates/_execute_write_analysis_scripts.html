@@ -1,0 +1,111 @@
+<script>
+window.datasetteSqlAnalysis = (() => {
+  if (
+    window.datasetteSqlAnalysis &&
+    window.datasetteSqlAnalysis.renderAnalysis
+  ) {
+    return window.datasetteSqlAnalysis;
+  }
+
+  function appendCodeCell(row, value, emptyText) {
+    const cell = document.createElement("td");
+    if (value) {
+      const code = document.createElement("code");
+      code.textContent = value;
+      cell.appendChild(code);
+    } else if (emptyText) {
+      appendNotApplicable(cell);
+    }
+    row.appendChild(cell);
+  }
+
+  function appendNotApplicable(cell) {
+    const notApplicable = document.createElement("span");
+    notApplicable.className = "execute-write-analysis-na";
+    notApplicable.textContent = "n/a";
+    cell.appendChild(notApplicable);
+  }
+
+  function renderAnalysis(section, data) {
+    if (!section) {
+      return;
+    }
+    section.replaceChildren();
+    if (data.has_sql === false) {
+      section.hidden = true;
+      return;
+    }
+    section.hidden = false;
+
+    const heading = document.createElement("h2");
+    heading.textContent = "Query operations";
+    section.appendChild(heading);
+
+    if (data.analysis_error) {
+      const error = document.createElement("p");
+      error.className = "message-error";
+      error.textContent = data.analysis_error;
+      section.appendChild(error);
+      return;
+    }
+
+    const rows = data.analysis_rows || [];
+    if (!rows.length) {
+      const empty = document.createElement("p");
+      empty.textContent =
+        "Analysis will show each affected table and required permission.";
+      section.appendChild(empty);
+      return;
+    }
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "table-wrapper";
+    const table = document.createElement("table");
+    table.className = "execute-write-analysis";
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    [
+      "Operation",
+      "Database",
+      "Table",
+      "Required permission",
+      "Allowed",
+    ].forEach((label) => {
+      const th = document.createElement("th");
+      th.scope = "col";
+      th.textContent = label;
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    rows.forEach((analysisRow) => {
+      const row = document.createElement("tr");
+      appendCodeCell(row, analysisRow.operation);
+      appendCodeCell(row, analysisRow.database);
+      appendCodeCell(row, analysisRow.table);
+      appendCodeCell(row, analysisRow.required_permission, "n/a");
+
+      const allowedCell = document.createElement("td");
+      if (analysisRow.allowed !== null && analysisRow.allowed !== undefined) {
+        const allowed = document.createElement("span");
+        allowed.className = analysisRow.allowed
+          ? "execute-write-analysis-allowed"
+          : "execute-write-analysis-denied";
+        allowed.textContent = analysisRow.allowed ? "yes" : "no";
+        allowedCell.appendChild(allowed);
+      } else {
+        appendNotApplicable(allowedCell);
+      }
+      row.appendChild(allowedCell);
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+    wrapper.appendChild(table);
+    section.appendChild(wrapper);
+  }
+
+  return { renderAnalysis };
+})();
+</script>

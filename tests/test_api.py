@@ -59,6 +59,7 @@ async def test_database_page(ds_client):
     response = await ds_client.get("/fixtures.json")
     assert response.status_code == 200
     data = response.json()
+    assert data["ok"] is True
     assert data["database"] == "fixtures"
 
     # Build lookup for easier assertions
@@ -382,7 +383,7 @@ async def test_row_strange_table_name(ds_client):
 @pytest.mark.asyncio
 async def test_row_foreign_key_tables(ds_client):
     response = await ds_client.get(
-        "/fixtures/simple_primary_key/1.json?_extras=foreign_key_tables"
+        "/fixtures/simple_primary_key/1.json?_extra=foreign_key_tables"
     )
     assert response.status_code == 200
     # Foreign keys are sorted by (other_table, column, other_column)
@@ -423,6 +424,28 @@ async def test_row_foreign_key_tables(ds_client):
             "link": "/fixtures/foreign_key_references?foreign_key_with_label=1",
         },
     ]
+
+
+@pytest.mark.asyncio
+async def test_row_extras(ds_client):
+    response = await ds_client.get(
+        "/fixtures/simple_primary_key/1.json?_extra=database,table,primary_keys,query,request,debug,foreign_key_tables"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["database"] == "fixtures"
+    assert data["table"] == "simple_primary_key"
+    assert data["primary_keys"] == ["id"]
+    assert data["query"]["sql"] == 'select * from simple_primary_key where "id"=:p0'
+    assert data["query"]["params"] == {"p0": "1"}
+    assert data["request"]["path"] == "/fixtures/simple_primary_key/1.json"
+    assert data["debug"]["url_vars"] == {
+        "database": "fixtures",
+        "table": "simple_primary_key",
+        "pks": "1",
+        "format": "json",
+    }
+    assert len(data["foreign_key_tables"]) == 5
 
 
 @pytest.mark.asyncio
@@ -553,8 +576,7 @@ async def test_actions_json(ds_client):
     original_root_enabled = ds_client.ds.root_enabled
     try:
         ds_client.ds.root_enabled = True
-        cookies = {"ds_actor": ds_client.actor_cookie({"id": "root"})}
-        response = await ds_client.get("/-/actions.json", cookies=cookies)
+        response = await ds_client.get("/-/actions.json", actor={"id": "root"})
         data = response.json()
     finally:
         ds_client.ds.root_enabled = original_root_enabled
@@ -715,6 +737,17 @@ def test_cors(
     assert "Access-Control-Expose-Headers" not in response.headers
     assert "Access-Control-Allow-Methods" not in response.headers
     assert "Access-Control-Max-Age" not in response.headers
+
+
+def test_cors_query_redirect(app_client_with_cors):
+    # /db?sql= redirects to /db/-/query - the redirect itself needs CORS
+    # headers, otherwise browsers refuse to follow it cross-origin
+    response = app_client_with_cors.get(
+        "/fixtures?sql=select+1", follow_redirects=False
+    )
+    assert response.status == 302
+    assert response.headers["Location"] == "/fixtures/-/query?sql=select+1"
+    assert response.headers["Access-Control-Allow-Origin"] == "*"
 
 
 @pytest.mark.parametrize(

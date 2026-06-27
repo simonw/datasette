@@ -17,13 +17,6 @@ UNION/INTERSECT operations. The order of evaluation is:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
-
-if TYPE_CHECKING:
-    from datasette.app import Datasette
-
-from datasette import hookimpl
-
 # Re-export all hooks and public utilities
 from .restrictions import (
     actor_restrictions_sql as actor_restrictions_sql,
@@ -33,26 +26,9 @@ from .restrictions import (
 from .root import root_user_permissions_sql as root_user_permissions_sql
 from .config import config_permissions_sql as config_permissions_sql
 from .defaults import (
+    # Avoid "datasette.default_permissions" does not explicitly export attribute
     default_allow_sql_check as default_allow_sql_check,
     default_action_permissions_sql as default_action_permissions_sql,
+    default_query_permissions_sql as default_query_permissions_sql,
     DEFAULT_ALLOW_ACTIONS as DEFAULT_ALLOW_ACTIONS,
 )
-
-
-@hookimpl
-def skip_csrf(scope) -> Optional[bool]:
-    """Skip CSRF check for JSON content-type requests."""
-    if scope["type"] == "http":
-        headers = scope.get("headers") or {}
-        if dict(headers).get(b"content-type") == b"application/json":
-            return True
-    return None
-
-
-@hookimpl
-def canned_queries(datasette: "Datasette", database: str, actor) -> dict:
-    """Return canned queries defined in datasette.yaml configuration."""
-    queries = (
-        ((datasette.config or {}).get("databases") or {}).get(database) or {}
-    ).get("queries") or {}
-    return queries

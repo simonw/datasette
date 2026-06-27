@@ -3,6 +3,7 @@ Tests to ensure certain things are documented.
 """
 
 from datasette import app, utils
+import datasette.fixtures  # noqa: F401
 from datasette.app import Datasette
 from datasette.filters import Filters
 from pathlib import Path
@@ -65,7 +66,24 @@ def documented_views():
             if first_word.endswith("View"):
                 view_labels.add(first_word)
     # We deliberately don't document these:
-    view_labels.update(("PatternPortfolioView", "AuthTokenView", "ApiExplorerView"))
+    view_labels.update(
+        (
+            "PatternPortfolioView",
+            "AuthTokenView",
+            "ApiExplorerView",
+            "ExecuteWriteAnalyzeView",
+            "ExecuteWriteView",
+            "GlobalQueryListView",
+            "QueryCreateAnalyzeView",
+            "QueryDeleteView",
+            "QueryDefinitionView",
+            "QueryEditView",
+            "QueryListView",
+            "QueryParametersView",
+            "QueryStoreView",
+            "QueryUpdateView",
+        )
+    )
     return view_labels
 
 
@@ -94,21 +112,63 @@ def test_table_filters_are_documented(documented_table_filters, subtests):
             assert f.key in documented_table_filters
 
 
+def test_table_extra_examples_are_documented():
+    from datasette.views.table_extras import CountExtra
+
+    assert CountExtra.example.path == "/fixtures/facetable.json?_extra=count"
+    content = (docs_path / "json_api.rst").read_text()
+    section = content.split(".. _json_api_extra:")[-1].split(".. _table_arguments:")[0]
+    assert "GET /fixtures/facetable.json?_extra=count" in section
+    assert ".. code-block:: json" in section
+
+
+def test_render_cell_extra_example_explains_row_and_column_mapping():
+    content = (docs_path / "json_api.rst").read_text()
+    section = content.split("``render_cell``")[-1].split("``query``")[0]
+    assert "same order as the ``rows`` array" in section
+    assert '"rows": [' in section
+    assert '"render_cell": [' in section
+
+
+def test_debug_and_request_extra_examples_are_documented():
+    content = (docs_path / "json_api.rst").read_text()
+    section = content.split("Table JSON responses")[-1].split("Row JSON responses")[0]
+
+    debug_section = section.split("``debug``")[-1].split("``request``")[0]
+    assert "GET /fixtures/facetable.json?_extra=debug" in debug_section
+    assert '"url_vars": {' in debug_section
+
+    request_section = section.split("``request``")[-1].split("``query``")[0]
+    assert "GET /fixtures/facetable.json?_extra=request" in request_section
+    assert '"full_path":' in request_section
+
+
+def test_row_and_query_extra_sections_are_documented():
+    content = (docs_path / "json_api.rst").read_text()
+    assert "Row JSON responses" in content
+    assert (
+        "``GET /fixtures/simple_primary_key/1.json?_extra=foreign_key_tables``"
+        in content
+    )
+    assert "Query JSON responses" in content
+    assert "``GET /fixtures/-/query.json?sql=select+1+as+one&_extra=query``" in content
+    assert (
+        "``GET /fixtures/neighborhood_search.json?text=town&_extra=query``" in content
+    )
+
+
 @pytest.fixture(scope="session")
-def documented_fns():
-    internals_rst = (docs_path / "internals.rst").read_text()
-    # Any line that starts .. _internals_utils_X
-    lines = internals_rst.split("\n")
-    prefix = ".. _internals_utils_"
-    return {
-        line.split(prefix)[1].split(":")[0] for line in lines if line.startswith(prefix)
-    }
+def documented_labels():
+    labels = set()
+    for filename in docs_path.glob("*.rst"):
+        labels.update(get_labels(filename.name))
+    return labels
 
 
-def test_functions_marked_with_documented_are_documented(documented_fns, subtests):
+def test_functions_marked_with_documented_are_documented(documented_labels, subtests):
     for fn in utils.functions_marked_as_documented:
         with subtests.test(fn=fn.__name__):
-            assert fn.__name__ in documented_fns
+            assert fn._datasette_docs_label in documented_labels
 
 
 def test_rst_heading_underlines_match_title_length():

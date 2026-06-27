@@ -95,15 +95,8 @@ class TestClient:
         cookies = cookies or {}
         post_data = post_data or {}
         assert not (post_data and body), "Provide one or other of body= or post_data="
-        # Maybe fetch a csrftoken first
-        if csrftoken_from is not None:
-            assert body is None, "body= is not compatible with csrftoken_from="
-            if csrftoken_from is True:
-                csrftoken_from = path
-            token_response = await self._request(csrftoken_from, cookies=cookies)
-            csrftoken = token_response.cookies["ds_csrftoken"]
-            cookies["ds_csrftoken"] = csrftoken
-            post_data["csrftoken"] = csrftoken
+        # csrftoken_from is accepted for backward compatibility but is now a no-op.
+        # Datasette no longer uses CSRF tokens - see CrossOriginProtectionMiddleware.
         if post_data:
             body = urlencode(post_data, doseq=True)
         return await self._request(

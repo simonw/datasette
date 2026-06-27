@@ -155,9 +155,15 @@ Column = namedtuple(
 functions_marked_as_documented = []
 
 
-def documented(fn):
-    functions_marked_as_documented.append(fn)
-    return fn
+def documented(fn=None, *, label=None):
+    def decorate(fn):
+        fn._datasette_docs_label = label or "internals_utils_{}".format(fn.__name__)
+        functions_marked_as_documented.append(fn)
+        return fn
+
+    if fn is None:
+        return decorate
+    return decorate(fn)
 
 
 @documented
@@ -218,7 +224,31 @@ def compound_keys_after_sql(pks, start_index=0):
     return "({})".format("\n  or\n".join(or_clauses))
 
 
+@documented
 class CustomJSONEncoder(json.JSONEncoder):
+    """
+    The CustomJSONEncoder class handles serialization for objects commonly used by Datasette,
+    including SQLite cursors and binary blobs. Datasette uses it internally to serve .json endpoints,
+    and plugins that return JSON can use it to match Datasette's own handling.
+
+    Built-in types (text, numbers, lists, etc) are encoded the same as Python's built-in ``json`` module.
+
+    - ``sqlite3.Row`` becomes a tuple
+    - ``sqlite3.Cursor`` becomes a list
+
+    If a binary blob can be decoded as UTF-8, the encoder returns it as text.
+
+    If it can't (for example, images), it is encoded as an object, with the actual
+    data base64-encoded, like so: ::
+
+        {
+            "$base64": True,
+            "encoded": ...,
+        }
+
+    Example: https://latest.datasette.io/fixtures/binary_data.json
+    """
+
     def default(self, obj):
         if isinstance(obj, sqlite3.Row):
             return tuple(obj)
@@ -404,8 +434,7 @@ def escape_css_string(s):
 def escape_sqlite(s):
     if _boring_keyword_re.match(s) and (s.lower() not in reserved_words):
         return s
-    else:
-        return f"[{s}]"
+    return '"{}"'.format(s.replace('"', '""'))
 
 
 def make_dockerfile(
@@ -681,13 +710,18 @@ def detect_fts_sql(table):
 
 
 def detect_json1(conn=None):
+    close_conn = False
     if conn is None:
         conn = sqlite3.connect(":memory:")
+        close_conn = True
     try:
         conn.execute("SELECT json('{}')")
         return True
     except Exception:
         return False
+    finally:
+        if close_conn:
+            conn.close()
 
 
 def table_columns(conn, table):
@@ -826,7 +860,8 @@ def path_with_format(
     *, request=None, path=None, format=None, extra_qs=None, replace_format=None
 ):
     qs = extra_qs or {}
-    path = request.path if request else path
+    if path is None and request:
+        path = request.path
     if replace_format and path.endswith(f".{replace_format}"):
         path = path[: -(1 + len(replace_format))]
     if "." in path:
@@ -1086,12 +1121,35 @@ def _gather_arguments(fn, kwargs):
     return call_with
 
 
+@documented
 def call_with_supported_arguments(fn, **kwargs):
+    """
+    Call ``fn`` with the subset of ``**kwargs`` matching its signature.
+
+    This implements dependency injection: the caller provides all available
+    keyword arguments and the function receives only the ones it declares
+    as parameters.
+
+    :param fn: A callable (sync function)
+    :param kwargs: All available keyword arguments
+    :returns: The return value of ``fn``
+    """
     call_with = _gather_arguments(fn, kwargs)
     return fn(*call_with)
 
 
+@documented
 async def async_call_with_supported_arguments(fn, **kwargs):
+    """
+    Async version of :func:`call_with_supported_arguments`.
+
+    Calls ``await fn(...)`` with the subset of ``**kwargs`` matching its
+    signature.
+
+    :param fn: An async callable
+    :param kwargs: All available keyword arguments
+    :returns: The return value of ``await fn(...)``
+    """
     call_with = _gather_arguments(fn, kwargs)
     return await fn(*call_with)
 
@@ -1507,6 +1565,17 @@ def md5_not_usedforsecurity(s):
 
 
 _etag_cache = {}
+
+
+def sha256_file(filepath, chunk_size=4096):
+    hasher = hashlib.sha256()
+    with open(filepath, "rb") as fp:
+        while True:
+            chunk = fp.read(chunk_size)
+            if not chunk:
+                break
+            hasher.update(chunk)
+    return hasher.hexdigest()
 
 
 async def calculate_etag(filepath, chunk_size=4096):

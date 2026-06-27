@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Check out datasette
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
     - name: Set up Python
       uses: actions/setup-python@v6
       with:
@@ -57,7 +57,7 @@ jobs:
             db.route = "alternative-route"
         ' > plugins/alternative_route.py
         cp fixtures.db fixtures2.db
-    - name: And the counters writable canned query demo
+    - name: And the counters writable stored query demo
       run: |
         cat > plugins/counters.py <<EOF
         from datasette import hookimpl
@@ -69,23 +69,24 @@ jobs:
                 await db.execute_write("insert or ignore into counters (name, value) values ('counter_a', 0)")
                 await db.execute_write("insert or ignore into counters (name, value) values ('counter_b', 0)")
                 await db.execute_write("insert or ignore into counters (name, value) values ('counter_c', 0)")
-            return inner
-        @hookimpl
-        def canned_queries(database):
-            if database == "counters":
-                queries = {}
                 for name in ("counter_a", "counter_b", "counter_c"):
-                    queries["increment_{}".format(name)] = {
-                        "sql": "update counters set value = value + 1 where name = '{}'".format(name),
-                        "on_success_message_sql": "select 'Counter {name} incremented to ' || value from counters where name = '{name}'".format(name=name),
-                        "write": True,
-                    }
-                    queries["decrement_{}".format(name)] = {
-                        "sql": "update counters set value = value - 1 where name = '{}'".format(name),
-                        "on_success_message_sql": "select 'Counter {name} decremented to ' || value from counters where name = '{name}'".format(name=name),
-                        "write": True,
-                    }
-                return queries
+                    await datasette.add_query(
+                        "counters",
+                        "increment_{}".format(name),
+                        "update counters set value = value + 1 where name = '{}'".format(name),
+                        on_success_message_sql="select 'Counter {name} incremented to ' || value from counters where name = '{name}'".format(name=name),
+                        is_write=True,
+                        is_trusted=True,
+                    )
+                    await datasette.add_query(
+                        "counters",
+                        "decrement_{}".format(name),
+                        "update counters set value = value - 1 where name = '{}'".format(name),
+                        on_success_message_sql="select 'Counter {name} decremented to ' || value from counters where name = '{name}'".format(name=name),
+                        is_write=True,
+                        is_trusted=True,
+                    )
+            return inner
         EOF
     # - name: Make some modifications to metadata.json
     #   run: |
@@ -116,7 +117,7 @@ jobs:
             --plugins-dir=plugins \
             --branch=$GITHUB_SHA \
             --version-note=$GITHUB_SHA \
-            --extra-options="--setting template_debug 1 --setting trace_debug 1 --crossdb" \
+            --extra-options="--setting template_debug 1 --setting trace_debug 1 --crossdb --root" \
             --install 'datasette-ephemeral-tables>=0.2.2' \
             --service "datasette-latest$SUFFIX" \
             --secret $LATEST_DATASETTE_SECRET

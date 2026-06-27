@@ -28,7 +28,7 @@ The index page can also be accessed at ``/-/``, useful for if the default index 
 Database
 ========
 
-Each database has a page listing the tables, views and canned queries available for that database. If the :ref:`actions_execute_sql` permission is enabled (it's on by default) there will also be an interface for executing arbitrary SQL select queries against the data.
+Each database has a page listing the tables, views and stored queries available for that database. If the :ref:`actions_execute_sql` permission is enabled (it's on by default) there will also be an interface for executing arbitrary SQL select queries against the data.
 
 Examples:
 
@@ -40,6 +40,8 @@ The JSON version of this page provides programmatic access to the underlying dat
 * `fivethirtyeight.datasettes.com/fivethirtyeight.json <https://fivethirtyeight.datasettes.com/fivethirtyeight.json>`_
 * `datasette.io/global-power-plants.json <https://datasette.io/global-power-plants.json>`_
 
+The returned object includes an ``"ok": true`` key alongside keys such as ``"database"``, ``"tables"``, ``"views"``, ``"queries"`` and ``"metadata"``.
+
 .. _DatabaseView_hidden:
 
 Hidden tables
@@ -50,7 +52,7 @@ Some tables listed on the database page are treated as hidden. Hidden tables are
 The following tables are hidden by default:
 
 - Any table with a name that starts with an underscore - this is a Datasette convention to help plugins easily hide their own internal tables.
-- Tables that have been configured as ``"hidden": true`` using :ref:`metadata_hiding_tables`.
+- Tables that have been configured as ``"hidden": true`` using :ref:`table_configuration_hidden`.
 - ``*_fts`` tables that implement SQLite full-text search indexes.
 - Tables relating to the inner workings of the SpatiaLite SQLite extension.
 - ``sqlite_stat`` tables used to store statistics used by the query optimizer.
@@ -60,15 +62,42 @@ The following tables are hidden by default:
 Queries
 =======
 
+.. _pages_custom_sql_queries:
+
+Custom SQL queries
+------------------
+
 The ``/database-name/-/query`` page can be used to execute an arbitrary SQL query against that database, if the :ref:`actions_execute_sql` permission is enabled. This query is passed as the ``?sql=`` query string parameter.
 
 This means you can link directly to a query by constructing the following URL:
 
 ``/database-name/-/query?sql=SELECT+*+FROM+table_name``
 
-Each configured :ref:`canned query <canned_queries>` has its own page, at ``/database-name/query-name``. Viewing this page will execute the query and display the results.
+Each configured :ref:`stored query <stored_queries>` has its own page, at ``/database-name/query-name``. Viewing this page will execute the query and display the results.
 
 In both cases adding a ``.json`` extension to the URL will return the results as JSON.
+
+.. _pages_execute_write:
+
+Write SQL queries
+-----------------
+
+The ``/database-name/-/execute-write`` page can be used to execute SQL statements that write to a mutable database, if the :ref:`actions_execute_write_sql` permission is enabled.
+
+This page extracts named parameters from the SQL, shows the tables that will be affected and lists the permissions required before the query can be executed. It also includes templates for common ``INSERT``, ``UPDATE`` and ``DELETE`` statements.
+
+Datasette checks additional permissions based on the operations in the SQL. Row changes require the relevant table-level permissions such as :ref:`actions_insert_row`, :ref:`actions_update_row` and :ref:`actions_delete_row`; reads from source tables require :ref:`actions_view_table`; and schema changes require permissions such as :ref:`actions_create_table`, :ref:`actions_alter_table` or :ref:`actions_drop_table`.
+
+Use the :ref:`ExecuteWriteView` JSON API to execute writable SQL programmatically.
+
+.. _pages_stored_query_browser:
+
+Stored query browsers
+---------------------
+
+The ``/-/queries`` page lists stored queries across every database visible to the current actor. The ``/database-name/-/queries`` page lists stored queries for a single database.
+
+These pages support search, pagination and filters for read-only or writable queries and private or public queries. Adding a ``.json`` extension to either URL returns the same list as JSON.
 
 .. _TableView:
 
@@ -88,6 +117,16 @@ Some examples:
 * `../items <https://register-of-members-interests.datasettes.com/regmem/items>`_ lists all of the line-items registered by UK MPs as potential conflicts of interest. It demonstrates Datasette's support for :ref:`full_text_search`.
 * `../antiquities-act%2Factions_under_antiquities_act <https://fivethirtyeight.datasettes.com/fivethirtyeight/antiquities-act%2Factions_under_antiquities_act>`_ is an interface for exploring the "actions under the antiquities act" data table published by FiveThirtyEight.
 * `../global-power-plants?country_long=United+Kingdom&primary_fuel=Gas <https://datasette.io/global-power-plants/global-power-plants?_facet=primary_fuel&_facet=owner&_facet=country_long&country_long__exact=United+Kingdom&primary_fuel=Gas>`_ is a filtered table page showing every Gas power plant in the United Kingdom. It includes some default facets (configured using `its metadata.json <https://datasette.io/-/metadata>`_) and uses the `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_ plugin to show a map of the results.
+
+.. _TableFragmentView:
+
+Table fragment
+--------------
+
+The ``/<database>/<table>/-/fragment`` endpoint returns the rendered table HTML
+for rows matching the provided filters. It is used by Datasette's row editing
+interface to refresh rows after changes while still respecting custom table
+templates and ``render_cell`` plugin hooks.
 
 .. _RowView:
 

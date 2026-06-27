@@ -78,11 +78,13 @@ write_wrapper(datasette, database, request, transaction)
 ``transaction`` - bool
     ``True`` if the write will be wrapped in a database transaction.
 
-Return a generator function that accepts a ``conn`` argument (a SQLite connection object).  The generator should ``yield`` exactly once.  Code before the ``yield`` runs before the write function executes; code after the ``yield`` runs after it completes.
+Return a generator function that accepts a ``conn`` argument (a SQLite connection object) and optionally a ``track_event`` argument.  The generator should ``yield`` exactly once.  Code before the ``yield`` runs before the write function executes; code after the ``yield`` runs after it completes.
 
 The result of the write function is sent back through the ``yield``, so you can capture it with ``result = yield``.
 
 If the write function raises an exception, it is thrown into the generator so you can handle it with a ``try`` / ``except`` around the ``yield``.
+
+If your generator accepts ``track_event``, you can call ``track_event(event)`` to queue an event that will be dispatched via :ref:`datasette.track_event() <datasette_track_event>` after the write commits successfully.  Events are discarded if the write raises an exception.
 
 Return ``None`` to skip wrapping for this particular write.
 
@@ -227,6 +229,10 @@ Function that returns an awaitable function that returns a dictionary
     You can also return a function which returns an awaitable function which returns a dictionary.
 
 Datasette runs Jinja2 in `async mode <https://jinja.palletsprojects.com/en/2.10.x/api/#async-support>`__, which means you can add awaitable functions to the template scope and they will be automatically awaited when they are rendered by the template.
+
+.. warning::
+
+   Be careful not to accidentally define a variable that conflicts with one that Datasette is already using for something else. Check :ref:`the template context documentation <template_context>` to see the variables defined by Datasette core.
 
 Here's an example plugin that adds a ``"user_agent"`` variable to the template context containing the current request's User-Agent header:
 
@@ -474,8 +480,8 @@ Examples: `datasette-publish-fly <https://datasette.io/plugins/datasette-publish
 
 .. _plugin_hook_render_cell:
 
-render_cell(row, value, column, table, pks, database, datasette, request)
--------------------------------------------------------------------------
+render_cell(row, value, column, table, pks, database, datasette, request, column_type)
+--------------------------------------------------------------------------------------
 
 Lets you customize the display of values within table cells in the HTML table view.
 
@@ -502,6 +508,11 @@ Lets you customize the display of values within table cells in the HTML table vi
 
 ``request`` - :ref:`internals_request`
     The current request object
+
+``column_type`` - :ref:`ColumnType <datasette_column_types>` subclass instance or None
+    The :ref:`ColumnType <datasette_column_types>` subclass instance assigned to this column (with ``.config`` populated), or ``None`` if no column type is assigned. You can access ``column_type.name``, ``column_type.config``, etc.
+
+If a column has a :ref:`column type <datasette_column_types>` assigned and that column type's ``render_cell`` method returns a non-``None`` value, it will take priority over this plugin hook.
 
 If your hook returns ``None``, it will be ignored. Use this to indicate that your hook is not able to custom render this particular value.
 
@@ -602,7 +613,7 @@ When a request is received, the ``"render"`` callback function is called with ze
     The SQL query that was executed.
 
 ``query_name`` - string or None
-    If this was the execution of a :ref:`canned query <canned_queries>`, the name of that query.
+    If this was the execution of a :ref:`stored query <stored_queries>`, the name of that query.
 
 ``database`` - string
     The name of the database.
@@ -885,13 +896,15 @@ Actions define what operations can be performed on resources (like viewing a tab
         """A collection of documents."""
 
         name = "document-collection"
-        parent_name = None
+        parent_class = None
 
         def __init__(self, collection: str):
             super().__init__(parent=collection, child=None)
 
         @classmethod
-        def resources_sql(cls) -> str:
+        async def resources_sql(
+            cls, datasette, actor=None
+        ) -> str:
             return """
                 SELECT collection_name AS parent, NULL AS child
                 FROM document_collections
@@ -902,13 +915,15 @@ Actions define what operations can be performed on resources (like viewing a tab
         """A document in a collection."""
 
         name = "document"
-        parent_name = "document-collection"
+        parent_class = DocumentCollectionResource
 
         def __init__(self, collection: str, document: str):
             super().__init__(parent=collection, child=document)
 
         @classmethod
-        def resources_sql(cls) -> str:
+        async def resources_sql(
+            cls, datasette, actor=None
+        ) -> str:
             return """
                 SELECT collection_name AS parent, document_id AS child
                 FROM documents
@@ -954,13 +969,15 @@ The fields of the ``Action`` dataclass are as follows:
 
     - Define a ``name`` class attribute (e.g., ``"document"``)
     - Define a ``parent_class`` class attribute (``None`` for top-level resources like databases, or the parent ``Resource`` subclass for child resources)
-    - Implement a ``resources_sql()`` classmethod that returns SQL returning all resources as ``(parent, child)`` columns
+    - Implement an async ``resources_sql(cls, datasette, actor=None)`` classmethod that returns SQL returning all resources as ``(parent, child)`` columns
     - Have an ``__init__`` method that accepts appropriate parameters and calls ``super().__init__(parent=..., child=...)``
 
-The ``resources_sql()`` method
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. _plugin_resources_sql:
 
-The ``resources_sql()`` classmethod returns a SQL query that lists all resources of that type that exist in the system.
+The ``resources_sql(datasette, actor)`` method
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``resources_sql()`` classmethod returns a SQL query that lists all resources of that type that exist in the system. It can be async because Datasette calls it with ``await``, and it receives the current ``datasette`` instance plus an optional ``actor`` argument.
 
 This query is used by Datasette to efficiently check permissions across multiple resources at once. When a user requests a list of resources (like tables, documents, or other entities), Datasette uses this SQL to:
 
@@ -979,7 +996,7 @@ For example, if you're building a document management plugin with collections an
 .. code-block:: python
 
     @classmethod
-    def resources_sql(cls) -> str:
+    async def resources_sql(cls, datasette, actor=None) -> str:
         return """
             SELECT collection_name AS parent, document_id AS child
             FROM documents
@@ -988,6 +1005,98 @@ For example, if you're building a document management plugin with collections an
 This tells Datasette "here's how to find all documents in the system - look in the documents table and get the collection name and document ID for each one."
 
 The permission system then uses this query along with rules from plugins to determine which documents each user can access, all efficiently in SQL rather than loading everything into Python.
+
+.. _plugin_register_column_types:
+
+register_column_types(datasette)
+--------------------------------
+
+Return a list of :ref:`ColumnType <datasette_column_types>` **subclasses** (not instances) to register custom column types. Column types define how values in specific columns are rendered, validated, and transformed.
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.column_types import ColumnType, SQLiteType
+    import markupsafe
+
+
+    class ColorColumnType(ColumnType):
+        name = "color"
+        description = "CSS color value"
+        sqlite_types = (SQLiteType.TEXT,)
+
+        async def render_cell(
+            self,
+            value,
+            column,
+            table,
+            database,
+            datasette,
+            request,
+        ):
+            if value:
+                return markupsafe.Markup(
+                    '<span style="background-color: {color}">'
+                    "{color}</span>"
+                ).format(color=markupsafe.escape(value))
+            return None
+
+        async def validate(self, value, datasette):
+            if value and not value.startswith("#"):
+                return "Color must start with #"
+            return None
+
+        async def transform_value(self, value, datasette):
+            # Normalize to uppercase
+            if isinstance(value, str):
+                return value.upper()
+            return value
+
+
+    @hookimpl
+    def register_column_types(datasette):
+        return [ColorColumnType]
+
+Each ``ColumnType`` subclass must define the following class attributes:
+
+``name`` - string
+    Unique identifier for the column type, e.g. ``"color"``. Must be unique across all plugins.
+
+``description`` - string
+    Human-readable label, e.g. ``"CSS color value"``.
+
+``sqlite_types`` - tuple of ``SQLiteType`` values, optional
+    Restrict assignments of this column type to columns with matching SQLite types, e.g. ``(SQLiteType.TEXT,)``. If omitted, the column type can be assigned to any column.
+
+And the following methods, all optional:
+
+``render_cell(self, value, column, table, database, datasette, request)``
+    Return an HTML string to render this cell value, or ``None`` to fall through to the default ``render_cell`` plugin hook chain. When a column type provides rendering, it takes priority over the ``render_cell`` plugin hook.
+
+``validate(self, value, datasette)``
+    Validate a value before it is written via the insert, update, or upsert API endpoints. Return ``None`` if valid, or a string error message if invalid. Null values and empty strings skip validation.
+
+``transform_value(self, value, datasette)``
+    Transform a value before it appears in JSON API output. Return the transformed value. The default implementation returns the value unchanged.
+
+Per-column configuration is available via ``self.config`` in all methods. When a column type is looked up for a specific column (via :ref:`get_column_type <datasette_get_column_type>` or :ref:`get_column_types <datasette_get_column_types>`), the returned instance has ``config`` set to the parsed JSON config dict for that column assignment, or ``None`` if no config was provided.
+
+Column types are assigned to columns via the :ref:`column_types <table_configuration_column_types>` table configuration option:
+
+.. code-block:: yaml
+
+    databases:
+      mydb:
+        tables:
+          mytable:
+            column_types:
+              bg_color: color
+              highlight:
+                type: color
+                config:
+                  format: rgb
+
+Datasette includes four built-in column types: ``url``, ``email``, ``json``, and ``textarea``. The ``textarea`` type is an editing hint that causes Datasette's insert/edit forms to use a multiline ``<textarea>`` control for that column.
 
 .. _plugin_asgi_wrapper:
 
@@ -1101,85 +1210,6 @@ Potential use-cases:
             # Rest of test goes here
 
 Examples: `datasette-saved-queries <https://datasette.io/plugins/datasette-saved-queries>`__, `datasette-init <https://datasette.io/plugins/datasette-init>`__
-
-.. _plugin_hook_canned_queries:
-
-canned_queries(datasette, database, actor)
-------------------------------------------
-
-``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
-
-``database`` - string
-    The name of the database.
-
-``actor`` - dictionary or None
-    The currently authenticated :ref:`actor <authentication_actor>`.
-
-Use this hook to return a dictionary of additional :ref:`canned query <canned_queries>` definitions for the specified database. The return value should be the same shape as the JSON described in the :ref:`canned query <canned_queries>` documentation.
-
-.. code-block:: python
-
-    from datasette import hookimpl
-
-
-    @hookimpl
-    def canned_queries(datasette, database):
-        if database == "mydb":
-            return {
-                "my_query": {
-                    "sql": "select * from my_table where id > :min_id"
-                }
-            }
-
-The hook can alternatively return an awaitable function that returns a list. Here's an example that returns queries that have been stored in the ``saved_queries`` database table, if one exists:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-
-
-    @hookimpl
-    def canned_queries(datasette, database):
-        async def inner():
-            db = datasette.get_database(database)
-            if await db.table_exists("saved_queries"):
-                results = await db.execute(
-                    "select name, sql from saved_queries"
-                )
-                return {
-                    result["name"]: {"sql": result["sql"]}
-                    for result in results
-                }
-
-        return inner
-
-The actor parameter can be used to include the currently authenticated actor in your decision. Here's an example that returns saved queries that were saved by that actor:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-
-
-    @hookimpl
-    def canned_queries(datasette, database, actor):
-        async def inner():
-            db = datasette.get_database(database)
-            if actor is not None and await db.table_exists(
-                "saved_queries"
-            ):
-                results = await db.execute(
-                    "select name, sql from saved_queries where actor_id = :id",
-                    {"id": actor["id"]},
-                )
-                return {
-                    result["name"]: {"sql": result["sql"]}
-                    for result in results
-                }
-
-        return inner
-
-Example: `datasette-saved-queries <https://datasette.io/plugins/datasette-saved-queries>`__
 
 .. _plugin_hook_actor_from_request:
 
@@ -1599,7 +1629,7 @@ register_magic_parameters(datasette)
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
 
-:ref:`canned_queries_magic_parameters` can be used to add automatic parameters to :ref:`canned queries <canned_queries>`. This plugin hook allows additional magic parameters to be defined by plugins.
+:ref:`queries_magic_parameters` can be used to add automatic parameters to :ref:`configured queries <queries>`. This plugin hook allows additional magic parameters to be defined by plugins.
 
 Magic parameters all take this format: ``_prefix_rest_of_parameter``. The prefix indicates which magic parameter function should be called - the rest of the parameter is passed as an argument to that function.
 
@@ -1732,31 +1762,6 @@ This example logs an error to `Sentry <https://sentry.io/>`__ and then renders a
 
 Example: `datasette-sentry <https://datasette.io/plugins/datasette-sentry>`_
 
-.. _plugin_hook_skip_csrf:
-
-skip_csrf(datasette, scope)
----------------------------
-
-``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
-
-``scope`` - dictionary
-    The `ASGI scope <https://asgi.readthedocs.io/en/latest/specs/www.html#http-connection-scope>`__ for the incoming HTTP request.
-
-This hook can be used to skip :ref:`internals_csrf` for a specific incoming request. For example, you might have a custom path at ``/submit-comment`` which is designed to accept comments from anywhere, whether or not the incoming request originated on the site and has an accompanying CSRF token.
-
-This example will disable CSRF protection for that specific URL path:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-
-
-    @hookimpl
-    def skip_csrf(scope):
-        return scope["path"] == "/submit-comment"
-
-If any of the currently active ``skip_csrf()`` plugin hooks return ``True``, CSRF protection will be skipped for the request.
 
 .. _plugin_hook_menu_links:
 
@@ -1801,6 +1806,106 @@ Using :ref:`internals_datasette_urls` here ensures that links in the menu will t
 
 Examples: `datasette-search-all <https://datasette.io/plugins/datasette-search-all>`_, `datasette-graphql <https://datasette.io/plugins/datasette-graphql>`_
 
+.. _plugin_hook_jump_items_sql:
+
+jump_items_sql(datasette, actor, request)
+-----------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``actor`` - dictionary or None
+    The currently authenticated :ref:`actor <authentication_actor>`.
+
+``request`` - :ref:`internals_request`
+    The current HTTP request.
+
+This hook allows plugins to add extra results to Datasette's ``/`` jump menu, which is powered by the ``/-/jump`` JSON endpoint.
+
+Return a ``datasette.jump.JumpSQL`` object, or a list of ``JumpSQL`` objects. Each ``JumpSQL`` object wraps a SQL query to be searched alongside Datasette's own databases, tables, views and stored query results. The hook can also be an ``async def`` function, or return an awaitable that resolves to one of these values.
+
+``JumpSQL`` queries run against Datasette's internal database by default. To run a query against another database, pass its name as the optional ``database=`` argument. For example, ``JumpSQL(database="content", sql="...")`` runs against the ``content`` database.
+
+Datasette groups ``JumpSQL`` queries by database and executes one ``UNION ALL`` query for each database.
+
+The SQL query must return these columns:
+
+``type``
+    A short type string for the result, for example ``"app"`` or ``"dashboard"``. The jump menu displays this above the item as a category label.
+
+``label``
+    The stable name for the result. This is returned as ``name`` in the JSON API and is used for sorting.
+
+``description``
+    Optional longer text describing this individual item, or ``NULL``. The jump menu displays this below the item's URL when it is present.
+
+``url``
+    The URL to navigate to when the item is selected. This can be either a string starting with ``/`` or a JSON object describing a call to one of the :ref:`internals_datasette_urls` methods. For example, ``json_object('method', 'table', 'database', 'fixtures', 'table', 'facetable')`` calls ``datasette.urls.table(database='fixtures', table='facetable')``. Unknown methods or invalid named arguments will result in an error.
+
+``search_text``
+    Text that should be searched by the ``?q=`` parameter.
+
+``display_name``
+    A human-readable label for the result, or ``NULL``. Datasette returns this as ``display_name`` in the JSON API, and the jump menu shows it as the primary readable label with ``name`` shown underneath.
+
+Use ``params=`` to pass SQL parameters. Datasette will automatically namespace those parameters before adding the SQL fragment to the per-database ``UNION ALL`` query.
+
+This example returns a SQL fragment that searches rows from a ``dashboards`` table in the ``content`` database. The ``url`` column uses ``json_object()`` to describe a call to ``datasette.urls.row(database='content', table='dashboards', row_path=slug)``:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.jump import JumpSQL
+
+
+    @hookimpl
+    def jump_items_sql(datasette, actor, request):
+        if not actor:
+            return None
+        return JumpSQL(
+            sql="""
+            SELECT
+                'dashboard' AS type,
+                slug AS label,
+                description,
+                json_object(
+                    'method', 'row',
+                    'database', 'content',
+                    'table', 'dashboards',
+                    'row_path', slug
+                ) AS url,
+                slug || ' ' || COALESCE(title, '') || ' ' || COALESCE(description, '') AS search_text,
+                title AS display_name
+            FROM dashboards
+            WHERE owner_id = :actor_id
+            """,
+            params={"actor_id": actor["id"]},
+            database="content",
+        )
+
+This example uses the ``JumpSQL.menu_item()`` shortcut to add a single "Plugin dashboard" result for signed-in users:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.jump import JumpSQL
+
+
+    @hookimpl
+    def jump_items_sql(datasette, actor, request):
+        if not actor:
+            return None
+        return JumpSQL.menu_item(
+            item_type="dashboard",
+            label="plugin-dashboard",
+            description="Review plugin status and configuration.",
+            url="/-/plugin-dashboard",
+            search_text="plugin dashboard",
+            display_name="Plugin dashboard",
+        )
+
+``JumpSQL.menu_item(...)`` is a shortcut for adding a single jump menu item from Python code. It accepts the keyword arguments shown above.
+
 .. _plugin_actions:
 
 Action hooks
@@ -1808,7 +1913,79 @@ Action hooks
 
 Action hooks can be used to add items to the action menus that appear at the top of different pages within Datasette. Unlike :ref:`menu_links() <plugin_hook_menu_links>`, actions which are displayed on every page, actions should only be relevant to the page the user is currently viewing.
 
-Each of these hooks should return return a list of ``{"href": "...", "label": "..."}`` menu items, with optional ``"description": "..."`` keys describing each action in more detail.
+Each of these hooks should return a list of menu items, with optional ``"description": "..."`` keys describing each action in more detail.
+
+The most common action item is a link to another page:
+
+.. code-block:: python
+
+    {
+        "href": datasette.urls.path("/-/custom-action"),
+        "label": "Custom action",
+        "description": "Run this action on a separate page.",
+    }
+
+Plugins can also return button actions for JavaScript-backed interactions:
+
+.. code-block:: python
+
+    {
+        "type": "button",
+        "label": "Open custom dialog",
+        "description": "Show a dialog without leaving this page.",
+        "attrs": {
+            "aria-label": "Open custom dialog",
+            "data-plugin-action": "open-custom-dialog",
+        },
+    }
+
+These are rendered as ``<button type="button" class="button-as-link action-menu-button" role="menuitem" tabindex="-1">``. The optional ``attrs`` dictionary is added to the button, and is useful for ``data-*`` attributes that your plugin's JavaScript can use to attach event handlers.
+
+Here is a minimal plugin example that adds a button to a table page and loads JavaScript to handle clicks on that button:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+
+    @hookimpl
+    def table_actions(datasette, database, table):
+        return [
+            {
+                "type": "button",
+                "label": "Show table name",
+                "description": "Open a JavaScript-powered plugin action.",
+                "attrs": {
+                    "aria-label": "Show table name",
+                    "data-plugin-action": "show-table-name",
+                    "data-database": database,
+                    "data-table": table,
+                },
+            }
+        ]
+
+
+    @hookimpl
+    def extra_js_urls(datasette):
+        return [
+            datasette.static(
+                "show-table.js", plugin="datasette_show_table"
+            )
+        ]
+
+The ``static/show-table.js`` file in that plugin could look like this:
+
+.. code-block:: javascript
+
+    document.addEventListener("click", (event) => {
+      const button = event.target.closest(
+        "button[data-plugin-action='show-table-name']"
+      );
+      if (!button) {
+        return;
+      }
+      alert(`${button.dataset.database}.${button.dataset.table}`);
+    });
 
 They can alternatively return an ``async def`` awaitable function which, when called, returns a list of those menu items.
 
@@ -1893,7 +2070,7 @@ query_actions(datasette, actor, database, query_name, request, sql, params)
     The name of the database.
 
 ``query_name`` - string or None
-    The name of the canned query, or ``None`` if this is an arbitrary SQL query.
+    The name of the stored query, or ``None`` if this is an arbitrary SQL query.
 
 ``request`` - :ref:`internals_request`
     The current HTTP request.
@@ -1904,7 +2081,7 @@ query_actions(datasette, actor, database, query_name, request, sql, params)
 ``params`` - dictionary
     The parameters passed to the SQL query, if any.
 
-Populates a "Query actions" menu on the canned query and arbitrary SQL query pages.
+Populates a "Query actions" menu on the stored query and arbitrary SQL query pages.
 
 This example adds a new query action linking to a page for explaining a query:
 
@@ -2168,9 +2345,9 @@ top_query(datasette, request, database, sql)
 
 Returns HTML to be displayed at the top of the query results page.
 
-.. _plugin_hook_top_canned_query:
+.. _plugin_hook_top_stored_query:
 
-top_canned_query(datasette, request, database, query_name)
+top_stored_query(datasette, request, database, query_name)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``datasette`` - :ref:`internals_datasette`
@@ -2183,9 +2360,9 @@ top_canned_query(datasette, request, database, query_name)
     The name of the database.
 
 ``query_name`` - string
-    The name of the canned query.
+    The name of the stored query.
 
-Returns HTML to be displayed at the top of the canned query page.
+Returns HTML to be displayed at the top of the stored query page.
 
 .. _plugin_event_tracking:
 
@@ -2392,4 +2569,3 @@ Tokens can then be created and verified using :ref:`datasette.create_token() <da
     actor = await datasette.verify_token(token)
 
 If no handlers are registered, ``create_token()`` raises ``RuntimeError``. If the requested ``handler`` name is not found, it raises ``ValueError``.
-

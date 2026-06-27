@@ -315,11 +315,6 @@ def startup(datasette):
 
 
 @hookimpl
-def canned_queries(datasette, database, actor):
-    return {"from_hook": f"select 1, '{actor['id'] if actor else 'null'}' as actor_id"}
-
-
-@hookimpl
 def register_magic_parameters():
     from uuid import uuid4
 
@@ -362,15 +357,30 @@ def menu_links(datasette, actor, request):
 
 
 @hookimpl
-def table_actions(datasette, database, table, actor):
+def table_actions(datasette, database, table, actor, request):
     if actor:
-        return [
+        actions = [
             {
                 "href": datasette.urls.instance(),
                 "label": f"Database: {database}",
             },
             {"href": datasette.urls.instance(), "label": f"Table: {table}"},
         ]
+        if request.args.get("_button"):
+            actions.append(
+                {
+                    "type": "button",
+                    "label": "Plugin button",
+                    "description": "Runs JavaScript from a plugin",
+                    "attrs": {
+                        "aria-label": "Plugin button for {}".format(table),
+                        "data-plugin-action": "plugin-button",
+                        "data-database": database,
+                        "data-table": table,
+                    },
+                }
+            )
+        return actions
 
 
 @hookimpl
@@ -387,8 +397,8 @@ def view_actions(datasette, database, view, actor):
 
 @hookimpl
 def query_actions(datasette, database, query_name, sql):
-    # Don't explain an explain
-    if sql.lower().startswith("explain"):
+    # Don't explain an explain (or a missing query)
+    if not sql or sql.lower().startswith("explain"):
         return
     return [
         {
@@ -442,11 +452,6 @@ def homepage_actions(datasette, actor, request):
                 "label": label,
             }
         ]
-
-
-@hookimpl
-def skip_csrf(scope):
-    return scope["path"] == "/skip-csrf"
 
 
 @hookimpl

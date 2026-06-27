@@ -127,3 +127,23 @@ async def test_default_deny_basic_permissions():
 
     # Authenticated user without explicit permission should also be denied
     assert await ds.allowed(action="view-instance", actor={"id": "user"}) is False
+
+
+@pytest.mark.asyncio
+async def test_default_deny_root_no_config_index_does_not_500():
+    # https://github.com/simonw/datasette/issues/2644
+    # --default-deny --root with no config file must not 500 on the index
+    # pages. Rendering those pages computes is_private (include_is_private),
+    # which references the anon_rules CTE - that CTE must still be defined
+    # even when there are no anonymous permission rules at all.
+    ds = Datasette(default_deny=True)
+    ds.root_enabled = True
+    await ds.invoke_startup()
+    db = ds.add_memory_database("test_db_2644")
+    await db.execute_write("create table test_table (id integer primary key)")
+    await ds._refresh_schemas()
+
+    cookie = ds.sign({"a": {"id": "root"}}, "actor")
+    for path in ("/", "/test_db_2644", "/test_db_2644/test_table"):
+        response = await ds.client.get(path, cookies={"ds_actor": cookie})
+        assert response.status_code == 200, f"{path} returned {response.status_code}"

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Debug autocomplete{% endblock %}
+
+{% block extra_head %}
+{{ super() }}
+<script src="{{ static('autocomplete.js') }}" defer></script>
+{% endblock %}
+
+{% block content %}
+<h1>Debug autocomplete</h1>
+
+<form class="core debug-autocomplete-form" action="{{ urls.path('-/debug/autocomplete') }}" method="get">
+    <p>
+        <label for="debug-autocomplete-database">Database</label>
+        <input id="debug-autocomplete-database" type="text" name="database" value="{{ database_name or "" }}">
+    </p>
+    <p>
+        <label for="debug-autocomplete-table">Table</label>
+        <input id="debug-autocomplete-table" type="text" name="table" value="{{ table_name or "" }}">
+    </p>
+    <p><input type="submit" value="Open autocomplete"></p>
+</form>
+
+{% if error %}
+    <p class="message-error">{{ error }}</p>
+{% elif autocomplete_url %}
+    <h2>{{ database_name }} / {{ table_name }}</h2>
+    {% if label_column %}
+        <p>Label column: <code>{{ label_column }}</code></p>
+    {% else %}
+        <p>No label column detected. Results will use primary key values.</p>
+    {% endif %}
+    <div class="debug-autocomplete-demo">
+        <label for="debug-autocomplete-input">Search rows</label>
+        <datasette-autocomplete src="{{ autocomplete_url }}">
+            <input id="debug-autocomplete-input" type="text">
+        </datasette-autocomplete>
+    </div>
+    <h3>Selected row</h3>
+    <pre class="debug-autocomplete-selected" aria-live="polite">No row selected.</pre>
+    <script>
+    document.addEventListener("datasette-autocomplete-select", function (event) {
+        var output = document.querySelector(".debug-autocomplete-selected");
+        if (output) {
+            output.textContent = JSON.stringify(event.detail.row, null, 2);
+        }
+    });
+    </script>
+{% else %}
+    <h2>Suggested tables</h2>
+    {% if suggestions %}
+        <p>Showing up to five tables with a detected label column.</p>
+        <table class="rows-and-columns">
+            <thead>
+                <tr>
+                    <th>Database</th>
+                    <th>Table</th>
+                    <th>Label column</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for suggestion in suggestions %}
+                    <tr>
+                        <td>{{ suggestion.database }}</td>
+                        <td><a href="{{ suggestion.url }}">{{ suggestion.table }}</a></td>
+                        <td><code>{{ suggestion.label_column }}</code></td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No tables with detected label columns found.</p>
+    {% endif %}
+    <p>Scanned {{ scanned }} table{% if scanned != 1 %}s{% endif %}{% if reached_scan_limit %}; stopped at the 100 table scan limit{% endif %}.</p>
+{% endif %}
+
+{% endblock %}

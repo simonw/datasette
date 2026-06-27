@@ -32,25 +32,11 @@ def test_trace(trace_debug):
         assert isinstance(trace.get("params"), (list, dict, None.__class__))
 
     sqls = [trace["sql"] for trace in traces if "sql" in trace]
-    # There should be a mix of different types of SQL statement
-    expected = (
-        "CREATE TABLE ",
-        "PRAGMA ",
-        "INSERT OR REPLACE INTO ",
-        "INSERT INTO",
-        "select ",
-    )
-    for prefix in expected:
-        assert any(
-            sql.startswith(prefix) for sql in sqls
-        ), "No trace beginning with: {}".format(prefix)
-
-    # Should be at least one executescript
-    assert any(trace for trace in traces if trace.get("executescript"))
-    # And at least one executemany
-    execute_manys = [trace for trace in traces if trace.get("executemany")]
-    assert execute_manys
-    assert all(isinstance(trace["count"], int) for trace in execute_manys)
+    # There should be SQL statements from request handling in the trace.
+    # Note: CREATE TABLE, INSERT OR REPLACE, executescript, and executemany
+    # are not expected here because internal tables are now created and
+    # populated during invoke_startup(), before the request is traced.
+    assert any(sql.startswith("select ") for sql in sqls), "No select statements traced"
 
 
 def test_trace_silently_fails_for_large_page():
@@ -82,6 +68,19 @@ def test_trace_query_errors():
     assert "_trace" in data
     trace_info = data["_trace"]
     assert trace_info["traces"][-1]["error"] == "no such table: non_existent_table"
+
+
+@pytest.mark.asyncio
+async def test_trace_child_tasks_resets_contextvar_on_exception():
+    from datasette import tracer
+
+    before = tracer.trace_task_id.get()
+    with pytest.raises(ValueError):
+        with tracer.trace_child_tasks():
+            assert tracer.trace_task_id.get() is not None
+            raise ValueError("simulated error")
+    # The contextvar must be reset even though the block raised
+    assert tracer.trace_task_id.get() == before
 
 
 def test_trace_parallel_queries():

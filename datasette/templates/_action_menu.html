@@ -1,7 +1,7 @@
 {% if action_links %}
 <div class="page-action-menu">
 <details class="actions-menu-links details-menu">
-    <summary>
+    <summary aria-haspopup="menu" aria-expanded="false">
         <div class="icon-text">
             <svg class="icon" aria-labelledby="actions-menu-links-title" role="img" style="color: #fff" xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <title id="actions-menu-links-title">{{ action_title }}</title>
@@ -13,12 +13,20 @@
     </summary>
     <div class="dropdown-menu">
         <div class="hook"></div>
-        <ul>
+        <ul role="menu">
             {% for link in action_links %}
-            <li><a href="{{ link.href }}">{{ link.label }}
-            {% if link.description %}
-                <p class="dropdown-description">{{ link.description }}</p>
-            {% endif %}</a>
+            <li role="none">
+            {% if link.get("type") == "button" %}
+                <button type="button" class="button-as-link action-menu-button" role="menuitem" tabindex="-1"{% for name, value in (link.get("attrs") or {}).items() %} {{ name }}="{{ value }}"{% endfor %}>{{ link.label }}
+                {% if link.description %}
+                    <span class="dropdown-description">{{ link.description }}</span>
+                {% endif %}</button>
+            {% else %}
+                <a href="{{ link.href }}" role="menuitem" tabindex="-1">{{ link.label }}
+                {% if link.description %}
+                    <span class="dropdown-description">{{ link.description }}</span>
+                {% endif %}</a>
+            {% endif %}
             </li>
             {% endfor %}
         </ul>

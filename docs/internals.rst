@@ -106,6 +106,9 @@ The object also has the following awaitable methods:
 ``await request.post_vars()`` - dictionary
     Returns a dictionary of form variables that were submitted in the request body via ``POST`` using ``application/x-www-form-urlencoded`` encoding. For multipart forms or file uploads, use ``request.form()`` instead.
 
+``await request.json()`` - Any
+    Returns the parsed JSON body of a request submitted by ``POST``.
+
 ``await request.post_body()`` - bytes
     Returns the un-parsed body of a request submitted by ``POST`` - useful for things like incoming JSON data.
 
@@ -448,6 +451,52 @@ await .render_template(template, context=None, request=None)
 
 Renders a `Jinja template <https://jinja.palletsprojects.com/en/2.11.x/>`__ using Datasette's preconfigured instance of Jinja and returns the resulting string. The template will have access to Datasette's default template functions and any functions that have been made available by other plugins.
 
+.. _datasette_static:
+
+.static(path, plugin=None, mount=None)
+--------------------------------------
+
+``path`` - string
+    The path to the static asset, relative to the selected static directory.
+
+``plugin`` - string, optional
+    The plugin name, for linking to an asset in that plugin's ``static/``
+    directory.
+
+``mount`` - string, optional
+    The ``--static`` mount name, for linking to an asset in a directory mounted
+    using ``datasette --static mount_name:directory``.
+
+Returns a URL for a static asset with a ``?_hash=`` parameter based on the file
+contents. That URL takes the ``base_url`` setting into account.
+
+When the ``?_hash=`` parameter matches the current file contents, Datasette will
+serve the asset with ``Cache-Control: max-age=31536000, immutable, public``.
+
+Call this with just ``path`` for one of Datasette's bundled static assets:
+
+.. code-block:: python
+
+    datasette.static("app.css")
+
+Use ``plugin=`` for plugin static assets:
+
+.. code-block:: python
+
+    datasette.static(
+        "plugin.js", plugin="datasette_plugin_name"
+    )
+
+Use ``mount=`` for static directories mounted using the ``--static`` option:
+
+.. code-block:: python
+
+    datasette.static("styles.css", mount="assets")
+
+``plugin`` and ``mount`` are mutually exclusive. The same feature is available
+to Jinja templates as the ``static()`` template function, described in
+:ref:`customization_static_files`.
+
 .. _datasette_actors_from_ids:
 
 await .actors_from_ids(actor_ids)
@@ -511,6 +560,43 @@ Example usage:
     )
 
 The method returns ``True`` if the permission is granted, ``False`` if denied.
+
+Results are cached for the duration of the current request, so checking the same ``(actor, action, resource)`` combination twice within one request only does the underlying permission resolution work once.
+
+.. _datasette_allowed_many:
+
+await .allowed_many(\*, actions, resource, actor=None)
+------------------------------------------------------
+
+``actions`` - list of strings
+    The names of the actions to permission check.
+
+``resource`` - Resource object
+    A Resource object representing the database, table, or other resource that each action is checked against. Omit for global actions.
+
+``actor`` - dictionary, optional
+    The authenticated actor. This is usually ``request.actor``. Defaults to ``None`` for unauthenticated requests.
+
+Checks several actions against the same resource for the same actor, returning a dictionary mapping each action name to ``True`` or ``False``. The whole batch - including any actions pulled in through ``also_requires`` dependencies - is resolved with a single SQL query against the internal database, so this is much faster than calling :ref:`datasette.allowed() <datasette_allowed>` once per action.
+
+Example usage:
+
+.. code-block:: python
+
+    from datasette.resources import TableResource
+
+    results = await datasette.allowed_many(
+        actions=["insert-row", "delete-row", "drop-table"],
+        resource=TableResource(
+            database="fixtures", table="facetable"
+        ),
+        actor=request.actor,
+    )
+    # {"insert-row": True, "delete-row": True, "drop-table": False}
+
+Each result is stored in the per-request permission check cache, so subsequent ``datasette.allowed()`` calls for the same checks within the same request are served from that cache. Datasette uses this before running the ``table_actions`` and ``database_actions`` plugin hooks: it resolves every registered table-level action against the current table and every database-level action against its database first, which means ``allowed()`` calls made by those plugin hooks are usually served from the cache instead of triggering additional queries.
+
+Actions for which no plugin provides any permission rules are resolved to ``False`` directly, without being included in the SQL query at all.
 
 .. _datasette_allowed_resources:
 
@@ -725,9 +811,33 @@ The builder methods are:
 
 - ``allow_all(action)`` - allow an action across all databases and resources
 - ``allow_database(database, action)`` - allow an action on a specific database
-- ``allow_resource(database, resource, action)`` - allow an action on a specific resource (table, SQL view or :ref:`canned query <canned_queries>`) within a database
+- ``allow_resource(database, resource, action)`` - allow an action on a specific resource (table, SQL view or :ref:`stored query <stored_queries>`) within a database
 
 Each method returns the ``TokenRestrictions`` instance so calls can be chained.
+
+``TokenRestrictions`` also provides an ``abbreviated(datasette)`` method which returns the restrictions as a dictionary using the compact format described in :ref:`authentication_cli_create_token_restrict`, with action names replaced by their registered abbreviations. It returns the inner dictionary only - the ``"_r"`` wrapping key shown in that section is not included. Returns ``None`` if no restrictions are set. This is useful when writing a custom :ref:`plugin_hook_register_token_handler` that needs to embed restrictions in a token payload.
+
+For example, the following restrictions:
+
+.. code-block:: python
+
+    restrictions = (
+        TokenRestrictions()
+        .allow_all("view-instance")
+        .allow_database("docs", "view-query")
+        .allow_resource("docs", "attachments", "insert-row")
+    )
+    restrictions.abbreviated(datasette)
+
+Returns this dictionary, using the abbreviations registered for each action:
+
+.. code-block:: python
+
+    {
+        "a": ["vi"],
+        "d": {"docs": ["vq"]},
+        "r": {"docs": {"attachments": ["ir"]}},
+    }
 
 The following example creates a token that can access ``view-instance`` and ``view-table`` across everything, can additionally use ``view-query`` for anything in the ``docs`` database and is allowed to execute ``insert-row`` and ``update-row`` in the ``attachments`` table in that database:
 
@@ -813,10 +923,10 @@ await .get_resource_metadata(self, database_name, resource_name)
 ``database_name`` - string
     The name of the database to query.
 ``resource_name`` - string
-    The name of the resource (table, view, or canned query) inside ``database_name`` to query.
+    The name of the resource (table, view, or stored query) inside ``database_name`` to query.
 
 Returns metadata keys and values for the specified "resource" as a dictionary.
-A "resource" in this context can be a table, view, or canned query.
+A "resource" in this context can be a table, view, or stored query.
 Internally queries the ``metadata_resources`` table inside the :ref:`internal database <internals_internal>`.
 
 .. _datasette_get_column_metadata:
@@ -827,7 +937,7 @@ await .get_column_metadata(self, database_name, resource_name, column_name)
 ``database_name`` - string
     The name of the database to query.
 ``resource_name`` - string
-    The name of the resource (table, view, or canned query) inside ``database_name`` to query.
+    The name of the resource (table, view, or stored query) inside ``database_name`` to query.
 ``column_name`` - string
     The name of the column inside ``resource_name`` to query.
 
@@ -873,7 +983,7 @@ await .set_resource_metadata(self, database_name, resource_name, key, value)
 ``database_name`` - string
     The database the metadata entry belongs to.
 ``resource_name`` - string
-    The resource (table, view, or canned query) the metadata entry belongs to.
+    The resource (table, view, or stored query) the metadata entry belongs to.
 ``key`` - string
     The metadata entry key to insert (ex ``title``, ``description``, etc.)
 ``value`` - string
@@ -891,7 +1001,7 @@ await .set_column_metadata(self, database_name, resource_name, column_name, key,
 ``database_name`` - string
     The database the metadata entry belongs to.
 ``resource_name`` - string
-    The resource (table, view, or canned query) the metadata entry belongs to.
+    The resource (table, view, or stored query) the metadata entry belongs to.
 ``column-name`` - string
     The column the metadata entry belongs to.
 ``key`` - string
@@ -902,6 +1012,297 @@ await .set_column_metadata(self, database_name, resource_name, column_name, key,
 Adds a new metadata entry for the specified column.
 Any previous column-level metadata entry with the same ``key`` will be overwritten.
 Internally upserts the value into the  the ``metadata_columns`` table inside the :ref:`internal database <internals_internal>`.
+
+.. _datasette_stored_queries:
+
+Stored queries
+--------------
+
+:ref:`Stored queries <stored_queries>` are stored in the ``queries`` table in the :ref:`internal database <internals_internal>`. Plugins can use the following methods to add, update, list and remove stored queries.
+
+.. _datasette_add_query:
+
+await .add_query(database, name, sql, ...)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Adds a stored query.
+
+.. code-block:: python
+
+    async def add_query(
+        self,
+        database,
+        name,
+        sql,
+        *,
+        title=None,
+        description=None,
+        description_html=None,
+        hide_sql=False,
+        fragment=None,
+        parameters=None,
+        is_write=False,
+        is_private=False,
+        is_trusted=False,
+        source="plugin",
+        owner_id=None,
+        on_success_message=None,
+        on_success_message_sql=None,
+        on_success_redirect=None,
+        on_error_message=None,
+        on_error_redirect=None,
+        replace=True,
+    ): ...
+
+``database`` - string
+    The name of the database this query should belong to.
+``name`` - string
+    The name of the stored query, used in the URL for that query.
+``sql`` - string
+    The SQL for the stored query.
+``title`` - string, optional
+    A display title for the query.
+``description`` - string, optional
+    A plain text description.
+``description_html`` - string, optional
+    An HTML description.
+``hide_sql`` - boolean, optional
+    Set to ``True`` to hide the SQL by default on the query page.
+``fragment`` - string, optional
+    A URL fragment to append to query links, for example ``"chart"``.
+``parameters`` - list of strings, optional
+    Explicit parameter names for the query form. If omitted, Datasette derives parameters from the SQL.
+``is_write`` - boolean, optional
+    Set to ``True`` for writable queries. They will the run against the SQLite write connection for the database.
+``is_private`` - boolean, optional
+    Set to ``True`` for private queries. Private queries can only be viewed, updated or deleted by their owner.
+``is_trusted`` - boolean, optional
+    Set to ``True`` for :ref:`trusted stored queries <trusted_stored_queries>`.
+``source`` - string, optional
+    Identifies where the query came from. Defaults to ``"plugin"``.
+``owner_id`` - string, optional
+    Actor ID of the query owner, used by private query permissions.
+``on_success_message``, ``on_success_message_sql``, ``on_success_redirect``, ``on_error_message``, ``on_error_redirect`` - strings, optional
+    Options for :ref:`writable queries <queries_writable>`.
+``replace`` - boolean, optional
+    Defaults to ``True``, which replaces any existing stored query with the same ``database`` and ``name``. Set this to ``False`` to raise a SQLite integrity error if the query already exists.
+
+Example:
+
+.. code-block:: python
+
+    await datasette.add_query(
+        database="fixtures",
+        name="recent_rows",
+        sql="select * from facetable order by created desc limit 10",
+        title="Recent rows",
+        source="my-plugin",
+    )
+
+.. _datasette_update_query:
+
+await .update_query(database, name, ...)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Updates fields for an existing stored query. Only keyword arguments that are provided will be changed.
+
+The available keyword arguments are the same as those for :ref:`datasette_add_query`, except for ``replace``. Pass ``None`` to clear optional text fields and options such as ``on_success_redirect``. Passing ``hide_sql=False`` removes the ``hide_sql`` option.
+
+Example:
+
+.. code-block:: python
+
+    await datasette.update_query(
+        database="fixtures",
+        name="recent_rows",
+        title="Latest rows",
+        is_private=True,
+        owner_id="alice",
+    )
+
+.. _datasette_get_query:
+
+await .get_query(database, name)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Returns a ``StoredQuery`` dataclass instance, or ``None`` if the query does not exist.
+
+``StoredQuery`` has the following attributes: ``database``, ``name``, ``sql``, ``title``, ``description``, ``description_html``, ``hide_sql``, ``fragment``, ``parameters``, ``is_write``, ``is_private``, ``is_trusted``, ``source``, ``owner_id``, ``on_success_message``, ``on_success_message_sql``, ``on_success_redirect``, ``on_error_message`` and ``on_error_redirect``.
+
+``parameters`` is a list of explicit parameter names.
+
+.. _datasette_list_queries:
+
+await .list_queries(database=None, ...)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Lists stored queries visible to the specified actor.
+
+.. code-block:: python
+
+    async def list_queries(
+        self,
+        database=None,
+        *,
+        actor=None,
+        limit=50,
+        cursor=None,
+        q=None,
+        is_write=None,
+        is_private=None,
+        is_trusted=None,
+        source=None,
+        owner_id=None,
+        include_private=False,
+    ): ...
+
+``database`` - string, optional
+    Restrict results to a specific database. Omit this to list queries across all databases.
+``actor`` - dictionary, optional
+    The authenticated actor. Results are filtered using that actor's ``view-query`` permission.
+``limit`` - integer, optional
+    Number of queries to return. Values are clamped to the range 1-1000.
+``cursor`` - string, optional
+    Pagination cursor from the previous page's ``next`` value.
+``q`` - string, optional
+    Search string matched against query name, title, description and SQL.
+``is_write``, ``is_private``, ``is_trusted`` - boolean, optional
+    Filter by those stored query flags.
+``source`` - string, optional
+    Filter by query source.
+``owner_id`` - string, optional
+    Filter by owner actor ID.
+``include_private`` - boolean, optional
+    Set to ``True`` to populate a ``private`` boolean on each returned ``StoredQuery`` indicating if anonymous users would be unable to view that query.
+
+The return value is a ``StoredQueryPage`` dataclass instance with these attributes:
+
+``queries`` - list of StoredQuery instances
+    Stored queries in the same format returned by :ref:`datasette_get_query`.
+``next`` - string or None
+    Pagination cursor for the next page, if one exists.
+``has_more`` - boolean
+    ``True`` if another page of results is available.
+``limit`` - integer
+    The limit used for this page.
+
+.. _datasette_count_queries:
+
+await .count_queries(database=None, ...)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Counts stored queries visible to the specified actor. This accepts the same filtering keyword arguments as :ref:`datasette_list_queries`, except for ``limit``, ``cursor`` and ``include_private``.
+
+.. _datasette_remove_query:
+
+await .remove_query(database, name, source=None)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Removes a stored query.
+
+``database`` - string
+    The database the query belongs to.
+``name`` - string
+    The query name.
+``source`` - string, optional
+    If provided, only a query with this source will be removed.
+
+.. _datasette_column_types:
+
+Column types
+------------
+
+Column types are stored in the ``column_types`` table in the :ref:`internal database <internals_internal>`. The following methods provide the API for reading and modifying column type assignments.
+
+.. _datasette_get_column_type:
+
+await .get_column_type(database, resource, column)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``database`` - string
+    The name of the database.
+``resource`` - string
+    The name of the table or view.
+``column`` - string
+    The name of the column.
+
+Returns a ``ColumnType`` subclass instance with ``.config`` populated for the specified column, or ``None`` if no column type is assigned.
+
+.. code-block:: python
+
+    ct = await datasette.get_column_type(
+        "mydb", "mytable", "email_col"
+    )
+    if ct:
+        print(ct.name)  # "email"
+        print(ct.config)  # None or {...}
+
+.. _datasette_get_column_types:
+
+await .get_column_types(database, resource)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``database`` - string
+    The name of the database.
+``resource`` - string
+    The name of the table or view.
+
+Returns a dictionary mapping column names to ``ColumnType`` subclass instances (with ``.config`` populated) for all columns that have assigned types on the given resource.
+
+.. code-block:: python
+
+    ct_map = await datasette.get_column_types("mydb", "mytable")
+    for col_name, ct in ct_map.items():
+        print(col_name, ct.name, ct.config)
+
+.. _datasette_set_column_type:
+
+await .set_column_type(database, resource, column, column_type, config=None)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``database`` - string
+    The name of the database.
+``resource`` - string
+    The name of the table or view.
+``column`` - string
+    The name of the column.
+``column_type`` - string
+    The column type name to assign, e.g. ``"email"``.
+``config`` - dict, optional
+    Optional configuration dict for the column type.
+
+Assigns a column type to a column. Overwrites any existing assignment for that column.
+Raises ``ValueError`` if the column type declares ``sqlite_types`` and the target column does not match one of those SQLite types.
+
+.. code-block:: python
+
+    await datasette.set_column_type(
+        "mydb",
+        "mytable",
+        "location",
+        "point",
+        config={"srid": 4326},
+    )
+
+.. _datasette_remove_column_type:
+
+await .remove_column_type(database, resource, column)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``database`` - string
+    The name of the database.
+``resource`` - string
+    The name of the table or view.
+``column`` - string
+    The name of the column.
+
+Removes the column type assignment for the specified column.
+
+.. code-block:: python
+
+    await datasette.remove_column_type(
+        "mydb", "mytable", "location"
+    )
 
 .. _datasette_add_database:
 
@@ -981,6 +1382,19 @@ The ``name`` and ``route`` parameters are optional and work the same way as they
     The name of the database to be removed.
 
 This removes a database that has been previously added. ``name=`` is the unique name of that database.
+
+.. _datasette_close:
+
+.close()
+--------
+
+Release all resources held by this ``Datasette`` instance. This calls :ref:`database_close` on every attached database (including the internal database), shuts down the thread pool executor used to run SQL queries, and unlinks the temporary file used to back the internal database if one was created.
+
+``close()`` is synchronous, idempotent and one-way: after a call to ``close()`` any attempt to use the Datasette instance to execute SQL will raise a ``datasette.database.DatasetteClosedError`` exception. A closed ``Datasette`` cannot be reopened — callers that need a fresh instance should construct a new one.
+
+If a call to ``Database.close()`` on one of the attached databases raises an exception, ``Datasette.close()`` will continue trying to close the remaining databases and will re-raise the first exception after every database has been processed.
+
+When Datasette is being served over ASGI the ``close()`` method is wired up to the lifespan shutdown event, so resources are released cleanly on ``SIGTERM`` / ``SIGINT``.
 
 .. _datasette_track_event:
 
@@ -1214,6 +1628,28 @@ These methods can be used with :ref:`internals_datasette_urls` - for example:
 ``datasette.client`` methods automatically take the current :ref:`setting_base_url` setting into account, whether or not you use the ``datasette.urls`` family of methods to construct the path.
 
 For documentation on available ``**kwargs`` options and the shape of the HTTPX Response object refer to the `HTTPX Async documentation <https://www.python-httpx.org/async/>`__.
+
+.. _internals_datasette_client_actor:
+
+Authenticating as an actor
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+All ``datasette.client`` methods accept an optional ``actor=`` parameter. When set to a dictionary describing an actor, the request is made with a signed ``ds_actor`` cookie identifying that actor — as if the request had been made by a user who is signed in as that actor.
+
+This is a convenient shorthand equivalent to signing the cookie manually using ``datasette.client.actor_cookie()``.
+
+Example usage:
+
+.. code-block:: python
+
+    response = await datasette.client.get(
+        "/-/actor.json", actor={"id": "root"}
+    )
+    assert response.json() == {"actor": {"id": "root"}}
+
+This parameter works with all HTTP methods (``get``, ``post``, ``put``, ``patch``, ``delete``, ``options``, ``head``) and the generic ``request`` method.
+
+Passing both ``actor=`` and a ``ds_actor`` cookie via ``cookies=`` raises a ``TypeError``. Other unrelated cookies can be combined with ``actor=``.
 
 Bypassing permission checks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1455,8 +1891,8 @@ Instances of the ``Database`` class can be used to execute queries against attac
 
 .. _database_constructor:
 
-Database(ds, path=None, is_mutable=True, is_memory=False, memory_name=None)
----------------------------------------------------------------------------
+Database(ds, path=None, is_mutable=True, is_memory=False, memory_name=None, is_temp_disk=False)
+-----------------------------------------------------------------------------------------------
 
 The ``Database()`` constructor can be used by plugins, in conjunction with :ref:`datasette_add_database`, to create and register new databases.
 
@@ -1476,6 +1912,13 @@ The arguments are as follows:
 
 ``memory_name`` - string or ``None``
     Use this to create a named in-memory database. Unlike regular memory databases these can be accessed by multiple threads and will persist an changes made to them for the lifetime of the Datasette server process.
+
+``is_temp_disk`` - boolean
+    Set this to ``True`` to create a temporary file-backed database. This creates a SQLite database in a temporary file on disk (using Python's ``tempfile.mkstemp()``) with WAL mode enabled for better concurrent read/write performance. The temporary file is automatically cleaned up when the database is closed or when the process exits.
+
+    Unlike named in-memory databases (``memory_name``), temporary disk databases support concurrent readers and writers without locking errors, because WAL mode allows readers and writers to operate simultaneously. This makes them suitable for use cases like the internal database where concurrent access is common.
+
+    When ``is_temp_disk=True``, the ``path``, ``is_mutable``, and ``mode`` parameters are set automatically and should not be provided.
 
 The first argument is the ``datasette`` instance you are attaching to, the second is a ``path=``, then ``is_mutable`` and ``is_memory`` are both optional arguments.
 
@@ -1571,8 +2014,8 @@ Example usage:
 
 .. _database_execute_write:
 
-await db.execute_write(sql, params=None, block=True)
-----------------------------------------------------
+await db.execute_write(sql, params=None, block=True, request=None, return_all=False, returning_limit=10)
+--------------------------------------------------------------------------------------------------------
 
 SQLite only allows one database connection to write at a time. Datasette handles this for you by maintaining a queue of writes to be executed against a given database. Plugins can submit write operations to this queue and they will be executed in the order in which they are received.
 
@@ -1580,7 +2023,30 @@ This method can be used to queue up a non-SELECT SQL query to be executed agains
 
 You can pass additional SQL parameters as a tuple or dictionary.
 
-The method will block until the operation is completed, and the return value will be the return from calling ``conn.execute(...)`` using the underlying ``sqlite3`` Python library.
+The optional ``request=`` argument is used internally by Datasette to pass request context to :ref:`write_wrapper plugin hooks <plugin_hook_write_wrapper>`.
+
+The method will block until the operation is completed, and the return value will be an ``ExecuteWriteResult`` object. This imitates a subset of the ``sqlite3.Cursor`` object:
+
+``.rowcount``
+    The number of rows modified by the statement, or ``-1`` if that number is unavailable.
+
+``.lastrowid``
+    The row ID of the last modified row, as returned by ``sqlite3.Cursor.lastrowid``.
+
+``.description``
+    The same column metadata exposed by Python's `sqlite3.Cursor.description <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.description>`__: one tuple per returned column, or ``None`` if the statement does not return rows.
+
+``.truncated``
+    ``True`` if the statement returned more rows than ``returning_limit``.
+
+``.fetchall()``
+    Returns any rows buffered by Datasette from the statement, such as rows from SQLite's ``RETURNING`` clause. This may be limited by ``returning_limit`` unless ``return_all=True`` was used. This method empties the buffer, so calling it again will return an empty list.
+
+SQLite statements using ``RETURNING`` must have their rows consumed before the transaction can commit. Datasette will fetch up to ``returning_limit + 1`` rows before committing, store up to ``returning_limit`` rows on the result object and set ``.truncated`` if there were more. The default ``returning_limit`` is ``10``.
+
+When ``.truncated`` is ``True``, ``.rowcount`` will be ``-1``. SQLite only reports the final row count for a ``RETURNING`` statement after every returned row has been fetched, and Datasette has deliberately stopped fetching rows after ``returning_limit`` to avoid buffering a potentially large result in memory.
+
+If you need to retrieve every row returned by a statement, pass ``return_all=True``. This will buffer all returned rows in memory before committing.
 
 If you pass ``block=False`` this behavior changes to "fire and forget" - queries will be added to the write queue and executed in a separate thread while your code can continue to do other things. The method will return a UUID representing the queued task.
 
@@ -1642,6 +2108,36 @@ For example:
     except Exception as e:
         print("An error occurred:", e)
 
+Your function can optionally accept a ``track_event`` parameter in addition to ``conn``.  If it does, it will be passed a callable that can be used to queue events for dispatch after the write transaction commits successfully.  Events queued this way are discarded if the write raises an exception.
+
+.. code-block:: python
+
+    from datasette.events import AlterTableEvent
+
+
+    def my_write(conn, track_event):
+        before_schema = conn.execute(
+            "select sql from sqlite_master where name = 'my_table'"
+        ).fetchone()[0]
+        conn.execute(
+            "alter table my_table add column new_col text"
+        )
+        after_schema = conn.execute(
+            "select sql from sqlite_master where name = 'my_table'"
+        ).fetchone()[0]
+        track_event(
+            AlterTableEvent(
+                actor=None,
+                database="mydb",
+                table="my_table",
+                before_schema=before_schema,
+                after_schema=after_schema,
+            )
+        )
+
+
+    await database.execute_write_fn(my_write)
+
 The value returned from ``await database.execute_write_fn(...)`` will be the return value from your function.
 
 If your function raises an exception that exception will be propagated up to the ``await`` line.
@@ -1661,6 +2157,8 @@ The :ref:`prepare_connection() <plugin_hook_prepare_connection>` plugin hook is 
 
 This allows plugins to execute database operations that might conflict with how database connections are usually configured. For example, running a ``VACUUM`` operation while bypassing any restrictions placed by the `datasette-sqlite-authorizer <https://github.com/datasette/datasette-sqlite-authorizer>`__ plugin.
 
+Running ``VACUUM`` using this method also ensures it won't trigger incorrect :class:`~datasette.events.RenameTableEvent` events, since ``execute_isolated_fn()`` does not trigger the Datasette mechanism that detects renamed tables in a way that can be confused by a ``VACUUM``.
+
 Plugins can also use this method to load potentially dangerous SQLite extensions, use them to perform an operation and then have them safely unloaded at the end of the call, without risk of exposing them to other connections.
 
 Functions run using ``execute_isolated_fn()`` share the same queue as ``execute_write_fn()``, which guarantees that no writes can be executed at the same time as the isolated function is executing.
@@ -1672,7 +2170,11 @@ The return value of the function will be returned by this method. Any exceptions
 db.close()
 ----------
 
-Closes all of the open connections to file-backed databases. This is mainly intended to be used by large test suites, to avoid hitting limits on the number of open files.
+Release all resources held by this ``Database`` instance. This shuts down the background write thread (if one was started by a previous call to :ref:`database_execute_write_fn` or similar), closes the write connection, and closes any cached read connections.
+
+After ``db.close()`` has been called, any further call to :ref:`database_execute`, :ref:`database_execute_fn`, :ref:`database_execute_write`, :ref:`database_execute_write_fn`, :ref:`database_execute_write_many`, :ref:`database_execute_write_script` or :ref:`database_execute_isolated_fn` will raise a ``datasette.database.DatasetteClosedError`` exception.
+
+``close()`` is idempotent — calling it a second time is a no-op. It is one-way: a closed ``Database`` cannot be reopened.
 
 .. _internals_database_introspection:
 
@@ -1695,6 +2197,9 @@ The ``Database`` class also provides properties and methods for introspecting th
 
 ``db.is_memory`` - boolean
     Is this database an in-memory database?
+
+``db.is_temp_disk`` - boolean
+    Is this database a temporary file-backed database? See :ref:`database_constructor` for details. Temporary disk databases report ``hash`` as ``None`` but have real values for ``size`` and ``mtime_ns`` since they are backed by a file on disk.
 
 ``await db.attached_databases()`` - list of named tuples
     Returns a list of additional databases that have been connected to this database using the SQLite ATTACH command. Each named tuple has fields ``seq``, ``name`` and ``file``.
@@ -1724,13 +2229,13 @@ The ``Database`` class also provides properties and methods for introspecting th
     The name of the FTS table associated with this table, if one exists.
 
 ``await db.label_column_for_table(table)`` - string or None
-    The label column that is associated with this table - either automatically detected or using the ``"label_column"`` key from :ref:`metadata`, see :ref:`label_columns`.
+    The label column that is associated with this table - either automatically detected or using the ``"label_column"`` key in configuration, see :ref:`table_configuration_label_column`.
 
 ``await db.foreign_keys_for_table(table)`` - list of dictionaries
     Details of columns in this table which are foreign keys to other tables. A list of dictionaries where each dictionary is shaped like this: ``{"column": string, "other_table": string, "other_column": string}``.
 
 ``await db.hidden_table_names()`` - list of strings
-    List of tables which Datasette "hides" by default - usually these are tables associated with SQLite's full-text search feature, the SpatiaLite extension or tables hidden using the :ref:`metadata_hiding_tables` feature.
+    List of tables which Datasette "hides" by default - usually these are tables associated with SQLite's full-text search feature, the SpatiaLite extension or tables hidden using the :ref:`table_configuration_hidden` feature.
 
 ``await db.get_table_definition(table)`` - string
     Returns the SQL definition for the table - the ``CREATE TABLE`` statement and any associated ``CREATE INDEX`` statements.
@@ -1802,19 +2307,16 @@ The ``Database`` class also provides properties and methods for introspecting th
 CSRF protection
 ===============
 
-Datasette uses `asgi-csrf <https://github.com/simonw/asgi-csrf>`__ to guard against CSRF attacks on form POST submissions. Users receive a ``ds_csrftoken`` cookie which is compared against the ``csrftoken`` form field (or ``x-csrftoken`` HTTP header) for every incoming request.
+Datasette protects against Cross-Site Request Forgery by inspecting the browser-set ``Sec-Fetch-Site`` and ``Origin`` headers on every unsafe (non-``GET``/``HEAD``/``OPTIONS``) request, following the approach described in `Filippo Valsorda's article <https://words.filippo.io/csrf/>`__ and implemented in Go 1.25's ``http.CrossOriginProtection``.
 
-If your plugin implements a ``<form method="POST">`` anywhere you will need to include that token. You can do so with the following template snippet:
+A request is rejected with a ``403`` response if:
 
-.. code-block:: html
+- It carries ``Sec-Fetch-Site`` with any value other than ``same-origin`` or ``none``, or
+- It has no ``Sec-Fetch-Site`` header but does carry an ``Origin`` header whose host does not match the request ``Host``.
 
-    <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
+Requests from non-browser clients (``curl``, server-to-server scripts, etc.) do not send ``Sec-Fetch-Site`` or ``Origin`` and pass through unchanged - CSRF is a browser-only attack.
 
-If you are rendering templates using the :ref:`datasette_render_template` method the ``csrftoken()`` helper will only work if you provide the ``request=`` argument to that method. If you forget to do this you will see the following error::
-
-    form-urlencoded POST field did not match cookie
-
-You can selectively disable CSRF protection using the :ref:`plugin_hook_skip_csrf` hook.
+No token, cookie, or hidden form field is needed. Any ``<form method="POST">`` inside Datasette or a plugin will be accepted from the same origin without modification.
 
 .. _internals_internal:
 
@@ -1941,6 +2443,34 @@ The internal database schema is as follows:
         value text,
         unique(database_name, resource_name, column_name, key)
     );
+    CREATE TABLE column_types (
+        database_name TEXT NOT NULL,
+        resource_name TEXT NOT NULL,
+        column_name TEXT NOT NULL,
+        column_type TEXT NOT NULL,
+        config TEXT,
+        PRIMARY KEY (database_name, resource_name, column_name)
+    );
+    CREATE TABLE queries (
+        database_name TEXT NOT NULL,
+        name TEXT NOT NULL,
+        sql TEXT NOT NULL,
+        title TEXT,
+        description TEXT,
+        description_html TEXT,
+        options TEXT NOT NULL DEFAULT '{}',
+        parameters TEXT NOT NULL DEFAULT '[]',
+        is_write INTEGER NOT NULL DEFAULT 0 CHECK (is_write IN (0, 1)),
+        is_private INTEGER NOT NULL DEFAULT 0 CHECK (is_private IN (0, 1)),
+        is_trusted INTEGER NOT NULL DEFAULT 0 CHECK (is_trusted IN (0, 1)),
+        source TEXT NOT NULL DEFAULT 'user',
+        owner_id TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (database_name, name)
+    );
+    CREATE INDEX queries_owner_idx
+        ON queries(owner_id);
 
 .. [[[end]]]
 
@@ -2010,7 +2540,51 @@ Note that the space character is a special case: it will be replaced with a ``+`
 
 .. autofunction:: datasette.utils.tilde_decode
 
+.. _internals_utils_call_with_supported_arguments:
+
+call_with_supported_arguments(fn, \*\*kwargs)
+---------------------------------------------
+
+Call ``fn``, passing it only those keyword arguments that match its function signature. This implements a dependency injection pattern - the caller provides all available arguments, and the function receives only the ones it declares as parameters.
+
+This is useful in plugins that want to define callback functions that only declare the arguments they need. For example:
+
+.. code-block:: python
+
+    from datasette.utils import call_with_supported_arguments
+
+
+    def my_callback(request, datasette): ...
+
+
+    # This will pass only request and datasette, ignoring other kwargs:
+    call_with_supported_arguments(
+        my_callback,
+        request=request,
+        datasette=datasette,
+        database=database,
+        table=table,
+    )
+
+.. autofunction:: datasette.utils.call_with_supported_arguments
+
+.. _internals_utils_async_call_with_supported_arguments:
+
+await async_call_with_supported_arguments(fn, \*\*kwargs)
+---------------------------------------------------------
+
+Async version of :ref:`call_with_supported_arguments <internals_utils_call_with_supported_arguments>`. Use this for ``async def`` callback functions.
+
+.. autofunction:: datasette.utils.async_call_with_supported_arguments
+
 .. _internals_tracer:
+
+JSON encoding
+-------------
+
+.. _internals_utils_CustomJSONEncoder:
+
+.. autoclass:: datasette.utils.CustomJSONEncoder
 
 datasette.tracer
 ================

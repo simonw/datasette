@@ -1,12 +1,12 @@
 <!-- above-table-panel is a hook node for plugins to attach to . Displays even if no data available -->
 <div class="above-table-panel"> </div>
-{% if display_rows %}
+{% if display_columns %}
 <div class="table-wrapper">
     <table class="rows-and-columns">
         <thead>
             <tr>
                 {% for column in display_columns %}
-                    <th {% if column.description %}data-column-description="{{ column.description }}" {% endif %}class="col-{{ column.name|to_css_class }}" scope="col" data-column="{{ column.name }}" data-column-type="{{ column.type.lower() }}" data-column-not-null="{{ column.notnull }}" data-is-pk="{% if column.is_pk %}1{% else %}0{% endif %}">
+                    <th {% if column.description %}data-column-description="{{ column.description }}" {% endif %}class="col-{{ column.name|to_css_class }}" scope="col" data-column="{{ column.name }}" data-column-type="{{ column.type.lower() }}" data-column-not-null="{{ column.notnull }}" data-is-pk="{% if column.is_pk %}1{% else %}0{% endif %}"{% if column.is_special_link_column %} data-is-link-column="1"{% endif %}>
                         {% if not column.sortable %}
                             {{ column.name }}
                         {% else %}
@@ -22,7 +22,7 @@
         </thead>
         <tbody>
         {% for row in display_rows %}
-            <tr>
+            <tr{% if row.pk_path is not none %} data-row="{{ row.row_path }}"{% if row.row_label %} data-row-label="{{ row.row_label }}"{% endif %}{% endif %}>
                 {% for cell in row %}
                     <td class="col-{{ cell.column|to_css_class }} type-{{ cell.value_type }}">{{ cell.value }}</td>
                 {% endfor %}
@@ -31,6 +31,7 @@
         </tbody>
     </table>
 </div>
-{% else %}
+{% endif %}
+{% if not display_rows %}
     <p class="zero-results">0 records</p>
 {% endif %}

@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
     <title>{% block title %}{% endblock %}</title>
-    <link rel="stylesheet" href="{{ urls.static('app.css') }}?{{ app_css_hash }}">
+    <link rel="stylesheet" href="{{ static('app.css') }}">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 {% for url in extra_css_urls %}
     <link rel="stylesheet" href="{{ url.url }}"{% if url.get("sri") %} integrity="{{ url.sri }}" crossorigin="anonymous"{% endif %}>
 {% endfor %}
 <script>window.datasetteVersion = '{{ datasette_version }}';</script>
-<script src="{{ urls.static('datasette-manager.js') }}" defer></script>
+<script src="{{ static('datasette-manager.js') }}" defer></script>
 {% for url in extra_js_urls %}
     <script {% if url.module %}type="module" {% endif %}src="{{ url.url }}"{% if url.get("sri") %} integrity="{{ url.sri }}" crossorigin="anonymous"{% endif %}></script>
 {% endfor %}
@@ -20,7 +20,7 @@
 <body class="{% block body_class %}{% endblock %}">
 <div class="not-footer">
 <header class="hd"><nav>{% block nav %}{% block crumbs %}{{ crumbs.nav(request=request) }}{% endblock %}
-    {% set links = menu_links() %}{% if links or show_logout %}
+    {% set links = menu_links() %}
     <details class="nav-menu details-menu">
         <summary><svg aria-labelledby="nav-menu-svg-title" role="img"
             fill="currentColor" stroke="currentColor" xmlns="http://www.w3.org/2000/svg"
@@ -29,20 +29,18 @@
                 <path fill-rule="evenodd" d="M1 2.75A.75.75 0 011.75 2h12.5a.75.75 0 110 1.5H1.75A.75.75 0 011 2.75zm0 5A.75.75 0 011.75 7h12.5a.75.75 0 110 1.5H1.75A.75.75 0 011 7.75zM1.75 12a.75.75 0 100 1.5h12.5a.75.75 0 100-1.5H1.75z"></path>
         </svg></summary>
         <div class="nav-menu-inner">
-            {% if links %}
             <ul>
+                <li><button type="button" class="button-as-link" data-navigation-search-open aria-haspopup="dialog" aria-expanded="false" aria-keyshortcuts="/">Jump to... <kbd class="keyboard-shortcut" aria-hidden="true" title="Keyboard shortcut: press / to open Jump to">/</kbd></button></li>
                 {% for link in links %}
                 <li><a href="{{ link.href }}">{{ link.label }}</a></li>
                 {% endfor %}
             </ul>
-            {% endif %}
             {% if show_logout %}
             <form class="nav-menu-logout" action="{{ urls.logout() }}" method="post">
-                <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
                 <button class="button-as-link">Log out</button>
             </form>{% endif %}
         </div>
-    </details>{% endif %}
+    </details>
     {% if actor %}
     <div class="actor">
         <strong>{{ display_actor(actor) }}</strong>
@@ -72,7 +70,7 @@
 {% endfor %}
 
 {% if select_templates %}<!-- Templates considered: {{ select_templates|join(", ") }} -->{% endif %}
-<script src="{{ urls.static('navigation-search.js') }}" defer></script>
-<navigation-search url="/-/tables"></navigation-search>
+<script src="{{ static('navigation-search.js') }}" defer></script>
+<navigation-search url="{{ urls.path("/-/jump") }}"></navigation-search>
 </body>
 </html>

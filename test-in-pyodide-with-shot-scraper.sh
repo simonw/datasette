@@ -1,40 +1,37 @@
 #!/bin/bash
-set -e
-# So the script fails if there are any errors
+set -euo pipefail
+
+read -r -a PYTHON_CMD <<< "${PYTHON:-python3}"
+read -r -a SHOT_SCRAPER_CMD <<< "${SHOT_SCRAPER:-shot-scraper}"
 
 # Build the wheel
-python3 -m build
+"${PYTHON_CMD[@]}" -m build
 
-# Find name of wheel, strip off the dist/
-wheel=$(basename $(ls dist/*.whl) | head -n 1)
+# Find name of most recently built wheel, strip off the dist/
+wheel=$(basename "$(ls -t dist/*.whl | head -n 1)")
 
 # Create a blank index page
 echo '
-<script src="https://cdn.jsdelivr.net/pyodide/v0.20.0/full/pyodide.js"></script>
+<script src="https://cdn.jsdelivr.net/pyodide/v314.0.0/full/pyodide.js"></script>
 ' > dist/index.html
 
 # Run a server for that dist/ folder
-cd dist
-python3 -m http.server 8529 &
-cd ..
+"${PYTHON_CMD[@]}" -m http.server 8529 --directory dist &
+server_pid=$!
 
 # Register the kill_server function to be called on script exit
 kill_server() {
-  pkill -f 'http.server 8529'
+  kill "$server_pid" 2>/dev/null || true
 }
 trap kill_server EXIT
 
 
-shot-scraper javascript http://localhost:8529/ "
+"${SHOT_SCRAPER_CMD[@]}" javascript http://localhost:8529/ "
 async () => {
   let pyodide = await loadPyodide();
-  await pyodide.loadPackage(['micropip', 'ssl', 'setuptools']);
+  await pyodide.loadPackage(['micropip', 'setuptools']);
   let output = await pyodide.runPythonAsync(\`
     import micropip
-    await micropip.install('h11==0.12.0')
-    await micropip.install('httpx==0.23')
-    # To avoid 'from typing_extensions import deprecated' error:
-    await micropip.install('typing-extensions>=4.12.2')
     await micropip.install('http://localhost:8529/$wheel')
     import ssl
     import setuptools

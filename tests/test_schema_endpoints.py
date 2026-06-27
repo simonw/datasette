@@ -151,7 +151,7 @@ async def test_schema_permission_enforcement(schema_ds, url):
     # Authenticated user with permission should succeed
     response = await schema_ds.client.get(
         url,
-        cookies={"ds_actor": schema_ds.client.actor_cookie({"id": "root"})},
+        actor={"id": "root"},
     )
     assert response.status_code == 200
 
@@ -171,7 +171,7 @@ async def test_instance_schema_respects_database_permissions(schema_ds):
     # Authenticated user should see all databases
     response = await schema_ds.client.get(
         "/-/schema.json",
-        cookies={"ds_actor": schema_ds.client.actor_cookie({"id": "root"})},
+        actor={"id": "root"},
     )
     assert response.status_code == 200
     data = response.json()

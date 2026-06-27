@@ -62,6 +62,76 @@ You can run the tests faster using multiple CPU cores with `pytest-xdist <https:
 
     uv run pytest -m "serial"
 
+.. _contributing_playwright:
+
+Running Playwright tests
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Datasette includes a small number of browser automation tests using Playwright_.
+These tests are skipped by default, so you can run the main test suite with
+``uv run pytest`` without installing Playwright or any browser binaries.
+
+.. _Playwright: https://playwright.dev/python/
+
+The Playwright tests use a separate dependency group. The easiest way to run
+them is using ``just``. First install the browser engine you want to test
+against. Chromium is used by default:
+
+.. code-block:: bash
+
+    just playwright-install
+
+Then run the Playwright test module:
+
+.. code-block:: bash
+
+    just playwright
+
+You can also run the same tests against Firefox or WebKit by installing that
+browser engine and passing it to ``just playwright``:
+
+.. code-block:: bash
+
+    just playwright-install firefox
+    just playwright firefox
+
+    just playwright-install webkit
+    just playwright webkit
+
+To install every supported browser engine and run the tests against all of
+them, use:
+
+.. code-block:: bash
+
+    just playwright-install-all
+    just playwright-all
+
+You can pass extra ``pytest`` options after the browser name:
+
+.. code-block:: bash
+
+    just playwright chromium -k permissions
+    just playwright-all -x
+
+You can add the ``--headed`` option to have Playwright open a browser window that you can see while it runs the tests. This only works if you specify a browser, for example:
+
+.. code-block:: bash
+
+    just playwright firefox --headed
+
+Combine this with ``-k`` to watch a specific test:
+
+.. code-block:: bash
+
+    just playwright chromium --headed -k test_insert_row
+
+If you are not using ``just``, the equivalent ``uv run`` commands are:
+
+.. code-block:: bash
+
+    uv run --group playwright playwright install chromium
+    uv run --group playwright pytest tests/test_playwright.py --playwright --browser chromium
+
 .. _contributing_using_fixtures:
 
 Using fixtures
@@ -86,6 +156,9 @@ Any changes you make in the ``datasette/templates`` or ``datasette/static`` fold
 If you want to change Datasette's Python code you can use the ``--reload`` option to cause Datasette to automatically reload any time the underlying code changes::
 
     uv run datasette --reload fixtures.db
+
+This also enables development mode for static asset cache busting, described in
+:ref:`customization_static_files`.
 
 You can also use the ``fixtures.py`` script to recreate the testing version of ``metadata.json`` used by the unit tests. To do that::
 
@@ -239,6 +312,19 @@ To update these pages, run the following command::
 
     uv run cog -r docs/*.rst
 
+.. _contributing_template_contexts:
+
+Documented template contexts
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Datasette's documented template contexts are part of the public API for custom templates. They are defined as dataclasses next to the view code that renders them, for example ``DatabaseContext`` and ``QueryContext`` in ``datasette/views/database.py``.
+
+Every documented context class inherits from ``datasette.views.Context``. Fields that are added directly by view code should be declared as dataclass fields with ``help`` metadata, which is used to generate :ref:`template_context`. Fields resolved through the page extras system should use ``from_extra()`` so their documentation comes from the matching ``Extra`` class.
+
+Use ``documented_template`` on each context class to record the canonical template named in the generated documentation. This should be a string such as ``"database.html"``. Runtime template selection still happens in the view code, since most pages consider more specific template names before falling back to the canonical one.
+
+When a context field contains repeated structured data, prefer a small nested dataclass over an anonymous dictionary. For example, a field containing table summaries should be annotated as ``list[DatabaseTable]`` where ``DatabaseTable`` is a dataclass describing the keys and value types. This keeps the Python contract and generated documentation clear. JSON responses and ``?_context=1`` debug output will convert nested dataclasses back to JSON objects at the response boundary.
+
 .. _contributing_continuous_deployment:
 
 Continuously deployed demo instances
@@ -296,7 +382,7 @@ Don't forget to create the release from the correct branch - usually ``main``, b
 
 While the release is running you can confirm that the correct commits made it into the release using the https://github.com/simonw/datasette/compare/0.64.6...0.64.7 URL.
 
-Finally, post a news item about the release on `datasette.io <https://datasette.io/>`__ by editing the `news.yaml <https://github.com/simonw/datasette.io/blob/main/news.yaml>`__ file in that site's repository.
+Finally, post a news item about the release on `datasette.io <https://datasette.io/>`__ by editing the `news.yaml <https://github.com/simonw/datasette.io/blob/main/news.yaml>`__ file in that site's repository. Use `this preview tool <https://tools.simonwillison.net/datasette-io-preview>`__ to preview the edits to the YAML.
 
 .. _contributing_alpha_beta:
 

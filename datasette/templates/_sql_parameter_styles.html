@@ -1,0 +1,58 @@
+<style>
+form.sql .sql-editor {
+    max-width: 52rem;
+}
+form.sql .sql-editor textarea#sql-editor {
+    width: 100%;
+}
+form.sql .sql-parameters-section {
+    max-width: 52rem;
+}
+form.sql .sql-parameter-row {
+    align-items: start;
+    column-gap: 0.6rem;
+    display: grid;
+    grid-template-columns: minmax(8rem, 11rem) minmax(16rem, 1fr) auto;
+    margin: 0 0 0.65rem;
+    max-width: 52rem;
+}
+form.sql .sql-parameter-row label {
+    overflow-wrap: anywhere;
+    padding-top: 0.55rem;
+    width: auto;
+}
+form.sql .sql-parameter-row input[data-parameter-control],
+form.sql .sql-parameter-row textarea[data-parameter-control] {
+    box-sizing: border-box;
+    width: 100%;
+}
+form.sql .sql-parameter-row textarea[data-parameter-control] {
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    display: block;
+    font-family: Helvetica, sans-serif;
+    font-size: 1em;
+    min-height: 7rem;
+    padding: 9px 4px;
+}
+form.sql.core button.sql-parameter-toggle[type=button] {
+    font-size: 0.72rem;
+    height: 1.8rem;
+    line-height: 1;
+    margin: 0.25rem 0 0;
+    padding: 0.25rem 0.45rem;
+}
+@media (max-width: 480px) {
+    form.sql .sql-parameter-row {
+        grid-template-columns: 1fr;
+        row-gap: 0.25rem;
+    }
+    form.sql .sql-parameter-row label {
+        padding-top: 0;
+    }
+    form.sql.core button.sql-parameter-toggle[type=button] {
+        justify-self: start;
+        margin-top: 0;
+    }
+}
+</style>

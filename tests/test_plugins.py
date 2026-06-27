@@ -1,7 +1,6 @@
 from bs4 import BeautifulSoup as Soup
 from .fixtures import (
     make_app_client,
-    TABLES,
     TEMP_PLUGIN_SECRET_FILE,
     PLUGINS_DIR,
     TestClient as _TestClient,
@@ -9,6 +8,7 @@ from .fixtures import (
 from click.testing import CliRunner
 from datasette.app import Datasette
 from datasette import cli, hookimpl
+from datasette.fixtures import TABLES
 from datasette.filters import FilterArguments
 from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
 from datasette.permissions import PermissionSQL, Action
@@ -41,6 +41,11 @@ def test_plugin_hooks_have_tests(plugin_hook):
         if plugin_hook in test:
             ok = True
     assert ok, f"Plugin hook is missing tests: {plugin_hook}"
+
+
+def test_hook_jump_items_sql():
+    # Detailed behavior is covered in tests/test_jump.py.
+    assert "jump_items_sql" in dir(pm.hook)
 
 
 @pytest.mark.asyncio
@@ -422,9 +427,9 @@ def test_plugins_async_template_function(restore_working_directory):
             .select("pre.extra_from_awaitable_function")[0]
             .text
         )
-        expected = (
-            sqlite3.connect(":memory:").execute("select sqlite_version()").fetchone()[0]
-        )
+        conn = sqlite3.connect(":memory:")
+        expected = conn.execute("select sqlite_version()").fetchone()[0]
+        conn.close()
         assert expected == extra_from_awaitable_function
 
 
@@ -466,6 +471,7 @@ def view_names_client(tmp_path_factory):
     db_path = str(tmpdir / "fixtures.db")
     conn = sqlite3.connect(db_path)
     conn.executescript(TABLES)
+    conn.close()
     return _TestClient(
         Datasette([db_path], template_dir=str(templates), plugins_dir=str(plugins))
     )
@@ -618,6 +624,31 @@ async def test_hook_register_output_renderer_can_render(ds_client):
         "table": "facetable",
         "view_name": "table",
     }.items() <= ds_client.ds._can_render_saw.items()
+
+
+@pytest.mark.asyncio
+async def test_hook_register_output_renderer_can_render_canned_query(ds_client):
+    # https://github.com/simonw/datasette/issues/2711
+    # can_render for a canned query must be passed the query's columns, rows
+    # and SQL - previously it received an empty data dict, so renderers that
+    # depend on the columns (datasette-atom, datasette-ics) never showed up.
+    response = await ds_client.get("/fixtures/pragma_cache_size")
+    assert response.status_code == 200
+    saw = ds_client.ds._can_render_saw
+    assert saw["columns"] == ["cache_size"]
+    assert len(saw["rows"]) == 1
+    assert saw["sql"] == "PRAGMA cache_size;"
+    assert saw["query_name"] == "pragma_cache_size"
+    # The renderer's export link should therefore be offered
+    links = (
+        Soup(response.text, "html.parser")
+        .find("p", {"class": "export-links"})
+        .find_all("a")
+    )
+    actual = [link["href"] for link in links]
+    assert any(
+        href.startswith("/fixtures/pragma_cache_size.testall") for href in actual
+    )
 
 
 @pytest.mark.asyncio
@@ -812,21 +843,25 @@ def test_hook_register_routes_override():
 
 
 def test_hook_register_routes_post(app_client):
-    response = app_client.post("/post/", {"this is": "post data"}, csrftoken_from=True)
+    response = app_client.post("/post/", {"this is": "post data"})
     assert response.status_code == 200
-    assert "csrftoken" in response.json
     assert response.json["this is"] == "post data"
 
 
 def test_hook_register_routes_csrftoken(restore_working_directory, tmpdir_factory):
+    # csrftoken() is a legacy compatibility shim that returns a
+    # per-request random value - it is no longer used for CSRF enforcement.
     templates = tmpdir_factory.mktemp("templates")
     (templates / "csrftoken_form.html").write_text(
-        "CSRFTOKEN: {{ csrftoken() }}", "utf-8"
+        "CSRFTOKEN:{{ csrftoken() }}:END", "utf-8"
     )
     with make_app_client(template_dir=templates) as client:
         response = client.get("/csrftoken-form/")
-        expected_token = client.ds._last_request.scope["csrftoken"]()
-        assert f"CSRFTOKEN: {expected_token}" == response.text
+        assert response.text.startswith("CSRFTOKEN:")
+        assert response.text.endswith(":END")
+        token = response.text[len("CSRFTOKEN:") : -len(":END")]
+        assert len(token) >= 20
+        assert "ds_csrftoken" not in response.cookies
 
 
 @pytest.mark.asyncio
@@ -863,38 +898,74 @@ async def test_hook_startup(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_hook_canned_queries(ds_client):
-    queries = (await ds_client.get("/fixtures.json")).json()["queries"]
+async def test_hook_startup_metadata_available(ds_client):
+    # Metadata from metadata.yaml should be populated before startup() fires
+    assert "title" in ds_client.ds._startup_metadata_keys
+
+
+@pytest.mark.asyncio
+async def test_hook_startup_catalog_populated(ds_client):
+    # Internal catalog tables should be populated before startup() fires
+    assert "fixtures" in ds_client.ds._startup_catalog_databases
+
+
+@pytest.mark.asyncio
+async def test_plugin_startup_can_add_queries():
+    ds = Datasette(memory=True)
+    ds.add_memory_database("plugin_startup_queries", name="data")
+
+    class AddQueriesPlugin:
+        __name__ = "AddQueriesPlugin"
+
+        @hookimpl
+        def startup(self, datasette):
+            async def inner():
+                result = await datasette.get_database("data").execute("select 1 + 1")
+                await datasette.add_query(
+                    "data",
+                    "from_startup",
+                    "select {}".format(result.first()[0]),
+                    source="plugin",
+                )
+
+            return inner
+
+    ds.pm.register(AddQueriesPlugin(), name="add_queries_plugin")
+    try:
+        response = await ds.client.get("/data.json")
+    finally:
+        ds.pm.unregister(name="add_queries_plugin")
+
+    queries = response.json()["queries"]
     queries_by_name = {q["name"]: q for q in queries}
-    assert {
-        "sql": "select 2",
-        "name": "from_async_hook",
-        "private": False,
-    } == queries_by_name["from_async_hook"]
-    assert {
-        "sql": "select 1, 'null' as actor_id",
-        "name": "from_hook",
-        "private": False,
-    } == queries_by_name["from_hook"]
+    assert queries_by_name["from_startup"]["sql"] == "select 2"
+    assert queries_by_name["from_startup"]["private"] is False
 
 
 @pytest.mark.asyncio
-async def test_hook_canned_queries_non_async(ds_client):
-    response = await ds_client.get("/fixtures/from_hook.json?_shape=array")
-    assert [{"1": 1, "actor_id": "null"}] == response.json()
+async def test_plugin_startup_query_can_execute():
+    ds = Datasette(memory=True)
+    ds.add_memory_database("plugin_startup_query_execute", name="data")
 
+    class AddQueryPlugin:
+        __name__ = "AddQueryPlugin"
 
-@pytest.mark.asyncio
-async def test_hook_canned_queries_async(ds_client):
-    response = await ds_client.get("/fixtures/from_async_hook.json?_shape=array")
+        @hookimpl
+        def startup(self, datasette):
+            async def inner():
+                await datasette.add_query(
+                    "data", "from_startup", "select 2", source="plugin"
+                )
+
+            return inner
+
+    ds.pm.register(AddQueryPlugin(), name="add_query_plugin")
+    try:
+        response = await ds.client.get("/data/from_startup.json?_shape=array")
+    finally:
+        ds.pm.unregister(name="add_query_plugin")
+
     assert [{"2": 2}] == response.json()
-
-
-@pytest.mark.asyncio
-async def test_hook_canned_queries_actor(ds_client):
-    assert (
-        await ds_client.get("/fixtures/from_hook.json?_bot=1&_shape=array")
-    ).json() == [{"1": 1, "actor_id": "bot"}]
 
 
 def test_hook_register_magic_parameters(restore_working_directory):
@@ -991,6 +1062,7 @@ async def test_hook_menu_links(ds_client):
 async def test_hook_table_actions(ds_client):
     response = await ds_client.get("/fixtures/facetable")
     assert get_actions_links(response.text) == []
+    assert get_actions_buttons(response.text) == []
     response_2 = await ds_client.get("/fixtures/facetable?_bot=1&_hello=BOB")
     assert ">Table actions<" in response_2.text
     assert sorted(
@@ -1000,6 +1072,23 @@ async def test_hook_table_actions(ds_client):
         {"label": "From async BOB", "href": "/", "description": None},
         {"label": "Table: facetable", "href": "/", "description": None},
     ]
+    response_3 = await ds_client.get("/fixtures/facetable?_bot=1&_button=1")
+    assert get_actions_buttons(response_3.text) == [
+        {
+            "label": "Plugin button",
+            "description": "Runs JavaScript from a plugin",
+            "attrs": {
+                "aria-label": "Plugin button for facetable",
+                "class": ["button-as-link", "action-menu-button"],
+                "data-database": "fixtures",
+                "data-plugin-action": "plugin-button",
+                "data-table": "facetable",
+                "role": "menuitem",
+                "tabindex": "-1",
+                "type": "button",
+            },
+        }
+    ]
 
 
 @pytest.mark.asyncio
@@ -1008,7 +1097,7 @@ async def test_hook_view_actions(ds_client):
     assert get_actions_links(response.text) == []
     response_2 = await ds_client.get(
         "/fixtures/simple_view",
-        cookies={"ds_actor": ds_client.actor_cookie({"id": "bob"})},
+        actor={"id": "bob"},
     )
     assert ">View actions<" in response_2.text
     assert sorted(
@@ -1027,13 +1116,36 @@ def get_actions_links(html):
     links = []
     for a_el in details.select("a"):
         description = None
-        if a_el.find("p") is not None:
-            description = a_el.find("p").text.strip()
-            a_el.find("p").extract()
+        description_el = a_el.find(class_="dropdown-description")
+        if description_el is not None:
+            description = description_el.text.strip()
+            description_el.extract()
         label = a_el.text.strip()
         href = a_el["href"]
         links.append({"label": label, "href": href, "description": description})
     return links
+
+
+def get_actions_buttons(html):
+    soup = Soup(html, "html.parser")
+    details = soup.find("details", {"class": "actions-menu-links"})
+    if details is None:
+        return []
+    buttons = []
+    for button_el in details.select("button.action-menu-button"):
+        description = None
+        description_el = button_el.find(class_="dropdown-description")
+        if description_el is not None:
+            description = description_el.text.strip()
+            description_el.extract()
+        buttons.append(
+            {
+                "label": button_el.text.strip(),
+                "description": description,
+                "attrs": dict(button_el.attrs),
+            }
+        )
+    return buttons
 
 
 @pytest.mark.asyncio
@@ -1072,7 +1184,7 @@ async def test_hook_row_actions(ds_client):
 
     response_2 = await ds_client.get(
         "/fixtures/facet_cities/1",
-        cookies={"ds_actor": ds_client.actor_cookie({"id": "sam"})},
+        actor={"id": "sam"},
     )
     assert get_actions_links(response_2.text) == [
         {
@@ -1100,9 +1212,7 @@ async def test_hook_homepage_actions(ds_client):
     # No button for anonymous users
     assert "<span>Homepage actions</span>" not in response.text
     # Signed in user gets an action
-    response2 = await ds_client.get(
-        "/", cookies={"ds_actor": ds_client.actor_cookie({"id": "troy"})}
-    )
+    response2 = await ds_client.get("/", actor={"id": "troy"})
     assert "<span>Homepage actions</span>" in response2.text
     assert get_actions_links(response2.text) == [
         {
@@ -1111,31 +1221,6 @@ async def test_hook_homepage_actions(ds_client):
             "description": None,
         },
     ]
-
-
-def test_hook_skip_csrf(app_client):
-    cookie = app_client.actor_cookie({"id": "test"})
-    csrf_response = app_client.post(
-        "/post/",
-        post_data={"this is": "post data"},
-        csrftoken_from=True,
-        cookies={"ds_actor": cookie},
-    )
-    assert csrf_response.status_code == 200
-    missing_csrf_response = app_client.post(
-        "/post/", post_data={"this is": "post data"}, cookies={"ds_actor": cookie}
-    )
-    assert missing_csrf_response.status_code == 403
-    # But "/skip-csrf" should allow
-    allow_csrf_response = app_client.post(
-        "/skip-csrf", post_data={"this is": "post data"}, cookies={"ds_actor": cookie}
-    )
-    assert allow_csrf_response.status_code == 405  # Method not allowed
-    # /skip-csrf-2 should not
-    second_missing_csrf_response = app_client.post(
-        "/skip-csrf-2", post_data={"this is": "post data"}, cookies={"ds_actor": cookie}
-    )
-    assert second_missing_csrf_response.status_code == 403
 
 
 def _extract_commands(output):
@@ -1467,8 +1552,10 @@ class SlotPlugin:
         return "Xtop_query:{}:{}:{}".format(database, sql, request.args["z"])
 
     @hookimpl
-    def top_canned_query(self, request, database, query_name):
-        return "Xtop_query:{}:{}:{}".format(database, query_name, request.args["z"])
+    def top_stored_query(self, request, database, query_name):
+        return "Xtop_stored_query:{}:{}:{}".format(
+            database, query_name, request.args["z"]
+        )
 
 
 @pytest.mark.asyncio
@@ -1529,12 +1616,12 @@ async def test_hook_top_query(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_hook_top_canned_query(ds_client):
+async def test_hook_top_stored_query(ds_client):
     try:
         pm.register(SlotPlugin(), name="SlotPlugin")
-        response = await ds_client.get("/fixtures/from_hook?z=xyz")
+        response = await ds_client.get("/fixtures/magic_parameters?z=xyz")
         assert response.status_code == 200
-        assert "Xtop_query:fixtures:from_hook:xyz" in response.text
+        assert "Xtop_stored_query:fixtures:magic_parameters:xyz" in response.text
     finally:
         pm.unregister(name="SlotPlugin")
 
@@ -1660,7 +1747,7 @@ async def test_hook_register_actions_with_custom_resources():
             super().__init__(parent=collection, child=None)
 
         @classmethod
-        async def resources_sql(cls, datasette) -> str:
+        async def resources_sql(cls, datasette, actor=None) -> str:
             return """
                 SELECT 'collection1' AS parent, NULL AS child
                 UNION ALL
@@ -1677,7 +1764,7 @@ async def test_hook_register_actions_with_custom_resources():
             super().__init__(parent=collection, child=document)
 
         @classmethod
-        async def resources_sql(cls, datasette) -> str:
+        async def resources_sql(cls, datasette, actor=None) -> str:
             return """
                 SELECT 'collection1' AS parent, 'doc1' AS child
                 UNION ALL
@@ -1936,3 +2023,14 @@ def test_metadata_plugin_config_treated_as_config(
     assert "plugins" not in actual_metadata
     assert actual_metadata == expected_metadata
     assert ds.config == expected_config
+
+
+@pytest.mark.asyncio
+async def test_hook_register_column_types():
+    ds = Datasette()
+    await ds.invoke_startup()
+    # Built-in column types should be registered
+    assert "url" in ds._column_types
+    assert "email" in ds._column_types
+    assert "json" in ds._column_types
+    assert "nonexistent" not in ds._column_types

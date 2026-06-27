@@ -195,7 +195,7 @@ async def test_skip_permission_checks_with_admin_actor(datasette_with_permission
 
 @pytest.mark.asyncio
 async def test_skip_permission_checks_shows_denied_tables():
-    """Test that skip_permission_checks=True shows tables from denied databases in /-/tables.json"""
+    """Test that skip_permission_checks=True shows tables from denied databases in /-/jump.json"""
     ds = Datasette(
         config={
             "databases": {
@@ -211,8 +211,8 @@ async def test_skip_permission_checks_shows_denied_tables():
     await db.execute_write("INSERT INTO test_table (id, name) VALUES (1, 'Alice')")
     await ds._refresh_schemas()
 
-    # Without skip_permission_checks, tables from denied database should not appear in /-/tables.json
-    response = await ds.client.get("/-/tables.json")
+    # Without skip_permission_checks, tables from denied database should not appear in /-/jump.json
+    response = await ds.client.get("/-/jump.json")
     assert response.status_code == 200
     data = response.json()
     table_names = [match["name"] for match in data["matches"]]
@@ -221,7 +221,7 @@ async def test_skip_permission_checks_shows_denied_tables():
     assert len(fixtures_tables) == 0
 
     # With skip_permission_checks=True, tables from denied database SHOULD appear
-    response = await ds.client.get("/-/tables.json", skip_permission_checks=True)
+    response = await ds.client.get("/-/jump.json", skip_permission_checks=True)
     assert response.status_code == 200
     data = response.json()
     table_names = [match["name"] for match in data["matches"]]
@@ -311,3 +311,76 @@ async def test_in_client_with_skip_permission_checks():
         assert all(in_client_values), f"Expected all True, got {in_client_values}"
     finally:
         ds.pm.unregister(name="test_in_client_skip_plugin")
+
+
+@pytest.mark.asyncio
+async def test_actor_parameter_sets_cookie(datasette):
+    """Passing actor= should sign a ds_actor cookie and authenticate the request."""
+    response = await datasette.client.get("/-/actor.json", actor={"id": "root"})
+    assert response.status_code == 200
+    assert response.json() == {"actor": {"id": "root"}}
+
+
+@pytest.mark.asyncio
+async def test_actor_parameter_works_with_request_method(datasette):
+    response = await datasette.client.request(
+        "GET", "/-/actor.json", actor={"id": "root"}
+    )
+    assert response.status_code == 200
+    assert response.json() == {"actor": {"id": "root"}}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method", ["get", "post", "options", "head", "put", "patch", "delete"]
+)
+async def test_actor_parameter_all_http_methods(datasette, method):
+    """actor= should not cause errors on any HTTP verb wrapper."""
+    client_method = getattr(datasette.client, method)
+    # Just verify no TypeError about unexpected 'actor' kwarg
+    response = await client_method("/", actor={"id": "root"})
+    assert isinstance(response, httpx.Response)
+
+
+@pytest.mark.asyncio
+async def test_actor_parameter_conflicts_with_ds_actor_cookie(datasette):
+    """Passing both actor= and a ds_actor cookie should raise TypeError."""
+    with pytest.raises(TypeError, match="actor"):
+        await datasette.client.get(
+            "/-/actor.json",
+            actor={"id": "root"},
+            cookies={"ds_actor": datasette.client.actor_cookie({"id": "other"})},
+        )
+
+
+@pytest.mark.asyncio
+async def test_actor_parameter_merges_with_other_cookies(datasette):
+    """actor= should coexist with unrelated cookies."""
+    response = await datasette.client.get(
+        "/-/actor.json",
+        actor={"id": "root"},
+        cookies={"unrelated": "value"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"actor": {"id": "root"}}
+
+
+@pytest.mark.asyncio
+async def test_actor_parameter_with_skip_permission_checks(
+    datasette_with_permissions,
+):
+    """actor= should be compatible with skip_permission_checks."""
+    ds = datasette_with_permissions
+    # Non-admin actor with skip_permission_checks=True should get 200
+    response = await ds.client.get(
+        "/test_db.json",
+        actor={"id": "user"},
+        skip_permission_checks=True,
+    )
+    assert response.status_code == 200
+    # Admin actor on its own should also get 200
+    response = await ds.client.get("/test_db.json", actor={"id": "admin"})
+    assert response.status_code == 200
+    # Non-admin actor should get 403
+    response = await ds.client.get("/test_db.json", actor={"id": "user"})
+    assert response.status_code == 403

@@ -208,6 +208,42 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             ]
         },
         {
+            "name": "datasette.default_column_types",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "register_column_types"
+            ]
+        },
+        {
+            "name": "datasette.default_database_actions",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "database_actions"
+            ]
+        },
+        {
+            "name": "datasette.default_debug_menu",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "jump_items_sql"
+            ]
+        },
+        {
+            "name": "datasette.default_jump_items",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "jump_items_sql"
+            ]
+        },
+        {
             "name": "datasette.default_magic_parameters",
             "static": false,
             "templates": false,
@@ -217,23 +253,12 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             ]
         },
         {
-            "name": "datasette.default_menu_links",
-            "static": false,
-            "templates": false,
-            "version": null,
-            "hooks": [
-                "menu_links"
-            ]
-        },
-        {
             "name": "datasette.default_permissions",
             "static": false,
             "templates": false,
             "version": null,
             "hooks": [
-                "canned_queries",
-                "permission_resources_sql",
-                "skip_csrf"
+                "permission_resources_sql"
             ]
         },
         {
@@ -247,12 +272,31 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             ]
         },
         {
+            "name": "datasette.default_query_actions",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "query_actions"
+            ]
+        },
+        {
+            "name": "datasette.default_table_actions",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "table_actions"
+            ]
+        },
+        {
             "name": "datasette.events",
             "static": false,
             "templates": false,
             "version": null,
             "hooks": [
-                "register_events"
+                "register_events",
+                "write_wrapper"
             ]
         },
         {

@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from urllib.parse import parse_qsl, urlencode
 import asyncio
 import hashlib
@@ -6,13 +6,13 @@ import itertools
 import json
 import markupsafe
 import os
-import re
-import sqlite_utils
 import textwrap
 
-from datasette.events import AlterTableEvent, CreateTableEvent, InsertRowsEvent
+from datasette.extras import extra_names_from_request
 from datasette.database import QueryInterrupted
 from datasette.resources import DatabaseResource, QueryResource
+from datasette.stored_queries import StoredQuery, stored_query_to_dict
+from datasette.write_sql import QueryWriteRejected
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
@@ -34,8 +34,38 @@ from datasette.utils import (
 from datasette.utils.asgi import AsgiFileDownload, NotFound, Response, Forbidden
 from datasette.plugins import pm
 
-from .base import BaseView, DatasetteError, View, _error, stream_csv
+from .base import DatasetteError, View, stream_csv
+from .query_helpers import _ensure_stored_query_execution_permissions, _table_columns
+from .table_extras import (
+    QueryExtraContext,
+    resolve_query_extras,
+    table_extra_registry,
+)
+from .table_create_alter import _create_table_ui_context
 from . import Context
+
+
+@dataclass
+class DatabaseTable:
+    "Summary of a table or view shown on database and query pages."
+
+    name: str
+    columns: list[str]
+    primary_keys: list[str]
+    count: int | None
+    count_truncated: bool
+    hidden: bool
+    fts_table: str | None
+    foreign_keys: dict[str, list[dict[str, str]]]
+    private: bool
+
+
+@dataclass
+class DatabaseViewInfo:
+    "Summary of a SQLite view shown on the database page."
+
+    name: str
+    private: bool
 
 
 class DatabaseView(View):
@@ -57,12 +87,16 @@ class DatabaseView(View):
 
         sql = (request.args.get("sql") or "").strip()
         if sql:
-            redirect_url = "/" + request.url_vars.get("database") + "/-/query"
+            redirect_url = datasette.urls.database(database) + "/-/query"
             if request.url_vars.get("format"):
-                redirect_url += "." + request.url_vars.get("format")
+                redirect_url = path_with_format(
+                    path=redirect_url, format=request.url_vars.get("format")
+                )
             redirect_url += "?" + request.query_string
-            return Response.redirect(redirect_url)
-            return await QueryView()(request, datasette)
+            response = Response.redirect(redirect_url)
+            if datasette.cors:
+                add_cors_headers(response.headers)
+            return response
 
         if format_ not in ("html", "json"):
             raise NotFound("Invalid format: {}".format(format_))
@@ -83,34 +117,57 @@ class DatabaseView(View):
         # Filter to just views
         view_names_set = set(await db.view_names())
         sql_views = [
-            {"name": name, "private": allowed_dict[name].private}
+            DatabaseViewInfo(name=name, private=allowed_dict[name].private)
             for name in allowed_dict
             if name in view_names_set
         ]
 
         tables = await get_tables(datasette, request, db, allowed_dict)
 
-        # Get allowed queries using the new permission system
-        allowed_query_page = await datasette.allowed_resources(
-            "view-query",
-            request.actor,
-            parent=database,
-            include_is_private=True,
-            limit=1000,
+        queries_page = await datasette.list_queries(
+            database,
+            actor=request.actor,
+            limit=5,
+            include_private=True,
+        )
+        stored_queries = queries_page.queries
+        queries_more = queries_page.has_more
+        queries_count = (
+            await datasette.count_queries(database, actor=request.actor)
+            if queries_more
+            else len(stored_queries)
         )
 
-        # Build canned_queries list by looking up each allowed query
-        all_queries = await datasette.get_canned_queries(database, request.actor)
-        canned_queries = []
-        for query_resource in allowed_query_page.resources:
-            query_name = query_resource.child
-            if query_name in all_queries:
-                canned_queries.append(
-                    dict(all_queries[query_name], private=query_resource.private)
-                )
+        # Resolve the registered database-level actions for this database in
+        # one batched query, seeding the request permission cache so allowed()
+        # calls made inside plugin hooks below are served from the cache.
+        database_action_permissions = await datasette.allowed_many(
+            actions=[
+                name
+                for name, action in datasette.actions.items()
+                if action.resource_class is DatabaseResource
+            ],
+            resource=DatabaseResource(database),
+            actor=request.actor,
+        )
+        create_table_ui = await _create_table_ui_context(
+            datasette, request, db, database, database_action_permissions
+        )
 
         async def database_actions():
             links = []
+            if create_table_ui:
+                links.append(
+                    {
+                        "type": "button",
+                        "label": "Create table",
+                        "description": "Create a new table in this database.",
+                        "attrs": {
+                            "aria-label": "Create table in {}".format(database),
+                            "data-database-action": "create-table",
+                        },
+                    }
+                )
             for hook in pm.hook.database_actions(
                 datasette=datasette,
                 database=database,
@@ -130,14 +187,17 @@ class DatabaseView(View):
             actor=request.actor,
         )
         json_data = {
+            "ok": True,
             "database": database,
             "private": private,
             "path": datasette.urls.database(database),
             "size": db.size,
-            "tables": tables,
-            "hidden_count": len([t for t in tables if t["hidden"]]),
-            "views": sql_views,
-            "queries": canned_queries,
+            "tables": [asdict(table) for table in tables],
+            "hidden_count": len([table for table in tables if table.hidden]),
+            "views": [asdict(view) for view in sql_views],
+            "queries": [stored_query_to_dict(query) for query in stored_queries],
+            "queries_more": queries_more,
+            "queries_count": queries_count,
             "allow_execute_sql": allow_execute_sql,
             "table_columns": (
                 await _table_columns(datasette, database) if allow_execute_sql else {}
@@ -154,7 +214,13 @@ class DatabaseView(View):
         assert format_ == "html"
         alternate_url_json = datasette.absolute_url(
             request,
-            datasette.urls.path(path_with_format(request=request, format="json")),
+            datasette.urls.path(
+                path_with_format(
+                    request=request,
+                    path=request.scope.get("route_path"),
+                    format="json",
+                )
+            ),
         )
         templates = (f"database-{to_css_class(database)}.html", "database.html")
         environment = datasette.get_jinja_environment(request)
@@ -168,9 +234,11 @@ class DatabaseView(View):
                     path=datasette.urls.database(database),
                     size=db.size,
                     tables=tables,
-                    hidden_count=len([t for t in tables if t["hidden"]]),
+                    hidden_count=len([table for table in tables if table.hidden]),
                     views=sql_views,
-                    queries=canned_queries,
+                    queries=stored_queries,
+                    queries_more=queries_more,
+                    queries_count=queries_count,
                     allow_execute_sql=allow_execute_sql,
                     table_columns=(
                         await _table_columns(datasette, database)
@@ -179,10 +247,12 @@ class DatabaseView(View):
                     ),
                     metadata=metadata,
                     database_color=db.color,
+                    database_page_data=(
+                        {"createTable": create_table_ui} if create_table_ui else {}
+                    ),
                     database_actions=database_actions,
                     show_hidden=request.args.get("_show_hidden"),
                     editable=True,
-                    count_limit=db.count_limit,
                     allow_download=datasette.setting("allow_download")
                     and not db.is_mutable
                     and not db.is_memory,
@@ -209,62 +279,102 @@ class DatabaseView(View):
 
 @dataclass
 class DatabaseContext(Context):
+    "The page listing the tables, views and queries in a database, e.g. /fixtures."
+
+    documented_template = "database.html"
+
     database: str = field(metadata={"help": "The name of the database"})
     private: bool = field(
         metadata={"help": "Boolean indicating if this is a private database"}
     )
     path: str = field(metadata={"help": "The URL path to this database"})
     size: int = field(metadata={"help": "The size of the database in bytes"})
-    tables: list = field(metadata={"help": "List of table objects in the database"})
+    tables: list[DatabaseTable] = field(
+        metadata={
+            "help": "List of ``DatabaseTable`` objects describing tables in the database. Each item has ``name``, ``columns``, ``primary_keys``, ``count``, ``count_truncated``, ``hidden``, ``fts_table``, ``foreign_keys`` and ``private`` attributes. ``count_truncated`` is true if ``count`` is a capped lower bound rather than an exact total."
+        }
+    )
     hidden_count: int = field(metadata={"help": "Count of hidden tables"})
-    views: list = field(metadata={"help": "List of view objects in the database"})
-    queries: list = field(metadata={"help": "List of canned query objects"})
+    views: list[DatabaseViewInfo] = field(
+        metadata={
+            "help": "List of ``DatabaseViewInfo`` objects describing SQLite views in the database. Each item has ``name`` and ``private`` attributes."
+        }
+    )
+    queries: list[StoredQuery] = field(
+        metadata={
+            "help": "List of ``StoredQuery`` objects. Each has attributes including ``name``, ``sql``, ``title``, ``description``, ``description_html``, ``hide_sql``, ``fragment``, ``parameters``, ``is_write`` and ``private``."
+        }
+    )
+    queries_more: bool = field(
+        metadata={"help": "Boolean indicating if more stored queries are available"}
+    )
+    queries_count: int = field(metadata={"help": "Count of visible stored queries"})
     allow_execute_sql: bool = field(
         metadata={"help": "Boolean indicating if custom SQL can be executed"}
     )
     table_columns: dict = field(
-        metadata={"help": "Dictionary mapping table names to their column lists"}
+        metadata={
+            "help": "Dictionary mapping table names to lists of column names, used to power SQL autocomplete."
+        }
     )
-    metadata: dict = field(metadata={"help": "Metadata for the database"})
+    metadata: dict = field(
+        metadata={
+            "help": "Metadata dictionary for the database, such as ``title``, ``description``, ``license`` and ``source`` values from Datasette metadata."
+        }
+    )
     database_color: str = field(metadata={"help": "The color assigned to the database"})
+    database_page_data: dict = field(
+        metadata={
+            "help": 'JSON data used by JavaScript on the database page. Currently ``{}`` or ``{"createTable": {...}}`` where ``createTable`` includes ``path``, ``foreignKeyTargetsPath``, ``databaseName``, ``columnTypes``, ``defaultExpressions`` and optional ``customColumnTypes``.'
+        }
+    )
     database_actions: callable = field(
         metadata={
-            "help": "Callable returning list of action links for the database menu"
+            "help": 'Async callable returning action items for the database menu. Each item is either a link with ``href``, ``label`` and optional ``description`` keys, or a button with ``type: "button"``, ``label``, optional ``description`` and optional ``attrs``. See :ref:`plugin_actions` and :ref:`plugin_hook_database_actions`.'
         }
     )
     show_hidden: str = field(metadata={"help": "Value of _show_hidden query parameter"})
     editable: bool = field(
         metadata={"help": "Boolean indicating if the database is editable"}
     )
-    count_limit: int = field(metadata={"help": "The maximum number of rows to count"})
     allow_download: bool = field(
         metadata={"help": "Boolean indicating if database download is allowed"}
     )
     attached_databases: list = field(
-        metadata={"help": "List of names of attached databases"}
+        metadata={
+            "help": "List of names of databases attached to this SQLite connection. This is only populated for the special ``/_memory`` database when Datasette is started with ``--crossdb`` for :ref:`cross_database_queries`."
+        }
     )
     alternate_url_json: str = field(
         metadata={"help": "URL for the alternate JSON version of this page"}
     )
     select_templates: list = field(
         metadata={
-            "help": "List of templates that were considered for rendering this page"
+            "help": "List of template names that were considered for this page, with the selected template prefixed by ``*``."
         }
     )
     top_database: callable = field(
-        metadata={"help": "Callable to render the top_database slot"}
+        metadata={
+            "help": "Async callable that renders the ``top_database`` plugin slot for this database and returns HTML."
+        }
     )
 
 
 @dataclass
 class QueryContext(Context):
+    "The page for arbitrary SQL queries (/database/-/query?sql=...) and stored queries (/database/query-name)."
+
+    documented_template = "query.html"
+
     database: str = field(metadata={"help": "The name of the database being queried"})
     database_color: str = field(metadata={"help": "The color of the database"})
     query: dict = field(
-        metadata={"help": "The SQL query object containing the `sql` string"}
+        metadata={
+            "help": "Dictionary describing the SQL query being executed, with ``sql`` and ``params`` keys."
+        }
     )
-    canned_query: str = field(
-        metadata={"help": "The name of the canned query if this is a canned query"}
+    stored_query: str = field(
+        metadata={"help": "The name of the stored query if this is a stored query"}
     )
     private: bool = field(
         metadata={"help": "Boolean indicating if this is a private database"}
@@ -272,13 +382,15 @@ class QueryContext(Context):
     # urls: dict = field(
     #     metadata={"help": "Object containing URL helpers like `database()`"}
     # )
-    canned_query_write: bool = field(
+    stored_query_write: bool = field(
         metadata={
-            "help": "Boolean indicating if this is a canned query that allows writes"
+            "help": "Boolean indicating if this is a stored query that allows writes"
         }
     )
     metadata: dict = field(
-        metadata={"help": "Metadata about the database or the canned query"}
+        metadata={
+            "help": "Metadata dictionary for the database or stored query. Stored query metadata may include options such as ``hide_sql``, ``on_success_message`` and ``on_error_redirect``."
+        }
     )
     db_is_immutable: bool = field(
         metadata={"help": "Boolean indicating if this database is immutable"}
@@ -299,22 +411,47 @@ class QueryContext(Context):
     allow_execute_sql: bool = field(
         metadata={"help": "Boolean indicating if custom SQL can be executed"}
     )
-    tables: list = field(metadata={"help": "List of table objects in the database"})
+    save_query_url: str = field(
+        metadata={"help": "URL to save the current arbitrary SQL as a query"}
+    )
+    tables: list[DatabaseTable] = field(
+        metadata={
+            "help": "List of ``DatabaseTable`` objects describing tables in the database. Each item has ``name``, ``columns``, ``primary_keys``, ``count``, ``count_truncated``, ``hidden``, ``fts_table``, ``foreign_keys`` and ``private`` attributes. ``count_truncated`` is true if ``count`` is a capped lower bound rather than an exact total."
+        }
+    )
     named_parameter_values: dict = field(
-        metadata={"help": "Dictionary of parameter names/values"}
+        metadata={
+            "help": "Dictionary of named SQL parameter values, keyed by parameter name without the leading ``:``."
+        }
     )
     edit_sql_url: str = field(
-        metadata={"help": "URL to edit the SQL for a canned query"}
+        metadata={"help": "URL to edit the SQL for a stored query"}
     )
-    display_rows: list = field(metadata={"help": "List of result rows to display"})
-    columns: list = field(metadata={"help": "List of column names"})
-    renderers: dict = field(metadata={"help": "Dictionary of renderer name to URL"})
+    display_rows: list = field(
+        metadata={
+            "help": "List of result rows formatted for HTML display. Each row is a list of rendered cell values in the same order as ``columns``."
+        }
+    )
+    columns: list = field(
+        metadata={
+            "help": "List of result column names in the order they appear in ``display_rows`` and ``rows``."
+        }
+    )
+    renderers: dict = field(
+        metadata={
+            "help": "Dictionary mapping output format names such as ``json`` to URLs for this query in that format."
+        }
+    )
     url_csv: str = field(metadata={"help": "URL for CSV export"})
     show_hide_hidden: str = field(
-        metadata={"help": "Hidden input field for the _show_sql parameter"}
+        metadata={
+            "help": "Rendered hidden ``<input>`` HTML preserving the current ``_hide_sql`` or ``_show_sql`` state."
+        }
     )
     table_columns: dict = field(
-        metadata={"help": "Dictionary of table name to list of column names"}
+        metadata={
+            "help": "Dictionary mapping table names to lists of column names, used to power SQL autocomplete."
+        }
     )
     alternate_url_json: str = field(
         metadata={"help": "URL for alternate JSON version of this page"}
@@ -322,23 +459,27 @@ class QueryContext(Context):
     # TODO: refactor this to somewhere else, probably ds.render_template()
     select_templates: list = field(
         metadata={
-            "help": "List of templates that were considered for rendering this page"
+            "help": "List of template names that were considered for this page, with the selected template prefixed by ``*``."
         }
     )
     top_query: callable = field(
-        metadata={"help": "Callable to render the top_query slot"}
+        metadata={
+            "help": "Async callable that renders the ``top_query`` plugin slot for this query and returns HTML."
+        }
     )
-    top_canned_query: callable = field(
-        metadata={"help": "Callable to render the top_canned_query slot"}
+    top_stored_query: callable = field(
+        metadata={
+            "help": "Async callable that renders the ``top_stored_query`` plugin slot for stored queries and returns HTML."
+        }
     )
     query_actions: callable = field(
         metadata={
-            "help": "Callable returning a list of links for the query action menu"
+            "help": 'Async callable returning action items for the query menu. Each item is either a link with ``href``, ``label`` and optional ``description`` keys, or a button with ``type: "button"``, ``label``, optional ``description`` and optional ``attrs``. See :ref:`plugin_actions` and :ref:`plugin_hook_query_actions`.'
         }
     )
 
 
-async def get_tables(datasette, request, db, allowed_dict):
+async def get_tables(datasette, request, db, allowed_dict) -> list[DatabaseTable]:
     """
     Get list of tables with metadata for the database view.
 
@@ -359,19 +500,34 @@ async def get_tables(datasette, request, db, allowed_dict):
 
         table_columns = await db.table_columns(table)
         tables.append(
-            {
-                "name": table,
-                "columns": table_columns,
-                "primary_keys": await db.primary_keys(table),
-                "count": table_counts[table],
-                "hidden": table in hidden_table_names,
-                "fts_table": await db.fts_table(table),
-                "foreign_keys": all_foreign_keys[table],
-                "private": allowed_dict[table].private,
-            }
+            DatabaseTable(
+                name=table,
+                columns=table_columns,
+                primary_keys=await db.primary_keys(table),
+                count=table_counts[table],
+                count_truncated=_table_count_truncated(
+                    datasette, db, table, table_counts[table]
+                ),
+                hidden=table in hidden_table_names,
+                fts_table=await db.fts_table(table),
+                foreign_keys=all_foreign_keys[table],
+                private=allowed_dict[table].private,
+            )
         )
-    tables.sort(key=lambda t: (t["hidden"], t["name"]))
+    tables.sort(key=lambda table: (table.hidden, table.name))
     return tables
+
+
+def _table_count_truncated(datasette, db, table, count):
+    if count != db.count_limit + 1:
+        return False
+    if not db.is_mutable and datasette.inspect_data:
+        try:
+            datasette.inspect_data[db.name]["tables"][table]["count"]
+            return False
+        except KeyError:
+            pass
+    return True
 
 
 async def database_download(request, datasette):
@@ -420,20 +576,46 @@ class QueryView(View):
 
         db = await datasette.resolve_database(request)
 
-        # We must be a canned query
+        # We must be a stored query
         table_found = False
         try:
             await datasette.resolve_table(request)
             table_found = True
         except TableNotFound as table_not_found:
-            canned_query = await datasette.get_canned_query(
-                table_not_found.database_name, table_not_found.table, request.actor
+            stored_query = await datasette.get_query(
+                table_not_found.database_name, table_not_found.table
             )
-            if canned_query is None:
+            if stored_query is None:
                 raise
         if table_found:
             # That should not have happened
             raise DatasetteError("Unexpected table found on POST", status=404)
+
+        if not await datasette.allowed(
+            action="view-query",
+            resource=QueryResource(database=db.name, query=stored_query.name),
+            actor=request.actor,
+        ):
+            raise Forbidden("You do not have permission to view this query")
+
+        try:
+            await _ensure_stored_query_execution_permissions(
+                datasette, db, stored_query, request.actor
+            )
+        except QueryWriteRejected as ex:
+            if request.headers.get("accept") == "application/json" or request.args.get(
+                "_json"
+            ):
+                return Response.json(
+                    {
+                        "ok": False,
+                        "message": ex.message,
+                        "redirect": None,
+                    },
+                    status=403,
+                )
+            datasette.add_message(request, ex.message, datasette.ERROR)
+            return Response.redirect(stored_query.on_error_redirect or request.path)
 
         # If database is immutable, return an error
         if not db.is_mutable:
@@ -459,20 +641,18 @@ class QueryView(View):
             or request.args.get("_json")
             or params.get("_json")
         )
-        params_for_query = MagicParameters(
-            canned_query["sql"], params, request, datasette
-        )
+        params_for_query = MagicParameters(stored_query.sql, params, request, datasette)
         await params_for_query.execute_params()
         ok = None
         redirect_url = None
         try:
             cursor = await db.execute_write(
-                canned_query["sql"], params_for_query, request=request
+                stored_query.sql, params_for_query, request=request
             )
             # success message can come from on_success_message or on_success_message_sql
             message = None
             message_type = datasette.INFO
-            on_success_message_sql = canned_query.get("on_success_message_sql")
+            on_success_message_sql = stored_query.on_success_message_sql
             if on_success_message_sql:
                 try:
                     message_result = (
@@ -484,18 +664,21 @@ class QueryView(View):
                     message = "Error running on_success_message_sql: {}".format(ex)
                     message_type = datasette.ERROR
             if not message:
-                message = canned_query.get(
-                    "on_success_message"
-                ) or "Query executed, {} row{} affected".format(
-                    cursor.rowcount, "" if cursor.rowcount == 1 else "s"
-                )
+                if stored_query.on_success_message:
+                    message = stored_query.on_success_message
+                elif cursor.rowcount == -1:
+                    message = "Query executed"
+                else:
+                    message = "Query executed, {} row{} affected".format(
+                        cursor.rowcount, "" if cursor.rowcount == 1 else "s"
+                    )
 
-            redirect_url = canned_query.get("on_success_redirect")
+            redirect_url = stored_query.on_success_redirect
             ok = True
         except Exception as ex:
-            message = canned_query.get("on_error_message") or str(ex)
+            message = stored_query.on_error_message or str(ex)
             message_type = datasette.ERROR
-            redirect_url = canned_query.get("on_error_redirect")
+            redirect_url = stored_query.on_error_redirect
             ok = False
         if should_return_json:
             return Response.json(
@@ -528,53 +711,59 @@ class QueryView(View):
         # Create lookup dict for quick access
         allowed_dict = {r.child: r for r in allowed_tables_page.resources}
 
-        # Are we a canned query?
-        canned_query = None
-        canned_query_write = False
+        # Are we a stored query?
+        stored_query = None
+        stored_query_write = False
         if "table" in request.url_vars:
             try:
                 await datasette.resolve_table(request)
             except TableNotFound as table_not_found:
-                # Was this actually a canned query?
-                canned_query = await datasette.get_canned_query(
-                    table_not_found.database_name, table_not_found.table, request.actor
+                # Was this actually a stored query?
+                stored_query = await datasette.get_query(
+                    table_not_found.database_name, table_not_found.table
                 )
-                if canned_query is None:
+                if stored_query is None:
                     raise
-                canned_query_write = bool(canned_query.get("write"))
+                stored_query_write = stored_query.is_write
 
         private = False
-        if canned_query:
-            # Respect canned query permissions
+        if stored_query:
+            # Respect stored query permissions
             visible, private = await datasette.check_visibility(
                 request.actor,
                 action="view-query",
-                resource=QueryResource(database=database, query=canned_query["name"]),
+                resource=QueryResource(database=database, query=stored_query.name),
             )
             if not visible:
                 raise Forbidden("You do not have permission to view this query")
+            if not stored_query_write:
+                await _ensure_stored_query_execution_permissions(
+                    datasette, db, stored_query, request.actor
+                )
 
         else:
-            await datasette.ensure_permission(
+            visible, private = await datasette.check_visibility(
+                request.actor,
                 action="execute-sql",
                 resource=DatabaseResource(database=database),
-                actor=request.actor,
             )
+            if not visible:
+                raise Forbidden("execute-sql")
 
         # Flattened because of ?sql=&name1=value1&name2=value2 feature
         params = {key: request.args.get(key) for key in request.args}
         sql = None
 
-        if canned_query:
-            sql = canned_query["sql"]
+        if stored_query:
+            sql = stored_query.sql
         elif "sql" in params:
             sql = params.pop("sql")
 
         # Extract any :named parameters
         named_parameters = []
-        if canned_query and canned_query.get("params"):
-            named_parameters = canned_query["params"]
-        if not named_parameters:
+        if stored_query and stored_query.parameters:
+            named_parameters = stored_query.parameters
+        if not named_parameters and sql:
             named_parameters = derive_named_parameters(sql)
         named_parameter_values = {
             named_parameter: params.get(named_parameter) or ""
@@ -599,13 +788,13 @@ class QueryView(View):
 
         params_for_query = params
 
-        if not canned_query_write:
+        if sql and not stored_query_write:
             try:
-                if not canned_query:
+                if not stored_query:
                     # For regular queries we only allow SELECT, plus other rules
                     validate_sql_select(sql)
                 else:
-                    # Canned queries can run magic parameters
+                    # Stored queries can run magic parameters
                     params_for_query = MagicParameters(sql, params, request, datasette)
                     await params_for_query.execute_params()
                 results = await datasette.execute(
@@ -641,8 +830,17 @@ class QueryView(View):
             except DatasetteError:
                 raise
 
+        async def query_metadata():
+            if stored_query:
+                metadata = stored_query_to_dict(stored_query)
+                metadata.pop("source", None)
+                return metadata
+            return await datasette.get_database_metadata(database)
+
         # Handle formats from plugins
         if format_ == "csv":
+            if not sql:
+                raise DatasetteError("?sql= is required", status=400)
 
             async def fetch_data_for_csv(request, _next=None):
                 results = await db.execute(sql, params, truncate=True)
@@ -651,6 +849,25 @@ class QueryView(View):
 
             return await stream_csv(datasette, fetch_data_for_csv, request, db.name)
         elif format_ in datasette.renderers.keys():
+            data = {"ok": True, "rows": rows, "columns": columns}
+            extras = extra_names_from_request(request)
+            if extras:
+                query_extra_context = QueryExtraContext(
+                    datasette=datasette,
+                    request=request,
+                    db=db,
+                    database_name=database,
+                    private=private,
+                    rows=rows,
+                    columns=columns,
+                    sql=sql,
+                    params=named_parameter_values,
+                    query_name=stored_query.name if stored_query else None,
+                    metadata=await query_metadata(),
+                    extras=extras,
+                    extra_registry=table_extra_registry,
+                )
+                data.update(await resolve_query_extras(extras, query_extra_context))
             # Dispatch request to the correct output format renderer
             # (CSV is not handled here due to streaming)
             result = call_with_supported_arguments(
@@ -659,7 +876,7 @@ class QueryView(View):
                 columns=columns,
                 rows=rows,
                 sql=sql,
-                query_name=canned_query["name"] if canned_query else None,
+                query_name=stored_query.name if stored_query else None,
                 database=database,
                 table=None,
                 request=request,
@@ -668,7 +885,7 @@ class QueryView(View):
                 error=query_error,
                 # These will be deprecated in Datasette 1.0:
                 args=request.args,
-                data={"ok": True, "rows": rows, "columns": columns},
+                data=data,
             )
             if asyncio.iscoroutine(result):
                 result = await result
@@ -691,19 +908,33 @@ class QueryView(View):
         elif format_ == "html":
             headers = {}
             templates = [f"query-{to_css_class(database)}.html", "query.html"]
-            if canned_query:
+            if stored_query:
                 templates.insert(
                     0,
-                    f"query-{to_css_class(database)}-{to_css_class(canned_query['name'])}.html",
+                    f"query-{to_css_class(database)}-{to_css_class(stored_query.name)}.html",
                 )
 
             environment = datasette.get_jinja_environment(request)
             template = environment.select_template(templates)
             alternate_url_json = datasette.absolute_url(
                 request,
-                datasette.urls.path(path_with_format(request=request, format="json")),
+                datasette.urls.path(
+                    path_with_format(
+                        request=request,
+                        path=request.scope.get("route_path"),
+                        format="json",
+                    )
+                ),
             )
-            data = {}
+            data = {
+                "ok": query_error is None,
+                "rows": rows,
+                "columns": columns,
+                "query": {"sql": sql, "params": params},
+                "query_name": stored_query.name if stored_query else None,
+                "database": database,
+                "table": None,
+            }
             headers.update(
                 {
                     "Link": '<{}>; rel="alternate"; type="application/json+datasette"'.format(
@@ -711,8 +942,7 @@ class QueryView(View):
                     )
                 }
             )
-            metadata = await datasette.get_database_metadata(database)
-
+            metadata = await query_metadata()
             renderers = {}
             for key, (_, can_render) in datasette.renderers.items():
                 it_can_render = call_with_supported_arguments(
@@ -730,7 +960,11 @@ class QueryView(View):
                 it_can_render = await await_me_maybe(it_can_render)
                 if it_can_render:
                     renderers[key] = datasette.urls.path(
-                        path_with_format(request=request, format=key)
+                        path_with_format(
+                            request=request,
+                            path=request.scope.get("route_path"),
+                            format=key,
+                        )
                     )
 
             allow_execute_sql = await datasette.allowed(
@@ -738,9 +972,14 @@ class QueryView(View):
                 resource=DatabaseResource(database=database),
                 actor=request.actor,
             )
+            allow_store_query = await datasette.allowed(
+                action="store-query",
+                resource=DatabaseResource(database=database),
+                actor=request.actor,
+            )
 
             show_hide_hidden = ""
-            if canned_query and canned_query.get("hide_sql"):
+            if stored_query and stored_query.hide_sql:
                 if bool(params.get("_show_sql")):
                     show_hide_link = path_with_removed_args(request, {"_show_sql"})
                     show_hide_text = "hide"
@@ -768,24 +1007,38 @@ class QueryView(View):
             # - No magic parameters, so no :_ in the SQL string
             edit_sql_url = None
             is_validated_sql = False
-            try:
-                validate_sql_select(sql)
-                is_validated_sql = True
-            except InvalidSql:
-                pass
-            if allow_execute_sql and is_validated_sql and ":_" not in sql:
-                edit_sql_url = (
-                    datasette.urls.database(database)
-                    + "/-/query"
-                    + "?"
-                    + urlencode(
-                        {
-                            **{
-                                "sql": sql,
-                            },
-                            **named_parameter_values,
-                        }
+            if sql:
+                try:
+                    validate_sql_select(sql)
+                    is_validated_sql = True
+                except InvalidSql:
+                    pass
+                if allow_execute_sql and is_validated_sql and ":_" not in sql:
+                    edit_sql_url = (
+                        datasette.urls.database(database)
+                        + "/-/query"
+                        + "?"
+                        + urlencode(
+                            {
+                                **{
+                                    "sql": sql,
+                                },
+                                **named_parameter_values,
+                            }
+                        )
                     )
+            save_query_url = None
+            if (
+                not stored_query
+                and allow_execute_sql
+                and allow_store_query
+                and is_validated_sql
+                and ":_" not in sql
+            ):
+                save_query_url = (
+                    datasette.urls.database(database)
+                    + "/-/queries/store?"
+                    + urlencode({"sql": sql})
                 )
 
             async def query_actions():
@@ -794,7 +1047,7 @@ class QueryView(View):
                     datasette=datasette,
                     actor=request.actor,
                     database=database,
-                    query_name=canned_query["name"] if canned_query else None,
+                    query_name=stored_query.name if stored_query else None,
                     request=request,
                     sql=sql,
                     params=params,
@@ -814,16 +1067,17 @@ class QueryView(View):
                             "sql": sql,
                             "params": params,
                         },
-                        canned_query=canned_query["name"] if canned_query else None,
+                        stored_query=stored_query.name if stored_query else None,
                         private=private,
-                        canned_query_write=canned_query_write,
+                        stored_query_write=stored_query_write,
                         db_is_immutable=not db.is_mutable,
                         error=query_error,
                         hide_sql=hide_sql,
                         show_hide_link=datasette.urls.path(show_hide_link),
                         show_hide_text=show_hide_text,
-                        editable=not canned_query,
+                        editable=not stored_query,
                         allow_execute_sql=allow_execute_sql,
+                        save_query_url=save_query_url,
                         tables=await get_tables(datasette, request, db, allowed_dict),
                         named_parameter_values=named_parameter_values,
                         edit_sql_url=edit_sql_url,
@@ -839,11 +1093,14 @@ class QueryView(View):
                         renderers=renderers,
                         url_csv=datasette.urls.path(
                             path_with_format(
-                                request=request, format="csv", extra_qs={"_size": "max"}
+                                request=request,
+                                path=request.scope.get("route_path"),
+                                format="csv",
+                                extra_qs={"_size": "max"},
                             )
                         ),
                         show_hide_hidden=markupsafe.Markup(show_hide_hidden),
-                        metadata=canned_query or metadata,
+                        metadata=metadata,
                         alternate_url_json=alternate_url_json,
                         select_templates=[
                             f"{'*' if template_name == template.name else ''}{template_name}"
@@ -852,12 +1109,12 @@ class QueryView(View):
                         top_query=make_slot_function(
                             "top_query", datasette, request, database=database, sql=sql
                         ),
-                        top_canned_query=make_slot_function(
-                            "top_canned_query",
+                        top_stored_query=make_slot_function(
+                            "top_stored_query",
                             datasette,
                             request,
                             database=database,
-                            query_name=canned_query["name"] if canned_query else None,
+                            query_name=stored_query.name if stored_query else None,
                         ),
                         query_actions=query_actions,
                     ),
@@ -915,277 +1172,6 @@ class MagicParameters(dict):
             return super().__getitem__(key)
 
 
-class TableCreateView(BaseView):
-    name = "table-create"
-
-    _valid_keys = {
-        "table",
-        "rows",
-        "row",
-        "columns",
-        "pk",
-        "pks",
-        "ignore",
-        "replace",
-        "alter",
-    }
-    _supported_column_types = {
-        "text",
-        "integer",
-        "float",
-        "blob",
-    }
-    # Any string that does not contain a newline or start with sqlite_
-    _table_name_re = re.compile(r"^(?!sqlite_)[^\n]+$")
-
-    def __init__(self, datasette):
-        self.ds = datasette
-
-    async def post(self, request):
-        db = await self.ds.resolve_database(request)
-        database_name = db.name
-
-        # Must have create-table permission
-        if not await self.ds.allowed(
-            action="create-table",
-            resource=DatabaseResource(database=database_name),
-            actor=request.actor,
-        ):
-            return _error(["Permission denied"], 403)
-
-        body = await request.post_body()
-        try:
-            data = json.loads(body)
-        except json.JSONDecodeError as e:
-            return _error(["Invalid JSON: {}".format(e)])
-
-        if not isinstance(data, dict):
-            return _error(["JSON must be an object"])
-
-        invalid_keys = set(data.keys()) - self._valid_keys
-        if invalid_keys:
-            return _error(["Invalid keys: {}".format(", ".join(invalid_keys))])
-
-        # ignore and replace are mutually exclusive
-        if data.get("ignore") and data.get("replace"):
-            return _error(["ignore and replace are mutually exclusive"])
-
-        # ignore and replace only allowed with row or rows
-        if "ignore" in data or "replace" in data:
-            if not data.get("row") and not data.get("rows"):
-                return _error(["ignore and replace require row or rows"])
-
-        # ignore and replace require pk or pks
-        if "ignore" in data or "replace" in data:
-            if not data.get("pk") and not data.get("pks"):
-                return _error(["ignore and replace require pk or pks"])
-
-        ignore = data.get("ignore")
-        replace = data.get("replace")
-
-        if replace:
-            # Must have update-row permission
-            if not await self.ds.allowed(
-                action="update-row",
-                resource=DatabaseResource(database=database_name),
-                actor=request.actor,
-            ):
-                return _error(["Permission denied: need update-row"], 403)
-
-        table_name = data.get("table")
-        if not table_name:
-            return _error(["Table is required"])
-
-        if not self._table_name_re.match(table_name):
-            return _error(["Invalid table name"])
-
-        table_exists = await db.table_exists(data["table"])
-        columns = data.get("columns")
-        rows = data.get("rows")
-        row = data.get("row")
-        if not columns and not rows and not row:
-            return _error(["columns, rows or row is required"])
-
-        if rows and row:
-            return _error(["Cannot specify both rows and row"])
-
-        if rows or row:
-            # Must have insert-row permission
-            if not await self.ds.allowed(
-                action="insert-row",
-                resource=DatabaseResource(database=database_name),
-                actor=request.actor,
-            ):
-                return _error(["Permission denied: need insert-row"], 403)
-
-        alter = False
-        if rows or row:
-            if not table_exists:
-                # if table is being created for the first time, alter=True
-                alter = True
-            else:
-                # alter=True only if they request it AND they have permission
-                if data.get("alter"):
-                    if not await self.ds.allowed(
-                        action="alter-table",
-                        resource=DatabaseResource(database=database_name),
-                        actor=request.actor,
-                    ):
-                        return _error(["Permission denied: need alter-table"], 403)
-                    alter = True
-
-        if columns:
-            if rows or row:
-                return _error(["Cannot specify columns with rows or row"])
-            if not isinstance(columns, list):
-                return _error(["columns must be a list"])
-            for column in columns:
-                if not isinstance(column, dict):
-                    return _error(["columns must be a list of objects"])
-                if not column.get("name") or not isinstance(column.get("name"), str):
-                    return _error(["Column name is required"])
-                if not column.get("type"):
-                    column["type"] = "text"
-                if column["type"] not in self._supported_column_types:
-                    return _error(
-                        ["Unsupported column type: {}".format(column["type"])]
-                    )
-            # No duplicate column names
-            dupes = {c["name"] for c in columns if columns.count(c) > 1}
-            if dupes:
-                return _error(["Duplicate column name: {}".format(", ".join(dupes))])
-
-        if row:
-            rows = [row]
-
-        if rows:
-            if not isinstance(rows, list):
-                return _error(["rows must be a list"])
-            for row in rows:
-                if not isinstance(row, dict):
-                    return _error(["rows must be a list of objects"])
-
-        pk = data.get("pk")
-        pks = data.get("pks")
-
-        if pk and pks:
-            return _error(["Cannot specify both pk and pks"])
-        if pk:
-            if not isinstance(pk, str):
-                return _error(["pk must be a string"])
-        if pks:
-            if not isinstance(pks, list):
-                return _error(["pks must be a list"])
-            for pk in pks:
-                if not isinstance(pk, str):
-                    return _error(["pks must be a list of strings"])
-
-        # If table exists already, read pks from that instead
-        if table_exists:
-            actual_pks = await db.primary_keys(table_name)
-            # if pk passed and table already exists check it does not change
-            bad_pks = False
-            if len(actual_pks) == 1 and data.get("pk") and data["pk"] != actual_pks[0]:
-                bad_pks = True
-            elif (
-                len(actual_pks) > 1
-                and data.get("pks")
-                and set(data["pks"]) != set(actual_pks)
-            ):
-                bad_pks = True
-            if bad_pks:
-                return _error(["pk cannot be changed for existing table"])
-            pks = actual_pks
-
-        initial_schema = None
-        if table_exists:
-            initial_schema = await db.execute_fn(
-                lambda conn: sqlite_utils.Database(conn)[table_name].schema
-            )
-
-        def create_table(conn):
-            table = sqlite_utils.Database(conn)[table_name]
-            if rows:
-                table.insert_all(
-                    rows, pk=pks or pk, ignore=ignore, replace=replace, alter=alter
-                )
-            else:
-                table.create(
-                    {c["name"]: c["type"] for c in columns},
-                    pk=pks or pk,
-                )
-            return table.schema
-
-        try:
-            schema = await db.execute_write_fn(create_table, request=request)
-        except Exception as e:
-            return _error([str(e)])
-
-        if initial_schema is not None and initial_schema != schema:
-            await self.ds.track_event(
-                AlterTableEvent(
-                    request.actor,
-                    database=database_name,
-                    table=table_name,
-                    before_schema=initial_schema,
-                    after_schema=schema,
-                )
-            )
-
-        table_url = self.ds.absolute_url(
-            request, self.ds.urls.table(db.name, table_name)
-        )
-        table_api_url = self.ds.absolute_url(
-            request, self.ds.urls.table(db.name, table_name, format="json")
-        )
-        details = {
-            "ok": True,
-            "database": db.name,
-            "table": table_name,
-            "table_url": table_url,
-            "table_api_url": table_api_url,
-            "schema": schema,
-        }
-        if rows:
-            details["row_count"] = len(rows)
-
-        if not table_exists:
-            # Only log creation if we created a table
-            await self.ds.track_event(
-                CreateTableEvent(
-                    request.actor, database=db.name, table=table_name, schema=schema
-                )
-            )
-        if rows:
-            await self.ds.track_event(
-                InsertRowsEvent(
-                    request.actor,
-                    database=db.name,
-                    table=table_name,
-                    num_rows=len(rows),
-                    ignore=ignore,
-                    replace=replace,
-                )
-            )
-        return Response.json(details, status=201)
-
-
-async def _table_columns(datasette, database_name):
-    internal_db = datasette.get_internal_database()
-    result = await internal_db.execute(
-        "select table_name, name from catalog_columns where database_name = ?",
-        [database_name],
-    )
-    table_columns = {}
-    for row in result.rows:
-        table_columns.setdefault(row["table_name"], []).append(row["name"])
-    # Add views
-    db = datasette.get_database(database_name)
-    for view_name in await db.view_names():
-        table_columns[view_name] = []
-    return table_columns
-
-
 async def display_rows(datasette, database, request, rows, columns):
     display_rows = []
     truncate_cells = datasette.setting("truncate_cells_html")
@@ -1205,6 +1191,7 @@ async def display_rows(datasette, database, request, rows, columns):
                 database=database,
                 datasette=datasette,
                 request=request,
+                column_type=None,
             ):
                 candidate = await await_me_maybe(candidate)
                 if candidate is not None:

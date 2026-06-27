@@ -1,7 +1,11 @@
 build-metadata.json
 datasets.json
 
+.playwright-mcp
+
 scratchpad
+
+ignored/
 
 .vscode
 

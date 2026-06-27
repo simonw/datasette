@@ -1,6 +1,6 @@
 import json
 from typing import Optional
-from datasette.utils import MultiParams, calculate_etag
+from datasette.utils import MultiParams, calculate_etag, sha256_file
 from datasette.utils.multipart import (
     parse_form_data,
     MultipartParseError,
@@ -154,6 +154,10 @@ class Request:
     async def post_vars(self):
         body = await self.post_body()
         return dict(parse_qsl(body.decode("utf-8"), keep_blank_values=True))
+
+    async def json(self):
+        body = await self.post_body()
+        return json.loads(body)
 
     async def form(
         self,
@@ -330,9 +334,11 @@ async def asgi_send_html(send, html, status=200, headers=None):
 
 
 async def asgi_send_redirect(send, location, status=302):
-    # Prevent open redirect vulnerability: strip multiple leading slashes
-    # //example.com would be interpreted as a protocol-relative URL (e.g., https://example.com/)
-    location = re.sub(r"^/+", "/", location)
+    # Prevent open redirect vulnerability: collapse leading slashes and
+    # backslashes down to a single slash. //example.com is a protocol-relative
+    # URL, and browsers normalise backslashes to slashes so /\example.com would
+    # be treated as //example.com - https://github.com/simonw/datasette/issues/2680
+    location = re.sub(r"^[/\\]+", "/", location)
     await asgi_send(
         send,
         "",
@@ -391,6 +397,9 @@ async def asgi_send_file(
             )
 
 
+HASHED_STATIC_CACHE_CONTROL = "max-age=31536000, immutable, public"
+
+
 def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
     root_path = Path(root_path)
     static_headers = {}
@@ -417,11 +426,17 @@ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
             return
         try:
             # Calculate ETag for filepath
+            hash_value = request.args.get("_hash")
+            if (
+                hash_value
+                and hash_value == sha256_file(full_path, chunk_size=chunk_size)[:12]
+            ):
+                headers["Cache-Control"] = HASHED_STATIC_CACHE_CONTROL
             etag = await calculate_etag(full_path, chunk_size=chunk_size)
             headers["ETag"] = etag
             if_none_match = request.headers.get("if-none-match")
             if if_none_match and if_none_match == etag:
-                return await asgi_send(send, "", 304)
+                return await asgi_send(send, "", 304, headers=headers)
             await asgi_send_file(
                 send, full_path, chunk_size=chunk_size, headers=headers
             )

@@ -32,15 +32,14 @@ dependencies = [
     "pluggy>=1.0",
     "uvicorn>=0.11",
     "aiofiles>=0.4",
-    "janus>=0.6.2",
-    "asgi-csrf>=0.10",
     "PyYAML>=5.3",
     "mergedeep>=1.1.1",
     "itsdangerous>=1.1",
-    "sqlite-utils>=3.30",
-    "asyncinject>=0.6.1",
+    "sqlite-utils>=3.30,<4.0",
+    "asyncinject>=0.7",
     "setuptools",
     "pip",
+    "pydantic>=2",
 ]
 
 [project.urls]
@@ -55,13 +54,16 @@ CI = "https://github.com/simonw/datasette/actions?query=workflow%3ATest"
 [project.scripts]
 datasette = "datasette.cli:cli"
 
+[project.entry-points.pytest11]
+datasette = "datasette._pytest_plugin"
+
 [dependency-groups]
 dev = [
     "pytest>=9",
     "pytest-xdist>=2.2.1",
     "pytest-asyncio>=1.2.0",
     "beautifulsoup4>=4.8.1",
-    "black==26.1.0",
+    "black==26.3.1",
     "blacken-docs==1.20.0",
     "pytest-timeout>=1.4.2",
     "trustme>=0.7",
@@ -78,6 +80,10 @@ dev = [
     "myst-parser",
     "sphinx-markdown-builder",
     "ruamel.yaml",
+    "psutil>=5.9",
+]
+playwright = [
+    "pytest-playwright>=0.8.0",
 ]
 
 [project.optional-dependencies]

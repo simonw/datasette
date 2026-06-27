@@ -145,7 +145,16 @@ If your plugin has a ``static/`` directory, Datasette will automatically configu
 
     /-/static-plugins/NAME_OF_PLUGIN_PACKAGE/yourfile.js
 
-Use the ``datasette.urls.static_plugins(plugin_name, path)`` method to generate URLs to that asset that take the ``base_url`` setting into account, see :ref:`internals_datasette_urls`.
+Use the ``datasette.static(path, plugin=plugin_name)`` method to generate
+cache-busting URLs to those assets that take the ``base_url`` setting into
+account, see :ref:`datasette_static`.
+
+This can also be used from plugin templates as the ``static()`` template
+function:
+
+.. code-block:: html+jinja
+
+    <script src="{{ static('plugin.js', plugin='datasette_plugin_name') }}" defer></script>
 
 To bundle the static assets for a plugin in the package that you publish to PyPI, add the following to the plugin's ``setup.py``:
 

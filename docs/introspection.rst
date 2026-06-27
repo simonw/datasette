@@ -144,46 +144,71 @@ Shows currently attached databases. `Databases example <https://latest.datasette
         }
     ]
 
-.. _TablesView:
+.. _JumpView:
 
-/-/tables
----------
+/-/jump
+-------
 
-Returns a JSON list of all tables that the current actor has permission to view. This endpoint uses the resource-based permission system and respects database and table-level access controls.
+Returns a JSON list of items that the current actor has permission to view for Datasette's jump menu. By default this includes visible databases, tables, views and stored queries, and plugins can contribute additional items.
 
-The endpoint supports a ``?q=`` query parameter for filtering tables by name using case-insensitive regex matching.
+Each item includes a ``type`` string used as a category label in the menu. Items can also include an optional ``description`` with longer text describing that individual result.
 
-`Tables example <https://latest.datasette.io/-/tables>`_:
+The endpoint supports a ``?q=`` query parameter for filtering items by name.
+
+`Jump example <https://latest.datasette.io/-/jump>`_:
 
 .. code-block:: json
 
     {
         "matches": [
             {
-                "name": "fixtures/facetable",
-                "url": "/fixtures/facetable"
+                "name": "fixtures",
+                "url": "/fixtures",
+                "type": "database",
+                "description": null
             },
             {
-                "name": "fixtures/searchable",
-                "url": "/fixtures/searchable"
+                "name": "fixtures: facetable",
+                "url": "/fixtures/facetable",
+                "type": "table",
+                "description": null
+            },
+            {
+                "name": "fixtures: recent_releases",
+                "url": "/fixtures/recent_releases",
+                "type": "query",
+                "description": null
             }
-        ]
+        ],
+        "truncated": false
     }
 
-Search example with ``?q=facet`` returns only tables matching ``.*facet.*``:
+Search example with ``?q=facet`` returns only items matching ``.*facet.*``:
 
 .. code-block:: json
 
     {
         "matches": [
             {
-                "name": "fixtures/facetable",
-                "url": "/fixtures/facetable"
+                "name": "fixtures: facetable",
+                "url": "/fixtures/facetable",
+                "type": "table",
+                "description": null
             }
-        ]
+        ],
+        "truncated": false
     }
 
-When multiple search terms are provided (e.g., ``?q=user+profile``), tables must match the pattern ``.*user.*profile.*``. Results are ordered by shortest table name first.
+When multiple search terms are provided (e.g., ``?q=user+profile``), items must match the pattern ``.*user.*profile.*``. Results are ordered by relevance, then by item type and shortest display name.
+
+.. _AutocompleteDebugView:
+
+/-/debug/autocomplete
+---------------------
+
+The debug tool at ``/-/debug/autocomplete`` can be used to try out the autocomplete component against a specific table. Pass ``?database=db&table=table`` to display an autocomplete field backed by that table's ``/-/autocomplete`` endpoint.
+
+Without those query string arguments, the page lists up to five tables with detected label columns, scanning at most 100 tables.
 
 .. _JsonDataView_threads:
 

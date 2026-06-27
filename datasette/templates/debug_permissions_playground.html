@@ -52,7 +52,6 @@ textarea {
 
 <div class="permission-form">
     <form action="{{ urls.path('-/permissions') }}" id="debug-post" method="post">
-        <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
         <div class="two-col">
             <div class="form-section">
                 <label>Actor</label>

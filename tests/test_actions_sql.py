@@ -12,8 +12,20 @@ import pytest
 import pytest_asyncio
 from datasette.app import Datasette
 from datasette.permissions import PermissionSQL
-from datasette.resources import TableResource
+from datasette.resources import DatabaseResource, QueryResource, TableResource
 from datasette import hookimpl
+
+
+def test_resource_string_representations():
+    assert str(DatabaseResource("content")) == "content"
+    assert repr(DatabaseResource("content")) == (
+        "DatabaseResource(parent='content', child=None)"
+    )
+    assert str(TableResource("content", "dogs")) == "content/dogs"
+    assert repr(TableResource("content", "dogs")) == (
+        "TableResource(parent='content', child='dogs')"
+    )
+    assert str(QueryResource("content", "insert-a-dog")) == "content/insert-a-dog"
 
 
 # Test plugin that provides permission rules

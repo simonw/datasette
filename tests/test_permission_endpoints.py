@@ -117,9 +117,7 @@ async def test_allowed_json_with_actor(ds_with_permissions):
     """Test /-/allowed.json includes actor information."""
     response = await ds_with_permissions.client.get(
         "/-/allowed.json?action=view-table",
-        cookies={
-            "ds_actor": ds_with_permissions.client.actor_cookie({"id": "test_user"})
-        },
+        actor={"id": "test_user"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -252,7 +250,7 @@ async def test_rules_json_basic(
     # Use root actor for rules endpoint (requires permissions-debug)
     response = await ds_with_permissions.client.get(
         path,
-        cookies={"ds_actor": ds_with_permissions.client.actor_cookie({"id": "root"})},
+        actor={"id": "root"},
     )
     assert response.status_code == expected_status
     data = response.json()
@@ -264,7 +262,7 @@ async def test_rules_json_response_structure(ds_with_permissions):
     """Test that /-/rules.json returns the expected structure."""
     response = await ds_with_permissions.client.get(
         "/-/rules.json?action=view-instance",
-        cookies={"ds_actor": ds_with_permissions.client.actor_cookie({"id": "root"})},
+        actor={"id": "root"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -294,7 +292,7 @@ async def test_rules_json_includes_all_rules(ds_with_permissions):
     # Root user should see rules for everything
     response = await ds_with_permissions.client.get(
         "/-/rules.json?action=view-table",
-        cookies={"ds_actor": ds_with_permissions.client.actor_cookie({"id": "root"})},
+        actor={"id": "root"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -326,7 +324,7 @@ async def test_rules_json_pagination():
     # Test basic pagination structure - just verify it returns paginated results
     response = await ds.client.get(
         "/-/rules.json?action=view-table&page_size=2&page=1",
-        cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})},
+        actor={"id": "root"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -343,7 +341,7 @@ async def test_rules_json_with_actor(ds_with_permissions):
     # Use root actor (rules endpoint requires permissions-debug)
     response = await ds_with_permissions.client.get(
         "/-/rules.json?action=view-table",
-        cookies={"ds_actor": ds_with_permissions.client.actor_cookie({"id": "root"})},
+        actor={"id": "root"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -374,7 +372,7 @@ async def test_root_user_respects_settings_deny():
     # Root user should NOT see the denied database
     response = await ds.client.get(
         "/-/allowed.json?action=view-database",
-        cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})},
+        actor={"id": "root"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -415,7 +413,7 @@ async def test_root_user_respects_settings_deny_tables():
     # Root user should NOT see tables from the content database
     response = await ds.client.get(
         "/-/allowed.json?action=view-table",
-        cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})},
+        actor={"id": "root"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -475,7 +473,7 @@ async def test_execute_sql_requires_view_database():
         # User should NOT have execute-sql permission because view-database is denied
         response = await ds.client.get(
             "/-/allowed.json?action=execute-sql",
-            cookies={"ds_actor": ds.client.actor_cookie({"id": "test_user"})},
+            actor={"id": "test_user"},
         )
         assert response.status_code == 200
         data = response.json()
@@ -491,7 +489,7 @@ async def test_execute_sql_requires_view_database():
         # (may be 403 or 302 redirect to login/error page depending on middleware)
         response = await ds.client.get(
             "/secret?sql=SELECT+1",
-            cookies={"ds_actor": ds.client.actor_cookie({"id": "test_user"})},
+            actor={"id": "test_user"},
         )
         assert response.status_code in (302, 403), (
             f"Expected 302 or 403 when trying to execute SQL without view-database permission, "

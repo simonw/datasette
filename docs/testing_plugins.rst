@@ -82,6 +82,73 @@ This method registers any :ref:`plugin_hook_startup` or :ref:`plugin_hook_prepar
 
 If you are using ``await datasette.client.get()`` and similar methods then you don't need to worry about this - Datasette automatically calls ``invoke_startup()`` the first time it handles a request.
 
+.. _testing_plugins_datasette_fixtures_database:
+
+Using Datasette's fixtures database
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Datasette's own test suite uses a SQLite database with tables that exercise features such as compound primary keys, foreign keys, sortable columns, facets, full-text search and binary data.
+
+You can use those same tables in your plugin tests using the ``populate_fixture_database(conn)`` helper in ``datasette.fixtures``:
+
+Be aware that future Datasette releases may change details of these tables, so try not to rely on their exact structure in your own tests.
+
+.. _datasette_fixtures_populate_fixture_database:
+
+``populate_fixture_database(conn)``
+    Populates an existing SQLite connection with the fixture tables.
+
+For an in-memory test database:
+
+.. code-block:: python
+
+    from datasette.app import Datasette
+    from datasette.fixtures import populate_fixture_database
+    import pytest
+    import pytest_asyncio
+
+
+    @pytest_asyncio.fixture
+    async def datasette():
+        datasette = Datasette()
+        db = datasette.add_memory_database("fixtures")
+        await db.execute_write_fn(populate_fixture_database)
+        await datasette.invoke_startup()
+        return datasette
+
+
+    @pytest.mark.asyncio
+    async def test_facetable(datasette):
+        response = await datasette.client.get(
+            "/fixtures/facetable.json?_shape=array"
+        )
+        assert response.status_code == 200
+
+.. _testing_plugins_autoclose:
+
+Automatic cleanup of Datasette instances
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Installing Datasette also installs a small pytest plugin that automatically calls :ref:`datasette_close` on any ``Datasette()`` instance constructed during a test. This helps prevent large test suites from running out of file descriptors or leaking background threads from the hundreds of instances they may build up across a session.
+
+The plugin closes:
+
+- Instances created in the body of a test function.
+- Instances created inside **function-scoped** pytest fixtures (the default scope — ``@pytest.fixture`` with no ``scope=`` argument, or ``scope="function"``).
+
+The plugin deliberately does **not** close:
+
+- Instances created inside higher-scoped fixtures (``scope="session"``, ``"module"``, ``"class"`` or ``"package"``). Those fixtures are typically designed to produce a single ``Datasette`` that is shared across many tests, and closing it automatically would break the tests that run after the first.
+
+In practice this means downstream projects rarely need to call ``ds.close()`` themselves — function-scoped fixtures and inline test code are both covered automatically, while long-lived shared fixtures keep working as before.
+
+If you need to opt out of this behavior, add the following to your ``pytest.ini`` (or equivalent):
+
+.. code-block:: ini
+
+    [pytest]
+    datasette_autoclose = false
+
 .. _testing_datasette_client:
 
 Using datasette.client in tests
@@ -235,9 +302,8 @@ As an example, here's a very simple plugin which executes an HTTP response and r
         if request.method == "GET":
             return Response.html("""
                 <form action="/-/fetch-url" method="post">
-                <input type="hidden" name="csrftoken" value="{}">
                 <input name="url"><input type="submit">
-            </form>""".format(request.scope["csrftoken"]()))
+            </form>""")
         vars = await request.post_vars()
         url = vars["url"]
         return Response.text(httpx.get(url).text)

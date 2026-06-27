@@ -2,13 +2,21 @@
 Tests for the datasette.database.Database class
 """
 
+import asyncio
+from types import SimpleNamespace
 from datasette.app import Datasette
-from datasette.database import Database, Results, MultipleValues
-from datasette.utils.sqlite import sqlite3, sqlite_version
+from datasette.database import Database, ExecuteWriteResult, Results, MultipleValues
+from datasette.database import DatasetteClosedError
+from datasette.database import _deliver_write_result
+from datasette.utils.sqlite import sqlite3, supports_returning
 from datasette.utils import Column
 import pytest
 import time
 import uuid
+
+requires_sqlite_returning = pytest.mark.skipif(
+    not supports_returning(), reason="SQLite does not support RETURNING"
+)
 
 
 @pytest.fixture
@@ -465,11 +473,140 @@ async def test_view_names(db):
 
 @pytest.mark.asyncio
 async def test_execute_write_block_true(db):
-    await db.execute_write(
+    result = await db.execute_write(
         "update roadside_attractions set name = ? where pk = ?", ["Mystery!", 1]
     )
     rows = await db.execute("select name from roadside_attractions where pk = 1")
+    assert result.rowcount == 1
+    assert result.description is None
+    assert result.truncated is False
+    assert result.fetchall() == []
     assert "Mystery!" == rows.rows[0][0]
+
+
+@pytest.mark.asyncio
+@requires_sqlite_returning
+async def test_execute_write_with_returning(db):
+    await db.execute_write(
+        "create table write_returning (id integer primary key, name text)"
+    )
+    result = await db.execute_write(
+        "insert into write_returning (name) values (?) returning id, name",
+        ["Cleo"],
+    )
+
+    assert result.rowcount == 1
+    assert result.lastrowid == 1
+    assert [column[0] for column in result.description] == ["id", "name"]
+    assert result.truncated is False
+    assert [dict(row) for row in result.fetchall()] == [{"id": 1, "name": "Cleo"}]
+    assert result.fetchall() == []
+    assert (await db.execute("select id, name from write_returning")).dicts() == [
+        {"id": 1, "name": "Cleo"}
+    ]
+
+
+@pytest.mark.asyncio
+@requires_sqlite_returning
+async def test_execute_write_with_returning_default_limit(db):
+    await db.execute_write(
+        "create table write_returning_limit (id integer primary key)"
+    )
+    await db.execute_write_many(
+        "insert into write_returning_limit (id) values (?)",
+        [(i,) for i in range(1, 21)],
+    )
+
+    result = await db.execute_write(
+        "update write_returning_limit set id = id returning id"
+    )
+
+    assert result.rowcount == -1
+    assert result.truncated is True
+    assert len(result.fetchall()) == 10
+    assert (
+        await db.execute("select count(*) from write_returning_limit")
+    ).single_value() == 20
+
+
+@pytest.mark.asyncio
+@requires_sqlite_returning
+async def test_execute_write_with_returning_custom_limit(db):
+    await db.execute_write(
+        "create table write_returning_custom (id integer primary key)"
+    )
+    await db.execute_write_many(
+        "insert into write_returning_custom (id) values (?)",
+        [(i,) for i in range(1, 6)],
+    )
+
+    result = await db.execute_write(
+        "update write_returning_custom set id = id returning id",
+        returning_limit=2,
+    )
+
+    assert result.rowcount == -1
+    assert result.truncated is True
+    assert [row["id"] for row in result.fetchall()] == [1, 2]
+
+
+@pytest.mark.asyncio
+@requires_sqlite_returning
+async def test_execute_write_with_returning_exact_default_limit(db):
+    await db.execute_write(
+        "create table write_returning_exact_limit (id integer primary key)"
+    )
+    await db.execute_write_many(
+        "insert into write_returning_exact_limit (id) values (?)",
+        [(i,) for i in range(1, 11)],
+    )
+
+    result = await db.execute_write(
+        "update write_returning_exact_limit set id = id returning id"
+    )
+
+    assert result.rowcount == 10
+    assert result.truncated is False
+    assert len(result.fetchall()) == 10
+
+
+@pytest.mark.asyncio
+@requires_sqlite_returning
+async def test_execute_write_with_returning_one_more_than_default_limit(db):
+    await db.execute_write(
+        "create table write_returning_one_more (id integer primary key)"
+    )
+    await db.execute_write_many(
+        "insert into write_returning_one_more (id) values (?)",
+        [(i,) for i in range(1, 12)],
+    )
+
+    result = await db.execute_write(
+        "update write_returning_one_more set id = id returning id"
+    )
+
+    assert result.rowcount == -1
+    assert result.truncated is True
+    assert len(result.fetchall()) == 10
+
+
+@pytest.mark.asyncio
+@requires_sqlite_returning
+async def test_execute_write_with_returning_return_all(db):
+    await db.execute_write("create table write_returning_all (id integer primary key)")
+    await db.execute_write_many(
+        "insert into write_returning_all (id) values (?)",
+        [(i,) for i in range(1, 21)],
+    )
+
+    result = await db.execute_write(
+        "update write_returning_all set id = id returning id",
+        return_all=True,
+    )
+
+    assert result.rowcount == 20
+    assert result.truncated is False
+    assert [row["id"] for row in result.fetchall()] == list(range(1, 21))
 
 
 @pytest.mark.asyncio
@@ -481,6 +618,48 @@ async def test_execute_write_block_false(db):
     time.sleep(0.1)
     rows = await db.execute("select name from roadside_attractions where pk = 1")
     assert "Mystery!" == rows.rows[0][0]
+
+
+@pytest.mark.asyncio
+@requires_sqlite_returning
+async def test_execute_write_with_returning_block_false(db):
+    await db.execute_write(
+        "create table write_returning_block_false (id integer primary key, name text)"
+    )
+    task_id = await db.execute_write(
+        "insert into write_returning_block_false (name) values (?) returning id",
+        ["Cleo"],
+        block=False,
+    )
+
+    assert isinstance(task_id, uuid.UUID)
+    time.sleep(0.1)
+    assert (
+        await db.execute("select name from write_returning_block_false")
+    ).single_value() == "Cleo"
+
+
+def test_execute_write_result_closes_cursor_on_fetch_error():
+    class Cursor:
+        description = (("id", None, None, None, None, None, None),)
+        lastrowid = 1
+        rowcount = 0
+
+        def __init__(self):
+            self.closed = False
+
+        def fetchmany(self, size):
+            raise sqlite3.DatabaseError("fetch failed")
+
+        def close(self):
+            self.closed = True
+
+    cursor = Cursor()
+
+    with pytest.raises(sqlite3.DatabaseError):
+        ExecuteWriteResult.from_cursor(cursor)
+
+    assert cursor.closed is True
 
 
 @pytest.mark.asyncio
@@ -540,10 +719,43 @@ async def test_execute_write_fn_exception(db):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("param_name", ["conn", "connection", "db", "c"])
+async def test_execute_write_fn_accepts_any_single_param_name(db, param_name):
+    # Plugins historically relied on the fact that the callback was invoked
+    # positionally, so any parameter name worked. Preserve that contract.
+    scope = {}
+    exec(
+        "def write_fn({0}):\n"
+        "    return {0}.execute('select 1 + 1').fetchone()[0]".format(param_name),
+        scope,
+    )
+    write_fn = scope["write_fn"]
+    result = await db.execute_write_fn(write_fn)
+    assert result == 2
+
+
+@pytest.mark.asyncio
+async def test_execute_write_fn_with_track_event(db):
+    # When the callback declares track_event it still receives both args
+    # via dependency injection.
+    seen = []
+
+    def write_fn(conn, track_event):
+        seen.append(track_event)
+        return conn.execute("select 1 + 1").fetchone()[0]
+
+    result = await db.execute_write_fn(write_fn)
+    assert result == 2
+    assert len(seen) == 1 and callable(seen[0])
+
+
+@pytest.mark.asyncio
 @pytest.mark.timeout(1)
 async def test_execute_write_fn_connection_exception(tmpdir, app_client):
     path = str(tmpdir / "immutable.db")
-    sqlite3.connect(path).execute("vacuum")
+    conn = sqlite3.connect(path)
+    conn.execute("vacuum")
+    conn.close()
     db = Database(app_client.ds, path=path, is_mutable=False)
     app_client.ds.add_database(db, name="immutable-db")
 
@@ -554,6 +766,37 @@ async def test_execute_write_fn_connection_exception(tmpdir, app_client):
         await db.execute_write_fn(write_fn)
 
     app_client.ds.remove_database("immutable-db")
+
+
+@pytest.mark.asyncio
+async def test_deliver_write_result_leaves_done_future_alone():
+    loop = asyncio.get_running_loop()
+    reply_future = loop.create_future()
+    reply_future.set_result("original")
+    task = SimpleNamespace(loop=loop, reply_future=reply_future)
+
+    # The write thread can finish after the caller has stopped waiting for the
+    # result. Delivery should notice that the future is already resolved and
+    # leave the caller's outcome alone instead of raising InvalidStateError.
+    _deliver_write_result(task, "replacement", None)
+    await asyncio.sleep(0)
+
+    assert reply_future.result() == "original"
+
+
+@pytest.mark.asyncio
+async def test_deliver_write_result_ignores_closed_loop():
+    closed_loop = asyncio.new_event_loop()
+    closed_loop.close()
+    reply_future = asyncio.get_running_loop().create_future()
+    task = SimpleNamespace(loop=closed_loop, reply_future=reply_future)
+
+    # If the event loop that submitted the write has gone away, the write
+    # thread should drop the result rather than crash while reporting back to
+    # that closed loop.
+    _deliver_write_result(task, "result", None)
+
+    assert not reply_future.done()
 
 
 def table_exists(conn, name):
@@ -621,6 +864,93 @@ async def test_execute_isolated(db, disable_threads):
 
 
 @pytest.mark.asyncio
+async def test_execute_isolated_connect_failure_does_not_kill_write_thread():
+    # A connect() failure for an isolated task should be returned to the
+    # caller as an exception, not crash the write thread
+    class ConnectError(Exception):
+        pass
+
+    ds = Datasette(memory=True)
+    db = ds.add_memory_database("test_isolated_connect_failure")
+    # Start the write thread with a healthy dedicated write connection
+    await db.execute_write("create table dogs (id integer primary key)")
+
+    original_connect = db.connect
+
+    def broken_connect(write=False):
+        raise ConnectError("Could not connect")
+
+    db.connect = broken_connect
+    try:
+        with pytest.raises(ConnectError):
+            await asyncio.wait_for(db.execute_isolated_fn(lambda conn: None), timeout=2)
+    finally:
+        db.connect = original_connect
+
+    # Write thread should still be alive and processing tasks
+    assert db._write_thread.is_alive()
+    await db.execute_write("insert into dogs (id) values (1)")
+    count = await db.execute_isolated_fn(
+        lambda conn: conn.execute("select count(*) from dogs").fetchone()[0]
+    )
+    assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_analyze_sql():
+    ds = Datasette(memory=True)
+    db = ds.add_memory_database("test_analyze_sql", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+
+    analysis = await db.analyze_sql("select name from dogs where id = ?", (1,))
+
+    assert [
+        (
+            operation.operation,
+            operation.database,
+            operation.sqlite_schema,
+            operation.table,
+            operation.columns,
+            operation.source,
+        )
+        for operation in analysis.operations
+        if operation.target_type == "table"
+        and operation.operation in {"read", "insert", "update", "delete"}
+        and not operation.internal
+    ] == [
+        ("read", "data", "main", "dogs", ("id", "name"), None),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_analyze_sql_insert_select():
+    ds = Datasette(memory=True)
+    db = ds.add_memory_database("test_analyze_sql_insert_select", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await db.execute_write("create table cats (id integer primary key, name text)")
+
+    analysis = await db.analyze_sql("insert into dogs (name) select name from cats")
+
+    assert {
+        (
+            operation.operation,
+            operation.database,
+            operation.sqlite_schema,
+            operation.table,
+            operation.columns,
+            operation.source,
+        )
+        for operation in analysis.operations
+        if operation.target_type == "table"
+        and operation.operation in {"read", "insert", "update", "delete"}
+        and not operation.internal
+    } == {
+        ("insert", "data", "main", "dogs", (), None),
+        ("read", "data", "main", "cats", ("name",), None),
+    }
+
+
+@pytest.mark.asyncio
 async def test_mtime_ns(db):
     assert isinstance(db.mtime_ns, int)
 
@@ -676,14 +1006,7 @@ async def test_in_memory_databases_forbid_writes(app_client):
     assert await db.table_names() == ["foo"]
 
 
-def pragma_table_list_supported():
-    return sqlite_version()[1] >= 37
-
-
 @pytest.mark.asyncio
-@pytest.mark.skipif(
-    not pragma_table_list_supported(), reason="Requires PRAGMA table_list support"
-)
 async def test_hidden_tables(app_client):
     ds = app_client.ds
     db = ds.add_database(Database(ds, is_memory=True, is_mutable=True))
@@ -747,15 +1070,19 @@ async def test_replace_database(tmpdir):
     path1 = str(tmpdir / "data1.db")
     (tmpdir / "two").mkdir()
     path2 = str(tmpdir / "two" / "data1.db")
-    sqlite3.connect(path1).executescript("""
+    conn1 = sqlite3.connect(path1)
+    conn1.executescript("""
         create table t (id integer primary key);
         insert into t (id) values (1);
         insert into t (id) values (2);
     """)
-    sqlite3.connect(path2).executescript("""
+    conn1.close()
+    conn2 = sqlite3.connect(path2)
+    conn2.executescript("""
         create table t (id integer primary key);
         insert into t (id) values (1);
     """)
+    conn2.close()
     datasette = Datasette([path1])
     db = datasette.get_database("data1")
     count = (await db.execute("select count(*) from t")).first()[0]
@@ -767,3 +1094,87 @@ async def test_replace_database(tmpdir):
     db2 = datasette.get_database("data1")
     count = (await db2.execute("select count(*) from t")).first()[0]
     assert count == 1
+
+
+@pytest.mark.parametrize(
+    "kwargs,expected_repr",
+    [
+        ({"is_memory": True}, "<Database: test_db (mutable, memory, size=0)>"),
+        ({"memory_name": "my_mem"}, "<Database: test_db (mutable, memory, size=0)>"),
+        (
+            {"is_memory": True, "is_mutable": False},
+            "<Database: test_db (memory, size=0)>",
+        ),
+    ],
+    ids=["memory", "named_memory", "immutable_memory"],
+)
+def test_repr(app_client, kwargs, expected_repr):
+    db = Database(app_client.ds, **kwargs)
+    db.name = "test_db"
+    assert repr(db) == expected_repr
+
+
+def test_repr_temp_disk(app_client):
+    db = Database(app_client.ds, is_temp_disk=True)
+    db.name = "test_db"
+    r = repr(db)
+    assert r.startswith("<Database: test_db (mutable, temp_disk, size=")
+    assert r.endswith(")>")
+    assert isinstance(db.size, int)
+    assert isinstance(db.mtime_ns, int)
+    db.close()
+
+
+@pytest.mark.asyncio
+async def test_database_close_shuts_down_write_thread(tmpdir):
+    path = str(tmpdir / "dbclose.db")
+    conn = sqlite3.connect(path)
+    conn.execute("create table t (id integer primary key)")
+    conn.close()
+    ds = Datasette([path])
+    db = ds.get_database("dbclose")
+    # Trigger write thread creation
+    await db.execute_write("insert into t (id) values (1)")
+    assert db._write_thread is not None
+    assert db._write_thread.is_alive()
+    db.close()
+    # Wait briefly for the thread to exit — the sentinel should cause it to return.
+    db._write_thread.join(timeout=5)
+    assert not db._write_thread.is_alive()
+    ds._internal_database.close()
+
+
+@pytest.mark.asyncio
+async def test_database_close_raises_on_further_use(tmpdir):
+    path = str(tmpdir / "closed.db")
+    conn = sqlite3.connect(path)
+    conn.execute("create table t (id integer primary key)")
+    conn.close()
+    ds = Datasette([path])
+    db = ds.get_database("closed")
+    await db.execute("select 1")
+    db.close()
+    with pytest.raises(DatasetteClosedError):
+        await db.execute("select 1")
+    with pytest.raises(DatasetteClosedError):
+        await db.execute_write("insert into t (id) values (1)")
+    with pytest.raises(DatasetteClosedError):
+        await db.execute_fn(lambda conn: conn.execute("select 1").fetchone())
+    with pytest.raises(DatasetteClosedError):
+        await db.execute_write_fn(lambda conn: conn.execute("select 1"))
+    ds._internal_database.close()
+
+
+@pytest.mark.asyncio
+async def test_database_close_is_idempotent(tmpdir):
+    path = str(tmpdir / "idemp.db")
+    conn = sqlite3.connect(path)
+    conn.execute("create table t (id integer primary key)")
+    conn.close()
+    ds = Datasette([path])
+    db = ds.get_database("idemp")
+    await db.execute_write("insert into t (id) values (1)")
+    db.close()
+    # Second call should be a no-op, not raise
+    db.close()
+    ds._internal_database.close()

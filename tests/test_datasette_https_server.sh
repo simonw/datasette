@@ -40,22 +40,23 @@ curl -f --cacert client.pem $test_url
 curl_exit_code=$?
 
 # Shut down the server
-kill $server_pid
-waiting=0
-#         show all pids
-#         |       find just the $server_pid
-#         |       |                  don’t match on the previous grep
-#         |       |                  |            we don’t need the output
-#         |       |                  |            |
-until ( ! ps ax | grep $server_pid | grep -v grep > /dev/null ); do
-    if [ $waiting -eq 4 ]; then
-        echo "$server_pid does still exist, server failed to stop"
-        cleanup
-        exit 1
+kill $server_pid 2>/dev/null || true
+(
+    sleep 5
+    if kill -0 $server_pid 2>/dev/null; then
+        kill -9 $server_pid 2>/dev/null || true
     fi
-    let waiting=waiting+1
-    sleep 1
-done
+) &
+killer_pid=$!
+wait_status=0
+wait $server_pid 2>/dev/null || wait_status=$?
+kill $killer_pid 2>/dev/null || true
+wait $killer_pid 2>/dev/null || true
+if [ $wait_status -eq 137 ]; then
+    echo "$server_pid did not stop after SIGTERM, server failed to stop"
+    cleanup
+    exit 1
+fi
 
 # Clean up the certificates
 cleanup

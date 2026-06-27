@@ -1,0 +1,48 @@
+name: Playwright
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+    - uses: actions/checkout@v6
+    - name: Set up Python 3.14
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.14"
+        allow-prereleases: true
+        cache: pip
+        cache-dependency-path: pyproject.toml
+    - name: Cache uv
+      uses: actions/cache@v5
+      with:
+        path: ~/.cache/uv
+        key: ${{ runner.os }}-py3.14-uv-${{ hashFiles('pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-py3.14-uv-
+    - name: Cache Playwright browsers
+      uses: actions/cache@v5
+      with:
+        path: ~/.cache/ms-playwright/
+        key: ${{ runner.os }}-playwright-${{ matrix.browser }}-${{ hashFiles('pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-playwright-${{ matrix.browser }}-
+    - name: Install uv
+      run: python -m pip install uv
+    - name: Install dependencies
+      run: uv sync --group dev --group playwright
+    - name: Install ${{ matrix.browser }}
+      run: uv run --group dev --group playwright playwright install --with-deps ${{ matrix.browser }}
+    - name: Run Playwright tests
+      run: uv run --group dev --group playwright pytest tests/test_playwright.py --playwright --browser ${{ matrix.browser }}

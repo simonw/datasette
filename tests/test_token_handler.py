@@ -292,6 +292,43 @@ async def test_expires_after_round_trip(datasette):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "build_restrictions,expected",
+    [
+        (lambda r: r, None),
+        (lambda r: r.allow_all("view-instance"), {"a": ["vi"]}),
+        (
+            lambda r: r.allow_database("docs", "view-query"),
+            {"d": {"docs": ["vq"]}},
+        ),
+        (
+            lambda r: r.allow_resource("docs", "attachments", "insert-row"),
+            {"r": {"docs": {"attachments": ["ir"]}}},
+        ),
+        (
+            lambda r: r.allow_all("view-instance")
+            .allow_database("docs", "view-query")
+            .allow_resource("docs", "attachments", "insert-row"),
+            {
+                "a": ["vi"],
+                "d": {"docs": ["vq"]},
+                "r": {"docs": {"attachments": ["ir"]}},
+            },
+        ),
+        (
+            lambda r: r.allow_all("not-a-real-action"),
+            {"a": ["not-a-real-action"]},
+        ),
+    ],
+    ids=["empty", "all", "database", "resource", "combined", "unknown_action"],
+)
+async def test_token_restrictions_abbreviated(datasette, build_restrictions, expected):
+    await datasette.invoke_startup()
+    restrictions = build_restrictions(TokenRestrictions())
+    assert restrictions.abbreviated(datasette) == expected
+
+
+@pytest.mark.asyncio
 async def test_signed_tokens_disabled():
     """create_token and verify_token should fail/skip when signed tokens are disabled."""
     ds = Datasette(settings={"allow_signed_tokens": False})

@@ -83,7 +83,7 @@ class Facet:
         self.ds = ds
         self.request = request
         self.database = database
-        # For foreign key expansion. Can be None for e.g. canned SQL queries:
+        # For foreign key expansion. Can be None for e.g. stored SQL queries:
         self.table = table
         self.sql = sql or f"select * from [{table}]"
         self.params = params or []

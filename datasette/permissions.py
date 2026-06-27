@@ -8,6 +8,14 @@ _skip_permission_checks = contextvars.ContextVar(
     "skip_permission_checks", default=False
 )
 
+# Request-scoped cache of permission check results. The ASGI router sets
+# this to a fresh dict at the start of each request, so cached verdicts
+# never outlive a request or leak between actors. Keys are
+# (actor_json, action, parent, child) tuples, values are booleans.
+_permission_check_cache: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
+    "permission_check_cache", default=None
+)
+
 
 class SkipPermissions:
     """Context manager to temporarily skip permission checks.
@@ -58,6 +66,16 @@ class Resource(ABC):
         self.child = child
         self._private = None  # Sentinel to track if private was set
 
+    def __str__(self) -> str:
+        return "/".join(
+            str(part) for part in (self.parent, self.child) if part is not None
+        )
+
+    def __repr__(self) -> str:
+        return "{}(parent={!r}, child={!r})".format(
+            self.__class__.__name__, self.parent, self.child
+        )
+
     @property
     def private(self) -> bool:
         """
@@ -105,7 +123,7 @@ class Resource(ABC):
 
     @classmethod
     @abstractmethod
-    def resources_sql(cls) -> str:
+    async def resources_sql(cls, datasette, actor=None) -> str:
         """
         Return SQL query that returns all resources of this type.
 

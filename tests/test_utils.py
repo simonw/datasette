@@ -5,7 +5,13 @@ Tests for various datasette helper functions.
 from datasette.app import Datasette
 from datasette import utils
 from datasette.utils.asgi import Request
-from datasette.utils.sqlite import sqlite3
+from datasette.utils.sqlite import (
+    sqlite3,
+    sqlite_hidden_table_names,
+    sqlite_table_type,
+    supports_returning,
+)
+import hashlib
 import json
 import os
 import pathlib
@@ -208,6 +214,57 @@ def test_detect_fts(open_quote, close_quote):
     assert None is utils.detect_fts(conn, "Test_View")
     assert None is utils.detect_fts(conn, "r")
     assert "Street_Tree_List_fts" == utils.detect_fts(conn, "Street_Tree_List")
+    conn.close()
+
+
+@pytest.mark.parametrize(
+    "identifier,expected",
+    (
+        ("plain", "plain"),
+        ("select", '"select"'),
+        ("has space", '"has space"'),
+        ("has'quote", '"has\'quote"'),
+        ('has"dquote', '"has""dquote"'),
+        ("has]bracket", '"has]bracket"'),
+        ('has"dquote]', '"has""dquote]"'),
+    ),
+)
+def test_escape_sqlite(identifier, expected):
+    assert utils.escape_sqlite(identifier) == expected
+
+
+def test_escape_sqlite_double_quotes_work_in_query():
+    conn = utils.sqlite3.connect(":memory:")
+    table = 'table with "double quotes"'
+    column = "select"
+    escaped_table = utils.escape_sqlite(table)
+    escaped_column = utils.escape_sqlite(column)
+    conn.execute(f"CREATE TABLE {escaped_table} ({escaped_column} TEXT)")
+    create_sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)
+    ).fetchone()[0]
+    assert create_sql == 'CREATE TABLE "table with ""double quotes""" ("select" TEXT)'
+    conn.execute(
+        f"INSERT INTO {escaped_table} ({escaped_column}) VALUES (?)", ("hello",)
+    )
+    results = conn.execute(f"SELECT {escaped_column} FROM {escaped_table}").fetchall()
+    conn.close()
+    assert results == [("hello",)]
+
+
+def test_escape_sqlite_prevents_injection():
+    # https://github.com/simonw/datasette/issues/2677
+    conn = utils.sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE users (id INTEGER, password TEXT)")
+    conn.execute("INSERT INTO users VALUES (1, 'super_secret_password')")
+    malicious = "users] UNION SELECT password FROM users--"
+    conn.execute('CREATE TABLE "{}" (id INTEGER)'.format(malicious))
+    sql = "select count(*) from {}".format(utils.escape_sqlite(malicious))
+    results = conn.execute(sql).fetchall()
+    conn.close()
+    # The injected UNION must not execute - only the empty malicious table
+    # is queried, so we get a single count row and no leaked password
+    assert results == [(0,)]
 
 
 @pytest.mark.parametrize("table", ("regular", "has'single quote"))
@@ -222,6 +279,88 @@ def test_detect_fts_different_table_names(table):
     conn = utils.sqlite3.connect(":memory:")
     conn.executescript(sql)
     assert "{table}_fts".format(table=table) == utils.detect_fts(conn, table)
+    conn.close()
+
+
+def test_supports_returning():
+    conn = utils.sqlite3.connect(":memory:")
+    try:
+        conn.execute("create table t (id integer primary key)")
+        conn.execute("insert into t default values returning id").fetchone()
+        expected = True
+    except sqlite3.DatabaseError:
+        expected = False
+    finally:
+        conn.close()
+
+    assert supports_returning() is expected
+
+
+@pytest.mark.parametrize("use_fallback", (False, True))
+def test_sqlite_table_type_detects_virtual_and_shadow_tables(monkeypatch, use_fallback):
+    if use_fallback:
+        monkeypatch.setattr("datasette.utils.sqlite.sqlite_version", lambda: (3, 25, 0))
+    conn = utils.sqlite3.connect(":memory:")
+    try:
+        conn.executescript("""
+            create table dogs(id integer primary key, name text);
+            create view dog_names as select name from dogs;
+            create virtual table search_index using fts5(title, body);
+            create virtual table boxes using rtree(id, minx, maxx, miny, maxy);
+        """)
+
+        assert sqlite_table_type(conn, "dogs") == "table"
+        assert sqlite_table_type(conn, "dog_names") == "view"
+        assert sqlite_table_type(conn, "search_index") == "virtual"
+        assert sqlite_table_type(conn, "search_index_config") == "shadow"
+        assert sqlite_table_type(conn, "boxes") == "virtual"
+        assert sqlite_table_type(conn, "boxes_node") == "shadow"
+        assert sqlite_table_type(conn, "missing") is None
+        assert sqlite_hidden_table_names(conn) == [
+            "boxes_node",
+            "boxes_parent",
+            "boxes_rowid",
+            "search_index_config",
+            "search_index_content",
+            "search_index_data",
+            "search_index_docsize",
+            "search_index_idx",
+        ]
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("use_fallback", (False, True))
+def test_sqlite_table_type_detects_attached_database_tables(monkeypatch, use_fallback):
+    if use_fallback:
+        monkeypatch.setattr("datasette.utils.sqlite.sqlite_version", lambda: (3, 25, 0))
+    conn = utils.sqlite3.connect(":memory:")
+    try:
+        conn.executescript("""
+            attach database ':memory:' as extra;
+            create table extra.cats(id integer primary key, name text);
+            create virtual table extra.cat_search using fts5(name);
+        """)
+
+        assert sqlite_table_type(conn, "cats", schema="extra") == "table"
+        assert sqlite_table_type(conn, "cat_search", schema="extra") == "virtual"
+        assert sqlite_table_type(conn, "cat_search_data", schema="extra") == "shadow"
+    finally:
+        conn.close()
+
+
+def test_sqlite_hidden_table_names_hides_multiline_content_fts_table():
+    conn = utils.sqlite3.connect(":memory:")
+    try:
+        conn.executescript("""
+            create table searchable(id integer primary key, body text);
+            create virtual table searchable_fts
+                using fts5(body, content='searchable', content_rowid='id');
+        """)
+
+        assert "searchable_fts" in sqlite_hidden_table_names(conn)
+    finally:
+        conn.close()
 
 
 @pytest.mark.parametrize(
@@ -359,6 +498,7 @@ def test_table_columns():
     create table places (id integer primary key, name text, bob integer)
     """)
     assert ["id", "name", "bob"] == utils.table_columns(conn, "places")
+    conn.close()
 
 
 @pytest.mark.parametrize(
@@ -381,6 +521,12 @@ def test_path_with_format(path, format, extra_qs, expected):
     request = Request.fake(path)
     actual = utils.path_with_format(request=request, format=format, extra_qs=extra_qs)
     assert expected == actual
+
+
+def test_path_with_format_can_override_request_path():
+    request = Request.fake("/prefix/foo?x=1")
+    actual = utils.path_with_format(request=request, path="/foo", format="json")
+    assert "/foo.json?x=1" == actual
 
 
 @pytest.mark.parametrize(
@@ -433,11 +579,13 @@ def test_check_connection_spatialite_raises():
     conn = sqlite3.connect(path)
     with pytest.raises(utils.SpatialiteConnectionProblem):
         utils.check_connection(conn)
+    conn.close()
 
 
 def test_check_connection_passes():
     conn = sqlite3.connect(":memory:")
     utils.check_connection(conn)
+    conn.close()
 
 
 def test_call_with_supported_arguments():
@@ -564,10 +712,14 @@ def test_display_actor(actor, expected):
 async def test_initial_path_for_datasette(tmp_path_factory, dbs, expected_path):
     db_dir = tmp_path_factory.mktemp("dbs")
     one_table = str(db_dir / "one.db")
-    sqlite3.connect(one_table).execute("create table one (id integer primary key)")
+    conn1 = sqlite3.connect(one_table)
+    conn1.execute("create table one (id integer primary key)")
+    conn1.close()
     two_tables = str(db_dir / "two.db")
-    sqlite3.connect(two_tables).execute("create table two (id integer primary key)")
-    sqlite3.connect(two_tables).execute("create table three (id integer primary key)")
+    conn2 = sqlite3.connect(two_tables)
+    conn2.execute("create table two (id integer primary key)")
+    conn2.execute("create table three (id integer primary key)")
+    conn2.close()
     datasette = Datasette(
         [{"one_table": one_table, "two_tables": two_tables}[db] for db in dbs]
     )
@@ -700,6 +852,12 @@ def test_truncate_url(url, length, expected):
 def test_pairs_to_nested_config(pairs, expected):
     actual = utils.pairs_to_nested_config(pairs)
     assert actual == expected
+
+
+def test_sha256_file(tmp_path):
+    path = tmp_path / "test.txt"
+    path.write_text("hello")
+    assert utils.sha256_file(path, chunk_size=2) == hashlib.sha256(b"hello").hexdigest()
 
 
 @pytest.mark.asyncio

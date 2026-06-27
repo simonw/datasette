@@ -1,4 +1,5 @@
 import collections
+from asgiref.sync import async_to_sync
 from datasette.app import Datasette
 from datasette.cli import cli
 from datasette.default_permissions import restrictions_allow_action
@@ -430,7 +431,6 @@ async def test_permissions_debug(ds_client, filter_):
             "result": True,
             "actor": {"id": "root"},
         },
-        {"action": "debug-menu", "result": False, "actor": None},
         {
             "action": "view-instance",
             "result": True,
@@ -610,6 +610,10 @@ def test_padlocks_on_database_page(cascade_app_client):
     previous_config = cascade_app_client.ds.config
     try:
         cascade_app_client.ds.config = config
+        async_to_sync(cascade_app_client.ds.invoke_startup)()
+        async_to_sync(cascade_app_client.ds.add_query)(
+            "fixtures", "query_two", "select 2", source="config"
+        )
         response = cascade_app_client.get(
             "/fixtures",
             cookies={"ds_actor": cascade_app_client.actor_cookie({"id": "test"})},
@@ -618,13 +622,13 @@ def test_padlocks_on_database_page(cascade_app_client):
         assert ">123_starts_with_digits</a></h3>" in response.text
         assert ">Table With Space In Name</a> 🔒</h3>" in response.text
         # Queries
-        assert ">from_async_hook</a> 🔒</li>" in response.text
         assert ">query_two</a></li>" in response.text
         # Views
         assert ">paginated_view</a> 🔒</li>" in response.text
         assert ">simple_view</a></li>" in response.text
     finally:
         cascade_app_client.ds.config = previous_config
+        async_to_sync(cascade_app_client.ds.remove_query)("fixtures", "query_two")
 
 
 @pytest.mark.asyncio
@@ -711,10 +715,6 @@ async def test_actor_restricted_permissions(
     perms_ds.pdb = True
     perms_ds.root_enabled = True  # Allow root actor to access /-/permissions
     cookies = {"ds_actor": perms_ds.sign({"a": {"id": "root"}}, "actor")}
-    csrftoken = (await perms_ds.client.get("/-/permissions", cookies=cookies)).cookies[
-        "ds_csrftoken"
-    ]
-    cookies["ds_csrftoken"] = csrftoken
     response = await perms_ds.client.post(
         "/-/permissions",
         data={
@@ -722,7 +722,6 @@ async def test_actor_restricted_permissions(
             "permission": permission,
             "resource_1": resource_1,
             "resource_2": resource_2,
-            "csrftoken": csrftoken,
         },
         cookies=cookies,
     )
@@ -831,6 +830,22 @@ PermConfigTestCase = collections.namedtuple(
             resource=("perms_ds_one", "t1"),
             expected_result=True,
         ),
+        # set-column-type on specific table
+        PermConfigTestCase(
+            config={
+                "databases": {
+                    "perms_ds_one": {
+                        "tables": {
+                            "t1": {"permissions": {"set-column-type": {"id": "user"}}}
+                        }
+                    }
+                }
+            },
+            actor={"id": "user"},
+            action="set-column-type",
+            resource=("perms_ds_one", "t1"),
+            expected_result=True,
+        ),
         # insert-row on database
         PermConfigTestCase(
             config={
@@ -875,7 +890,7 @@ PermConfigTestCase = collections.namedtuple(
             resource=("perms_ds_one", "t1"),
             expected_result=True,
         ),
-        # view-query on canned query, wrong actor
+        # view-query on stored query, wrong actor
         PermConfigTestCase(
             config={
                 "databases": {
@@ -894,7 +909,7 @@ PermConfigTestCase = collections.namedtuple(
             resource=("perms_ds_one", "q1"),
             expected_result=False,
         ),
-        # view-query on canned query, right actor
+        # view-query on stored query, right actor
         PermConfigTestCase(
             config={
                 "databases": {
@@ -922,16 +937,24 @@ async def test_permissions_in_config(
     updated_config = copy.deepcopy(previous_config)
     updated_config.update(config)
     perms_ds.config = updated_config
+    await perms_ds._save_queries_from_config()
     try:
         # Convert old-style resource to Resource object
-        from datasette.resources import DatabaseResource, TableResource
+        from datasette.resources import DatabaseResource, QueryResource, TableResource
 
         resource_obj = None
         if resource:
             if isinstance(resource, str):
                 resource_obj = DatabaseResource(database=resource)
             elif isinstance(resource, tuple) and len(resource) == 2:
-                resource_obj = TableResource(database=resource[0], table=resource[1])
+                if action == "view-query":
+                    resource_obj = QueryResource(
+                        database=resource[0], query=resource[1]
+                    )
+                else:
+                    resource_obj = TableResource(
+                        database=resource[0], table=resource[1]
+                    )
 
         result = await perms_ds.allowed(
             action=action, resource=resource_obj, actor=actor
@@ -941,6 +964,51 @@ async def test_permissions_in_config(
             assert result == expected_result
     finally:
         perms_ds.config = previous_config
+        await perms_ds._save_queries_from_config()
+
+
+@pytest.mark.asyncio
+async def test_allowed_resources_view_query_includes_actor_specific_query_permissions():
+    from datasette import hookimpl
+    from datasette.permissions import PermissionSQL
+    from datasette.resources import QueryResource
+
+    class ActorSpecificQueryPermissionPlugin:
+        __name__ = "ActorSpecificQueryPermissionPlugin"
+
+        @hookimpl
+        def permission_resources_sql(self, datasette, actor, action):
+            if action == "view-query" and actor and actor.get("id") == "alice":
+                return PermissionSQL(sql="""
+                        SELECT 'testdb' AS parent, 'user_only' AS child, 1 AS allow,
+                               'alice can view this query' AS reason
+                    """)
+            return None
+
+    ds = Datasette(default_deny=True)
+    await ds.invoke_startup()
+    ds.add_memory_database("testdb")
+    await ds._refresh_schemas()
+    await ds.add_query("testdb", "user_only", "select 1 as n")
+
+    plugin = ActorSpecificQueryPermissionPlugin()
+    ds.pm.register(plugin, name="actor_specific_query_permission_plugin")
+
+    try:
+        actor = {"id": "alice"}
+
+        assert await ds.allowed(
+            action="view-query",
+            resource=QueryResource("testdb", "user_only"),
+            actor=actor,
+        )
+
+        page = await ds.allowed_resources("view-query", actor)
+        assert [(resource.parent, resource.child) for resource in page.resources] == [
+            ("testdb", "user_only")
+        ]
+    finally:
+        ds.pm.unregister(name="actor_specific_query_permission_plugin")
 
 
 @pytest.mark.asyncio
@@ -1098,10 +1166,10 @@ async def test_api_explorer_visibility(
     try:
         prev_config = perms_ds.config
         perms_ds.config = config or {}
-        cookies = {}
+        kwargs = {}
         if is_logged_in:
-            cookies = {"ds_actor": perms_ds.client.actor_cookie({"id": "user"})}
-        response = await perms_ds.client.get("/-/api", cookies=cookies)
+            kwargs["actor"] = {"id": "user"}
+        response = await perms_ds.client.get("/-/api", **kwargs)
         if expected_visible_tables:
             assert response.status_code == 200
             # Search HTML for stuff matching:
@@ -1135,8 +1203,7 @@ async def test_view_table_token_cannot_gain_access_without_base_permission(perms
             # Restricted token claims access to perms_ds_two/t1 only
             "_r": {"r": {"perms_ds_two": {"t1": ["vt"]}}},
         }
-        cookies = {"ds_actor": perms_ds.client.actor_cookie(actor)}
-        response = await perms_ds.client.get("/perms_ds_two/t1.json", cookies=cookies)
+        response = await perms_ds.client.get("/perms_ds_two/t1.json", actor=actor)
         assert response.status_code == 403
     finally:
         perms_ds.config = previous_config
@@ -1255,7 +1322,7 @@ async def test_actor_restrictions(
     if restrictions:
         actor["_r"] = restrictions
     method = getattr(perms_ds.client, verb)
-    kwargs = {"cookies": {"ds_actor": perms_ds.client.actor_cookie(actor)}}
+    kwargs = {"actor": actor}
     if body:
         kwargs["json"] = body
     perms_ds._permission_checks.clear()
@@ -1386,7 +1453,7 @@ async def test_actor_restrictions_do_not_expand_allowed_resources(perms_ds):
         # And explicit permission checks should still deny
         response = await perms_ds.client.get(
             "/perms_ds_one/t1.json",
-            cookies={"ds_actor": perms_ds.client.actor_cookie(actor)},
+            actor=actor,
         )
         assert response.status_code == 403
     finally:
@@ -1454,18 +1521,17 @@ async def test_actor_restrictions_json_endpoints_show_filtered_listings(perms_ds
     """Test that /.json and /db.json show correct filtered listings - issue #2534"""
 
     actor = {"id": "user", "_r": {"r": {"perms_ds_one": {"t1": ["vt"]}}}}
-    cookies = {"ds_actor": perms_ds.client.actor_cookie(actor)}
 
     # /.json should be 403 (no view-instance permission)
-    response = await perms_ds.client.get("/.json", cookies=cookies)
+    response = await perms_ds.client.get("/.json", actor=actor)
     assert response.status_code == 403
 
     # /perms_ds_one.json should be 403 (no view-database permission)
-    response = await perms_ds.client.get("/perms_ds_one.json", cookies=cookies)
+    response = await perms_ds.client.get("/perms_ds_one.json", actor=actor)
     assert response.status_code == 403
 
     # /perms_ds_one/t1.json should be 200
-    response = await perms_ds.client.get("/perms_ds_one/t1.json", cookies=cookies)
+    response = await perms_ds.client.get("/perms_ds_one/t1.json", actor=actor)
     assert response.status_code == 200
 
 
@@ -1474,10 +1540,9 @@ async def test_actor_restrictions_view_instance_only(perms_ds):
     """Test actor restricted to view-instance only - issue #2534"""
 
     actor = {"id": "user", "_r": {"a": ["vi"]}}
-    cookies = {"ds_actor": perms_ds.client.actor_cookie(actor)}
 
     # /.json should be 200 (has view-instance permission)
-    response = await perms_ds.client.get("/.json", cookies=cookies)
+    response = await perms_ds.client.get("/.json", actor=actor)
     assert response.status_code == 200
 
     # But no databases should be visible (no view-database permission)
@@ -1666,6 +1731,29 @@ async def test_permission_check_view_requires_debug_permission():
     data = response.json()
     assert data["action"] == "view-instance"
     assert data["allowed"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ("view-query", "update-query", "delete-query"))
+async def test_permission_check_view_query_actions(action):
+    # https://github.com/simonw/datasette/issues/2756
+    # QueryResource takes a "query" argument, not "table", so /-/check must
+    # not assume every child resource class accepts table=
+    ds = Datasette()
+    ds.root_enabled = True
+    root_token = await ds.create_token("root", handler="signed")
+    response = await ds.client.get(
+        f"/-/check.json?action={action}&parent=mydb&child=myquery",
+        headers={"Authorization": f"Bearer {root_token}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["action"] == action
+    assert data["resource"] == {
+        "parent": "mydb",
+        "child": "myquery",
+        "path": "/mydb/myquery",
+    }
 
 
 @pytest.mark.asyncio

@@ -1,15 +1,19 @@
 import asyncio
+import atexit
 from collections import namedtuple
+import inspect
+import os
 from pathlib import Path
-import janus
 import queue
 import sqlite_utils
 import sys
+import tempfile
 import threading
 import uuid
 
 from .tracer import trace
 from .utils import (
+    call_with_supported_arguments,
     detect_fts,
     detect_primary_keys,
     detect_spatialite,
@@ -21,12 +25,22 @@ from .utils import (
     table_columns,
     table_column_details,
 )
-from .utils.sqlite import sqlite_version
+from .utils.sql_analysis import SQLAnalysis, analyze_sql_tables
+from .utils.sqlite import sqlite_hidden_table_names
 from .inspect import inspect_hash
 
 connections = threading.local()
 
+EXECUTE_WRITE_RETURNING_LIMIT = 10
+
 AttachedDatabase = namedtuple("AttachedDatabase", ("seq", "name", "file"))
+
+
+class DatasetteClosedError(RuntimeError):
+    """Raised when using a Datasette or Database instance after close()."""
+
+
+_SHUTDOWN = object()
 
 
 class Database:
@@ -42,6 +56,7 @@ class Database:
         is_memory=False,
         memory_name=None,
         mode=None,
+        is_temp_disk=False,
     ):
         self.name = None
         self._thread_local_id = f"x{self._thread_local_id_counter}"
@@ -52,19 +67,44 @@ class Database:
         self.is_mutable = is_mutable
         self.is_memory = is_memory
         self.memory_name = memory_name
+        self.is_temp_disk = is_temp_disk
         if memory_name is not None:
             self.is_memory = True
+        if is_temp_disk:
+            fd, temp_path = tempfile.mkstemp(suffix=".db", prefix="datasette_temp_")
+            os.close(fd)
+            self.path = temp_path
+            self.is_mutable = True
+            self.mode = "rwc"
+            self._wal_enabled = False
+            atexit.register(self._cleanup_temp_file)
+        else:
+            self._wal_enabled = False
         self.cached_hash = None
         self.cached_size = None
         self._cached_table_counts = None
         self._write_thread = None
         self._write_queue = None
+        self._closed = False
+        self._pending_execute_futures = set()
+        self._pending_execute_futures_lock = threading.Lock()
         # These are used when in non-threaded mode:
         self._read_connection = None
         self._write_connection = None
         # This is used to track all file connections so they can be closed
         self._all_file_connections = []
-        self.mode = mode
+        if not is_temp_disk:
+            self.mode = mode
+
+    def _check_not_closed(self):
+        if self._closed:
+            raise DatasetteClosedError(
+                "Database {!r} has been closed".format(self.name)
+            )
+
+    def _remove_pending_execute_future(self, future):
+        with self._pending_execute_futures_lock:
+            self._pending_execute_futures.discard(future)
 
     @property
     def cached_table_counts(self):
@@ -85,6 +125,8 @@ class Database:
         return md5_not_usedforsecurity(self.name)[:6]
 
     def suggest_name(self):
+        if self.is_temp_disk:
+            return "_temp_disk"
         if self.path:
             return Path(self.path).stem
         elif self.memory_name:
@@ -123,22 +165,105 @@ class Database:
             f"file:{self.path}{qs}", uri=True, check_same_thread=False, **extra_kwargs
         )
         self._all_file_connections.append(conn)
+        if self.is_temp_disk and not self._wal_enabled:
+            conn.execute("PRAGMA journal_mode=WAL")
+            self._wal_enabled = True
         return conn
 
     def close(self):
-        # Close all connections - useful to avoid running out of file handles in tests
-        for connection in self._all_file_connections:
-            connection.close()
+        """Release all resources held by this database.
 
-    async def execute_write(self, sql, params=None, block=True, request=None):
+        Idempotent. After close() further calls to execute()/execute_fn()/
+        execute_write()/execute_write_fn() raise DatasetteClosedError.
+        """
+        if self._closed:
+            return
+        with self._pending_execute_futures_lock:
+            if self._closed:
+                return
+            self._closed = True
+            pending_execute_futures = tuple(self._pending_execute_futures)
+        # Shut down the write thread, if any, via a sentinel. The thread
+        # drains any writes already queued before the sentinel and then
+        # closes its own write connection and returns.
+        write_thread = self._write_thread
+        if write_thread is not None and self._write_queue is not None:
+            self._write_queue.put(_SHUTDOWN)
+            write_thread.join(timeout=10)
+            if write_thread.is_alive():
+                sys.stderr.write(
+                    "Datasette: write thread for {!r} did not exit within 10s\n".format(
+                        self.name
+                    )
+                )
+                sys.stderr.flush()
+        for future in pending_execute_futures:
+            try:
+                future.result()
+            except Exception:
+                pass
+        # Close anything still tracked in _all_file_connections
+        for connection in self._all_file_connections:
+            try:
+                connection.close()
+            except Exception:
+                pass
+        self._all_file_connections = []
+        # Drop per-thread cached read connections we can reach
+        try:
+            delattr(connections, self._thread_local_id)
+        except AttributeError:
+            pass
+        # Close non-threaded-mode cached connections if still open
+        if self._read_connection is not None:
+            try:
+                self._read_connection.close()
+            except Exception:
+                pass
+            self._read_connection = None
+        if self._write_connection is not None:
+            try:
+                self._write_connection.close()
+            except Exception:
+                pass
+            self._write_connection = None
+        if self.is_temp_disk:
+            self._cleanup_temp_file()
+
+    def _cleanup_temp_file(self):
+        if self.is_temp_disk and self.path:
+            for suffix in ("", "-wal", "-shm"):
+                try:
+                    os.unlink(self.path + suffix)
+                except OSError:
+                    pass
+
+    async def execute_write(
+        self,
+        sql,
+        params=None,
+        block=True,
+        request=None,
+        return_all=False,
+        returning_limit=EXECUTE_WRITE_RETURNING_LIMIT,
+    ):
+        self._check_not_closed()
+        if returning_limit < 0:
+            raise ValueError("returning_limit must be >= 0")
+
         def _inner(conn):
-            return conn.execute(sql, params or [])
+            cursor = conn.execute(sql, params or [])
+            return ExecuteWriteResult.from_cursor(
+                cursor, return_all=return_all, returning_limit=returning_limit
+            )
 
         with trace("sql", database=self.name, sql=sql.strip(), params=params):
             results = await self.execute_write_fn(_inner, block=block, request=request)
         return results
 
     async def execute_write_script(self, sql, block=True, request=None):
+        self._check_not_closed()
+
         def _inner(conn):
             return conn.executescript(sql)
 
@@ -149,6 +274,8 @@ class Database:
         return results
 
     async def execute_write_many(self, sql, params_seq, block=True, request=None):
+        self._check_not_closed()
+
         def _inner(conn):
             count = 0
 
@@ -170,13 +297,15 @@ class Database:
         return results
 
     async def execute_isolated_fn(self, fn):
-        # Open a new connection just for the duration of this function
+        self._check_not_closed()
+        # Open a new connection just for the duration of this function,
         # blocking the write queue to avoid any writes occurring during it
-        if self.ds.executor is None:
-            # non-threaded mode
-            isolated_connection = self.connect(write=True)
+        write = self.is_mutable
+
+        def _run():
+            isolated_connection = self.connect(write=write)
             try:
-                result = fn(isolated_connection)
+                return fn(isolated_connection)
             finally:
                 isolated_connection.close()
                 try:
@@ -184,13 +313,34 @@ class Database:
                 except ValueError:
                     # Was probably a memory connection
                     pass
-            return result
-        else:
-            # Threaded mode - send to write thread
-            return await self._send_to_write_thread(fn, isolated_connection=True)
+
+        if self.ds.executor is None:
+            # non-threaded mode
+            return _run()
+        if not write:
+            # Immutable database - no writes can ever occur, so there is no
+            # write queue to block; run against a fresh read-only connection
+            return await asyncio.get_running_loop().run_in_executor(
+                self.ds.executor, _run
+            )
+        # Threaded mode - send to write thread
+        return await self._send_to_write_thread(fn, isolated_connection=True)
+
+    async def analyze_sql(self, sql, params=None) -> SQLAnalysis:
+        self._check_not_closed()
+
+        return await self.execute_isolated_fn(
+            lambda conn: analyze_sql_tables(conn, sql, params, database_name=self.name)
+        )
 
     async def execute_write_fn(self, fn, block=True, transaction=True, request=None):
-        fn = self._wrap_fn_with_hooks(fn, request, transaction)
+        self._check_not_closed()
+        pending_events = []
+
+        def track_event(event):
+            pending_events.append(event)
+
+        fn = self._wrap_fn_with_hooks(fn, request, transaction, track_event)
         if self.ds.executor is None:
             # non-threaded mode
             if self._write_connection is None:
@@ -198,16 +348,52 @@ class Database:
                 self.ds._prepare_connection(self._write_connection, self.name)
             if transaction:
                 with self._write_connection:
-                    return fn(self._write_connection)
+                    result = fn(self._write_connection)
             else:
-                return fn(self._write_connection)
+                result = fn(self._write_connection)
         else:
-            return await self._send_to_write_thread(
+            result = await self._send_to_write_thread(
                 fn, block=block, transaction=transaction
             )
+        if block:
+            for event in pending_events:
+                await self.ds.track_event(event)
+        else:
+            # For non-blocking writes, spawn a background task to
+            # dispatch events after the write thread completes
+            task_id, reply_future = result
 
-    def _wrap_fn_with_hooks(self, fn, request, transaction):
+            async def _dispatch_events_after_write():
+                try:
+                    await reply_future
+                except Exception:
+                    # if the write failed, don't emit success events
+                    return
+                for event in pending_events:
+                    await self.ds.track_event(event)
+
+            asyncio.ensure_future(_dispatch_events_after_write())
+            result = task_id
+        return result
+
+    def _wrap_fn_with_hooks(self, fn, request, transaction, track_event):
         from .plugins import pm
+
+        # Wrap fn so it receives track_event if its signature supports it.
+        # Historically fn was called positionally, so any single-parameter
+        # name (conn, connection, db, ...) worked. Preserve that by only
+        # switching to keyword dependency injection when the callback
+        # explicitly opts in by declaring a `track_event` parameter.
+        original_fn = fn
+
+        if "track_event" in inspect.signature(original_fn).parameters:
+
+            def fn_with_track_event(conn):
+                return call_with_supported_arguments(
+                    original_fn, conn=conn, track_event=track_event
+                )
+
+            fn = fn_with_track_event
 
         wrappers = pm.hook.write_wrapper(
             datasette=self.ds,
@@ -220,10 +406,9 @@ class Database:
             return fn
         # Build the wrapped fn by nesting context manager generators.
         # The first wrapper returned by pluggy is outermost.
-        original_fn = fn
         for wrapper_factory in reversed(wrappers):
-            original_fn = _apply_write_wrapper(original_fn, wrapper_factory)
-        return original_fn
+            fn = _apply_write_wrapper(fn, wrapper_factory, track_event)
+        return fn
 
     async def _send_to_write_thread(
         self, fn, block=True, isolated_connection=False, transaction=True
@@ -239,18 +424,15 @@ class Database:
             )
             self._write_thread.start()
         task_id = uuid.uuid5(uuid.NAMESPACE_DNS, "datasette.io")
-        reply_queue = janus.Queue()
+        loop = asyncio.get_running_loop()
+        reply_future = loop.create_future()
         self._write_queue.put(
-            WriteTask(fn, task_id, reply_queue, isolated_connection, transaction)
+            WriteTask(fn, task_id, loop, reply_future, isolated_connection, transaction)
         )
         if block:
-            result = await reply_queue.async_q.get()
-            if isinstance(result, Exception):
-                raise result
-            else:
-                return result
+            return await reply_future
         else:
-            return task_id
+            return task_id, reply_future
 
     def _execute_writes(self):
         # Infinite looping thread that protects the single write connection
@@ -264,17 +446,22 @@ class Database:
             conn_exception = e
         while True:
             task = self._write_queue.get()
+            if task is _SHUTDOWN:
+                if conn is not None:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+                return
+            exception = None
+            result = None
             if conn_exception is not None:
-                result = conn_exception
-            else:
-                if task.isolated_connection:
+                exception = conn_exception
+            elif task.isolated_connection:
+                try:
                     isolated_connection = self.connect(write=True)
                     try:
                         result = task.fn(isolated_connection)
-                    except Exception as e:
-                        sys.stderr.write("{}\n".format(e))
-                        sys.stderr.flush()
-                        result = e
                     finally:
                         isolated_connection.close()
                         try:
@@ -282,20 +469,25 @@ class Database:
                         except ValueError:
                             # Was probably a memory connection
                             pass
-                else:
-                    try:
-                        if task.transaction:
-                            with conn:
-                                result = task.fn(conn)
-                        else:
+                except Exception as e:
+                    sys.stderr.write("{}\n".format(e))
+                    sys.stderr.flush()
+                    exception = e
+            else:
+                try:
+                    if task.transaction:
+                        with conn:
                             result = task.fn(conn)
-                    except Exception as e:
-                        sys.stderr.write("{}\n".format(e))
-                        sys.stderr.flush()
-                        result = e
-            task.reply_queue.sync_q.put(result)
+                    else:
+                        result = task.fn(conn)
+                except Exception as e:
+                    sys.stderr.write("{}\n".format(e))
+                    sys.stderr.flush()
+                    exception = e
+            _deliver_write_result(task, result, exception)
 
     async def execute_fn(self, fn):
+        self._check_not_closed()
         if self.ds.executor is None:
             # non-threaded mode
             if self._read_connection is None:
@@ -312,9 +504,12 @@ class Database:
                 setattr(connections, self._thread_local_id, conn)
             return fn(conn)
 
-        return await asyncio.get_event_loop().run_in_executor(
-            self.ds.executor, in_thread
-        )
+        with self._pending_execute_futures_lock:
+            self._check_not_closed()
+            future = self.ds.executor.submit(in_thread)
+            self._pending_execute_futures.add(future)
+        future.add_done_callback(self._remove_pending_execute_future)
+        return await asyncio.wrap_future(future)
 
     async def execute(
         self,
@@ -326,6 +521,7 @@ class Database:
         log_sql_errors=True,
     ):
         """Executes sql against db_name in a thread"""
+        self._check_not_closed()
         page_size = page_size or self.ds.page_size
 
         def sql_operation_in_thread(conn):
@@ -373,7 +569,7 @@ class Database:
     def hash(self):
         if self.cached_hash is not None:
             return self.cached_hash
-        elif self.is_mutable or self.is_memory:
+        elif self.is_mutable or self.is_memory or self.is_temp_disk:
             return None
         elif self.ds.inspect_data and self.ds.inspect_data.get(self.name):
             self.cached_hash = self.ds.inspect_data[self.name]["hash"]
@@ -531,83 +727,7 @@ class Database:
                 t for t in db_config["tables"] if db_config["tables"][t].get("hidden")
             ]
 
-        if sqlite_version()[1] >= 37:
-            hidden_tables += [x[0] for x in await self.execute("""
-                      with shadow_tables as (
-                        select name
-                        from pragma_table_list
-                        where [type] = 'shadow'
-                        order by name
-                      ),
-                      core_tables as (
-                        select name
-                        from sqlite_master
-                        WHERE  name in ('sqlite_stat1', 'sqlite_stat2', 'sqlite_stat3', 'sqlite_stat4')
-                          OR substr(name, 1, 1) == '_'
-                      ),
-                      combined as (
-                        select name from shadow_tables
-                        union all
-                        select name from core_tables
-                      )
-                      select name from combined order by 1
-                    """)]
-        else:
-            hidden_tables += [x[0] for x in await self.execute("""
-                      WITH base AS (
-                        SELECT name
-                        FROM sqlite_master
-                        WHERE  name IN ('sqlite_stat1', 'sqlite_stat2', 'sqlite_stat3', 'sqlite_stat4')
-                          OR substr(name, 1, 1) == '_'
-                      ),
-                      fts_suffixes AS (
-                        SELECT column1 AS suffix
-                        FROM (VALUES ('_data'), ('_idx'), ('_docsize'), ('_content'), ('_config'))
-                      ),
-                      fts5_names AS (
-                        SELECT name
-                        FROM sqlite_master
-                        WHERE sql LIKE '%VIRTUAL TABLE%USING FTS%'
-                      ),
-                      fts5_shadow_tables AS (
-                        SELECT
-                          printf('%s%s', fts5_names.name, fts_suffixes.suffix) AS name
-                        FROM fts5_names
-                        JOIN fts_suffixes
-                      ),
-                      fts3_suffixes AS (
-                        SELECT column1 AS suffix
-                        FROM (VALUES ('_content'), ('_segdir'), ('_segments'), ('_stat'), ('_docsize'))
-                      ),
-                      fts3_names AS (
-                        SELECT name
-                        FROM sqlite_master
-                        WHERE sql LIKE '%VIRTUAL TABLE%USING FTS3%'
-                          OR sql LIKE '%VIRTUAL TABLE%USING FTS4%'
-                      ),
-                      fts3_shadow_tables AS (
-                        SELECT
-                          printf('%s%s', fts3_names.name, fts3_suffixes.suffix) AS name
-                        FROM fts3_names
-                        JOIN fts3_suffixes
-                      ),
-                      final AS (
-                        SELECT name FROM base
-                        UNION ALL
-                        SELECT name FROM fts5_shadow_tables
-                        UNION ALL
-                        SELECT name FROM fts3_shadow_tables
-                      )
-                      SELECT name FROM final ORDER BY 1
-                    """)]
-        # Also hide any FTS tables that have a content= argument
-        hidden_tables += [x[0] for x in await self.execute("""
-                  SELECT name
-                  FROM sqlite_master
-                  WHERE sql LIKE '%VIRTUAL TABLE%'
-                    AND sql LIKE '%USING FTS%'
-                    AND sql LIKE '%content=%'
-                """)]
+        hidden_tables += await self.execute_fn(sqlite_hidden_table_names)
 
         has_spatialite = await self.execute_fn(detect_spatialite)
         if has_spatialite:
@@ -672,6 +792,8 @@ class Database:
             tags.append("mutable")
         if self.is_memory:
             tags.append("memory")
+        if self.is_temp_disk:
+            tags.append("temp_disk")
         if self.hash:
             tags.append(f"hash={self.hash}")
         if self.size is not None:
@@ -682,18 +804,21 @@ class Database:
         return f"<Database: {self.name}{tags_str}>"
 
 
-def _apply_write_wrapper(fn, wrapper_factory):
+def _apply_write_wrapper(fn, wrapper_factory, track_event):
     """Apply a single write_wrapper context manager around fn.
 
-    ``wrapper_factory`` is a callable that takes ``(conn)`` and returns a
-    generator that yields exactly once.  Code before the yield runs before
-    ``fn(conn)``, code after the yield runs after.  The result of
-    ``fn(conn)`` is sent into the generator via ``.send()``, and any
-    exception raised by ``fn(conn)`` is thrown via ``.throw()``.
+    ``wrapper_factory`` is a callable that takes ``(conn)`` and optionally
+    ``track_event``, and returns a generator that yields exactly once.
+    Code before the yield runs before ``fn(conn)``, code after the yield
+    runs after.  The result of ``fn(conn)`` is sent into the generator
+    via ``.send()``, and any exception raised by ``fn(conn)`` is thrown
+    via ``.throw()``.
     """
 
     def wrapped(conn):
-        gen = wrapper_factory(conn)
+        gen = call_with_supported_arguments(
+            wrapper_factory, conn=conn, track_event=track_event
+        )
         # Advance to the yield point (run "before" code)
         try:
             next(gen)
@@ -704,10 +829,10 @@ def _apply_write_wrapper(fn, wrapper_factory):
         # Execute the actual write
         try:
             result = fn(conn)
-        except Exception:
+        except Exception as e:
             # Throw exception into generator so it can handle it
             try:
-                gen.throw(*sys.exc_info())
+                gen.throw(e)
             except StopIteration:
                 pass
             # Re-raise the original exception
@@ -724,14 +849,43 @@ def _apply_write_wrapper(fn, wrapper_factory):
 
 
 class WriteTask:
-    __slots__ = ("fn", "task_id", "reply_queue", "isolated_connection", "transaction")
+    __slots__ = (
+        "fn",
+        "task_id",
+        "loop",
+        "reply_future",
+        "isolated_connection",
+        "transaction",
+    )
 
-    def __init__(self, fn, task_id, reply_queue, isolated_connection, transaction):
+    def __init__(
+        self, fn, task_id, loop, reply_future, isolated_connection, transaction
+    ):
         self.fn = fn
         self.task_id = task_id
-        self.reply_queue = reply_queue
+        self.loop = loop
+        self.reply_future = reply_future
         self.isolated_connection = isolated_connection
         self.transaction = transaction
+
+
+def _deliver_write_result(task, result, exception):
+    # Called from the write thread. Delivers the result back to the
+    # awaiting coroutine on its event loop via call_soon_threadsafe.
+    def _set():
+        if task.reply_future.done():
+            # Awaiter was cancelled; nothing to do.
+            return
+        if exception is not None:
+            task.reply_future.set_exception(exception)
+        else:
+            task.reply_future.set_result(result)
+
+    try:
+        task.loop.call_soon_threadsafe(_set)
+    except RuntimeError:
+        # Event loop has been closed; the awaiter is gone.
+        pass
 
 
 class QueryInterrupted(Exception):
@@ -746,6 +900,44 @@ class QueryInterrupted(Exception):
 
 class MultipleValues(Exception):
     pass
+
+
+class ExecuteWriteResult:
+    def __init__(self, rowcount, lastrowid, description, rows, truncated):
+        self.rowcount = rowcount
+        self.lastrowid = lastrowid
+        self.description = description
+        self.truncated = truncated
+        self._rows = rows
+
+    @classmethod
+    def from_cursor(
+        cls, cursor, return_all=False, returning_limit=EXECUTE_WRITE_RETURNING_LIMIT
+    ):
+        rows = []
+        truncated = False
+        description = cursor.description
+        lastrowid = cursor.lastrowid
+        try:
+            if description is not None:
+                if return_all:
+                    rows = cursor.fetchall()
+                else:
+                    rows = cursor.fetchmany(returning_limit + 1)
+                    if len(rows) > returning_limit:
+                        rows = rows[:returning_limit]
+                        truncated = True
+            rowcount = cursor.rowcount
+        finally:
+            cursor.close()
+        if description is not None and not return_all and truncated:
+            rowcount = -1
+        return cls(rowcount, lastrowid, description, rows, truncated)
+
+    def fetchall(self):
+        rows = self._rows
+        self._rows = []
+        return rows
 
 
 class Results:

@@ -4,6 +4,7 @@ from datasette.utils import allowed_pragmas
 from .fixtures import make_app_client
 from .utils import assert_footer_links, inner_html
 import copy
+import hashlib
 import json
 import pathlib
 import pytest
@@ -83,7 +84,7 @@ async def test_homepage_options(ds_client):
 async def test_favicon(ds_client):
     response = await ds_client.get("/favicon.ico")
     assert response.status_code == 200
-    assert response.headers["cache-control"] == "max-age=3600, immutable, public"
+    assert response.headers["cache-control"] == "max-age=3600, public"
     assert int(response.headers["content-length"]) > 100
     assert response.headers["content-type"] == "image/png"
 
@@ -101,6 +102,24 @@ async def test_static(ds_client):
     assert response.status_code == 304
 
 
+@pytest.mark.asyncio
+async def test_static_hash_cache_control(ds_client):
+    hashed_url = ds_client.ds.static("app.css")
+    response = await ds_client.get(hashed_url)
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "max-age=31536000, immutable, public"
+
+    response = await ds_client.get(
+        hashed_url, headers={"if-none-match": response.headers["etag"]}
+    )
+    assert response.status_code == 304
+    assert response.headers["cache-control"] == "max-age=31536000, immutable, public"
+
+    response = await ds_client.get("/-/static/app.css?_hash=incorrect")
+    assert response.status_code == 200
+    assert "cache-control" not in response.headers
+
+
 def test_static_mounts():
     with make_app_client(
         static_mounts=[("custom-static", str(pathlib.Path(__file__).parent))]
@@ -111,6 +130,23 @@ def test_static_mounts():
         assert response.status_code == 404
         response = client.get("/custom-static/../LICENSE")
         assert response.status_code == 404
+
+
+def test_static_mounts_hash_cache_control():
+    mount_path = pathlib.Path(__file__).parent
+    with make_app_client(static_mounts=[("custom-static", str(mount_path))]) as client:
+        response = client.get(client.ds.static("test_html.py", mount="custom-static"))
+        assert response.status_code == 200
+        assert (
+            response.headers["cache-control"] == "max-age=31536000, immutable, public"
+        )
+
+        incorrect_hash = hashlib.sha256(b"incorrect").hexdigest()[:12]
+        response = client.get(
+            "/custom-static/test_html.py?_hash={}".format(incorrect_hash)
+        )
+        assert response.status_code == 200
+        assert "cache-control" not in response.headers
 
 
 def test_memory_database_page():
@@ -154,12 +190,10 @@ async def test_database_page(ds_client):
         ("/fixtures/simple_view", "simple_view"),
     ] == sorted([(a["href"], a.text) for a in views_ul.find_all("a")])
 
-    # And a list of canned queries
+    # And a list of stored queries
     queries_ul = soup.find("h2", string="Queries").find_next_sibling("ul")
     assert queries_ul is not None
     assert [
-        ("/fixtures/from_async_hook", "from_async_hook"),
-        ("/fixtures/from_hook", "from_hook"),
         ("/fixtures/magic_parameters", "magic_parameters"),
         ("/fixtures/neighborhood_search#fragment-goes-here", "Search neighborhoods"),
         ("/fixtures/pragma_cache_size", "pragma_cache_size"),
@@ -239,6 +273,22 @@ def test_query_page_truncates():
             '<td class="col-a">this …</td>',
             '<td class="col-b"><a href="https://example.com/">http…</a></td>',
         ]
+
+
+@pytest.mark.asyncio
+async def test_query_page_with_no_sql(ds_client):
+    # https://github.com/simonw/datasette/issues/2743
+    response = await ds_client.get("/fixtures/-/query")
+    assert response.status_code == 200
+    assert '<textarea id="sql-editor" name="sql"' in response.text
+    assert 'class="rows-and-columns"' not in response.text
+
+
+@pytest.mark.asyncio
+async def test_query_csv_with_no_sql_is_400(ds_client):
+    # https://github.com/simonw/datasette/issues/2743
+    response = await ds_client.get("/fixtures/-/query.csv")
+    assert response.status_code == 400
 
 
 @pytest.mark.asyncio
@@ -328,15 +378,27 @@ async def test_query_parameter_form_fields(ds_client):
     response = await ds_client.get("/fixtures/-/query?sql=select+:name")
     assert response.status_code == 200
     assert (
-        '<label for="qp1">name</label> <input type="text" id="qp1" name="name" value="">'
+        '<label for="qp1">name</label> <input type="text" id="qp1" name="name" value="" data-parameter-control data-parameter-name="name">'
         in response.text
     )
+    assert 'data-parameters-url="/fixtures/-/query/parameters"' in response.text
+    assert 'id="sql-parameters-section"' in response.text
+    assert "setupSqlParameterRefresh" in response.text
     response2 = await ds_client.get("/fixtures/-/query?sql=select+:name&name=hello")
     assert response2.status_code == 200
     assert (
-        '<label for="qp1">name</label> <input type="text" id="qp1" name="name" value="hello">'
+        '<label for="qp1">name</label> <input type="text" id="qp1" name="name" value="hello" data-parameter-control data-parameter-name="name">'
         in response2.text
     )
+
+
+@pytest.mark.asyncio
+async def test_database_page_sql_parameter_refresh_markup(ds_client):
+    response = await ds_client.get("/fixtures")
+    assert response.status_code == 200
+    assert 'data-parameters-url="/fixtures/-/query/parameters"' in response.text
+    assert 'id="sql-parameters-section"' in response.text
+    assert "setupSqlParameterRefresh" in response.text
 
 
 @pytest.mark.asyncio
@@ -347,7 +409,7 @@ async def test_row_html_simple_primary_key(ds_client):
     assert ["id", "content"] == [th.string.strip() for th in table.select("thead th")]
     assert [
         [
-            '<td class="col-id type-int">1</td>',
+            '<td class="col-id type-int"><strong>1</strong></td>',
             '<td class="col-content type-str">hello</td>',
         ]
     ] == [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
@@ -363,7 +425,7 @@ async def test_row_html_no_primary_key(ds_client):
     ]
     expected = [
         [
-            '<td class="col-rowid type-int">1</td>',
+            '<td class="col-rowid type-int"><strong>1</strong></td>',
             '<td class="col-content type-str">1</td>',
             '<td class="col-a type-str">a1</td>',
             '<td class="col-b type-str">b1</td>',
@@ -407,6 +469,26 @@ async def test_row_links_from_other_tables(
 
 
 @pytest.mark.asyncio
+async def test_row_foreign_key_links(ds_client):
+    # Row detail page should render foreign key values as hyperlinks
+    response = await ds_client.get("/fixtures/foreign_key_references/1")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    # foreign_key_with_label=1 references simple_primary_key(id=1, content="hello")
+    td = soup.find("td", {"class": "col-foreign_key_with_label"})
+    a = td.find("a")
+    assert a is not None, "Expected foreign key value to be a hyperlink"
+    assert a["href"] == "/fixtures/simple_primary_key/1"
+    assert a.text == "hello"
+    # Primary key column should be first and bold
+    table = soup.find("table")
+    headers = [th.text.strip() for th in table.select("thead th")]
+    assert headers[0] == "pk"
+    first_td = table.select("tbody tr td")[0]
+    assert first_td.find("strong") is not None, "PK value should be bold"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
     (
@@ -414,8 +496,8 @@ async def test_row_links_from_other_tables(
             "/fixtures/compound_primary_key/a,b",
             [
                 [
-                    '<td class="col-pk1 type-str">a</td>',
-                    '<td class="col-pk2 type-str">b</td>',
+                    '<td class="col-pk1 type-str"><strong>a</strong></td>',
+                    '<td class="col-pk2 type-str"><strong>b</strong></td>',
                     '<td class="col-content type-str">c</td>',
                 ]
             ],
@@ -424,8 +506,8 @@ async def test_row_links_from_other_tables(
             "/fixtures/compound_primary_key/a~2Fb,~2Ec~2Dd",
             [
                 [
-                    '<td class="col-pk1 type-str">a/b</td>',
-                    '<td class="col-pk2 type-str">.c-d</td>',
+                    '<td class="col-pk1 type-str"><strong>a/b</strong></td>',
+                    '<td class="col-pk2 type-str"><strong>.c-d</strong></td>',
                     '<td class="col-content type-str">c</td>',
                 ]
             ],
@@ -563,7 +645,7 @@ async def test_404(ds_client, path):
     response = await ds_client.get(path)
     assert response.status_code == 404
     assert (
-        f'<link rel="stylesheet" href="/-/static/app.css?{ds_client.ds.app_css_hash()}'
+        '<link rel="stylesheet" href="{}"'.format(ds_client.ds.static("app.css"))
         in response.text
     )
 
@@ -587,7 +669,7 @@ async def test_404_content_type(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_canned_query_default_title(ds_client):
+async def test_stored_query_default_title(ds_client):
     response = await ds_client.get("/fixtures/magic_parameters")
     assert response.status_code == 200
     soup = Soup(response.content, "html.parser")
@@ -595,7 +677,7 @@ async def test_canned_query_default_title(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_canned_query_with_custom_metadata(ds_client):
+async def test_stored_query_with_custom_metadata(ds_client):
     response = await ds_client.get("/fixtures/neighborhood_search?text=town")
     assert response.status_code == 200
     soup = Soup(response.content, "html.parser")
@@ -654,8 +736,8 @@ async def test_show_hide_sql_query(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_canned_query_with_hide_has_no_hidden_sql(ds_client):
-    # For a canned query the show/hide should NOT have a hidden SQL field
+async def test_stored_query_with_hide_has_no_hidden_sql(ds_client):
+    # For a stored query the show/hide should NOT have a hidden SQL field
     # https://github.com/simonw/datasette/issues/1411
     response = await ds_client.get("/fixtures/pragma_cache_size?_hide_sql=1")
     soup = Soup(response.content, "html.parser")
@@ -674,7 +756,7 @@ async def test_canned_query_with_hide_has_no_hidden_sql(ds_client):
         (True, "?_show_sql=1", "_show_sql", "/_memory/one", "hide"),
     ),
 )
-def test_canned_query_show_hide_metadata_option(
+def test_stored_query_show_hide_metadata_option(
     hide_sql,
     querystring,
     expected_hidden,
@@ -785,7 +867,7 @@ async def test_blob_download_invalid_messages(ds_client, path, expected_message)
 async def test_zero_results(ds_client, path):
     response = await ds_client.get(path)
     soup = Soup(response.text, "html.parser")
-    assert 0 == len(soup.select("table"))
+    assert 0 == len(soup.select("table tbody tr"))
     assert 1 == len(soup.select("p.zero-results"))
 
 
@@ -832,6 +914,8 @@ def test_debug_context_includes_extra_template_vars():
         "/fixtures/facetable",
         "/fixtures/facetable?_facet=state",
         "/fixtures/-/query?sql=select+1",
+        "/-/api",
+        "/-/patterns",
     ],
 )
 @pytest.mark.parametrize("use_prefix", (True, False))
@@ -843,7 +927,28 @@ def test_base_url_config(app_client_base_url_prefix, path, use_prefix):
     response = client.get(path_to_get)
     soup = Soup(response.content, "html.parser")
     for form in soup.select("form"):
-        assert form["action"].startswith("/prefix")
+        action = form.get("action")
+        if action is None:
+            assert form.get("method") == "dialog", json.dumps(
+                {
+                    "path": path,
+                    "path_to_get": path_to_get,
+                    "form": str(form),
+                },
+                indent=4,
+                default=repr,
+            )
+            continue
+        assert action.startswith("/prefix"), json.dumps(
+            {
+                "path": path,
+                "path_to_get": path_to_get,
+                "action": action,
+                "form": str(form),
+            },
+            indent=4,
+            default=repr,
+        )
     for el in soup.find_all(["a", "link", "script"]):
         if "href" in el.attrs:
             href = el["href"]
@@ -865,7 +970,9 @@ def test_base_url_config(app_client_base_url_prefix, path, use_prefix):
         ):
             # If this has been made absolute it may start http://localhost/
             if href.startswith("http://localhost/"):
-                href = href[len("http://localost/") :]
+                href = href[len("http://localhost") :]
+            elif href.startswith(("http://", "https://")):
+                continue
             assert href.startswith("/prefix/"), json.dumps(
                 {
                     "path": path,
@@ -876,6 +983,17 @@ def test_base_url_config(app_client_base_url_prefix, path, use_prefix):
                 indent=4,
                 default=repr,
             )
+    for el in soup.find_all("navigation-search"):
+        assert el["url"] == "/prefix/-/jump", json.dumps(
+            {
+                "path": path,
+                "path_to_get": path_to_get,
+                "url": el["url"],
+                "element": str(el),
+            },
+            indent=4,
+            default=repr,
+        )
 
 
 def test_base_url_affects_filter_redirects(app_client_base_url_prefix):
@@ -886,6 +1004,25 @@ def test_base_url_affects_filter_redirects(app_client_base_url_prefix):
         response.headers["location"]
         == "/prefix/fixtures/binary_data?_sort=rowid&rowid__exact=1"
     )
+
+
+def test_base_url_affects_database_sql_redirect(app_client_base_url_prefix):
+    response = app_client_base_url_prefix.get(
+        "/prefix/fixtures?sql=select+1", follow_redirects=False
+    )
+    assert response.status_code == 302
+    assert response.headers["location"] == "/prefix/fixtures/-/query?sql=select+1"
+
+
+def test_base_url_affects_permanent_redirects():
+    with make_app_client(memory=True, settings={"base_url": "/prefix/"}) as client:
+        response = client.get("/prefix/-", follow_redirects=False)
+        assert response.status_code == 301
+        assert response.headers["location"] == "/prefix/-/"
+
+        response2 = client.get("/prefix/:memory:", follow_redirects=False)
+        assert response2.status_code == 301
+        assert response2.headers["location"] == "/prefix/_memory"
 
 
 def test_base_url_affects_metadata_extra_css_urls(app_client_base_url_prefix):
@@ -914,10 +1051,10 @@ def test_base_url_affects_metadata_extra_css_urls(app_client_base_url_prefix):
         ("/fixtures/magic_parameters", None),
     ],
 )
-async def test_edit_sql_link_on_canned_queries(ds_client, path, expected):
+async def test_edit_sql_link_on_stored_queries(ds_client, path, expected):
     response = await ds_client.get(path)
     assert response.status_code == 200
-    expected_link = f'<a href="{expected}" class="canned-query-edit-sql">Edit SQL</a>'
+    expected_link = f'<a href="{expected}" class="stored-query-edit-sql">Edit SQL</a>'
     if expected:
         assert expected_link in response.text
     else:
@@ -953,7 +1090,7 @@ def test_edit_sql_link_not_shown_if_user_lacks_permission(has_permission):
     [
         (None, None, None),
         ("test", None, ["/-/permissions"]),
-        ("root", ["/-/permissions", "/-/allow-debug"], None),
+        ("root", None, ["/-/permissions", "/-/allow-debug"]),
     ],
 )
 async def test_navigation_menu_links(
@@ -962,15 +1099,33 @@ async def test_navigation_menu_links(
     # Enable root user if testing with root actor
     if actor_id == "root":
         ds_client.ds.root_enabled = True
-    cookies = {}
+    kwargs = {}
     if actor_id:
-        cookies = {"ds_actor": ds_client.actor_cookie({"id": actor_id})}
-    html = (await ds_client.get("/", cookies=cookies)).text
+        kwargs["actor"] = {"id": actor_id}
+    html = (await ds_client.get("/", **kwargs)).text
     soup = Soup(html, "html.parser")
-    details = soup.find("nav").find("details")
+    details = soup.find("nav").find("details", {"class": "nav-menu"})
+    assert details is not None
+    search_button = details.find("button", {"data-navigation-search-open": True})
+    assert search_button is not None
+    assert search_button.text.strip() == "Jump to... /"
+    assert search_button.find("kbd", {"class": "keyboard-shortcut"}).text == "/"
+    assert search_button.find("kbd")["aria-hidden"] == "true"
+    assert (
+        search_button.find("kbd")["title"]
+        == "Keyboard shortcut: press / to open Jump to"
+    )
+    navigation_search_script = soup.find(
+        "script", {"src": re.compile(r"navigation-search\.js")}
+    )
+    assert navigation_search_script["src"] == ds_client.ds.static(
+        "navigation-search.js"
+    )
+    assert details.find("li").find("button") == search_button
     if not actor_id:
-        # Should not show a menu
-        assert details is None
+        # The app menu is always visible, but anonymous users do not see logout
+        # or debug links.
+        assert details.find("form") is None
         return
     # They are logged in: should show a menu
     assert details is not None
@@ -1023,7 +1178,7 @@ async def test_trace_correctly_escaped(ds_client):
             "/fixtures/-/query?sql=select+*+from+facetable",
             "http://localhost/fixtures/-/query.json?sql=select+*+from+facetable",
         ),
-        # Canned query page
+        # Stored query page
         (
             "/fixtures/neighborhood_search?text=town",
             "http://localhost/fixtures/neighborhood_search.json?text=town",
@@ -1161,11 +1316,12 @@ async def test_custom_csrf_error(ds_client):
         data={
             "message": "A message",
         },
-        cookies={"csrftoken": "x"},
+        headers={"sec-fetch-site": "cross-site"},
     )
     assert response.status_code == 403
     assert response.headers["content-type"] == "text/html; charset=utf-8"
-    assert "Error code is FORM_URLENCODED_MISMATCH." in response.text
+    assert "Reason:" in response.text
+    assert "cross-site" in response.text
 
 
 @pytest.mark.asyncio
@@ -1173,8 +1329,7 @@ async def test_actions_page(ds_client):
     original_root_enabled = ds_client.ds.root_enabled
     try:
         ds_client.ds.root_enabled = True
-        cookies = {"ds_actor": ds_client.actor_cookie({"id": "root"})}
-        response = await ds_client.get("/-/actions", cookies=cookies)
+        response = await ds_client.get("/-/actions", actor={"id": "root"})
         assert response.status_code == 200
         assert "Registered actions" in response.text
         assert "<th>Name</th>" in response.text
@@ -1191,8 +1346,7 @@ async def test_actions_page_does_not_display_none_string(ds_client):
     original_root_enabled = ds_client.ds.root_enabled
     try:
         ds_client.ds.root_enabled = True
-        cookies = {"ds_actor": ds_client.actor_cookie({"id": "root"})}
-        response = await ds_client.get("/-/actions", cookies=cookies)
+        response = await ds_client.get("/-/actions", actor={"id": "root"})
         assert response.status_code == 200
         assert "<code>None</code>" not in response.text
     finally:
@@ -1205,11 +1359,11 @@ async def test_permission_debug_tabs_with_query_string(ds_client):
     original_root_enabled = ds_client.ds.root_enabled
     try:
         ds_client.ds.root_enabled = True
-        cookies = {"ds_actor": ds_client.actor_cookie({"id": "root"})}
+        actor = {"id": "root"}
 
         # Test /-/allowed with query string
         response = await ds_client.get(
-            "/-/allowed?action=view-table&page_size=50", cookies=cookies
+            "/-/allowed?action=view-table&page_size=50", actor=actor
         )
         assert response.status_code == 200
         # Check that Rules and Check tabs have the query string
@@ -1221,7 +1375,7 @@ async def test_permission_debug_tabs_with_query_string(ds_client):
 
         # Test /-/rules with query string
         response = await ds_client.get(
-            "/-/rules?action=view-database&parent=test", cookies=cookies
+            "/-/rules?action=view-database&parent=test", actor=actor
         )
         assert response.status_code == 200
         # Check that Allowed and Check tabs have the query string
@@ -1229,7 +1383,7 @@ async def test_permission_debug_tabs_with_query_string(ds_client):
         assert 'href="/-/check?action=view-database&amp;parent=test"' in response.text
 
         # Test /-/check with query string
-        response = await ds_client.get("/-/check?action=execute-sql", cookies=cookies)
+        response = await ds_client.get("/-/check?action=execute-sql", actor=actor)
         assert response.status_code == 200
         # Check that Allowed and Rules tabs have the query string
         assert 'href="/-/allowed?action=execute-sql"' in response.text

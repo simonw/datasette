@@ -5,6 +5,11 @@
 {% block extra_head %}
 {{- super() -}}
 {% include "_codemirror.html" %}
+{% include "_sql_parameter_styles.html" %}
+{% if database_page_data.createTable %}
+<script>window._datasetteDatabaseData = {{ database_page_data|tojson }};</script>
+<script src="{{ static('edit-tools.js') }}" defer></script>
+{% endif %}
 {% endblock %}
 
 {% block body_class %}db db-{{ database|to_css_class }}{% endblock %}
@@ -25,9 +30,13 @@
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
 {% if allow_execute_sql %}
-    <form class="sql core" action="{{ urls.database(database) }}/-/query" method="get">
+    <form class="sql core" action="{{ urls.database(database) }}/-/query" method="get" data-parameters-url="{{ urls.database(database) }}/-/query/parameters">
         <h3>Custom SQL query</h3>
-        <p><textarea id="sql-editor" name="sql">{% if tables %}select * from {{ tables[0].name|escape_sqlite }}{% else %}select sqlite_version(){% endif %}</textarea></p>
+        <p class="sql-editor"><textarea id="sql-editor" name="sql">{% if tables %}select * from {{ tables[0].name|escape_sqlite }}{% else %}select sqlite_version(){% endif %}</textarea></p>
+        {% set parameter_names = [] %}
+        {% set parameter_values = {} %}
+        {% set sql_parameters_allow_expand = false %}
+        {% include "_sql_parameters.html" %}
         <p>
             <button id="sql-format" type="button" hidden>Format SQL</button>
             <input type="submit" value="Run SQL">
@@ -53,6 +62,9 @@
             <li><a href="{{ urls.query(database, query.name) }}{% if query.fragment %}#{{ query.fragment }}{% endif %}" title="{{ query.description or query.sql }}">{{ query.title or query.name }}</a>{% if query.private %} 🔒{% endif %}</li>
         {% endfor %}
     </ul>
+    {% if queries_more %}
+        <p><a href="{{ urls.database(database) }}/-/queries">View {{ "{:,}".format(queries_count) }} quer{% if queries_count == 1 %}y{% else %}ies{% endif %}</a></p>
+    {% endif %}
 {% endif %}
 
 {% if tables %}
@@ -64,7 +76,7 @@
 <div class="db-table">
     <h3><a href="{{ urls.table(database, table.name) }}">{{ table.name }}</a>{% if table.private %} 🔒{% endif %}{% if table.hidden %}<em> (hidden)</em>{% endif %}</h3>
     <p><em>{% for column in table.columns %}{{ column }}{% if not loop.last %}, {% endif %}{% endfor %}</em></p>
-    <p>{% if table.count is none %}Many rows{% elif table.count == count_limit + 1 %}&gt;{{ "{:,}".format(count_limit) }} rows{% else %}{{ "{:,}".format(table.count) }} row{% if table.count == 1 %}{% else %}s{% endif %}{% endif %}</p>
+    <p>{% if table.count is none %}Many rows{% elif table.count_truncated %}&gt;{{ "{:,}".format(table.count - 1) }} rows{% else %}{{ "{:,}".format(table.count) }} row{% if table.count == 1 %}{% else %}s{% endif %}{% endif %}</p>
 </div>
 {% endif %}
 {% endfor %}
@@ -87,5 +99,11 @@
 {% endif %}
 
 {% include "_codemirror_foot.html" %}
+{% include "_sql_parameter_scripts.html" %}
+<script>
+window.addEventListener("DOMContentLoaded", () => {
+  window.datasetteSqlParameters.setupSqlParameterRefresh({});
+});
+</script>
 
 {% endblock %}

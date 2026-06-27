@@ -66,7 +66,6 @@ def handle_exception(datasette, request, exception):
                     dict(
                         info,
                         urls=datasette.urls,
-                        app_css_hash=datasette.app_css_hash(),
                         menu_links=lambda: [],
                     )
                 ),

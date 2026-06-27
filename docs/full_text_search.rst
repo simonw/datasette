@@ -52,7 +52,7 @@ Configuring full-text search for a table or view
 
 If a table has a corresponding FTS table set up using the ``content=`` argument to ``CREATE VIRTUAL TABLE`` shown below, Datasette will detect it automatically and add a search interface to the table page for that table.
 
-You can also manually configure which table should be used for full-text search using query string parameters or :ref:`metadata`. You can set the associated FTS table for a specific table and you can also set one for a view - if you do that, the page for that SQL view will offer a search option.
+You can also manually configure which table should be used for full-text search using query string parameters or table configuration in ``datasette.yaml`` (see :ref:`table_configuration_fts`). You can set the associated FTS table for a specific table and you can also set one for a view - if you do that, the page for that SQL view will offer a search option.
 
 Use ``?_fts_table=x`` to over-ride the FTS table for a specific page. If the primary key was something other than ``rowid`` you can use ``?_fts_pk=col`` to set that as well. This is particularly useful for views, for example:
 
@@ -65,8 +65,8 @@ The ``"searchmode": "raw"`` property can be used to default the table to accepti
 Here is an example which enables full-text search (with SQLite advanced search operators) for a ``display_ads`` view which is defined against the ``ads`` table and hence needs to run FTS against the ``ads_fts`` table, using the ``id`` as the primary key:
 
 .. [[[cog
-    from metadata_doc import metadata_example
-    metadata_example(cog, {
+    from metadata_doc import config_example
+    config_example(cog, {
         "databases": {
             "russian-ads": {
                 "tables": {
@@ -81,7 +81,7 @@ Here is an example which enables full-text search (with SQLite advanced search o
     })
 .. ]]]
 
-.. tab:: metadata.yaml
+.. tab:: datasette.yaml
 
     .. code-block:: yaml
 
@@ -94,7 +94,7 @@ Here is an example which enables full-text search (with SQLite advanced search o
                 searchmode: raw
 
 
-.. tab:: metadata.json
+.. tab:: datasette.json
 
     .. code-block:: json
 

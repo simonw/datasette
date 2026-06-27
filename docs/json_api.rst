@@ -44,11 +44,30 @@ looks like this:
 
 ``"ok"`` is always ``true`` if an error did not occur.
 
-The ``"rows"`` key is a list of objects, each one representing a row. 
+The ``"rows"`` key is a list of objects, each one representing a row.
 
 The ``"truncated"`` key lets you know if the query was truncated. This can happen if a SQL query returns more than 1,000 results (or the :ref:`setting_max_returned_rows` setting).
 
 For table pages, an additional key ``"next"`` may be present. This indicates that the next page in the pagination set can be retrieved using ``?_next=VALUE``.
+
+.. _json_api_custom_sql:
+
+Executing custom SQL
+--------------------
+
+Actors with the :ref:`actions_execute_sql` permission can execute read-only SQL against a database using ``/-/query.json``:
+
+::
+
+    GET /<database>/-/query.json?sql=select+*+from+dogs
+
+Values for named SQL parameters can be provided as additional query string parameters:
+
+::
+
+    GET /<database>/-/query.json?sql=select+*+from+dogs+where+name=:name&name=Cleo
+
+The response uses the same default representation described above.
 
 .. _json_api_shapes:
 
@@ -215,6 +234,1014 @@ query string arguments:
     and very likely to change.
 
     Only available if the :ref:`setting_trace_debug` setting is enabled.
+
+.. _json_api_extra:
+
+Expanding JSON responses
+------------------------
+
+Table, row and query JSON responses can be expanded with one or more ``?_extra=`` parameters.
+These can be repeated or comma-separated:
+
+::
+
+    ?_extra=columns&_extra=count,next_url
+
+.. [[[cog
+    from json_api_doc import table_extras
+    table_extras(cog)
+.. ]]]
+
+Table JSON responses
+~~~~~~~~~~~~~~~~~~~~
+
+The available table extras are listed below.
+
+``count``
+    Total count of rows matching these filters (May execute additional queries.)
+
+    ``GET /fixtures/facetable.json?_extra=count``
+
+    .. code-block:: json
+
+        15
+
+``count_sql``
+    SQL query string used to calculate the total count for the current table view, including active filters.
+
+    ``GET /fixtures/facetable.json?_size=0&_extra=count_sql``
+
+    .. code-block:: json
+
+        "select count(*) from facetable "
+
+``facet_results``
+    Results of facets calculated against this data. A dictionary with ``results`` and ``timed_out`` keys: ``results`` maps facet names to facet dictionaries with ``name``, ``type``, ``results`` and URL keys, and each facet result item includes ``value``, ``label``, ``count`` and ``toggle_url``. (May execute additional queries. See :ref:`facets` for details of how facets work.)
+
+    Shape abbreviated from /fixtures/facetable.json?_facet=state&_extra=facet_results.
+
+    .. code-block:: json
+
+        {
+          "results": {
+            "state": {
+              "name": "state",
+              "type": "column",
+              "results": [
+                {
+                  "value": "CA",
+                  "label": "CA",
+                  "count": 10
+                },
+                {
+                  "value": "MI",
+                  "label": "MI",
+                  "count": 4
+                }
+              ]
+            }
+          },
+          "timed_out": []
+        }
+
+``facets_timed_out``
+    List of names of facet calculations that exceeded the facet time limit.
+
+    ``GET /fixtures/facetable.json?_facet=state&_extra=facets_timed_out``
+
+    A list of the names of any facets that exceeded the :ref:`setting_facet_time_limit_ms` time limit - an empty list if every facet calculation completed.
+
+    .. code-block:: json
+
+        []
+
+``suggested_facets``
+    Suggestions for facets that might return interesting results. Each item is a dictionary with ``name`` and ``toggle_url`` keys, and may include extra keys such as ``type`` or ``label`` depending on the facet class. (May execute additional queries. Suggestions are controlled by the :ref:`setting_suggest_facets` setting.)
+
+    Shape abbreviated from /fixtures/facetable.json?_extra=suggested_facets.
+
+    .. code-block:: json
+
+        [
+          {
+            "name": "state",
+            "toggle_url": "http://localhost/fixtures/facetable.json?_extra=suggested_facets&_facet=state"
+          }
+        ]
+
+``human_description_en``
+    Human-readable description of the filters
+
+    ``GET /fixtures/facetable.json?state=CA&_sort=pk&_extra=human_description_en``
+
+    .. code-block:: json
+
+        "where state = \"CA\" sorted by pk"
+
+``next_url``
+    Full URL for the next page of results
+
+    ``GET /fixtures/facetable.json?_size=1&_extra=next_url``
+
+    ``null`` if there are no more pages of results. See :ref:`json_api_pagination`.
+
+    .. code-block:: json
+
+        "http://localhost/fixtures/facetable.json?_size=1&_extra=next_url&_next=1"
+
+``columns``
+    List of column names returned by this table, row or query.
+
+    ``GET /fixtures/facetable.json?_extra=columns``
+
+    .. code-block:: json
+
+        [
+          "pk",
+          "created",
+          "planet_int",
+          "on_earth",
+          "state",
+          "_city_id",
+          "_neighborhood",
+          "tags",
+          "complex_array",
+          "distinct_some_null",
+          "n"
+        ]
+
+``all_columns``
+    List of all column names in the table, regardless of ``_col=`` or ``_nocol=`` filtering.
+
+    ``GET /fixtures/facetable.json?_col=pk&_extra=all_columns``
+
+    .. code-block:: json
+
+        [
+          "pk",
+          "created",
+          "planet_int",
+          "on_earth",
+          "state",
+          "_city_id",
+          "_neighborhood",
+          "tags",
+          "complex_array",
+          "distinct_some_null",
+          "n"
+        ]
+
+``primary_keys``
+    List of primary key column names for this table, or an empty list if the table has no explicit primary key.
+
+    ``GET /fixtures/facetable.json?_extra=primary_keys``
+
+    .. code-block:: json
+
+        [
+          "pk"
+        ]
+
+``display_columns``
+    Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type`` and ``column_type_config`` keys.
+
+    Shape abbreviated from /fixtures/facetable.json?_size=1&_extra=display_columns.
+
+    .. code-block:: json
+
+        [
+          {
+            "name": "pk",
+            "sortable": true,
+            "is_pk": true,
+            "type": "INTEGER",
+            "notnull": 0
+          },
+          {
+            "name": "created",
+            "sortable": true,
+            "is_pk": false,
+            "type": "TEXT",
+            "notnull": 0,
+            "description": null,
+            "column_type": null,
+            "column_type_config": null
+          }
+        ]
+
+``render_cell``
+    Rendered HTML for each cell using the render_cell plugin hook (See the :ref:`render_cell() plugin hook <plugin_hook_render_cell>` documentation.)
+
+    The ``render_cell`` array has one item per row, in the same order as the ``rows`` array. Each object is keyed by column name. Only columns whose rendered value differs from the default are included.
+
+    .. code-block:: json
+
+        {
+          "rows": [
+            {
+              "id": 1,
+              "content": "hello"
+            },
+            {
+              "id": 4,
+              "content": "RENDER_CELL_DEMO"
+            }
+          ],
+          "render_cell": [
+            {},
+            {
+              "content": "<strong>Custom rendered HTML</strong>"
+            }
+          ]
+        }
+
+``debug``
+    Extra debug information dictionary. This is intended for development only and its shape is not part of the stable template contract. (The contents of this block are not a stable part of the Datasette API and may change without warning.)
+
+    ``GET /fixtures/facetable.json?_extra=debug``
+
+    .. code-block:: json
+
+        {
+          "url_vars": {
+            "database": "fixtures",
+            "table": "facetable",
+            "format": "json"
+          },
+          "resolved": "ResolvedTable(db=<Database: fixtures (mutable, size=249856)>, table='facetable', is_view=False)",
+          "nofacet": null,
+          "nosuggest": null
+        }
+
+``request``
+    Dictionary with request details: ``url``, ``path``, ``full_path``, ``host`` and ``args`` where ``args`` maps query string parameter names to their values.
+
+    ``GET /fixtures/facetable.json?_extra=request``
+
+    .. code-block:: json
+
+        {
+          "url": "http://localhost/fixtures/facetable.json?_extra=request",
+          "path": "/fixtures/facetable.json",
+          "full_path": "/fixtures/facetable.json?_extra=request",
+          "host": "localhost",
+          "args": {
+            "_extra": [
+              "request"
+            ]
+          }
+        }
+
+``query``
+    Details of the underlying SQL query as a dictionary with ``sql`` and ``params`` keys.
+
+    ``GET /fixtures/facetable.json?_size=1&_extra=query``
+
+    .. code-block:: json
+
+        {
+          "sql": "select pk, created, planet_int, on_earth, state, _city_id, _neighborhood, tags, complex_array, distinct_some_null, n from facetable order by pk limit 2",
+          "params": {}
+        }
+
+``column_types``
+    Column type assignments for this table. A dictionary mapping column names to ``{"type": type_name, "config": config}`` dictionaries. (An empty object if no column types have been assigned. Column types can be assigned in :ref:`configuration <table_configuration_column_types>` or using the :ref:`set column type API <TableSetColumnTypeView>`.)
+
+    ``GET /fixtures/facetable.json?_size=0&_extra=column_types``
+
+    This example is from an instance where the ``tags`` column has been assigned the ``json`` column type.
+
+    .. code-block:: json
+
+        {
+          "tags": {
+            "type": "json",
+            "config": null
+          }
+        }
+
+``set_column_type_ui``
+    Information needed to build an interface for assigning column types, or ``None`` if unavailable. When present it has ``path`` and ``columns`` keys; ``columns`` maps column names to ``current`` and ``options`` values. (``null`` unless the current actor is allowed to use the :ref:`set column type API <TableSetColumnTypeView>` for this table.)
+
+    Shape abbreviated to two columns, as seen by an actor with ``set-column-type`` permission. ``current`` is the column type currently assigned to each column and ``options`` lists the types that could be assigned to it.
+
+    .. code-block:: json
+
+        {
+          "path": "/fixtures/facetable/-/set-column-type",
+          "columns": {
+            "created": {
+              "current": null,
+              "options": [
+                {
+                  "name": "email",
+                  "description": "Email address"
+                },
+                {
+                  "name": "json",
+                  "description": "JSON data"
+                },
+                {
+                  "name": "url",
+                  "description": "URL"
+                }
+              ]
+            },
+            "tags": {
+              "current": {
+                "type": "json",
+                "config": null
+              },
+              "options": [
+                {
+                  "name": "email",
+                  "description": "Email address"
+                },
+                {
+                  "name": "json",
+                  "description": "JSON data"
+                },
+                {
+                  "name": "url",
+                  "description": "URL"
+                }
+              ]
+            }
+          }
+        }
+
+``metadata``
+    Metadata dictionary for the table, database or stored query. Table and row metadata include a ``columns`` dictionary mapping column names to descriptions; stored query metadata returns the stored query configuration. (See :ref:`metadata` for how to attach metadata to tables.)
+
+    ``GET /fixtures/facetable.json?_extra=metadata``
+
+    This example is from an instance where the ``facetable`` table has a metadata ``description`` and a :ref:`column description <metadata_column_descriptions>` for its ``state`` column. The ``columns`` object is empty for tables with no column descriptions.
+
+    .. code-block:: json
+
+        {
+          "description": "A demo table of places, used to demonstrate facets",
+          "columns": {
+            "state": "Two letter US state code"
+          }
+        }
+
+``extras``
+    List of ``?_extra=`` blocks that can be used on this page. Each item has ``name``, ``description``, ``toggle_url`` and ``selected`` keys.
+
+    Shape abbreviated from /fixtures/facetable.json?_extra=extras - the full response lists every extra described on this page. ``toggle_url`` is the current URL with that extra added or removed, and ``selected`` is ``true`` for extras included in the current request.
+
+    .. code-block:: json
+
+        [
+          {
+            "name": "count",
+            "description": "Total count of rows matching these filters",
+            "toggle_url": "http://localhost/fixtures/facetable.json?_extra=extras&_extra=count",
+            "selected": false
+          },
+          {
+            "name": "extras",
+            "description": "List of ?_extra= blocks that can be used on this page",
+            "toggle_url": "http://localhost/fixtures/facetable.json",
+            "selected": true
+          }
+        ]
+
+``database``
+    Database name
+
+    ``GET /fixtures/facetable.json?_extra=database``
+
+    .. code-block:: json
+
+        "fixtures"
+
+``table``
+    Table name
+
+    ``GET /fixtures/facetable.json?_extra=table``
+
+    .. code-block:: json
+
+        "facetable"
+
+``database_color``
+    Color assigned to the database (A six character hex color, without the leading ``#``, derived from a hash of the database name and used in the Datasette interface.)
+
+    ``GET /fixtures/facetable.json?_extra=database_color``
+
+    .. code-block:: json
+
+        "9403e5"
+
+``renderers``
+    Dictionary mapping output format names such as ``json`` or plugin-provided renderer names to URLs for this data in that format.
+
+    ``GET /fixtures/facetable.json?_extra=renderers``
+
+    Each key is the name of an output format, each value the URL for this data in that format. Plugins can add additional formats using the :ref:`register_output_renderer() plugin hook <plugin_register_output_renderer>`.
+
+    .. code-block:: json
+
+        {
+          "json": "/fixtures/facetable.json?_extra=renderers&_format=json&_labels=on"
+        }
+
+``custom_table_templates``
+    List of custom template names considered for rendering table rows, in lookup order. (The first template in this list that exists will be used to render the table on the HTML version of this page. See :ref:`customization_custom_templates`.)
+
+    ``GET /fixtures/facetable.json?_extra=custom_table_templates``
+
+    .. code-block:: json
+
+        [
+          "_table-fixtures-facetable.html",
+          "_table-table-fixtures-facetable.html",
+          "_table.html"
+        ]
+
+``sorted_facet_results``
+    Facet result dictionaries sorted for display. Each item has the same shape as an entry from ``facet_results['results']``. (The same data as ``facet_results``, as a list in the order used by the HTML interface: facets from :ref:`facet configuration <facets_metadata>` first, then other facets ordered by their number of results.)
+
+    ``GET /fixtures/facetable.json?_facet=state&_extra=sorted_facet_results``
+
+    .. code-block:: json
+
+        [
+          {
+            "name": "state",
+            "type": "column",
+            "hideable": true,
+            "toggle_url": "/fixtures/facetable.json?_extra=sorted_facet_results",
+            "results": [
+              {
+                "value": "CA",
+                "label": "CA",
+                "count": 10,
+                "toggle_url": "http://localhost/fixtures/facetable.json?_facet=state&_extra=sorted_facet_results&state=CA",
+                "selected": false
+              },
+              {
+                "value": "MI",
+                "label": "MI",
+                "count": 4,
+                "toggle_url": "http://localhost/fixtures/facetable.json?_facet=state&_extra=sorted_facet_results&state=MI",
+                "selected": false
+              },
+              {
+                "value": "MC",
+                "label": "MC",
+                "count": 1,
+                "toggle_url": "http://localhost/fixtures/facetable.json?_facet=state&_extra=sorted_facet_results&state=MC",
+                "selected": false
+              }
+            ],
+            "truncated": false
+          }
+        ]
+
+``table_definition``
+    SQL definition for this table
+
+    ``GET /fixtures/facetable.json?_extra=table_definition``
+
+    .. code-block:: json
+
+        "CREATE TABLE facetable (\n    pk integer primary key,\n    created text,\n    planet_int integer,\n    on_earth integer,\n    state text,\n    _city_id integer,\n    _neighborhood text,\n    tags text,\n    complex_array text,\n    distinct_some_null,\n    n text,\n    FOREIGN KEY (\"_city_id\") REFERENCES [facet_cities](id)\n);"
+
+``view_definition``
+    SQL definition for this view
+
+    ``GET /fixtures/simple_view.json?_extra=view_definition``
+
+    .. code-block:: json
+
+        "CREATE VIEW simple_view AS\n    SELECT content, upper(content) AS upper_content FROM simple_primary_key;"
+
+``is_view``
+    Whether this resource is a view instead of a table
+
+    ``GET /fixtures/simple_view.json?_extra=is_view``
+
+    .. code-block:: json
+
+        true
+
+``private``
+    Whether this resource is private to the current actor (``true`` if the current actor can see this resource but an anonymous user could not. See :ref:`authentication_permissions`.)
+
+    ``GET /fixtures/facetable.json?_extra=private``
+
+    .. code-block:: json
+
+        false
+
+``expandable_columns``
+    List of foreign key columns that can be expanded with labels. Each item is a ``(foreign_key, label_column)`` pair where ``foreign_key`` is the SQLite foreign key dictionary and ``label_column`` is the label column in the referenced table, or ``None``. (See :ref:`expand_foreign_keys` for how to expand these labels.)
+
+    ``GET /fixtures/facetable.json?_extra=expandable_columns``
+
+    Each item is a ``[foreign_key, label_column]`` pair: the foreign key relationship, then the column in the other table that would be used as the label for each expanded value.
+
+    .. code-block:: json
+
+        [
+          [
+            {
+              "column": "_city_id",
+              "other_table": "facet_cities",
+              "other_column": "id"
+            },
+            "name"
+          ]
+        ]
+
+``form_hidden_args``
+    List of ``(name, value)`` pairs for hidden form fields used by the HTML table interface to preserve current query string options.
+
+    ``GET /fixtures/facetable.json?_facet=state&_size=1&_extra=form_hidden_args``
+
+    .. code-block:: json
+
+        [
+          [
+            "_facet",
+            "state"
+          ],
+          [
+            "_size",
+            "1"
+          ],
+          [
+            "_extra",
+            "form_hidden_args"
+          ]
+        ]
+
+Row JSON responses
+~~~~~~~~~~~~~~~~~~
+
+The following extras are available for row JSON responses.
+
+``columns``
+    List of column names returned by this table, row or query.
+
+    ``GET /fixtures/simple_primary_key/1.json?_extra=columns``
+
+    .. code-block:: json
+
+        [
+          "id",
+          "content"
+        ]
+
+``primary_keys``
+    List of primary key column names for this table, or an empty list if the table has no explicit primary key.
+
+    ``GET /fixtures/simple_primary_key/1.json?_extra=primary_keys``
+
+    .. code-block:: json
+
+        [
+          "id"
+        ]
+
+``render_cell``
+    Rendered HTML for each cell using the render_cell plugin hook (See the :ref:`render_cell() plugin hook <plugin_hook_render_cell>` documentation.)
+
+    The ``render_cell`` array has one item for the requested row. The object is keyed by column name. Only columns whose rendered value differs from the default are included.
+
+    .. code-block:: json
+
+        {
+          "rows": [
+            {
+              "id": 4,
+              "content": "RENDER_CELL_DEMO"
+            }
+          ],
+          "render_cell": [
+            {
+              "content": "<strong>Custom rendered HTML</strong>"
+            }
+          ]
+        }
+
+``debug``
+    Extra debug information dictionary. This is intended for development only and its shape is not part of the stable template contract. (The contents of this block are not a stable part of the Datasette API and may change without warning.)
+
+    ``GET /fixtures/simple_primary_key/1.json?_extra=debug``
+
+    .. code-block:: json
+
+        {
+          "url_vars": {
+            "database": "fixtures",
+            "table": "simple_primary_key",
+            "pks": "1",
+            "format": "json"
+          },
+          "resolved": {
+            "table": "simple_primary_key",
+            "sql": "select * from simple_primary_key where \"id\"=:p0",
+            "params": {
+              "p0": "1"
+            },
+            "pks": [
+              "id"
+            ],
+            "pk_values": [
+              "1"
+            ]
+          }
+        }
+
+``request``
+    Dictionary with request details: ``url``, ``path``, ``full_path``, ``host`` and ``args`` where ``args`` maps query string parameter names to their values.
+
+    ``GET /fixtures/simple_primary_key/1.json?_extra=request``
+
+    .. code-block:: json
+
+        {
+          "url": "http://localhost/fixtures/simple_primary_key/1.json?_extra=request",
+          "path": "/fixtures/simple_primary_key/1.json",
+          "full_path": "/fixtures/simple_primary_key/1.json?_extra=request",
+          "host": "localhost",
+          "args": {
+            "_extra": [
+              "request"
+            ]
+          }
+        }
+
+``query``
+    Details of the underlying SQL query as a dictionary with ``sql`` and ``params`` keys.
+
+    ``GET /fixtures/simple_primary_key/1.json?_extra=query``
+
+    .. code-block:: json
+
+        {
+          "sql": "select * from simple_primary_key where \"id\"=:p0",
+          "params": {
+            "p0": "1"
+          }
+        }
+
+``column_types``
+    Column type assignments for this table. A dictionary mapping column names to ``{"type": type_name, "config": config}`` dictionaries. (An empty object if no column types have been assigned. Column types can be assigned in :ref:`configuration <table_configuration_column_types>` or using the :ref:`set column type API <TableSetColumnTypeView>`.)
+
+    ``GET /fixtures/facetable/1.json?_extra=column_types``
+
+    This example is from an instance where the ``tags`` column has been assigned the ``json`` column type.
+
+    .. code-block:: json
+
+        {
+          "tags": {
+            "type": "json",
+            "config": null
+          }
+        }
+
+``metadata``
+    Metadata dictionary for the table, database or stored query. Table and row metadata include a ``columns`` dictionary mapping column names to descriptions; stored query metadata returns the stored query configuration. (See :ref:`metadata` for how to attach metadata to tables.)
+
+    ``GET /fixtures/simple_primary_key/1.json?_extra=metadata``
+
+    This table has no metadata, so only an empty ``columns`` object is returned.
+
+    .. code-block:: json
+
+        {
+          "columns": {}
+        }
+
+``extras``
+    List of ``?_extra=`` blocks that can be used on this page. Each item has ``name``, ``description``, ``toggle_url`` and ``selected`` keys.
+
+    Shape abbreviated from /fixtures/facetable.json?_extra=extras - the full response lists every extra described on this page. ``toggle_url`` is the current URL with that extra added or removed, and ``selected`` is ``true`` for extras included in the current request.
+
+    .. code-block:: json
+
+        [
+          {
+            "name": "count",
+            "description": "Total count of rows matching these filters",
+            "toggle_url": "http://localhost/fixtures/facetable.json?_extra=extras&_extra=count",
+            "selected": false
+          },
+          {
+            "name": "extras",
+            "description": "List of ?_extra= blocks that can be used on this page",
+            "toggle_url": "http://localhost/fixtures/facetable.json",
+            "selected": true
+          }
+        ]
+
+``database``
+    Database name
+
+    ``GET /fixtures/simple_primary_key/1.json?_extra=database``
+
+    .. code-block:: json
+
+        "fixtures"
+
+``table``
+    Table name
+
+    ``GET /fixtures/simple_primary_key/1.json?_extra=table``
+
+    .. code-block:: json
+
+        "simple_primary_key"
+
+``database_color``
+    Color assigned to the database (A six character hex color, without the leading ``#``, derived from a hash of the database name and used in the Datasette interface.)
+
+    ``GET /fixtures/simple_primary_key/1.json?_extra=database_color``
+
+    .. code-block:: json
+
+        "9403e5"
+
+``private``
+    Whether this resource is private to the current actor (``true`` if the current actor can see this resource but an anonymous user could not. See :ref:`authentication_permissions`.)
+
+    ``GET /fixtures/simple_primary_key/1.json?_extra=private``
+
+    .. code-block:: json
+
+        false
+
+``foreign_key_tables``
+    List of tables that link to this row using foreign keys. Each item includes the foreign key fields plus ``count`` for matching rows and ``link`` for the filtered table URL. (May execute additional queries.)
+
+    ``GET /fixtures/simple_primary_key/1.json?_extra=foreign_key_tables``
+
+    ``count`` is the number of rows in the other table that reference this row, and ``link`` is a URL to browse those rows.
+
+    .. code-block:: json
+
+        [
+          {
+            "other_table": "complex_foreign_keys",
+            "column": "id",
+            "other_column": "f1",
+            "count": 1,
+            "link": "/fixtures/complex_foreign_keys?f1=1"
+          },
+          {
+            "other_table": "complex_foreign_keys",
+            "column": "id",
+            "other_column": "f2",
+            "count": 0,
+            "link": "/fixtures/complex_foreign_keys?f2=1"
+          },
+          {
+            "other_table": "complex_foreign_keys",
+            "column": "id",
+            "other_column": "f3",
+            "count": 1,
+            "link": "/fixtures/complex_foreign_keys?f3=1"
+          },
+          {
+            "other_table": "foreign_key_references",
+            "column": "id",
+            "other_column": "foreign_key_with_blank_label",
+            "count": 0,
+            "link": "/fixtures/foreign_key_references?foreign_key_with_blank_label=1"
+          },
+          {
+            "other_table": "foreign_key_references",
+            "column": "id",
+            "other_column": "foreign_key_with_label",
+            "count": 1,
+            "link": "/fixtures/foreign_key_references?foreign_key_with_label=1"
+          }
+        ]
+
+Query JSON responses
+~~~~~~~~~~~~~~~~~~~~
+
+The following extras are available for arbitrary SQL query responses and stored, named query responses.
+
+``columns``
+    List of column names returned by this table, row or query.
+
+    ``GET /fixtures/-/query.json?sql=select+1+as+one&_extra=columns``
+
+    .. code-block:: json
+
+        [
+          "one"
+        ]
+
+``render_cell``
+    Rendered HTML for each cell using the render_cell plugin hook (See the :ref:`render_cell() plugin hook <plugin_hook_render_cell>` documentation.)
+
+    The ``render_cell`` array has one item per query result row, in the same order as the ``rows`` array. Each object is keyed by column name. Only columns whose rendered value differs from the default are included.
+
+    .. code-block:: json
+
+        {
+          "rows": [
+            {
+              "content": "RENDER_CELL_DEMO"
+            }
+          ],
+          "render_cell": [
+            {
+              "content": "<strong>Custom rendered HTML</strong>"
+            }
+          ]
+        }
+
+``debug``
+    Extra debug information dictionary. This is intended for development only and its shape is not part of the stable template contract. (The contents of this block are not a stable part of the Datasette API and may change without warning.)
+
+    ``GET /fixtures/-/query.json?sql=select+1+as+one&_extra=debug``
+
+    .. code-block:: json
+
+        {
+          "url_vars": {
+            "database": "fixtures",
+            "format": "json"
+          }
+        }
+
+``request``
+    Dictionary with request details: ``url``, ``path``, ``full_path``, ``host`` and ``args`` where ``args`` maps query string parameter names to their values.
+
+    ``GET /fixtures/-/query.json?sql=select+1+as+one&_extra=request``
+
+    .. code-block:: json
+
+        {
+          "url": "http://localhost/fixtures/-/query.json?sql=select+1+as+one&_extra=request",
+          "path": "/fixtures/-/query.json",
+          "full_path": "/fixtures/-/query.json?sql=select+1+as+one&_extra=request",
+          "host": "localhost",
+          "args": {
+            "sql": [
+              "select 1 as one"
+            ],
+            "_extra": [
+              "request"
+            ]
+          }
+        }
+
+``query``
+    Details of the underlying SQL query as a dictionary with ``sql`` and ``params`` keys.
+
+    ``GET /fixtures/-/query.json?sql=select+1+as+one&_extra=query``
+
+    .. code-block:: json
+
+        {
+          "sql": "select 1 as one",
+          "params": {}
+        }
+
+    ``GET /fixtures/neighborhood_search.json?text=town&_extra=query``
+
+    .. code-block:: json
+
+        {
+          "sql": "\nselect _neighborhood, facet_cities.name, state\nfrom facetable\n    join facet_cities\n        on facetable._city_id = facet_cities.id\nwhere _neighborhood like '%' || :text || '%'\norder by _neighborhood;\n",
+          "params": {
+            "text": "town"
+          }
+        }
+
+``metadata``
+    Metadata dictionary for the table, database or stored query. Table and row metadata include a ``columns`` dictionary mapping column names to descriptions; stored query metadata returns the stored query configuration. (See :ref:`metadata` for how to attach metadata to tables.)
+
+    ``GET /fixtures/neighborhood_search.json?text=town&_extra=metadata``
+
+    For stored queries this returns the full configuration of the query, including the :ref:`stored query options <queries_options>`. For ``?sql=`` queries it returns an empty object.
+
+    .. code-block:: json
+
+        {
+          "database": "fixtures",
+          "name": "neighborhood_search",
+          "sql": "\nselect _neighborhood, facet_cities.name, state\nfrom facetable\n    join facet_cities\n        on facetable._city_id = facet_cities.id\nwhere _neighborhood like '%' || :text || '%'\norder by _neighborhood;\n",
+          "title": "Search neighborhoods",
+          "description": null,
+          "description_html": null,
+          "hide_sql": false,
+          "fragment": null,
+          "params": [],
+          "parameters": [],
+          "is_write": false,
+          "is_private": false,
+          "is_trusted": true,
+          "owner_id": null,
+          "on_success_message": null,
+          "on_success_message_sql": null,
+          "on_success_redirect": null,
+          "on_error_message": null,
+          "on_error_redirect": null
+        }
+
+``extras``
+    List of ``?_extra=`` blocks that can be used on this page. Each item has ``name``, ``description``, ``toggle_url`` and ``selected`` keys.
+
+    Shape abbreviated from /fixtures/facetable.json?_extra=extras - the full response lists every extra described on this page. ``toggle_url`` is the current URL with that extra added or removed, and ``selected`` is ``true`` for extras included in the current request.
+
+    .. code-block:: json
+
+        [
+          {
+            "name": "count",
+            "description": "Total count of rows matching these filters",
+            "toggle_url": "http://localhost/fixtures/facetable.json?_extra=extras&_extra=count",
+            "selected": false
+          },
+          {
+            "name": "extras",
+            "description": "List of ?_extra= blocks that can be used on this page",
+            "toggle_url": "http://localhost/fixtures/facetable.json",
+            "selected": true
+          }
+        ]
+
+``database``
+    Database name
+
+    ``GET /fixtures/-/query.json?sql=select+1+as+one&_extra=database``
+
+    .. code-block:: json
+
+        "fixtures"
+
+``database_color``
+    Color assigned to the database (A six character hex color, without the leading ``#``, derived from a hash of the database name and used in the Datasette interface.)
+
+    ``GET /fixtures/-/query.json?sql=select+1+as+one&_extra=database_color``
+
+    .. code-block:: json
+
+        "9403e5"
+
+``private``
+    Whether this resource is private to the current actor (``true`` if the current actor can see this resource but an anonymous user could not. See :ref:`authentication_permissions`.)
+
+    ``GET /fixtures/-/query.json?sql=select+1+as+one&_extra=private``
+
+    .. code-block:: json
+
+        false
+
+.. [[[end]]]
+
+.. _TableAutocompleteView:
+
+Table autocomplete
+------------------
+
+The ``/<database>/<table>/-/autocomplete`` endpoint returns up to 10 primary key
+matches for a table, intended for building autocomplete interfaces such as
+foreign key pickers.
+
+::
+
+    GET /<database>/<table>/-/autocomplete?q=search
+
+The ``q`` parameter is required. If it is omitted or blank, the endpoint returns
+an empty ``"rows"`` list.
+
+The response includes a ``"pks"`` object containing the primary key value or
+values for each row. If Datasette can detect a label column, or one has been
+configured using ``label_column``, each row will also include ``"label"``:
+
+.. code-block:: json
+
+    {
+        "rows": [
+            {
+                "pks": {
+                    "id": 1
+                },
+                "label": "Example row"
+            }
+        ]
+    }
+
+The endpoint searches the primary key column or columns and the label column
+using escaped SQL ``LIKE`` queries. A single-column primary key exact match is
+returned first. Other matches are ordered by the shortest matching label value
+where a label column is available.
+
+The initial search runs with a 500ms time limit. If that query times out,
+Datasette falls back to a prefix match against the first primary key column so
+SQLite can use the primary key index.
 
 .. _table_arguments:
 
@@ -438,7 +1465,7 @@ looks like:
     ]
 
 The column in the foreign key table that is used for the label can be specified
-in ``metadata.json`` - see :ref:`label_columns`.
+in ``datasette.yaml`` - see :ref:`table_configuration_label_column`.
 
 .. _json_api_discover_alternate:
 
@@ -504,6 +1531,110 @@ The JSON write API
 ------------------
 
 Datasette provides a write API for JSON data. This is a POST-only API that requires an authenticated API token, see :ref:`CreateTokenView`. The token will need to have the specified :ref:`authentication_permissions`.
+
+.. _ExecuteWriteView:
+
+Executing write SQL
+~~~~~~~~~~~~~~~~~~~
+
+Actors with the :ref:`actions_execute_write_sql` permission can execute arbitrary writable SQL against a mutable database using ``/-/execute-write``.
+
+::
+
+    POST /<database>/-/execute-write
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+
+The request body must include a ``"sql"`` string. Named SQL parameters can be provided using the optional ``"params"`` object:
+
+.. code-block:: json
+
+    {
+        "sql": "insert into dogs (name) values (:name)",
+        "params": {
+            "name": "Cleo"
+        }
+    }
+
+The SQL must be writable. Read-only ``select`` queries should use the regular :ref:`custom SQL query JSON API <json_api_custom_sql>` instead.
+
+Datasette analyzes the SQL before executing it. The actor must have ``execute-write-sql`` permission for the database, and must also have any permissions required by the operations in the SQL. For example, inserts and updates against a table require ``insert-row``, ``update-row`` and ``delete-row`` permissions for that table. Reads performed as part of the write, such as ``insert into dogs select ... from other_table``, require ``view-table`` permission on the source table. Schema changes require ``create-table``, ``alter-table`` or ``drop-table`` permissions as appropriate.
+
+Unsupported SQL operations are rejected by default. ``VACUUM`` is not allowed in arbitrary write SQL, and writes to SQLite virtual tables or shadow tables are rejected. SQL functions are allowed and are not separately restricted by Datasette permissions.
+
+A successful response includes a message, the SQLite ``rowcount``, a ``"rows"``
+list, a ``"truncated"`` flag and a summary of the operations that were executed:
+
+The shape of the ``"analysis"`` block is not yet considered a stable API and may change in future Datasette releases.
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "message": "Query executed, 1 row affected",
+        "rowcount": 1,
+        "rows": [],
+        "truncated": false,
+        "analysis": [
+            {
+                "operation": "insert",
+                "database": "data",
+                "table": "dogs",
+                "required_permission": "insert-row, update-row, delete-row",
+                "source": null
+            }
+        ]
+    }
+
+If SQLite reports ``-1`` for the row count, the message will be ``"Query executed"``.
+
+For most write statements ``"rows"`` will be an empty list and ``"truncated"``
+will be ``false``. If the SQL uses SQLite's ``RETURNING`` clause, ``"rows"``
+will contain returned rows using the same default representation as table and
+query JSON responses. ``"truncated"`` indicates if more rows were returned than
+the execute-write returning row limit, which defaults to 10:
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "message": "Query executed, 1 row affected",
+        "rowcount": 1,
+        "rows": [
+            {
+                "id": 1,
+                "name": "Cleo"
+            }
+        ],
+        "truncated": false,
+        "analysis": [
+            {
+                "operation": "insert",
+                "database": "data",
+                "table": "dogs",
+                "required_permission": "insert-row, update-row, delete-row",
+                "source": null
+            },
+            {
+                "operation": "read",
+                "database": "data",
+                "table": "dogs",
+                "required_permission": "view-table",
+                "source": null
+            }
+        ]
+    }
+
+Errors use the standard Datasette error format:
+
+.. code-block:: json
+
+    {
+        "ok": false,
+        "errors": [
+            "Permission denied: need execute-write-sql"
+        ]
+    }
 
 .. _TableInsertView:
 
@@ -837,7 +1968,14 @@ To create a table, make a ``POST`` to ``/<database>/-/create``. This requires th
             },
             {
                 "name": "title",
-                "type": "text"
+                "type": "text",
+                "not_null": true,
+                "default": "Untitled"
+            },
+            {
+                "name": "created",
+                "type": "text",
+                "default_expr": "current_timestamp"
             }
         ],
         "pk": "id"
@@ -850,6 +1988,10 @@ The JSON here describes the table that will be created:
 
   - ``name`` is the name of the column. This is required.
   - ``type`` is the type of the column. This is optional - if not provided, ``text`` will be assumed. The valid types are ``text``, ``integer``, ``float`` and ``blob``.
+  - ``not_null`` can be set to ``true`` to create this column with a ``NOT NULL`` constraint.
+  - ``default`` can be used to set a literal default value for this column.
+  - ``default_expr`` can be used instead of ``default`` to set a SQLite default expression. See :ref:`default_expr values <json_api_default_expr_values>`.
+  - ``fk_table`` can be used to create a single-column foreign key constraint referencing another table. ``fk_column`` is optional and can be used to specify the referenced column - if omitted, Datasette will use the single primary key of ``fk_table``.
 
 * ``pk`` is the primary key for the table. This is optional - if not provided, Datasette will create a SQLite table with a hidden ``rowid`` column.
 
@@ -862,6 +2004,56 @@ The JSON here describes the table that will be created:
 * ``replace`` can be set to ``true`` to replace existing rows by primary key if the table already exists. This requires the :ref:`actions_update_row` permission.
 * ``alter`` can be set to ``true`` if you want to automatically add any missing columns to the table. This requires the :ref:`actions_alter_table` permission.
 
+.. _json_api_default_expr_values:
+
+``default_expr`` accepts these values:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Value
+     - Recommended column type
+     - Example inserted value
+   * - ``current_timestamp``
+     - ``text``
+     - ``2026-05-01 13:34:00``
+   * - ``current_date``
+     - ``text``
+     - ``2026-05-01``
+   * - ``current_time``
+     - ``text``
+     - ``13:34:00``
+   * - ``current_unixtime``
+     - ``integer``
+     - ``1777642440``
+   * - ``current_unixtime_ms``
+     - ``integer``
+     - ``1777642440000``
+
+This example creates a foreign key from ``projects.owner_id`` to the single primary key of ``owners``:
+
+.. code-block:: json
+
+    {
+        "table": "projects",
+        "columns": [
+            {
+                "name": "id",
+                "type": "integer"
+            },
+            {
+                "name": "owner_id",
+                "type": "integer",
+                "fk_table": "owners"
+            },
+            {
+                "name": "title",
+                "type": "text"
+            }
+        ],
+        "pk": "id"
+    }
+
 If the table is successfully created this will return a ``201`` status code and the following response:
 
 .. code-block:: json
@@ -872,7 +2064,7 @@ If the table is successfully created this will return a ``201`` status code and 
         "table": "name_of_new_table",
         "table_url": "http://127.0.0.1:8001/data/name_of_new_table",
         "table_api_url": "http://127.0.0.1:8001/data/name_of_new_table.json",
-        "schema": "CREATE TABLE [name_of_new_table] (\n   [id] INTEGER PRIMARY KEY,\n   [title] TEXT\n)"
+        "schema": "CREATE TABLE [name_of_new_table] (\n   [id] INTEGER PRIMARY KEY,\n   [title] TEXT NOT NULL DEFAULT 'Untitled',\n   [created] TEXT DEFAULT CURRENT_TIMESTAMP\n)"
     }
 
 .. _TableCreateView_example:
@@ -940,6 +2132,299 @@ You can avoid this error by passing the same ``"ignore": true`` or ``"replace": 
 To use the ``"replace": true`` option you will also need the :ref:`actions_update_row` permission.
 
 Pass ``"alter": true`` to automatically add any missing columns to the existing table that are present in the rows you are submitting. This requires the :ref:`actions_alter_table` permission.
+
+.. _DatabaseForeignKeyTargetsView:
+
+Database foreign key targets
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``/<database>/-/foreign-key-targets`` endpoint returns the list of tables in a database that can be referenced by a single-column foreign key. This requires the :ref:`actions_create_table` permission.
+
+::
+
+    GET /<database>/-/foreign-key-targets
+
+The response includes only tables with exactly one primary key column. Hidden tables, tables with compound primary keys and tables with no explicit primary key are omitted.
+
+Each target includes the normalized SQLite type affinity for the primary key column in ``type``. The type is calculated using SQLite's documented affinity rules: ``INT`` maps to ``integer``; ``CHAR``, ``CLOB`` or ``TEXT`` maps to ``text``; ``BLOB`` or no type maps to ``blob``; ``REAL`` and floating-point declared types map to ``real``; everything else maps to ``numeric``.
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "database": "data",
+        "targets": [
+            {
+                "fk_table": "owners",
+                "fk_column": "id",
+                "type": "integer"
+            },
+            {
+                "fk_table": "categories",
+                "fk_column": "slug",
+                "type": "text"
+            }
+        ]
+    }
+
+.. _TableForeignKeySuggestionsView:
+
+Table foreign key suggestions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``/<database>/<table>/-/foreign-key-suggestions`` endpoint suggests possible single-column foreign key relationships for a table. This requires the :ref:`actions_alter_table` permission.
+
+::
+
+    GET /<database>/<table>/-/foreign-key-suggestions
+
+The response includes every type-compatible single-column primary key target for each column in ``options``. Datasette also performs a bounded data check against up to 500 rows in the table: if the sampled non-null values for a column all exist in a target primary key, that target is included in ``suggestions``.
+
+If the bounded check takes too long, the endpoint fails open. It still returns the type-compatible ``options`` for each column, but ``row_check.status`` will be ``"timed_out"`` and there may be no ``suggestions``.
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "database": "data",
+        "table": "projects",
+        "row_check": {
+            "attempted": true,
+            "status": "completed",
+            "row_limit": 500,
+            "sampled_rows": 3,
+            "checked_options": 4
+        },
+        "columns": [
+            {
+                "column": "owner_id",
+                "type": "INTEGER",
+                "affinity": "integer",
+                "current": null,
+                "suggestions": [
+                    {
+                        "fk_table": "owners",
+                        "fk_column": "id",
+                        "confidence": "sampled",
+                        "sampled_values": 3,
+                        "reasons": [
+                            "type_match",
+                            "sample_values_exist",
+                            "name_match"
+                        ]
+                    }
+                ],
+                "options": [
+                    {
+                        "fk_table": "owners",
+                        "fk_column": "id",
+                        "type": "INTEGER"
+                    }
+                ]
+            }
+        ]
+    }
+
+.. _TableAlterView:
+
+Altering tables
+~~~~~~~~~~~~~~~
+
+To alter an existing table, make a ``POST`` to ``/<database>/<table>/-/alter``. This requires the :ref:`actions_alter_table` permission.
+
+::
+
+    POST /<database>/<table>/-/alter
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+
+The request body should include an ``operations`` array. Each operation has the same top-level shape: an ``op`` string and an ``args`` object.
+
+.. code-block:: json
+
+    {
+        "operations": [
+            {
+                "op": "add_column",
+                "args": {
+                    "name": "slug",
+                    "type": "text",
+                    "not_null": true,
+                    "default": ""
+                }
+            },
+            {
+                "op": "add_column",
+                "args": {
+                    "name": "created",
+                    "type": "text",
+                    "default_expr": "current_timestamp"
+                }
+            },
+            {
+                "op": "rename_column",
+                "args": {
+                    "name": "title",
+                    "to": "headline"
+                }
+            },
+            {
+                "op": "rename_table",
+                "args": {
+                    "to": "published_posts"
+                }
+            },
+            {
+                "op": "alter_column",
+                "args": {
+                    "name": "score",
+                    "type": "float"
+                }
+            },
+            {
+                "op": "drop_column",
+                "args": {
+                    "name": "draft_notes"
+                }
+            },
+            {
+                "op": "set_primary_key",
+                "args": {
+                    "columns": ["id"]
+                }
+            },
+            {
+                "op": "add_foreign_key",
+                "args": {
+                    "column": "owner_id",
+                    "fk_table": "owners"
+                }
+            },
+            {
+                "op": "drop_foreign_key",
+                "args": {
+                    "column": "old_owner_id"
+                }
+            },
+            {
+                "op": "set_foreign_keys",
+                "args": {
+                    "foreign_keys": [
+                        {
+                            "column": "owner_id",
+                            "fk_table": "owners",
+                            "fk_column": "id"
+                        }
+                    ]
+                }
+            },
+            {
+                "op": "reorder_columns",
+                "args": {
+                    "columns": ["id", "headline", "slug", "created", "score"]
+                }
+            }
+        ]
+    }
+
+Supported operations:
+
+* ``add_column`` adds a new column. ``args`` accepts ``name``, optional ``type`` of ``text``, ``integer``, ``float`` or ``blob``, optional ``not_null``, optional literal ``default`` and optional ``default_expr``. If ``not_null`` is ``true`` either a non-null ``default`` or ``default_expr`` is required.
+* ``rename_column`` renames a column. ``args`` accepts ``name`` and ``to``.
+* ``rename_table`` renames the table. ``args`` accepts ``to``, the new table name. If combined with other operations, Datasette applies the column, primary key, foreign key and column order changes before renaming the table.
+* ``alter_column`` changes column properties. ``args`` accepts ``name`` and at least one of ``type``, ``not_null``, literal ``default`` or ``default_expr``. Passing ``"default": null`` removes an existing default.
+* ``drop_column`` drops a column. ``args`` accepts ``name``.
+* ``set_primary_key`` changes the table primary key. ``args`` accepts ``columns``, a list of one or more column names.
+* ``add_foreign_key`` adds a single-column foreign key constraint. ``args`` accepts ``column``, ``fk_table`` and optional ``fk_column``. If ``fk_column`` is omitted, Datasette will use the single primary key of ``fk_table``.
+* ``drop_foreign_key`` removes the foreign key constraint for a column. ``args`` accepts ``column``.
+* ``set_foreign_keys`` replaces all foreign key constraints on the table. ``args`` accepts ``foreign_keys``, a list of objects that each have ``column``, ``fk_table`` and optional ``fk_column``. An empty list removes all foreign key constraints.
+* ``reorder_columns`` reorders columns. ``args`` accepts ``columns``, a list of one or more column names. Columns omitted from this list will appear afterwards in their existing order.
+
+``default`` is always treated as a literal value. ``default_expr`` accepts the values shown in :ref:`default_expr values <json_api_default_expr_values>` and is rendered as the corresponding SQLite default expression.
+
+For foreign key operations that omit ``fk_column``, the referenced ``fk_table`` must have a single-column primary key. Datasette will return an error if it cannot identify a single primary key column for that table.
+
+A successful response returns the new schema and the previous schema. If the request used ``rename_table``, ``table``, ``table_url`` and ``table_api_url`` will use the new table name. Renaming a table through this endpoint triggers the :class:`~datasette.events.RenameTableEvent` event.
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "database": "data",
+        "table": "published_posts",
+        "table_url": "http://127.0.0.1:8001/data/published_posts",
+        "table_api_url": "http://127.0.0.1:8001/data/published_posts.json",
+        "altered": true,
+        "schema": "CREATE TABLE ...",
+        "before_schema": "CREATE TABLE ...",
+        "operations_applied": 11
+    }
+
+Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
+
+.. _TableSetColumnTypeView:
+
+Setting a column type
+~~~~~~~~~~~~~~~~~~~~~
+
+To set a column type for a table column, make a ``POST`` to ``/<database>/<table>/-/set-column-type``. This requires the :ref:`actions_set_column_type` permission.
+
+::
+
+    POST /<database>/<table>/-/set-column-type
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+
+.. code-block:: json
+
+    {
+        "column": "title",
+        "column_type": {
+            "type": "email"
+        }
+    }
+
+This will return a ``200`` response like this:
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "database": "data",
+        "table": "posts",
+        "column": "title",
+        "column_type": {
+            "type": "email",
+            "config": null
+        }
+    }
+
+To provide column type configuration, include a ``config`` object:
+
+.. code-block:: json
+
+    {
+        "column": "title",
+        "column_type": {
+            "type": "url",
+            "config": {
+                "max_length": 200
+            }
+        }
+    }
+
+To clear an existing column type assignment, set ``column_type`` to ``null``:
+
+.. code-block:: json
+
+    {
+        "column": "title",
+        "column_type": null
+    }
+
+This API stores the assignment in Datasette's internal database, so it can be used with immutable databases as well as mutable ones.
+
+Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
 
 .. _TableDropView:
 

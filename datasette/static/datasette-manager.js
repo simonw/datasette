@@ -83,6 +83,48 @@ const datasetteManager = {
   },
 
   /**
+   * Allows JavaScript plugins to replace or enhance insert/edit modal fields
+   * for specific Datasette column types.
+   *
+   * The first plugin to return a control object wins. Returning null or
+   * undefined means "I do not handle this field".
+   */
+  makeColumnField: (context) => {
+    for (const [pluginName, plugin] of datasetteManager.plugins) {
+      if (!plugin.makeColumnField) {
+        continue;
+      }
+      let control = null;
+      try {
+        control = plugin.makeColumnField(context);
+      } catch (error) {
+        console.error(
+          `Error in makeColumnField() for plugin ${pluginName}`,
+          error,
+        );
+        continue;
+      }
+      if (control) {
+        return Object.assign({ pluginName }, control);
+      }
+    }
+    return null;
+  },
+
+  makeJumpSections: (context) => {
+    let jumpSections = [];
+
+    datasetteManager.plugins.forEach((plugin) => {
+      if (plugin.makeJumpSections) {
+        const sections = plugin.makeJumpSections(context) || [];
+        jumpSections.push(...sections);
+      }
+    });
+
+    return jumpSections;
+  },
+
+  /**
    * In MVP, each plugin can only have 1 instance.
    * In future, panels could be repeated. We omit that for now since so many plugins depend on
    * shared URL state, so having multiple instances of plugin at same time is problematic.
@@ -192,7 +234,6 @@ const initializeDatasette = () => {
   // DATASETTE_EVENTS.INIT event to avoid the habit of reading from the window.
 
   window.__DATASETTE__ = datasetteManager;
-  console.debug("Datasette Manager Created!");
 
   const initDatasetteEvent = new CustomEvent(DATASETTE_EVENTS.INIT, {
     detail: datasetteManager,

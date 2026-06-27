@@ -1,11 +1,14 @@
 import json
 import logging
+from datasette.jump import JumpSQL, namespace_sql_params
+from datasette.plugins import pm
 from datasette.events import LogoutEvent, LoginEvent, CreateTokenEvent
 from datasette.resources import DatabaseResource, TableResource
 from datasette.utils.asgi import Response, Forbidden
 from datasette.utils import (
     actor_matches_allow,
     add_cors_headers,
+    await_me_maybe,
     tilde_encode,
     tilde_decode,
 )
@@ -64,7 +67,7 @@ class JsonDataView(BaseView):
             context = {
                 "filename": self.filename,
                 "data": data,
-                "data_json": json.dumps(data, indent=4, default=repr),
+                "data_json": json.dumps(data, indent=2, default=repr),
             }
             # Add has_debug_permission if this view requires permissions-debug
             if self.permission == "permissions-debug":
@@ -86,6 +89,110 @@ class PatternPortfolioView(View):
                 view_name="patterns",
             )
         )
+
+
+class AutocompleteDebugView(BaseView):
+    name = "autocomplete_debug"
+    has_json_alternate = False
+
+    async def _suggested_tables(self, request):
+        scanned = 0
+        reached_scan_limit = False
+        suggestions = []
+        for database_name, db in self.ds.databases.items():
+            if scanned >= 100 or len(suggestions) >= 5:
+                break
+            remaining = 100 - scanned
+            results = await db.execute(
+                "select name from sqlite_master where type = 'table' order by name limit ?",
+                [remaining],
+            )
+            for row in results.rows:
+                table_name = row["name"]
+                scanned += 1
+                if scanned >= 100:
+                    reached_scan_limit = True
+                visible, _ = await self.ds.check_visibility(
+                    request.actor,
+                    action="view-table",
+                    resource=TableResource(database=database_name, table=table_name),
+                )
+                if not visible:
+                    if scanned >= 100:
+                        break
+                    continue
+                label_column = await db.label_column_for_table(table_name)
+                if label_column:
+                    suggestions.append(
+                        {
+                            "database": database_name,
+                            "table": table_name,
+                            "label_column": label_column,
+                            "url": self.ds.urls.path(
+                                "-/debug/autocomplete?"
+                                + urllib.parse.urlencode(
+                                    {
+                                        "database": database_name,
+                                        "table": table_name,
+                                    }
+                                )
+                            ),
+                        }
+                    )
+                    if len(suggestions) >= 5:
+                        break
+                if scanned >= 100:
+                    break
+        return suggestions, scanned, reached_scan_limit
+
+    async def get(self, request):
+        await self.ds.ensure_permission(action="view-instance", actor=request.actor)
+        database_name = request.args.get("database")
+        table_name = request.args.get("table")
+        context = {
+            "database_name": database_name,
+            "table_name": table_name,
+        }
+
+        if database_name or table_name:
+            if not database_name or not table_name:
+                context["error"] = "Both database and table are required."
+            elif database_name not in self.ds.databases:
+                context["error"] = "Database not found."
+            else:
+                db = self.ds.databases[database_name]
+                if not await db.table_exists(table_name):
+                    context["error"] = "Table not found."
+                else:
+                    await self.ds.ensure_permission(
+                        action="view-table",
+                        resource=TableResource(
+                            database=database_name,
+                            table=table_name,
+                        ),
+                        actor=request.actor,
+                    )
+                    context.update(
+                        {
+                            "autocomplete_url": "{}/-/autocomplete".format(
+                                self.ds.urls.table(database_name, table_name)
+                            ),
+                            "label_column": await db.label_column_for_table(table_name),
+                        }
+                    )
+        else:
+            suggestions, scanned, reached_scan_limit = await self._suggested_tables(
+                request
+            )
+            context.update(
+                {
+                    "suggestions": suggestions,
+                    "scanned": scanned,
+                    "reached_scan_limit": reached_scan_limit,
+                }
+            )
+
+        return await self.render(["debug_autocomplete.html"], request, context)
 
 
 class AuthTokenView(BaseView):
@@ -494,11 +601,13 @@ async def _check_permission_for_actor(ds, action, parent, child, actor):
     if action_obj.resource_class is None:
         resource_obj = None
     elif action_obj.takes_parent and action_obj.takes_child:
-        # Child-level resource (e.g., TableResource, QueryResource)
-        resource_obj = action_obj.resource_class(database=parent, table=child)
+        # Child-level resource (e.g., TableResource, QueryResource). The child
+        # argument is named differently per resource class (table, query, ...),
+        # so pass positionally - https://github.com/simonw/datasette/issues/2756
+        resource_obj = action_obj.resource_class(parent, child)
     elif action_obj.takes_parent:
         # Parent-level resource (e.g., DatabaseResource)
-        resource_obj = action_obj.resource_class(database=parent)
+        resource_obj = action_obj.resource_class(parent)
     else:
         # This shouldn't happen given validation in Action.__post_init__
         return {"error": f"Invalid action configuration: {action}"}, 500
@@ -813,9 +922,18 @@ class ApiExplorerView(BaseView):
                                 "json": {
                                     "rows": [
                                         {
-                                            column: None
-                                            for column in await db.table_columns(table)
-                                            if column not in pks
+                                            column: "<{}{}>".format(
+                                                column,
+                                                (
+                                                    " (primary key)"
+                                                    if column in (pks or ["rowid"])
+                                                    else ""
+                                                ),
+                                            )
+                                            for column in (
+                                                (["rowid"] if not pks else [])
+                                                + await db.table_columns(table)
+                                            )
                                         }
                                     ]
                                 },
@@ -880,14 +998,15 @@ class ApiExplorerView(BaseView):
             raise Forbidden("You do not have permission to view this instance")
 
         def api_path(link):
-            return "/-/api#{}".format(
+            return "{}#{}".format(
+                self.ds.urls.path("/-/api"),
                 urllib.parse.urlencode(
                     {
                         key: json.dumps(value, indent=2) if key == "json" else value
                         for key, value in link.items()
                         if key in ("path", "method", "json")
                     }
-                )
+                ),
             )
 
         return await self.render(
@@ -901,75 +1020,183 @@ class ApiExplorerView(BaseView):
         )
 
 
-class TablesView(BaseView):
+class JumpView(BaseView):
     """
-    Simple endpoint that uses the new allowed_resources() API.
-    Returns JSON list of all tables the actor can view.
-
-    Supports ?q=foo+bar to filter tables matching .*foo.*bar.* pattern,
-    ordered by shortest name first.
+    Endpoint for the jump menu. Returns JSON navigation items the actor can use.
     """
 
-    name = "tables"
+    name = "jump"
     has_json_alternate = False
 
-    async def get(self, request):
-        # Get search query parameter
-        q = request.args.get("q", "").strip()
+    async def _fragments(self, request):
+        fragments = []
+        for hook in pm.hook.jump_items_sql(
+            datasette=self.ds,
+            actor=request.actor,
+            request=request,
+        ):
+            value = await await_me_maybe(hook)
+            if value is None:
+                continue
+            if isinstance(value, JumpSQL):
+                fragments.append(value)
+            elif isinstance(value, (list, tuple)):
+                for fragment in value:
+                    if fragment is not None:
+                        assert isinstance(
+                            fragment, JumpSQL
+                        ), "jump_items_sql must return JumpSQL instances"
+                        fragments.append(fragment)
+            else:
+                raise TypeError("jump_items_sql must return JumpSQL instances")
+        return fragments
 
-        # Get SQL for allowed resources using the permission system
-        permission_sql, params = await self.ds.allowed_resources_sql(
-            action="view-table", actor=request.actor
-        )
+    def _resolve_url(self, url):
+        if not url or url.startswith("/"):
+            return url
 
-        # Build query based on whether we have a search query
-        if q:
-            # Build SQL LIKE pattern from search terms
-            # Split search terms by whitespace and build pattern: %term1%term2%term3%
-            terms = q.split()
-            pattern = "%" + "%".join(terms) + "%"
+        descriptor = json.loads(url)
+        if not isinstance(descriptor, dict):
+            raise TypeError("jump item url JSON must be an object")
+        method_name = descriptor.get("method")
+        if not isinstance(method_name, str) or not method_name:
+            raise TypeError("jump item url JSON must include a method")
+        if method_name.startswith("_"):
+            raise AttributeError(f"datasette.urls has no method named {method_name!r}")
+        try:
+            method = getattr(self.ds.urls, method_name)
+        except AttributeError as ex:
+            raise AttributeError(
+                f"datasette.urls has no method named {method_name!r}"
+            ) from ex
+        if not callable(method):
+            raise TypeError(f"datasette.urls.{method_name} is not callable")
+        kwargs = {key: value for key, value in descriptor.items() if key != "method"}
+        try:
+            return method(**kwargs)
+        except TypeError as ex:
+            raise TypeError(
+                f"Invalid arguments for datasette.urls.{method_name}(): {ex}"
+            ) from ex
 
-            # Build query with CTE to filter by search pattern
-            sql = f"""
-            WITH allowed_tables AS (
-                {permission_sql}
-            )
-            SELECT parent, child
-            FROM allowed_tables
-            WHERE child LIKE :pattern COLLATE NOCASE
-            ORDER BY length(child), child
-            """
-            all_params = {**params, "pattern": pattern}
+    def _sort_key(self, row, q):
+        display_label = row["display_name"] or row["label"]
+        display_label_lower = display_label.lower()
+        q_lower = q.lower()
+        if display_label_lower == q_lower:
+            relevance = 0
+        elif display_label_lower.startswith(q_lower):
+            relevance = 1
         else:
-            # No search query - return all tables, ordered by name
-            # Fetch 101 to detect if we need to truncate
-            sql = f"""
-            WITH allowed_tables AS (
-                {permission_sql}
+            relevance = 2
+        type_sort = {
+            "database": 10,
+            "table": 20,
+            "view": 25,
+            "query": 30,
+        }.get(row["type"], 50)
+        return (relevance, type_sort, len(display_label), row["label"])
+
+    async def _rows_for_database(self, database_name, indexed_fragments, q, pattern):
+        params = {"q": q, "pattern": pattern}
+        union_parts = []
+        for index, fragment in indexed_fragments:
+            fragment_sql, fragment_params = namespace_sql_params(
+                fragment.sql,
+                fragment.params or {},
+                f"jump_{index}",
             )
-            SELECT parent, child
-            FROM allowed_tables
-            ORDER BY parent, child
-            LIMIT 101
-            """
-            all_params = params
+            union_parts.append(f"""
+                SELECT
+                    type,
+                    label,
+                    description,
+                    url,
+                    search_text,
+                    display_name
+                FROM (
+                    {fragment_sql}
+                )
+            """)
+            params.update(fragment_params)
+        sql = f"""
+        WITH jump_items AS (
+            {" UNION ALL ".join(union_parts)}
+        )
+        SELECT
+            type,
+            label,
+            description,
+            url,
+            search_text,
+            display_name
+        FROM jump_items
+        WHERE :q = ''
+           OR search_text LIKE :pattern COLLATE NOCASE
+        ORDER BY
+            CASE
+                WHEN lower(COALESCE(display_name, label)) = lower(:q) THEN 0
+                WHEN lower(COALESCE(display_name, label)) LIKE lower(:q || '%') THEN 1
+                ELSE 2
+            END,
+            CASE type
+                WHEN 'database' THEN 10
+                WHEN 'table' THEN 20
+                WHEN 'view' THEN 25
+                WHEN 'query' THEN 30
+                ELSE 50
+            END,
+            length(COALESCE(display_name, label)),
+            label
+        LIMIT 101
+        """
+        db = (
+            self.ds.get_internal_database()
+            if database_name is None
+            else self.ds.get_database(database_name)
+        )
+        result = await db.execute(sql, params)
+        return list(result.rows)
 
-        # Execute against internal database
-        result = await self.ds.get_internal_database().execute(sql, all_params)
+    async def get(self, request):
+        q = request.args.get("q", "").strip()
+        terms = q.split()
+        pattern = "%" + "%".join(terms) + "%" if terms else "%"
+        fragments = await self._fragments(request)
 
-        # Build response with truncation
-        rows = list(result.rows)
-        truncated = len(rows) > 100
-        if truncated:
+        fragments_by_database = {}
+        for index, fragment in enumerate(fragments):
+            fragments_by_database.setdefault(fragment.database, []).append(
+                (index, fragment)
+            )
+
+        rows = []
+        truncated = False
+        for database_name, indexed_fragments in fragments_by_database.items():
+            database_rows = await self._rows_for_database(
+                database_name, indexed_fragments, q, pattern
+            )
+            if len(database_rows) > 100:
+                truncated = True
+                database_rows = database_rows[:100]
+            rows.extend(database_rows)
+        rows.sort(key=lambda row: self._sort_key(row, q))
+
+        if len(rows) > 100:
+            truncated = True
             rows = rows[:100]
 
-        matches = [
-            {
-                "name": f"{row['parent']}: {row['child']}",
-                "url": self.ds.urls.table(row["parent"], row["child"]),
+        matches = []
+        for row in rows:
+            match = {
+                "name": row["label"],
+                "url": self._resolve_url(row["url"]),
+                "type": row["type"],
+                "description": row["description"],
             }
-            for row in rows
-        ]
+            if row["display_name"]:
+                match["display_name"] = row["display_name"]
+            matches.append(match)
 
         return Response.json({"matches": matches, "truncated": truncated})
 

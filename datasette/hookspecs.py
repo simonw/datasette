@@ -55,7 +55,17 @@ def publish_subcommand(publish):
 
 
 @hookspec
-def render_cell(row, value, column, table, pks, database, datasette, request):
+def render_cell(
+    row,
+    value,
+    column,
+    table,
+    pks,
+    database,
+    datasette,
+    request,
+    column_type,
+):
     """Customize rendering of HTML table cell values"""
 
 
@@ -72,6 +82,11 @@ def register_facet_classes():
 @hookspec
 def register_actions(datasette):
     """Register actions: returns a list of datasette.permission.Action objects"""
+
+
+@hookspec
+def register_column_types(datasette):
+    """Return a list of ColumnType subclasses"""
 
 
 @hookspec
@@ -123,11 +138,6 @@ def permission_resources_sql(datasette, actor, action):
 
 
 @hookspec
-def canned_queries(datasette, database, actor):
-    """Return a dictionary of canned query definitions or an awaitable function that returns them"""
-
-
-@hookspec
 def register_magic_parameters(datasette):
     """Return a list of (name, function) magic parameter functions"""
 
@@ -143,38 +153,38 @@ def menu_links(datasette, actor, request):
 
 
 @hookspec
+def jump_items_sql(datasette, actor, request):
+    """SQL fragments for extra items in the jump menu"""
+
+
+@hookspec
 def row_actions(datasette, actor, request, database, table, row):
-    """Links for the row actions menu"""
+    """Items for the row actions menu"""
 
 
 @hookspec
 def table_actions(datasette, actor, database, table, request):
-    """Links for the table actions menu"""
+    """Items for the table actions menu"""
 
 
 @hookspec
 def view_actions(datasette, actor, database, view, request):
-    """Links for the view actions menu"""
+    """Items for the view actions menu"""
 
 
 @hookspec
 def query_actions(datasette, actor, database, query_name, request, sql, params):
-    """Links for the query and canned query actions menu"""
+    """Items for the query and stored query actions menu"""
 
 
 @hookspec
 def database_actions(datasette, actor, database, request):
-    """Links for the database actions menu"""
+    """Items for the database actions menu"""
 
 
 @hookspec
 def homepage_actions(datasette, actor, request):
-    """Links for the homepage actions menu"""
-
-
-@hookspec
-def skip_csrf(datasette, scope):
-    """Mechanism for skipping CSRF checks for certain requests"""
+    """Items for the homepage actions menu"""
 
 
 @hookspec
@@ -218,8 +228,8 @@ def top_query(datasette, request, database, sql):
 
 
 @hookspec
-def top_canned_query(datasette, request, database, query_name):
-    """HTML to include at the top of the canned query page"""
+def top_stored_query(datasette, request, database, query_name):
+    """HTML to include at the top of the stored query page"""
 
 
 @hookspec
@@ -231,12 +241,18 @@ def register_token_handler(datasette):
 def write_wrapper(datasette, database, request, transaction):
     """Called when a write function is about to execute.
 
-    Return a generator function that accepts a ``conn`` argument.
-    The generator should ``yield`` exactly once: code before the
-    ``yield`` runs before the write, code after the ``yield`` runs
-    after the write completes. The result of the write is sent
-    back through the ``yield``, so you can capture it with
-    ``result = yield``.
+    Return a generator function that accepts a ``conn`` argument and
+    optionally a ``track_event`` argument.  The generator should
+    ``yield`` exactly once: code before the ``yield`` runs before
+    the write, code after the ``yield`` runs after the write
+    completes. The result of the write is sent back through the
+    ``yield``, so you can capture it with ``result = yield``.
+
+    If your generator accepts ``track_event``, you can call
+    ``track_event(event)`` to queue an event that will be dispatched
+    via ``datasette.track_event()`` after the write commits
+    successfully.  Events are discarded if the write raises an
+    exception.
 
     If the write raises an exception, it is thrown into the generator
     so you can handle it with a try/except around the ``yield``.

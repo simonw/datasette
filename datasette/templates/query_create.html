@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block title %}Create query{% endblock %}
+
+{% block extra_head %}
+{{- super() -}}
+{% include "_codemirror.html" %}
+{% include "_execute_write_analysis_styles.html" %}
+{% include "_query_form_styles.html" %}
+{% endblock %}
+
+{% block body_class %}query-create db-{{ database|to_css_class }}{% endblock %}
+
+{% block crumbs %}
+{{ crumbs.nav(request=request, database=database) }}
+{% endblock %}
+
+{% block content %}
+
+<div class="query-create-page">
+
+<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color }}">Create query</h1>
+
+<form class="sql core query-create-form" action="{{ urls.database(database) }}/-/queries/store" method="post" data-analyze-url="{{ urls.database(database) }}/-/queries/analyze">
+    <div class="query-create-fields">
+        <p class="query-create-field"><label for="query-title">Title</label> <input id="query-title" name="title" type="text" value="{{ title or "" }}"></p>
+        <p class="query-create-field"><label for="query-url-slug">URL</label> <span class="query-create-url-control"><span class="query-create-url-prefix">{{ urls.database(database) }}/</span><input id="query-url-slug" name="name" type="text" value="{{ name or "" }}"></span></p>
+        <p class="query-create-field"><label for="query-description">Description</label> <textarea id="query-description" name="description" rows="3">{{ description or "" }}</textarea></p>
+    </div>
+
+    <p class="query-create-sql sql-editor"><textarea id="sql-editor" name="sql"{% if sql %} style="height: {{ sql.split("\n")|length + 2 }}em"{% endif %}>{{ sql }}</textarea></p>
+
+    <p class="query-create-options">
+        <span class="query-create-analysis-note" data-query-create-analysis-note aria-live="polite">{% if analysis_error %}This query cannot be saved until the SQL is valid.{% elif not has_sql %}Enter SQL to analyze this query.{% elif analysis_is_write %}This query updates data in the database.{% else %}This is a read-only query.{% endif %}</span>
+        <input type="hidden" name="is_private" value="0">
+        <label><input type="checkbox" name="is_private" value="1"{% if is_private %} checked{% endif %}> Private</label>
+        <span class="query-create-option-note">Queries marked private can only be seen by you, their creator.</span>
+    </p>
+    <p class="query-create-submit"><input type="submit" value="Save query" data-query-create-submit{% if save_disabled %} disabled{% endif %}></p>
+
+    <div class="query-create-analysis" id="query-create-analysis-section"{% if not has_sql %} hidden{% endif %}>
+        {% if has_sql %}
+            <h2>Query operations</h2>
+            {% if analysis_error %}
+                <p class="message-error">{{ analysis_error }}</p>
+            {% elif analysis_rows %}
+                <div class="table-wrapper"><table class="execute-write-analysis">
+                    <thead>
+                        <tr>
+                            <th scope="col">Operation</th>
+                            <th scope="col">Database</th>
+                            <th scope="col">Table</th>
+                            <th scope="col">Required permission</th>
+                            <th scope="col">Allowed</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in analysis_rows %}
+                            <tr>
+                                <td><code>{{ row.operation }}</code></td>
+                                <td><code>{{ row.database }}</code></td>
+                                <td><code>{{ row.table }}</code></td>
+                                <td>{% if row.required_permission %}<code>{{ row.required_permission }}</code>{% else %}<span class="execute-write-analysis-na">n/a</span>{% endif %}</td>
+                                <td>{% if row.allowed is none %}<span class="execute-write-analysis-na">n/a</span>{% elif row.allowed %}<span class="execute-write-analysis-allowed">yes</span>{% else %}<span class="execute-write-analysis-denied">no</span>{% endif %}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table></div>
+            {% else %}
+                <p>Analysis will show each affected table and required permission.</p>
+            {% endif %}
+        {% endif %}
+    </div>
+</form>
+
+</div>
+
+{% include "_codemirror_foot.html" %}
+{% include "_sql_parameter_scripts.html" %}
+{% include "_execute_write_analysis_scripts.html" %}
+
+<script>
+window.addEventListener("DOMContentLoaded", () => {
+  const titleInput = document.querySelector("#query-title");
+  const urlInput = document.querySelector("#query-url-slug");
+  let urlEdited = Boolean(urlInput && urlInput.value);
+
+  function slugify(value) {
+    return value
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+  }
+
+  if (titleInput && urlInput) {
+    titleInput.addEventListener("input", () => {
+      if (!urlEdited) {
+        urlInput.value = slugify(titleInput.value);
+      }
+    });
+    urlInput.addEventListener("input", () => {
+      urlEdited = true;
+    });
+  }
+});
+</script>
+
+<script>
+window.addEventListener("DOMContentLoaded", () => {
+  const form = document.querySelector("form.sql.core");
+  const analysisSection = document.querySelector("#query-create-analysis-section");
+  const submitButton = form
+    ? form.querySelector("[data-query-create-submit]")
+    : null;
+  const analysisNote = form
+    ? form.querySelector("[data-query-create-analysis-note]")
+    : null;
+
+  function updateAnalysisNote(data) {
+    if (!analysisNote) {
+      return;
+    }
+    if (data.analysis_error) {
+      analysisNote.textContent = "This query cannot be saved until the SQL is valid.";
+    } else if (data.has_sql === false) {
+      analysisNote.textContent = "Enter SQL to analyze this query.";
+    } else if (data.analysis_is_write) {
+      analysisNote.textContent = "This query updates data in the database.";
+    } else {
+      analysisNote.textContent = "This is a read-only query.";
+    }
+  }
+
+  window.datasetteSqlParameters.setupSqlParameterRefresh({
+    form,
+    url: form.dataset.analyzeUrl,
+    renderParameters: false,
+    onData(data) {
+      window.datasetteSqlAnalysis.renderAnalysis(analysisSection, data);
+      if (submitButton) {
+        submitButton.disabled = data.save_disabled;
+      }
+      updateAnalysisNote(data);
+    },
+    onError(error) {
+      window.datasetteSqlAnalysis.renderAnalysis(analysisSection, {
+        analysis_error: error.message,
+        analysis_rows: [],
+      });
+      if (submitButton) {
+        submitButton.disabled = true;
+      }
+      updateAnalysisNote({ analysis_error: error.message });
+    },
+  });
+});
+</script>
+
+{% endblock %}

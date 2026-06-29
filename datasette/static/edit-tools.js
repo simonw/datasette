@@ -5474,6 +5474,22 @@ function readTextFile(file) {
   });
 }
 
+async function loadBulkInsertTextFile(state, file) {
+  if (!file) {
+    return;
+  }
+  try {
+    state.bulkInsertTextarea.value = await readTextFile(file);
+    state.bulkInsertTextarea.dispatchEvent(
+      new Event("input", { bubbles: true }),
+    );
+    clearRowEditDialogError(state);
+    state.bulkInsertTextarea.focus();
+  } catch (_error) {
+    showRowEditDialogError(state, "Could not read that text file.");
+  }
+}
+
 function bulkInsertTemplateText(state) {
   return (state.bulkInsertColumns || []).join("\t");
 }
@@ -5498,11 +5514,23 @@ async function copyTextToClipboard(text) {
   }
 }
 
+function setBulkInsertCopyButtonReady(state) {
+  state.copyTemplateButton.textContent = "";
+  var wideLabel = document.createElement("span");
+  wideLabel.className = "row-edit-copy-template-label-wide";
+  wideLabel.textContent = "Copy spreadsheet template";
+  state.copyTemplateButton.appendChild(wideLabel);
+  var narrowLabel = document.createElement("span");
+  narrowLabel.className = "row-edit-copy-template-label-narrow";
+  narrowLabel.textContent = "Copy template";
+  state.copyTemplateButton.appendChild(narrowLabel);
+}
+
 function setBulkInsertCopyButtonCopied(state) {
   state.copyTemplateButton.textContent = "Copied";
   clearTimeout(state.copyTemplateResetTimer);
   state.copyTemplateResetTimer = setTimeout(function () {
-    state.copyTemplateButton.textContent = "Copy spreadsheet template";
+    setBulkInsertCopyButtonReady(state);
   }, 1500);
 }
 
@@ -6255,7 +6283,7 @@ function renderRowInsertFields(state, data) {
     return column.name;
   });
   state.copyTemplateButton.disabled = !state.bulkInsertColumns.length;
-  state.copyTemplateButton.textContent = "Copy spreadsheet template";
+  setBulkInsertCopyButtonReady(state);
   clearTimeout(state.copyTemplateResetTimer);
   state.copyTemplateResetTimer = null;
   resetBulkInsertPreview(state);
@@ -6350,12 +6378,13 @@ function ensureRowEditDialog(manager) {
       <div class="row-edit-fields"></div>
       <div class="row-edit-bulk" hidden>
         <div class="row-edit-bulk-editor">
-          <label class="row-edit-bulk-label" for="row-edit-bulk-textarea">Rows to insert</label>
+          <p class="row-edit-bulk-note">Paste TSV, CSV, or JSON. You can also <button type="button" class="button-as-link row-edit-bulk-open-file">open a file</button> or drop it onto this textarea</p>
+          <input class="row-edit-bulk-file-input" type="file" accept=".csv,.tsv,.json,.txt,text/csv,text/tab-separated-values,application/json,text/plain" hidden>
+          <textarea class="row-edit-input row-edit-bulk-textarea" id="row-edit-bulk-textarea" name="_bulk_rows" rows="12" spellcheck="false" aria-label="Bulk rows"></textarea>
           <div class="row-edit-bulk-actions">
-            <button type="button" class="btn btn-ghost row-edit-copy-template">Copy spreadsheet template</button>
+            <button type="button" class="btn btn-ghost row-edit-copy-template"><span class="row-edit-copy-template-label-wide">Copy spreadsheet template</span><span class="row-edit-copy-template-label-narrow">Copy template</span></button>
+            <span class="row-edit-bulk-template-note"><span class="row-edit-bulk-template-note-wide">You can paste the template into Google Sheets or Excel.</span><span class="row-edit-bulk-template-note-narrow">Paste into Google Sheets or Excel</span></span>
           </div>
-          <textarea class="row-edit-input row-edit-bulk-textarea" id="row-edit-bulk-textarea" name="_bulk_rows" rows="12" spellcheck="false"></textarea>
-          <p class="row-edit-bulk-note">Paste TSV, CSV, or JSON. You can also drop a text file onto this textarea.</p>
         </div>
         <div class="row-edit-bulk-preview" hidden></div>
         <div class="row-edit-bulk-progress" hidden>
@@ -6391,6 +6420,8 @@ function ensureRowEditDialog(manager) {
       ".row-edit-bulk-progress-status",
     ),
     copyTemplateButton: dialog.querySelector(".row-edit-copy-template"),
+    bulkInsertOpenFileButton: dialog.querySelector(".row-edit-bulk-open-file"),
+    bulkInsertFileInput: dialog.querySelector(".row-edit-bulk-file-input"),
     bulkInsertLink: dialog.querySelector(".row-edit-bulk-insert"),
     singleInsertLink: dialog.querySelector(".row-edit-single-insert"),
     cancelButton: dialog.querySelector(".row-edit-cancel"),
@@ -6472,6 +6503,25 @@ function ensureRowEditDialog(manager) {
     },
   );
 
+  rowEditDialogState.bulkInsertOpenFileButton.addEventListener(
+    "click",
+    function () {
+      rowEditDialogState.bulkInsertFileInput.click();
+    },
+  );
+
+  rowEditDialogState.bulkInsertFileInput.addEventListener(
+    "change",
+    async function (ev) {
+      var files = ev.target.files;
+      await loadBulkInsertTextFile(
+        rowEditDialogState,
+        files && files.length ? files[0] : null,
+      );
+      ev.target.value = "";
+    },
+  );
+
   rowEditDialogState.bulkInsertTextarea.addEventListener(
     "dragenter",
     function (ev) {
@@ -6512,20 +6562,7 @@ function ensureRowEditDialog(manager) {
       if (!files || !files.length) {
         return;
       }
-      try {
-        rowEditDialogState.bulkInsertTextarea.value = await readTextFile(
-          files[0],
-        );
-        rowEditDialogState.bulkInsertTextarea.dispatchEvent(
-          new Event("input", { bubbles: true }),
-        );
-        clearRowEditDialogError(rowEditDialogState);
-      } catch (_error) {
-        showRowEditDialogError(
-          rowEditDialogState,
-          "Could not read that text file.",
-        );
-      }
+      await loadBulkInsertTextFile(rowEditDialogState, files[0]);
     },
   );
 
@@ -6573,7 +6610,7 @@ function ensureRowEditDialog(manager) {
     state.redirectOnCloseUrl = null;
     clearTimeout(state.copyTemplateResetTimer);
     state.copyTemplateResetTimer = null;
-    state.copyTemplateButton.textContent = "Copy spreadsheet template";
+    setBulkInsertCopyButtonReady(state);
     resetBulkInsertPreview(state);
     clearRowEditDialogError(state);
     state.hasLoaded = false;

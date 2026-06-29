@@ -894,10 +894,32 @@ def test_insert_row_flow_uses_custom_column_field(page, datasette_server):
     assert dialog.locator(".row-edit-save").inner_text() == "Preview rows"
     assert (
         dialog.locator(".row-edit-bulk-note").inner_text()
-        == "Paste TSV, CSV, or JSON. You can also drop a text file onto this textarea."
+        == "Paste TSV, CSV, or JSON. You can also open a file or drop it onto this textarea"
+    )
+    assert dialog.locator(".row-edit-bulk-open-file").inner_text() == "open a file"
+    assert (
+        dialog.locator(".row-edit-bulk-editor").evaluate(
+            """node => Array.from(node.children)
+            .filter((child) => !child.hidden)
+            .map((child) => child.className)
+            .join(" ")"""
+        )
+        == (
+            "row-edit-bulk-note row-edit-input row-edit-bulk-textarea "
+            "row-edit-bulk-actions"
+        )
     )
     copy_template = dialog.locator(".row-edit-copy-template")
     assert copy_template.inner_text() == "Copy spreadsheet template"
+    assert dialog.locator(".row-edit-copy-template-label-narrow").text_content() == (
+        "Copy template"
+    )
+    assert dialog.locator(".row-edit-bulk-template-note").inner_text() == (
+        "You can paste the template into Google Sheets or Excel."
+    )
+    assert dialog.locator(".row-edit-bulk-template-note-narrow").text_content() == (
+        "Paste into Google Sheets or Excel"
+    )
     copy_template.click()
     page.wait_for_function(
         """() => document.querySelector(".row-edit-copy-template").textContent === "Copied" """

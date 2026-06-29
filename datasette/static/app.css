@@ -1819,20 +1819,30 @@ textarea.row-edit-input {
     display: none;
 }
 
-.row-edit-bulk-label {
-    color: var(--ink);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 0.82rem;
-}
-
 .row-edit-bulk-actions {
     display: flex;
-    justify-content: flex-end;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-start;
 }
 
 .row-edit-bulk-actions .btn {
     padding-left: 12px;
     padding-right: 12px;
+}
+
+.row-edit-copy-template-label-narrow {
+    display: none;
+}
+
+.row-edit-bulk-template-note {
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+
+.row-edit-bulk-template-note-narrow {
+    display: none;
 }
 
 .row-edit-bulk-textarea {
@@ -1853,6 +1863,28 @@ textarea.row-edit-input {
     color: var(--muted);
     font-size: 0.82rem;
     margin: 0;
+}
+
+.row-edit-bulk-note .button-as-link {
+    font: inherit;
+}
+
+@media (max-width: 640px) {
+    .row-edit-copy-template-label-wide {
+        display: none;
+    }
+
+    .row-edit-copy-template-label-narrow {
+        display: inline;
+    }
+
+    .row-edit-bulk-template-note-wide {
+        display: none;
+    }
+
+    .row-edit-bulk-template-note-narrow {
+        display: inline;
+    }
 }
 
 .row-edit-bulk-preview {

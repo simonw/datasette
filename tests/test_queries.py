@@ -1586,6 +1586,66 @@ async def test_create_query_analyze_endpoint_uses_sql_only():
 
 
 @pytest.mark.asyncio
+async def test_create_query_supports_recursive_cte():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("query_create_recursive_cte", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    sql = """
+    with recursive dog_tree(id, name) as (
+        select id, name from dogs
+        union all
+        select id + 1, name from dog_tree where id < 3
+    )
+    select name from dog_tree
+    """.strip()
+
+    analysis_response = await ds.client.get(
+        "/data/-/queries/analyze",
+        actor={"id": "root"},
+        params={"sql": sql},
+    )
+    form_response = await ds.client.get(
+        "/data/-/queries/store",
+        actor={"id": "root"},
+        params={"sql": sql},
+    )
+    store_response = await ds.client.post(
+        "/data/-/queries/store",
+        actor={"id": "root"},
+        data={
+            "name": "dog-tree",
+            "title": "Dog tree",
+            "sql": sql,
+            "is_private": "1",
+        },
+    )
+
+    assert analysis_response.status_code == 200
+    analysis_data = analysis_response.json()
+    assert analysis_data["ok"] is True
+    assert analysis_data["analysis_error"] is None
+    assert analysis_data["analysis_is_write"] is False
+    assert analysis_data["save_disabled"] is False
+
+    assert form_response.status_code == 200
+    soup = Soup(form_response.text, "html.parser")
+    submit = soup.select_one("[data-query-create-submit]")
+    assert submit is not None
+    assert not submit.has_attr("disabled")
+    assert "This is a read-only query." in form_response.text
+
+    assert store_response.status_code == 302
+    assert store_response.headers["location"] == "/data/dog-tree"
+    query = await ds.get_query("data", "dog-tree")
+    assert query is not None
+    assert query.sql == sql
+    assert query.is_write is False
+
+
+@pytest.mark.asyncio
 async def test_create_query_form_error_redisplays_form_with_values():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True

@@ -150,7 +150,6 @@ _SQLITE_INTERNAL_SCHEMA_FUNCTIONS = {
     "sqlite_rename_test",
     "substr",
 }
-
 _AUTHORIZER_ACTION_NAMES = {
     getattr(sqlite3, name): name
     for name in (
@@ -389,6 +388,10 @@ def analyze_sql_tables(
                 target=None,
                 source=source,
             )
+            return sqlite3.SQLITE_OK
+
+        if action == sqlite3.SQLITE_RECURSIVE:
+            # Recursive CTE bookkeeping; table reads are reported separately.
             return sqlite3.SQLITE_OK
 
         if action == sqlite3.SQLITE_FUNCTION and arg2 is not None:

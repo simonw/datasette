@@ -1865,6 +1865,7 @@ textarea.row-edit-input {
     margin: 0;
 }
 
+.row-edit-bulk-note label,
 .row-edit-bulk-note .button-as-link {
     font: inherit;
 }
@@ -1924,10 +1925,11 @@ textarea.row-edit-input {
     border-bottom: 1px solid var(--rule);
     border-right: 1px solid var(--rule);
     max-width: 18rem;
+    overflow-wrap: anywhere;
     padding: 6px 8px;
     text-align: left;
     vertical-align: top;
-    white-space: nowrap;
+    white-space: normal;
 }
 
 .row-edit-bulk-preview-table th {
@@ -2296,6 +2298,11 @@ select.table-create-input {
     margin: 0;
 }
 
+.table-create-data-note label,
+.table-create-data-note .button-as-link {
+    font: inherit;
+}
+
 .table-create-data-preview {
     display: grid;
     gap: 10px;
@@ -2335,10 +2342,11 @@ select.table-create-input {
     border-bottom: 1px solid var(--rule);
     border-right: 1px solid var(--rule);
     max-width: 18rem;
+    overflow-wrap: anywhere;
     padding: 6px 8px;
     text-align: left;
     vertical-align: top;
-    white-space: nowrap;
+    white-space: normal;
 }
 
 .table-create-data-preview-table th {

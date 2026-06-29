@@ -1850,6 +1850,36 @@ function resetTableCreateDataPreview(state) {
   syncTableCreateModeUi(state);
 }
 
+function tableCreateTableNameFromFileName(fileName) {
+  var baseName = (fileName || "").replace(/^.*[\\/]/, "");
+  var nameWithoutExtension = baseName.replace(/\.[^.]*$/, "");
+  return nameWithoutExtension
+    .trim()
+    .replace(/\s+/g, "_")
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, "");
+}
+
+async function loadTableCreateDataTextFile(state, file) {
+  if (!file) {
+    return;
+  }
+  try {
+    var text = await readTextFile(file);
+    var tableName = tableCreateTableNameFromFileName(file.name);
+    if (tableName) {
+      state.tableName.value = tableName;
+      state.tableName.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    state.dataTextarea.value = text;
+    state.dataTextarea.dispatchEvent(new Event("input", { bubbles: true }));
+    clearTableCreateDialogError(state);
+    state.dataTextarea.focus();
+  } catch (_error) {
+    showTableCreateDialogError(state, "Could not read that text file.");
+  }
+}
+
 function previewTableCreateDataRows(state) {
   clearTableCreateDialogError(state);
   resetTableCreateDataPreview(state);
@@ -2152,9 +2182,9 @@ function ensureTableCreateDialog(manager) {
         </div>
         <div class="table-create-data" hidden>
           <div class="table-create-data-editor">
-            <label class="table-create-data-label" for="table-create-data-textarea">Rows for the new table</label>
+            <p class="table-create-data-note"><label for="table-create-data-textarea">Paste TSV, CSV, or JSON</label>. You can also <button type="button" class="button-as-link table-create-data-open-file">open a file</button> or drop it onto this textarea</p>
+            <input class="table-create-data-file-input" type="file" accept=".csv,.tsv,.json,.txt,text/csv,text/tab-separated-values,application/json,text/plain" hidden>
             <textarea class="table-create-input table-create-data-textarea" id="table-create-data-textarea" name="_create_rows" rows="12" spellcheck="false"></textarea>
-            <p class="table-create-data-note">Paste TSV, CSV, or JSON. You can also drop a text file onto this textarea.</p>
           </div>
           <div class="table-create-data-preview" hidden></div>
         </div>
@@ -2182,6 +2212,8 @@ function ensureTableCreateDialog(manager) {
     dataPanel: dialog.querySelector(".table-create-data"),
     dataEditor: dialog.querySelector(".table-create-data-editor"),
     dataTextarea: dialog.querySelector(".table-create-data-textarea"),
+    dataOpenFileButton: dialog.querySelector(".table-create-data-open-file"),
+    dataFileInput: dialog.querySelector(".table-create-data-file-input"),
     dataPreview: dialog.querySelector(".table-create-data-preview"),
     createFromDataLink: dialog.querySelector(".table-create-from-data"),
     manualCreateLink: dialog.querySelector(".table-create-manual"),
@@ -2251,6 +2283,25 @@ function ensureTableCreateDialog(manager) {
     clearTableCreateDialogError(tableCreateDialogState);
   });
 
+  tableCreateDialogState.dataOpenFileButton.addEventListener(
+    "click",
+    function () {
+      tableCreateDialogState.dataFileInput.click();
+    },
+  );
+
+  tableCreateDialogState.dataFileInput.addEventListener(
+    "change",
+    async function (ev) {
+      var files = ev.target.files;
+      await loadTableCreateDataTextFile(
+        tableCreateDialogState,
+        files && files.length ? files[0] : null,
+      );
+      ev.target.value = "";
+    },
+  );
+
   tableCreateDialogState.dataTextarea.addEventListener(
     "dragenter",
     function (ev) {
@@ -2291,20 +2342,7 @@ function ensureTableCreateDialog(manager) {
       if (!files || !files.length) {
         return;
       }
-      try {
-        tableCreateDialogState.dataTextarea.value = await readTextFile(
-          files[0],
-        );
-        tableCreateDialogState.dataTextarea.dispatchEvent(
-          new Event("input", { bubbles: true }),
-        );
-        clearTableCreateDialogError(tableCreateDialogState);
-      } catch (_error) {
-        showTableCreateDialogError(
-          tableCreateDialogState,
-          "Could not read that text file.",
-        );
-      }
+      await loadTableCreateDataTextFile(tableCreateDialogState, files[0]);
     },
   );
 
@@ -6378,9 +6416,9 @@ function ensureRowEditDialog(manager) {
       <div class="row-edit-fields"></div>
       <div class="row-edit-bulk" hidden>
         <div class="row-edit-bulk-editor">
-          <p class="row-edit-bulk-note">Paste TSV, CSV, or JSON. You can also <button type="button" class="button-as-link row-edit-bulk-open-file">open a file</button> or drop it onto this textarea</p>
+          <p class="row-edit-bulk-note"><label for="row-edit-bulk-textarea">Paste TSV, CSV, or JSON</label>. You can also <button type="button" class="button-as-link row-edit-bulk-open-file">open a file</button> or drop it onto this textarea</p>
           <input class="row-edit-bulk-file-input" type="file" accept=".csv,.tsv,.json,.txt,text/csv,text/tab-separated-values,application/json,text/plain" hidden>
-          <textarea class="row-edit-input row-edit-bulk-textarea" id="row-edit-bulk-textarea" name="_bulk_rows" rows="12" spellcheck="false" aria-label="Bulk rows"></textarea>
+          <textarea class="row-edit-input row-edit-bulk-textarea" id="row-edit-bulk-textarea" name="_bulk_rows" rows="12" spellcheck="false"></textarea>
           <div class="row-edit-bulk-actions">
             <button type="button" class="btn btn-ghost row-edit-copy-template"><span class="row-edit-copy-template-label-wide">Copy spreadsheet template</span><span class="row-edit-copy-template-label-narrow">Copy template</span></button>
             <span class="row-edit-bulk-template-note"><span class="row-edit-bulk-template-note-wide">You can paste the template into Google Sheets or Excel.</span><span class="row-edit-bulk-template-note-narrow">Paste into Google Sheets or Excel</span></span>

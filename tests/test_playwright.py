@@ -399,14 +399,42 @@ def test_create_table_from_data_flow(page, datasette_server):
     assert dialog.locator(".table-create-save").inner_text() == "Preview rows"
     assert (
         dialog.locator(".table-create-data-note").inner_text()
-        == "Paste TSV, CSV, or JSON. You can also drop a text file onto this textarea."
+        == "Paste TSV, CSV, or JSON. You can also open a file or drop it onto this textarea"
+    )
+    assert dialog.locator(".table-create-data-open-file").inner_text() == "open a file"
+    assert (
+        dialog.locator(".table-create-data-editor").evaluate(
+            """node => Array.from(node.children)
+            .filter((child) => !child.hidden)
+            .map((child) => child.className)
+            .join(" ")"""
+        )
+        == ("table-create-data-note table-create-input table-create-data-textarea")
     )
     assert dialog.locator(".table-create-manual").inner_text() == (
         "Create table manually"
     )
+    assert (
+        dialog.get_by_label("Paste TSV, CSV, or JSON").get_attribute("id")
+        == "table-create-data-textarea"
+    )
+
+    textarea = dialog.locator(".table-create-data-textarea")
+    dropped_value = textarea.evaluate("""node => new Promise((resolve) => {
+            node.addEventListener("input", () => resolve(node.value), { once: true });
+            const file = new File(["short_id,name\\nx,Ada"], "Repo Export 2026!!.CSV", { type: "text/csv" });
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(file);
+            node.dispatchEvent(new DragEvent("dragenter", { bubbles: true, cancelable: true, dataTransfer }));
+            node.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer }));
+            node.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
+        })""")
+    assert dropped_value == "short_id,name\nx,Ada"
+    assert dialog.locator(".table-create-table-name").input_value() == (
+        "repo_export_2026"
+    )
 
     dialog.locator(".table-create-table-name").fill("playwright_from_data")
-    textarea = dialog.locator(".table-create-data-textarea")
     textarea.fill(
         json.dumps(
             {
@@ -431,6 +459,18 @@ def test_create_table_from_data_flow(page, datasette_server):
     assert "short_id" in preview_text
     assert "Ada" in preview_text
     assert "2.5" in preview_text
+    preview_cell_style = dialog.locator(
+        ".table-create-data-preview-table td"
+    ).first.evaluate(
+        """node => ({
+            overflowWrap: getComputedStyle(node).overflowWrap,
+            whiteSpace: getComputedStyle(node).whiteSpace
+        })"""
+    )
+    assert preview_cell_style == {
+        "overflowWrap": "anywhere",
+        "whiteSpace": "normal",
+    }
 
     dialog.locator(".table-create-cancel").click()
     assert dialog.evaluate("node => node.open")
@@ -911,6 +951,10 @@ def test_insert_row_flow_uses_custom_column_field(page, datasette_server):
     )
     copy_template = dialog.locator(".row-edit-copy-template")
     assert copy_template.inner_text() == "Copy spreadsheet template"
+    assert (
+        dialog.get_by_label("Paste TSV, CSV, or JSON").get_attribute("id")
+        == "row-edit-bulk-textarea"
+    )
     assert dialog.locator(".row-edit-copy-template-label-narrow").text_content() == (
         "Copy template"
     )
@@ -953,6 +997,18 @@ def test_insert_row_flow_uses_custom_column_field(page, datasette_server):
     assert "id" not in preview_text
     assert "From CSV" in preview_text
     assert "null" in preview_text
+    preview_cell_style = dialog.locator(
+        ".row-edit-bulk-preview-table td"
+    ).first.evaluate(
+        """node => ({
+            overflowWrap: getComputedStyle(node).overflowWrap,
+            whiteSpace: getComputedStyle(node).whiteSpace
+        })"""
+    )
+    assert preview_cell_style == {
+        "overflowWrap": "anywhere",
+        "whiteSpace": "normal",
+    }
     assert dialog.locator(".row-edit-cancel").inner_text() == "Back"
     dialog.locator(".row-edit-cancel").click()
     assert dialog.evaluate("node => node.open")

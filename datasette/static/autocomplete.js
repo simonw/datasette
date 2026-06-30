@@ -23,6 +23,41 @@
     return value;
   }
 
+  var REMEMBER_PREFIX = "datasette-autocomplete:";
+
+  function readRemembered(key) {
+    if (!key) {
+      return null;
+    }
+    try {
+      var raw = window.localStorage.getItem(REMEMBER_PREFIX + key);
+      if (!raw) {
+        return null;
+      }
+      var parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.value !== "undefined") {
+        return parsed;
+      }
+    } catch (_error) {
+      // localStorage may be unavailable or hold invalid JSON; ignore.
+    }
+    return null;
+  }
+
+  function writeRemembered(key, value, label) {
+    if (!key) {
+      return;
+    }
+    try {
+      window.localStorage.setItem(
+        REMEMBER_PREFIX + key,
+        JSON.stringify({ value: value, label: label }),
+      );
+    } catch (_error) {
+      // localStorage may be unavailable or full; ignore.
+    }
+  }
+
   if (!window.customElements || customElements.get("datasette-autocomplete")) {
     return;
   }
@@ -191,7 +226,7 @@
         if (fetchId !== this.fetchId) {
           return;
         }
-        this.results = (data && data.rows) || [];
+        this.results = this.withRemembered((data && data.rows) || [], initial);
         this.render();
       } catch (_error) {
         if (fetchId !== this.fetchId) {
@@ -201,6 +236,31 @@
         this.close();
         this.status.textContent = "Could not load suggestions";
       }
+    }
+
+    rememberKey() {
+      return this.getAttribute("remember-key") || "";
+    }
+
+    withRemembered(rows, initial) {
+      // On the initial (focus, empty-query) suggestion list, surface the most
+      // recently used value for this column at the top so it is the default.
+      if (!initial) {
+        return rows;
+      }
+      var remembered = readRemembered(this.rememberKey());
+      if (!remembered) {
+        return rows;
+      }
+      var rememberedValue = String(remembered.value);
+      var withoutRemembered = rows.filter(function (row) {
+        return autocompleteValueFromRow(row) !== rememberedValue;
+      });
+      var rememberedRow = {
+        pks: { value: remembered.value },
+        label: remembered.label,
+      };
+      return [rememberedRow].concat(withoutRemembered);
     }
 
     render() {
@@ -231,7 +291,8 @@
       this.listbox.hidden = false;
       this.input.setAttribute("aria-expanded", "true");
       this.status.textContent =
-        this.results.length + (this.results.length === 1 ? " match" : " matches");
+        this.results.length +
+        (this.results.length === 1 ? " match" : " matches");
       this.positionListbox();
       this.setActiveIndex(0);
     }
@@ -268,8 +329,11 @@
         this.listbox.style.maxHeight = "none";
       } else {
         this.listbox.style.maxHeight =
-          Math.min(defaultMaxHeight, desiredHeight, availableBelow || defaultMaxHeight) +
-          "px";
+          Math.min(
+            defaultMaxHeight,
+            desiredHeight,
+            availableBelow || defaultMaxHeight,
+          ) + "px";
       }
       window.addEventListener("resize", this.boundPositionListbox);
       document.addEventListener("scroll", this.boundPositionListbox, true);
@@ -305,6 +369,13 @@
       }
       var value = autocompleteValueFromRow(row);
       var label = autocompleteLabelFromRow(row);
+      // Persist the raw row label (not the composed display label) so the
+      // remembered row renders identically when replayed from localStorage.
+      writeRemembered(
+        this.rememberKey(),
+        value,
+        typeof row.label === "undefined" ? null : row.label,
+      );
       this.input.value = value;
       this.input.dispatchEvent(new Event("change", { bubbles: true }));
       this.close();

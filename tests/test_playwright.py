@@ -914,9 +914,20 @@ def test_navigation_search_renders_jump_sections_from_javascript_plugins(
 
 @pytest.mark.playwright
 def test_insert_row_flow_uses_custom_column_field(page, datasette_server):
-    page.context.grant_permissions(
-        ["clipboard-read", "clipboard-write"], origin=datasette_server.rstrip("/")
-    )
+    page.add_init_script("""
+        (() => {
+            let clipboardText = "";
+            Object.defineProperty(navigator, "clipboard", {
+                configurable: true,
+                get: () => ({
+                    writeText: async (text) => {
+                        clipboardText = String(text);
+                    },
+                    readText: async () => clipboardText,
+                }),
+            });
+        })();
+        """)
     page.goto(f"{datasette_server}data/projects")
     page.locator('button[data-table-action="insert-row"]').click()
 

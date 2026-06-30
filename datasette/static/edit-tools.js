@@ -3912,13 +3912,38 @@ function rowEditValueKind(value) {
   return "string";
 }
 
-function rowEditControlElement(control, autocompleteUrl) {
+function foreignKeyRememberKey(context) {
+  // Scope the remembered most-recently-used value per source table + column so
+  // different foreign keys do not collide in localStorage.
+  if (!context) {
+    return "";
+  }
+  var parts = [context.database, context.table, context.column];
+  if (
+    parts.some(function (part) {
+      return part === null || typeof part === "undefined" || part === "";
+    })
+  ) {
+    return "";
+  }
+  return parts
+    .map(function (part) {
+      return encodeURIComponent(String(part));
+    })
+    .join("/");
+}
+
+function rowEditControlElement(control, autocompleteUrl, context) {
   if (!autocompleteUrl || control.nodeName !== "INPUT") {
     return control;
   }
   var autocomplete = document.createElement("datasette-autocomplete");
   autocomplete.setAttribute("src", autocompleteUrl);
   autocomplete.setAttribute("suggest-on-focus", "");
+  var rememberKey = foreignKeyRememberKey(context);
+  if (rememberKey) {
+    autocomplete.setAttribute("remember-key", rememberKey);
+  }
   autocomplete.appendChild(control);
   return autocomplete;
 }
@@ -4337,7 +4362,7 @@ function createRowEditField(column, value, isPk, columnType, index, options) {
   var pluginControlElement = renderColumnField(pluginControl, fieldApi);
   var controlElement =
     pluginControlElement ||
-    rowEditControlElement(control, options.autocompleteUrl);
+    rowEditControlElement(control, options.autocompleteUrl, context);
   if (options.autocompleteUrl && !pluginControlElement) {
     control.addEventListener("input", function () {
       setForeignKeyMetaLink(meta, options.autocompleteUrl, null);

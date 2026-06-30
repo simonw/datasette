@@ -132,6 +132,7 @@ from .utils import (
 )
 from .utils.asgi import (
     AsgiLifespan,
+    BadRequest,
     Forbidden,
     NotFound,
     DatabaseNotFound,
@@ -2789,6 +2790,10 @@ class Datasette:
         db, table_name, _ = await self.resolve_table(request)
         pk_values = urlsafe_components(request.url_vars["pks"])
         sql, params, pks = await row_sql_params_pks(db, table_name, pk_values)
+        if len(pk_values) != len(pks):
+            raise BadRequest(
+                "URL row identifier does not match the primary key for this table"
+            )
         results = await db.execute(sql, params, truncate=True)
         row = results.first()
         if row is None:

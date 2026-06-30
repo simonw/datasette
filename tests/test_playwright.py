@@ -878,6 +878,70 @@ def test_edit_row_flow_validates_json_and_saves_changes(page, datasette_server):
 
 
 @pytest.mark.playwright
+def test_autocomplete_remembers_most_recently_used_value(page, datasette_server):
+    # Mock the autocomplete endpoint so the test does not depend on table data.
+    rows = [
+        {"pks": {"id": "1"}, "label": "Alpha"},
+        {"pks": {"id": "2"}, "label": "Bravo"},
+        {"pks": {"id": "3"}, "label": "Cleo"},
+    ]
+
+    def handle(route):
+        route.fulfill(
+            content_type="application/json",
+            body=json.dumps({"rows": rows}),
+        )
+
+    page.route("**/-/autocomplete*", handle)
+    # Load a real served page so relative URLs (script + mocked fetch) resolve
+    # against the Datasette origin, then inject the autocomplete element.
+    page.goto(datasette_server)
+    page.evaluate(
+        """
+        () => {
+          document.body.innerHTML =
+            '<datasette-autocomplete' +
+            ' src="/data/other/-/autocomplete"' +
+            ' suggest-on-focus' +
+            ' remember-key="data/projects/project_id">' +
+            '<input id="fk-input" type="text">' +
+            '</datasette-autocomplete>';
+        }
+        """
+    )
+    page.add_script_tag(url=f"{datasette_server}-/static/autocomplete.js")
+
+    autocomplete = page.locator("datasette-autocomplete")
+    field = page.locator("#fk-input")
+
+    # First focus: remember-key empty, so the list is just the fetched rows.
+    field.click()
+    options = autocomplete.locator(".datasette-autocomplete-option")
+    options.first.wait_for()
+    assert options.count() == 3
+    assert options.first.inner_text() == "Alpha (1)"
+
+    # Select "Cleo" and confirm it is persisted to localStorage.
+    options.nth(2).click(force=True)
+    assert field.input_value() == "3"
+    stored = page.evaluate(
+        "() => window.localStorage.getItem("
+        "'datasette-autocomplete:data/projects/project_id')"
+    )
+    assert json.loads(stored) == {"value": "3", "label": "Cleo"}
+
+    # Clear and re-focus: the remembered value is surfaced as the top
+    # suggestion, and is not duplicated lower down the list.
+    field.fill("")
+    field.click()
+    options.first.wait_for()
+    assert options.first.inner_text() == "Cleo (3)"
+    assert options.count() == 3
+    labels = [options.nth(index).inner_text() for index in range(options.count())]
+    assert labels == ["Cleo (3)", "Alpha (1)", "Bravo (2)"]
+
+
+@pytest.mark.playwright
 def test_delete_row_flow_removes_row(page, datasette_server):
     page.goto(f"{datasette_server}data/projects")
     page.locator('tr[data-row="1"] button[data-row-action="delete"]').click()

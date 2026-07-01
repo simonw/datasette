@@ -3,8 +3,7 @@ import json
 import pytest
 
 
-@pytest.mark.asyncio
-async def test_request_post_vars():
+def _post_request(body: bytes) -> Request:
     scope = {
         "http_version": "1.1",
         "method": "POST",
@@ -19,12 +18,44 @@ async def test_request_post_vars():
     async def receive():
         return {
             "type": "http.request",
-            "body": b"foo=bar&baz=1&empty=",
+            "body": body,
             "more_body": False,
         }
 
-    request = Request(scope, receive)
-    assert {"foo": "bar", "baz": "1", "empty": ""} == await request.post_vars()
+    return Request(scope, receive)
+
+
+@pytest.mark.asyncio
+async def test_request_post_vars():
+    request = _post_request(b"foo=bar&baz=1&empty=")
+    post_vars = await request.post_vars()
+    assert post_vars["foo"] == "bar"
+    assert post_vars["baz"] == "1"
+    assert post_vars["empty"] == ""
+    assert post_vars.get("missing") is None
+    assert set(post_vars.keys()) == {"foo", "baz", "empty"}
+    assert dict(post_vars.items()) == {"foo": "bar", "baz": "1", "empty": ""}
+
+
+@pytest.mark.asyncio
+async def test_request_post_vars_multi():
+    # post_vars() returns a MultiParams so multiple values for the same key are
+    # preserved, matching the behaviour of request.args. See issue #2425.
+    request = _post_request(b"multi=1&multi=2&single=3")
+    post_vars = await request.post_vars()
+    assert post_vars.get("multi") == "1"
+    assert post_vars.get("single") == "3"
+    assert post_vars["multi"] == "1"
+    assert post_vars["single"] == "3"
+    assert post_vars.getlist("multi") == ["1", "2"]
+    assert post_vars.getlist("single") == ["3"]
+    assert post_vars.getlist("missing") == []
+    assert "multi" in post_vars
+    assert "missing" not in post_vars
+    assert list(post_vars.keys()) == ["multi", "single"]
+    assert len(post_vars) == 2
+    with pytest.raises(KeyError):
+        post_vars["missing"]
 
 
 @pytest.mark.asyncio

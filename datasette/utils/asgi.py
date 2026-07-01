@@ -17,7 +17,7 @@ from datasette.utils.multipart import (
     DEFAULT_MIN_FREE_DISK_BYTES,
 )
 from mimetypes import guess_type
-from urllib.parse import parse_qs, urlunparse, parse_qsl
+from urllib.parse import parse_qs, urlunparse
 from pathlib import Path
 from http.cookies import SimpleCookie, Morsel
 import aiofiles
@@ -153,7 +153,7 @@ class Request:
 
     async def post_vars(self):
         body = await self.post_body()
-        return dict(parse_qsl(body.decode("utf-8"), keep_blank_values=True))
+        return MultiParams(parse_qs(qs=body.decode("utf-8"), keep_blank_values=True))
 
     async def json(self):
         body = await self.post_body()

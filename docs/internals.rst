@@ -2228,8 +2228,8 @@ The ``Database`` class also provides properties and methods for introspecting th
 ``await db.fts_table(table)`` - string or None
     The name of the FTS table associated with this table, if one exists.
 
-``await db.label_column_for_table(table)`` - string or None
-    The label column that is associated with this table - either automatically detected or using the ``"label_column"`` key in configuration, see :ref:`table_configuration_label_column`.
+``await db.label_columns_for_table(table)`` - list of strings
+    The label column(s) associated with this table - either automatically detected, set using the ``"label_column"`` key in configuration, or configured at runtime via the ``set-label-columns`` API, see :ref:`table_configuration_label_column`. Returns an empty list if no label column could be determined.
 
 ``await db.foreign_keys_for_table(table)`` - list of dictionaries
     Details of columns in this table which are foreign keys to other tables. A list of dictionaries where each dictionary is shaped like this: ``{"column": string, "other_table": string, "other_column": string}``.

@@ -121,13 +121,13 @@ class AutocompleteDebugView(BaseView):
                     if scanned >= 100:
                         break
                     continue
-                label_column = await db.label_column_for_table(table_name)
-                if label_column:
+                label_columns = await db.label_columns_for_table(table_name)
+                if label_columns:
                     suggestions.append(
                         {
                             "database": database_name,
                             "table": table_name,
-                            "label_column": label_column,
+                            "label_columns": label_columns,
                             "url": self.ds.urls.path(
                                 "-/debug/autocomplete?"
                                 + urllib.parse.urlencode(
@@ -177,7 +177,9 @@ class AutocompleteDebugView(BaseView):
                             "autocomplete_url": "{}/-/autocomplete".format(
                                 self.ds.urls.table(database_name, table_name)
                             ),
-                            "label_column": await db.label_column_for_table(table_name),
+                            "label_columns": await db.label_columns_for_table(
+                                table_name
+                            ),
                         }
                     )
         else:

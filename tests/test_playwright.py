@@ -138,6 +138,7 @@ def write_playwright_config(config_path):
                                     "insert-row": True,
                                     "update-row": True,
                                     "delete-row": True,
+                                    "set-label-columns": True,
                                 },
                             },
                             "defaults_demo": {
@@ -890,3 +891,45 @@ def test_delete_row_flow_removes_row(page, datasette_server):
     page.locator(".row-mutation-status", has_text="Deleted row 1").wait_for()
     page.locator('tr[data-row="1"]').wait_for(state="detached")
     assert project_rows(datasette_server, id=1) == []
+
+
+@pytest.mark.playwright
+def test_set_label_columns_flow(page, datasette_server):
+    page.goto(f"{datasette_server}data/projects")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-table-action="set-label-columns"]').click()
+
+    dialog = page.locator("#table-label-columns-dialog")
+    dialog.wait_for()
+    assert (
+        dialog.locator(".modal-title").inner_text()
+        == "Set label column(s) for projects"
+    )
+    assert dialog.locator(".table-label-columns-reset").is_enabled()
+
+    def checked_column_names():
+        return dialog.locator(
+            ".table-label-columns-row:has(.table-label-columns-checkbox:checked) "
+            ".table-label-columns-name"
+        ).all_inner_texts()
+
+    assert checked_column_names() == ["title"]
+
+    notes_row = dialog.locator(".table-label-columns-row", has_text="notes")
+    notes_row.locator(".table-label-columns-checkbox").check()
+    dialog.locator(".table-label-columns-save").click()
+    dialog.wait_for(state="hidden")
+
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-table-action="set-label-columns"]').click()
+    dialog.wait_for()
+    assert checked_column_names() == ["title", "notes"]
+
+    dialog.locator(".table-label-columns-reset").click()
+    dialog.wait_for(state="hidden")
+
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-table-action="set-label-columns"]').click()
+    dialog.wait_for()
+    assert checked_column_names() == ["title"]
+    assert dialog.locator(".table-label-columns-reset").is_disabled()

@@ -113,6 +113,13 @@ async def initialize_metadata_tables(db):
             PRIMARY KEY (database_name, resource_name, column_name)
         );
 
+        CREATE TABLE IF NOT EXISTS label_columns (
+            database_name TEXT NOT NULL,
+            resource_name TEXT NOT NULL,
+            columns TEXT NOT NULL, -- JSON list of column names, order = label order
+            PRIMARY KEY (database_name, resource_name)
+        );
+
         CREATE TABLE IF NOT EXISTS queries (
             database_name TEXT NOT NULL,
             name TEXT NOT NULL,

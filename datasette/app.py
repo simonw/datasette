@@ -92,6 +92,7 @@ from .views.table import (
     TableInsertView,
     TableUpsertView,
     TableSetColumnTypeView,
+    TableSetLabelColumnsView,
     TableDropView,
     TableFragmentView,
     table_view,
@@ -119,6 +120,7 @@ from .utils import (
     module_from_path,
     move_plugins_and_allow,
     move_table_config,
+    normalize_label_columns,
     parse_metadata,
     resolve_env_secrets,
     resolve_routes,
@@ -830,6 +832,8 @@ class Datasette:
         await self._save_queries_from_config()
         # Load column_types from config into internal DB
         await self._apply_column_types_config()
+        # Seed label_column config into internal DB (first run only)
+        await self._apply_label_columns_config()
         for hook in pm.hook.startup(datasette=self):
             await await_me_maybe(hook)
         self._startup_invoked = True
@@ -1446,6 +1450,60 @@ class Datasette:
             "WHERE database_name = ? AND resource_name = ? AND column_name = ?",
             [database, resource, column],
         )
+
+    async def get_label_columns(self, database: str, resource: str):
+        """
+        Return the explicit label_column override for this resource, as a
+        list of column names, or None if no override has been set (in which
+        case automatic detection should be used).
+        """
+        row = await self.get_internal_database().execute(
+            "SELECT columns FROM label_columns "
+            "WHERE database_name = ? AND resource_name = ?",
+            [database, resource],
+        )
+        rows = row.rows
+        if not rows:
+            return None
+        return json.loads(rows[0][0])
+
+    async def set_label_columns(
+        self, database: str, resource: str, columns: list
+    ) -> None:
+        """Set the label column(s) for a resource. Overwrites any existing value."""
+        await self.get_internal_database().execute_write(
+            """INSERT OR REPLACE INTO label_columns
+               (database_name, resource_name, columns)
+               VALUES (?, ?, ?)""",
+            [database, resource, json.dumps(columns)],
+        )
+
+    async def remove_label_columns(self, database: str, resource: str) -> None:
+        """Remove the label column(s) override for a resource."""
+        await self.get_internal_database().execute_write(
+            "DELETE FROM label_columns "
+            "WHERE database_name = ? AND resource_name = ?",
+            [database, resource],
+        )
+
+    async def _apply_label_columns_config(self):
+        """
+        Seed label_column config from datasette.json into the internal DB,
+        but only the first time a table is seen - once a row exists (whether
+        from config or from the set-label-columns API) it is left alone on
+        subsequent startups.
+        """
+        for db_name, db_conf in (self.config or {}).get("databases", {}).items():
+            for table_name, table_conf in db_conf.get("tables", {}).items():
+                if "label_column" not in table_conf:
+                    continue
+                columns = normalize_label_columns(table_conf["label_column"])
+                await self.get_internal_database().execute_write(
+                    """INSERT INTO label_columns (database_name, resource_name, columns)
+                       VALUES (?, ?, ?)
+                       ON CONFLICT(database_name, resource_name) DO NOTHING""",
+                    [db_name, table_name, json.dumps(columns)],
+                )
 
     def get_internal_database(self):
         return self._internal_database
@@ -2125,17 +2183,17 @@ class Datasette:
         )
         if not visible:
             return {}
-        label_column = await db.label_column_for_table(other_table)
-        if not label_column:
+        label_columns = await db.label_columns_for_table(other_table)
+        if not label_columns:
             return {(fk["column"], value): str(value) for value in values}
         labeled_fks = {}
         sql = """
-            select {other_column}, {label_column}
+            select {other_column}, {label_columns}
             from {other_table}
             where {other_column} in ({placeholders})
         """.format(
             other_column=escape_sqlite(other_column),
-            label_column=escape_sqlite(label_column),
+            label_columns=", ".join(escape_sqlite(column) for column in label_columns),
             other_table=escape_sqlite(other_table),
             placeholders=", ".join(["?"] * len(set(values))),
         )
@@ -2144,8 +2202,19 @@ class Datasette:
         except QueryInterrupted:
             pass
         else:
-            for id, value in results:
-                labeled_fks[(fk["column"], id)] = value
+            for row in results:
+                id = row[0]
+                if len(label_columns) == 1:
+                    labeled_fks[(fk["column"], id)] = row[1]
+                else:
+                    label_values = [
+                        str(value)
+                        for value in row[1:]
+                        if value is not None and value != ""
+                    ]
+                    labeled_fks[(fk["column"], id)] = (
+                        " ".join(label_values) if label_values else str(id)
+                    )
         return labeled_fks
 
     def absolute_url(self, request, path):
@@ -2735,6 +2804,10 @@ class Datasette:
         add_route(
             TableSetColumnTypeView.as_view(self),
             r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/set-column-type$",
+        )
+        add_route(
+            TableSetLabelColumnsView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/set-label-columns$",
         )
         add_route(
             TableFragmentView.as_view(self),

@@ -1518,6 +1518,183 @@ dialog.row-delete-dialog::backdrop {
     cursor: wait;
 }
 
+dialog.table-label-columns-dialog {
+    --ink: #0f0f0f;
+    --paper: #eef6ff;
+    --muted: #6b6b6b;
+    --rule: #d8e6f5;
+    --accent: #1a56db;
+    --card: #ffffff;
+    border: none;
+    border-radius: var(--modal-border-radius, 0.75rem);
+    padding: 0;
+    margin: auto;
+    width: min(440px, calc(100vw - 32px));
+    max-width: 95vw;
+    max-height: min(560px, calc(100vh - 32px));
+    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
+    animation: datasette-modal-slide-in var(--modal-animation-duration, 0.2s) ease-out;
+    overflow: hidden;
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--card);
+}
+
+dialog.table-label-columns-dialog[open] {
+    display: flex;
+    flex-direction: column;
+}
+
+dialog.table-label-columns-dialog::backdrop {
+    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
+    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
+    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
+    animation: datasette-modal-fade-in var(--modal-animation-duration, 0.2s) ease-out;
+}
+
+.table-label-columns-dialog .table-label-columns-form {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.table-label-columns-dialog .modal-header {
+    padding: 20px 24px 12px;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+    flex-shrink: 0;
+    min-width: 0;
+}
+
+.table-label-columns-dialog .modal-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.table-label-columns-help,
+.table-label-columns-error {
+    margin: 0;
+    padding: 16px 24px 0;
+}
+
+.table-label-columns-help {
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.table-label-columns-error {
+    color: #b91c1c;
+    font-size: 0.9rem;
+}
+
+.table-label-columns-list {
+    list-style: none;
+    margin: 12px 0 0;
+    padding: 0 24px;
+    overflow-y: auto;
+}
+
+.table-label-columns-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--rule);
+}
+
+.table-label-columns-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    color: var(--ink);
+    font-size: 0.9rem;
+}
+
+.table-label-columns-name {
+    overflow-wrap: anywhere;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.table-label-columns-move-controls {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.table-label-columns-move-controls button {
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    border-radius: 4px;
+    width: 26px;
+    height: 26px;
+    cursor: pointer;
+    color: var(--ink);
+}
+
+.table-label-columns-move-controls button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.table-label-columns-dialog .modal-footer {
+    padding: 18px 20px 14px;
+    border-top: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-shrink: 0;
+    background: var(--paper);
+    margin-top: 18px;
+}
+
+.table-label-columns-dialog .btn {
+    border: none;
+    border-radius: 5px;
+    padding: 9px 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    touch-action: manipulation;
+    font-family: inherit;
+    transition: background 0.12s;
+}
+
+.table-label-columns-dialog .btn-ghost {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--rule);
+    margin-right: auto;
+}
+
+.table-label-columns-dialog .btn-ghost:hover {
+    background: var(--rule);
+    color: var(--ink);
+}
+
+.table-label-columns-dialog .btn-ghost.table-label-columns-cancel {
+    margin-right: 0;
+}
+
+.table-label-columns-dialog .btn-primary {
+    background: var(--accent);
+    color: #fff;
+}
+
+.table-label-columns-dialog .btn-primary:hover {
+    background: #1949b8;
+}
+
+.table-label-columns-dialog .btn:disabled {
+    opacity: 0.65;
+    cursor: wait;
+}
+
 dialog.row-edit-dialog {
     --ink: #0f0f0f;
     --paper: #eef6ff;

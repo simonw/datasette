@@ -106,6 +106,12 @@ def register_actions():
             resource_class=TableResource,
         ),
         Action(
+            name="set-label-columns",
+            abbr="slc",
+            description="Set label column(s)",
+            resource_class=TableResource,
+        ),
+        Action(
             name="drop-table",
             abbr="dt",
             description="Drop tables",

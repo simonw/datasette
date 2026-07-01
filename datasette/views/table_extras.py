@@ -1070,14 +1070,15 @@ class PrivateExtra(Extra):
 
 
 class ExpandableColumnsExtra(Extra):
-    description = "List of foreign key columns that can be expanded with labels. Each item is a ``(foreign_key, label_column)`` pair where ``foreign_key`` is the SQLite foreign key dictionary and ``label_column`` is the label column in the referenced table, or ``None``."
+    description = "List of foreign key columns that can be expanded with labels. Each item is a ``(foreign_key, label_columns)`` pair where ``foreign_key`` is the SQLite foreign key dictionary and ``label_columns`` is a list of label column(s) in the referenced table, or ``None``."
     docs_note = "See :ref:`expand_foreign_keys` for how to expand these labels."
     example = ExtraExample(
         "/fixtures/facetable.json?_extra=expandable_columns",
         note=(
-            "Each item is a ``[foreign_key, label_column]`` pair: the "
-            "foreign key relationship, then the column in the other table "
-            "that would be used as the label for each expanded value."
+            "Each item is a ``[foreign_key, label_columns]`` pair: the "
+            "foreign key relationship, then the list of column(s) in the "
+            "other table that would be used as the label for each expanded "
+            "value."
         ),
     )
     scopes = {ExtraScope.TABLE}
@@ -1086,8 +1087,8 @@ class ExpandableColumnsExtra(Extra):
         expandables = []
         db = context.datasette.databases[context.database_name]
         for fk in await db.foreign_keys_for_table(context.table_name):
-            label_column = await db.label_column_for_table(fk["other_table"])
-            expandables.append((fk, label_column))
+            label_columns = await db.label_columns_for_table(fk["other_table"])
+            expandables.append((fk, label_columns or None))
         return expandables
 
 

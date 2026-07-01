@@ -665,12 +665,10 @@ class Database:
     async def fts_table(self, table):
         return await self.execute_fn(lambda conn: detect_fts(conn, table))
 
-    async def label_column_for_table(self, table):
-        explicit_label_column = (await self.ds.table_config(self.name, table)).get(
-            "label_column"
-        )
-        if explicit_label_column:
-            return explicit_label_column
+    async def label_columns_for_table(self, table):
+        explicit_label_columns = await self.ds.get_label_columns(self.name, table)
+        if explicit_label_columns is not None:
+            return explicit_label_columns
 
         def column_details(conn):
             # Returns {column_name: (type, is_unique)}
@@ -695,13 +693,13 @@ class Database:
             if is_unique and type_ is str
         ]
         if len(unique_text_columns) == 1:
-            return unique_text_columns[0]
+            return [unique_text_columns[0]]
 
         column_names = list(column_details.keys())
         # Is there a name or title column?
         name_or_title = [c for c in column_names if c.lower() in ("name", "title")]
         if name_or_title:
-            return name_or_title[0]
+            return [name_or_title[0]]
         # If a table has two columns, one of which is ID, then label_column is the other one
         if (
             column_names
@@ -709,9 +707,9 @@ class Database:
             and ("id" in column_names or "pk" in column_names)
             and not set(column_names) == {"id", "pk"}
         ):
-            return [c for c in column_names if c not in ("id", "pk")][0]
+            return [c for c in column_names if c not in ("id", "pk")][0:1]
         # Couldn't find a label:
-        return None
+        return []
 
     async def foreign_keys_for_table(self, table):
         return await self.execute_fn(

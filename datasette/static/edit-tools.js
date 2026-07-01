@@ -6,6 +6,8 @@ var TABLE_CREATE_DIALOG_ID = "table-create-dialog";
 var tableCreateDialogState = null;
 var TABLE_ALTER_DIALOG_ID = "table-alter-dialog";
 var tableAlterDialogState = null;
+var TABLE_LABEL_COLUMNS_DIALOG_ID = "table-label-columns-dialog";
+var tableLabelColumnsDialogState = null;
 
 function ensureRowMutationStatus(manager) {
   var status = document.querySelector(".row-mutation-status");
@@ -1795,6 +1797,10 @@ function tableInsertData() {
 
 function tableAlterData() {
   return tablePageData().alterTable;
+}
+
+function tableLabelColumnsData() {
+  return tablePageData().labelColumns;
 }
 
 function tableAlterColumnTypes() {
@@ -5281,6 +5287,333 @@ function initRowInsertActions(manager) {
   });
 }
 
+function clearTableLabelColumnsDialogError(state) {
+  state.error.hidden = true;
+  state.error.textContent = "";
+  state.dialog.removeAttribute("aria-describedby");
+}
+
+function showTableLabelColumnsDialogError(state, message) {
+  state.error.hidden = false;
+  state.error.textContent = message;
+  state.dialog.setAttribute("aria-describedby", "table-label-columns-error");
+  state.error.focus();
+}
+
+function setTableLabelColumnsDialogBusy(state, isBusy) {
+  state.isBusy = isBusy;
+  state.cancelButton.disabled = isBusy;
+  state.saveButton.disabled = isBusy;
+  state.resetButton.disabled = isBusy || !state.isOverridden;
+  state.saveButton.textContent = isBusy ? "Saving..." : "Save";
+  state.list
+    .querySelectorAll("input, button")
+    .forEach(function (control) {
+      control.disabled = isBusy;
+    });
+  if (!isBusy) {
+    updateTableLabelColumnsMoveButtons(state);
+    state.resetButton.disabled = !state.isOverridden;
+  }
+}
+
+function updateTableLabelColumnsMoveButtons(state) {
+  var rows = Array.prototype.slice.call(
+    state.list.querySelectorAll(".table-label-columns-row"),
+  );
+  rows.forEach(function (row, index) {
+    row.querySelector(".table-label-columns-move-up").disabled =
+      state.isBusy || index === 0;
+    row.querySelector(".table-label-columns-move-down").disabled =
+      state.isBusy || index === rows.length - 1;
+  });
+}
+
+function moveTableLabelColumnsRow(state, row, direction) {
+  if (direction === "up") {
+    var previous = row.previousElementSibling;
+    if (previous) {
+      state.list.insertBefore(row, previous);
+    }
+  } else {
+    var next = row.nextElementSibling;
+    if (next) {
+      state.list.insertBefore(next, row);
+    }
+  }
+  updateTableLabelColumnsMoveButtons(state);
+}
+
+function addTableLabelColumnsRow(state, column, checked) {
+  var row = document.createElement("li");
+  row.className = "table-label-columns-row";
+  row.innerHTML =
+    '<label class="table-label-columns-label">' +
+    '<input type="checkbox" class="table-label-columns-checkbox">' +
+    '<span class="table-label-columns-name"></span>' +
+    "</label>" +
+    '<div class="table-label-columns-move-controls">' +
+    '<button type="button" class="table-label-columns-move-up" aria-label="Move column up">↑</button>' +
+    '<button type="button" class="table-label-columns-move-down" aria-label="Move column down">↓</button>' +
+    "</div>";
+  row.querySelector(".table-label-columns-checkbox").checked = !!checked;
+  row.querySelector(".table-label-columns-checkbox").value = column;
+  row.querySelector(".table-label-columns-name").textContent = column;
+  row
+    .querySelector(".table-label-columns-move-up")
+    .addEventListener("click", function () {
+      moveTableLabelColumnsRow(state, row, "up");
+    });
+  row
+    .querySelector(".table-label-columns-move-down")
+    .addEventListener("click", function () {
+      moveTableLabelColumnsRow(state, row, "down");
+    });
+  state.list.appendChild(row);
+  return row;
+}
+
+function renderTableLabelColumnsFields(state, data) {
+  state.list.innerHTML = "";
+  var current = data.current || [];
+  var remaining = (data.columns || []).filter(function (column) {
+    return current.indexOf(column) === -1;
+  });
+  current.forEach(function (column) {
+    addTableLabelColumnsRow(state, column, true);
+  });
+  remaining.forEach(function (column) {
+    addTableLabelColumnsRow(state, column, false);
+  });
+  updateTableLabelColumnsMoveButtons(state);
+}
+
+function collectTableLabelColumnsPayload(state) {
+  var rows = Array.prototype.slice.call(
+    state.list.querySelectorAll(".table-label-columns-row"),
+  );
+  var columns = [];
+  rows.forEach(function (row) {
+    var checkbox = row.querySelector(".table-label-columns-checkbox");
+    if (checkbox.checked) {
+      columns.push(checkbox.value);
+    }
+  });
+  return columns;
+}
+
+async function submitTableLabelColumns(state, columns) {
+  if (state.isBusy) {
+    return;
+  }
+  var data = tableLabelColumnsData();
+  if (!data || !data.path) {
+    showTableLabelColumnsDialogError(
+      state,
+      "Could not find the set label columns URL.",
+    );
+    return;
+  }
+  clearTableLabelColumnsDialogError(state);
+  setTableLabelColumnsDialogBusy(state, true);
+  try {
+    var response = await fetch(data.path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ columns: columns }),
+    });
+    var responseData = null;
+    try {
+      responseData = await response.json();
+    } catch (_error) {
+      responseData = null;
+    }
+    if (!response.ok || (responseData && responseData.ok === false)) {
+      throw rowMutationRequestError(response, responseData);
+    }
+    state.shouldRestoreFocus = false;
+    state.dialog.close();
+    location.reload();
+  } catch (error) {
+    setTableLabelColumnsDialogBusy(state, false);
+    showTableLabelColumnsDialogError(
+      state,
+      error.message || "Could not save label columns",
+    );
+  }
+}
+
+function ensureTableLabelColumnsDialog(manager) {
+  if (tableLabelColumnsDialogState) {
+    return tableLabelColumnsDialogState;
+  }
+  if (!window.HTMLDialogElement) {
+    return null;
+  }
+
+  var dialog = document.createElement("dialog");
+  dialog.id = TABLE_LABEL_COLUMNS_DIALOG_ID;
+  dialog.className = "table-label-columns-dialog";
+  dialog.setAttribute("aria-labelledby", "table-label-columns-title");
+  dialog.innerHTML = `
+    <div class="modal-header">
+      <span class="modal-title" id="table-label-columns-title">Set label column(s)</span>
+    </div>
+    <form class="table-label-columns-form" novalidate>
+      <p class="table-label-columns-error" id="table-label-columns-error" role="alert" tabindex="-1" hidden></p>
+      <p class="table-label-columns-help">Choose one or more columns to use as the display label for this table's rows. Checked columns are used in the order shown below - use the arrows to reorder them.</p>
+      <ul class="table-label-columns-list"></ul>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost table-label-columns-reset">Reset to automatic</button>
+        <button type="button" class="btn btn-ghost table-label-columns-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary table-label-columns-save">Save</button>
+      </div>
+    </form>
+  `;
+  document.body.appendChild(dialog);
+
+  tableLabelColumnsDialogState = {
+    dialog: dialog,
+    form: dialog.querySelector(".table-label-columns-form"),
+    title: dialog.querySelector(".modal-title"),
+    error: dialog.querySelector(".table-label-columns-error"),
+    list: dialog.querySelector(".table-label-columns-list"),
+    resetButton: dialog.querySelector(".table-label-columns-reset"),
+    cancelButton: dialog.querySelector(".table-label-columns-cancel"),
+    saveButton: dialog.querySelector(".table-label-columns-save"),
+    currentButton: null,
+    isBusy: false,
+    isOverridden: false,
+    shouldRestoreFocus: true,
+    manager: manager,
+  };
+
+  tableLabelColumnsDialogState.form.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var state = tableLabelColumnsDialogState;
+    submitTableLabelColumns(state, collectTableLabelColumnsPayload(state));
+  });
+
+  tableLabelColumnsDialogState.resetButton.addEventListener(
+    "click",
+    function () {
+      submitTableLabelColumns(tableLabelColumnsDialogState, null);
+    },
+  );
+
+  tableLabelColumnsDialogState.cancelButton.addEventListener(
+    "click",
+    function () {
+      var state = tableLabelColumnsDialogState;
+      if (!state.isBusy) {
+        state.shouldRestoreFocus = true;
+        dialog.close();
+      }
+    },
+  );
+
+  dialog.addEventListener("click", function (ev) {
+    var state = tableLabelColumnsDialogState;
+    if (ev.target === dialog && !state.isBusy) {
+      state.shouldRestoreFocus = true;
+      dialog.close();
+    }
+  });
+
+  dialog.addEventListener("keydown", function (ev) {
+    if (ev.key !== "Escape") {
+      return;
+    }
+    var state = tableLabelColumnsDialogState;
+    if (state.isBusy) {
+      ev.preventDefault();
+      return;
+    }
+    ev.preventDefault();
+    state.shouldRestoreFocus = true;
+    dialog.close();
+  });
+
+  dialog.addEventListener("cancel", function (ev) {
+    var state = tableLabelColumnsDialogState;
+    if (state.isBusy) {
+      ev.preventDefault();
+    } else {
+      state.shouldRestoreFocus = true;
+    }
+  });
+
+  dialog.addEventListener("close", function () {
+    var state = tableLabelColumnsDialogState;
+    clearTableLabelColumnsDialogError(state);
+    setTableLabelColumnsDialogBusy(state, false);
+    if (
+      state.shouldRestoreFocus &&
+      state.currentButton &&
+      document.contains(state.currentButton)
+    ) {
+      state.currentButton.focus();
+    }
+  });
+
+  return tableLabelColumnsDialogState;
+}
+
+function openTableLabelColumnsDialog(button, manager) {
+  var data = tableLabelColumnsData();
+  if (!data) {
+    return;
+  }
+  var state = ensureTableLabelColumnsDialog(manager);
+  if (!state) {
+    return;
+  }
+
+  var menu = button.closest("details");
+  if (menu) {
+    menu.open = false;
+  }
+  state.manager = manager;
+  state.currentButton = button;
+  state.isOverridden = !!data.isOverridden;
+  state.shouldRestoreFocus = true;
+  state.title.textContent = data.tableName
+    ? "Set label column(s) for " + data.tableName
+    : "Set label column(s)";
+  clearTableLabelColumnsDialogError(state);
+  renderTableLabelColumnsFields(state, data);
+  setTableLabelColumnsDialogBusy(state, false);
+
+  if (!state.dialog.open) {
+    state.dialog.showModal();
+  }
+  var firstCheckbox = state.list.querySelector(
+    ".table-label-columns-checkbox",
+  );
+  if (firstCheckbox) {
+    firstCheckbox.focus();
+  }
+}
+
+function initTableLabelColumnsActions(manager) {
+  if (!window.fetch || !window.HTMLDialogElement || !tableLabelColumnsData()) {
+    return;
+  }
+  document.addEventListener("click", function (ev) {
+    var button = ev.target.closest(
+      'button[data-table-action="set-label-columns"]',
+    );
+    if (!button) {
+      return;
+    }
+    ev.preventDefault();
+    openTableLabelColumnsDialog(button, manager);
+  });
+}
+
 document.addEventListener("datasette_init", function (evt) {
   const { detail: manager } = evt;
 
@@ -5290,4 +5623,5 @@ document.addEventListener("datasette_init", function (evt) {
   initRowInsertActions(manager);
   initRowEditActions(manager);
   initRowDeleteActions(manager);
+  initTableLabelColumnsActions(manager);
 });

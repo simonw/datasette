@@ -34,7 +34,7 @@ from . import Context, from_extra
 from .table import (
     display_columns_and_rows,
     _table_page_data,
-    row_label_from_label_column,
+    row_label_from_label_columns,
 )
 from .table_extras import RowExtraContext, resolve_row_extras, table_extra_registry
 
@@ -495,10 +495,12 @@ class RowView(BaseView):
                             "<strong>{}</strong>".format(cell["value"])
                         )
 
-            label_column = await db.label_column_for_table(table) if is_table else None
+            label_columns = (
+                await db.label_columns_for_table(table) if is_table else None
+            )
             row_path = path_from_row_pks(rows[0], pks, False)
             pk_path = path_from_row_pks(rows[0], pks, False, False)
-            row_label = row_label_from_label_column(expanded_rows[0], label_column)
+            row_label = row_label_from_label_columns(expanded_rows[0], label_columns)
             for display_row in display_rows:
                 display_row.pk_path = pk_path
                 display_row.row_path = row_path
@@ -585,6 +587,7 @@ class RowView(BaseView):
                     is_view=not is_table,
                     table_insert_ui=None,
                     table_alter_ui=None,
+                    label_columns_ui=None,
                 ),
                 "row_actions": row_actions,
                 "top_row": make_slot_function(
@@ -703,8 +706,8 @@ def _truncated_row_flash_label(label):
 
 async def _row_flash_message(db, action, resolved, row=None):
     pk_label = ", ".join(resolved.pk_values)
-    label_column = await db.label_column_for_table(resolved.table)
-    label = row_label_from_label_column(row or resolved.row, label_column)
+    label_columns = await db.label_columns_for_table(resolved.table)
+    label = row_label_from_label_columns(row or resolved.row, label_columns)
     if label:
         label = _truncated_row_flash_label(label)
     if label and label != pk_label:

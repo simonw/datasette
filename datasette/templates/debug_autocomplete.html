@@ -26,8 +26,8 @@
     <p class="message-error">{{ error }}</p>
 {% elif autocomplete_url %}
     <h2>{{ database_name }} / {{ table_name }}</h2>
-    {% if label_column %}
-        <p>Label column: <code>{{ label_column }}</code></p>
+    {% if label_columns %}
+        <p>Label column{{ "s" if label_columns|length > 1 else "" }}: <code>{{ label_columns|join(", ") }}</code></p>
     {% else %}
         <p>No label column detected. Results will use primary key values.</p>
     {% endif %}
@@ -64,7 +64,7 @@
                     <tr>
                         <td>{{ suggestion.database }}</td>
                         <td><a href="{{ suggestion.url }}">{{ suggestion.table }}</a></td>
-                        <td><code>{{ suggestion.label_column }}</code></td>
+                        <td><code>{{ suggestion.label_columns|join(", ") }}</code></td>
                     </tr>
                 {% endfor %}
             </tbody>

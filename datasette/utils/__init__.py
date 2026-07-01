@@ -1504,6 +1504,18 @@ _table_config_keys = (
 )
 
 
+def normalize_label_columns(value):
+    """
+    Normalize a ``label_column`` config value (a string, a list of strings,
+    or None) to a list of strings.
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    return list(value)
+
+
 def move_table_config(metadata: dict, config: dict):
     """
     Move all known table configuration keys from metadata to config.

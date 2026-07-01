@@ -259,18 +259,23 @@ class Row:
         return json.dumps(d, default=repr, indent=2)
 
 
-def row_label_from_label_column(row, label_column):
-    if not label_column:
+def row_label_from_label_columns(row, label_columns):
+    if not label_columns:
         return None
-    try:
-        value = row[label_column]
-    except (KeyError, IndexError):
+    values = []
+    for label_column in label_columns:
+        try:
+            value = row[label_column]
+        except (KeyError, IndexError):
+            continue
+        if isinstance(value, dict):
+            value = value.get("label")
+        if value is None or value == "":
+            continue
+        values.append(str(value))
+    if not values:
         return None
-    if isinstance(value, dict):
-        value = value.get("label")
-    if value is None or value == "":
-        return None
-    return str(value)
+    return " ".join(values)
 
 
 async def run_sequential(*args):
@@ -448,6 +453,7 @@ async def _table_page_data(
     is_view,
     table_insert_ui,
     table_alter_ui,
+    label_columns_ui,
 ):
     data = {
         "database": database_name,
@@ -458,6 +464,8 @@ async def _table_page_data(
         data["insertRow"] = table_insert_ui
     if table_alter_ui:
         data["alterTable"] = table_alter_ui
+    if label_columns_ui:
+        data["labelColumns"] = label_columns_ui
     if not is_view:
         foreign_keys = await _foreign_key_autocomplete_urls(
             datasette, request, db, database_name, table_name
@@ -606,6 +614,29 @@ async def _table_alter_ui(
     return data
 
 
+async def _table_label_columns_ui(datasette, request, db, database_name, table_name):
+    if not await datasette.allowed(
+        action="set-label-columns",
+        resource=TableResource(database=database_name, table=table_name),
+        actor=request.actor,
+    ):
+        return None
+
+    column_details = await db.table_column_details(table_name)
+    columns = [column.name for column in column_details if not column.hidden]
+    current = await db.label_columns_for_table(table_name)
+    explicit = await datasette.get_label_columns(database_name, table_name)
+    return {
+        "path": "{}/-/set-label-columns".format(
+            datasette.urls.table(database_name, table_name)
+        ),
+        "tableName": table_name,
+        "columns": columns,
+        "current": current,
+        "isOverridden": explicit is not None,
+    }
+
+
 async def display_columns_and_rows(
     datasette,
     database_name,
@@ -645,9 +676,9 @@ async def display_columns_and_rows(
     pks_for_display = pks
     if not pks_for_display:
         pks_for_display = ["rowid"]
-    label_column = None
+    label_columns = None
     if link_column:
-        label_column = await db.label_column_for_table(table_name)
+        label_columns = await db.label_columns_for_table(table_name)
     row_action_permissions = {}
     if link_column and request is not None and db.is_mutable:
         row_action_permissions = await datasette.allowed_many(
@@ -695,7 +726,7 @@ async def display_columns_and_rows(
             is_special_link_column = len(pks) != 1
             pk_path = path_from_row_pks(row, pks, not pks, False)
             row_path = path_from_row_pks(row, pks, not pks)
-            row_label = row_label_from_label_column(row, label_column)
+            row_label = row_label_from_label_columns(row, label_columns)
             row_action_label = pk_path
             if row_label and row_label != pk_path:
                 row_action_label = "{} {}".format(pk_path, row_label)
@@ -1317,6 +1348,95 @@ class TableSetColumnTypeView(BaseView):
         )
 
 
+class TableSetLabelColumnsView(BaseView):
+    name = "table-set-label-columns"
+
+    def __init__(self, datasette):
+        self.ds = datasette
+
+    async def post(self, request):
+        try:
+            resolved = await self.ds.resolve_table(request)
+        except NotFound as e:
+            return _error([e.args[0]], 404)
+
+        database_name = resolved.db.name
+        table_name = resolved.table
+
+        if not await self.ds.allowed(
+            action="set-label-columns",
+            resource=TableResource(database=database_name, table=table_name),
+            actor=request.actor,
+        ):
+            return _error(["Permission denied"], 403)
+
+        content_type = request.headers.get("content-type") or ""
+        if not content_type.startswith("application/json"):
+            return _error(["Invalid content-type, must be application/json"], 400)
+
+        try:
+            data = await request.json()
+        except json.JSONDecodeError as e:
+            return _error(["Invalid JSON: {}".format(e)], 400)
+
+        if not isinstance(data, dict):
+            return _error(["JSON must be a dictionary"], 400)
+
+        invalid_keys = set(data.keys()) - {"columns"}
+        if invalid_keys:
+            return _error(
+                ['Invalid parameter: "{}"'.format('", "'.join(sorted(invalid_keys)))],
+                400,
+            )
+
+        if "columns" not in data:
+            return _error(['"columns" is required'], 400)
+        columns = data["columns"]
+
+        if columns is None:
+            await self.ds.remove_label_columns(database_name, table_name)
+            return Response.json(
+                {
+                    "ok": True,
+                    "database": database_name,
+                    "table": table_name,
+                    "columns": None,
+                },
+                status=200,
+            )
+
+        if (
+            not isinstance(columns, list)
+            or not columns
+            or not all(isinstance(c, str) for c in columns)
+        ):
+            return _error(
+                ['"columns" must be a non-empty list of strings, or null'], 400
+            )
+
+        if len(set(columns)) != len(columns):
+            return _error(['"columns" must not contain duplicates'], 400)
+
+        column_details = await self.ds._get_resource_column_details(
+            database_name, table_name
+        )
+        for column in columns:
+            if column not in column_details:
+                return _error(["Column not found: {}".format(column)], 400)
+
+        await self.ds.set_label_columns(database_name, table_name, columns)
+
+        return Response.json(
+            {
+                "ok": True,
+                "database": database_name,
+                "table": table_name,
+                "columns": columns,
+            },
+            status=200,
+        )
+
+
 class TableDropView(BaseView):
     name = "table-drop"
 
@@ -1443,7 +1563,7 @@ def _autocomplete_prefix_like(column):
     return "{} like :prefix escape char(92)".format(escape_sqlite(column))
 
 
-def _autocomplete_order_by(pks, label_column, exact_pk, label_matches_first=True):
+def _autocomplete_order_by(pks, label_columns, exact_pk, label_matches_first=True):
     clauses = []
     if exact_pk:
         clauses.append(
@@ -1451,15 +1571,18 @@ def _autocomplete_order_by(pks, label_column, exact_pk, label_matches_first=True
                 escape_sqlite(pks[0])
             )
         )
-    if label_column:
-        label_like = _autocomplete_like(label_column)
+    if label_columns:
+        label_likes = [_autocomplete_like(column) for column in label_columns]
+        any_label_like = " or ".join(label_likes)
         if label_matches_first:
-            clauses.append("case when {} then 0 else 1 end".format(label_like))
-        clauses.append(
-            "case when {} then length(cast({} as text)) end".format(
-                label_like, escape_sqlite(label_column)
+            clauses.append("case when {} then 0 else 1 end".format(any_label_like))
+        total_length = " + ".join(
+            "case when {} then length(cast({} as text)) else 0 end".format(
+                label_like, escape_sqlite(column)
             )
+            for label_like, column in zip(label_likes, label_columns)
         )
+        clauses.append("case when {} then {} end".format(any_label_like, total_length))
     else:
         clauses.append("length(cast({} as text))".format(escape_sqlite(pks[0])))
     clauses.extend(escape_sqlite(pk) for pk in pks)
@@ -1476,12 +1599,15 @@ def _autocomplete_initial_order_by(pks):
     return ", ".join(order_by)
 
 
-def _autocomplete_response_rows(rows, pks, label_column):
+def _autocomplete_response_rows(rows, pks, label_columns):
     response_rows = []
     for row in rows:
         item = {"pks": {pk: row[pk] for pk in pks}}
-        if label_column:
-            item["label"] = row[label_column]
+        if label_columns:
+            if len(label_columns) == 1:
+                item["label"] = row[label_columns[0]]
+            else:
+                item["label"] = row_label_from_label_columns(row, label_columns)
         response_rows.append(item)
     return response_rows
 
@@ -1511,10 +1637,8 @@ class TableAutocompleteView(BaseView):
         pks = await db.primary_keys(table_name)
         if not pks:
             pks = ["rowid"]
-        label_column = await db.label_column_for_table(table_name)
-        select_columns = list(
-            dict.fromkeys(pks + ([label_column] if label_column else []))
-        )
+        label_columns = await db.label_columns_for_table(table_name)
+        select_columns = list(dict.fromkeys(pks + label_columns))
         select_sql = ", ".join(escape_sqlite(column) for column in select_columns)
         q = request.args.get("q") or ""
         initial_arg = request.args.get("_initial")
@@ -1533,11 +1657,12 @@ class TableAutocompleteView(BaseView):
         }
 
         like_columns = pks[:]
-        if label_column and label_column not in like_columns:
-            like_columns.append(label_column)
+        for label_column in label_columns:
+            if label_column not in like_columns:
+                like_columns.append(label_column)
         where_sql = " or ".join(_autocomplete_like(column) for column in like_columns)
         exact_pk = len(pks) == 1
-        order_by = _autocomplete_order_by(pks, label_column, exact_pk)
+        order_by = _autocomplete_order_by(pks, label_columns, exact_pk)
 
         if initial:
             where_sql = "1 = 1"
@@ -1591,7 +1716,7 @@ class TableAutocompleteView(BaseView):
                 return Response.json({"rows": []})
 
         return Response.json(
-            {"rows": _autocomplete_response_rows(results.rows, pks, label_column)}
+            {"rows": _autocomplete_response_rows(results.rows, pks, label_columns)}
         )
 
 
@@ -2176,11 +2301,11 @@ async def table_view_data(
 
     # Expand labeled columns if requested
     expanded_columns = []
-    # List of (fk_dict, label_column-or-None) pairs for that table
+    # List of (fk_dict, label_columns-or-None) pairs for that table
     expandable_columns = []
     for fk in await db.foreign_keys_for_table(table_name):
-        label_column = await db.label_column_for_table(fk["other_table"])
-        expandable_columns.append((fk, label_column))
+        label_columns = await db.label_columns_for_table(fk["other_table"])
+        expandable_columns.append((fk, label_columns or None))
 
     columns_to_expand = None
     try:
@@ -2384,6 +2509,9 @@ async def table_view_data(
         table_alter_ui = await _table_alter_ui(
             datasette, request, db, database_name, table_name, is_view, pks
         )
+        label_columns_ui = await _table_label_columns_ui(
+            datasette, request, db, database_name, table_name
+        )
         data["table_insert_ui"] = table_insert_ui
         data["table_alter_ui"] = table_alter_ui
         data["table_page_data"] = await _table_page_data(
@@ -2395,6 +2523,7 @@ async def table_view_data(
             is_view=is_view,
             table_insert_ui=table_insert_ui,
             table_alter_ui=table_alter_ui,
+            label_columns_ui=label_columns_ui,
         )
 
     return data, rows[:page_size], columns, expanded_columns, sql, next_url

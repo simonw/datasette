@@ -936,6 +936,50 @@ You can override this automatic detection by specifying which column should be u
         }
 .. [[[end]]]
 
+``label_column`` can also be set to a list of columns, in which case the values of those columns will be joined with a space to build the label:
+
+.. [[[cog
+    config_example(cog, textwrap.dedent(
+      """
+        databases:
+          mydatabase:
+            tables:
+              example_table:
+                label_column: [first_name, last_name]
+      """).strip()
+    )
+.. ]]]
+
+.. tab:: datasette.yaml
+
+    .. code-block:: yaml
+
+        databases:
+          mydatabase:
+            tables:
+              example_table:
+                label_column: [first_name, last_name]
+
+.. tab:: datasette.json
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "mydatabase": {
+              "tables": {
+                "example_table": {
+                  "label_column": [
+                    "first_name",
+                    "last_name"
+                  ]
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
+
 .. _table_configuration_hidden:
 
 ``hidden``

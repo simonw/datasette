@@ -738,11 +738,11 @@ The available table extras are listed below.
         false
 
 ``expandable_columns``
-    List of foreign key columns that can be expanded with labels. Each item is a ``(foreign_key, label_column)`` pair where ``foreign_key`` is the SQLite foreign key dictionary and ``label_column`` is the label column in the referenced table, or ``None``. (See :ref:`expand_foreign_keys` for how to expand these labels.)
+    List of foreign key columns that can be expanded with labels. Each item is a ``(foreign_key, label_columns)`` pair where ``foreign_key`` is the SQLite foreign key dictionary and ``label_columns`` is a list of label column(s) in the referenced table, or ``None``. (See :ref:`expand_foreign_keys` for how to expand these labels.)
 
     ``GET /fixtures/facetable.json?_extra=expandable_columns``
 
-    Each item is a ``[foreign_key, label_column]`` pair: the foreign key relationship, then the column in the other table that would be used as the label for each expanded value.
+    Each item is a ``[foreign_key, label_columns]`` pair: the foreign key relationship, then the list of column(s) in the other table that would be used as the label for each expanded value.
 
     .. code-block:: json
 
@@ -753,7 +753,7 @@ The available table extras are listed below.
               "other_table": "facet_cities",
               "other_column": "id"
             },
-            "name"
+            ["name"]
           ]
         ]
 
@@ -2423,6 +2423,48 @@ To clear an existing column type assignment, set ``column_type`` to ``null``:
     }
 
 This API stores the assignment in Datasette's internal database, so it can be used with immutable databases as well as mutable ones.
+
+Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
+
+.. _TableSetLabelColumnsView:
+
+Setting label columns
+~~~~~~~~~~~~~~~~~~~~~
+
+To set the label column(s) for a table, make a ``POST`` to ``/<database>/<table>/-/set-label-columns``. This requires the :ref:`actions_set_label_columns` permission.
+
+::
+
+    POST /<database>/<table>/-/set-label-columns
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+
+.. code-block:: json
+
+    {
+        "columns": ["first_name", "last_name"]
+    }
+
+This will return a ``200`` response like this:
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "database": "data",
+        "table": "people",
+        "columns": ["first_name", "last_name"]
+    }
+
+To revert to Datasette's automatic label column detection, set ``columns`` to ``null``:
+
+.. code-block:: json
+
+    {
+        "columns": null
+    }
+
+This API stores the assignment in Datasette's internal database, so it can be used with immutable databases as well as mutable ones. See :ref:`table_configuration_label_column` for more about label columns.
 
 Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
 

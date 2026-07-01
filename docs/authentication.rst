@@ -50,7 +50,7 @@ The one exception is the "root" account, which you can sign into while using Dat
 The ``--root`` flag is designed for local development and testing. When you start Datasette with ``--root``, the root user automatically receives every permission, including:
 
 * All view permissions (``view-instance``, ``view-database``, ``view-table``, etc.)
-* All write permissions (``insert-row``, ``update-row``, ``delete-row``, ``create-table``, ``alter-table``, ``set-column-type``, ``drop-table``)
+* All write permissions (``insert-row``, ``update-row``, ``delete-row``, ``create-table``, ``alter-table``, ``set-column-type``, ``set-label-columns``, ``drop-table``)
 * Debug permissions (``permissions-debug``, ``debug-menu``)
 * Any custom permissions defined by plugins
 
@@ -903,7 +903,7 @@ To grant ``create-table`` to the user with ``id`` of ``editor`` for the ``docs``
         }
 .. [[[end]]]
 
-Other table-scoped write permissions, including ``set-column-type``, can be configured in the same place.
+Other table-scoped write permissions, including ``set-column-type`` and ``set-label-columns``, can be configured in the same place.
 
 And for ``insert-row`` against the ``reports`` table in that ``docs`` database:
 
@@ -1407,6 +1407,18 @@ set-column-type
 ---------------
 
 Actor is allowed to set assigned :ref:`column types <table_configuration_column_types>` for columns in a table.
+
+``resource`` - ``datasette.resources.TableResource(database, table)``
+    ``database`` is the name of the database (string)
+
+    ``table`` is the name of the table (string)
+
+.. _actions_set_label_columns:
+
+set-label-columns
+-----------------
+
+Actor is allowed to set the :ref:`label column(s) <table_configuration_label_column>` used to build a display label for rows in a table.
 
 ``resource`` - ``datasette.resources.TableResource(database, table)``
     ``database`` is the name of the database (string)

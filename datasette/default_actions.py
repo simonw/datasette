@@ -62,6 +62,12 @@ def register_actions():
             resource_class=DatabaseResource,
         ),
         Action(
+            name="create-view",
+            abbr="cv",
+            description="Create views",
+            resource_class=DatabaseResource,
+        ),
+        Action(
             name="store-query",
             abbr="sq",
             description="Create stored queries",
@@ -109,6 +115,12 @@ def register_actions():
             name="drop-table",
             abbr="dt",
             description="Drop tables",
+            resource_class=TableResource,
+        ),
+        Action(
+            name="drop-view",
+            abbr="dv",
+            description="Drop views",
             resource_class=TableResource,
         ),
         # Query-level actions (child-level)

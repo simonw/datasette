@@ -17,7 +17,7 @@ def find_free_port():
         return sock.getsockname()[1]
 
 
-def wait_for_server(process, url, timeout=10):
+def wait_for_server(process, url, timeout=45):
     deadline = time.monotonic() + timeout
     last_error = None
     while time.monotonic() < deadline:

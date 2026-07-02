@@ -900,9 +900,7 @@ def test_column_chooser_dialog(page, datasette_server):
 
     dialog = page.locator("column-chooser dialog")
     dialog.wait_for(state="visible")
-    assert (
-        page.locator("column-chooser .modal-title").inner_text() == "Choose columns"
-    )
+    assert page.locator("column-chooser .modal-title").inner_text() == "Choose columns"
     assert "selected" in page.locator("column-chooser .modal-meta").inner_text()
 
     notes_item = page.locator("column-chooser .drag-item", has_text="notes")

@@ -105,6 +105,12 @@ The simplest way to create a modal from a plugin is ``datasetteManager.createMod
       // modal.showModal({trigger: button});
     });
 
+Calling ``modal.showModal()`` then displays the dialog:
+
+.. image:: datasette-modal-example.png
+   :alt: A modal dialog titled "My plugin" containing the text "Hello from a plugin!" and Cancel and Save buttons, shown over a dimmed and blurred Datasette table page.
+   :width: 550px
+
 ``createModal(options)`` / ``DatasetteModal.create(options)`` accepts:
 
 ``id`` - string, optional

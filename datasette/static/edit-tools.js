@@ -4,6 +4,7 @@ var ROW_EDIT_DIALOG_ID = "row-edit-dialog";
 var rowEditDialogState = null;
 var TABLE_CREATE_DIALOG_ID = "table-create-dialog";
 var tableCreateDialogState = null;
+var TABLE_CREATE_AUTOMATIC_PK = "__datasette_automatic_pk__";
 var TABLE_ALTER_DIALOG_ID = "table-alter-dialog";
 var tableAlterDialogState = null;
 
@@ -810,12 +811,55 @@ async function loadTableCreateForeignKeyTargets(state) {
   );
 }
 
+function tableCreateIsDataMode(state) {
+  return state && state.mode === "data";
+}
+
+function tableCreateSaveButtonText(state) {
+  if (tableCreateIsDataMode(state)) {
+    return state.dataPreviewReady ? "Create table" : "Preview rows";
+  }
+  return "Create table";
+}
+
+function syncTableCreateModeUi(state) {
+  if (!state) {
+    return;
+  }
+  var isDataMode = tableCreateIsDataMode(state);
+  state.columnsPanel.hidden = isDataMode;
+  state.dataPanel.hidden = !isDataMode;
+  state.dataEditor.hidden = !isDataMode || state.dataPreviewReady;
+  state.dataPreview.hidden = !isDataMode || !state.dataPreviewReady;
+  state.createFromDataLink.hidden = isDataMode;
+  state.manualCreateLink.hidden = !isDataMode;
+}
+
+function updateTableCreateDialogButtons(state) {
+  if (!state) {
+    return;
+  }
+  syncTableCreateModeUi(state);
+  state.cancelButton.disabled = state.isSaving;
+  state.saveButton.disabled = state.isSaving;
+  state.addColumnButton.disabled = state.isSaving;
+  state.cancelButton.textContent =
+    tableCreateIsDataMode(state) && state.dataPreviewReady ? "Back" : "Cancel";
+  state.saveButton.textContent = state.isSaving
+    ? "Creating..."
+    : tableCreateSaveButtonText(state);
+}
+
 function tableCreateDialogSignature(state) {
   if (!state || !state.form) {
     return "";
   }
-  return JSON.stringify({
+  var signature = {
     table: state.tableName.value,
+    data: state.dataTextarea ? state.dataTextarea.value : "",
+    dataPrimaryKey: state.dataPkSelect
+      ? state.dataPkSelect.value
+      : TABLE_CREATE_AUTOMATIC_PK,
     columns: tableCreateDialogRows(state).map(function (row) {
       return {
         name: row.querySelector(".table-create-column-name").value,
@@ -838,7 +882,8 @@ function tableCreateDialogSignature(state) {
           ).value || "",
       };
     }),
-  });
+  };
+  return JSON.stringify(signature);
 }
 
 function tableCreateDialogHasChanges(state) {
@@ -864,18 +909,23 @@ function showTableCreateDialogError(state, message) {
 
 function setTableCreateDialogSaving(state, isSaving) {
   state.isSaving = isSaving;
-  state.cancelButton.disabled = isSaving;
-  state.saveButton.disabled = isSaving;
-  state.addColumnButton.disabled = isSaving;
-  state.saveButton.textContent = isSaving ? "Creating..." : "Create table";
   state.columnList
     .querySelectorAll("input, select, button")
     .forEach(function (control) {
       control.disabled = isSaving;
     });
+  state.fields
+    .querySelectorAll(
+      ".table-create-data input, .table-create-data select, .table-create-data textarea, .table-create-data button",
+    )
+    .forEach(function (control) {
+      control.disabled = isSaving;
+    });
+  state.tableName.disabled = isSaving;
   if (!isSaving) {
     updateTableCreateColumnRules(state);
   }
+  updateTableCreateDialogButtons(state);
   updateTableCreateMoveButtons(state);
 }
 
@@ -1231,8 +1281,11 @@ function addTableCreateColumn(state, column) {
 }
 
 function resetTableCreateDialog(state) {
+  state.mode = "manual";
   state.nextColumnIndex = 0;
   state.tableName.value = "";
+  state.dataTextarea.value = "";
+  resetTableCreateDataPreview(state);
   state.columnList.textContent = "";
   addTableCreateColumn(state, {
     name: "id",
@@ -1245,7 +1298,37 @@ function resetTableCreateDialog(state) {
     primaryKey: false,
   });
   updateTableCreateColumnRules(state);
+  updateTableCreateDialogButtons(state);
   state.initialSignature = tableCreateDialogSignature(state);
+}
+
+function showTableCreateDataMode(state) {
+  if (!state || state.isSaving) {
+    return;
+  }
+  state.mode = "data";
+  clearTableCreateDialogError(state);
+  updateTableCreateDialogButtons(state);
+  if (state.dataPreviewReady && state.dataPkSelect) {
+    state.dataPkSelect.focus();
+  } else {
+    state.dataTextarea.focus();
+  }
+}
+
+function showTableCreateManualMode(state) {
+  if (!state || state.isSaving) {
+    return;
+  }
+  state.mode = "manual";
+  clearTableCreateDialogError(state);
+  updateTableCreateDialogButtons(state);
+  var firstInput = state.columnList.querySelector(".table-create-column-name");
+  if (firstInput) {
+    firstInput.focus();
+  } else {
+    state.tableName.focus();
+  }
 }
 
 function collectTableCreatePayload(state) {
@@ -1315,14 +1398,9 @@ function collectTableCreateColumnTypeAssignments(state) {
 }
 
 function validateTableCreatePayload(payload) {
-  if (!payload.table) {
-    return "Table name is required.";
-  }
-  if (payload.table.indexOf("\n") !== -1) {
-    return "Table name cannot contain newlines.";
-  }
-  if (/^sqlite_/i.test(payload.table)) {
-    return "Table name cannot start with sqlite_.";
+  var tableNameError = validateTableCreateTableName(payload.table);
+  if (tableNameError) {
+    return tableNameError;
   }
   if (!payload.columns.length) {
     return "At least one column is required.";
@@ -1352,6 +1430,19 @@ function validateTableCreatePayload(payload) {
   return null;
 }
 
+function validateTableCreateTableName(tableName) {
+  if (!tableName) {
+    return "Table name is required.";
+  }
+  if (tableName.indexOf("\n") !== -1) {
+    return "Table name cannot contain newlines.";
+  }
+  if (/^sqlite_/i.test(tableName)) {
+    return "Table name cannot start with sqlite_.";
+  }
+  return null;
+}
+
 function validateTableCreateColumnTypeAssignments(assignments) {
   for (var i = 0; i < assignments.length; i += 1) {
     var assignment = assignments[i];
@@ -1370,6 +1461,476 @@ function validateTableCreateColumnTypeAssignments(assignments) {
         "."
       );
     }
+  }
+  return null;
+}
+
+function normalizeCreateTableDataJsonValue(value) {
+  if (typeof value === "undefined") {
+    return null;
+  }
+  if (Array.isArray(value) || (value && typeof value === "object")) {
+    return JSON.stringify(value);
+  }
+  return value;
+}
+
+function createTableDataColumnObjects(names) {
+  return names.map(function (name) {
+    return { name: name };
+  });
+}
+
+function validateCreateTableDataHeaders(headers) {
+  if (!headers.length) {
+    throw new Error("No columns found to preview.");
+  }
+  var seen = {};
+  headers.forEach(function (name, index) {
+    if (!name) {
+      throw new Error("Column header " + (index + 1) + " is blank.");
+    }
+    if (name.indexOf("\n") !== -1) {
+      throw new Error("Column names cannot contain newlines.");
+    }
+    var key = name.toLowerCase();
+    if (seen[key]) {
+      throw new Error("Duplicate column name: " + name);
+    }
+    seen[key] = true;
+  });
+}
+
+function jsonRowIsObject(item) {
+  return !!(item && typeof item === "object" && !Array.isArray(item));
+}
+
+function extractJsonObjectRows(parsed) {
+  if (Array.isArray(parsed)) {
+    return parsed;
+  }
+  if (!jsonRowIsObject(parsed)) {
+    throw new Error(
+      "JSON must be an array of objects, or an object containing an array of objects.",
+    );
+  }
+
+  var bestRows = null;
+  Object.keys(parsed).forEach(function (key) {
+    var value = parsed[key];
+    if (!Array.isArray(value) || !value.every(jsonRowIsObject)) {
+      return;
+    }
+    if (!bestRows || value.length > bestRows.length) {
+      bestRows = value;
+    }
+  });
+  if (!bestRows) {
+    throw new Error(
+      "JSON object must contain at least one root key with an array of objects.",
+    );
+  }
+  return bestRows;
+}
+
+function parseJsonObjectRows(text) {
+  var parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw new Error("Invalid JSON: " + error.message);
+  }
+  var rows = extractJsonObjectRows(parsed);
+  if (!rows.length) {
+    throw new Error("No rows found to preview.");
+  }
+  return rows;
+}
+
+function parseJsonCreateTableRows(text) {
+  var parsed = parseJsonObjectRows(text);
+
+  var columnNames = [];
+  var columnMap = {};
+  parsed.forEach(function (item, index) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error("JSON row " + (index + 1) + " must be an object.");
+    }
+    Object.keys(item).forEach(function (name) {
+      if (!columnMap[name]) {
+        columnMap[name] = true;
+        columnNames.push(name);
+      }
+    });
+  });
+  validateCreateTableDataHeaders(columnNames);
+
+  var rows = parsed.map(function (item) {
+    var row = {};
+    columnNames.forEach(function (name) {
+      row[name] = Object.prototype.hasOwnProperty.call(item, name)
+        ? normalizeCreateTableDataJsonValue(item[name])
+        : null;
+    });
+    return row;
+  });
+  return {
+    columns: createTableDataColumnObjects(columnNames),
+    rows: rows,
+  };
+}
+
+function createTableDelimitedValueIsInteger(value) {
+  return /^[-+]?\d+$/.test(String(value).trim());
+}
+
+function createTableDelimitedValueIsFloat(value) {
+  var trimmed = String(value).trim();
+  if (!trimmed) {
+    return false;
+  }
+  var numberValue = Number(trimmed);
+  return Number.isFinite(numberValue);
+}
+
+function inferCreateTableDelimitedColumnType(values) {
+  var nonBlankValues = values.filter(function (value) {
+    return String(value).trim() !== "";
+  });
+  if (!nonBlankValues.length) {
+    return "text";
+  }
+  if (nonBlankValues.every(createTableDelimitedValueIsInteger)) {
+    return "integer";
+  }
+  if (nonBlankValues.every(createTableDelimitedValueIsFloat)) {
+    return "float";
+  }
+  return "text";
+}
+
+function coerceCreateTableDelimitedValue(value, type) {
+  var trimmed = String(value).trim();
+  if (trimmed === "") {
+    return "";
+  }
+  if (type === "integer") {
+    return parseInt(trimmed, 10);
+  }
+  if (type === "float") {
+    return Number(trimmed);
+  }
+  return value;
+}
+
+function detectCreateTableDataDelimiter(text) {
+  var firstLine =
+    text.split(/\r\n|\n|\r/).find(function (line) {
+      return line.trim() !== "";
+    }) || "";
+  var csvRows = delimiterPreviewRows(firstLine, ",");
+  var tsvRows = delimiterPreviewRows(firstLine, "\t");
+  var csvColumns = csvRows.length ? csvRows[0].length : 0;
+  var tsvColumns = tsvRows.length ? tsvRows[0].length : 0;
+
+  if (firstLine.indexOf("\t") !== -1 && firstLine.indexOf(",") === -1) {
+    return "\t";
+  }
+  if (tsvColumns > csvColumns) {
+    return "\t";
+  }
+  if (csvColumns > 1) {
+    return ",";
+  }
+  if (tsvColumns > 1) {
+    return "\t";
+  }
+  return null;
+}
+
+function parseDelimitedCreateTableRows(text) {
+  var delimiter = detectCreateTableDataDelimiter(text);
+  var rows = (
+    delimiter === null
+      ? splitSingleColumnRows(text)
+      : splitDelimitedRows(text, delimiter)
+  ).filter(function (row) {
+    return !bulkInsertDelimitedRowIsBlank(row);
+  });
+  if (!rows.length) {
+    throw new Error("No rows found to preview.");
+  }
+
+  var headers = rows[0].map(function (value) {
+    return value.trim();
+  });
+  validateCreateTableDataHeaders(headers);
+  var dataRows = rows.slice(1);
+  if (!dataRows.length) {
+    throw new Error("No data rows found to preview.");
+  }
+
+  dataRows.forEach(function (row, index) {
+    if (row.length > headers.length) {
+      throw new Error(
+        "Row " +
+          (index + 1) +
+          " has " +
+          row.length +
+          " values, but only " +
+          headers.length +
+          " columns were provided.",
+      );
+    }
+  });
+
+  var columnTypes = headers.map(function (_name, columnIndex) {
+    return inferCreateTableDelimitedColumnType(
+      dataRows.map(function (row) {
+        return row[columnIndex] || "";
+      }),
+    );
+  });
+
+  return {
+    columns: createTableDataColumnObjects(headers),
+    rows: dataRows.map(function (row) {
+      var rowObject = {};
+      headers.forEach(function (name, columnIndex) {
+        rowObject[name] = coerceCreateTableDelimitedValue(
+          row[columnIndex] || "",
+          columnTypes[columnIndex],
+        );
+      });
+      return rowObject;
+    }),
+  };
+}
+
+function parseCreateTableDataRows(text) {
+  var trimmed = text.trim();
+  if (!trimmed) {
+    throw new Error("Paste rows before previewing.");
+  }
+  if (trimmed[0] === "[" || trimmed[0] === "{") {
+    return parseJsonCreateTableRows(trimmed);
+  }
+  return parseDelimitedCreateTableRows(trimmed);
+}
+
+function tableCreateDataRecommendedPrimaryKey(columns, rows) {
+  var candidates = [];
+  columns.forEach(function (column, columnIndex) {
+    var distinctValues = {};
+    var maxLength = 0;
+    var valid = rows.length > 0;
+    rows.forEach(function (row) {
+      if (!valid) {
+        return;
+      }
+      var value = row[column.name];
+      if (value === null || typeof value === "undefined") {
+        valid = false;
+        return;
+      }
+      var text = String(value).trim();
+      if (!text || text.length >= 20 || /\s/.test(text)) {
+        valid = false;
+        return;
+      }
+      if (distinctValues[text]) {
+        valid = false;
+        return;
+      }
+      distinctValues[text] = true;
+      maxLength = Math.max(maxLength, text.length);
+    });
+    if (valid) {
+      candidates.push({
+        name: column.name,
+        maxLength: maxLength,
+        columnIndex: columnIndex,
+      });
+    }
+  });
+  candidates.sort(function (left, right) {
+    if (left.maxLength !== right.maxLength) {
+      return left.maxLength - right.maxLength;
+    }
+    return left.columnIndex - right.columnIndex;
+  });
+  return candidates.length ? candidates[0].name : TABLE_CREATE_AUTOMATIC_PK;
+}
+
+function renderTableCreateDataPreview(state, preview) {
+  state.dataPreview.textContent = "";
+
+  var summary = document.createElement("p");
+  summary.className = "table-create-data-preview-summary";
+  summary.textContent =
+    "Previewing " +
+    preview.rows.length +
+    " row" +
+    (preview.rows.length === 1 ? "." : "s.");
+  state.dataPreview.appendChild(summary);
+
+  var pkField = document.createElement("div");
+  pkField.className = "table-create-data-pk-field";
+  var pkLabel = document.createElement("label");
+  pkLabel.className = "table-create-data-label";
+  pkLabel.setAttribute("for", "table-create-data-primary-key");
+  pkLabel.textContent = "Primary key";
+  var pkSelect = document.createElement("select");
+  pkSelect.id = "table-create-data-primary-key";
+  pkSelect.className = "table-create-input table-create-data-primary-key";
+  var automaticOption = document.createElement("option");
+  automaticOption.value = TABLE_CREATE_AUTOMATIC_PK;
+  automaticOption.textContent = "Automatic ID column";
+  pkSelect.appendChild(automaticOption);
+  preview.columns.forEach(function (column) {
+    var option = document.createElement("option");
+    option.value = column.name;
+    option.textContent = column.name;
+    pkSelect.appendChild(option);
+  });
+  pkSelect.value = tableCreateDataRecommendedPrimaryKey(
+    preview.columns,
+    preview.rows,
+  );
+  pkSelect.addEventListener("change", function () {
+    clearTableCreateDialogError(state);
+  });
+  state.dataPkSelect = pkSelect;
+  pkField.appendChild(pkLabel);
+  pkField.appendChild(pkSelect);
+  state.dataPreview.appendChild(pkField);
+
+  var tableWrap = document.createElement("div");
+  tableWrap.className = "table-create-data-preview-table-wrap";
+  var table = document.createElement("table");
+  table.className = "table-create-data-preview-table";
+  var thead = document.createElement("thead");
+  var headerRow = document.createElement("tr");
+  preview.columns.forEach(function (column) {
+    var th = document.createElement("th");
+    th.scope = "col";
+    th.textContent = column.name;
+    headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  var tbody = document.createElement("tbody");
+  preview.rows.forEach(function (row) {
+    var tr = document.createElement("tr");
+    preview.columns.forEach(function (column) {
+      var td = document.createElement("td");
+      var value = row[column.name];
+      td.textContent = bulkInsertPreviewValue(value);
+      if (value === null) {
+        td.className = "table-create-data-preview-null";
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  tableWrap.appendChild(table);
+  state.dataPreview.appendChild(tableWrap);
+  state.dataPreview.hidden = false;
+}
+
+function resetTableCreateDataPreview(state) {
+  state.dataPreviewRows = null;
+  state.dataPreviewColumns = [];
+  state.dataPreviewReady = false;
+  state.dataPkSelect = null;
+  state.dataPreview.hidden = true;
+  state.dataPreview.textContent = "";
+  syncTableCreateModeUi(state);
+}
+
+function tableCreateTableNameFromFileName(fileName) {
+  var baseName = (fileName || "").replace(/^.*[\\/]/, "");
+  var nameWithoutExtension = baseName.replace(/\.[^.]*$/, "");
+  return nameWithoutExtension
+    .trim()
+    .replace(/\s+/g, "_")
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, "");
+}
+
+async function loadTableCreateDataTextFile(state, file) {
+  if (!file) {
+    return;
+  }
+  try {
+    var text = await readTextFile(file);
+    var tableName = tableCreateTableNameFromFileName(file.name);
+    if (tableName) {
+      state.tableName.value = tableName;
+      state.tableName.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    state.dataTextarea.value = text;
+    state.dataTextarea.dispatchEvent(new Event("input", { bubbles: true }));
+    clearTableCreateDialogError(state);
+    state.dataTextarea.focus();
+  } catch (_error) {
+    showTableCreateDialogError(state, "Could not read that text file.");
+  }
+}
+
+function previewTableCreateDataRows(state) {
+  clearTableCreateDialogError(state);
+  resetTableCreateDataPreview(state);
+  try {
+    var preview = parseCreateTableDataRows(state.dataTextarea.value);
+    state.dataPreviewRows = preview.rows;
+    state.dataPreviewColumns = preview.columns;
+    state.dataPreviewReady = true;
+    renderTableCreateDataPreview(state, preview);
+    updateTableCreateDialogButtons(state);
+  } catch (error) {
+    showTableCreateDialogError(
+      state,
+      error.message || "Could not preview rows.",
+    );
+    updateTableCreateDialogButtons(state);
+  }
+}
+
+function collectTableCreateDataPayload(state) {
+  var payload = {
+    table: state.tableName.value.trim(),
+    rows: state.dataPreviewRows || [],
+  };
+  var primaryKey = state.dataPkSelect
+    ? state.dataPkSelect.value
+    : TABLE_CREATE_AUTOMATIC_PK;
+  payload.pk =
+    primaryKey === TABLE_CREATE_AUTOMATIC_PK ? "id" : primaryKey || undefined;
+  return payload;
+}
+
+function validateTableCreateDataPayload(payload, state) {
+  var tableNameError = validateTableCreateTableName(payload.table);
+  if (tableNameError) {
+    return tableNameError;
+  }
+  if (!payload.rows.length) {
+    return "No rows found to create.";
+  }
+  if (
+    state.dataPkSelect &&
+    state.dataPkSelect.value === TABLE_CREATE_AUTOMATIC_PK &&
+    payload.rows.some(function (row) {
+      return Object.prototype.hasOwnProperty.call(row, "id");
+    })
+  ) {
+    return (
+      "Automatic ID column cannot be used because the pasted data " +
+      "already has an id column."
+    );
   }
   return null;
 }
@@ -1441,6 +2002,57 @@ async function assignTableCreateColumnTypes(
   }
 }
 
+async function createTableFromDataPreview(state) {
+  var data = databaseCreateTableData();
+  if (!data || !data.path) {
+    showTableCreateDialogError(state, "Could not find the create table URL.");
+    return;
+  }
+  var payload = collectTableCreateDataPayload(state);
+  var validationError = validateTableCreateDataPayload(payload, state);
+  if (validationError) {
+    showTableCreateDialogError(state, validationError);
+    return;
+  }
+  clearTableCreateDialogError(state);
+  setTableCreateDialogSaving(state, true);
+  try {
+    var response = await fetch(data.path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    var responseData = null;
+    try {
+      responseData = await response.json();
+    } catch (_error) {
+      responseData = null;
+    }
+    if (!response.ok || (responseData && responseData.ok === false)) {
+      throw rowMutationRequestError(response, responseData);
+    }
+    var tableUrl =
+      responseData.table_url ||
+      fallbackTableUrl(responseData.table || payload.table);
+    state.shouldRestoreFocus = false;
+    state.dialog.close();
+    if (tableUrl) {
+      location.href = tableUrl;
+    } else {
+      location.reload();
+    }
+  } catch (error) {
+    setTableCreateDialogSaving(state, false);
+    showTableCreateDialogError(
+      state,
+      error.message || "Could not create table",
+    );
+  }
+}
+
 async function saveTableCreateDialog(state) {
   if (state.isSaving) {
     return;
@@ -1448,6 +2060,14 @@ async function saveTableCreateDialog(state) {
   var data = databaseCreateTableData();
   if (!data || !data.path) {
     showTableCreateDialogError(state, "Could not find the create table URL.");
+    return;
+  }
+  if (tableCreateIsDataMode(state)) {
+    if (!state.dataPreviewReady) {
+      previewTableCreateDataRows(state);
+    } else {
+      await createTableFromDataPreview(state);
+    }
     return;
   }
   clearTableCreateDialogError(state);
@@ -1560,8 +2180,18 @@ function ensureTableCreateDialog(manager) {
           <div class="table-create-column-list"></div>
           <button type="button" class="table-create-add-column"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg><span>Add column</span></button>
         </div>
+        <div class="table-create-data" hidden>
+          <div class="table-create-data-editor">
+            <p class="table-create-data-note"><label for="table-create-data-textarea">Paste TSV, CSV, or JSON</label>. You can also <button type="button" class="button-as-link table-create-data-open-file">open a file</button> or drop it onto this textarea</p>
+            <input class="table-create-data-file-input" type="file" accept=".csv,.tsv,.json,.txt,text/csv,text/tab-separated-values,application/json,text/plain" hidden>
+            <textarea class="table-create-input table-create-data-textarea" id="table-create-data-textarea" name="_create_rows" rows="12" spellcheck="false"></textarea>
+          </div>
+          <div class="table-create-data-preview" hidden></div>
+        </div>
       </div>
       <div class="modal-footer">
+        <a href="#" class="table-create-mode-link table-create-from-data">Create table from data</a>
+        <a href="#" class="table-create-mode-link table-create-manual" hidden>Create table manually</a>
         <button type="button" class="btn btn-ghost table-create-cancel">Cancel</button>
         <button type="submit" class="btn btn-primary table-create-save">Create table</button>
       </div>
@@ -1576,13 +2206,27 @@ function ensureTableCreateDialog(manager) {
     error: dialog.querySelector(".table-create-error"),
     fields: dialog.querySelector(".table-create-fields"),
     tableName: dialog.querySelector(".table-create-table-name"),
+    columnsPanel: dialog.querySelector(".table-create-columns"),
     columnList: dialog.querySelector(".table-create-column-list"),
     addColumnButton: dialog.querySelector(".table-create-add-column"),
+    dataPanel: dialog.querySelector(".table-create-data"),
+    dataEditor: dialog.querySelector(".table-create-data-editor"),
+    dataTextarea: dialog.querySelector(".table-create-data-textarea"),
+    dataOpenFileButton: dialog.querySelector(".table-create-data-open-file"),
+    dataFileInput: dialog.querySelector(".table-create-data-file-input"),
+    dataPreview: dialog.querySelector(".table-create-data-preview"),
+    createFromDataLink: dialog.querySelector(".table-create-from-data"),
+    manualCreateLink: dialog.querySelector(".table-create-manual"),
     cancelButton: dialog.querySelector(".table-create-cancel"),
     saveButton: dialog.querySelector(".table-create-save"),
     currentButton: null,
     shouldRestoreFocus: true,
     isSaving: false,
+    mode: "manual",
+    dataPreviewRows: null,
+    dataPreviewColumns: [],
+    dataPreviewReady: false,
+    dataPkSelect: null,
     initialSignature: "",
     nextColumnIndex: 0,
     foreignKeyTargets: [],
@@ -1606,11 +2250,112 @@ function ensureTableCreateDialog(manager) {
   });
 
   tableCreateDialogState.cancelButton.addEventListener("click", function () {
+    if (
+      tableCreateIsDataMode(tableCreateDialogState) &&
+      tableCreateDialogState.dataPreviewReady &&
+      !tableCreateDialogState.isSaving
+    ) {
+      resetTableCreateDataPreview(tableCreateDialogState);
+      updateTableCreateDialogButtons(tableCreateDialogState);
+      tableCreateDialogState.dataTextarea.focus();
+      return;
+    }
     closeTableCreateDialogIfConfirmed(tableCreateDialogState);
   });
 
+  tableCreateDialogState.createFromDataLink.addEventListener(
+    "click",
+    function (ev) {
+      ev.preventDefault();
+      showTableCreateDataMode(tableCreateDialogState);
+    },
+  );
+
+  tableCreateDialogState.manualCreateLink.addEventListener(
+    "click",
+    function (ev) {
+      ev.preventDefault();
+      showTableCreateManualMode(tableCreateDialogState);
+    },
+  );
+
   tableCreateDialogState.tableName.addEventListener("input", function () {
     clearTableCreateDialogError(tableCreateDialogState);
+  });
+
+  tableCreateDialogState.dataOpenFileButton.addEventListener(
+    "click",
+    function () {
+      tableCreateDialogState.dataFileInput.click();
+    },
+  );
+
+  tableCreateDialogState.dataFileInput.addEventListener(
+    "change",
+    async function (ev) {
+      var files = ev.target.files;
+      await loadTableCreateDataTextFile(
+        tableCreateDialogState,
+        files && files.length ? files[0] : null,
+      );
+      ev.target.value = "";
+    },
+  );
+
+  tableCreateDialogState.dataTextarea.addEventListener(
+    "dragenter",
+    function (ev) {
+      ev.preventDefault();
+      tableCreateDialogState.dataTextarea.classList.add(
+        "table-create-data-drop-target",
+      );
+    },
+  );
+
+  tableCreateDialogState.dataTextarea.addEventListener(
+    "dragover",
+    function (ev) {
+      ev.preventDefault();
+      tableCreateDialogState.dataTextarea.classList.add(
+        "table-create-data-drop-target",
+      );
+    },
+  );
+
+  tableCreateDialogState.dataTextarea.addEventListener(
+    "dragleave",
+    function () {
+      tableCreateDialogState.dataTextarea.classList.remove(
+        "table-create-data-drop-target",
+      );
+    },
+  );
+
+  tableCreateDialogState.dataTextarea.addEventListener(
+    "drop",
+    async function (ev) {
+      ev.preventDefault();
+      tableCreateDialogState.dataTextarea.classList.remove(
+        "table-create-data-drop-target",
+      );
+      var files = ev.dataTransfer && ev.dataTransfer.files;
+      if (!files || !files.length) {
+        return;
+      }
+      await loadTableCreateDataTextFile(tableCreateDialogState, files[0]);
+    },
+  );
+
+  tableCreateDialogState.dataTextarea.addEventListener("dragend", function () {
+    tableCreateDialogState.dataTextarea.classList.remove(
+      "table-create-data-drop-target",
+    );
+  });
+
+  tableCreateDialogState.dataTextarea.addEventListener("input", function () {
+    resetTableCreateDataPreview(tableCreateDialogState);
+    clearTableCreateDialogError(tableCreateDialogState);
+    updateTableCreateDialogButtons(tableCreateDialogState);
   });
 
   dialog.addEventListener("click", function (ev) {
@@ -4435,12 +5180,51 @@ function showRowEditDialogError(state, message) {
   state.error.focus();
 }
 
+function rowEditIsMultipleInsert(state) {
+  return state.mode === "insert" && state.insertMode === "multiple";
+}
+
+function syncRowEditInsertModeUi(state) {
+  var isInsert = state.mode === "insert";
+  var isMultiple = rowEditIsMultipleInsert(state);
+  state.fields.hidden = isMultiple;
+  state.bulkInsertPanel.hidden = !isMultiple;
+  state.bulkInsertEditor.hidden = !isMultiple || state.bulkInsertPreviewReady;
+  state.bulkInsertPreview.hidden = !isMultiple || !state.bulkInsertPreviewReady;
+  state.bulkInsertLink.hidden = !isInsert || isMultiple;
+  state.singleInsertLink.hidden = !isInsert || !isMultiple;
+}
+
 function updateRowEditDialogButtons(state) {
   state.saveButton.disabled =
-    state.isLoading || state.isSaving || !state.hasLoaded;
+    state.isLoading ||
+    state.isSaving ||
+    !state.hasLoaded ||
+    state.bulkInsertInserted;
   state.cancelButton.disabled = state.isSaving;
-  var saveLabel = state.mode === "insert" ? "Insert row" : "Save";
-  state.saveButton.textContent = state.isSaving ? "Saving..." : saveLabel;
+  syncRowEditInsertModeUi(state);
+  state.cancelButton.textContent =
+    rowEditIsMultipleInsert(state) &&
+    state.bulkInsertPreviewReady &&
+    !state.bulkInsertInserted
+      ? "Back"
+      : state.bulkInsertInserted
+        ? "Close and view table"
+        : "Cancel";
+  var saveLabel = rowEditIsMultipleInsert(state)
+    ? state.bulkInsertInserted
+      ? "Inserted"
+      : state.bulkInsertPreviewReady
+        ? "Insert these rows"
+        : "Preview rows"
+    : state.mode === "insert"
+      ? "Insert row"
+      : "Save";
+  state.saveButton.textContent = state.isSaving
+    ? rowEditIsMultipleInsert(state)
+      ? "Inserting..."
+      : "Saving..."
+    : saveLabel;
   state.form.setAttribute(
     "aria-busy",
     state.isLoading || state.isSaving ? "true" : "false",
@@ -4631,6 +5415,16 @@ function rowEditDialogHasChanges(state) {
   if (!state || !state.hasLoaded || state.isLoading) {
     return false;
   }
+  if (state.bulkInsertInserted) {
+    return false;
+  }
+  if (
+    state.mode === "insert" &&
+    state.bulkInsertTextarea &&
+    state.bulkInsertTextarea.value.trim()
+  ) {
+    return true;
+  }
   var fields = state.fields.querySelectorAll(".row-edit-field");
   for (var i = 0; i < fields.length; i += 1) {
     var fieldApi = fields[i]._datasetteColumnFormField;
@@ -4662,6 +5456,566 @@ function closeRowEditDialogIfConfirmed(state) {
   state.shouldRestoreFocus = true;
   state.dialog.close();
   return true;
+}
+
+function setRowInsertDialogTitle(state) {
+  var insertData = tableInsertData() || {};
+  var title = rowEditIsMultipleInsert(state)
+    ? "Insert multiple rows"
+    : "Insert row";
+  setRowDialogTitle(
+    state.title,
+    insertData.tableName ? title + " into " + insertData.tableName : title,
+  );
+}
+
+function showMultipleRowInsert(state) {
+  if (!state || state.mode !== "insert" || state.isSaving) {
+    return;
+  }
+  state.insertMode = "multiple";
+  if (state.bulkInsertPreviewReady || state.bulkInsertInserted) {
+    resetBulkInsertPreview(state);
+  }
+  clearRowEditDialogError(state);
+  setRowInsertDialogTitle(state);
+  updateRowEditDialogButtons(state);
+  state.bulkInsertTextarea.focus();
+}
+
+function showSingleRowInsert(state) {
+  if (!state || state.mode !== "insert" || state.isSaving) {
+    return;
+  }
+  state.insertMode = "single";
+  clearRowEditDialogError(state);
+  setRowInsertDialogTitle(state);
+  updateRowEditDialogButtons(state);
+  if (!focusFirstRowEditControl(state, { skipReadonly: true })) {
+    state.saveButton.focus();
+  }
+}
+
+function readTextFile(file) {
+  if (file.text) {
+    return file.text();
+  }
+  return new Promise(function (resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      resolve(reader.result || "");
+    };
+    reader.onerror = function () {
+      reject(reader.error);
+    };
+    reader.readAsText(file);
+  });
+}
+
+async function loadBulkInsertTextFile(state, file) {
+  if (!file) {
+    return;
+  }
+  try {
+    state.bulkInsertTextarea.value = await readTextFile(file);
+    state.bulkInsertTextarea.dispatchEvent(
+      new Event("input", { bubbles: true }),
+    );
+    clearRowEditDialogError(state);
+    state.bulkInsertTextarea.focus();
+  } catch (_error) {
+    showRowEditDialogError(state, "Could not read that text file.");
+  }
+}
+
+function bulkInsertTemplateText(state) {
+  return (state.bulkInsertColumns || []).join("\t");
+}
+
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  var textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-1000px";
+  textarea.style.left = "-1000px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  var copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) {
+    throw new Error("copy failed");
+  }
+}
+
+function setBulkInsertCopyButtonReady(state) {
+  state.copyTemplateButton.textContent = "";
+  var wideLabel = document.createElement("span");
+  wideLabel.className = "row-edit-copy-template-label-wide";
+  wideLabel.textContent = "Copy spreadsheet template";
+  state.copyTemplateButton.appendChild(wideLabel);
+  var narrowLabel = document.createElement("span");
+  narrowLabel.className = "row-edit-copy-template-label-narrow";
+  narrowLabel.textContent = "Copy template";
+  state.copyTemplateButton.appendChild(narrowLabel);
+}
+
+function setBulkInsertCopyButtonCopied(state) {
+  state.copyTemplateButton.textContent = "Copied";
+  clearTimeout(state.copyTemplateResetTimer);
+  state.copyTemplateResetTimer = setTimeout(function () {
+    setBulkInsertCopyButtonReady(state);
+  }, 1500);
+}
+
+function resetBulkInsertPreview(state) {
+  state.bulkInsertPreviewRows = null;
+  state.bulkInsertPreviewReady = false;
+  state.bulkInsertInserted = false;
+  state.bulkInsertInsertedCount = 0;
+  state.bulkInsertPreview.hidden = true;
+  state.bulkInsertPreview.textContent = "";
+  state.bulkInsertProgress.hidden = true;
+  state.bulkInsertProgressBar.value = 0;
+  state.bulkInsertProgressBar.max = 1;
+  state.bulkInsertProgressStatus.textContent = "";
+  syncRowEditInsertModeUi(state);
+}
+
+function normalizeBulkInsertCell(column, value, isMissing) {
+  if (isMissing || typeof value === "undefined") {
+    return column.notnull ? "" : null;
+  }
+  if (value === null) {
+    return column.notnull ? "" : null;
+  }
+  if (value === "" && column.notnull) {
+    return "";
+  }
+  if (column.value_kind === "number" && typeof value === "string") {
+    return valueFromRowEditText(column.name, value, "number");
+  }
+  return value;
+}
+
+function rowObjectForBulkInsert(valuesByColumn, columns) {
+  var row = {};
+  columns.forEach(function (column) {
+    var hasValue = Object.prototype.hasOwnProperty.call(
+      valuesByColumn,
+      column.name,
+    );
+    row[column.name] = normalizeBulkInsertCell(
+      column,
+      hasValue ? valuesByColumn[column.name] : undefined,
+      !hasValue,
+    );
+  });
+  return row;
+}
+
+function splitDelimitedRows(text, delimiter) {
+  var rows = [];
+  var row = [];
+  var cell = "";
+  var inQuotes = false;
+
+  for (var i = 0; i < text.length; i += 1) {
+    var character = text[i];
+    if (inQuotes) {
+      if (character === '"') {
+        if (text[i + 1] === '"') {
+          cell += '"';
+          i += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cell += character;
+      }
+      continue;
+    }
+
+    if (character === '"') {
+      inQuotes = true;
+    } else if (character === delimiter) {
+      row.push(cell);
+      cell = "";
+    } else if (character === "\n" || character === "\r") {
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+      if (character === "\r" && text[i + 1] === "\n") {
+        i += 1;
+      }
+    } else {
+      cell += character;
+    }
+  }
+
+  if (inQuotes) {
+    throw new Error("Unclosed quoted value.");
+  }
+  row.push(cell);
+  rows.push(row);
+
+  while (rows.length && bulkInsertDelimitedRowIsBlank(rows[rows.length - 1])) {
+    rows.pop();
+  }
+  return rows;
+}
+
+function bulkInsertDelimitedRowIsBlank(row) {
+  return row.every(function (value) {
+    return value.trim() === "";
+  });
+}
+
+function delimiterPreviewRows(text, delimiter) {
+  try {
+    return splitDelimitedRows(text, delimiter);
+  } catch (_error) {
+    return [];
+  }
+}
+
+function splitSingleColumnRows(text) {
+  var rows = text.split(/\r\n|\n|\r/).map(function (line) {
+    return [line];
+  });
+  while (rows.length && bulkInsertDelimitedRowIsBlank(rows[rows.length - 1])) {
+    rows.pop();
+  }
+  return rows;
+}
+
+function detectBulkInsertDelimiter(text, columns) {
+  var firstLine =
+    text.split(/\r\n|\n|\r/).find(function (line) {
+      return line.trim() !== "";
+    }) || "";
+  var csvRows = delimiterPreviewRows(firstLine, ",");
+  var tsvRows = delimiterPreviewRows(firstLine, "\t");
+  var csvColumns = csvRows.length ? csvRows[0].length : 0;
+  var tsvColumns = tsvRows.length ? tsvRows[0].length : 0;
+
+  if (firstLine.indexOf("\t") !== -1 && firstLine.indexOf(",") === -1) {
+    return "\t";
+  }
+  if (tsvColumns > csvColumns) {
+    return "\t";
+  }
+  if (csvColumns > 1) {
+    return ",";
+  }
+  if (tsvColumns > 1) {
+    return "\t";
+  }
+  if (columns.length === 1 || bulkInsertColumnMap(columns)[firstLine.trim()]) {
+    return null;
+  }
+  throw new Error("Could not detect CSV or TSV columns.");
+}
+
+function bulkInsertColumnMap(columns) {
+  var map = {};
+  columns.forEach(function (column) {
+    map[column.name] = column;
+  });
+  return map;
+}
+
+function parseJsonBulkInsertRows(text, columns) {
+  var parsed = parseJsonObjectRows(text);
+
+  var columnMap = bulkInsertColumnMap(columns);
+  return parsed.map(function (item, index) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error("JSON row " + (index + 1) + " must be an object.");
+    }
+    Object.keys(item).forEach(function (key) {
+      if (!columnMap[key]) {
+        throw new Error(
+          "JSON row " + (index + 1) + " has unknown column " + key + ".",
+        );
+      }
+    });
+    return rowObjectForBulkInsert(item, columns);
+  });
+}
+
+function parseDelimitedBulkInsertRows(text, columns) {
+  var delimiter = detectBulkInsertDelimiter(text, columns);
+  var rows = (
+    delimiter === null
+      ? splitSingleColumnRows(text)
+      : splitDelimitedRows(text, delimiter)
+  ).filter(function (row) {
+    return !bulkInsertDelimitedRowIsBlank(row);
+  });
+  if (!rows.length) {
+    throw new Error("No rows found to preview.");
+  }
+
+  var columnMap = bulkInsertColumnMap(columns);
+  var header = rows[0].map(function (value) {
+    return value.trim();
+  });
+  var headerMatches = header.filter(function (name) {
+    return !!columnMap[name];
+  }).length;
+  var hasHeader = headerMatches > 0;
+  var dataRows = hasHeader ? rows.slice(1) : rows;
+  var headers = hasHeader
+    ? header
+    : columns.map(function (column) {
+        return column.name;
+      });
+  var seenHeaders = {};
+
+  if (hasHeader) {
+    headers.forEach(function (name) {
+      if (!name) {
+        return;
+      }
+      if (!columnMap[name]) {
+        throw new Error("Unknown column " + name + " in header row.");
+      }
+      if (seenHeaders[name]) {
+        throw new Error("Duplicate column " + name + " in header row.");
+      }
+      seenHeaders[name] = true;
+    });
+  }
+
+  if (!dataRows.length) {
+    throw new Error("No data rows found to preview.");
+  }
+
+  return dataRows.map(function (row, rowIndex) {
+    if (row.length > headers.length) {
+      throw new Error(
+        "Row " +
+          (rowIndex + 1) +
+          " has " +
+          row.length +
+          " values, but only " +
+          headers.length +
+          " columns were provided.",
+      );
+    }
+    var valuesByColumn = {};
+    row.forEach(function (value, index) {
+      var columnName = headers[index];
+      if (columnMap[columnName]) {
+        valuesByColumn[columnName] = value;
+      }
+    });
+    return rowObjectForBulkInsert(valuesByColumn, columns);
+  });
+}
+
+function parseBulkInsertRows(text, columns) {
+  var trimmed = text.trim();
+  if (!trimmed) {
+    throw new Error("Paste rows before previewing.");
+  }
+  if (trimmed[0] === "[" || trimmed[0] === "{") {
+    return parseJsonBulkInsertRows(trimmed, columns);
+  }
+  return parseDelimitedBulkInsertRows(trimmed, columns);
+}
+
+function bulkInsertPreviewValue(value) {
+  if (value === null) {
+    return "null";
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
+
+function renderBulkInsertPreview(state, rows) {
+  state.bulkInsertPreview.textContent = "";
+  var summary = document.createElement("p");
+  summary.className = "row-edit-bulk-preview-summary";
+  summary.textContent =
+    "Previewing " + rows.length + " row" + (rows.length === 1 ? "." : "s.");
+  state.bulkInsertPreview.appendChild(summary);
+
+  var tableWrap = document.createElement("div");
+  tableWrap.className = "row-edit-bulk-preview-table-wrap";
+  var table = document.createElement("table");
+  table.className = "row-edit-bulk-preview-table";
+  var thead = document.createElement("thead");
+  var headerRow = document.createElement("tr");
+  state.bulkInsertColumnDetails.forEach(function (column) {
+    var th = document.createElement("th");
+    th.scope = "col";
+    th.textContent = column.name;
+    headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  var tbody = document.createElement("tbody");
+  rows.forEach(function (row) {
+    var tr = document.createElement("tr");
+    state.bulkInsertColumnDetails.forEach(function (column) {
+      var td = document.createElement("td");
+      var value = row[column.name];
+      td.textContent = bulkInsertPreviewValue(value);
+      if (value === null) {
+        td.className = "row-edit-bulk-preview-null";
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  tableWrap.appendChild(table);
+  state.bulkInsertPreview.appendChild(tableWrap);
+  state.bulkInsertPreview.hidden = false;
+}
+
+function previewBulkInsertRows(state) {
+  clearRowEditDialogError(state);
+  resetBulkInsertPreview(state);
+  try {
+    var rows = parseBulkInsertRows(
+      state.bulkInsertTextarea.value,
+      state.bulkInsertColumnDetails,
+    );
+    state.bulkInsertPreviewRows = rows;
+    state.bulkInsertPreviewReady = true;
+    renderBulkInsertPreview(state, rows);
+    updateRowEditDialogButtons(state);
+  } catch (error) {
+    showRowEditDialogError(state, error.message || "Could not preview rows.");
+    updateRowEditDialogButtons(state);
+  }
+}
+
+function updateBulkInsertProgress(state, inserted, total) {
+  state.bulkInsertProgress.hidden = false;
+  state.bulkInsertProgressBar.max = total || 1;
+  state.bulkInsertProgressBar.value = inserted;
+  state.bulkInsertProgressStatus.textContent =
+    inserted >= total
+      ? total + " row" + (total === 1 ? " inserted." : "s inserted.")
+      : "Inserting " + inserted + " of " + total + " rows...";
+}
+
+function bulkInsertBatches(rows, batchSize) {
+  var batches = [];
+  var size = Math.max(1, batchSize || 1);
+  for (var index = 0; index < rows.length; index += size) {
+    batches.push(rows.slice(index, index + size));
+  }
+  return batches;
+}
+
+function animateBulkInsertProgress(state, from, to, total, duration) {
+  state.bulkInsertProgress.hidden = false;
+  state.bulkInsertProgressBar.max = total || 1;
+  if (duration <= 0 || !window.requestAnimationFrame) {
+    updateBulkInsertProgress(state, to, total);
+    return Promise.resolve();
+  }
+
+  return new Promise(function (resolve) {
+    var startTime = null;
+    var step = function (timestamp) {
+      if (startTime === null) {
+        startTime = timestamp;
+      }
+      var progress = Math.min((timestamp - startTime) / duration, 1);
+      var easedProgress = 1 - Math.pow(1 - progress, 3);
+      var value = from + (to - from) * easedProgress;
+      var displayValue = progress === 1 ? to : Math.floor(value);
+      state.bulkInsertProgressBar.value = value;
+      state.bulkInsertProgressStatus.textContent =
+        displayValue >= total
+          ? total + " row" + (total === 1 ? " inserted." : "s inserted.")
+          : "Inserting " + displayValue + " of " + total + " rows...";
+      if (progress < 1) {
+        window.requestAnimationFrame(step);
+      } else {
+        updateBulkInsertProgress(state, to, total);
+        resolve();
+      }
+    };
+    window.requestAnimationFrame(step);
+  });
+}
+
+async function insertBulkPreviewRows(state) {
+  if (!state.bulkInsertPreviewRows || state.bulkInsertInserted) {
+    return;
+  }
+  if (!state.currentInsertUrl) {
+    showRowEditDialogError(state, "Could not find the row insert URL.");
+    return;
+  }
+
+  var rows = state.bulkInsertPreviewRows;
+  var total = rows.length;
+  var inserted = state.bulkInsertInsertedCount || 0;
+  var batches = bulkInsertBatches(
+    rows.slice(inserted),
+    state.bulkInsertMaxRows,
+  );
+  var progressAnimationDuration = 500 / Math.max(batches.length, 1);
+
+  clearRowEditDialogError(state);
+  updateBulkInsertProgress(state, inserted, total);
+  setRowEditDialogSaving(state, true);
+  try {
+    for (var batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+      var batch = batches[batchIndex];
+      var response = await fetch(state.currentInsertUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ rows: batch }),
+      });
+      var data = null;
+      try {
+        data = await response.json();
+      } catch (_error) {
+        data = null;
+      }
+      if (!response.ok || (data && data.ok === false)) {
+        throw rowMutationRequestError(response, data);
+      }
+      var previousInserted = inserted;
+      inserted += batch.length;
+      state.bulkInsertInsertedCount = inserted;
+      await animateBulkInsertProgress(
+        state,
+        previousInserted,
+        inserted,
+        total,
+        progressAnimationDuration,
+      );
+    }
+    state.bulkInsertInserted = true;
+    state.shouldReloadOnClose = true;
+    state.redirectOnCloseUrl = tableBaseUrl().toString();
+    updateBulkInsertProgress(state, inserted, total);
+  } catch (error) {
+    showRowEditDialogError(state, error.message || "Could not insert rows.");
+  } finally {
+    setRowEditDialogSaving(state, false);
+  }
 }
 
 function scheduleCloseRowEditDialogIfConfirmed(state) {
@@ -4760,6 +6114,14 @@ function addInsertedRowToPage(rowElement) {
 
 async function saveRowEditDialog(state) {
   if (state.isLoading || state.isSaving || !state.hasLoaded) {
+    return;
+  }
+  if (rowEditIsMultipleInsert(state)) {
+    if (!state.bulkInsertPreviewReady) {
+      previewBulkInsertRows(state);
+    } else if (!state.bulkInsertInserted) {
+      await insertBulkPreviewRows(state);
+    }
     return;
   }
   clearRowEditDialogError(state);
@@ -4920,6 +6282,7 @@ function renderRowEditFields(state, data) {
   var primaryKeys = data.primary_keys || [];
   var columnTypes = data.column_types || {};
 
+  state.insertMode = "single";
   destroyRowEditFields(state);
   columns.forEach(function (column, index) {
     state.fields.appendChild(
@@ -4951,6 +6314,17 @@ function renderRowEditFields(state, data) {
 function renderRowInsertFields(state, data) {
   var columns = data.columns || [];
 
+  state.insertMode = "single";
+  state.bulkInsertColumnDetails = columns.slice();
+  state.bulkInsertMaxRows = data.maxInsertRows || 100;
+  state.bulkInsertColumns = columns.map(function (column) {
+    return column.name;
+  });
+  state.copyTemplateButton.disabled = !state.bulkInsertColumns.length;
+  setBulkInsertCopyButtonReady(state);
+  clearTimeout(state.copyTemplateResetTimer);
+  state.copyTemplateResetTimer = null;
+  resetBulkInsertPreview(state);
   destroyRowEditFields(state);
   columns.forEach(function (column, index) {
     state.fields.appendChild(
@@ -5040,7 +6414,25 @@ function ensureRowEditDialog(manager) {
       <p class="row-edit-loading" role="status" aria-live="polite">Loading row...</p>
       <p class="row-edit-error" role="alert" tabindex="-1" hidden></p>
       <div class="row-edit-fields"></div>
+      <div class="row-edit-bulk" hidden>
+        <div class="row-edit-bulk-editor">
+          <p class="row-edit-bulk-note"><label for="row-edit-bulk-textarea">Paste TSV, CSV, or JSON</label>. You can also <button type="button" class="button-as-link row-edit-bulk-open-file">open a file</button> or drop it onto this textarea</p>
+          <input class="row-edit-bulk-file-input" type="file" accept=".csv,.tsv,.json,.txt,text/csv,text/tab-separated-values,application/json,text/plain" hidden>
+          <textarea class="row-edit-input row-edit-bulk-textarea" id="row-edit-bulk-textarea" name="_bulk_rows" rows="12" spellcheck="false"></textarea>
+          <div class="row-edit-bulk-actions">
+            <button type="button" class="btn btn-ghost row-edit-copy-template"><span class="row-edit-copy-template-label-wide">Copy spreadsheet template</span><span class="row-edit-copy-template-label-narrow">Copy template</span></button>
+            <span class="row-edit-bulk-template-note"><span class="row-edit-bulk-template-note-wide">You can paste the template into Google Sheets or Excel.</span><span class="row-edit-bulk-template-note-narrow">Paste into Google Sheets or Excel</span></span>
+          </div>
+        </div>
+        <div class="row-edit-bulk-preview" hidden></div>
+        <div class="row-edit-bulk-progress" hidden>
+          <progress class="row-edit-bulk-progress-bar" value="0" max="1"></progress>
+          <p class="row-edit-bulk-progress-status" role="status" aria-live="polite"></p>
+        </div>
+      </div>
       <div class="modal-footer">
+        <a href="#" class="row-edit-mode-link row-edit-bulk-insert" hidden>Insert multiple rows</a>
+        <a href="#" class="row-edit-mode-link row-edit-single-insert" hidden>Insert single row</a>
         <button type="button" class="btn btn-ghost row-edit-cancel">Cancel</button>
         <button type="submit" class="btn btn-primary row-edit-save" disabled>Save</button>
       </div>
@@ -5056,6 +6448,20 @@ function ensureRowEditDialog(manager) {
     loading: dialog.querySelector(".row-edit-loading"),
     error: dialog.querySelector(".row-edit-error"),
     fields: dialog.querySelector(".row-edit-fields"),
+    bulkInsertPanel: dialog.querySelector(".row-edit-bulk"),
+    bulkInsertEditor: dialog.querySelector(".row-edit-bulk-editor"),
+    bulkInsertTextarea: dialog.querySelector(".row-edit-bulk-textarea"),
+    bulkInsertPreview: dialog.querySelector(".row-edit-bulk-preview"),
+    bulkInsertProgress: dialog.querySelector(".row-edit-bulk-progress"),
+    bulkInsertProgressBar: dialog.querySelector(".row-edit-bulk-progress-bar"),
+    bulkInsertProgressStatus: dialog.querySelector(
+      ".row-edit-bulk-progress-status",
+    ),
+    copyTemplateButton: dialog.querySelector(".row-edit-copy-template"),
+    bulkInsertOpenFileButton: dialog.querySelector(".row-edit-bulk-open-file"),
+    bulkInsertFileInput: dialog.querySelector(".row-edit-bulk-file-input"),
+    bulkInsertLink: dialog.querySelector(".row-edit-bulk-insert"),
+    singleInsertLink: dialog.querySelector(".row-edit-single-insert"),
     cancelButton: dialog.querySelector(".row-edit-cancel"),
     saveButton: dialog.querySelector(".row-edit-save"),
     currentButton: null,
@@ -5066,6 +6472,17 @@ function ensureRowEditDialog(manager) {
     currentUpdateUrl: null,
     currentFragmentUrl: null,
     mode: "edit",
+    insertMode: "single",
+    bulkInsertColumns: [],
+    bulkInsertColumnDetails: [],
+    bulkInsertPreviewRows: null,
+    bulkInsertPreviewReady: false,
+    bulkInsertInserted: false,
+    bulkInsertInsertedCount: 0,
+    bulkInsertMaxRows: 100,
+    shouldReloadOnClose: false,
+    redirectOnCloseUrl: null,
+    copyTemplateResetTimer: null,
     loadId: 0,
     manager: manager,
     isLoading: false,
@@ -5081,10 +6498,125 @@ function ensureRowEditDialog(manager) {
   });
 
   rowEditDialogState.cancelButton.addEventListener("click", function () {
+    if (
+      rowEditIsMultipleInsert(rowEditDialogState) &&
+      rowEditDialogState.bulkInsertPreviewReady &&
+      !rowEditDialogState.bulkInsertInserted &&
+      !rowEditDialogState.isSaving
+    ) {
+      resetBulkInsertPreview(rowEditDialogState);
+      updateRowEditDialogButtons(rowEditDialogState);
+      rowEditDialogState.bulkInsertTextarea.focus();
+      return;
+    }
     if (!rowEditDialogState.isSaving) {
       rowEditDialogState.shouldRestoreFocus = true;
       dialog.close();
     }
+  });
+
+  rowEditDialogState.bulkInsertLink.addEventListener("click", function (ev) {
+    ev.preventDefault();
+    showMultipleRowInsert(rowEditDialogState);
+  });
+
+  rowEditDialogState.singleInsertLink.addEventListener("click", function (ev) {
+    ev.preventDefault();
+    showSingleRowInsert(rowEditDialogState);
+  });
+
+  rowEditDialogState.copyTemplateButton.addEventListener(
+    "click",
+    async function () {
+      try {
+        await copyTextToClipboard(bulkInsertTemplateText(rowEditDialogState));
+        clearRowEditDialogError(rowEditDialogState);
+        setBulkInsertCopyButtonCopied(rowEditDialogState);
+      } catch (_error) {
+        showRowEditDialogError(
+          rowEditDialogState,
+          "Could not copy the spreadsheet template.",
+        );
+      }
+    },
+  );
+
+  rowEditDialogState.bulkInsertOpenFileButton.addEventListener(
+    "click",
+    function () {
+      rowEditDialogState.bulkInsertFileInput.click();
+    },
+  );
+
+  rowEditDialogState.bulkInsertFileInput.addEventListener(
+    "change",
+    async function (ev) {
+      var files = ev.target.files;
+      await loadBulkInsertTextFile(
+        rowEditDialogState,
+        files && files.length ? files[0] : null,
+      );
+      ev.target.value = "";
+    },
+  );
+
+  rowEditDialogState.bulkInsertTextarea.addEventListener(
+    "dragenter",
+    function (ev) {
+      ev.preventDefault();
+      rowEditDialogState.bulkInsertTextarea.classList.add(
+        "row-edit-bulk-drop-target",
+      );
+    },
+  );
+
+  rowEditDialogState.bulkInsertTextarea.addEventListener(
+    "dragover",
+    function (ev) {
+      ev.preventDefault();
+      rowEditDialogState.bulkInsertTextarea.classList.add(
+        "row-edit-bulk-drop-target",
+      );
+    },
+  );
+
+  rowEditDialogState.bulkInsertTextarea.addEventListener(
+    "dragleave",
+    function () {
+      rowEditDialogState.bulkInsertTextarea.classList.remove(
+        "row-edit-bulk-drop-target",
+      );
+    },
+  );
+
+  rowEditDialogState.bulkInsertTextarea.addEventListener(
+    "drop",
+    async function (ev) {
+      ev.preventDefault();
+      rowEditDialogState.bulkInsertTextarea.classList.remove(
+        "row-edit-bulk-drop-target",
+      );
+      var files = ev.dataTransfer && ev.dataTransfer.files;
+      if (!files || !files.length) {
+        return;
+      }
+      await loadBulkInsertTextFile(rowEditDialogState, files[0]);
+    },
+  );
+
+  rowEditDialogState.bulkInsertTextarea.addEventListener(
+    "dragend",
+    function () {
+      rowEditDialogState.bulkInsertTextarea.classList.remove(
+        "row-edit-bulk-drop-target",
+      );
+    },
+  );
+
+  rowEditDialogState.bulkInsertTextarea.addEventListener("input", function () {
+    resetBulkInsertPreview(rowEditDialogState);
+    clearRowEditDialogError(rowEditDialogState);
+    updateRowEditDialogButtons(rowEditDialogState);
   });
 
   dialog.addEventListener("click", function (ev) {
@@ -5108,8 +6640,16 @@ function ensureRowEditDialog(manager) {
 
   dialog.addEventListener("close", function () {
     var state = rowEditDialogState;
+    var shouldReloadOnClose = state.shouldReloadOnClose;
+    var redirectOnCloseUrl = state.redirectOnCloseUrl;
     state.loadId += 1;
     state.isClosePending = false;
+    state.shouldReloadOnClose = false;
+    state.redirectOnCloseUrl = null;
+    clearTimeout(state.copyTemplateResetTimer);
+    state.copyTemplateResetTimer = null;
+    setBulkInsertCopyButtonReady(state);
+    resetBulkInsertPreview(state);
     clearRowEditDialogError(state);
     state.hasLoaded = false;
     destroyRowEditFields(state);
@@ -5121,6 +6661,13 @@ function ensureRowEditDialog(manager) {
       document.contains(state.currentButton)
     ) {
       state.currentButton.focus();
+    }
+    if (shouldReloadOnClose) {
+      if (redirectOnCloseUrl) {
+        location.href = redirectOnCloseUrl;
+      } else {
+        location.reload();
+      }
     }
   });
 
@@ -5146,6 +6693,7 @@ async function openRowEditDialog(button, manager) {
   state.currentInsertUrl = null;
   state.currentUpdateUrl = rowUpdateUrl(row);
   state.currentFragmentUrl = rowFragmentUrl(row);
+  state.insertMode = "single";
   if (state.currentUpdateUrl) {
     state.form.action = new URL(
       state.currentUpdateUrl,
@@ -5171,6 +6719,7 @@ async function openRowEditDialog(button, manager) {
   );
   state.summary.hidden = true;
   state.summary.textContent = "";
+  syncRowEditInsertModeUi(state);
 
   if (!state.dialog.open) {
     state.dialog.showModal();
@@ -5221,6 +6770,11 @@ function openRowInsertDialog(button, manager) {
   state.currentInsertUrl = tableInsertUrl();
   state.currentUpdateUrl = null;
   state.currentFragmentUrl = null;
+  state.insertMode = "single";
+  state.bulkInsertTextarea.value = "";
+  state.shouldReloadOnClose = false;
+  state.redirectOnCloseUrl = null;
+  resetBulkInsertPreview(state);
   state.shouldRestoreFocus = true;
   state.hasLoaded = false;
   state.loadId += 1;
@@ -5238,14 +6792,10 @@ function openRowInsertDialog(button, manager) {
   setRowEditDialogLoading(state, false);
   destroyRowEditFields(state);
   state.dialog.removeAttribute("aria-describedby");
-  setRowDialogTitle(
-    state.title,
-    insertData.tableName
-      ? "Insert row into " + insertData.tableName
-      : "Insert row",
-  );
+  setRowInsertDialogTitle(state);
   state.summary.hidden = true;
   state.summary.textContent = "";
+  syncRowEditInsertModeUi(state);
 
   if (!state.dialog.open) {
     state.dialog.showModal();

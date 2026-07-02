@@ -123,6 +123,7 @@ def write_playwright_config(config_path):
                     "data": {
                         "permissions": {
                             "create-table": True,
+                            "insert-row": True,
                             "set-column-type": True,
                         },
                         "tables": {
@@ -379,6 +380,118 @@ def test_create_table_flow(page, datasette_server):
     schema = schema_response.json()["rows"][0]["sql"]
     assert "title" in schema
     assert "NOT NULL DEFAULT 'Untitled'" in schema
+
+
+@pytest.mark.playwright
+def test_create_table_from_data_flow(page, datasette_server):
+    page.goto(f"{datasette_server}data")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-database-action="create-table"]').click()
+
+    dialog = page.locator("#table-create-dialog")
+    dialog.wait_for()
+    from_data = dialog.locator(".table-create-from-data")
+    assert from_data.inner_text() == "Create table from data"
+    from_data.click()
+
+    assert dialog.locator(".table-create-columns").is_hidden()
+    assert dialog.locator(".table-create-data").is_visible()
+    assert dialog.locator(".table-create-save").inner_text() == "Preview rows"
+    assert (
+        dialog.locator(".table-create-data-note").inner_text()
+        == "Paste TSV, CSV, or JSON. You can also open a file or drop it onto this textarea"
+    )
+    assert dialog.locator(".table-create-data-open-file").inner_text() == "open a file"
+    assert (
+        dialog.locator(".table-create-data-editor").evaluate(
+            """node => Array.from(node.children)
+            .filter((child) => !child.hidden)
+            .map((child) => child.className)
+            .join(" ")"""
+        )
+        == ("table-create-data-note table-create-input table-create-data-textarea")
+    )
+    assert dialog.locator(".table-create-manual").inner_text() == (
+        "Create table manually"
+    )
+    assert (
+        dialog.get_by_label("Paste TSV, CSV, or JSON").get_attribute("id")
+        == "table-create-data-textarea"
+    )
+
+    textarea = dialog.locator(".table-create-data-textarea")
+    dropped_value = textarea.evaluate("""node => new Promise((resolve) => {
+            node.addEventListener("input", () => resolve(node.value), { once: true });
+            const file = new File(["short_id,name\\nx,Ada"], "Repo Export 2026!!.CSV", { type: "text/csv" });
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(file);
+            node.dispatchEvent(new DragEvent("dragenter", { bubbles: true, cancelable: true, dataTransfer }));
+            node.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer }));
+            node.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
+        })""")
+    assert dropped_value == "short_id,name\nx,Ada"
+    assert dialog.locator(".table-create-table-name").input_value() == (
+        "repo_export_2026"
+    )
+
+    dialog.locator(".table-create-table-name").fill("playwright_from_data")
+    textarea.fill(
+        json.dumps(
+            {
+                "metadata": [{"short_id": "a", "name": "Ignored", "score": 9}],
+                "people": [
+                    {"short_id": "b", "name": "Ada", "score": 1},
+                    {"short_id": "c", "name": "Bob", "score": 2.5},
+                ],
+            }
+        )
+    )
+    dialog.locator(".table-create-save").click()
+
+    assert dialog.locator(".table-create-data-textarea").is_hidden()
+    assert dialog.locator(".table-create-save").inner_text() == "Create table"
+    assert dialog.locator(".table-create-cancel").inner_text() == "Back"
+    assert dialog.locator(".table-create-data-preview-summary").inner_text() == (
+        "Previewing 2 rows."
+    )
+    assert dialog.locator(".table-create-data-primary-key").input_value() == "short_id"
+    preview_text = dialog.locator(".table-create-data-preview-table").inner_text()
+    assert "short_id" in preview_text
+    assert "Ada" in preview_text
+    assert "2.5" in preview_text
+    preview_cell_style = dialog.locator(
+        ".table-create-data-preview-table td"
+    ).first.evaluate(
+        """node => ({
+            overflowWrap: getComputedStyle(node).overflowWrap,
+            whiteSpace: getComputedStyle(node).whiteSpace
+        })"""
+    )
+    assert preview_cell_style == {
+        "overflowWrap": "anywhere",
+        "whiteSpace": "normal",
+    }
+
+    dialog.locator(".table-create-cancel").click()
+    assert dialog.evaluate("node => node.open")
+    assert dialog.locator(".table-create-data-textarea").is_visible()
+    assert '"people"' in dialog.locator(".table-create-data-textarea").input_value()
+    assert dialog.locator(".table-create-save").inner_text() == "Preview rows"
+
+    dialog.locator(".table-create-save").click()
+    assert dialog.locator(".table-create-save").inner_text() == "Create table"
+    dialog.locator(".table-create-save").click()
+    page.wait_for_url("**/data/playwright_from_data")
+
+    response = httpx.get(
+        f"{datasette_server}data/playwright_from_data.json?_shape=objects"
+    )
+    response.raise_for_status()
+    data = response.json()
+    assert data["rows"] == [
+        {"short_id": "b", "name": "Ada", "score": 1},
+        {"short_id": "c", "name": "Bob", "score": 2.5},
+    ]
 
 
 @pytest.mark.playwright
@@ -801,11 +914,126 @@ def test_navigation_search_renders_jump_sections_from_javascript_plugins(
 
 @pytest.mark.playwright
 def test_insert_row_flow_uses_custom_column_field(page, datasette_server):
+    page.add_init_script("""
+        (() => {
+            let clipboardText = "";
+            Object.defineProperty(navigator, "clipboard", {
+                configurable: true,
+                get: () => ({
+                    writeText: async (text) => {
+                        clipboardText = String(text);
+                    },
+                    readText: async () => clipboardText,
+                }),
+            });
+        })();
+        """)
     page.goto(f"{datasette_server}data/projects")
     page.locator('button[data-table-action="insert-row"]').click()
 
     dialog = page.locator("#row-edit-dialog")
     dialog.wait_for()
+    bulk_insert = dialog.locator(".row-edit-bulk-insert")
+    bulk_insert.wait_for()
+    assert bulk_insert.inner_text() == "Insert multiple rows"
+    current_url = page.url
+    bulk_insert.click()
+    assert page.url == current_url
+    assert dialog.evaluate("node => node.open")
+    assert dialog.locator(".row-edit-fields").is_hidden()
+    assert dialog.locator(".row-edit-bulk").is_visible()
+    assert dialog.locator(".row-edit-save").inner_text() == "Preview rows"
+    assert (
+        dialog.locator(".row-edit-bulk-note").inner_text()
+        == "Paste TSV, CSV, or JSON. You can also open a file or drop it onto this textarea"
+    )
+    assert dialog.locator(".row-edit-bulk-open-file").inner_text() == "open a file"
+    assert (
+        dialog.locator(".row-edit-bulk-editor").evaluate(
+            """node => Array.from(node.children)
+            .filter((child) => !child.hidden)
+            .map((child) => child.className)
+            .join(" ")"""
+        )
+        == (
+            "row-edit-bulk-note row-edit-input row-edit-bulk-textarea "
+            "row-edit-bulk-actions"
+        )
+    )
+    copy_template = dialog.locator(".row-edit-copy-template")
+    assert copy_template.inner_text() == "Copy spreadsheet template"
+    assert (
+        dialog.get_by_label("Paste TSV, CSV, or JSON").get_attribute("id")
+        == "row-edit-bulk-textarea"
+    )
+    assert dialog.locator(".row-edit-copy-template-label-narrow").text_content() == (
+        "Copy template"
+    )
+    assert dialog.locator(".row-edit-bulk-template-note").inner_text() == (
+        "You can paste the template into Google Sheets or Excel."
+    )
+    assert dialog.locator(".row-edit-bulk-template-note-narrow").text_content() == (
+        "Paste into Google Sheets or Excel"
+    )
+    copy_template.click()
+    page.wait_for_function(
+        """() => document.querySelector(".row-edit-copy-template").textContent === "Copied" """
+    )
+    assert page.evaluate("navigator.clipboard.readText()") == (
+        "title\tmetadata\tlogo\tnotes\tscore"
+    )
+    textarea = dialog.locator(".row-edit-bulk-textarea")
+    textarea.fill("title\tmetadata\nFrom TSV\t{}")
+    assert textarea.input_value() == "title\tmetadata\nFrom TSV\t{}"
+    dropped_value = textarea.evaluate("""node => new Promise((resolve) => {
+            node.addEventListener("input", () => resolve(node.value), { once: true });
+            const file = new File(["\\n\\ntitle,metadata\\nFrom CSV,{}\\n,\\n  ,  \\n"], "rows.csv", { type: "text/csv" });
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(file);
+            node.dispatchEvent(new DragEvent("dragenter", { bubbles: true, cancelable: true, dataTransfer }));
+            node.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer }));
+            node.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
+        })""")
+    assert dropped_value == "\n\ntitle,metadata\nFrom CSV,{}\n,\n  ,  \n"
+    dialog.locator(".row-edit-save").click()
+    assert dialog.evaluate("node => node.open")
+    assert dialog.locator(".row-edit-bulk-textarea").is_hidden()
+    assert dialog.locator(".row-edit-save").inner_text() == "Insert these rows"
+    assert dialog.locator(".row-edit-bulk-preview-summary").inner_text() == (
+        "Previewing 1 row."
+    )
+    preview_text = dialog.locator(".row-edit-bulk-preview-table").inner_text()
+    assert "title" in preview_text
+    assert "metadata" in preview_text
+    assert "id" not in preview_text
+    assert "From CSV" in preview_text
+    assert "null" in preview_text
+    preview_cell_style = dialog.locator(
+        ".row-edit-bulk-preview-table td"
+    ).first.evaluate(
+        """node => ({
+            overflowWrap: getComputedStyle(node).overflowWrap,
+            whiteSpace: getComputedStyle(node).whiteSpace
+        })"""
+    )
+    assert preview_cell_style == {
+        "overflowWrap": "anywhere",
+        "whiteSpace": "normal",
+    }
+    assert dialog.locator(".row-edit-cancel").inner_text() == "Back"
+    dialog.locator(".row-edit-cancel").click()
+    assert dialog.evaluate("node => node.open")
+    assert dialog.locator(".row-edit-bulk-textarea").is_visible()
+    assert dialog.locator(".row-edit-bulk-textarea").input_value() == (
+        "\n\ntitle,metadata\nFrom CSV,{}\n,\n  ,  \n"
+    )
+    assert dialog.locator(".row-edit-save").inner_text() == "Preview rows"
+    single_insert = dialog.locator(".row-edit-single-insert")
+    assert single_insert.inner_text() == "Insert single row"
+    single_insert.click()
+    assert dialog.locator(".row-edit-bulk").is_hidden()
+    assert dialog.locator(".row-edit-fields").is_visible()
+    assert dialog.locator(".row-edit-save").inner_text() == "Insert row"
     dialog.locator('input[name="title"]').fill("Launch Datasette Cloud")
     dialog.locator('textarea[name="metadata"]').fill(
         '{"ok": false, "source": "playwright"}'
@@ -836,12 +1064,71 @@ def test_insert_row_flow_uses_custom_column_field(page, datasette_server):
 
 
 @pytest.mark.playwright
+def test_bulk_insert_preview_inserts_rows(page, datasette_server):
+    page.goto(f"{datasette_server}data/projects")
+    page.locator('button[data-table-action="insert-row"]').click()
+
+    dialog = page.locator("#row-edit-dialog")
+    dialog.wait_for()
+    dialog.locator(".row-edit-bulk-insert").click()
+    dialog.locator(".row-edit-bulk-textarea").fill(
+        json.dumps(
+            {
+                "metadata": [{"title": "Ignored", "metadata": "{}"}],
+                "projects": [
+                    {"title": "Bulk one", "metadata": "{}"},
+                    {"title": "Bulk two", "metadata": "{}"},
+                ],
+            }
+        )
+    )
+    dialog.locator(".row-edit-save").click()
+    assert dialog.locator(".row-edit-save").inner_text() == "Insert these rows"
+    dialog.locator(".row-edit-save").click()
+    dialog.locator(
+        ".row-edit-bulk-progress-status", has_text="2 rows inserted."
+    ).wait_for()
+    assert dialog.locator(".row-edit-cancel").inner_text() == "Close and view table"
+    dialog.locator(".row-edit-cancel").click()
+    page.wait_for_load_state("domcontentloaded")
+    assert page.url == f"{datasette_server}data/projects"
+
+    assert project_rows(datasette_server, title="Bulk one")
+    assert project_rows(datasette_server, title="Bulk two")
+
+
+@pytest.mark.playwright
+def test_bulk_insert_preview_accepts_single_column_input(page, datasette_server):
+    page.goto(f"{datasette_server}data/projects")
+    page.locator('button[data-table-action="insert-row"]').click()
+
+    dialog = page.locator("#row-edit-dialog")
+    dialog.wait_for()
+    dialog.locator(".row-edit-bulk-insert").click()
+    dialog.locator(".row-edit-bulk-textarea").fill("title\none\ntwo\nthree")
+    dialog.locator(".row-edit-save").click()
+
+    assert dialog.locator(".row-edit-save").inner_text() == "Insert these rows"
+    assert dialog.locator(".row-edit-bulk-preview-summary").inner_text() == (
+        "Previewing 3 rows."
+    )
+    preview_text = dialog.locator(".row-edit-bulk-preview-table").inner_text()
+    assert "one" in preview_text
+    assert "two" in preview_text
+    assert "three" in preview_text
+    assert "null" in preview_text
+
+
+@pytest.mark.playwright
 def test_edit_row_flow_validates_json_and_saves_changes(page, datasette_server):
     page.goto(f"{datasette_server}data/projects")
     page.locator('tr[data-row="1"] button[data-row-action="edit"]').click()
 
     dialog = page.locator("#row-edit-dialog")
     dialog.wait_for()
+    assert dialog.locator(".row-edit-bulk-insert").is_hidden()
+    assert dialog.locator(".row-edit-single-insert").is_hidden()
+    assert dialog.locator(".row-edit-bulk").is_hidden()
     title = dialog.locator('input[name="title"]')
     title.wait_for()
     title.fill("Build Datasette, edited")

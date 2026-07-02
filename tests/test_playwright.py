@@ -937,6 +937,9 @@ def test_column_chooser_dialog_escape_discards_changes(page, datasette_server):
 
 @pytest.mark.playwright
 def test_mobile_column_actions_dialog(page, datasette_server):
+    # Deferred import so collecting this module works without playwright
+    from playwright.sync_api import expect
+
     page.set_viewport_size({"width": 400, "height": 800})
     page.goto(f"{datasette_server}data/projects")
     trigger = page.locator("button.column-actions-mobile")
@@ -956,7 +959,9 @@ def test_mobile_column_actions_dialog(page, datasette_server):
 
     dialog.locator(".mobile-column-actions-done").click()
     dialog.wait_for(state="hidden")
-    assert trigger.get_attribute("aria-expanded") == "false"
+    # aria-expanded resets from the dialog close event, which fires in a
+    # queued task after the dialog is already hidden - so poll for it
+    expect(trigger).to_have_attribute("aria-expanded", "false")
 
 
 @pytest.mark.playwright

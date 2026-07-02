@@ -938,78 +938,16 @@ p.zero-results {
     display: none;
 }
 
-@keyframes datasette-modal-slide-in {
-    from {
-        opacity: 0;
-        transform: translateY(-20px) scale(0.95);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
-
-@keyframes datasette-modal-fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
+/*
+ * Modal dialogs are rendered by the <datasette-modal> web component
+ * (datasette-modal.js), which provides the shared frame, header, footer
+ * and button styles. The per-dialog rules below only override sizing
+ * (via --datasette-modal-* custom properties) and style the content
+ * that is specific to each dialog.
+ */
 dialog.mobile-column-actions-dialog {
-    --ink: #0f0f0f;
-    --paper: #eef6ff;
-    --muted: #6b6b6b;
-    --rule: #d8e6f5;
-    --accent: #1a56db;
-    --card: #ffffff;
-    border: none;
-    border-radius: var(--modal-border-radius, 0.75rem);
-    padding: 0;
-    margin: auto;
-    width: min(420px, calc(100vw - 32px));
-    max-width: 95vw;
-    max-height: min(640px, calc(100vh - 32px));
-    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
-    animation: datasette-modal-slide-in var(--modal-animation-duration, 0.2s) ease-out;
-    overflow: hidden;
-    font-family: system-ui, -apple-system, sans-serif;
-    background: var(--card);
-}
-
-dialog.mobile-column-actions-dialog[open] {
-    display: flex;
-    flex-direction: column;
-}
-
-dialog.mobile-column-actions-dialog::backdrop {
-    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
-    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    animation: datasette-modal-fade-in var(--modal-animation-duration, 0.2s) ease-out;
-}
-
-.mobile-column-actions-dialog .modal-header {
-    padding: 20px 24px 16px;
-    border-bottom: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    flex-shrink: 0;
-}
-
-.mobile-column-actions-dialog .modal-title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--ink);
-}
-
-.mobile-column-actions-dialog .modal-meta {
-    font-family: ui-monospace, monospace;
-    font-size: 0.7rem;
-    color: var(--muted);
-    background: var(--paper);
-    padding: 3px 9px;
-    border-radius: 20px;
+    --datasette-modal-width: min(420px, calc(100vw - 32px));
+    --datasette-modal-max-height: min(640px, calc(100vh - 32px));
 }
 
 .mobile-column-actions-dialog .list-wrap {
@@ -1142,102 +1080,9 @@ dialog.mobile-column-actions-dialog::backdrop {
     font-size: 0.85em;
 }
 
-.mobile-column-actions-dialog .modal-footer {
-    padding: 14px 20px;
-    border-top: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-shrink: 0;
-    background: var(--paper);
-}
-
-.mobile-column-actions-dialog .footer-info {
-    flex: 1;
-    font-family: ui-monospace, monospace;
-    font-size: 0.68rem;
-    color: var(--muted);
-}
-
-.mobile-column-actions-dialog .btn {
-    border: none;
-    border-radius: 5px;
-    padding: 9px 20px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    touch-action: manipulation;
-    font-family: inherit;
-    transition: background 0.12s;
-}
-
-.mobile-column-actions-dialog .btn-ghost {
-    background: transparent;
-    color: var(--muted);
-    border: 1px solid var(--rule);
-}
-
-.mobile-column-actions-dialog .btn-ghost:hover {
-    background: var(--rule);
-    color: var(--ink);
-}
-
 dialog.set-column-type-dialog {
-    --ink: #0f0f0f;
-    --paper: #eef6ff;
-    --muted: #6b6b6b;
-    --rule: #d8e6f5;
-    --accent: #1a56db;
-    --card: #ffffff;
-    border: none;
-    border-radius: var(--modal-border-radius, 0.75rem);
-    padding: 0;
-    margin: auto;
-    width: min(520px, calc(100vw - 32px));
-    max-width: 95vw;
-    max-height: min(720px, calc(100vh - 32px));
-    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
-    animation: datasette-modal-slide-in var(--modal-animation-duration, 0.2s) ease-out;
-    overflow: hidden;
-    font-family: system-ui, -apple-system, sans-serif;
-    background: var(--card);
-}
-
-dialog.set-column-type-dialog[open] {
-    display: flex;
-    flex-direction: column;
-}
-
-dialog.set-column-type-dialog::backdrop {
-    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
-    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    animation: datasette-modal-fade-in var(--modal-animation-duration, 0.2s) ease-out;
-}
-
-.set-column-type-dialog .modal-header {
-    padding: 20px 24px 12px;
-    border-bottom: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    flex-shrink: 0;
-}
-
-.set-column-type-dialog .modal-title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--ink);
-}
-
-.set-column-type-dialog .modal-meta {
-    font-family: ui-monospace, monospace;
-    font-size: 0.7rem;
-    color: var(--muted);
-    background: var(--paper);
-    padding: 3px 9px;
-    border-radius: 20px;
+    --datasette-modal-width: min(520px, calc(100vw - 32px));
+    --datasette-modal-max-height: min(720px, calc(100vh - 32px));
 }
 
 .set-column-type-status,
@@ -1302,60 +1147,6 @@ dialog.set-column-type-dialog::backdrop {
     font-size: 0.9rem;
 }
 
-.set-column-type-dialog .modal-footer {
-    padding: 14px 20px;
-    border-top: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-shrink: 0;
-    background: var(--paper);
-}
-
-.set-column-type-dialog .footer-info {
-    flex: 1;
-    font-family: ui-monospace, monospace;
-    font-size: 0.68rem;
-    color: var(--muted);
-}
-
-.set-column-type-dialog .btn {
-    border: none;
-    border-radius: 5px;
-    padding: 9px 20px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    touch-action: manipulation;
-    font-family: inherit;
-    transition: background 0.12s;
-}
-
-.set-column-type-dialog .btn-ghost {
-    background: transparent;
-    color: var(--muted);
-    border: 1px solid var(--rule);
-}
-
-.set-column-type-dialog .btn-ghost:hover {
-    background: var(--rule);
-    color: var(--ink);
-}
-
-.set-column-type-dialog .btn-primary {
-    background: var(--accent);
-    color: #fff;
-}
-
-.set-column-type-dialog .btn-primary:hover {
-    background: #1949b8;
-}
-
-.set-column-type-dialog .btn:disabled {
-    opacity: 0.65;
-    cursor: wait;
-}
-
 .row-mutation-status {
     margin: 0 0 0.75rem;
     padding: 8px 10px;
@@ -1389,57 +1180,7 @@ button.table-insert-row svg {
 }
 
 dialog.row-delete-dialog {
-    --ink: #0f0f0f;
-    --paper: #eef6ff;
-    --muted: #6b6b6b;
-    --rule: #d8e6f5;
-    --accent: #1a56db;
-    --card: #ffffff;
-    border: none;
-    border-radius: var(--modal-border-radius, 0.75rem);
-    padding: 0;
-    margin: auto;
-    width: min(440px, calc(100vw - 32px));
-    max-width: 95vw;
-    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
-    animation: datasette-modal-slide-in var(--modal-animation-duration, 0.2s) ease-out;
-    overflow: hidden;
-    font-family: system-ui, -apple-system, sans-serif;
-    background: var(--card);
-}
-
-dialog.row-delete-dialog[open] {
-    display: flex;
-    flex-direction: column;
-}
-
-dialog.row-delete-dialog::backdrop {
-    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
-    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    animation: datasette-modal-fade-in var(--modal-animation-duration, 0.2s) ease-out;
-}
-
-.row-delete-dialog .modal-header {
-    padding: 20px 24px 12px;
-    border-bottom: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 12px;
-    flex-shrink: 0;
-    min-width: 0;
-}
-
-.row-delete-dialog .modal-title {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    min-width: 0;
-    max-width: 100%;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--ink);
+    --datasette-modal-width: min(440px, calc(100vw - 32px));
 }
 
 .row-delete-message,
@@ -1470,106 +1211,12 @@ dialog.row-delete-dialog::backdrop {
 }
 
 .row-delete-dialog .modal-footer {
-    padding: 18px 20px 14px;
-    border-top: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 10px;
-    flex-shrink: 0;
-    background: var(--paper);
     margin-top: 18px;
 }
 
-.row-delete-dialog .btn {
-    border: none;
-    border-radius: 5px;
-    padding: 9px 20px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    touch-action: manipulation;
-    font-family: inherit;
-    transition: background 0.12s;
-}
-
-.row-delete-dialog .btn-ghost {
-    background: transparent;
-    color: var(--muted);
-    border: 1px solid var(--rule);
-}
-
-.row-delete-dialog .btn-ghost:hover {
-    background: var(--rule);
-    color: var(--ink);
-}
-
-.row-delete-dialog .btn-primary {
-    background: var(--accent);
-    color: #fff;
-}
-
-.row-delete-dialog .btn-primary:hover {
-    background: #1949b8;
-}
-
-.row-delete-dialog .btn:disabled {
-    opacity: 0.65;
-    cursor: wait;
-}
-
 dialog.row-edit-dialog {
-    --ink: #0f0f0f;
-    --paper: #eef6ff;
-    --muted: #6b6b6b;
-    --rule: #d8e6f5;
-    --accent: #1a56db;
-    --card: #ffffff;
-    border: none;
-    border-radius: var(--modal-border-radius, 0.75rem);
-    padding: 0;
-    margin: auto;
-    width: min(720px, calc(100vw - 32px));
-    max-width: 95vw;
-    max-height: min(780px, calc(100vh - 32px));
-    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
-    animation: datasette-modal-slide-in var(--modal-animation-duration, 0.2s) ease-out;
-    overflow: hidden;
-    font-family: system-ui, -apple-system, sans-serif;
-    background: var(--card);
-}
-
-dialog.row-edit-dialog[open] {
-    display: flex;
-    flex-direction: column;
-}
-
-dialog.row-edit-dialog::backdrop {
-    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
-    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    animation: datasette-modal-fade-in var(--modal-animation-duration, 0.2s) ease-out;
-}
-
-.row-edit-dialog .modal-header {
-    padding: 20px 24px 12px;
-    border-bottom: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-shrink: 0;
-    min-width: 0;
-}
-
-.row-edit-dialog .modal-title {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    min-width: 0;
-    max-width: 100%;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--ink);
+    --datasette-modal-width: min(720px, calc(100vw - 32px));
+    --datasette-modal-max-height: min(780px, calc(100vh - 32px));
 }
 
 .row-edit-dialog .modal-title .row-dialog-action,
@@ -1865,105 +1512,9 @@ datasette-autocomplete input[type="text"],
     max-width: 46rem;
 }
 
-.row-edit-dialog .modal-footer {
-    padding: 14px 20px;
-    border-top: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 10px;
-    flex-shrink: 0;
-    background: var(--paper);
-}
-
-.row-edit-dialog .btn {
-    border: none;
-    border-radius: 5px;
-    padding: 9px 20px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    touch-action: manipulation;
-    font-family: inherit;
-    transition: background 0.12s;
-}
-
-.row-edit-dialog .btn-ghost {
-    background: transparent;
-    color: var(--muted);
-    border: 1px solid var(--rule);
-}
-
-.row-edit-dialog .btn-ghost:hover {
-    background: var(--rule);
-    color: var(--ink);
-}
-
-.row-edit-dialog .btn-primary {
-    background: var(--accent);
-    color: #fff;
-}
-
-.row-edit-dialog .btn-primary:hover {
-    background: #1949b8;
-}
-
-.row-edit-dialog .btn:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-}
-
 dialog.table-create-dialog {
-    --ink: #0f0f0f;
-    --paper: #eef6ff;
-    --muted: #6b6b6b;
-    --rule: #d8e6f5;
-    --accent: #1a56db;
-    --card: #ffffff;
-    border: none;
-    border-radius: var(--modal-border-radius, 0.75rem);
-    padding: 0;
-    margin: auto;
-    width: min(980px, calc(100vw - 32px));
-    max-width: 95vw;
-    max-height: min(780px, calc(100vh - 32px));
-    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
-    animation: datasette-modal-slide-in var(--modal-animation-duration, 0.2s) ease-out;
-    overflow: hidden;
-    font-family: system-ui, -apple-system, sans-serif;
-    background: var(--card);
-}
-
-dialog.table-create-dialog[open] {
-    display: flex;
-    flex-direction: column;
-}
-
-dialog.table-create-dialog::backdrop {
-    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
-    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    animation: datasette-modal-fade-in var(--modal-animation-duration, 0.2s) ease-out;
-}
-
-.table-create-dialog .modal-header {
-    padding: 20px 24px 12px;
-    border-bottom: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-shrink: 0;
-    min-width: 0;
-}
-
-.table-create-dialog .modal-title {
-    display: flex;
-    align-items: center;
-    min-width: 0;
-    max-width: 100%;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--ink);
+    --datasette-modal-width: min(980px, calc(100vw - 32px));
+    --datasette-modal-max-height: min(780px, calc(100vh - 32px));
 }
 
 .table-create-form {
@@ -2288,50 +1839,6 @@ select.table-create-input {
     outline-offset: 1px;
 }
 
-.table-create-dialog .modal-footer {
-    padding: 14px 20px;
-    border-top: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 10px;
-    flex-shrink: 0;
-    background: var(--paper);
-}
-
-.table-create-dialog .btn {
-    border: none;
-    border-radius: 5px;
-    padding: 9px 20px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    touch-action: manipulation;
-    font-family: inherit;
-    transition: background 0.12s;
-}
-
-.table-create-dialog .btn-ghost {
-    background: transparent;
-    color: var(--muted);
-    border: 1px solid var(--rule);
-}
-
-.table-create-dialog .btn-ghost:hover {
-    background: var(--rule);
-    color: var(--ink);
-}
-
-.table-create-dialog .btn-primary {
-    background: var(--accent);
-    color: #fff;
-}
-
-.table-create-dialog .btn-primary:hover {
-    background: #1949b8;
-}
-
-.table-create-dialog .btn:disabled,
 .table-create-add-column:disabled,
 .table-create-icon-button:disabled {
     opacity: 0.55;
@@ -2339,56 +1846,8 @@ select.table-create-input {
 }
 
 dialog.table-alter-dialog {
-    --ink: #0f0f0f;
-    --paper: #eef6ff;
-    --muted: #6b6b6b;
-    --rule: #d8e6f5;
-    --accent: #1a56db;
-    --card: #ffffff;
-    border: none;
-    border-radius: var(--modal-border-radius, 0.75rem);
-    padding: 0;
-    margin: auto;
-    width: min(980px, calc(100vw - 32px));
-    max-width: 95vw;
-    max-height: min(780px, calc(100vh - 32px));
-    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
-    animation: datasette-modal-slide-in var(--modal-animation-duration, 0.2s) ease-out;
-    overflow: hidden;
-    font-family: system-ui, -apple-system, sans-serif;
-    background: var(--card);
-}
-
-dialog.table-alter-dialog[open] {
-    display: flex;
-    flex-direction: column;
-}
-
-dialog.table-alter-dialog::backdrop {
-    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
-    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    animation: datasette-modal-fade-in var(--modal-animation-duration, 0.2s) ease-out;
-}
-
-.table-alter-dialog .modal-header {
-    padding: 20px 24px 12px;
-    border-bottom: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-shrink: 0;
-    min-width: 0;
-}
-
-.table-alter-dialog .modal-title {
-    display: flex;
-    align-items: center;
-    min-width: 0;
-    max-width: 100%;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--ink);
+    --datasette-modal-width: min(980px, calc(100vw - 32px));
+    --datasette-modal-max-height: min(780px, calc(100vh - 32px));
 }
 
 .table-alter-form {
@@ -2443,8 +1902,7 @@ dialog.table-alter-dialog::backdrop {
     max-width: 24rem;
 }
 
-.table-alter-fields[hidden],
-.table-alter-dialog .modal-footer [hidden] {
+.table-alter-fields[hidden] {
     display: none;
 }
 
@@ -2746,72 +2204,6 @@ select.table-alter-input {
     outline-offset: 1px;
 }
 
-.table-alter-dialog .modal-footer {
-    padding: 14px 20px;
-    border-top: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 10px;
-    flex-shrink: 0;
-    background: var(--paper);
-}
-
-.table-alter-dialog .btn {
-    border: none;
-    border-radius: 5px;
-    padding: 9px 20px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    touch-action: manipulation;
-    font-family: inherit;
-    transition: background 0.12s;
-}
-
-.table-alter-dialog .btn-ghost {
-    background: transparent;
-    color: var(--muted);
-    border: 1px solid var(--rule);
-}
-
-.table-alter-dialog .btn-ghost:hover {
-    background: var(--rule);
-    color: var(--ink);
-}
-
-.table-alter-dialog .btn-danger {
-    background: #b91c1c;
-    color: #fff;
-    margin-right: auto;
-}
-
-.table-alter-dialog .btn-danger:hover {
-    background: #991b1b;
-}
-
-.table-alter-dialog .btn-danger:disabled,
-.table-alter-dialog .btn-danger:disabled:hover {
-    background: #d98c8c;
-    color: #fff;
-}
-
-.table-alter-dialog .btn-primary {
-    background: var(--accent);
-    color: #fff;
-}
-
-.table-alter-dialog .btn-primary:hover {
-    background: #1949b8;
-}
-
-.table-alter-dialog .btn-primary:disabled,
-.table-alter-dialog .btn-primary:disabled:hover {
-    background: #a0aec0;
-    color: #fff;
-}
-
-.table-alter-dialog .btn:disabled,
 .table-alter-add-column:disabled,
 .table-alter-icon-button:disabled {
     opacity: 0.55;
@@ -2937,17 +2329,11 @@ select.table-alter-input {
     width: 13px;
 }
 
+/*
+ * <datasette-modal> already provides the small-screen dialog frame and
+ * header/footer padding. These rules only adjust dialog-specific content.
+ */
 @media (max-width: 640px) {
-    dialog.mobile-column-actions-dialog {
-        width: 95vw;
-        max-height: 85vh;
-        border-radius: 0.5rem;
-    }
-
-    .mobile-column-actions-dialog .modal-header {
-        padding: 16px 18px 14px;
-    }
-
     .mobile-column-top-actions {
         padding-left: 18px;
         padding-right: 18px;
@@ -2970,13 +2356,6 @@ select.table-alter-input {
         padding-right: 18px;
     }
 
-    dialog.set-column-type-dialog {
-        width: 95vw;
-        max-height: 85vh;
-        border-radius: 0.5rem;
-    }
-
-    .set-column-type-dialog .modal-header,
     .set-column-type-status,
     .set-column-type-empty,
     .set-column-type-error,
@@ -2985,31 +2364,12 @@ select.table-alter-input {
         padding-right: 18px;
     }
 
-    dialog.row-delete-dialog {
-        width: 95vw;
-        max-height: 85vh;
-        border-radius: 0.5rem;
-    }
-
-    .row-delete-dialog .modal-header,
     .row-delete-message,
     .row-delete-error {
         padding-left: 18px;
         padding-right: 18px;
     }
 
-    .row-delete-dialog .modal-footer {
-        padding-left: 18px;
-        padding-right: 18px;
-    }
-
-    dialog.row-edit-dialog {
-        width: 95vw;
-        max-height: 85vh;
-        border-radius: 0.5rem;
-    }
-
-    .row-edit-dialog .modal-header,
     .row-edit-summary,
     .row-edit-loading,
     .row-edit-fields {
@@ -3031,18 +2391,6 @@ select.table-alter-input {
         padding-top: 0;
     }
 
-    .row-edit-dialog .modal-footer {
-        padding-left: 18px;
-        padding-right: 18px;
-    }
-
-    dialog.table-create-dialog {
-        width: 95vw;
-        max-height: 85vh;
-        border-radius: 0.5rem;
-    }
-
-    .table-create-dialog .modal-header,
     .table-create-fields {
         padding-left: 18px;
         padding-right: 18px;
@@ -3110,11 +2458,6 @@ select.table-alter-input {
 
     .table-create-default-grid {
         grid-template-columns: 1fr;
-    }
-
-    .table-create-dialog .modal-footer {
-        padding-left: 18px;
-        padding-right: 18px;
     }
 
     .row-inline-action {

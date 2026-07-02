@@ -215,6 +215,21 @@ const datasetteManager = {
     });
   },
 
+  /**
+   * Create a <datasette-modal> element, append it to the document and
+   * return it. A convenience wrapper for window.DatasetteModal.create() -
+   * see the "Modal dialogs" section of the JavaScript plugins
+   * documentation for the supported options.
+   *
+   * Returns null in browsers without <dialog> support.
+   */
+  createModal: (options) => {
+    if (!window.DatasetteModal || !window.DatasetteModal.supported) {
+      return null;
+    }
+    return window.DatasetteModal.create(options);
+  },
+
   /** Selectors for document (DOM) elements. Store identifier instead of immediate references in case they haven't loaded when Manager starts. */
   selectors: DOM_SELECTORS,
 

@@ -975,6 +975,13 @@ def test_set_column_type_dialog(page, datasette_server):
     option_names = dialog.locator(".set-column-type-option-name").all_inner_texts()
     assert "asset" in option_names
 
-    # Escape closes the dialog via the shared datasette-modal component
+    # The declarative data-modal-cancel attribute closes the dialog
+    dialog.locator("[data-modal-cancel]").click()
+    dialog.wait_for(state="hidden")
+
+    # Escape also closes the dialog via the shared datasette-modal component
+    page.locator('th[data-column="title"] svg.dropdown-menu-icon').click()
+    page.get_by_role("link", name="Set custom type").click()
+    dialog.wait_for(state="visible")
     page.keyboard.press("Escape")
     dialog.wait_for(state="hidden")

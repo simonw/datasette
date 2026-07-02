@@ -73,7 +73,7 @@ document.addEventListener("datasette_init", function (event) {
       <p style="padding: 16px 24px">Hello from a plugin!</p>
       <div class="modal-footer">
         <span class="footer-info"></span>
-        <button type="button" class="btn btn-ghost my-plugin-cancel">Cancel</button>
+        <button type="button" class="btn btn-ghost" data-modal-cancel>Cancel</button>
         <button type="button" class="btn btn-primary my-plugin-save">Save</button>
       </div>
     `,
@@ -81,9 +81,6 @@ document.addEventListener("datasette_init", function (event) {
   if (!modal) {
     return; // Browser does not support <dialog>
   }
-  modal.dialog
-    .querySelector(".my-plugin-cancel")
-    .addEventListener("click", () => modal.requestClose("cancel"));
   // Open it later, for example from a button click:
   // modal.showModal({trigger: button});
 });

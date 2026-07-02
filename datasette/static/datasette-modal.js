@@ -11,6 +11,8 @@
  * - The standard Datasette modal frame: sizing, rounded corners,
  *   backdrop, animations, and optional .modal-header scaffolding
  * - Close-on-backdrop-click and Escape key handling
+ * - Declarative cancel buttons: clicking any element inside the modal
+ *   with a `data-modal-cancel` attribute calls requestClose("cancel")
  * - A `busy` property that blocks user-initiated dismissal while an
  *   operation is in flight
  * - A `closeGuard` hook for "discard unsaved changes?" style prompts
@@ -526,6 +528,14 @@ datasette-modal .btn:disabled {
       dialog.addEventListener("click", (ev) => {
         if (ev.target === dialog) {
           this.requestClose("backdrop");
+          return;
+        }
+        // Declarative cancel buttons: any element inside the modal
+        // with a data-modal-cancel attribute requests a close
+        var cancelTrigger =
+          ev.target.closest && ev.target.closest("[data-modal-cancel]");
+        if (cancelTrigger && dialog.contains(cancelTrigger)) {
+          this.requestClose("cancel");
         }
       });
 

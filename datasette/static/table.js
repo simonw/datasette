@@ -202,7 +202,7 @@ function ensureSetColumnTypeDialog() {
     <div class="set-column-type-options"></div>
     <div class="modal-footer">
       <span class="footer-info"></span>
-      <button type="button" class="btn btn-ghost set-column-type-cancel">Cancel</button>
+      <button type="button" class="btn btn-ghost set-column-type-cancel" data-modal-cancel>Cancel</button>
       <button type="button" class="btn btn-primary set-column-type-save">Save</button>
     </div>
   `,
@@ -222,10 +222,6 @@ function ensureSetColumnTypeDialog() {
     currentConfig: null,
     isBusy: false,
   };
-
-  setColumnTypeDialogState.cancelButton.addEventListener("click", function () {
-    modal.requestClose("cancel");
-  });
 
   modal.addEventListener("datasette-modal-close", function () {
     clearSetColumnTypeDialogError(setColumnTypeDialogState);

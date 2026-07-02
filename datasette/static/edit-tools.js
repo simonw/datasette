@@ -1559,7 +1559,7 @@ function ensureTableCreateDialog(manager) {
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-ghost table-create-cancel">Cancel</button>
+        <button type="button" class="btn btn-ghost table-create-cancel" data-modal-cancel>Cancel</button>
         <button type="submit" class="btn btn-primary table-create-save">Create table</button>
       </div>
     </form>
@@ -1599,10 +1599,6 @@ function ensureTableCreateDialog(manager) {
     var row = addTableCreateColumn(tableCreateDialogState, { type: "text" });
     clearTableCreateDialogError(tableCreateDialogState);
     row.querySelector(".table-create-column-name").focus();
-  });
-
-  tableCreateDialogState.cancelButton.addEventListener("click", function () {
-    closeTableCreateDialogIfConfirmed(tableCreateDialogState);
   });
 
   tableCreateDialogState.tableName.addEventListener("input", function () {
@@ -3640,7 +3636,7 @@ function ensureRowDeleteDialog(manager) {
     <p class="row-delete-message" id="row-delete-message">Delete row <span class="row-delete-id"></span>?</p>
     <p class="row-delete-error" role="alert" hidden></p>
     <div class="modal-footer">
-      <button type="button" class="btn btn-ghost row-delete-cancel">Cancel</button>
+      <button type="button" class="btn btn-ghost row-delete-cancel" data-modal-cancel>Cancel</button>
       <button type="button" class="btn btn-primary row-delete-confirm">Delete row</button>
     </div>
   `,
@@ -3662,10 +3658,6 @@ function ensureRowDeleteDialog(manager) {
     manager: manager,
     isBusy: false,
   };
-
-  rowDeleteDialogState.cancelButton.addEventListener("click", function () {
-    modal.requestClose("cancel");
-  });
 
   dialog.addEventListener("keydown", function (ev) {
     if (

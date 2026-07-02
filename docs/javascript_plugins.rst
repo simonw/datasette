@@ -90,7 +90,7 @@ The simplest way to create a modal from a plugin is ``datasetteManager.createMod
           <p style="padding: 16px 24px">Hello from a plugin!</p>
           <div class="modal-footer">
             <span class="footer-info"></span>
-            <button type="button" class="btn btn-ghost my-plugin-cancel">Cancel</button>
+            <button type="button" class="btn btn-ghost" data-modal-cancel>Cancel</button>
             <button type="button" class="btn btn-primary my-plugin-save">Save</button>
           </div>
         `,
@@ -98,12 +98,11 @@ The simplest way to create a modal from a plugin is ``datasetteManager.createMod
       if (!modal) {
         return; // Browser does not support <dialog>
       }
-      modal.dialog
-        .querySelector(".my-plugin-cancel")
-        .addEventListener("click", () => modal.requestClose("cancel"));
       // Open it later, for example from a button click:
       // modal.showModal({trigger: button});
     });
+
+The ``data-modal-cancel`` attribute on the Cancel button is a declarative shortcut: clicking any element inside the modal that carries this attribute calls ``modal.requestClose("cancel")``, so Cancel buttons need no JavaScript wiring. Like other dismissals it is blocked while the modal is ``busy`` and consults ``closeGuard``, both described below.
 
 Calling ``modal.showModal()`` then displays the dialog:
 
@@ -146,6 +145,7 @@ The element can also be used declaratively in a template - light DOM children be
     <datasette-modal dialog-id="my-dialog" modal-title="My dialog">
       <p>Dialog content</p>
       <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" data-modal-cancel>Cancel</button>
         <button type="button" class="btn btn-primary">OK</button>
       </div>
     </datasette-modal>
@@ -171,7 +171,7 @@ Properties, methods and events
     Closes the modal unconditionally, skipping ``busy`` and ``closeGuard``. Pass ``{restoreFocus: false}`` to leave focus where it is, for example when the page is about to navigate.
 
 ``modal.requestClose(reason)``
-    Asks the modal to close on the user's behalf, respecting ``busy`` and ``closeGuard``. Returns true if the modal closed. Backdrop clicks and the ``Escape`` key call this internally with reasons ``"backdrop"`` and ``"escape"``. Wire Cancel buttons to this method.
+    Asks the modal to close on the user's behalf, respecting ``busy`` and ``closeGuard``. Returns true if the modal closed. Backdrop clicks and the ``Escape`` key call this internally with reasons ``"backdrop"`` and ``"escape"``, and clicking an element with a ``data-modal-cancel`` attribute calls it with ``"cancel"``. Cancel buttons can either carry that attribute or call this method directly.
 
 ``modal.busy`` - boolean
     While true, ``Escape``, backdrop clicks and ``requestClose()`` will not close the modal. Set this while an operation is in flight. A ``busy`` attribute is reflected on the element for CSS.

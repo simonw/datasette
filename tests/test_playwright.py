@@ -890,3 +890,88 @@ def test_delete_row_flow_removes_row(page, datasette_server):
     page.locator(".row-mutation-status", has_text="Deleted row 1").wait_for()
     page.locator('tr[data-row="1"]').wait_for(state="detached")
     assert project_rows(datasette_server, id=1) == []
+
+
+@pytest.mark.playwright
+def test_column_chooser_dialog(page, datasette_server):
+    page.goto(f"{datasette_server}data/projects")
+    page.locator('th[data-column="title"] svg.dropdown-menu-icon').click()
+    page.get_by_role("link", name="Choose columns").click()
+
+    dialog = page.locator("column-chooser dialog")
+    dialog.wait_for(state="visible")
+    assert (
+        page.locator("column-chooser .modal-title").inner_text() == "Choose columns"
+    )
+    assert "selected" in page.locator("column-chooser .modal-meta").inner_text()
+
+    notes_item = page.locator("column-chooser .drag-item", has_text="notes")
+    notes_item.locator('input[type="checkbox"]').uncheck()
+    page.locator("column-chooser #applyBtn").click()
+
+    page.wait_for_url(lambda url: "_col=" in url)
+    assert "_col=title" in page.url
+    assert "_col=notes" not in page.url
+
+
+@pytest.mark.playwright
+def test_column_chooser_dialog_escape_discards_changes(page, datasette_server):
+    page.goto(f"{datasette_server}data/projects")
+    page.locator('th[data-column="title"] svg.dropdown-menu-icon').click()
+    page.get_by_role("link", name="Choose columns").click()
+
+    dialog = page.locator("column-chooser dialog")
+    dialog.wait_for(state="visible")
+    notes_item = page.locator("column-chooser .drag-item", has_text="notes")
+    notes_item.locator('input[type="checkbox"]').uncheck()
+    page.keyboard.press("Escape")
+    dialog.wait_for(state="hidden")
+
+    # Re-opening should show the original selection again
+    page.locator('th[data-column="title"] svg.dropdown-menu-icon').click()
+    page.get_by_role("link", name="Choose columns").click()
+    dialog.wait_for(state="visible")
+    notes_item = page.locator("column-chooser .drag-item", has_text="notes")
+    assert notes_item.locator('input[type="checkbox"]').is_checked()
+
+
+@pytest.mark.playwright
+def test_mobile_column_actions_dialog(page, datasette_server):
+    page.set_viewport_size({"width": 400, "height": 800})
+    page.goto(f"{datasette_server}data/projects")
+    trigger = page.locator("button.column-actions-mobile")
+    trigger.click()
+
+    dialog = page.locator("#mobile-column-actions-dialog")
+    dialog.wait_for(state="visible")
+    assert dialog.locator(".modal-title").inner_text() == "Column actions"
+    assert "columns" in dialog.locator(".modal-meta").inner_text()
+    assert trigger.get_attribute("aria-expanded") == "true"
+
+    section = dialog.locator(".mobile-column-section", has_text="title").first
+    section.locator(".col-header").click()
+    section.locator(".col-actions a", has_text="Sort ascending").wait_for(
+        state="visible"
+    )
+
+    dialog.locator(".mobile-column-actions-done").click()
+    dialog.wait_for(state="hidden")
+    assert trigger.get_attribute("aria-expanded") == "false"
+
+
+@pytest.mark.playwright
+def test_set_column_type_dialog(page, datasette_server):
+    page.goto(f"{datasette_server}data/projects")
+    page.locator('th[data-column="title"] svg.dropdown-menu-icon').click()
+    page.get_by_role("link", name="Set custom type").click()
+
+    dialog = page.locator("#set-column-type-dialog")
+    dialog.wait_for(state="visible")
+    assert dialog.locator(".modal-title").inner_text() == "Set custom type"
+    assert "TEXT" in dialog.locator(".modal-meta").inner_text()
+    option_names = dialog.locator(".set-column-type-option-name").all_inner_texts()
+    assert "asset" in option_names
+
+    # Escape closes the dialog via the shared datasette-modal component
+    page.keyboard.press("Escape")
+    dialog.wait_for(state="hidden")

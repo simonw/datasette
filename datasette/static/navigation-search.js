@@ -16,7 +16,6 @@ class NavigationSearch extends HTMLElement {
     this.renderedMatches = [];
     this.debounceTimer = null;
     this.restoreFocusTarget = null;
-    this.shouldRestoreFocus = true;
 
     this.render();
     this.setupEventListeners();
@@ -29,38 +28,10 @@ class NavigationSearch extends HTMLElement {
                     display: contents;
                 }
 
-                dialog {
-                    border: none;
-                    border-radius: var(--modal-border-radius, 0.75rem);
-                    padding: 0;
-                    max-width: 90vw;
-                    width: 600px;
-                    max-height: 80vh;
-                    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
-                    animation: slideIn var(--modal-animation-duration, 0.2s) ease-out;
-                }
-
-                dialog::backdrop {
-                    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
-                    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-                    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-                    animation: fadeIn var(--modal-animation-duration, 0.2s) ease-out;
-                }
-
-                @keyframes slideIn {
-                    from {
-                        opacity: 0;
-                        transform: translateY(-20px) scale(0.95);
-                    }
-                    to {
-                        opacity: 1;
-                        transform: translateY(0) scale(1);
-                    }
-                }
-
-                @keyframes fadeIn {
-                    from { opacity: 0; }
-                    to { opacity: 1; }
+                /* Frame styles come from the shared <datasette-modal> component */
+                datasette-modal {
+                    --datasette-modal-width: min(600px, 90vw);
+                    --datasette-modal-max-height: 80vh;
                 }
 
                 .search-container {
@@ -255,12 +226,6 @@ class NavigationSearch extends HTMLElement {
 
                 /* Mobile optimizations */
                 @media (max-width: 640px) {
-                    dialog {
-                        width: 95vw;
-                        max-height: 85vh;
-                        border-radius: 0.5rem;
-                    }
-
                     .search-input-wrapper {
                         padding: 1rem;
                     }
@@ -280,7 +245,7 @@ class NavigationSearch extends HTMLElement {
                 }
             </style>
 
-            <dialog aria-modal="true" aria-labelledby="${this.titleId}">
+            <datasette-modal labelled-by="${this.titleId}">
                 <div class="search-container">
                     <h2 id="${this.titleId}" class="visually-hidden">Jump to</h2>
                     <p id="${this.instructionsId}" class="visually-hidden">Type to search. Use up and down arrow keys to move through results, Enter to select a result, and Escape to close this menu.</p>
@@ -309,12 +274,12 @@ class NavigationSearch extends HTMLElement {
                         <span><kbd>Esc</kbd> Close</span>
                     </div>
                 </div>
-            </dialog>
+            </datasette-modal>
         `;
+    this._modal = this.shadowRoot.querySelector("datasette-modal");
   }
 
   setupEventListeners() {
-    const dialog = this.shadowRoot.querySelector("dialog");
     const input = this.shadowRoot.querySelector(".search-input");
     const closeButton = this.shadowRoot.querySelector(".close-search");
     const resultsContainer =
@@ -322,7 +287,7 @@ class NavigationSearch extends HTMLElement {
 
     // Global keyboard listener for "/"
     document.addEventListener("keydown", (e) => {
-      if (e.key === "/" && !this.isInputFocused() && !dialog.open) {
+      if (e.key === "/" && !this.isInputFocused() && !this._modal.open) {
         e.preventDefault();
         this.openMenu();
       }
@@ -380,19 +345,8 @@ class NavigationSearch extends HTMLElement {
       }
     });
 
-    // Close on backdrop click
-    dialog.addEventListener("click", (e) => {
-      if (e.target === dialog) {
-        this.closeMenu();
-      }
-    });
-
-    dialog.addEventListener("cancel", (e) => {
-      e.preventDefault();
-      this.closeMenu();
-    });
-
-    dialog.addEventListener("close", () => {
+    // Backdrop clicks and the Escape key are handled by <datasette-modal>
+    this._modal.addEventListener("datasette-modal-close", () => {
       this.onMenuClosed();
     });
 
@@ -465,18 +419,17 @@ class NavigationSearch extends HTMLElement {
   }
 
   updateComboboxState() {
-    const dialog = this.shadowRoot.querySelector("dialog");
+    const isOpen = this._modal.open;
     const input = this.shadowRoot.querySelector(".search-input");
     const matches = this.renderedMatches || [];
     this.setElementAttribute(
       input,
       "aria-expanded",
-      dialog && dialog.open && matches.length > 0 ? "true" : "false",
+      isOpen && matches.length > 0 ? "true" : "false",
     );
 
     if (
-      dialog &&
-      dialog.open &&
+      isOpen &&
       this.selectedIndex >= 0 &&
       this.selectedIndex < matches.length
     ) {
@@ -854,14 +807,14 @@ class NavigationSearch extends HTMLElement {
   }
 
   openMenu(trigger) {
-    const dialog = this.shadowRoot.querySelector("dialog");
+    if (!this._modal.dialog) {
+      // datasette-modal.js is missing or <dialog> is unsupported
+      return;
+    }
     const input = this.shadowRoot.querySelector(".search-input");
 
     this.restoreFocusTarget = this.focusRestoreTarget(trigger);
-    this.shouldRestoreFocus = true;
-    if (!dialog.open) {
-      dialog.showModal();
-    }
+    this._modal.showModal({ trigger: this.restoreFocusTarget });
     this.setNavigationTriggersExpanded(true);
     input.value = "";
     input.focus();
@@ -874,10 +827,8 @@ class NavigationSearch extends HTMLElement {
   }
 
   closeMenu(options = {}) {
-    const dialog = this.shadowRoot.querySelector("dialog");
-    this.shouldRestoreFocus = options.restoreFocus !== false;
-    if (dialog.open) {
-      dialog.close();
+    if (this._modal.open) {
+      this._modal.close({ restoreFocus: options.restoreFocus !== false });
     } else {
       this.onMenuClosed();
     }
@@ -889,13 +840,6 @@ class NavigationSearch extends HTMLElement {
     this.removeElementAttribute(input, "aria-activedescendant");
     this.setNavigationTriggersExpanded(false);
     this.setStatus("");
-    if (
-      this.shouldRestoreFocus &&
-      this.restoreFocusTarget &&
-      typeof this.restoreFocusTarget.focus === "function"
-    ) {
-      this.restoreFocusTarget.focus();
-    }
     this.restoreFocusTarget = null;
   }
 

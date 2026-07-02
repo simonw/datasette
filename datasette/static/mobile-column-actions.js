@@ -54,7 +54,8 @@ function initMobileColumnActions(manager) {
 
   if (
     !window.URLSearchParams ||
-    !window.HTMLDialogElement ||
+    !window.DatasetteModal ||
+    !window.DatasetteModal.supported ||
     !manager.columnActions
   ) {
     triggerButton.style.display = "none";
@@ -66,32 +67,28 @@ function initMobileColumnActions(manager) {
     return;
   }
 
-  var dialog = document.createElement("dialog");
-  dialog.className = "mobile-column-actions-dialog";
-  dialog.id = MOBILE_COLUMN_DIALOG_ID;
-  dialog.setAttribute("aria-labelledby", MOBILE_COLUMN_DIALOG_TITLE_ID);
-  dialog.innerHTML = `
-    <div class="modal-header">
-      <span class="modal-title" id="${MOBILE_COLUMN_DIALOG_TITLE_ID}">Column actions</span>
-      <span class="modal-meta"></span>
-    </div>
+  var modal = window.DatasetteModal.create({
+    id: MOBILE_COLUMN_DIALOG_ID,
+    className: "mobile-column-actions-dialog",
+    title: "Column actions",
+    titleId: MOBILE_COLUMN_DIALOG_TITLE_ID,
+    content: `
     <div class="list-wrap mobile-column-list"></div>
     <div class="modal-footer">
       <span class="footer-info">Tap a column to reveal actions.</span>
       <button type="button" class="btn btn-ghost mobile-column-actions-done">Done</button>
     </div>
-  `;
-  document.body.appendChild(dialog);
+  `,
+  });
+  var dialog = modal.dialog;
 
   triggerButton.setAttribute("aria-haspopup", "dialog");
   triggerButton.setAttribute("aria-controls", MOBILE_COLUMN_DIALOG_ID);
   triggerButton.setAttribute("aria-expanded", "false");
 
-  var countEl = dialog.querySelector(".modal-meta");
   var listWrap = dialog.querySelector(".mobile-column-list");
   var doneButton = dialog.querySelector(".mobile-column-actions-done");
   var expandedSectionId = null;
-  var shouldRestoreFocus = true;
 
   function updateExpandedSection() {
     Array.from(dialog.querySelectorAll(".col-header")).forEach((button) => {
@@ -129,12 +126,12 @@ function initMobileColumnActions(manager) {
 
   function closeDialog(options) {
     options = options || {};
-    shouldRestoreFocus = options.restoreFocus !== false;
-    if (dialog.open) {
-      dialog.close();
+    var restoreFocus = options.restoreFocus !== false;
+    if (modal.open) {
+      modal.close({ restoreFocus: restoreFocus });
     } else {
       triggerButton.setAttribute("aria-expanded", "false");
-      if (shouldRestoreFocus) {
+      if (restoreFocus) {
         triggerButton.focus();
       }
     }
@@ -156,9 +153,7 @@ function initMobileColumnActions(manager) {
       expandedSectionId = null;
     }
 
-    countEl.textContent = `${headers.length} column${
-      headers.length === 1 ? "" : "s"
-    }`;
+    modal.setMeta(`${headers.length} column${headers.length === 1 ? "" : "s"}`);
     listWrap.innerHTML = "";
 
     if (manager.columnActions.shouldShowShowAllColumns()) {
@@ -265,9 +260,7 @@ function initMobileColumnActions(manager) {
     if (!renderDialog()) {
       return;
     }
-    if (!dialog.open) {
-      dialog.showModal();
-    }
+    modal.showModal({ trigger: triggerButton });
     triggerButton.setAttribute("aria-expanded", "true");
     var focusTarget =
       dialog.querySelector(".mobile-column-top-action") ||
@@ -277,7 +270,7 @@ function initMobileColumnActions(manager) {
   }
 
   triggerButton.addEventListener("click", function () {
-    if (dialog.open) {
+    if (modal.open) {
       closeDialog();
     } else {
       openDialog();
@@ -288,26 +281,12 @@ function initMobileColumnActions(manager) {
     closeDialog();
   });
 
-  dialog.addEventListener("click", function (ev) {
-    if (ev.target === dialog) {
-      closeDialog();
-    }
-  });
-
-  dialog.addEventListener("cancel", function (ev) {
-    ev.preventDefault();
-    closeDialog();
-  });
-
-  dialog.addEventListener("close", function () {
+  modal.addEventListener("datasette-modal-close", function () {
     triggerButton.setAttribute("aria-expanded", "false");
-    if (shouldRestoreFocus) {
-      triggerButton.focus();
-    }
   });
 
   window.addEventListener("resize", function () {
-    if (window.innerWidth > MOBILE_COLUMN_BREAKPOINT && dialog.open) {
+    if (window.innerWidth > MOBILE_COLUMN_BREAKPOINT && modal.open) {
       closeDialog({ restoreFocus: false });
     }
   });

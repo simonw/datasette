@@ -49,8 +49,156 @@ The ``datasetteManager`` object
 ``makeColumnField(context)``
     Calls the ``makeColumnField()`` hook on registered plugins, returning the first custom insert/edit field control that matches the provided field context. This is used internally by Datasette's row insert and edit dialogs.
 
+``createModal(options)``
+    Creates a :ref:`\<datasette-modal\> <javascript_plugins_datasette_modal>` element, appends it to the page and returns it. Returns ``null`` in browsers without ``<dialog>`` support.
+
 ``selectors`` - object
     An object providing named aliases to useful CSS selectors, :ref:`listed below <javascript_datasette_manager_selectors>`
+
+.. _javascript_plugins_datasette_modal:
+
+Modal dialogs: the datasette-modal element
+------------------------------------------
+
+Datasette provides a ``<datasette-modal>`` Web Component that renders a modal dialog in the same visual style as Datasette's own dialogs - the create/alter table dialogs, the insert/edit/delete row dialogs, the column chooser, the mobile column actions sheet and the ``/`` jump menu are all built on it.
+
+The element, and the ``DatasetteModal`` class exposed as ``window.DatasetteModal``, are a stable public API for plugins. Plugins that need a modal dialog should use this component rather than building their own, so their dialogs automatically match Datasette's styling, keyboard handling and accessibility behavior.
+
+The component wraps a native ``<dialog>`` element and provides:
+
+- Datasette's standard modal frame: sizing, rounded corners, backdrop, open/close animations and an optional header with a title and a "meta" chip
+- Close on backdrop click and on the ``Escape`` key
+- A ``busy`` property that blocks the user from dismissing the dialog while a save or delete is in flight
+- A ``closeGuard`` hook for "Discard unsaved changes?" style confirmation prompts
+- Focus restoration to the triggering element when the dialog closes
+- ``datasette-modal-open`` and ``datasette-modal-close`` events
+
+Creating a modal
+~~~~~~~~~~~~~~~~
+
+The simplest way to create a modal from a plugin is ``datasetteManager.createModal()`` (or the equivalent ``window.DatasetteModal.create()``), which creates the element, appends it to ``document.body`` and returns it:
+
+.. code-block:: javascript
+
+    document.addEventListener("datasette_init", function (event) {
+      const manager = event.detail;
+      const modal = manager.createModal({
+        id: "my-plugin-dialog",
+        className: "my-plugin-dialog",
+        title: "My plugin",
+        content: `
+          <p style="padding: 16px 24px">Hello from a plugin!</p>
+          <div class="modal-footer">
+            <span class="footer-info"></span>
+            <button type="button" class="btn btn-ghost my-plugin-cancel">Cancel</button>
+            <button type="button" class="btn btn-primary my-plugin-save">Save</button>
+          </div>
+        `,
+      });
+      if (!modal) {
+        return; // Browser does not support <dialog>
+      }
+      modal.dialog
+        .querySelector(".my-plugin-cancel")
+        .addEventListener("click", () => modal.requestClose("cancel"));
+      // Open it later, for example from a button click:
+      // modal.showModal({trigger: button});
+    });
+
+``createModal(options)`` / ``DatasetteModal.create(options)`` accepts:
+
+``id`` - string, optional
+    ``id`` attribute for the inner ``<dialog>`` element.
+
+``className`` - string, optional
+    ``class`` attribute for the inner ``<dialog>``, useful for scoping custom CSS.
+
+``title`` - string, optional
+    Text for the standard header title. If omitted no header is created and the modal content fills the whole dialog.
+
+``meta`` - string, optional
+    Text for the small "meta" chip shown on the right of the header, for example ``"3 of 12 selected"``.
+
+``titleId`` - string, optional
+    ``id`` for the generated title element. Defaults to ``"<id>-title"``.
+
+``labelledBy`` / ``describedBy`` - strings, optional
+    Explicit ``aria-labelledby`` / ``aria-describedby`` values for the dialog. By default the dialog is labelled by the generated title element.
+
+``content`` - string or DOM node, optional
+    Content placed inside the dialog, after the header. By convention this ends with a ``<div class="modal-footer">`` containing an optional ``<span class="footer-info">`` and buttons using the ``btn`` classes shown above.
+
+``parent`` - element, optional
+    Element to append the modal to. Defaults to ``document.body``.
+
+The element can also be used declaratively in a template - light DOM children become the dialog content:
+
+.. code-block:: html
+
+    <datasette-modal dialog-id="my-dialog" modal-title="My dialog">
+      <p>Dialog content</p>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary">OK</button>
+      </div>
+    </datasette-modal>
+
+The ``dialog-id``, ``dialog-class``, ``modal-title``, ``modal-meta``, ``title-id``, ``labelled-by`` and ``described-by`` attributes correspond to the options above. ``modal-title`` and ``modal-meta`` can be updated at any time and the header will update to match.
+
+Properties, methods and events
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``DatasetteModal.supported`` - boolean, static
+    True if the browser supports everything the component needs. ``createModal()`` returns ``null`` when this is false.
+
+``modal.dialog`` - ``HTMLDialogElement``
+    The underlying native dialog element. Query this for elements inside the modal.
+
+``modal.open`` - boolean
+    True while the modal is open.
+
+``modal.showModal(options)``
+    Opens the modal. ``options.trigger`` is the element that focus should return to when the modal closes - it defaults to the element that was focused when ``showModal()`` was called.
+
+``modal.close(options)``
+    Closes the modal unconditionally, skipping ``busy`` and ``closeGuard``. Pass ``{restoreFocus: false}`` to leave focus where it is, for example when the page is about to navigate.
+
+``modal.requestClose(reason)``
+    Asks the modal to close on the user's behalf, respecting ``busy`` and ``closeGuard``. Returns true if the modal closed. Backdrop clicks and the ``Escape`` key call this internally with reasons ``"backdrop"`` and ``"escape"``. Wire Cancel buttons to this method.
+
+``modal.busy`` - boolean
+    While true, ``Escape``, backdrop clicks and ``requestClose()`` will not close the modal. Set this while an operation is in flight. A ``busy`` attribute is reflected on the element for CSS.
+
+``modal.closeGuard`` - function or null
+    If set, called with the reason string whenever the user tries to dismiss the modal. Return false to keep the modal open - for example after a ``confirm("Discard unsaved changes?")`` returns false. Not consulted by direct ``close()`` calls.
+
+``modal.setTitle(text)`` / ``modal.setMeta(text)``
+    Update the header title and meta chip. Setting the meta text to ``""`` hides the chip. ``modal.titleElement`` and ``modal.metaElement`` expose the underlying elements for richer markup.
+
+The element dispatches two bubbling events:
+
+``datasette-modal-open``
+    Fired when the modal opens.
+
+``datasette-modal-close``
+    Fired when the modal closes, however that happened. Use this to reset dialog state.
+
+Styling
+~~~~~~~
+
+Modal content uses light DOM, so page-level CSS and plugin CSS can style it directly. The component provides the frame plus styles for these conventional class names inside it: ``.modal-header``, ``.modal-title``, ``.modal-meta``, ``.modal-footer``, ``.footer-info`` and the button classes ``.btn``, ``.btn-primary``, ``.btn-ghost`` and ``.btn-danger``.
+
+Sizing can be customized with CSS custom properties on the dialog:
+
+.. code-block:: css
+
+    dialog.my-plugin-dialog {
+        --datasette-modal-width: min(700px, calc(100vw - 32px));
+        --datasette-modal-max-height: min(600px, calc(100vh - 32px));
+    }
+
+The dialog frame also respects the page-wide theme properties ``--modal-border-radius``, ``--modal-shadow``, ``--modal-backdrop-bg``, ``--modal-backdrop-blur`` and ``--modal-animation-duration``.
+
+``<datasette-modal>`` also works inside the shadow DOM of other Web Components - Datasette's own ``<column-chooser>`` and ``<navigation-search>`` components use it this way. The shared frame styles are automatically adopted into whichever document or shadow root the element is connected to.
 
 .. _javascript_plugin_objects:
 

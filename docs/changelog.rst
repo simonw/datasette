@@ -9,6 +9,8 @@ Changelog
 1.0a36 (in development)
 -----------------------
 
+- Datasette's JSON APIs now consistently encode every ``BLOB`` value using the documented :ref:`binary value JSON format <binary_json_format>`, even when the bytes could be decoded as UTF-8 text.
+- The insert and edit row dialogs now provide a dedicated control for ``BLOB`` values. Existing binary values are shown by byte size, image values under 10MB are previewed as thumbnails, and replacements can be attached, dropped or pasted into the control.
 - The table and row JSON APIs now support ``?_extra=column_details`` for returning SQLite schema details for columns, including declared type, SQLite affinity, primary key, ``NOT NULL``, default and hidden-column metadata.
 
 .. _v1_0_a35:

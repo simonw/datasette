@@ -17,7 +17,7 @@ Datasette includes special handling for these binary values. The Datasette inter
 Binary values in JSON
 ---------------------
 
-Binary data is represented in ``.json`` exports using Base64 encoding.
+Binary data is represented in ``.json`` exports using Base64 encoding. Datasette uses this representation for every ``BLOB`` value, including binary values that could also be decoded as UTF-8 text.
 
 https://latest.datasette.io/fixtures/binary_data.json?_shape=array
 

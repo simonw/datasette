@@ -237,10 +237,8 @@ class CustomJSONEncoder(json.JSONEncoder):
     - ``sqlite3.Row`` becomes a tuple
     - ``sqlite3.Cursor`` becomes a list
 
-    If a binary blob can be decoded as UTF-8, the encoder returns it as text.
-
-    If it can't (for example, images), it is encoded as an object, with the actual
-    data base64-encoded, like so: ::
+    Binary blobs are encoded as an object, with the actual data base64-encoded,
+    like so: ::
 
         {
             "$base64": True,
@@ -256,14 +254,10 @@ class CustomJSONEncoder(json.JSONEncoder):
         if isinstance(obj, sqlite3.Cursor):
             return list(obj)
         if isinstance(obj, bytes):
-            # Does it encode to utf8?
-            try:
-                return obj.decode("utf8")
-            except UnicodeDecodeError:
-                return {
-                    "$base64": True,
-                    "encoded": base64.b64encode(obj).decode("latin1"),
-                }
+            return {
+                "$base64": True,
+                "encoded": base64.b64encode(obj).decode("latin1"),
+            }
         return json.JSONEncoder.default(self, obj)
 
 

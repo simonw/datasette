@@ -98,7 +98,7 @@ The page listing the tables, views and queries in a database, e.g. /fixtures. Re
     The color assigned to the database
 
 ``database_page_data`` - ``dict``
-    JSON data used by JavaScript on the database page. Currently ``{}`` or ``{"createTable": {...}}`` where ``createTable`` includes ``path``, ``foreignKeyTargetsPath``, ``databaseName``, ``columnTypes``, ``defaultExpressions`` and optional ``customColumnTypes``.
+    JSON data used by JavaScript on the database page. Currently ``{}`` or ``{"createTable": {...}}`` where ``createTable`` includes ``path``, ``foreignKeyTargetsPath``, ``databaseName``, ``columnTypes``, ``defaultExpressions``, ``canInsertRows`` and optional ``customColumnTypes``.
 
 ``editable`` - ``bool``
     Boolean indicating if the database is editable

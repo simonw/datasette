@@ -5586,8 +5586,8 @@ function resetBulkInsertPreview(state) {
   syncRowEditInsertModeUi(state);
 }
 
-function normalizeBulkInsertCell(column, value, isMissing) {
-  if (isMissing || typeof value === "undefined") {
+function normalizeBulkInsertCell(column, value) {
+  if (typeof value === "undefined") {
     return column.notnull ? "" : null;
   }
   if (value === null) {
@@ -5609,11 +5609,10 @@ function rowObjectForBulkInsert(valuesByColumn, columns) {
       valuesByColumn,
       column.name,
     );
-    row[column.name] = normalizeBulkInsertCell(
-      column,
-      hasValue ? valuesByColumn[column.name] : undefined,
-      !hasValue,
-    );
+    if (!hasValue) {
+      return;
+    }
+    row[column.name] = normalizeBulkInsertCell(column, valuesByColumn[column.name]);
   });
   return row;
 }
@@ -5869,8 +5868,9 @@ function renderBulkInsertPreview(state, rows) {
     var tr = document.createElement("tr");
     state.bulkInsertColumnDetails.forEach(function (column) {
       var td = document.createElement("td");
-      var value = row[column.name];
-      td.textContent = bulkInsertPreviewValue(value);
+      var hasValue = Object.prototype.hasOwnProperty.call(row, column.name);
+      var value = hasValue ? row[column.name] : "";
+      td.textContent = hasValue ? bulkInsertPreviewValue(value) : "";
       if (value === null) {
         td.className = "row-edit-bulk-preview-null";
       }

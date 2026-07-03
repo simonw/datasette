@@ -102,6 +102,12 @@ def write_playwright_database(db_path):
             id integer primary key,
             created_ms integer default (CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER))
         );
+        create table bulk_defaults (
+            id integer primary key,
+            title text not null,
+            status text not null default 'todo',
+            score integer default 5
+        );
         insert into projects (title, metadata, logo, notes, score) values
             (
                 'Build Datasette',
@@ -144,6 +150,11 @@ def write_playwright_config(config_path):
                             "defaults_demo": {
                                 "permissions": {
                                     "alter-table": True,
+                                },
+                            },
+                            "bulk_defaults": {
+                                "permissions": {
+                                    "insert-row": True,
                                 },
                             },
                         },
@@ -277,6 +288,16 @@ def project_row(datasette_server, pk):
     rows = project_rows(datasette_server, id=pk)
     assert len(rows) == 1
     return rows[0]
+
+
+def bulk_default_rows(datasette_server, **filters):
+    params = {
+        "_shape": "objects",
+        **{key: str(value) for key, value in filters.items()},
+    }
+    response = httpx.get(f"{datasette_server}data/bulk_defaults.json", params=params)
+    response.raise_for_status()
+    return response.json()["rows"]
 
 
 def open_jump_menu(page):
@@ -1007,7 +1028,8 @@ def test_insert_row_flow_uses_custom_column_field(page, datasette_server):
     assert "metadata" in preview_text
     assert "id" not in preview_text
     assert "From CSV" in preview_text
-    assert "null" in preview_text
+    assert "null" not in preview_text
+    assert "undefined" not in preview_text
     preview_cell_style = dialog.locator(
         ".row-edit-bulk-preview-table td"
     ).first.evaluate(
@@ -1098,6 +1120,38 @@ def test_bulk_insert_preview_inserts_rows(page, datasette_server):
 
 
 @pytest.mark.playwright
+def test_bulk_insert_omits_columns_absent_from_pasted_input(page, datasette_server):
+    page.goto(f"{datasette_server}data/bulk_defaults")
+    page.locator('button[data-table-action="insert-row"]').click()
+
+    dialog = page.locator("#row-edit-dialog")
+    dialog.wait_for()
+    dialog.locator(".row-edit-bulk-insert").click()
+    dialog.locator(".row-edit-bulk-textarea").fill("title\nOnly title")
+    dialog.locator(".row-edit-save").click()
+
+    assert dialog.locator(".row-edit-save").inner_text() == "Insert these rows"
+    preview_text = dialog.locator(".row-edit-bulk-preview-table").inner_text()
+    assert "Only title" in preview_text
+    assert "undefined" not in preview_text
+
+    dialog.locator(".row-edit-save").click()
+    dialog.locator(
+        ".row-edit-bulk-progress-status", has_text="1 row inserted."
+    ).wait_for()
+
+    rows = bulk_default_rows(datasette_server, title="Only title")
+    assert rows == [
+        {
+            "id": 1,
+            "title": "Only title",
+            "status": "todo",
+            "score": 5,
+        }
+    ]
+
+
+@pytest.mark.playwright
 def test_bulk_insert_preview_accepts_single_column_input(page, datasette_server):
     page.goto(f"{datasette_server}data/projects")
     page.locator('button[data-table-action="insert-row"]').click()
@@ -1116,7 +1170,8 @@ def test_bulk_insert_preview_accepts_single_column_input(page, datasette_server)
     assert "one" in preview_text
     assert "two" in preview_text
     assert "three" in preview_text
-    assert "null" in preview_text
+    assert "null" not in preview_text
+    assert "undefined" not in preview_text
 
 
 @pytest.mark.playwright

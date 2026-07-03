@@ -1027,6 +1027,7 @@ async def test_database_create_table_action_button_and_data():
                 "databaseName": "data",
                 "columnTypes": ["text", "integer", "float", "blob"],
                 "defaultExpressions": DEFAULT_EXPRESSION_OPTIONS,
+                "canInsertRows": False,
             },
         }
         assert "customColumnTypes" not in database_data_from_soup(soup)["createTable"]
@@ -1046,6 +1047,40 @@ async def test_database_create_table_action_button_and_data():
             "_datasetteDatabaseData" in (script.string or "")
             for script in soup_without_permission.find_all("script")
         )
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_database_create_table_data_includes_insert_row_permission():
+    ds = Datasette(
+        [],
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "create-table": {"id": "root"},
+                        "insert-row": {"id": "root"},
+                    },
+                },
+            },
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_database_create_table_insert_permission"),
+            name="data",
+        )
+        await db.execute_write_script("""
+            create table items (id integer primary key, name text);
+            """)
+
+        response = await ds.client.get("/data", actor={"id": "root"})
+        assert response.status_code == 200
+        create_table_data = database_data_from_soup(Soup(response.text, "html.parser"))[
+            "createTable"
+        ]
+        assert create_table_data["canInsertRows"] is True
     finally:
         ds.close()
 

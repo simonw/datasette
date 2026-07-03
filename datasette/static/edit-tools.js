@@ -822,6 +822,11 @@ function tableCreateSaveButtonText(state) {
   return "Create table";
 }
 
+function tableCreateCanInsertRows() {
+  var data = databaseCreateTableData() || {};
+  return !!data.canInsertRows;
+}
+
 function syncTableCreateModeUi(state) {
   if (!state) {
     return;
@@ -831,7 +836,7 @@ function syncTableCreateModeUi(state) {
   state.dataPanel.hidden = !isDataMode;
   state.dataEditor.hidden = !isDataMode || state.dataPreviewReady;
   state.dataPreview.hidden = !isDataMode || !state.dataPreviewReady;
-  state.createFromDataLink.hidden = isDataMode;
+  state.createFromDataLink.hidden = isDataMode || !tableCreateCanInsertRows();
   state.manualCreateLink.hidden = !isDataMode;
 }
 
@@ -1303,7 +1308,7 @@ function resetTableCreateDialog(state) {
 }
 
 function showTableCreateDataMode(state) {
-  if (!state || state.isSaving) {
+  if (!state || state.isSaving || !tableCreateCanInsertRows()) {
     return;
   }
   state.mode = "data";

@@ -325,7 +325,7 @@ class DatabaseContext(Context):
     database_color: str = field(metadata={"help": "The color assigned to the database"})
     database_page_data: dict = field(
         metadata={
-            "help": 'JSON data used by JavaScript on the database page. Currently ``{}`` or ``{"createTable": {...}}`` where ``createTable`` includes ``path``, ``foreignKeyTargetsPath``, ``databaseName``, ``columnTypes``, ``defaultExpressions`` and optional ``customColumnTypes``.'
+            "help": 'JSON data used by JavaScript on the database page. Currently ``{}`` or ``{"createTable": {...}}`` where ``createTable`` includes ``path``, ``foreignKeyTargetsPath``, ``databaseName``, ``columnTypes``, ``defaultExpressions``, ``canInsertRows`` and optional ``customColumnTypes``.'
         }
     )
     database_actions: callable = field(

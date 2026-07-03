@@ -108,6 +108,11 @@ def write_playwright_database(db_path):
             status text not null default 'todo',
             score integer default 5
         );
+        create table upsert_items (
+            id text primary key,
+            title text,
+            metadata text
+        );
         insert into projects (title, metadata, logo, notes, score) values
             (
                 'Build Datasette',
@@ -116,6 +121,8 @@ def write_playwright_database(db_path):
                 'Initial notes',
                 5
             );
+        insert into upsert_items (id, title, metadata) values
+            ('existing', 'Existing title', '{"old": true}');
         """)
     finally:
         conn.close()
@@ -155,6 +162,12 @@ def write_playwright_config(config_path):
                             "bulk_defaults": {
                                 "permissions": {
                                     "insert-row": True,
+                                },
+                            },
+                            "upsert_items": {
+                                "permissions": {
+                                    "insert-row": True,
+                                    "update-row": True,
                                 },
                             },
                         },
@@ -298,6 +311,31 @@ def bulk_default_rows(datasette_server, **filters):
     response = httpx.get(f"{datasette_server}data/bulk_defaults.json", params=params)
     response.raise_for_status()
     return response.json()["rows"]
+
+
+def upsert_item_rows(datasette_server, **filters):
+    params = {
+        "_shape": "objects",
+        **{key: str(value) for key, value in filters.items()},
+    }
+    response = httpx.get(f"{datasette_server}data/upsert_items.json", params=params)
+    response.raise_for_status()
+    return response.json()["rows"]
+
+
+def upsert_item_row(datasette_server, pk):
+    rows = upsert_item_rows(datasette_server, id=pk)
+    assert len(rows) == 1
+    return rows[0]
+
+
+def open_bulk_insert_dialog(page, url):
+    page.goto(url)
+    page.locator('button[data-table-action="insert-row"]').click()
+    dialog = page.locator("#row-edit-dialog")
+    dialog.wait_for()
+    dialog.locator(".row-edit-bulk-insert").click()
+    return dialog
 
 
 def open_jump_menu(page):
@@ -1164,6 +1202,116 @@ def test_bulk_insert_preview_inserts_rows(page, datasette_server):
 
     assert project_rows(datasette_server, title="Bulk one")
     assert project_rows(datasette_server, title="Bulk two")
+
+
+@pytest.mark.playwright
+def test_bulk_insert_upsert_option_updates_existing_and_inserts_new(
+    page, datasette_server
+):
+    dialog = open_bulk_insert_dialog(page, f"{datasette_server}data/upsert_items")
+    textarea = dialog.locator(".row-edit-bulk-textarea")
+    conflict_field = dialog.locator(".row-edit-bulk-conflict")
+    conflict_select = dialog.locator(".row-edit-bulk-conflict-mode")
+
+    assert conflict_field.is_hidden()
+    textarea.fill("title\nNo primary key")
+    assert conflict_field.is_hidden()
+
+    textarea.fill(
+        "id,title,metadata\nexisting,Updated by upsert,{}\nnew,Inserted by upsert,{}"
+    )
+    assert conflict_field.is_visible()
+    assert (
+        dialog.locator(".row-edit-bulk-conflict-label").inner_text()
+        == "If the row exists already"
+    )
+    assert conflict_select.input_value() == "ignore"
+    assert (
+        conflict_select.evaluate("""node => Array.from(node.options)
+        .filter((option) => !option.hidden)
+        .map((option) => option.textContent.trim())""")
+        == [
+            "Stop with an error",
+            "Skip existing rows",
+            "Update existing and insert new",
+        ]
+    )
+
+    conflict_select.select_option("upsert")
+    assert conflict_select.input_value() == "upsert"
+    dialog.locator(".row-edit-save").click()
+
+    assert dialog.locator(".row-edit-save").inner_text() == "Update or insert rows"
+    preview_text = dialog.locator(".row-edit-bulk-preview-table").inner_text()
+    assert "Updated by upsert" in preview_text
+    assert "Inserted by upsert" in preview_text
+
+    dialog.locator(".row-edit-save").click()
+    dialog.locator(
+        ".row-edit-bulk-progress-status", has_text="2 rows upserted."
+    ).wait_for()
+
+    assert upsert_item_row(datasette_server, "existing")["title"] == (
+        "Updated by upsert"
+    )
+    assert upsert_item_row(datasette_server, "new")["title"] == "Inserted by upsert"
+
+
+@pytest.mark.playwright
+def test_bulk_insert_conflicts_hide_upsert_without_update_permission(
+    page, datasette_server
+):
+    dialog = open_bulk_insert_dialog(page, f"{datasette_server}data/bulk_defaults")
+    textarea = dialog.locator(".row-edit-bulk-textarea")
+    conflict_field = dialog.locator(".row-edit-bulk-conflict")
+    conflict_select = dialog.locator(".row-edit-bulk-conflict-mode")
+
+    textarea.fill("title\nOnly title")
+    assert conflict_field.is_hidden()
+
+    textarea.fill("id,title\n1,Only title")
+    assert conflict_field.is_visible()
+    assert conflict_select.input_value() == "ignore"
+    assert (
+        conflict_select.evaluate("""node => Array.from(node.options)
+        .filter((option) => !option.hidden)
+        .map((option) => option.textContent.trim())""")
+        == [
+            "Stop with an error",
+            "Skip existing rows",
+        ]
+    )
+    assert conflict_select.locator('option[value="upsert"]').evaluate(
+        "node => node.hidden && node.disabled"
+    )
+
+
+@pytest.mark.playwright
+def test_bulk_insert_live_validation_reports_unknown_columns(page, datasette_server):
+    dialog = open_bulk_insert_dialog(page, f"{datasette_server}data/projects")
+    textarea = dialog.locator(".row-edit-bulk-textarea")
+    error = dialog.locator(".row-edit-error")
+    save = dialog.locator(".row-edit-save")
+
+    textarea.fill(json.dumps([{"id2": 1, "title": "Unknown column"}]))
+    error.wait_for()
+    assert error.inner_text() == "JSON row 1 has unknown column id2."
+    assert save.is_disabled()
+    assert textarea.evaluate("node => document.activeElement === node")
+
+    textarea.fill("id2,title\n1,Unknown column")
+    assert error.inner_text() == "Unknown column id2 in header row."
+    assert save.is_disabled()
+
+    textarea.fill("[")
+    assert error.is_hidden()
+    assert not save.is_disabled()
+
+    textarea.fill(json.dumps([{"id": 1, "title": "Known column"}]))
+    assert error.is_hidden()
+    assert not save.is_disabled()
+    assert dialog.locator(".row-edit-bulk-conflict").is_visible()
+    assert dialog.locator(".row-edit-bulk-conflict-mode").input_value() == "ignore"
 
 
 @pytest.mark.playwright

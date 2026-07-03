@@ -4332,6 +4332,14 @@ function tableInsertUrl() {
   return url.toString();
 }
 
+function tableUpsertUrl() {
+  var data = tableInsertData();
+  if (data && data.upsertPath) {
+    return new URL(data.upsertPath, location.href).toString();
+  }
+  return null;
+}
+
 function rowResourceUrl(row) {
   var rowId = row.getAttribute("data-row");
   if (!rowId) {
@@ -5179,10 +5187,12 @@ function clearRowEditDialogError(state) {
   state.error.textContent = "";
 }
 
-function showRowEditDialogError(state, message) {
+function showRowEditDialogError(state, message, options) {
   state.error.hidden = false;
   state.error.textContent = message;
-  state.error.focus();
+  if (!options || options.focus !== false) {
+    state.error.focus();
+  }
 }
 
 function rowEditIsMultipleInsert(state) {
@@ -5205,7 +5215,10 @@ function updateRowEditDialogButtons(state) {
     state.isLoading ||
     state.isSaving ||
     !state.hasLoaded ||
-    state.bulkInsertInserted;
+    state.bulkInsertInserted ||
+    (rowEditIsMultipleInsert(state) &&
+      !state.bulkInsertPreviewReady &&
+      !!state.bulkInsertLiveValidationError);
   state.cancelButton.disabled = state.isSaving;
   syncRowEditInsertModeUi(state);
   state.cancelButton.textContent =
@@ -5220,14 +5233,16 @@ function updateRowEditDialogButtons(state) {
     ? state.bulkInsertInserted
       ? "Inserted"
       : state.bulkInsertPreviewReady
-        ? "Insert these rows"
+        ? bulkInsertSaveLabel(state)
         : "Preview rows"
     : state.mode === "insert"
       ? "Insert row"
       : "Save";
   state.saveButton.textContent = state.isSaving
     ? rowEditIsMultipleInsert(state)
-      ? "Inserting..."
+      ? bulkInsertConflictMode(state) === "upsert"
+        ? "Updating..."
+        : "Inserting..."
       : "Saving..."
     : saveLabel;
   state.form.setAttribute(
@@ -5484,6 +5499,8 @@ function showMultipleRowInsert(state) {
   }
   clearRowEditDialogError(state);
   setRowInsertDialogTitle(state);
+  syncBulkInsertConflictUi(state);
+  syncBulkInsertTextareaValidation(state);
   updateRowEditDialogButtons(state);
   state.bulkInsertTextarea.focus();
 }
@@ -5499,6 +5516,67 @@ function showSingleRowInsert(state) {
   if (!focusFirstRowEditControl(state, { skipReadonly: true })) {
     state.saveButton.focus();
   }
+}
+
+function bulkInsertConflictMode(state) {
+  if (!state || !state.bulkInsertHasPrimaryKeyColumns) {
+    return "insert";
+  }
+  return state.bulkInsertConflictMode || "ignore";
+}
+
+function syncBulkInsertConflictUi(state) {
+  if (!state || !state.bulkInsertConflictField) {
+    return;
+  }
+  var insertData = tableInsertData() || {};
+  var primaryKeys = insertData.primaryKeys || [];
+  var hasPrimaryKeys = primaryKeys.length > 0;
+  var hasPrimaryKeyColumns =
+    hasPrimaryKeys &&
+    bulkInsertTextIncludesPrimaryKeyColumns(
+      state.bulkInsertTextarea.value,
+      state.bulkInsertColumnDetails,
+      primaryKeys,
+    );
+  state.bulkInsertHasPrimaryKeyColumns = hasPrimaryKeyColumns;
+  var canUpsert = hasPrimaryKeyColumns && !!state.currentUpsertUrl;
+  var upsertOption = state.bulkInsertConflictSelect.querySelector(
+    'option[value="upsert"]',
+  );
+  if (upsertOption) {
+    upsertOption.disabled = !canUpsert;
+    upsertOption.hidden = !canUpsert;
+  }
+  if (
+    !hasPrimaryKeyColumns ||
+    (!canUpsert && bulkInsertConflictMode(state) === "upsert")
+  ) {
+    state.bulkInsertConflictMode = hasPrimaryKeys ? "ignore" : "insert";
+    state.bulkInsertConflictSelect.value = state.bulkInsertConflictMode;
+  }
+  state.bulkInsertConflictField.hidden = !hasPrimaryKeyColumns;
+  state.bulkInsertConflictSelect.value = bulkInsertConflictMode(state);
+  var helpText = "";
+  if (bulkInsertConflictMode(state) === "upsert") {
+    helpText =
+      "Rows with existing primary keys will be updated; new primary keys will be inserted.";
+  } else if (bulkInsertConflictMode(state) === "ignore") {
+    helpText = "Rows with existing primary keys will be skipped.";
+  } else {
+    helpText = "Rows with existing primary keys will stop the import.";
+  }
+  state.bulkInsertConflictHelp.textContent = helpText;
+}
+
+function bulkInsertSaveLabel(state) {
+  if (!state.bulkInsertPreviewReady) {
+    return "Preview rows";
+  }
+  if (bulkInsertConflictMode(state) === "upsert") {
+    return "Update or insert rows";
+  }
+  return "Insert these rows";
 }
 
 function readTextFile(file) {
@@ -5526,7 +5604,6 @@ async function loadBulkInsertTextFile(state, file) {
     state.bulkInsertTextarea.dispatchEvent(
       new Event("input", { bubbles: true }),
     );
-    clearRowEditDialogError(state);
     state.bulkInsertTextarea.focus();
   } catch (_error) {
     showRowEditDialogError(state, "Could not read that text file.");
@@ -5588,6 +5665,7 @@ function resetBulkInsertPreview(state) {
   state.bulkInsertProgressBar.value = 0;
   state.bulkInsertProgressBar.max = 1;
   state.bulkInsertProgressStatus.textContent = "";
+  syncBulkInsertConflictUi(state);
   syncRowEditInsertModeUi(state);
 }
 
@@ -5617,7 +5695,10 @@ function rowObjectForBulkInsert(valuesByColumn, columns) {
     if (!hasValue) {
       return;
     }
-    row[column.name] = normalizeBulkInsertCell(column, valuesByColumn[column.name]);
+    row[column.name] = normalizeBulkInsertCell(
+      column,
+      valuesByColumn[column.name],
+    );
   });
   return row;
 }
@@ -5732,6 +5813,118 @@ function bulkInsertColumnMap(columns) {
     map[column.name] = column;
   });
   return map;
+}
+
+function bulkInsertTextIncludesPrimaryKeyColumns(text, columns, primaryKeys) {
+  if (!primaryKeys.length || !text.trim()) {
+    return false;
+  }
+  var trimmed = text.trim();
+  try {
+    if (trimmed[0] === "[" || trimmed[0] === "{") {
+      return jsonBulkInsertTextIncludesPrimaryKeyColumns(trimmed, primaryKeys);
+    }
+    return delimitedBulkInsertTextIncludesPrimaryKeyColumns(
+      trimmed,
+      columns,
+      primaryKeys,
+    );
+  } catch (_error) {
+    return false;
+  }
+}
+
+function jsonBulkInsertTextIncludesPrimaryKeyColumns(text, primaryKeys) {
+  var rows = parseJsonObjectRows(text);
+  var seenKeys = {};
+  rows.forEach(function (row) {
+    Object.keys(row).forEach(function (key) {
+      seenKeys[key] = true;
+    });
+  });
+  return primaryKeys.every(function (key) {
+    return !!seenKeys[key];
+  });
+}
+
+function delimitedBulkInsertTextIncludesPrimaryKeyColumns(
+  text,
+  columns,
+  primaryKeys,
+) {
+  var delimiter = detectBulkInsertDelimiter(text, columns);
+  var rows = (
+    delimiter === null
+      ? splitSingleColumnRows(text)
+      : splitDelimitedRows(text, delimiter)
+  ).filter(function (row) {
+    return !bulkInsertDelimitedRowIsBlank(row);
+  });
+  if (!rows.length) {
+    return false;
+  }
+
+  var columnMap = bulkInsertColumnMap(columns);
+  var header = rows[0].map(function (value) {
+    return value.trim();
+  });
+  var headerMatches = header.filter(function (name) {
+    return !!columnMap[name];
+  }).length;
+  if (headerMatches > 0) {
+    return primaryKeys.every(function (key) {
+      return header.indexOf(key) !== -1;
+    });
+  }
+
+  var headers = columns.map(function (column) {
+    return column.name;
+  });
+  var suppliedColumnCount = rows.reduce(function (count, row) {
+    return Math.max(count, row.length);
+  }, 0);
+  return primaryKeys.every(function (key) {
+    var index = headers.indexOf(key);
+    return index !== -1 && index < suppliedColumnCount;
+  });
+}
+
+function bulkInsertLiveValidationShouldWait(message) {
+  return (
+    message === "Paste rows before previewing." ||
+    message === "No data rows found to preview." ||
+    (message.indexOf("Invalid JSON:") === 0 &&
+      message.indexOf("Unexpected end") !== -1)
+  );
+}
+
+function bulkInsertLiveValidationError(state) {
+  var text = state.bulkInsertTextarea.value;
+  if (!text.trim()) {
+    return null;
+  }
+  try {
+    parseBulkInsertRows(text, state.bulkInsertColumnDetails);
+  } catch (error) {
+    var message = error.message || "Could not preview rows.";
+    return bulkInsertLiveValidationShouldWait(message) ? null : message;
+  }
+  return null;
+}
+
+function syncBulkInsertTextareaValidation(state) {
+  if (!rowEditIsMultipleInsert(state) || state.bulkInsertPreviewReady) {
+    state.bulkInsertLiveValidationError = null;
+    return;
+  }
+  state.bulkInsertLiveValidationError = bulkInsertLiveValidationError(state);
+  if (state.bulkInsertLiveValidationError) {
+    showRowEditDialogError(state, state.bulkInsertLiveValidationError, {
+      focus: false,
+    });
+  } else {
+    clearRowEditDialogError(state);
+  }
 }
 
 function parseJsonBulkInsertRows(text, columns) {
@@ -5892,6 +6085,7 @@ function renderBulkInsertPreview(state, rows) {
 function previewBulkInsertRows(state) {
   clearRowEditDialogError(state);
   resetBulkInsertPreview(state);
+  syncBulkInsertConflictUi(state);
   try {
     var rows = parseBulkInsertRows(
       state.bulkInsertTextarea.value,
@@ -5908,13 +6102,14 @@ function previewBulkInsertRows(state) {
 }
 
 function updateBulkInsertProgress(state, inserted, total) {
+  var words = bulkInsertProgressWords(state);
   state.bulkInsertProgress.hidden = false;
   state.bulkInsertProgressBar.max = total || 1;
   state.bulkInsertProgressBar.value = inserted;
   state.bulkInsertProgressStatus.textContent =
     inserted >= total
-      ? total + " row" + (total === 1 ? " inserted." : "s inserted.")
-      : "Inserting " + inserted + " of " + total + " rows...";
+      ? total + " row" + (total === 1 ? " " : "s ") + words.complete + "."
+      : words.active + " " + inserted + " of " + total + " rows...";
 }
 
 function bulkInsertBatches(rows, batchSize) {
@@ -5944,11 +6139,12 @@ function animateBulkInsertProgress(state, from, to, total, duration) {
       var easedProgress = 1 - Math.pow(1 - progress, 3);
       var value = from + (to - from) * easedProgress;
       var displayValue = progress === 1 ? to : Math.floor(value);
+      var words = bulkInsertProgressWords(state);
       state.bulkInsertProgressBar.value = value;
       state.bulkInsertProgressStatus.textContent =
         displayValue >= total
-          ? total + " row" + (total === 1 ? " inserted." : "s inserted.")
-          : "Inserting " + displayValue + " of " + total + " rows...";
+          ? total + " row" + (total === 1 ? " " : "s ") + words.complete + "."
+          : words.active + " " + displayValue + " of " + total + " rows...";
       if (progress < 1) {
         window.requestAnimationFrame(step);
       } else {
@@ -5960,16 +6156,77 @@ function animateBulkInsertProgress(state, from, to, total, duration) {
   });
 }
 
+function bulkInsertProgressWords(state) {
+  var mode = bulkInsertConflictMode(state);
+  if (mode === "upsert") {
+    return {
+      active: "Upserting",
+      complete: "upserted",
+    };
+  }
+  if (mode === "ignore") {
+    return {
+      active: "Processing",
+      complete: "processed",
+    };
+  }
+  return {
+    active: "Inserting",
+    complete: "inserted",
+  };
+}
+
+function validateBulkInsertConflictRows(state, rows) {
+  if (bulkInsertConflictMode(state) !== "upsert") {
+    return null;
+  }
+  var insertData = tableInsertData() || {};
+  var primaryKeys = insertData.primaryKeys || [];
+  for (var index = 0; index < rows.length; index += 1) {
+    var row = rows[index];
+    var missing = primaryKeys.filter(function (key) {
+      return (
+        !Object.prototype.hasOwnProperty.call(row, key) ||
+        row[key] === null ||
+        typeof row[key] === "undefined"
+      );
+    });
+    if (missing.length) {
+      return (
+        "Row " +
+        (index + 1) +
+        " is missing primary key " +
+        missing.join(", ") +
+        ". Upsert requires primary key values for every row."
+      );
+    }
+  }
+  return null;
+}
+
 async function insertBulkPreviewRows(state) {
   if (!state.bulkInsertPreviewRows || state.bulkInsertInserted) {
     return;
   }
-  if (!state.currentInsertUrl) {
-    showRowEditDialogError(state, "Could not find the row insert URL.");
+  var conflictMode = bulkInsertConflictMode(state);
+  var url =
+    conflictMode === "upsert" ? state.currentUpsertUrl : state.currentInsertUrl;
+  if (!url) {
+    showRowEditDialogError(
+      state,
+      conflictMode === "upsert"
+        ? "Could not find the row upsert URL."
+        : "Could not find the row insert URL.",
+    );
     return;
   }
 
   var rows = state.bulkInsertPreviewRows;
+  var validationError = validateBulkInsertConflictRows(state, rows);
+  if (validationError) {
+    showRowEditDialogError(state, validationError);
+    return;
+  }
   var total = rows.length;
   var inserted = state.bulkInsertInsertedCount || 0;
   var batches = bulkInsertBatches(
@@ -5984,13 +6241,17 @@ async function insertBulkPreviewRows(state) {
   try {
     for (var batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
       var batch = batches[batchIndex];
-      var response = await fetch(state.currentInsertUrl, {
+      var payload = { rows: batch };
+      if (conflictMode === "ignore") {
+        payload.ignore = true;
+      }
+      var response = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
         },
-        body: JSON.stringify({ rows: batch }),
+        body: JSON.stringify(payload),
       });
       var data = null;
       try {
@@ -6318,15 +6579,17 @@ function renderRowEditFields(state, data) {
 
 function renderRowInsertFields(state, data) {
   var columns = data.columns || [];
+  var bulkColumns = data.bulkColumns || columns;
 
   state.insertMode = "single";
-  state.bulkInsertColumnDetails = columns.slice();
+  state.bulkInsertColumnDetails = bulkColumns.slice();
   state.bulkInsertMaxRows = data.maxInsertRows || 100;
-  state.bulkInsertColumns = columns.map(function (column) {
+  state.bulkInsertColumns = bulkColumns.map(function (column) {
     return column.name;
   });
   state.copyTemplateButton.disabled = !state.bulkInsertColumns.length;
   setBulkInsertCopyButtonReady(state);
+  syncBulkInsertConflictUi(state);
   clearTimeout(state.copyTemplateResetTimer);
   state.copyTemplateResetTimer = null;
   resetBulkInsertPreview(state);
@@ -6424,6 +6687,17 @@ function ensureRowEditDialog(manager) {
           <p class="row-edit-bulk-note"><label for="row-edit-bulk-textarea">Paste TSV, CSV, or JSON</label>. You can also <button type="button" class="button-as-link row-edit-bulk-open-file">open a file</button> or drop it onto this textarea</p>
           <input class="row-edit-bulk-file-input" type="file" accept=".csv,.tsv,.json,.txt,text/csv,text/tab-separated-values,application/json,text/plain" hidden>
           <textarea class="row-edit-input row-edit-bulk-textarea" id="row-edit-bulk-textarea" name="_bulk_rows" rows="12" spellcheck="false"></textarea>
+          <div class="row-edit-bulk-conflict" hidden>
+            <label class="row-edit-bulk-conflict-label" for="row-edit-bulk-conflict-mode">If the row exists already</label>
+            <div class="row-edit-bulk-conflict-control">
+              <select class="row-edit-input row-edit-bulk-conflict-mode" id="row-edit-bulk-conflict-mode" aria-describedby="row-edit-bulk-conflict-help">
+                <option value="insert">Stop with an error</option>
+                <option value="ignore">Skip existing rows</option>
+                <option value="upsert">Update existing and insert new</option>
+              </select>
+              <p class="row-edit-bulk-conflict-help" id="row-edit-bulk-conflict-help"></p>
+            </div>
+          </div>
           <div class="row-edit-bulk-actions">
             <button type="button" class="btn btn-ghost row-edit-copy-template"><span class="row-edit-copy-template-label-wide">Copy spreadsheet template</span><span class="row-edit-copy-template-label-narrow">Copy template</span></button>
             <span class="row-edit-bulk-template-note"><span class="row-edit-bulk-template-note-wide">You can paste the template into Google Sheets or Excel.</span><span class="row-edit-bulk-template-note-narrow">Paste into Google Sheets or Excel</span></span>
@@ -6462,6 +6736,13 @@ function ensureRowEditDialog(manager) {
     bulkInsertProgressStatus: dialog.querySelector(
       ".row-edit-bulk-progress-status",
     ),
+    bulkInsertConflictField: dialog.querySelector(".row-edit-bulk-conflict"),
+    bulkInsertConflictSelect: dialog.querySelector(
+      ".row-edit-bulk-conflict-mode",
+    ),
+    bulkInsertConflictHelp: dialog.querySelector(
+      ".row-edit-bulk-conflict-help",
+    ),
     copyTemplateButton: dialog.querySelector(".row-edit-copy-template"),
     bulkInsertOpenFileButton: dialog.querySelector(".row-edit-bulk-open-file"),
     bulkInsertFileInput: dialog.querySelector(".row-edit-bulk-file-input"),
@@ -6474,10 +6755,14 @@ function ensureRowEditDialog(manager) {
     currentRowId: null,
     currentPkPath: null,
     currentInsertUrl: null,
+    currentUpsertUrl: null,
     currentUpdateUrl: null,
     currentFragmentUrl: null,
     mode: "edit",
     insertMode: "single",
+    bulkInsertConflictMode: "ignore",
+    bulkInsertHasPrimaryKeyColumns: false,
+    bulkInsertLiveValidationError: null,
     bulkInsertColumns: [],
     bulkInsertColumnDetails: [],
     bulkInsertPreviewRows: null,
@@ -6620,9 +6905,21 @@ function ensureRowEditDialog(manager) {
 
   rowEditDialogState.bulkInsertTextarea.addEventListener("input", function () {
     resetBulkInsertPreview(rowEditDialogState);
-    clearRowEditDialogError(rowEditDialogState);
+    syncBulkInsertTextareaValidation(rowEditDialogState);
     updateRowEditDialogButtons(rowEditDialogState);
   });
+
+  rowEditDialogState.bulkInsertConflictSelect.addEventListener(
+    "change",
+    function () {
+      rowEditDialogState.bulkInsertConflictMode =
+        rowEditDialogState.bulkInsertConflictSelect.value;
+      syncBulkInsertConflictUi(rowEditDialogState);
+      resetBulkInsertPreview(rowEditDialogState);
+      syncBulkInsertTextareaValidation(rowEditDialogState);
+      updateRowEditDialogButtons(rowEditDialogState);
+    },
+  );
 
   dialog.addEventListener("click", function (ev) {
     if (ev.target === dialog) {
@@ -6649,6 +6946,7 @@ function ensureRowEditDialog(manager) {
     var redirectOnCloseUrl = state.redirectOnCloseUrl;
     state.loadId += 1;
     state.isClosePending = false;
+    state.bulkInsertLiveValidationError = null;
     state.shouldReloadOnClose = false;
     state.redirectOnCloseUrl = null;
     clearTimeout(state.copyTemplateResetTimer);
@@ -6696,6 +6994,7 @@ async function openRowEditDialog(button, manager) {
   state.currentRowId = row.getAttribute("data-row") || "";
   state.currentPkPath = rowDisplayLabel(row);
   state.currentInsertUrl = null;
+  state.currentUpsertUrl = null;
   state.currentUpdateUrl = rowUpdateUrl(row);
   state.currentFragmentUrl = rowFragmentUrl(row);
   state.insertMode = "single";
@@ -6773,9 +7072,12 @@ function openRowInsertDialog(button, manager) {
   state.currentRowId = null;
   state.currentPkPath = null;
   state.currentInsertUrl = tableInsertUrl();
+  state.currentUpsertUrl = tableUpsertUrl();
   state.currentUpdateUrl = null;
   state.currentFragmentUrl = null;
   state.insertMode = "single";
+  state.bulkInsertConflictMode = "ignore";
+  state.bulkInsertLiveValidationError = null;
   state.bulkInsertTextarea.value = "";
   state.shouldReloadOnClose = false;
   state.redirectOnCloseUrl = null;

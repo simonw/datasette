@@ -1832,6 +1832,34 @@ textarea.row-edit-input {
     padding-right: 12px;
 }
 
+.row-edit-bulk-conflict {
+    display: grid;
+    grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
+    gap: 8px 12px;
+    align-items: start;
+}
+
+.row-edit-bulk-conflict[hidden] {
+    display: none;
+}
+
+.row-edit-bulk-conflict-label {
+    color: var(--ink);
+    font-size: 0.82rem;
+    padding-top: 8px;
+}
+
+.row-edit-bulk-conflict-control {
+    display: grid;
+    gap: 4px;
+}
+
+.row-edit-bulk-conflict-help {
+    color: var(--muted);
+    font-size: 0.78rem;
+    margin: 0;
+}
+
 .row-edit-copy-template-label-narrow {
     display: none;
 }
@@ -3340,6 +3368,15 @@ select.table-alter-input {
     }
 
     .row-edit-label {
+        padding-top: 0;
+    }
+
+    .row-edit-bulk-conflict {
+        grid-template-columns: 1fr;
+        gap: 5px;
+    }
+
+    .row-edit-bulk-conflict-label {
         padding-top: 0;
     }
 

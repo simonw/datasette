@@ -205,7 +205,7 @@ class TableContext(Context):
     )
     table_insert_ui: dict = field(
         metadata={
-            "help": "Information needed to enable the row insertion UI, or ``None`` if row insertion is not available to the current actor. When present it has ``path``, ``tableName``, ``columns`` and ``primaryKeys`` keys; each column includes ``name``, ``sqlite_type``, ``notnull``, ``default``, ``has_default``, ``is_pk``, ``value_kind`` and ``column_type`` keys."
+            "help": "Information needed to enable the row insertion UI, or ``None`` if row insertion is not available to the current actor. When present it has ``path``, ``tableName``, ``columns`` and ``primaryKeys`` keys; each column includes ``name``, ``sqlite_type``, ``notnull``, ``default``, ``has_default``, ``is_pk``, ``is_auto_pk``, ``value_kind`` and ``column_type`` keys."
         }
     )
     table_alter_ui: dict = field(
@@ -507,6 +507,7 @@ async def _table_insert_ui(
             "default": column.default_value,
             "has_default": column.default_value is not None,
             "is_pk": is_pk,
+            "is_auto_pk": is_auto_pk,
             "value_kind": _column_value_kind_for_insert_form(column),
             "column_type": (
                 {"type": column_type.name, "config": column_type.config}

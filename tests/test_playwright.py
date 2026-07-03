@@ -1329,6 +1329,7 @@ def test_bulk_insert_omits_columns_absent_from_pasted_input(page, datasette_serv
     preview_text = dialog.locator(".row-edit-bulk-preview-table").inner_text()
     assert "Only title" in preview_text
     assert "undefined" not in preview_text
+    assert dialog.locator(".row-edit-bulk-preview-auto").inner_text() == "auto"
 
     dialog.locator(".row-edit-save").click()
     dialog.locator(

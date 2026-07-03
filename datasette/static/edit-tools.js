@@ -6038,6 +6038,25 @@ function bulkInsertPreviewValue(value) {
   return String(value);
 }
 
+function bulkInsertPreviewCell(column, hasValue, value) {
+  if (!hasValue && column.is_auto_pk) {
+    return {
+      text: "auto",
+      className: "row-edit-bulk-preview-auto",
+    };
+  }
+  if (value === null) {
+    return {
+      text: bulkInsertPreviewValue(value),
+      className: "row-edit-bulk-preview-null",
+    };
+  }
+  return {
+    text: hasValue ? bulkInsertPreviewValue(value) : "",
+    className: "",
+  };
+}
+
 function renderBulkInsertPreview(state, rows) {
   state.bulkInsertPreview.textContent = "";
   var summary = document.createElement("p");
@@ -6068,9 +6087,10 @@ function renderBulkInsertPreview(state, rows) {
       var td = document.createElement("td");
       var hasValue = Object.prototype.hasOwnProperty.call(row, column.name);
       var value = hasValue ? row[column.name] : "";
-      td.textContent = hasValue ? bulkInsertPreviewValue(value) : "";
-      if (value === null) {
-        td.className = "row-edit-bulk-preview-null";
+      var cell = bulkInsertPreviewCell(column, hasValue, value);
+      td.textContent = cell.text;
+      if (cell.className) {
+        td.className = cell.className;
       }
       tr.appendChild(td);
     });

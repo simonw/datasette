@@ -1979,7 +1979,8 @@ textarea.row-edit-input {
     border-right: none;
 }
 
-.row-edit-bulk-preview-null {
+.row-edit-bulk-preview-null,
+.row-edit-bulk-preview-auto {
     color: var(--muted);
     font-style: italic;
 }

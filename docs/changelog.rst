@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v1_0_a36:
+
+1.0a36 (in development)
+-----------------------
+
+- The table and row JSON APIs now support ``?_extra=column_details`` for returning SQLite schema details for columns, including declared type, SQLite affinity, primary key, ``NOT NULL``, default and hidden-column metadata.
+
 .. _v1_0_a35:
 
 1.0a35 (2026-06-23)

@@ -402,6 +402,24 @@ The available table extras are listed below.
           "pk"
         ]
 
+``column_details``
+    SQLite schema details for columns in this table. The dictionary maps column names to ``type``, ``sqlite_type``, ``notnull``, ``default``, ``is_pk`` and ``hidden`` values.
+
+    ``GET /fixtures/binary_data.json?_size=0&_extra=column_details``
+
+    .. code-block:: json
+
+        {
+          "data": {
+            "type": "BLOB",
+            "sqlite_type": "BLOB",
+            "notnull": 0,
+            "default": null,
+            "is_pk": false,
+            "hidden": false
+          }
+        }
+
 ``display_columns``
     Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type`` and ``column_type_config`` keys.
 
@@ -806,6 +824,24 @@ The following extras are available for row JSON responses.
         [
           "id"
         ]
+
+``column_details``
+    SQLite schema details for columns in this table. The dictionary maps column names to ``type``, ``sqlite_type``, ``notnull``, ``default``, ``is_pk`` and ``hidden`` values.
+
+    ``GET /fixtures/binary_data/1.json?_extra=column_details``
+
+    .. code-block:: json
+
+        {
+          "data": {
+            "type": "BLOB",
+            "sqlite_type": "BLOB",
+            "notnull": 0,
+            "default": null,
+            "is_pk": false,
+            "hidden": false
+          }
+        }
 
 ``render_cell``
     Rendered HTML for each cell using the render_cell plugin hook (See the :ref:`render_cell() plugin hook <plugin_hook_render_cell>` documentation.)

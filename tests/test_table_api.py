@@ -1337,6 +1337,47 @@ async def test_binary_data_in_json(ds_client, path, expected_json, expected_text
 
 
 @pytest.mark.asyncio
+async def test_column_details_extra_table(ds_client):
+    response = await ds_client.get(
+        "/fixtures/binary_data.json?_size=0&_extra=column_details"
+    )
+    assert response.status_code == 200
+    assert response.json()["column_details"] == {
+        "data": {
+            "type": "BLOB",
+            "sqlite_type": "BLOB",
+            "notnull": 0,
+            "default": None,
+            "is_pk": False,
+            "hidden": False,
+        }
+    }
+
+    response = await ds_client.get(
+        "/fixtures/simple_primary_key.json?_size=0&_extra=column_details"
+    )
+    assert response.status_code == 200
+    assert response.json()["column_details"] == {
+        "id": {
+            "type": "INTEGER",
+            "sqlite_type": "INTEGER",
+            "notnull": 0,
+            "default": None,
+            "is_pk": True,
+            "hidden": False,
+        },
+        "content": {
+            "type": "TEXT",
+            "sqlite_type": "TEXT",
+            "notnull": 0,
+            "default": None,
+            "is_pk": False,
+            "hidden": False,
+        },
+    }
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "qs",
     [

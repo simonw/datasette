@@ -429,7 +429,7 @@ async def test_row_foreign_key_tables(ds_client):
 @pytest.mark.asyncio
 async def test_row_extras(ds_client):
     response = await ds_client.get(
-        "/fixtures/simple_primary_key/1.json?_extra=database,table,primary_keys,query,request,debug,foreign_key_tables"
+        "/fixtures/simple_primary_key/1.json?_extra=database,table,primary_keys,query,request,debug,foreign_key_tables,column_details"
     )
     assert response.status_code == 200
     data = response.json()
@@ -446,6 +446,40 @@ async def test_row_extras(ds_client):
         "format": "json",
     }
     assert len(data["foreign_key_tables"]) == 5
+    assert data["column_details"]["id"] == {
+        "type": "INTEGER",
+        "sqlite_type": "INTEGER",
+        "notnull": 0,
+        "default": None,
+        "is_pk": True,
+        "hidden": False,
+    }
+    assert data["column_details"]["content"] == {
+        "type": "TEXT",
+        "sqlite_type": "TEXT",
+        "notnull": 0,
+        "default": None,
+        "is_pk": False,
+        "hidden": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_column_details_extra_row_for_null_blob(ds_client):
+    response = await ds_client.get(
+        "/fixtures/binary_data/3.json?_extra=column_details"
+    )
+    assert response.status_code == 200
+    assert response.json()["column_details"] == {
+        "data": {
+            "type": "BLOB",
+            "sqlite_type": "BLOB",
+            "notnull": 0,
+            "default": None,
+            "is_pk": False,
+            "hidden": False,
+        }
+    }
 
 
 @pytest.mark.asyncio

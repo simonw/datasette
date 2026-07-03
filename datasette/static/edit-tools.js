@@ -1612,7 +1612,7 @@ function inferCreateTableDelimitedColumnType(values) {
 function coerceCreateTableDelimitedValue(value, type) {
   var trimmed = String(value).trim();
   if (trimmed === "") {
-    return "";
+    return type === "integer" || type === "float" ? null : "";
   }
   if (type === "integer") {
     return parseInt(trimmed, 10);

@@ -516,6 +516,53 @@ def test_create_table_from_data_flow(page, datasette_server):
 
 
 @pytest.mark.playwright
+def test_create_table_from_csv_keeps_numeric_type_when_values_are_blank(
+    page, datasette_server
+):
+    page.goto(f"{datasette_server}data")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-database-action="create-table"]').click()
+
+    dialog = page.locator("#table-create-dialog")
+    dialog.wait_for()
+    dialog.locator(".table-create-from-data").click()
+    dialog.locator(".table-create-table-name").fill("playwright_numeric_blanks")
+    dialog.locator(".table-create-data-textarea").fill("name,score\nA,1\nB,")
+    dialog.locator(".table-create-save").click()
+
+    assert dialog.locator(".table-create-save").inner_text() == "Create table"
+    preview_text = dialog.locator(".table-create-data-preview-table").inner_text()
+    assert "A" in preview_text
+    assert "1" in preview_text
+    assert "B" in preview_text
+    assert "null" in preview_text
+
+    dialog.locator(".table-create-save").click()
+    page.wait_for_url("**/data/playwright_numeric_blanks")
+
+    response = httpx.get(
+        f"{datasette_server}data/playwright_numeric_blanks.json?_shape=objects"
+    )
+    response.raise_for_status()
+    assert response.json()["rows"] == [
+        {"name": "A", "score": 1},
+        {"name": "B", "score": None},
+    ]
+
+    schema_response = httpx.get(
+        f"{datasette_server}data/-/query.json",
+        params={
+            "sql": (
+                "select type from pragma_table_info('playwright_numeric_blanks') "
+                "where name = 'score'"
+            )
+        },
+    )
+    schema_response.raise_for_status()
+    assert schema_response.json()["rows"] == [{"type": "INTEGER"}]
+
+
+@pytest.mark.playwright
 def test_create_table_foreign_key_selection_updates_column_type(page, datasette_server):
     page.goto(f"{datasette_server}data")
     page.locator("details.actions-menu-links summary").click()

@@ -205,7 +205,7 @@ class TableContext(Context):
     )
     table_insert_ui: dict = field(
         metadata={
-            "help": "Information needed to enable the row insertion UI, or ``None`` if row insertion is not available to the current actor. When present it has ``path``, ``tableName``, ``columns`` and ``primaryKeys`` keys; each column includes ``name``, ``sqlite_type``, ``notnull``, ``default``, ``has_default``, ``is_pk``, ``is_auto_pk``, ``value_kind`` and ``column_type`` keys."
+            "help": "Information needed to enable the row insertion UI, or ``None`` if row insertion is not available to the current actor. When present it has ``path``, ``tableName``, ``columns``, ``bulkColumns``, ``primaryKeys`` and ``maxInsertRows`` keys, plus optional ``upsertPath`` if the current actor has permission to update rows. ``columns`` lists columns for the single-row insert form, while ``bulkColumns`` lists columns for the bulk insert form. Each column includes ``name``, ``sqlite_type``, ``notnull``, ``default``, ``has_default``, ``is_pk``, ``is_auto_pk``, ``value_kind`` and ``column_type`` keys."
         }
     )
     table_alter_ui: dict = field(

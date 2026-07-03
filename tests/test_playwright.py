@@ -1109,10 +1109,14 @@ def test_insert_row_flow_uses_custom_column_field(page, datasette_server):
         "Previewing 1 row."
     )
     preview_text = dialog.locator(".row-edit-bulk-preview-table").inner_text()
+    assert "id" in preview_text
     assert "title" in preview_text
     assert "metadata" in preview_text
-    assert "id" not in preview_text
     assert "From CSV" in preview_text
+    assert (
+        dialog.locator(".row-edit-bulk-preview-auto").first.text_content()
+        == "auto"
+    )
     assert "null" not in preview_text
     assert "undefined" not in preview_text
     preview_cell_style = dialog.locator(

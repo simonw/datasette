@@ -5611,7 +5611,7 @@ async function loadBulkInsertTextFile(state, file) {
 }
 
 function bulkInsertTemplateText(state) {
-  return (state.bulkInsertColumns || []).join("\t");
+  return (state.bulkInsertTemplateColumns || []).join("\t");
 }
 
 async function copyTextToClipboard(text) {
@@ -5893,8 +5893,7 @@ function bulkInsertLiveValidationShouldWait(message) {
   return (
     message === "Paste rows before previewing." ||
     message === "No data rows found to preview." ||
-    (message.indexOf("Invalid JSON:") === 0 &&
-      message.indexOf("Unexpected end") !== -1)
+    message.indexOf("Invalid JSON:") === 0
   );
 }
 
@@ -6607,7 +6606,10 @@ function renderRowInsertFields(state, data) {
   state.bulkInsertColumns = bulkColumns.map(function (column) {
     return column.name;
   });
-  state.copyTemplateButton.disabled = !state.bulkInsertColumns.length;
+  state.bulkInsertTemplateColumns = columns.map(function (column) {
+    return column.name;
+  });
+  state.copyTemplateButton.disabled = !state.bulkInsertTemplateColumns.length;
   setBulkInsertCopyButtonReady(state);
   syncBulkInsertConflictUi(state);
   clearTimeout(state.copyTemplateResetTimer);
@@ -6784,6 +6786,7 @@ function ensureRowEditDialog(manager) {
     bulkInsertHasPrimaryKeyColumns: false,
     bulkInsertLiveValidationError: null,
     bulkInsertColumns: [],
+    bulkInsertTemplateColumns: [],
     bulkInsertColumnDetails: [],
     bulkInsertPreviewRows: null,
     bulkInsertPreviewReady: false,

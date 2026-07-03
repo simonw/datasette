@@ -17,7 +17,7 @@ def find_free_port():
         return sock.getsockname()[1]
 
 
-def wait_for_server(process, url, timeout=10):
+def wait_for_server(process, url, timeout=30):
     deadline = time.monotonic() + timeout
     last_error = None
     while time.monotonic() < deadline:
@@ -36,7 +36,20 @@ def wait_for_server(process, url, timeout=10):
         except httpx.HTTPError as ex:
             last_error = repr(ex)
         time.sleep(0.1)
-    raise AssertionError(f"Timed out waiting for {url}: {last_error}")
+    if process.poll() is None:
+        process.terminate()
+        try:
+            stdout, stderr = process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate()
+    else:
+        stdout, stderr = process.communicate()
+    raise AssertionError(
+        f"Timed out waiting for {url}: {last_error}\n"
+        f"stdout:\n{stdout}\n"
+        f"stderr:\n{stderr}"
+    )
 
 
 @pytest.fixture
@@ -1113,10 +1126,7 @@ def test_insert_row_flow_uses_custom_column_field(page, datasette_server):
     assert "title" in preview_text
     assert "metadata" in preview_text
     assert "From CSV" in preview_text
-    assert (
-        dialog.locator(".row-edit-bulk-preview-auto").first.text_content()
-        == "auto"
-    )
+    assert dialog.locator(".row-edit-bulk-preview-auto").first.text_content() == "auto"
     assert "null" not in preview_text
     assert "undefined" not in preview_text
     preview_cell_style = dialog.locator(

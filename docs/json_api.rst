@@ -1532,6 +1532,8 @@ The JSON write API
 
 Datasette provides a write API for JSON data. This is a POST-only API that requires an authenticated API token, see :ref:`CreateTokenView`. The token will need to have the specified :ref:`authentication_permissions`.
 
+The row-based write APIs can write :ref:`binary values in JSON <binary_json_format>` using Datasette's Base64 representation for BLOB data.
+
 .. _ExecuteWriteView:
 
 Executing write SQL
@@ -1660,6 +1662,8 @@ A single row can be inserted using the ``"row"`` key:
         }
     }
 
+Column values can use the :ref:`binary value JSON format <binary_json_format>` to write BLOB data.
+
 If successful, this will return a ``201`` status code and the newly inserted row, for example:
 
 .. code-block:: json
@@ -1764,6 +1768,8 @@ Upserting rows
 An upsert is an insert or update operation. If a row with a matching primary key already exists it will be updated - otherwise a new row will be inserted.
 
 The upsert API is mostly the same shape as the :ref:`insert API <TableInsertView>`. It requires both the :ref:`actions_insert_row` and :ref:`actions_update_row` permissions.
+
+It also accepts the same :ref:`binary value JSON format <binary_json_format>`.
 
 ::
 
@@ -1894,6 +1900,8 @@ To update a row, make a ``POST`` to ``/<database>/<table>/<row-pks>/-/update``. 
 ``<row-pks>`` here is the :ref:`tilde-encoded <internals_tilde_encoding>` primary key value of the row to update - or a comma-separated list of primary key values if the table has a composite primary key.
 
 You only need to pass the columns you want to update. Any other columns will be left unchanged.
+
+Updated values can use the :ref:`binary value JSON format <binary_json_format>`.
 
 If successful, this will return a ``200`` status code and a ``{"ok": true}`` response body.
 
@@ -2097,6 +2105,8 @@ Datasette will create a table with a schema that matches those rows and insert t
         ],
         "pk": "id"
     }
+
+Example rows can use the :ref:`binary value JSON format <binary_json_format>`, allowing Datasette to infer ``BLOB`` columns.
 
 Doing this requires both the :ref:`actions_create_table` and :ref:`actions_insert_row` permissions.
 

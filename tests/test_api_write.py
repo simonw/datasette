@@ -50,6 +50,133 @@ def _insert_and_fetch_created(conn, table, insert_sql):
     ).fetchone()
 
 
+BASE64_WRITE_API_VALUE = {"$base64": True, "encoded": "AAEC/f7/"}
+BASE64_WRITE_API_LITERAL = '{"$base64": true, "encoded": "AAEC/f7/"}'
+
+
+@pytest.mark.asyncio
+async def test_base64_write_api_create_table_infers_blob_and_raw_escapes(ds_write):
+    token = write_token(ds_write)
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "binary_create",
+            "row": {
+                "id": 1,
+                "data": BASE64_WRITE_API_VALUE,
+                "literal": {"$raw": BASE64_WRITE_API_VALUE},
+                "double_raw": {"$raw": {"$raw": BASE64_WRITE_API_VALUE}},
+            },
+            "pk": "id",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201
+    assert "[data] BLOB" in response.json()["schema"]
+    assert "[literal] TEXT" in response.json()["schema"]
+
+    rows = (await ds_write.get_database("data").execute("""
+            select
+              typeof(data) as data_type,
+              hex(data) as data_hex,
+              typeof(literal) as literal_type,
+              literal,
+              typeof(double_raw) as double_raw_type,
+              double_raw
+            from binary_create
+            """)).dicts()
+    assert rows == [
+        {
+            "data_type": "blob",
+            "data_hex": "000102FDFEFF",
+            "literal_type": "text",
+            "literal": BASE64_WRITE_API_LITERAL,
+            "double_raw_type": "text",
+            "double_raw": '{"$raw": {"$base64": true, "encoded": "AAEC/f7/"}}',
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_base64_write_api_insert_upsert_update_decode_blobs(ds_write):
+    token = write_token(ds_write)
+    db = ds_write.get_database("data")
+    await db.execute_write(
+        "create table binary_api (id integer primary key, data blob, literal text)"
+    )
+
+    insert_response = await ds_write.client.post(
+        "/data/binary_api/-/insert",
+        json={
+            "row": {
+                "id": 1,
+                "data": BASE64_WRITE_API_VALUE,
+                "literal": {"$raw": BASE64_WRITE_API_VALUE},
+            }
+        },
+        headers=_headers(token),
+    )
+    assert insert_response.status_code == 201
+    assert insert_response.json()["rows"][0]["data"] == BASE64_WRITE_API_VALUE
+
+    upsert_response = await ds_write.client.post(
+        "/data/binary_api/-/upsert",
+        json={
+            "rows": [
+                {
+                    "id": 2,
+                    "data": BASE64_WRITE_API_VALUE,
+                    "literal": {"$raw": BASE64_WRITE_API_VALUE},
+                }
+            ]
+        },
+        headers=_headers(token),
+    )
+    assert upsert_response.status_code == 200
+    assert upsert_response.json() == {"ok": True}
+
+    update_response = await ds_write.client.post(
+        "/data/binary_api/1/-/update",
+        json={
+            "update": {
+                "data": {"$base64": True, "encoded": "/wAB"},
+                "literal": {"$raw": {"$raw": BASE64_WRITE_API_VALUE}},
+            },
+            "return": True,
+        },
+        headers=_headers(token),
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["row"]["data"] == {"$base64": True, "encoded": "/wAB"}
+
+    rows = (await db.execute("""
+            select
+              id,
+              typeof(data) as data_type,
+              hex(data) as data_hex,
+              typeof(literal) as literal_type,
+              literal
+            from binary_api
+            order by id
+            """)).dicts()
+    assert rows == [
+        {
+            "id": 1,
+            "data_type": "blob",
+            "data_hex": "FF0001",
+            "literal_type": "text",
+            "literal": '{"$raw": {"$base64": true, "encoded": "AAEC/f7/"}}',
+        },
+        {
+            "id": 2,
+            "data_type": "blob",
+            "data_hex": "000102FDFEFF",
+            "literal_type": "text",
+            "literal": BASE64_WRITE_API_LITERAL,
+        },
+    ]
+
+
 @pytest.mark.asyncio
 async def test_api_explorer_upsert_example_json(ds_write):
     response = await ds_write.client.get("/-/api", actor={"id": "root"})

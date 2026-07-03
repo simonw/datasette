@@ -12,6 +12,11 @@ Datasette includes special handling for these binary values. The Datasette inter
    :width: 311px
    :alt: Screenshot showing download links next to binary data in the table view
 
+.. _binary_json_format:
+
+Binary values in JSON
+---------------------
+
 Binary data is represented in ``.json`` exports using Base64 encoding.
 
 https://latest.datasette.io/fixtures/binary_data.json?_shape=array
@@ -38,6 +43,48 @@ https://latest.datasette.io/fixtures/binary_data.json?_shape=array
             "data": null
         }
     ]
+
+The same format can be used with the :ref:`JSON write API <json_api_write>`.
+If a column value in a ``row``, ``rows`` or ``update`` object is a JSON object with exactly ``"$base64"`` set to ``true`` and an ``"encoded"`` string, Datasette will decode that Base64 string and store the resulting bytes:
+
+.. code-block:: json
+
+    {
+        "data": {
+            "$base64": true,
+            "encoded": "FRwCx60F/g=="
+        }
+    }
+
+This works for inserts, upserts and updates. It also works when creating a table from example ``row`` or ``rows`` data: Datasette decodes the value before inferring the schema, allowing that column to be created as a ``BLOB`` column.
+
+To store a JSON object with that exact shape literally, wrap it in a ``"$raw"`` object:
+
+.. code-block:: json
+
+    {
+        "data": {
+            "$raw": {
+                "$base64": true,
+                "encoded": "FRwCx60F/g=="
+            }
+        }
+    }
+
+``"$raw"`` unwraps exactly one layer. To store a literal ``"$raw"`` object containing a Base64 object, wrap it again:
+
+.. code-block:: json
+
+    {
+        "data": {
+            "$raw": {
+                "$raw": {
+                    "$base64": true,
+                    "encoded": "FRwCx60F/g=="
+                }
+            }
+        }
+    }
 
 .. _binary_linking:
 

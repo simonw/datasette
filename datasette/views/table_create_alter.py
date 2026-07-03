@@ -20,9 +20,11 @@ from datasette.column_types import SQLiteType
 from datasette.events import AlterTableEvent, CreateTableEvent, InsertRowsEvent
 from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
+    decode_write_json_rows,
     escape_sqlite,
     get_outbound_foreign_keys,
     table_column_details,
+    WriteJsonValueError,
 )
 from datasette.utils.asgi import NotFound, Response
 from datasette.utils.sqlite import sqlite_hidden_table_names
@@ -838,6 +840,10 @@ class TableCreateView(BaseView):
                 actor=request.actor,
             ):
                 return _error(["Permission denied: need insert-row"], 403)
+            try:
+                rows = decode_write_json_rows(rows)
+            except WriteJsonValueError as e:
+                return _error([str(e)], 400)
 
         alter = False
         if rows:

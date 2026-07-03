@@ -449,35 +449,36 @@ async def test_row_extras(ds_client):
     assert data["column_details"]["id"] == {
         "type": "INTEGER",
         "sqlite_type": "INTEGER",
-        "notnull": 0,
+        "notnull": False,
         "default": None,
         "is_pk": True,
-        "hidden": False,
+        "pk_position": 1,
+        "hidden": 0,
     }
     assert data["column_details"]["content"] == {
         "type": "TEXT",
         "sqlite_type": "TEXT",
-        "notnull": 0,
+        "notnull": False,
         "default": None,
         "is_pk": False,
-        "hidden": False,
+        "pk_position": 0,
+        "hidden": 0,
     }
 
 
 @pytest.mark.asyncio
 async def test_column_details_extra_row_for_null_blob(ds_client):
-    response = await ds_client.get(
-        "/fixtures/binary_data/3.json?_extra=column_details"
-    )
+    response = await ds_client.get("/fixtures/binary_data/3.json?_extra=column_details")
     assert response.status_code == 200
     assert response.json()["column_details"] == {
         "data": {
             "type": "BLOB",
             "sqlite_type": "BLOB",
-            "notnull": 0,
+            "notnull": False,
             "default": None,
             "is_pk": False,
-            "hidden": False,
+            "pk_position": 0,
+            "hidden": 0,
         }
     }
 

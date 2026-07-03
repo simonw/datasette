@@ -1346,10 +1346,11 @@ async def test_column_details_extra_table(ds_client):
         "data": {
             "type": "BLOB",
             "sqlite_type": "BLOB",
-            "notnull": 0,
+            "notnull": False,
             "default": None,
             "is_pk": False,
-            "hidden": False,
+            "pk_position": 0,
+            "hidden": 0,
         }
     }
 
@@ -1361,20 +1362,78 @@ async def test_column_details_extra_table(ds_client):
         "id": {
             "type": "INTEGER",
             "sqlite_type": "INTEGER",
-            "notnull": 0,
+            "notnull": False,
             "default": None,
             "is_pk": True,
-            "hidden": False,
+            "pk_position": 1,
+            "hidden": 0,
         },
         "content": {
             "type": "TEXT",
             "sqlite_type": "TEXT",
-            "notnull": 0,
+            "notnull": False,
             "default": None,
             "is_pk": False,
-            "hidden": False,
+            "pk_position": 0,
+            "hidden": 0,
         },
     }
+
+    response = await ds_client.get(
+        "/fixtures/compound_three_primary_keys.json?_size=0&_extra=column_details"
+    )
+    assert response.status_code == 200
+    column_details = response.json()["column_details"]
+    assert column_details["pk1"]["is_pk"] is True
+    assert column_details["pk1"]["pk_position"] == 1
+    assert column_details["pk2"]["is_pk"] is True
+    assert column_details["pk2"]["pk_position"] == 2
+    assert column_details["pk3"]["is_pk"] is True
+    assert column_details["pk3"]["pk_position"] == 3
+    assert column_details["content"]["is_pk"] is False
+    assert column_details["content"]["pk_position"] == 0
+
+
+def test_column_details_extra_defaults_and_notnull():
+    with make_app_client(extra_databases={"defaults.db": """
+                CREATE TABLE defaults (
+                    i INTEGER NOT NULL DEFAULT 42,
+                    s TEXT DEFAULT 'hello',
+                    dt TEXT DEFAULT (datetime('now'))
+                );
+            """}) as client:
+        response = client.get("/defaults/defaults.json?_size=0&_extra=column_details")
+        assert response.status == 200
+        column_details = response.json["column_details"]
+        assert column_details["i"]["notnull"] is True
+        assert column_details["i"]["default"] == "42"
+        assert column_details["s"]["notnull"] is False
+        assert column_details["s"]["default"] == "'hello'"
+        assert column_details["dt"]["default"] == "datetime('now')"
+
+
+@pytest.mark.skipif(
+    sqlite_version() < (3, 31, 0),
+    reason="generated columns were added in SQLite 3.31.0",
+)
+def test_column_details_extra_generated_columns():
+    with make_app_client(extra_databases={"generated.db": """
+                CREATE TABLE generated_columns (
+                    body TEXT,
+                    body_length_virtual INTEGER
+                        GENERATED ALWAYS AS (length(body)) VIRTUAL,
+                    body_length_stored INTEGER
+                        GENERATED ALWAYS AS (length(body)) STORED
+                );
+            """}) as client:
+        response = client.get(
+            "/generated/generated_columns.json?_size=0&_extra=column_details"
+        )
+        assert response.status == 200
+        column_details = response.json["column_details"]
+        assert column_details["body"]["hidden"] == 0
+        assert column_details["body_length_virtual"]["hidden"] == 2
+        assert column_details["body_length_stored"]["hidden"] == 3
 
 
 @pytest.mark.asyncio

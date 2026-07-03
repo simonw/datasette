@@ -403,7 +403,7 @@ The available table extras are listed below.
         ]
 
 ``column_details``
-    SQLite schema details for columns in this table. The dictionary maps column names to ``type``, ``sqlite_type``, ``notnull``, ``default``, ``is_pk`` and ``hidden`` values.
+    SQLite schema details for columns in this table. The dictionary maps column names to objects describing the schema for each column. (Each object has ``type`` as the declared type string returned by SQLite, or ``""`` if no type was declared; ``sqlite_type`` as the normalized SQLite affinity, one of ``TEXT``, ``INTEGER``, ``REAL``, ``BLOB`` or ``NUMERIC``; ``notnull`` as a boolean; ``default`` as the raw SQL default expression string, such as ``"42"``, ``"'hello'"`` or ``"datetime('now')"``, or ``null`` if there is no default; ``is_pk`` as a boolean; ``pk_position`` as the integer primary key position reported by SQLite, or ``0`` for columns that are not part of the primary key; and ``hidden`` as the integer value reported by SQLite's ``PRAGMA table_xinfo``. ``hidden`` is ``0`` for normal columns, ``1`` for hidden virtual table columns, ``2`` for virtual generated columns and ``3`` for stored generated columns.)
 
     ``GET /fixtures/binary_data.json?_size=0&_extra=column_details``
 
@@ -413,10 +413,11 @@ The available table extras are listed below.
           "data": {
             "type": "BLOB",
             "sqlite_type": "BLOB",
-            "notnull": 0,
+            "notnull": false,
             "default": null,
             "is_pk": false,
-            "hidden": false
+            "pk_position": 0,
+            "hidden": 0
           }
         }
 
@@ -826,7 +827,7 @@ The following extras are available for row JSON responses.
         ]
 
 ``column_details``
-    SQLite schema details for columns in this table. The dictionary maps column names to ``type``, ``sqlite_type``, ``notnull``, ``default``, ``is_pk`` and ``hidden`` values.
+    SQLite schema details for columns in this table. The dictionary maps column names to objects describing the schema for each column. (Each object has ``type`` as the declared type string returned by SQLite, or ``""`` if no type was declared; ``sqlite_type`` as the normalized SQLite affinity, one of ``TEXT``, ``INTEGER``, ``REAL``, ``BLOB`` or ``NUMERIC``; ``notnull`` as a boolean; ``default`` as the raw SQL default expression string, such as ``"42"``, ``"'hello'"`` or ``"datetime('now')"``, or ``null`` if there is no default; ``is_pk`` as a boolean; ``pk_position`` as the integer primary key position reported by SQLite, or ``0`` for columns that are not part of the primary key; and ``hidden`` as the integer value reported by SQLite's ``PRAGMA table_xinfo``. ``hidden`` is ``0`` for normal columns, ``1`` for hidden virtual table columns, ``2`` for virtual generated columns and ``3`` for stored generated columns.)
 
     ``GET /fixtures/binary_data/1.json?_extra=column_details``
 
@@ -836,10 +837,11 @@ The following extras are available for row JSON responses.
           "data": {
             "type": "BLOB",
             "sqlite_type": "BLOB",
-            "notnull": 0,
+            "notnull": false,
             "default": null,
             "is_pk": false,
-            "hidden": false
+            "pk_position": 0,
+            "hidden": 0
           }
         }
 

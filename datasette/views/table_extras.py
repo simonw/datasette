@@ -347,18 +347,32 @@ def column_detail_as_json(column):
     return {
         "type": column.type,
         "sqlite_type": SQLiteType.from_declared_type(column.type).value,
-        "notnull": column.notnull,
+        "notnull": bool(column.notnull),
         "default": column.default_value,
         "is_pk": bool(column.is_pk),
-        "hidden": bool(column.hidden),
+        "pk_position": column.is_pk,
+        "hidden": column.hidden,
     }
 
 
 class ColumnDetailsExtra(Extra):
     description = (
         "SQLite schema details for columns in this table. The dictionary maps "
-        "column names to ``type``, ``sqlite_type``, ``notnull``, ``default``, "
-        "``is_pk`` and ``hidden`` values."
+        "column names to objects describing the schema for each column."
+    )
+    docs_note = (
+        "Each object has ``type`` as the declared type string returned by "
+        'SQLite, or ``""`` if no type was declared; ``sqlite_type`` as the '
+        "normalized SQLite affinity, one of ``TEXT``, ``INTEGER``, ``REAL``, "
+        "``BLOB`` or ``NUMERIC``; ``notnull`` as a boolean; ``default`` "
+        'as the raw SQL default expression string, such as ``"42"``, '
+        "``\"'hello'\"`` or ``\"datetime('now')\"``, or ``null`` if there is "
+        "no default; ``is_pk`` as a boolean; ``pk_position`` as the integer "
+        "primary key position reported by SQLite, or ``0`` for columns that "
+        "are not part of the primary key; and ``hidden`` as the integer value "
+        "reported by SQLite's ``PRAGMA table_xinfo``. ``hidden`` is ``0`` for "
+        "normal columns, ``1`` for hidden virtual table columns, ``2`` for "
+        "virtual generated columns and ``3`` for stored generated columns."
     )
     example = ExtraExample("/fixtures/binary_data.json?_size=0&_extra=column_details")
     examples = {

@@ -4149,7 +4149,9 @@ function updateRowEditBinaryDisplay(wrapper, control, fileName) {
 
   if (size) {
     size.textContent =
-      kind === "binary" ? formatRowEditBinarySize(byteLength) : "No binary data";
+      kind === "binary"
+        ? formatRowEditBinarySize(byteLength)
+        : "No binary data";
   }
   if (name) {
     name.textContent = fileName || "";

@@ -10,7 +10,7 @@ Unreleased
 ----------
 
 - Table pages now offer an "Insert multiple rows" mode in the row insertion dialog. This accepts pasted TSV, CSV or JSON, previews the parsed rows before inserting them, validates unknown columns as data is pasted and displays omitted auto integer primary keys as ``auto`` in the preview. (:pr:`2813`)
-- The bulk insert UI can now skip rows with existing primary keys, or update existing rows and insert new rows using the existing ``/<database>/<table>/-/upsert`` API when the actor has both :ref:`insert-row <actions_insert_row>` and :ref:`update-row <actions_update_row>` permissions. (:pr:`2813`)
+- The bulk insert UI can skip rows with existing primary keys, or update existing rows and insert new rows using the existing ``/<database>/<table>/-/upsert`` API when the actor has both :ref:`insert-row <actions_insert_row>` and :ref:`update-row <actions_update_row>` permissions. (:pr:`2813`)
 - The "Create table" dialog now includes a "Create table from data" mode. Paste TSV, CSV or JSON rows to preview inferred columns and types, choose the table name and primary key, then create the table and insert those rows in one step. (:pr:`2813`)
 
 .. _v1_0_a35:

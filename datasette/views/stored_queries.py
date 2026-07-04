@@ -2,7 +2,7 @@ from urllib.parse import parse_qsl, urlencode
 
 from datasette.resources import DatabaseResource, QueryResource
 from datasette.stored_queries import stored_query_to_dict
-from datasette.utils import sqlite3, tilde_decode
+from datasette.utils import UNSTABLE_API_MESSAGE, sqlite3, tilde_decode
 from datasette.utils.asgi import Response
 
 from .base import BaseView, _error
@@ -48,7 +48,15 @@ class QueryParametersView(BaseView):
             parameters = _derived_query_parameters(request.args.get("sql") or "")
         except QueryValidationError as ex:
             return _block_framing(_error([ex.message], ex.status))
-        return _block_framing(Response.json({"ok": True, "parameters": parameters}))
+        return _block_framing(
+            Response.json(
+                {
+                    "ok": True,
+                    "unstable": UNSTABLE_API_MESSAGE,
+                    "parameters": parameters,
+                }
+            )
+        )
 
 
 def _query_list_url(path, query_string, *, set_args=None, remove_args=None):
@@ -315,11 +323,9 @@ class QueryCreateAnalyzeView(BaseView):
                 )
             )
         sql = request.args.get("sql") or ""
-        return _block_framing(
-            Response.json(
-                await _query_create_analysis_data(self.ds, db, sql, request.actor)
-            )
-        )
+        analysis = await _query_create_analysis_data(self.ds, db, sql, request.actor)
+        analysis["unstable"] = UNSTABLE_API_MESSAGE
+        return _block_framing(Response.json(analysis))
 
 
 class QueryStoreView(QueryCreateView):
@@ -384,7 +390,12 @@ class QueryStoreView(QueryCreateView):
         assert query is not None
         if is_json:
             return Response.json(
-                {"ok": True, "query": stored_query_to_dict(query)}, status=201
+                {
+                    "ok": True,
+                    "unstable": UNSTABLE_API_MESSAGE,
+                    "query": stored_query_to_dict(query),
+                },
+                status=201,
             )
         self.ds.add_message(request, "Query saved", self.ds.INFO)
         return Response.redirect(self.ds.urls.path(self.ds.urls.table(db.name, name)))
@@ -405,7 +416,13 @@ class QueryDefinitionView(BaseView):
             actor=request.actor,
         ):
             return _error(["Permission denied"], 403)
-        return Response.json({"ok": True, "query": stored_query_to_dict(query)})
+        return Response.json(
+            {
+                "ok": True,
+                "unstable": UNSTABLE_API_MESSAGE,
+                "query": stored_query_to_dict(query),
+            }
+        )
 
 
 class QueryUpdateView(BaseView):

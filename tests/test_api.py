@@ -43,8 +43,7 @@ async def test_homepage_sort_by_relationships(ds_client):
     response = await ds_client.get("/.json?_sort=relationships")
     assert response.status_code == 200
     tables = [
-        t["name"]
-        for t in response.json()["databases"][0]["tables_and_views_truncated"]
+        t["name"] for t in response.json()["databases"][0]["tables_and_views_truncated"]
     ]
     assert tables == [
         "simple_primary_key",
@@ -252,6 +251,10 @@ def test_no_files_uses_memory_database(app_client_no_files):
     assert response.status == 200
     assert {
         "ok": True,
+        "unstable": (
+            "This API is not part of Datasette's stable interface"
+            " and may change at any time"
+        ),
         "databases": [
             {
                 "name": "_memory",

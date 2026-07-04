@@ -378,7 +378,13 @@ Concerns:
 
 ---
 
-## 9. Define stability tiers explicitly (P1 — documentation, not code)
+## 9. Define stability tiers explicitly (P1 — documentation, not code) — partially implemented
+
+> **Status:** undocumented JSON endpoints now self-describe with an
+> `"unstable": "This API is not part of Datasette's stable interface and
+> may change at any time"` key (homepage, queries analyze/store/definition,
+> query parameters, execute-write analyze, permissions playground POST).
+> The written tier documentation remains to be done.
 
 Not everything under `/-/` can or should carry a 1.0 guarantee. Recommend
 shipping 1.0 with an explicit three-tier contract, per endpoint:

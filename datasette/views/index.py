@@ -6,6 +6,7 @@ from datasette.utils import (
     await_me_maybe,
     make_slot_function,
     CustomJSONEncoder,
+    UNSTABLE_API_MESSAGE,
 )
 from datasette.utils.asgi import Response
 from datasette.version import __version__
@@ -152,6 +153,7 @@ class IndexView(BaseView):
                 json.dumps(
                     {
                         "ok": True,
+                        "unstable": UNSTABLE_API_MESSAGE,
                         "databases": databases,
                         "metadata": await self.ds.get_instance_metadata(),
                     },

@@ -6,6 +6,7 @@ from datasette.events import LogoutEvent, LoginEvent, CreateTokenEvent
 from datasette.resources import DatabaseResource, TableResource
 from datasette.utils.asgi import Response, Forbidden
 from datasette.utils import (
+    UNSTABLE_API_MESSAGE,
     actor_matches_allow,
     add_cors_headers,
     await_me_maybe,
@@ -295,6 +296,12 @@ class PermissionsDebugView(BaseView):
         response, status = await _check_permission_for_actor(
             self.ds, permission, parent, child, actor
         )
+        if response.get("ok"):
+            response = {
+                "ok": True,
+                "unstable": UNSTABLE_API_MESSAGE,
+                **response,
+            }
         return Response.json(response, status=status)
 
 

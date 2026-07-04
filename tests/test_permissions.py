@@ -740,6 +740,10 @@ async def test_actor_restricted_permissions(
     }
     expected = {
         "ok": True,
+        "unstable": (
+            "This API is not part of Datasette's stable interface"
+            " and may change at any time"
+        ),
         "action": permission,
         "allowed": expected_result,
         "resource": expected_resource,

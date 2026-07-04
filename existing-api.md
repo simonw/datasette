@@ -43,7 +43,7 @@ directory: every claim below is based on the route table in `datasette/app.py`
 - Success content type: `application/json; charset=utf-8`
   (`_shape=array&_nl=on` responses use `text/plain`).
 
-### Success envelope
+### Success envelope and stability marker
 
 Every JSON endpoint that returns an object includes `"ok": true` on
 success. `JsonDataView` injects it automatically for dict responses
@@ -51,6 +51,18 @@ success. `JsonDataView` injects it automatically for dict responses
 autocomplete views add it explicitly. The former top-level-array endpoints
 (`/-/plugins`, `/-/databases`, `/-/actions`) now return objects wrapping
 their arrays (`{"ok": true, "plugins": [...]}` etc.).
+
+JSON endpoints that are **not part of the documented API** include a
+marker key (`UNSTABLE_API_MESSAGE` in utils/__init__.py):
+
+```json
+"unstable": "This API is not part of Datasette's stable interface and may change at any time"
+```
+
+Currently: the homepage (`/.json`, `/-/.json`), `/db/-/queries/analyze`,
+`POST /db/-/queries/store`, `/db/<query>/-/definition`,
+`/db/-/query/parameters`, `/db/-/execute-write/analyze` and the
+`POST /-/permissions` playground response.
 
 ### Error shape (canonical)
 

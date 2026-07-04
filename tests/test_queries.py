@@ -2140,7 +2140,14 @@ async def test_query_parameters_endpoint_uses_get_sql_only():
     )
 
     assert response.status_code == 200
-    assert response.json() == {"ok": True, "parameters": ["name", "id"]}
+    assert response.json() == {
+        "ok": True,
+        "unstable": "{}".format(
+            "This API is not part of Datasette's stable interface"
+            " and may change at any time"
+        ),
+        "parameters": ["name", "id"],
+    }
     assert permission_denied_response.status_code == 403
     assert permission_denied_response.json()["errors"] == [
         "Permission denied: need execute-sql"

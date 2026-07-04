@@ -1294,6 +1294,11 @@ async def derive_named_parameters(db: "Database", sql: str) -> List[str]:
     return named_parameters(sql)
 
 
+UNSTABLE_API_MESSAGE = (
+    "This API is not part of Datasette's stable interface and may change at any time"
+)
+
+
 def error_body(messages, status):
     """
     The canonical JSON error body used by every Datasette JSON error response:

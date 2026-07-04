@@ -2,7 +2,7 @@ import re
 from urllib.parse import urlencode
 
 from datasette.resources import DatabaseResource
-from datasette.utils import sqlite3
+from datasette.utils import UNSTABLE_API_MESSAGE, sqlite3
 from datasette.utils.asgi import Response
 
 from .base import BaseView, _error
@@ -500,8 +500,6 @@ class ExecuteWriteAnalyzeView(BaseView):
                 )
             )
         sql = request.args.get("sql") or ""
-        return _block_framing(
-            Response.json(
-                await _execute_write_analysis_data(self.ds, db, sql, request.actor)
-            )
-        )
+        analysis = await _execute_write_analysis_data(self.ds, db, sql, request.actor)
+        analysis["unstable"] = UNSTABLE_API_MESSAGE
+        return _block_framing(Response.json(analysis))

@@ -1,6 +1,6 @@
 from datasette.app import Datasette
 from datasette.events import RenameTableEvent
-from datasette.utils import escape_sqlite, sqlite3
+from datasette.utils import error_body, escape_sqlite, sqlite3
 from .utils import last_event
 import pytest
 import time
@@ -788,7 +788,12 @@ async def test_update_row_invalid_key(ds_write):
         headers=_headers(token),
     )
     assert response.status_code == 400
-    assert response.json() == {"ok": False, "errors": ["Invalid keys: bad_key"]}
+    assert response.json() == {
+        "ok": False,
+        "error": "Invalid keys: bad_key",
+        "errors": ["Invalid keys: bad_key"],
+        "status": 400,
+    }
 
 
 @pytest.mark.asyncio
@@ -1103,10 +1108,9 @@ async def test_alter_table_foreign_key_requires_fk_table_for_fk_column(ds_write)
         headers=_headers(write_token(ds_write, permissions=["at"])),
     )
     assert response.status_code == 400
-    assert response.json() == {
-        "ok": False,
-        "errors": ["operations.0.add_foreign_key.args: fk_column requires fk_table"],
-    }
+    assert response.json() == error_body(
+        ["operations.0.add_foreign_key.args: fk_column requires fk_table"], 400
+    )
 
 
 @pytest.mark.asyncio
@@ -1130,10 +1134,9 @@ async def test_alter_table_foreign_key_without_fk_column_requires_single_pk(ds_w
         headers=_headers(token),
     )
     assert response.status_code == 400
-    assert response.json() == {
-        "ok": False,
-        "errors": ["Could not detect single primary key for table 'accounts'"],
-    }
+    assert response.json() == error_body(
+        ["Could not detect single primary key for table 'accounts'"], 400
+    )
 
 
 @pytest.mark.asyncio
@@ -1199,10 +1202,7 @@ async def test_foreign_key_suggestions_permission_denied(ds_write):
         headers=_headers(token),
     )
     assert response.status_code == 403
-    assert response.json() == {
-        "ok": False,
-        "errors": ["Permission denied: need alter-table"],
-    }
+    assert response.json() == error_body(["Permission denied: need alter-table"], 403)
 
 
 @pytest.mark.asyncio
@@ -1313,10 +1313,7 @@ async def test_foreign_key_targets_permission_denied(ds_write):
         headers=_headers(token),
     )
     assert response.status_code == 403
-    assert response.json() == {
-        "ok": False,
-        "errors": ["Permission denied: need create-table"],
-    }
+    assert response.json() == error_body(["Permission denied: need create-table"], 403)
 
 
 @pytest.mark.asyncio
@@ -1339,10 +1336,7 @@ async def test_alter_table_permission_denied(ds_write):
         headers=_headers(token),
     )
     assert response.status_code == 403
-    assert response.json() == {
-        "ok": False,
-        "errors": ["Permission denied: need alter-table"],
-    }
+    assert response.json() == error_body(["Permission denied: need alter-table"], 403)
 
 
 @pytest.mark.asyncio
@@ -2021,6 +2015,9 @@ async def test_create_table(
     )
     assert response.status_code == expected_status
     data = response.json()
+    if expected_response.get("ok") is False:
+        # Error expectations list their messages; derive the canonical envelope
+        expected_response = error_body(expected_response["errors"], expected_status)
     assert data == expected_response
     # Should have tracked the expected events
     events = ds_write._tracked_events
@@ -2218,13 +2215,12 @@ async def test_create_table_column_validation(ds_write, column, expected_error):
     )
     if expected_error:
         assert response.status_code == 400
-        assert response.json() == {"ok": False, "errors": [expected_error]}
+        assert response.json() == error_body([expected_error], 400)
     else:
         assert response.status_code == 400
-        assert response.json() == {
-            "ok": False,
-            "errors": ["Could not detect single primary key for table 'owners'"],
-        }
+        assert response.json() == error_body(
+            ["Could not detect single primary key for table 'owners'"], 400
+        )
 
 
 @pytest.mark.asyncio
@@ -2262,10 +2258,9 @@ async def test_create_table_foreign_key_without_fk_column_requires_single_pk(ds_
         headers=_headers(token),
     )
     assert response.status_code == 400
-    assert response.json() == {
-        "ok": False,
-        "errors": ["Could not detect single primary key for table 'accounts'"],
-    }
+    assert response.json() == error_body(
+        ["Could not detect single primary key for table 'accounts'"], 400
+    )
 
 
 @pytest.mark.asyncio
@@ -2415,10 +2410,9 @@ async def test_create_table_error_if_pk_changed(ds_write):
         headers=_headers(token),
     )
     assert second_response.status_code == 400
-    assert second_response.json() == {
-        "ok": False,
-        "errors": ["pk cannot be changed for existing table"],
-    }
+    assert second_response.json() == error_body(
+        ["pk cannot be changed for existing table"], 400
+    )
 
 
 @pytest.mark.asyncio
@@ -2442,10 +2436,9 @@ async def test_create_table_error_rows_twice_with_duplicates(ds_write):
         headers=_headers(token),
     )
     assert second_response.status_code == 400
-    assert second_response.json() == {
-        "ok": False,
-        "errors": ["UNIQUE constraint failed: test_create_twice.id"],
-    }
+    assert second_response.json() == error_body(
+        ["UNIQUE constraint failed: test_create_twice.id"], 400
+    )
 
 
 @pytest.mark.asyncio
@@ -2468,6 +2461,8 @@ async def test_method_not_allowed(ds_write, path):
     assert response.json() == {
         "ok": False,
         "error": "Method not allowed",
+        "errors": ["Method not allowed"],
+        "status": 405,
     }
 
 
@@ -2535,10 +2530,9 @@ async def test_create_using_alter_against_existing_table(
     )
     if not has_alter_permission:
         assert response2.status_code == 403
-        assert response2.json() == {
-            "ok": False,
-            "errors": ["Permission denied: need alter-table"],
-        }
+        assert response2.json() == error_body(
+            ["Permission denied: need alter-table"], 403
+        )
     else:
         assert response2.status_code == 201
 

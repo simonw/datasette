@@ -1294,6 +1294,27 @@ async def derive_named_parameters(db: "Database", sql: str) -> List[str]:
     return named_parameters(sql)
 
 
+def error_body(messages, status):
+    """
+    The canonical JSON error body used by every Datasette JSON error response:
+
+        {"ok": False, "error": "...", "errors": ["...", ...], "status": 400}
+
+    "error" is all of the messages joined with "; ", "errors" is the full
+    list, "status" matches the HTTP status code. Callers may add extra
+    context keys to the returned dictionary but must not remove these four.
+    """
+    if isinstance(messages, str):
+        messages = [messages]
+    messages = [str(message) for message in messages]
+    return {
+        "ok": False,
+        "error": "; ".join(messages),
+        "errors": messages,
+        "status": status,
+    }
+
+
 def add_cors_headers(headers):
     headers["Access-Control-Allow-Origin"] = "*"
     headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"

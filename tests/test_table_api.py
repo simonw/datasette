@@ -31,8 +31,8 @@ async def test_table_not_exists_json(ds_client):
     assert (await ds_client.get("/fixtures/blah.json")).json() == {
         "ok": False,
         "error": "Table not found",
+        "errors": ["Table not found"],
         "status": 404,
-        "title": None,
     }
 
 
@@ -242,8 +242,8 @@ async def test_table_shape_invalid(ds_client):
     assert response.json() == {
         "ok": False,
         "error": "Invalid _shape: invalid",
+        "errors": ["Invalid _shape: invalid"],
         "status": 400,
-        "title": None,
     }
 
 
@@ -635,8 +635,8 @@ async def test_searchable_invalid_column(ds_client):
     assert response.json() == {
         "ok": False,
         "error": "Cannot search by that column",
+        "errors": ["Cannot search by that column"],
         "status": 400,
-        "title": None,
     }
 
 
@@ -775,7 +775,7 @@ async def test_table_filter_extra_where_invalid(ds_client):
         "/fixtures/facetable.json?_where=_neighborhood=Dogpatch'"
     )
     assert response.status_code == 400
-    assert "Invalid SQL" == response.json()["title"]
+    assert "unrecognized token" in response.json()["error"]
 
 
 def test_table_filter_extra_where_disabled_if_no_sql_allowed():

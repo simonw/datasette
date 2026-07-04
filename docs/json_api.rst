@@ -50,6 +50,37 @@ The ``"truncated"`` key lets you know if the query was truncated. This can happe
 
 For table pages, an additional key ``"next"`` may be present. This indicates that the next page in the pagination set can be retrieved using ``?_next=VALUE``.
 
+.. _json_api_errors:
+
+Error responses
+---------------
+
+Every JSON error response from Datasette uses the same format:
+
+.. code-block:: json
+
+    {
+        "ok": false,
+        "error": "Table not found",
+        "errors": [
+            "Table not found"
+        ],
+        "status": 404
+    }
+
+- ``"ok"`` is always ``false`` for an error.
+- ``"errors"`` is a list of one or more error message strings. Endpoints that
+  validate multiple things at once - such as the :ref:`insert API <TableInsertView>` -
+  may return several messages here.
+- ``"error"`` is all of those messages joined with ``"; "``, for
+  convenience when displaying a single string.
+- ``"status"`` matches the HTTP status code of the response.
+
+Some endpoints add extra context keys. For example, a SQL error from a
+:ref:`custom query <json_api_custom_sql>` also includes the empty
+``"rows"`` and ``"truncated"`` keys of the response it was unable to
+produce.
+
 .. _json_api_custom_sql:
 
 Executing custom SQL
@@ -1625,15 +1656,17 @@ the execute-write returning row limit, which defaults to 10:
         ]
     }
 
-Errors use the standard Datasette error format:
+Errors use the :ref:`standard Datasette error format <json_api_errors>`:
 
 .. code-block:: json
 
     {
         "ok": false,
+        "error": "Permission denied: need execute-write-sql",
         "errors": [
             "Permission denied: need execute-write-sql"
-        ]
+        ],
+        "status": 403
     }
 
 .. _TableInsertView:
@@ -1727,9 +1760,11 @@ If any of your rows have a primary key that is already in use, you will get an e
 
     {
         "ok": false,
+        "error": "UNIQUE constraint failed: new_table.id",
         "errors": [
             "UNIQUE constraint failed: new_table.id"
-        ]
+        ],
+        "status": 400
     }
 
 Pass ``"ignore": true`` to ignore these errors and insert the other rows:
@@ -1859,9 +1894,11 @@ When using upsert you must provide the primary key column (or columns if the tab
 
     {
         "ok": false,
+        "error": "Row 0 is missing primary key column(s): \"id\"",
         "errors": [
             "Row 0 is missing primary key column(s): \"id\""
-        ]
+        ],
+        "status": 400
     }
 
 If your table does not have an explicit primary key you should pass the SQLite ``rowid`` key instead.
@@ -1921,7 +1958,7 @@ The returned JSON will look like this:
         }
     }
 
-Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
+Any errors will use the :ref:`standard error format <json_api_errors>`, with a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
 
 Pass ``"alter: true`` to automatically add any missing columns to the table. This requires the :ref:`actions_alter_table` permission.
 
@@ -1942,7 +1979,7 @@ To delete a row, make a ``POST`` to ``/<database>/<table>/<row-pks>/-/delete``. 
 
 If successful, this will return a ``200`` status code and a ``{"ok": true}`` response body.
 
-Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
+Any errors will use the :ref:`standard error format <json_api_errors>`, with a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
 
 .. _TableCreateView:
 
@@ -2122,9 +2159,11 @@ If you pass a row to the create endpoint with a primary key that already exists 
 
     {
         "ok": false,
+        "error": "UNIQUE constraint failed: creatures.id",
         "errors": [
             "UNIQUE constraint failed: creatures.id"
-        ]
+        ],
+        "status": 400
     }
 
 You can avoid this error by passing the same ``"ignore": true`` or ``"replace": true`` options to the create endpoint as you can to the :ref:`insert endpoint <TableInsertView>`.
@@ -2360,7 +2399,7 @@ A successful response returns the new schema and the previous schema. If the req
         "operations_applied": 11
     }
 
-Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
+Any errors will use the :ref:`standard error format <json_api_errors>`, with a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
 
 .. _TableSetColumnTypeView:
 
@@ -2424,7 +2463,7 @@ To clear an existing column type assignment, set ``column_type`` to ``null``:
 
 This API stores the assignment in Datasette's internal database, so it can be used with immutable databases as well as mutable ones.
 
-Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
+Any errors will use the :ref:`standard error format <json_api_errors>`, with a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
 
 .. _TableDropView:
 
@@ -2461,4 +2500,4 @@ If you pass the following POST body:
 
 Then the table will be dropped and a status ``200`` response of ``{"ok": true}`` will be returned.
 
-Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
+Any errors will use the :ref:`standard error format <json_api_errors>`, with a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.

@@ -323,20 +323,21 @@ def test_sql_time_limit(app_client_shorter_time_limit):
         "/fixtures/-/query.json?sql=select+sleep(0.5)",
     )
     assert 400 == response.status
+    expected_message = (
+        "<p>SQL query took too long. The time limit is controlled by the\n"
+        '<a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>\n'
+        "configuration option.</p>\n"
+        '<textarea style="width: 90%">select sleep(0.5)</textarea>\n'
+        "<script>\n"
+        'let ta = document.querySelector("textarea");\n'
+        'ta.style.height = ta.scrollHeight + "px";\n'
+        "</script>"
+    )
     assert response.json == {
         "ok": False,
-        "error": (
-            "<p>SQL query took too long. The time limit is controlled by the\n"
-            '<a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>\n'
-            "configuration option.</p>\n"
-            '<textarea style="width: 90%">select sleep(0.5)</textarea>\n'
-            "<script>\n"
-            'let ta = document.querySelector("textarea");\n'
-            'ta.style.height = ta.scrollHeight + "px";\n'
-            "</script>"
-        ),
+        "error": expected_message,
+        "errors": [expected_message],
         "status": 400,
-        "title": "SQL Interrupted",
     }
 
 
@@ -350,7 +351,7 @@ async def test_custom_sql_time_limit(ds_client):
         "/fixtures/-/query.json?sql=select+sleep(0.01)&_timelimit=5",
     )
     assert response.status_code == 400
-    assert response.json()["title"] == "SQL Interrupted"
+    assert response.json()["error"].startswith("<p>SQL query took too long.")
 
 
 @pytest.mark.asyncio

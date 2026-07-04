@@ -1,5 +1,5 @@
 from datasette import hookimpl, Response
-from .utils import add_cors_headers
+from .utils import add_cors_headers, error_body
 from .utils.asgi import (
     Base400,
 )
@@ -45,6 +45,13 @@ def handle_exception(datasette, request, exception):
             message = str(exception)
             traceback.print_exc()
         templates = [f"{status}.html", "error.html"]
+        headers = {}
+        if datasette.cors:
+            add_cors_headers(headers)
+        if request.path.split("?")[0].endswith(".json"):
+            body = dict(info)
+            body.update(error_body(message, status))
+            return Response.json(body, status=status, headers=headers)
         info.update(
             {
                 "ok": False,
@@ -53,24 +60,18 @@ def handle_exception(datasette, request, exception):
                 "title": title,
             }
         )
-        headers = {}
-        if datasette.cors:
-            add_cors_headers(headers)
-        if request.path.split("?")[0].endswith(".json"):
-            return Response.json(info, status=status, headers=headers)
-        else:
-            environment = datasette.get_jinja_environment(request)
-            template = environment.select_template(templates)
-            return Response.html(
-                await template.render_async(
-                    dict(
-                        info,
-                        urls=datasette.urls,
-                        menu_links=lambda: [],
-                    )
-                ),
-                status=status,
-                headers=headers,
-            )
+        environment = datasette.get_jinja_environment(request)
+        template = environment.select_template(templates)
+        return Response.html(
+            await template.render_async(
+                dict(
+                    info,
+                    urls=datasette.urls,
+                    menu_links=lambda: [],
+                )
+            ),
+            status=status,
+            headers=headers,
+        )
 
     return inner

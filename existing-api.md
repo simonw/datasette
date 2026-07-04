@@ -44,46 +44,51 @@ directory: every claim below is based on the route table in `datasette/app.py`
 - Success content type: `application/json; charset=utf-8`
   (`_shape=array&_nl=on` responses use `text/plain`).
 
-### Error shapes (there are several)
+### Error shape (canonical)
 
-The codebase produces **four distinct JSON error shapes**, depending on which
-layer generates the error:
+Every JSON error response uses one canonical shape, built by `error_body()`
+(utils/__init__.py):
 
-1. **Exception handler** (handle_exception.py:21-59) — used when a view raises
-   `NotFound`, `Forbidden` (JSON paths only — see below), `DatasetteError`,
-   `BadRequest` etc. and the request path ends in `.json`:
+```json
+{
+  "ok": false,
+  "error": "all messages joined with '; '",
+  "errors": ["message", "..."],
+  "status": 404
+}
+```
+
+- `errors` is a list of one or more message strings (multi-message
+  validation errors, e.g. per-row insert errors, list them all).
+- `error` is the messages joined with `"; "`.
+- `status` always matches the HTTP status code.
+
+The shape is produced by four code paths, all delegating to `error_body()`:
+
+1. **Exception handler** (handle_exception.py) — `NotFound`,
+   `DatasetteError`, `BadRequest` etc. on `.json` paths. `DatasetteError`
+   `error_dict` context keys are merged in; the legacy `title` key is no
+   longer emitted in JSON (it survives in the HTML error template context).
+2. **The `_error()` helper** (views/base.py:183-184) — the write API,
+   stored-query API, execute-write and permission-denied paths.
+3. **JSON renderer errors** (renderer.py) — SQL errors on table/query
+   endpoints return HTTP 400 with the canonical keys **plus** the context
+   keys of the response it could not produce:
 
    ```json
-   {"ok": false, "error": "message", "status": 404, "title": null}
+   {"ok": false, "error": "no such table: x", "errors": ["no such table: x"],
+    "status": 400, "rows": [], "truncated": false}
    ```
 
-2. **The `_error()` helper** (views/base.py:183-184) — used by the write API,
-   stored-query API, execute-write and several permission-denied paths:
+   Invalid `_shape=` values and `_shape=object` misuse (on queries or
+   pk-less tables) also return canonical 400 errors.
+4. **Permission debug endpoints** (`/-/allowed`, `/-/rules`, `/-/check`,
+   POST `/-/permissions`) — canonical shape (previously bare
+   `{"error": ...}` objects).
 
-   ```json
-   {"ok": false, "errors": ["message", "..."]}
-   ```
-
-   Note: plural `errors`, a list, and no `status`/`title` keys.
-
-3. **JSON renderer errors** (renderer.py:52-56) — SQL errors on table/query
-   endpoints return HTTP 400 with the error embedded in the data envelope:
-
-   ```json
-   {"ok": false, "error": "no such table: x", "rows": [], "truncated": false}
-   ```
-
-   An invalid `_shape=` value produces `{"ok": false, "error": "Invalid _shape: x",
-   "status": 400, "title": null}` (renderer.py:101-108).
-
-4. **Ad-hoc `{"error": ...}` objects** — the permission debug endpoints
-   (`/-/allowed`, `/-/rules`, `/-/check`, POST `/-/permissions`) return e.g.
-   `{"error": "Unknown action: x"}` with no `ok` key (views/special.py).
-
-Method-not-allowed responses return HTTP 405
-`{"ok": false, "error": "Method not allowed"}` when the path ends in `.json`
-or the request content type is `application/json`; plain text otherwise
-(views/base.py:53, 88-98).
+Method-not-allowed responses return HTTP 405 with the canonical shape when
+the path ends in `.json` or the request content type is `application/json`;
+plain text otherwise (views/base.py).
 
 **`Forbidden` is special:** when a view raises `Forbidden` (e.g. via
 `ensure_permission`), the default `forbidden()` plugin hook renders an **HTML
@@ -144,11 +149,10 @@ build JSON directly):
   - `array` — response body is a bare JSON array of row objects
   - `arrayfirst` — bare JSON array of the first column's values
   - `object` — table views only: an object keyed by primary-key string.
-    On queries: `{"ok": false, "error": "_shape=object is only available on
-    tables"}` (with HTTP status 200); on tables without primary keys a similar
-    error.
-  - anything else — HTTP 400 `{"ok": false, "error": "Invalid _shape: x",
-    "status": 400, "title": null}`
+    On queries or tables without primary keys: a canonical 400 error
+    (`_shape=object is only available on tables` /
+    `_shape=object not available for tables with no primary keys`).
+  - anything else — canonical HTTP 400 error `Invalid _shape: x`
 - **`_nl=on`** — with `_shape=array` only: newline-delimited JSON, `text/plain`.
 - **`_json=COLUMN`** (repeatable) — parse that column's string values with
   `json.loads` so they nest as JSON; parse failures leave the value unchanged.
@@ -157,7 +161,7 @@ build JSON directly):
 - `columns` is stripped from dict-shaped output unless `?_extra=columns` was
   requested (renderer.py:110-113).
 - If a SQL error occurred, `_shape` is ignored, HTTP status is 400 and the
-  envelope carries `"ok": false, "error": ...` (renderer.py:52-56).
+  envelope carries the canonical error keys alongside `rows`/`truncated`.
 
 ### The `?_extra=` system
 
@@ -340,8 +344,8 @@ GET renders a confirmation page (or redirects if anonymous); POST deletes the
 - **POST** — form-encoded `actor` (JSON string), `permission`, optional
   `resource_1`, `resource_2`; returns **JSON**
   `{"action", "allowed", "resource": {"parent", "child", "path"}}` plus
-  `actor_id` when present. Errors: unknown action → 404 `{"error": ...}`;
-  child without parent → 400 `{"error": ...}`.
+  `actor_id` when present. Errors: unknown action → 404; child without
+  parent → 400 (both canonical error shape).
 
 ### GET /-/allowed(.json)
 
@@ -351,7 +355,7 @@ path always renders the HTML form; `.json` returns JSON.
 - **Permission:** none — reports the **current actor's own** allowed
   resources. Items gain a `reason` field if the actor also holds
   `permissions-debug`.
-- **Parameters:** `action` (required; missing → 400 `{"error": ...}`, unknown
+- **Parameters:** `action` (required; missing → 400 canonical error, unknown
   → 404), `parent`, `child` (requires `parent`), `page` (default 1),
   `page_size` (default 50, silently capped at 200).
 - **Response:** `{"action", "actor_id", "page", "page_size", "total",
@@ -497,7 +501,7 @@ queries section).
 GET → 405. Body is parsed as JSON regardless of content type; invalid JSON →
 400 `{"ok": false, "errors": ["Invalid JSON: ..."]}`.
 
-- **Permissions** (all denials → 403 `{"ok": false, "errors": [...]}`,
+- **Permissions** (all denials → 403 canonical error JSON,
   all checked at the **database** level):
   - `create-table` — always required (`["Permission denied"]`)
   - `insert-row` — if `rows`/`row` provided (`need insert-row`)
@@ -812,8 +816,8 @@ only — views get 400 `"Autocomplete is only available for tables"`.
 
 ## The write API
 
-All write endpoints return errors via `_error()`
-(`{"ok": false, "errors": [...]}`) and check permissions with
+All write endpoints return errors via `_error()` (the canonical error
+shape) and check permissions with
 `datasette.allowed()` directly, so their 403s are JSON (unlike the
 `Forbidden`-raising read endpoints). Routes: app.py:2719-2762.
 

@@ -18,7 +18,17 @@ Findings are grouped by theme. Each carries a priority:
 
 ---
 
-## 1. Error responses: four shapes is three too many (P1)
+## 1. Error responses: four shapes is three too many (P1) — ✅ IMPLEMENTED
+
+> **Status:** implemented. All four shapes now delegate to a shared
+> `error_body()` helper (`datasette/utils/__init__.py`) producing
+> `{"ok": false, "error": "<joined>", "errors": [...], "status": <int>}`.
+> The `title` key is no longer emitted in JSON; the bare `{"error": ...}`
+> debug-endpoint shape is gone; `_shape=object` misuse now returns HTTP 400
+> (part of §1b). Covered by `tests/test_error_shape.py` and documented in
+> the "Error responses" section of `docs/json_api.rst`. Still open from
+> this section's sub-items: §1a (`Forbidden` → HTML), the write
+> canned-query 200 (§1b), and the §1c status outliers.
 
 The API currently produces four distinct JSON error shapes depending on which
 internal layer generates the error:
@@ -348,7 +358,7 @@ Two details make tiering urgent rather than optional:
 
 ## 10. Summary of P1 items (the pre-1.0 checklist)
 
-1. One canonical JSON error shape; retire the other three (§1).
+1. ~~One canonical JSON error shape; retire the other three (§1).~~ ✅ Done.
 2. `Forbidden` → JSON 403 for JSON requests (§1a).
 3. No `ok: false` with HTTP 200 (§1b: `_shape=object`, write canned-query
    SQL errors).

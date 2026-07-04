@@ -1979,8 +1979,8 @@ async def test_sort_errors(ds_client, json, params, error):
         assert response.json() == {
             "ok": False,
             "error": error,
+            "errors": [error],
             "status": 400,
-            "title": None,
         }
     else:
         assert error in response.text

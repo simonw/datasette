@@ -9,6 +9,7 @@ from datasette.utils import (
     actor_matches_allow,
     add_cors_headers,
     await_me_maybe,
+    error_body,
     tilde_encode,
     tilde_decode,
 )
@@ -348,26 +349,29 @@ class AllowedResourcesView(BaseView):
     async def _allowed_payload(self, request, has_debug_permission):
         action = request.args.get("action")
         if not action:
-            return {"error": "action parameter is required"}, 400
+            return error_body("action parameter is required", 400), 400
         if action not in self.ds.actions:
-            return {"error": f"Unknown action: {action}"}, 404
+            return error_body(f"Unknown action: {action}", 404), 404
 
         actor = request.actor if isinstance(request.actor, dict) else None
         actor_id = actor.get("id") if actor else None
         parent_filter = request.args.get("parent")
         child_filter = request.args.get("child")
         if child_filter and not parent_filter:
-            return {"error": "parent must be provided when child is specified"}, 400
+            return (
+                error_body("parent must be provided when child is specified", 400),
+                400,
+            )
 
         try:
             page = int(request.args.get("page", "1"))
             page_size = int(request.args.get("page_size", "50"))
         except ValueError:
-            return {"error": "page and page_size must be integers"}, 400
+            return error_body("page and page_size must be integers", 400), 400
         if page < 1:
-            return {"error": "page must be >= 1"}, 400
+            return error_body("page must be >= 1", 400), 400
         if page_size < 1:
-            return {"error": "page_size must be >= 1"}, 400
+            return error_body("page_size must be >= 1", 400), 400
         max_page_size = 200
         if page_size > max_page_size:
             page_size = max_page_size
@@ -485,9 +489,13 @@ class PermissionRulesView(BaseView):
         # JSON API - action parameter is required
         action = request.args.get("action")
         if not action:
-            return Response.json({"error": "action parameter is required"}, status=400)
+            return Response.json(
+                error_body("action parameter is required", 400), status=400
+            )
         if action not in self.ds.actions:
-            return Response.json({"error": f"Unknown action: {action}"}, status=404)
+            return Response.json(
+                error_body(f"Unknown action: {action}", 404), status=404
+            )
 
         actor = request.actor if isinstance(request.actor, dict) else None
 
@@ -496,12 +504,12 @@ class PermissionRulesView(BaseView):
             page_size = int(request.args.get("page_size", "50"))
         except ValueError:
             return Response.json(
-                {"error": "page and page_size must be integers"}, status=400
+                error_body("page and page_size must be integers", 400), status=400
             )
         if page < 1:
-            return Response.json({"error": "page must be >= 1"}, status=400)
+            return Response.json(error_body("page must be >= 1", 400), status=400)
         if page_size < 1:
-            return Response.json({"error": "page_size must be >= 1"}, status=400)
+            return Response.json(error_body("page_size must be >= 1", 400), status=400)
         max_page_size = 200
         if page_size > max_page_size:
             page_size = max_page_size
@@ -587,15 +595,15 @@ class PermissionRulesView(BaseView):
 async def _check_permission_for_actor(ds, action, parent, child, actor):
     """Shared logic for checking permissions. Returns a dict with check results."""
     if action not in ds.actions:
-        return {"error": f"Unknown action: {action}"}, 404
+        return error_body(f"Unknown action: {action}", 404), 404
 
     if child and not parent:
-        return {"error": "parent is required when child is provided"}, 400
+        return error_body("parent is required when child is provided", 400), 400
 
     # Use the action's properties to create the appropriate resource object
     action_obj = ds.actions.get(action)
     if not action_obj:
-        return {"error": f"Unknown action: {action}"}, 400
+        return error_body(f"Unknown action: {action}", 400), 400
 
     # Global actions (no resource_class) don't have a resource
     if action_obj.resource_class is None:
@@ -610,7 +618,7 @@ async def _check_permission_for_actor(ds, action, parent, child, actor):
         resource_obj = action_obj.resource_class(parent)
     else:
         # This shouldn't happen given validation in Action.__post_init__
-        return {"error": f"Invalid action configuration: {action}"}, 500
+        return error_body(f"Invalid action configuration: {action}", 500), 500
 
     allowed = await ds.allowed(action=action, resource=resource_obj, actor=actor)
 
@@ -651,7 +659,9 @@ class PermissionCheckView(BaseView):
         # JSON API - action parameter is required
         action = request.args.get("action")
         if not action:
-            return Response.json({"error": "action parameter is required"}, status=400)
+            return Response.json(
+                error_body("action parameter is required", 400), status=400
+            )
 
         parent = request.args.get("parent")
         child = request.args.get("child")
@@ -1229,7 +1239,7 @@ class SchemaBaseView(BaseView):
             if self.ds.cors:
                 add_cors_headers(headers)
             return Response.json(
-                {"ok": False, "error": error_message}, status=status, headers=headers
+                error_body(error_message, status), status=status, headers=headers
             )
         else:
             return Response.text(error_message, status=status)

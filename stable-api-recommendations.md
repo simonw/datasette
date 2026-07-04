@@ -249,9 +249,12 @@ Concerns:
 
 ## 5. Naming and parameter conventions (P2/P3)
 
-- **`params` and `parameters` are duplicate keys** in every stored-query
+- ~~**`params` and `parameters` are duplicate keys** in every stored-query
   object (stored_queries.py:55-80). Delete one before 1.0 (suggest keeping
-  `parameters`; the write side already accepts both on input).
+  `parameters`; the write side already accepts both on input).~~
+  ✅ **Done** — output objects carry only `parameters` (matching
+  `/-/query/parameters` and the analyze endpoints); `params` remains an
+  accepted input alias for API creation and `datasette.yaml` config.
 - **Three names for the same concept across error/message payloads:**
   `error`, `errors`, `message`. See §1.
 - **Boolean query parameters have at least three grammars:** `_nl=on`,

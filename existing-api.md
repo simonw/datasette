@@ -990,7 +990,7 @@ stored_queries.py:55-80):
   "database": "...", "name": "...", "sql": "...",
   "title": null, "description": null, "description_html": null,
   "hide_sql": false, "fragment": null,
-  "params": ["p"], "parameters": ["p"],
+  "parameters": ["p"],
   "is_write": false, "is_private": true, "is_trusted": false,
   "source": "user", "owner_id": "...",
   "on_success_message": null, "on_success_message_sql": null,
@@ -1000,8 +1000,8 @@ stored_queries.py:55-80):
 }
 ```
 
-`params` and `parameters` are identical lists, both always present.
-`private` appears only in list responses.
+`private` appears only in list responses. On input (create/update and
+`datasette.yaml`), `params` is accepted as an alias for `parameters`.
 
 **Default permission rules for queries** (default_permissions/defaults.py):
 `view-query` is default-allow, but private queries are visible only to their

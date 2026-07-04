@@ -3702,3 +3702,33 @@ async def test_query_delete_api_rejects_trusted_queries():
     # datasette.remove_query() remains available for internal use
     await ds.remove_query("data", "trusted_report")
     assert await ds.get_query("data", "trusted_report") is None
+
+
+@pytest.mark.asyncio
+async def test_stored_query_json_uses_parameters_not_params():
+    ds = Datasette(
+        memory=True,
+        config={
+            "databases": {
+                "data": {
+                    "queries": {
+                        "with_params": {
+                            "sql": "select :name as name, :age as age",
+                            "params": ["name", "age"],
+                        },
+                    },
+                }
+            }
+        },
+    )
+    ds.add_memory_database("query_parameters_key", name="data")
+    await ds.invoke_startup()
+
+    definition = (await ds.client.get("/data/with_params/-/definition")).json()
+    assert definition["query"]["parameters"] == ["name", "age"]
+    assert "params" not in definition["query"]
+
+    listing = (await ds.client.get("/data/-/queries.json")).json()
+    query = [q for q in listing["queries"] if q["name"] == "with_params"][0]
+    assert query["parameters"] == ["name", "age"]
+    assert "params" not in query

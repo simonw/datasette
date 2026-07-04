@@ -252,7 +252,7 @@ Without those query string arguments, the page lists up to five tables with dete
 /-/threads
 ----------
 
-Shows details of threads and ``asyncio`` tasks. `Threads example <https://latest.datasette.io/-/threads>`_:
+Shows details of threads and ``asyncio`` tasks. This endpoint requires the ``permissions-debug`` permission, since it exposes runtime internals. `Threads example <https://latest.datasette.io/-/threads>`_:
 
 .. code-block:: json
 

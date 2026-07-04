@@ -249,7 +249,7 @@ value replaced by `"***"` (utils/__init__.py:1532-1556).
 ### GET /-/threads(.json)
 
 app.py:2566-2569, `Datasette._threads` (app.py:2268-2285). Permission
-`view-instance`. No parameters.
+**`permissions-debug`** (exposes runtime internals). No parameters.
 
 Response: `num_threads`, `threads` (list of `{name, ident, daemon}`),
 `num_tasks`, `tasks` (asyncio task repr strings). When the

@@ -184,10 +184,11 @@ async def test_datasette_constructor():
 @pytest.mark.asyncio
 async def test_num_sql_threads_zero():
     ds = Datasette([], memory=True, settings={"num_sql_threads": 0})
+    ds.root_enabled = True
     db = ds.add_database(Database(ds, memory_name="test_num_sql_threads_zero"))
     await db.execute_write("create table t(id integer primary key)")
     await db.execute_write("insert into t (id) values (1)")
-    response = await ds.client.get("/-/threads.json")
+    response = await ds.client.get("/-/threads.json", actor={"id": "root"})
     assert response.json() == {"ok": True, "num_threads": 0, "threads": []}
     response2 = await ds.client.get("/test_num_sql_threads_zero/t.json?_shape=array")
     assert response2.json() == [{"id": 1}]

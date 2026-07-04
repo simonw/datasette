@@ -525,7 +525,11 @@ def test_databases_json(app_client_two_attached_databases_one_immutable):
 
 @pytest.mark.asyncio
 async def test_threads_json(ds_client):
-    response = await ds_client.get("/-/threads.json")
+    ds_client.ds.root_enabled = True
+    try:
+        response = await ds_client.get("/-/threads.json", actor={"id": "root"})
+    finally:
+        ds_client.ds.root_enabled = False
     expected_keys = {"ok", "threads", "num_threads"}
     if sys.version_info >= (3, 7, 0):
         expected_keys.update({"tasks", "num_tasks"})

@@ -306,9 +306,10 @@ Concerns:
   unauthorized actors get a uniform response.~~ ✅ **Done** — permission is
   checked first; the table schema view also now 404s (instead of a 500
   KeyError) for an unknown database.
-- **(P2) `/-/threads` exposes runtime internals** (thread idents, asyncio
+- ~~**(P2) `/-/threads` exposes runtime internals** (thread idents, asyncio
   task reprs including file paths) behind only `view-instance`. Consider
-  `permissions-debug`, alongside `/-/actions` which already requires it.
+  `permissions-debug`, alongside `/-/actions` which already requires it.~~
+  ✅ **Done** — `/-/threads` now requires `permissions-debug`.
 - **(P3) `/-/config` redaction is substring-based** on six key names
   (app.py:2502-2505); plugins storing secrets under other names leak. Worth
   a note in plugin authoring docs plus a `redact_keys` plugin hook.

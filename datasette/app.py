@@ -2584,7 +2584,9 @@ class Datasette:
             r"/-/config(\.(?P<format>json))?$",
         )
         add_route(
-            JsonDataView.as_view(self, "threads.json", self._threads),
+            JsonDataView.as_view(
+                self, "threads.json", self._threads, permission="permissions-debug"
+            ),
             r"/-/threads(\.(?P<format>json))?$",
         )
         add_route(

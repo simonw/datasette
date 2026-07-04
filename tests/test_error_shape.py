@@ -554,13 +554,9 @@ async def test_schema_endpoints_no_existence_oracle(tmp_path_factory):
         assert denied_existing.status_code == denied_missing.status_code == 403
 
         # An authorized actor sees the real thing
-        root_existing = await ds.client.get(
-            "/data/-/schema.json", actor={"id": "root"}
-        )
+        root_existing = await ds.client.get("/data/-/schema.json", actor={"id": "root"})
         assert root_existing.status_code == 200
-        root_missing = await ds.client.get(
-            "/nope/-/schema.json", actor={"id": "root"}
-        )
+        root_missing = await ds.client.get("/nope/-/schema.json", actor={"id": "root"})
         assert root_missing.status_code == 404
     finally:
         ds.close()
@@ -604,3 +600,15 @@ async def test_unknown_extra_ignored_on_html_pages(ds_client):
     response = await ds_client.get("/fixtures/facetable?_extra=nope")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
+
+
+# /-/threads exposes runtime internals and requires permissions-debug
+
+
+@pytest.mark.asyncio
+async def test_threads_requires_permissions_debug(ds_error_shape):
+    denied = await ds_error_shape.client.get("/-/threads.json")
+    assert_canonical_error(denied, 403)
+    allowed = await ds_error_shape.client.get("/-/threads.json", actor={"id": "root"})
+    assert allowed.status_code == 200
+    assert allowed.json()["ok"] is True

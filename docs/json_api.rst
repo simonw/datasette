@@ -9,6 +9,53 @@ through the Datasette user interface can also be accessed as JSON via the API.
 To access the API for a page, either click on the ``.json`` link on that page or
 edit the URL and add a ``.json`` extension to it.
 
+.. _json_api_stability:
+
+API stability
+-------------
+
+Datasette 1.0 makes a stability promise for its JSON API: the endpoints,
+parameters and response keys documented here and on the pages this
+documentation links to will not change in backwards-incompatible ways for
+the duration of the 1.x release series.
+
+Stability means:
+
+- Documented endpoints will keep their URLs, methods, parameters and
+  permission requirements.
+- Documented response keys will keep their names and types. New keys may be
+  **added** in any release - clients should ignore keys they do not
+  recognize.
+- The documented ``?_extra=`` names, ``?_shape=`` values and
+  :ref:`column filter operators <table_arguments>` are stable.
+- Pagination tokens - the ``"next"`` key and ``?_next=`` parameter - are
+  **opaque strings**. Pass them back exactly as you received them; their
+  internal structure is not part of the API and can change at any time.
+- The :ref:`standard error format <json_api_errors>` and the
+  :ref:`API token format and restriction semantics <CreateTokenView>` are
+  stable, including the action abbreviations stored inside signed tokens.
+
+Some JSON endpoints are **exempt** from this promise:
+
+- Endpoints that are not documented include this marker key in their
+  responses and can change at any time::
+
+      "unstable": "This API is not part of Datasette's stable interface and may change at any time"
+
+  This currently covers the instance homepage (``/.json``), the stored
+  query ``analyze``/``store``/``definition`` endpoints, ``/-/query/parameters``,
+  ``/-/execute-write/analyze`` and the JSON returned by the ``/-/permissions``
+  debug playground.
+- Debug and support endpoints are documented so you can use them, but their
+  JSON shapes are not frozen: :ref:`/-/threads <JsonDataView_threads>`,
+  :ref:`/-/actions <JsonDataView_actions>`, :ref:`/-/jump <JumpView>`,
+  the :ref:`permission debug endpoints <PermissionsDebugView>`
+  (``/-/allowed``, ``/-/rules``, ``/-/check``) and the
+  :ref:`table autocomplete endpoint <TableAutocompleteView>`.
+- Response keys explicitly labeled as unstable in this documentation, such
+  as the ``"analysis"`` block returned by :ref:`execute-write <ExecuteWriteView>`
+  and the ``debug`` and ``request`` extras.
+
 .. _json_api_default:
 
 Default representation
@@ -1612,7 +1659,7 @@ Unsupported SQL operations are rejected by default. ``VACUUM`` is not allowed in
 A successful response includes a message, the SQLite ``rowcount``, a ``"rows"``
 list, a ``"truncated"`` flag and a summary of the operations that were executed:
 
-The shape of the ``"analysis"`` block is not yet considered a stable API and may change in future Datasette releases.
+The shape of the ``"analysis"`` block is not part of the :ref:`stable API <json_api_stability>` and may change in future Datasette releases.
 
 .. code-block:: json
 

@@ -378,13 +378,17 @@ Concerns:
 
 ---
 
-## 9. Define stability tiers explicitly (P1 — documentation, not code) — partially implemented
+## 9. Define stability tiers explicitly (P1 — documentation, not code) — ✅ IMPLEMENTED
 
-> **Status:** undocumented JSON endpoints now self-describe with an
-> `"unstable": "This API is not part of Datasette's stable interface and
-> may change at any time"` key (homepage, queries analyze/store/definition,
-> query parameters, execute-write analyze, permissions playground POST).
-> The written tier documentation remains to be done.
+> **Status:** implemented. Undocumented JSON endpoints self-describe with
+> an `"unstable"` marker key, and `docs/json_api.rst` now opens with an
+> "API stability" section (`json_api_stability`) declaring the 1.x
+> promise: documented endpoints/keys are stable with additive-only
+> changes, pagination tokens are opaque, the error format and token
+> restriction semantics are stable, and the exempt tiers (marker-key
+> endpoints, debug/support endpoints, explicitly-unstable keys) are
+> listed. Cross-referenced from the introspection and permission-debug
+> docs.
 
 Not everything under `/-/` can or should carry a 1.0 guarantee. Recommend
 shipping 1.0 with an explicit three-tier contract, per endpoint:
@@ -431,8 +435,8 @@ Two details make tiering urgent rather than optional:
    `permissions-debug` (§6).~~ ✅ Done.
 6. ~~401 (not silent-anonymous) for invalid/expired bearer tokens (§1c).~~
    ✅ Done.
-7. Publish explicit stability tiers, including extras and pagination-token
-   opacity (§9).
+7. ~~Publish explicit stability tiers, including extras and pagination-token
+   opacity (§9).~~ ✅ Done.
 8. Resolve the looks-like-a-bug list (§8), especially ~~trusted-query delete
    and row-delete 500~~ (both done).
 

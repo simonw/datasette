@@ -1151,6 +1151,8 @@ It also provides an interface for running hypothetical permission checks against
 
 This is designed to help administrators and plugin authors understand exactly how permission checks are being carried out, in order to effectively configure Datasette's permission system.
 
+These debug endpoints are exempt from the :ref:`JSON API stability promise <json_api_stability>` - their JSON shapes may change in future releases.
+
 .. _AllowedResourcesView:
 
 Allowed resources view

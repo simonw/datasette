@@ -308,6 +308,35 @@ async def test_insert_rows(ds_write, return_rows):
 
 
 @pytest.mark.asyncio
+async def test_insert_rows_post_body_too_large(tmp_path_factory):
+    db_path = str(tmp_path_factory.mktemp("dbs") / "data.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute("create table docs (id integer primary key, title text)")
+    conn.close()
+    ds = Datasette([db_path], settings={"max_post_body_bytes": 100})
+    ds.root_enabled = True
+    token = write_token(ds)
+    response = await ds.client.post(
+        "/data/docs/-/insert",
+        json={"rows": [{"title": "x" * 200}]},
+        headers=_headers(token),
+    )
+    assert response.status_code == 413
+    assert response.json() == {
+        "ok": False,
+        "errors": ["Request body exceeded maximum size of 100 bytes"],
+    }
+    # A small body should still work
+    response2 = await ds.client.post(
+        "/data/docs/-/insert",
+        json={"row": {"title": "hi"}},
+        headers=_headers(token),
+    )
+    assert response2.status_code == 201
+    ds.close()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,input,special_case,expected_status,expected_errors",
     (

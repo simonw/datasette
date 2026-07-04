@@ -46,7 +46,14 @@ from datasette.utils import (
     WriteJsonValueError,
     sqlite3,
 )
-from datasette.utils.asgi import BadRequest, Forbidden, NotFound, Request, Response
+from datasette.utils.asgi import (
+    BadRequest,
+    Forbidden,
+    NotFound,
+    PayloadTooLarge,
+    Request,
+    Response,
+)
 from datasette.filters import Filters
 import sqlite_utils
 from dataclasses import dataclass, field
@@ -1070,9 +1077,12 @@ class TableInsertView(BaseView):
 
         pks = await db.primary_keys(table_name)
 
-        rows, errors, extras = await self._validate_data(
-            request, db, table_name, pks, upsert
-        )
+        try:
+            rows, errors, extras = await self._validate_data(
+                request, db, table_name, pks, upsert
+            )
+        except PayloadTooLarge as e:
+            return _error([str(e)], 413)
         if errors:
             return _error(errors, 400)
         try:
@@ -1257,6 +1267,8 @@ class TableSetColumnTypeView(BaseView):
             data = await request.json()
         except json.JSONDecodeError as e:
             return _error(["Invalid JSON: {}".format(e)], 400)
+        except PayloadTooLarge as e:
+            return _error([str(e)], 413)
 
         if not isinstance(data, dict):
             return _error(["JSON must be a dictionary"], 400)
@@ -1375,6 +1387,8 @@ class TableDropView(BaseView):
             confirm = data.get("confirm")
         except json.JSONDecodeError:
             pass
+        except PayloadTooLarge as e:
+            return _error([str(e)], 413)
 
         if not confirm:
             return Response.json(

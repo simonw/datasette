@@ -207,6 +207,11 @@ SETTINGS = (
         "Maximum rows that can be inserted at a time using the bulk insert API",
     ),
     Setting(
+        "max_post_body_bytes",
+        2 * 1024 * 1024,
+        "Maximum size in bytes for a POST body read into memory, e.g. JSON API requests - set 0 to disable this limit",
+    ),
+    Setting(
         "num_sql_threads",
         3,
         "Number of threads in the thread pool for executing SQLite queries",
@@ -2847,7 +2852,11 @@ class DatasetteRouter:
         if base_url != "/" and path.startswith(base_url):
             path = "/" + path[len(base_url) :]
             scope = dict(scope, route_path=path)
-        request = Request(scope, receive)
+        request = Request(
+            scope,
+            receive,
+            max_post_body_bytes=self.ds.setting("max_post_body_bytes"),
+        )
         # Populate request_messages if ds_messages cookie is present
         try:
             request._messages = self.ds.unsign(

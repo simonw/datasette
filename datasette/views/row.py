@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 import markupsafe
 import sqlite_utils
 
-from datasette.utils.asgi import NotFound, Forbidden, Response
+from datasette.utils.asgi import NotFound, Forbidden, PayloadTooLarge, Response
 from datasette.database import QueryInterrupted
 from datasette.events import UpdateRowEvent, DeleteRowEvent
 from datasette.resources import TableResource
@@ -798,6 +798,8 @@ class RowUpdateView(BaseView):
             data = await request.json()
         except json.JSONDecodeError as e:
             return _error(["Invalid JSON: {}".format(e)])
+        except PayloadTooLarge as e:
+            return _error([str(e)], 413)
 
         if not isinstance(data, dict):
             return _error(["JSON must be a dictionary"])

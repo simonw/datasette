@@ -26,7 +26,7 @@ from datasette.utils import (
     table_column_details,
     WriteJsonValueError,
 )
-from datasette.utils.asgi import NotFound, Response
+from datasette.utils.asgi import NotFound, PayloadTooLarge, Response
 from datasette.utils.sqlite import sqlite_hidden_table_names
 
 from .base import BaseView, _error
@@ -811,6 +811,8 @@ class TableCreateView(BaseView):
             data = await request.json()
         except json.JSONDecodeError as e:
             return _error(["Invalid JSON: {}".format(e)])
+        except PayloadTooLarge as e:
+            return _error([str(e)], 413)
 
         if not isinstance(data, dict):
             return _error(["JSON must be an object"])
@@ -1172,6 +1174,8 @@ class TableAlterView(BaseView):
             data = await request.json()
         except json.JSONDecodeError as e:
             return _error(["Invalid JSON: {}".format(e)], 400)
+        except PayloadTooLarge as e:
+            return _error([str(e)], 413)
 
         if not isinstance(data, dict):
             return _error(["JSON must be a dictionary"], 400)

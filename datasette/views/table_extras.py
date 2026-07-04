@@ -1,6 +1,7 @@
 import itertools
 from dataclasses import dataclass
 
+from datasette.column_types import SQLiteType
 from datasette.database import QueryInterrupted
 from datasette.extras import Extra, ExtraExample, ExtraRegistry, ExtraScope, Provider
 from datasette.plugins import pm
@@ -340,6 +341,55 @@ class PrimaryKeysExtra(Extra):
 
     async def resolve(self, context):
         return context.pks
+
+
+def column_detail_as_json(column):
+    return {
+        "type": column.type,
+        "sqlite_type": SQLiteType.from_declared_type(column.type).value,
+        "notnull": bool(column.notnull),
+        "default": column.default_value,
+        "is_pk": bool(column.is_pk),
+        "pk_position": column.is_pk,
+        "hidden": column.hidden,
+    }
+
+
+class ColumnDetailsExtra(Extra):
+    description = (
+        "SQLite schema details for columns in this table. The dictionary maps "
+        "column names to objects describing the schema for each column."
+    )
+    docs_note = (
+        "Each object has ``type`` as the declared type string returned by "
+        'SQLite, or ``""`` if no type was declared; ``sqlite_type`` as the '
+        "normalized SQLite affinity, one of ``TEXT``, ``INTEGER``, ``REAL``, "
+        "``BLOB`` or ``NUMERIC``; ``notnull`` as a boolean; ``default`` "
+        'as the raw SQL default expression string, such as ``"42"``, '
+        "``\"'hello'\"`` or ``\"datetime('now')\"``, or ``null`` if there is "
+        "no default; ``is_pk`` as a boolean; ``pk_position`` as the integer "
+        "primary key position reported by SQLite, or ``0`` for columns that "
+        "are not part of the primary key; and ``hidden`` as the integer value "
+        "reported by SQLite's ``PRAGMA table_xinfo``. ``hidden`` is ``0`` for "
+        "normal columns, ``1`` for hidden virtual table columns, ``2`` for "
+        "virtual generated columns and ``3`` for stored generated columns."
+    )
+    example = ExtraExample("/fixtures/binary_data.json?_size=0&_extra=column_details")
+    examples = {
+        ExtraScope.ROW: ExtraExample(
+            "/fixtures/binary_data/1.json?_extra=column_details"
+        )
+    }
+    scopes = {ExtraScope.TABLE, ExtraScope.ROW}
+
+    async def resolve(self, context):
+        column_details = await context.datasette._get_resource_column_details(
+            context.database_name, context.table_name
+        )
+        return {
+            column_name: column_detail_as_json(column)
+            for column_name, column in column_details.items()
+        }
 
 
 class ActionsExtra(Extra):
@@ -1206,6 +1256,7 @@ TABLE_EXTRA_CLASSES = [
     ColumnsExtra,
     AllColumnsExtra,
     PrimaryKeysExtra,
+    ColumnDetailsExtra,
     DisplayColumnsAndRowsProvider,
     DisplayColumnsExtra,
     DisplayRowsExtra,

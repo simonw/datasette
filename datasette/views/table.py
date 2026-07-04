@@ -22,9 +22,11 @@ from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
     call_with_supported_arguments,
+    CustomJSONEncoder,
     CustomRow,
     append_querystring,
     compound_keys_after_sql,
+    decode_write_json_rows,
     format_bytes,
     make_slot_function,
     tilde_encode,
@@ -41,6 +43,7 @@ from datasette.utils import (
     urlsafe_components,
     value_as_boolean,
     InvalidSql,
+    WriteJsonValueError,
     sqlite3,
 )
 from datasette.utils.asgi import BadRequest, Forbidden, NotFound, Request, Response
@@ -1072,6 +1075,10 @@ class TableInsertView(BaseView):
         )
         if errors:
             return _error(errors, 400)
+        try:
+            rows = decode_write_json_rows(rows)
+        except WriteJsonValueError as e:
+            return _error([str(e)], 400)
 
         # Validate column types
         ct_errors = await _validate_column_types(
@@ -1206,7 +1213,11 @@ class TableInsertView(BaseView):
                     )
                 )
 
-        return Response.json(result, status=200 if upsert else 201)
+        return Response.json(
+            result,
+            status=200 if upsert else 201,
+            default=CustomJSONEncoder().default,
+        )
 
 
 class TableUpsertView(TableInsertView):

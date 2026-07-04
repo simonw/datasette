@@ -1705,6 +1705,118 @@ textarea.row-edit-input {
     background: var(--paper);
 }
 
+.row-edit-binary-control {
+    display: grid;
+    gap: 8px;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    padding: 10px;
+    background: #fff;
+}
+
+.row-edit-binary-control:focus {
+    border-color: var(--accent);
+    outline: 3px solid rgba(26, 86, 219, 0.12);
+}
+
+.row-edit-binary-preview[hidden] {
+    display: none;
+}
+
+.row-edit-binary-preview img {
+    display: block;
+    max-width: min(240px, 100%);
+    max-height: 180px;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: var(--paper);
+}
+
+.row-edit-binary-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+}
+
+.row-edit-binary-size {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.86rem;
+}
+
+.row-edit-binary-name {
+    color: var(--muted);
+    font-size: 0.82rem;
+    overflow-wrap: anywhere;
+}
+
+.row-edit-binary-name[hidden] {
+    display: none;
+}
+
+.row-edit-binary-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.row-edit-binary-file-button,
+.row-edit-binary-clear {
+    appearance: none;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: #fff;
+    color: var(--accent);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.78rem;
+    line-height: 1.2;
+    padding: 6px 8px;
+}
+
+.row-edit-binary-file-button:hover,
+.row-edit-binary-file-button:focus-within,
+.row-edit-binary-clear:hover,
+.row-edit-binary-clear:focus {
+    background: #f8fafc;
+}
+
+.row-edit-binary-file-button:focus-within,
+.row-edit-binary-clear:focus {
+    outline: 3px solid rgba(26, 86, 219, 0.12);
+    outline-offset: 1px;
+}
+
+.row-edit-binary-file-button input[type="file"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    overflow: hidden;
+}
+
+.row-edit-binary-clear[hidden] {
+    display: none;
+}
+
+.row-edit-binary-drop-target {
+    border: 1px dashed var(--rule);
+    border-radius: 4px;
+    padding: 7px 8px;
+    color: var(--muted);
+    font-size: 0.78rem;
+}
+
+.row-edit-binary-dragover .row-edit-binary-drop-target {
+    border-color: var(--accent);
+    background: var(--paper);
+    color: var(--ink);
+}
+
 .row-edit-default {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 7.25rem;

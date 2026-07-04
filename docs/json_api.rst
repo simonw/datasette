@@ -402,6 +402,25 @@ The available table extras are listed below.
           "pk"
         ]
 
+``column_details``
+    SQLite schema details for columns in this table. The dictionary maps column names to objects describing the schema for each column. (Each object has ``type`` as the declared type string returned by SQLite, or ``""`` if no type was declared; ``sqlite_type`` as the normalized SQLite affinity, one of ``TEXT``, ``INTEGER``, ``REAL``, ``BLOB`` or ``NUMERIC``; ``notnull`` as a boolean; ``default`` as the raw SQL default expression string, such as ``"42"``, ``"'hello'"`` or ``"datetime('now')"``, or ``null`` if there is no default; ``is_pk`` as a boolean; ``pk_position`` as the integer primary key position reported by SQLite, or ``0`` for columns that are not part of the primary key; and ``hidden`` as the integer value reported by SQLite's ``PRAGMA table_xinfo``. ``hidden`` is ``0`` for normal columns, ``1`` for hidden virtual table columns, ``2`` for virtual generated columns and ``3`` for stored generated columns.)
+
+    ``GET /fixtures/binary_data.json?_size=0&_extra=column_details``
+
+    .. code-block:: json
+
+        {
+          "data": {
+            "type": "BLOB",
+            "sqlite_type": "BLOB",
+            "notnull": false,
+            "default": null,
+            "is_pk": false,
+            "pk_position": 0,
+            "hidden": 0
+          }
+        }
+
 ``display_columns``
     Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type`` and ``column_type_config`` keys.
 
@@ -806,6 +825,25 @@ The following extras are available for row JSON responses.
         [
           "id"
         ]
+
+``column_details``
+    SQLite schema details for columns in this table. The dictionary maps column names to objects describing the schema for each column. (Each object has ``type`` as the declared type string returned by SQLite, or ``""`` if no type was declared; ``sqlite_type`` as the normalized SQLite affinity, one of ``TEXT``, ``INTEGER``, ``REAL``, ``BLOB`` or ``NUMERIC``; ``notnull`` as a boolean; ``default`` as the raw SQL default expression string, such as ``"42"``, ``"'hello'"`` or ``"datetime('now')"``, or ``null`` if there is no default; ``is_pk`` as a boolean; ``pk_position`` as the integer primary key position reported by SQLite, or ``0`` for columns that are not part of the primary key; and ``hidden`` as the integer value reported by SQLite's ``PRAGMA table_xinfo``. ``hidden`` is ``0`` for normal columns, ``1`` for hidden virtual table columns, ``2`` for virtual generated columns and ``3`` for stored generated columns.)
+
+    ``GET /fixtures/binary_data/1.json?_extra=column_details``
+
+    .. code-block:: json
+
+        {
+          "data": {
+            "type": "BLOB",
+            "sqlite_type": "BLOB",
+            "notnull": false,
+            "default": null,
+            "is_pk": false,
+            "pk_position": 0,
+            "hidden": 0
+          }
+        }
 
 ``render_cell``
     Rendered HTML for each cell using the render_cell plugin hook (See the :ref:`render_cell() plugin hook <plugin_hook_render_cell>` documentation.)
@@ -1532,6 +1570,8 @@ The JSON write API
 
 Datasette provides a write API for JSON data. This is a POST-only API that requires an authenticated API token, see :ref:`CreateTokenView`. The token will need to have the specified :ref:`authentication_permissions`.
 
+The row-based write APIs can write :ref:`binary values in JSON <binary_json_format>` using Datasette's Base64 representation for BLOB data.
+
 .. _ExecuteWriteView:
 
 Executing write SQL
@@ -1660,6 +1700,8 @@ A single row can be inserted using the ``"row"`` key:
         }
     }
 
+Column values can use the :ref:`binary value JSON format <binary_json_format>` to write BLOB data.
+
 If successful, this will return a ``201`` status code and the newly inserted row, for example:
 
 .. code-block:: json
@@ -1764,6 +1806,8 @@ Upserting rows
 An upsert is an insert or update operation. If a row with a matching primary key already exists it will be updated - otherwise a new row will be inserted.
 
 The upsert API is mostly the same shape as the :ref:`insert API <TableInsertView>`. It requires both the :ref:`actions_insert_row` and :ref:`actions_update_row` permissions.
+
+It also accepts the same :ref:`binary value JSON format <binary_json_format>`.
 
 ::
 
@@ -1894,6 +1938,8 @@ To update a row, make a ``POST`` to ``/<database>/<table>/<row-pks>/-/update``. 
 ``<row-pks>`` here is the :ref:`tilde-encoded <internals_tilde_encoding>` primary key value of the row to update - or a comma-separated list of primary key values if the table has a composite primary key.
 
 You only need to pass the columns you want to update. Any other columns will be left unchanged.
+
+Updated values can use the :ref:`binary value JSON format <binary_json_format>`.
 
 If successful, this will return a ``200`` status code and a ``{"ok": true}`` response body.
 
@@ -2097,6 +2143,8 @@ Datasette will create a table with a schema that matches those rows and insert t
         ],
         "pk": "id"
     }
+
+Example rows can use the :ref:`binary value JSON format <binary_json_format>`, allowing Datasette to infer ``BLOB`` columns.
 
 Doing this requires both the :ref:`actions_create_table` and :ref:`actions_insert_row` permissions.
 

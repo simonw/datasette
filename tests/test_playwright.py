@@ -1,3 +1,4 @@
+import base64
 import json
 import socket
 import subprocess
@@ -9,6 +10,10 @@ import pytest
 
 from datasette.fixtures import write_fixture_database
 from datasette.utils.sqlite import sqlite3
+
+PNG_1X1_BYTES = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+)
 
 
 def find_free_port():
@@ -115,6 +120,11 @@ def write_playwright_database(db_path):
             id integer primary key,
             created_ms integer default (CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER))
         );
+        create table binary_files (
+            id integer primary key,
+            name text not null,
+            data blob
+        );
         create table bulk_defaults (
             id integer primary key,
             title text not null,
@@ -137,6 +147,19 @@ def write_playwright_database(db_path):
         insert into upsert_items (id, title, metadata) values
             ('existing', 'Existing title', '{"old": true}');
         """)
+        conn.execute(
+            "insert into binary_files (name, data) values (?, ?)",
+            ("Raw bytes", b"\x00\x01\x02\x03"),
+        )
+        conn.execute(
+            "insert into binary_files (name, data) values (?, ?)",
+            ("PNG image", PNG_1X1_BYTES),
+        )
+        conn.execute(
+            "insert into binary_files (name, data) values (?, ?)",
+            ("Null bytes", None),
+        )
+        conn.commit()
     finally:
         conn.close()
 
@@ -170,6 +193,14 @@ def write_playwright_config(config_path):
                             "defaults_demo": {
                                 "permissions": {
                                     "alter-table": True,
+                                },
+                            },
+                            "binary_files": {
+                                "label_column": "name",
+                                "permissions": {
+                                    "insert-row": True,
+                                    "update-row": True,
+                                    "delete-row": True,
                                 },
                             },
                             "bulk_defaults": {
@@ -314,6 +345,15 @@ def project_row(datasette_server, pk):
     rows = project_rows(datasette_server, id=pk)
     assert len(rows) == 1
     return rows[0]
+
+
+def binary_file_blob(datasette_server, pk):
+    response = httpx.get(
+        f"{datasette_server}data/binary_files/{pk}.blob",
+        params={"_blob_column": "data"},
+    )
+    response.raise_for_status()
+    return response.content
 
 
 def bulk_default_rows(datasette_server, **filters):
@@ -1427,6 +1467,131 @@ def test_edit_row_flow_validates_json_and_saves_changes(page, datasette_server):
     assert data["metadata"] == '{"ok": true, "edited": true}'
     assert data["logo"] == "asset-from-plugin"
     assert data["notes"] == "Edited from Playwright"
+
+
+@pytest.mark.playwright
+def test_edit_row_binary_control_shows_size_and_image_preview(page, datasette_server):
+    page.goto(f"{datasette_server}data/binary_files")
+    page.locator('tr[data-row="1"] button[data-row-action="edit"]').click()
+
+    dialog = page.locator("#row-edit-dialog")
+    dialog.wait_for()
+    raw_control = dialog.locator('.row-edit-binary-control[data-column="data"]')
+    raw_control.wait_for()
+    assert (
+        raw_control.locator(".row-edit-binary-size").inner_text() == "Binary: 4 bytes"
+    )
+    assert raw_control.locator(".row-edit-binary-preview img").count() == 0
+    assert dialog.locator('textarea[name="data"]').count() == 0
+    assert dialog.locator('input[type="hidden"][name="data"]').count() == 1
+
+    dialog.locator(".row-edit-cancel").click()
+    page.locator('tr[data-row="2"] button[data-row-action="edit"]').click()
+
+    image_control = dialog.locator('.row-edit-binary-control[data-column="data"]')
+    image_control.wait_for()
+    assert (
+        image_control.locator(".row-edit-binary-size").inner_text()
+        == f"Binary: {len(PNG_1X1_BYTES)} bytes"
+    )
+    image = image_control.locator(".row-edit-binary-preview img")
+    image.wait_for()
+    assert image.get_attribute("src").startswith("blob:")
+
+
+@pytest.mark.playwright
+def test_edit_row_binary_control_replaces_blob_from_file(page, datasette_server):
+    replacement = b"Replacement \x00 bytes"
+
+    page.goto(f"{datasette_server}data/binary_files")
+    page.locator('tr[data-row="1"] button[data-row-action="edit"]').click()
+
+    dialog = page.locator("#row-edit-dialog")
+    binary_control = dialog.locator('.row-edit-binary-control[data-column="data"]')
+    binary_control.wait_for()
+    binary_control.locator('input[type="file"]').set_input_files(
+        {
+            "name": "replacement.bin",
+            "mimeType": "application/octet-stream",
+            "buffer": replacement,
+        }
+    )
+    assert (
+        binary_control.locator(".row-edit-binary-size").inner_text()
+        == f"Binary: {len(replacement)} bytes"
+    )
+    assert "replacement.bin" in binary_control.inner_text()
+
+    dialog.locator(".row-edit-save").click()
+    page.locator(".row-mutation-status", has_text="Updated row 1").wait_for()
+    assert binary_file_blob(datasette_server, 1) == replacement
+
+
+@pytest.mark.playwright
+def test_edit_row_binary_control_handles_null_blob(page, datasette_server):
+    replacement = b"From NULL"
+
+    page.goto(f"{datasette_server}data/binary_files")
+    page.locator('tr[data-row="3"] button[data-row-action="edit"]').click()
+
+    dialog = page.locator("#row-edit-dialog")
+    binary_control = dialog.locator('.row-edit-binary-control[data-column="data"]')
+    binary_control.wait_for()
+    assert (
+        binary_control.locator(".row-edit-binary-size").inner_text() == "No binary data"
+    )
+    binary_control.locator('input[type="file"]').set_input_files(
+        {
+            "name": "from-null.bin",
+            "mimeType": "application/octet-stream",
+            "buffer": replacement,
+        }
+    )
+    assert (
+        binary_control.locator(".row-edit-binary-size").inner_text()
+        == f"Binary: {len(replacement)} bytes"
+    )
+
+    dialog.locator(".row-edit-save").click()
+    page.locator(".row-mutation-status", has_text="Updated row 3").wait_for()
+    assert binary_file_blob(datasette_server, 3) == replacement
+
+
+@pytest.mark.playwright
+def test_insert_row_binary_control_accepts_pasted_file(page, datasette_server):
+    pasted = b"Pasted \x00 bytes"
+
+    page.goto(f"{datasette_server}data/binary_files")
+    page.locator('button[data-table-action="insert-row"]').click()
+
+    dialog = page.locator("#row-edit-dialog")
+    dialog.wait_for()
+    dialog.locator('input[name="name"]').fill("Pasted bytes")
+    binary_control = dialog.locator('.row-edit-binary-control[data-column="data"]')
+    binary_control.wait_for()
+    binary_control.evaluate(
+        """(node, bytes) => {
+          const transfer = new DataTransfer();
+          transfer.items.add(
+            new File([new Uint8Array(bytes)], "pasted.bin", {
+              type: "application/octet-stream"
+            })
+          );
+          const event = new Event("paste", { bubbles: true, cancelable: true });
+          Object.defineProperty(event, "clipboardData", { value: transfer });
+          node.dispatchEvent(event);
+        }""",
+        list(pasted),
+    )
+    assert (
+        binary_control.locator(".row-edit-binary-size").inner_text()
+        == f"Binary: {len(pasted)} bytes"
+    )
+    assert "pasted.bin" in binary_control.inner_text()
+
+    dialog.locator(".row-edit-save").click()
+    page.locator(".row-mutation-status", has_text="Inserted row 4").wait_for()
+    assert binary_file_blob(datasette_server, 4) == pasted
 
 
 @pytest.mark.playwright

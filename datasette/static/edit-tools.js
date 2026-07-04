@@ -2,6 +2,7 @@ var ROW_DELETE_DIALOG_ID = "row-delete-dialog";
 var rowDeleteDialogState = null;
 var ROW_EDIT_DIALOG_ID = "row-edit-dialog";
 var rowEditDialogState = null;
+var ROW_EDIT_BINARY_IMAGE_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
 var TABLE_CREATE_DIALOG_ID = "table-create-dialog";
 var tableCreateDialogState = null;
 var TABLE_CREATE_AUTOMATIC_PK = "__datasette_automatic_pk__";
@@ -4356,7 +4357,7 @@ function rowJsonUrl(row) {
     return "";
   }
   url.pathname = url.pathname + ".json";
-  url.searchParams.set("_extra", "columns,column_types");
+  url.searchParams.set("_extra", "columns,column_types,column_details");
   return url.toString();
 }
 
@@ -4636,9 +4637,154 @@ function initRowDeleteActions(manager) {
   });
 }
 
+function isBase64JsonValue(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  var keys = Object.keys(value);
+  return (
+    keys.length === 2 &&
+    Object.prototype.hasOwnProperty.call(value, "$base64") &&
+    Object.prototype.hasOwnProperty.call(value, "encoded") &&
+    value.$base64 === true &&
+    typeof value.encoded === "string"
+  );
+}
+
+function shouldUseBinaryControl(value, options) {
+  options = options || {};
+  var sqliteType = (options.sqliteType || "").toLowerCase();
+  return (
+    isBase64JsonValue(value) ||
+    sqliteType === "blob" ||
+    options.valueKind === "binary"
+  );
+}
+
+function binaryEncodedValue(value) {
+  return isBase64JsonValue(value) ? value.encoded : "";
+}
+
+function binaryByteLengthFromBase64(encoded) {
+  encoded = (encoded || "").replace(/\s/g, "");
+  if (!encoded) {
+    return 0;
+  }
+  var padding = 0;
+  if (encoded.slice(-2) === "==") {
+    padding = 2;
+  } else if (encoded.slice(-1) === "=") {
+    padding = 1;
+  }
+  return Math.max(0, Math.floor((encoded.length * 3) / 4) - padding);
+}
+
+function rowEditBinaryValue(encoded) {
+  return {
+    $base64: true,
+    encoded: encoded || "",
+  };
+}
+
+function formatRowEditBinarySize(byteLength) {
+  var number = byteLength.toLocaleString();
+  return "Binary: " + number + " byte" + (byteLength === 1 ? "" : "s");
+}
+
+function base64ToUint8Array(encoded) {
+  var binary = window.atob(encoded || "");
+  var bytes = new Uint8Array(binary.length);
+  for (var i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+function uint8ArrayToBase64(bytes) {
+  var chunks = [];
+  var chunkSize = 0x8000;
+  for (var i = 0; i < bytes.length; i += chunkSize) {
+    chunks.push(
+      String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize)),
+    );
+  }
+  return window.btoa(chunks.join(""));
+}
+
+function rowEditBinaryImageMimeType(bytes) {
+  if (!bytes || !bytes.length) {
+    return null;
+  }
+  if (
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a
+  ) {
+    return "image/png";
+  }
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0xff &&
+    bytes[1] === 0xd8 &&
+    bytes[2] === 0xff
+  ) {
+    return "image/jpeg";
+  }
+  if (
+    bytes.length >= 6 &&
+    bytes[0] === 0x47 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x38 &&
+    (bytes[4] === 0x37 || bytes[4] === 0x39) &&
+    bytes[5] === 0x61
+  ) {
+    return "image/gif";
+  }
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  ) {
+    return "image/webp";
+  }
+  if (
+    bytes.length >= 12 &&
+    bytes[4] === 0x66 &&
+    bytes[5] === 0x74 &&
+    bytes[6] === 0x79 &&
+    bytes[7] === 0x70 &&
+    bytes[8] === 0x61 &&
+    bytes[9] === 0x76 &&
+    bytes[10] === 0x69 &&
+    (bytes[11] === 0x66 || bytes[11] === 0x73)
+  ) {
+    return "image/avif";
+  }
+  if (bytes.length >= 2 && bytes[0] === 0x42 && bytes[1] === 0x4d) {
+    return "image/bmp";
+  }
+  return null;
+}
+
 function valueToEditText(value) {
   if (value === null || typeof value === "undefined") {
     return "";
+  }
+  if (isBase64JsonValue(value)) {
+    return value.encoded;
   }
   if (typeof value === "object") {
     return JSON.stringify(value, null, 2);
@@ -4650,6 +4796,9 @@ function shouldUseTextarea(value, columnType) {
   if (columnType && columnType.type === "textarea") {
     return true;
   }
+  if (isBase64JsonValue(value)) {
+    return false;
+  }
   if (value && typeof value === "object") {
     return true;
   }
@@ -4658,6 +4807,9 @@ function shouldUseTextarea(value, columnType) {
 }
 
 function rowEditValueKind(value) {
+  if (isBase64JsonValue(value)) {
+    return "binary";
+  }
   if (value === null || typeof value === "undefined") {
     return "null";
   }
@@ -4679,6 +4831,261 @@ function rowEditControlElement(control, autocompleteUrl) {
   autocomplete.setAttribute("suggest-on-focus", "");
   autocomplete.appendChild(control);
   return autocomplete;
+}
+
+function revokeRowEditBinaryPreview(wrapper) {
+  if (wrapper && wrapper._rowEditBinaryPreviewUrl) {
+    URL.revokeObjectURL(wrapper._rowEditBinaryPreviewUrl);
+    wrapper._rowEditBinaryPreviewUrl = null;
+  }
+}
+
+function updateRowEditBinaryPreview(wrapper, encoded, byteLength) {
+  var preview = wrapper.querySelector(".row-edit-binary-preview");
+  if (!preview) {
+    return;
+  }
+  revokeRowEditBinaryPreview(wrapper);
+  preview.hidden = true;
+  preview.textContent = "";
+  if (
+    !encoded ||
+    byteLength >= ROW_EDIT_BINARY_IMAGE_PREVIEW_MAX_BYTES ||
+    !window.atob ||
+    !window.Blob ||
+    !window.URL ||
+    !URL.createObjectURL
+  ) {
+    return;
+  }
+
+  var bytes;
+  try {
+    bytes = base64ToUint8Array(encoded);
+  } catch (_error) {
+    return;
+  }
+  var mimeType = rowEditBinaryImageMimeType(bytes);
+  if (!mimeType) {
+    return;
+  }
+
+  var image = document.createElement("img");
+  image.alt = "";
+  var objectUrl = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
+  wrapper._rowEditBinaryPreviewUrl = objectUrl;
+
+  var showPreview = function () {
+    if (wrapper._rowEditBinaryPreviewUrl === objectUrl) {
+      preview.hidden = false;
+    }
+  };
+  var hidePreview = function () {
+    if (wrapper._rowEditBinaryPreviewUrl === objectUrl) {
+      revokeRowEditBinaryPreview(wrapper);
+      preview.hidden = true;
+      preview.textContent = "";
+    }
+  };
+  image.onload = showPreview;
+  image.onerror = hidePreview;
+  image.src = objectUrl;
+  preview.appendChild(image);
+}
+
+function updateRowEditBinaryDisplay(wrapper, control, fileName) {
+  var kind = rowEditControlValueKind(control);
+  var size = wrapper.querySelector(".row-edit-binary-size");
+  var name = wrapper.querySelector(".row-edit-binary-name");
+  var clear = wrapper.querySelector(".row-edit-binary-clear");
+  var byteLength =
+    kind === "binary" ? binaryByteLengthFromBase64(control.value) : null;
+
+  if (size) {
+    size.textContent =
+      kind === "binary"
+        ? formatRowEditBinarySize(byteLength)
+        : "No binary data";
+  }
+  if (name) {
+    name.textContent = fileName || "";
+    name.hidden = !fileName;
+  }
+  if (clear) {
+    clear.hidden = control.dataset.notNull === "1" || kind !== "binary";
+  }
+  if (kind === "binary") {
+    updateRowEditBinaryPreview(wrapper, control.value, byteLength);
+  } else {
+    updateRowEditBinaryPreview(wrapper, "", 0);
+  }
+}
+
+function setRowEditBinaryControlValue(control, encoded, fileName) {
+  control.value = encoded || "";
+  control.dataset.currentValueKind = "binary";
+  updateRowEditBinaryDisplay(control._rowEditBinaryWrapper, control, fileName);
+  control.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function clearRowEditBinaryControlValue(control) {
+  control.value = "";
+  control.dataset.currentValueKind = "null";
+  updateRowEditBinaryDisplay(control._rowEditBinaryWrapper, control, "");
+  control.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function readRowEditBinaryFile(file) {
+  return new Promise(function (resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var bytes = new Uint8Array(reader.result || new ArrayBuffer(0));
+        resolve({
+          encoded: uint8ArrayToBase64(bytes),
+          name: file && file.name ? file.name : "",
+        });
+      } catch (error) {
+        reject(error);
+      }
+    };
+    reader.onerror = function () {
+      reject(reader.error || new Error("Could not read file"));
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function rowEditBinaryValueFromText(text) {
+  var encoder = new TextEncoder();
+  var bytes = encoder.encode(text || "");
+  return {
+    encoded: uint8ArrayToBase64(bytes),
+    name: "Pasted text",
+  };
+}
+
+function rowEditBinaryFirstClipboardFile(clipboardData) {
+  if (!clipboardData) {
+    return null;
+  }
+  if (clipboardData.files && clipboardData.files.length) {
+    return clipboardData.files[0];
+  }
+  var items = clipboardData.items || [];
+  for (var i = 0; i < items.length; i += 1) {
+    if (items[i].kind === "file") {
+      return items[i].getAsFile();
+    }
+  }
+  return null;
+}
+
+function handleRowEditBinaryFile(control, file) {
+  if (!file) {
+    return;
+  }
+  readRowEditBinaryFile(file)
+    .then(function (value) {
+      setRowEditBinaryControlValue(control, value.encoded, value.name);
+    })
+    .catch(function (error) {
+      console.error("Could not read binary file", error);
+    });
+}
+
+function createRowEditBinaryControlElement(control, value, options, labelId) {
+  var wrapper = document.createElement("div");
+  wrapper.className = "row-edit-binary-control";
+  wrapper.dataset.column = control.name;
+  wrapper.setAttribute("role", "group");
+  wrapper.setAttribute("tabindex", "0");
+  wrapper.setAttribute("aria-labelledby", labelId);
+
+  var preview = document.createElement("div");
+  preview.className = "row-edit-binary-preview";
+  preview.hidden = true;
+
+  var status = document.createElement("div");
+  status.className = "row-edit-binary-status";
+  var size = document.createElement("span");
+  size.className = "row-edit-binary-size";
+  var name = document.createElement("span");
+  name.className = "row-edit-binary-name";
+  name.hidden = true;
+  status.appendChild(size);
+  status.appendChild(name);
+
+  var actions = document.createElement("div");
+  actions.className = "row-edit-binary-actions";
+  var fileLabel = document.createElement("label");
+  fileLabel.className = "row-edit-binary-file-button";
+  fileLabel.textContent = "Attach file";
+  var fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.setAttribute("aria-label", "Attach file for " + control.name);
+  fileInput.addEventListener("change", function () {
+    if (fileInput.files && fileInput.files.length) {
+      handleRowEditBinaryFile(control, fileInput.files[0]);
+    }
+  });
+  fileLabel.appendChild(fileInput);
+  actions.appendChild(fileLabel);
+
+  var clearButton = document.createElement("button");
+  clearButton.type = "button";
+  clearButton.className = "row-edit-binary-clear";
+  clearButton.textContent = "Set NULL";
+  clearButton.addEventListener("click", function () {
+    clearRowEditBinaryControlValue(control);
+    wrapper.focus();
+  });
+  actions.appendChild(clearButton);
+
+  var dropTarget = document.createElement("div");
+  dropTarget.className = "row-edit-binary-drop-target";
+  dropTarget.textContent = "Drop or paste file contents";
+  ["dragenter", "dragover"].forEach(function (eventName) {
+    wrapper.addEventListener(eventName, function (ev) {
+      ev.preventDefault();
+      wrapper.classList.add("row-edit-binary-dragover");
+    });
+  });
+  ["dragleave", "drop"].forEach(function (eventName) {
+    wrapper.addEventListener(eventName, function () {
+      wrapper.classList.remove("row-edit-binary-dragover");
+    });
+  });
+  wrapper.addEventListener("drop", function (ev) {
+    ev.preventDefault();
+    var file = ev.dataTransfer && ev.dataTransfer.files[0];
+    handleRowEditBinaryFile(control, file);
+  });
+  wrapper.addEventListener("paste", function (ev) {
+    var file = rowEditBinaryFirstClipboardFile(ev.clipboardData);
+    if (file) {
+      ev.preventDefault();
+      handleRowEditBinaryFile(control, file);
+      return;
+    }
+    var text = ev.clipboardData && ev.clipboardData.getData("text");
+    if (text) {
+      ev.preventDefault();
+      var pasted = rowEditBinaryValueFromText(text);
+      setRowEditBinaryControlValue(control, pasted.encoded, pasted.name);
+    }
+  });
+
+  control.type = "hidden";
+  control._rowEditBinaryWrapper = wrapper;
+  wrapper.appendChild(control);
+  wrapper.appendChild(preview);
+  wrapper.appendChild(status);
+  wrapper.appendChild(actions);
+  wrapper.appendChild(dropTarget);
+
+  updateRowEditBinaryDisplay(wrapper, control, "");
+  return wrapper;
 }
 
 function columnTypeForContext(columnType) {
@@ -4944,6 +5351,11 @@ function focusFirstRowEditControl(state, options) {
     if (focusRowEditPluginControl(field)) {
       return true;
     }
+    var binaryControl = field.querySelector(".row-edit-binary-control");
+    if (binaryControl) {
+      binaryControl.focus();
+      return true;
+    }
     control.focus();
     return true;
   }
@@ -4966,6 +5378,11 @@ function destroyRowEditFields(state) {
           console.error("Error destroying column form control", error);
         }
       }
+    });
+  state.fields
+    .querySelectorAll(".row-edit-binary-control")
+    .forEach(function (binaryControl) {
+      revokeRowEditBinaryPreview(binaryControl);
     });
   state.fields.innerHTML = "";
 }
@@ -4993,34 +5410,50 @@ function createRowEditField(column, value, isPk, columnType, index, options) {
   controlWrap.className = "row-edit-control-wrap";
 
   var context = columnFormControlContext(column, isPk, columnType, options);
-  var pluginControl = makeColumnField(options.manager, context);
+  var isBinaryField = shouldUseBinaryControl(value, options);
+  var pluginControl = isBinaryField
+    ? null
+    : makeColumnField(options.manager, context);
   var useTextarea =
-    (pluginControl && pluginControl.useTextarea === true) ||
-    shouldUseTextarea(value, columnType);
+    !isBinaryField &&
+    ((pluginControl && pluginControl.useTextarea === true) ||
+      shouldUseTextarea(value, columnType));
   var control = useTextarea
     ? document.createElement("textarea")
     : document.createElement("input");
+  var initialValue = isBinaryField
+    ? binaryEncodedValue(value)
+    : valueToEditText(value);
+  var initialValueKind = options.valueKind || rowEditValueKind(value);
+  if (isBinaryField) {
+    initialValueKind = isBase64JsonValue(value) ? "binary" : "null";
+  }
   control.className = "row-edit-input";
   control.id = fieldId;
   control.name = column;
-  control.value = valueToEditText(value);
+  control.value = initialValue;
   control.setAttribute("aria-describedby", metaId);
-  control.dataset.initialValue = valueToEditText(value);
-  control.dataset.initialValueKind =
-    options.valueKind || rowEditValueKind(value);
+  control.dataset.initialValue = initialValue;
+  control.dataset.initialValueKind = initialValueKind;
   control.dataset.primaryKey = isPk ? "1" : "0";
   control.dataset.currentValueKind = control.dataset.initialValueKind;
+  if (isBinaryField) {
+    control.dataset.binaryField = "1";
+    control.dataset.notNull = options.notnull ? "1" : "0";
+  }
   if (hasDefaultExpression) {
     control.dataset.useSqliteDefault = useSqliteDefault ? "1" : "0";
   }
   if (useSqliteDefault) {
     control.disabled = true;
   }
-  if (options.omitIfBlank) {
+  if (options.omitIfBlank || (isBinaryField && options.mode === "insert")) {
     control.dataset.omitIfBlank = "1";
   }
 
-  if (control.nodeName === "TEXTAREA") {
+  if (isBinaryField) {
+    control.type = "hidden";
+  } else if (control.nodeName === "TEXTAREA") {
     control.rows = Math.min(8, Math.max(3, control.value.split("\n").length));
   } else {
     control.type = "text";
@@ -5094,9 +5527,11 @@ function createRowEditField(column, value, isPk, columnType, index, options) {
   field._datasetteColumnFormField = fieldApi;
   var pluginControlElement = renderColumnField(pluginControl, fieldApi);
   var controlElement =
+    (isBinaryField &&
+      createRowEditBinaryControlElement(control, value, options, labelId)) ||
     pluginControlElement ||
     rowEditControlElement(control, options.autocompleteUrl);
-  if (options.autocompleteUrl && !pluginControlElement) {
+  if (options.autocompleteUrl && !pluginControlElement && !isBinaryField) {
     control.addEventListener("input", function () {
       setForeignKeyMetaLink(meta, options.autocompleteUrl, null);
     });
@@ -5264,6 +5699,9 @@ function setRowEditDialogSaving(state, isSaving) {
 
 function valueFromRowEditControl(control) {
   var value = control.value;
+  if (rowEditControlValueKind(control) === "binary") {
+    return rowEditBinaryValue(value);
+  }
   return valueFromRowEditText(
     control.name,
     value,
@@ -5274,6 +5712,9 @@ function valueFromRowEditControl(control) {
 function valueFromRowEditText(name, value, initialValueKind) {
   var trimmed = value.trim();
 
+  if (initialValueKind === "binary") {
+    return rowEditBinaryValue(value);
+  }
   if (initialValueKind === "null" && value === "") {
     return null;
   }
@@ -5401,7 +5842,11 @@ function collectRowFormValues(state) {
     if (control.dataset.useSqliteDefault === "1") {
       return;
     }
-    if (control.dataset.omitIfBlank === "1" && control.value === "") {
+    if (
+      control.dataset.omitIfBlank === "1" &&
+      control.value === "" &&
+      rowEditControlValueKind(control) !== "binary"
+    ) {
       return;
     }
     if (
@@ -6566,10 +7011,12 @@ function renderRowEditFields(state, data) {
   var columns = data.columns || (row ? Object.keys(row) : []);
   var primaryKeys = data.primary_keys || [];
   var columnTypes = data.column_types || {};
+  var columnDetails = data.column_details || {};
 
   state.insertMode = "single";
   destroyRowEditFields(state);
   columns.forEach(function (column, index) {
+    var columnDetail = columnDetails[column] || {};
     state.fields.appendChild(
       createRowEditField(
         column,
@@ -6583,7 +7030,9 @@ function renderRowEditFields(state, data) {
           form: state.form,
           manager: state.manager,
           mode: state.mode,
+          notnull: columnDetail.notnull,
           primaryKeyReadonly: true,
+          sqliteType: columnDetail.sqlite_type,
         },
       ),
     );

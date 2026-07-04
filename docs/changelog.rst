@@ -12,6 +12,9 @@ Unreleased
 - Table pages now offer an "Insert multiple rows" mode in the row insertion dialog. This accepts pasted TSV, CSV or JSON, previews the parsed rows before inserting them, validates unknown columns as data is pasted and displays omitted auto integer primary keys as ``auto`` in the preview. (:pr:`2813`)
 - The bulk insert UI can skip rows with existing primary keys, or update existing rows and insert new rows using the existing ``/<database>/<table>/-/upsert`` API when the actor has both :ref:`insert-row <actions_insert_row>` and :ref:`update-row <actions_update_row>` permissions. (:pr:`2813`)
 - The "Create table" dialog now includes a "Create table from data" mode. Paste TSV, CSV or JSON rows to preview inferred columns and types, choose the table name and primary key, then create the table and insert those rows in one step. (:pr:`2813`)
+- Datasette's JSON APIs now consistently encode every ``BLOB`` value using the documented :ref:`binary value JSON format <binary_json_format>`, even when the bytes could be decoded as UTF-8 text.
+- The insert and edit row dialogs now provide a dedicated control for ``BLOB`` values. Existing binary values are shown by byte size, image values under 10MB are previewed as thumbnails, and replacements can be attached, dropped or pasted into the control.
+- The table and row JSON APIs now support ``?_extra=column_details`` for returning SQLite schema details for columns, including declared type, SQLite affinity, primary key, ``NOT NULL``, default and hidden-column metadata.
 
 .. _v1_0_a35:
 

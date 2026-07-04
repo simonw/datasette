@@ -647,6 +647,7 @@ dispatched to `QueryView` (views/table.py:1703-1712).
 |---|---|
 | `ok` | `true` when data was retrieved without error |
 | `next` | pagination token string, or `null` on the last page |
+| `next_url` | absolute URL of the next page, or `null` on the last page |
 | `rows` | list of row objects `{column: value}` (default `_shape=objects`) |
 | `truncated` | always present; `false` for table pages |
 

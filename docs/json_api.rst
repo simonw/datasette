@@ -48,7 +48,7 @@ The ``"rows"`` key is a list of objects, each one representing a row.
 
 The ``"truncated"`` key lets you know if the query was truncated. This can happen if a SQL query returns more than 1,000 results (or the :ref:`setting_max_returned_rows` setting).
 
-For table pages, an additional key ``"next"`` may be present. This indicates that the next page in the pagination set can be retrieved using ``?_next=VALUE``.
+For table pages, two additional keys are present: ``"next"``, an opaque token that can be used to retrieve the next page using ``?_next=TOKEN``, and ``"next_url"``, the full URL of that next page. Both are ``null`` on the final page. See :ref:`json_api_pagination`.
 
 .. _json_api_errors:
 
@@ -128,6 +128,7 @@ options:
     {
       "ok": true,
       "next": null,
+      "next_url": null,
       "rows": [
         [3, "Detroit"],
         [2, "Los Angeles"],

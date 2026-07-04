@@ -1491,6 +1491,7 @@ async def test_col_nocol_errors(ds_client, path, expected_error):
             {
                 "ok": True,
                 "next": None,
+                "next_url": None,
                 "columns": ["id", "content", "content2"],
                 "rows": [{"id": "1", "content": "hey", "content2": "world"}],
                 "truncated": False,
@@ -1501,6 +1502,7 @@ async def test_col_nocol_errors(ds_client, path, expected_error):
             {
                 "ok": True,
                 "next": None,
+                "next_url": None,
                 "rows": [{"id": "1", "content": "hey", "content2": "world"}],
                 "truncated": False,
                 "count": 1,
@@ -1627,3 +1629,22 @@ async def test_count_truncated_included_with_count_extra(tmp_path_factory):
         assert response.json()["count_truncated"] is True
     finally:
         ds.close()
+
+
+@pytest.mark.asyncio
+async def test_next_url_included_by_default(ds_client):
+    response = await ds_client.get("/fixtures/compound_three_primary_keys.json")
+    data = response.json()
+    assert data["next"] is not None
+    assert data["next_url"].endswith(
+        "/fixtures/compound_three_primary_keys.json?_next="
+        + urllib.parse.quote(data["next"], safe="")
+    )
+    # Follow to the last page - next and next_url are both null there
+    while data["next"]:
+        response = await ds_client.get(
+            "/fixtures/compound_three_primary_keys.json?_next=" + data["next"]
+        )
+        data = response.json()
+    assert data["next"] is None
+    assert data["next_url"] is None

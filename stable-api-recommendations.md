@@ -196,7 +196,14 @@ number.
 
 ---
 
-## 3. Pagination: three mechanisms, two contracts (P2)
+## 3. Pagination: three mechanisms, two contracts (P2) — partially implemented
+
+> **Status:** `next_url` now accompanies `next` in the default table JSON
+> keys (previously it required `?_extra=next_url`), so every response with
+> a `next` token also carries the ready-to-follow URL. Pagination tokens
+> are deliberately left undocumented as to their internal structure. The
+> `_size`/`page_size` naming and `has_more`/`total` differences remain
+> open.
 
 | Endpoint | Mechanism | Token | Extras |
 |---|---|---|---|

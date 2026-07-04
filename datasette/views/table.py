@@ -2318,6 +2318,7 @@ async def table_view_data(
     data = {
         "ok": True,
         "next": next_value and str(next_value) or None,
+        "next_url": next_url,
     }
     data.update(
         await resolve_table_extras(

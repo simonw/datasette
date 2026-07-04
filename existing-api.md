@@ -968,8 +968,8 @@ does not change the SQLite schema.
 - **Request:** no body required (any body is ignored — there is no
   confirmation step, unlike table drop).
 - **Response** — 200 `{"ok": true}`; with `?_redirect_to_table` a `redirect`
-  key is added. A failure during the write returns **500** with the message
-  (unlike update's 400). Emits `delete-row`.
+  key is added. A failure during the write returns 400 with the message,
+  matching update. Emits `delete-row`.
 
 ---
 

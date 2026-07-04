@@ -363,3 +363,35 @@ async def test_write_query_rejected_operation_is_canonical_403(ds_write_query):
     )
     data = assert_canonical_error(response, 403)
     assert data["redirect"] is None
+
+
+# Row delete write failures must be 400, matching row update
+
+
+@pytest.mark.asyncio
+async def test_row_delete_write_failure_is_400(tmp_path_factory):
+    db_directory = tmp_path_factory.mktemp("dbs")
+    db_path = str(db_directory / "data.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute("vacuum")
+    conn.execute("create table docs (id integer primary key, title text)")
+    conn.execute("insert into docs (id, title) values (1, 'One')")
+    conn.execute(
+        "create trigger no_delete before delete on docs "
+        "begin select raise(abort, 'deletes are blocked'); end"
+    )
+    conn.commit()
+    conn.close()
+    ds = Datasette([db_path])
+    ds.root_enabled = True
+    try:
+        response = await ds.client.post(
+            "/data/docs/1/-/delete",
+            json={},
+            headers={"Content-Type": "application/json"},
+            actor={"id": "root"},
+        )
+        data = assert_canonical_error(response, 400)
+        assert "deletes are blocked" in data["error"]
+    finally:
+        ds.close()

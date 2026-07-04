@@ -742,7 +742,7 @@ class RowDeleteView(BaseView):
         try:
             await resolved.db.execute_write_fn(delete_row, request=request)
         except Exception as e:
-            return _error([str(e)], 500)
+            return _error([str(e)], 400)
 
         await self.ds.track_event(
             DeleteRowEvent(

@@ -98,10 +98,11 @@ key — see §2.)
 
 ### 1c. Wrong-status outliers (P2)
 
-- Row **delete** write failures return **500** (views/row.py:757) while row
+- ~~Row **delete** write failures return **500** (views/row.py:757) while row
   **update** write failures return **400** (views/row.py:832-835). Same
   failure class, different status; pick 400 (or 409 for constraint
-  violations) for both.
+  violations) for both.~~ ✅ **Done** — delete now returns 400, matching
+  update and the rest of the write API.
 - Invalid or expired bearer tokens silently degrade the request to anonymous,
   so clients see a 403 permission error (or worse, anonymous-permitted data)
   rather than a 401 (tokens.py:147-193). For 1.0, a malformed/expired
@@ -337,7 +338,8 @@ Concerns:
    []}`** while `.csv` on the same request returns 400 `"?sql= is
    required"`. The JSON behavior masks caller bugs; return 400 on both.
 3. **`_shape=object` HTTP 200 error** (§1b) — almost certainly unintended.
-4. **Row delete 500** (§1c) — inconsistent with every sibling endpoint.
+4. ~~**Row delete 500** (§1c) — inconsistent with every sibling endpoint.~~
+   ✅ Done — now 400.
 5. **The "SQL Interrupted" error embeds an HTML fragment in the JSON `error`
    value** (views/database.py:805-820). Error strings in the JSON API should
    be plain text.

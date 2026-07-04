@@ -202,8 +202,8 @@ async def test_insert_rows(ds_write, return_rows):
             "/data/docs/-/insert",
             {"rows": [{"title": "Test"} for i in range(10)]},
             "bad_token",
-            403,
-            ["Permission denied"],
+            401,
+            ["Invalid token signature"],
         ),
         (
             "/data/docs/-/insert",
@@ -410,12 +410,13 @@ async def test_insert_or_upsert_row_errors(
         },
     )
 
-    actor_response = (
-        await ds_write.client.get("/-/actor.json", headers=kwargs["headers"])
-    ).json()
-    assert set((actor_response["actor"] or {}).get("_r", {}).get("a") or []) == set(
-        token_permissions
-    )
+    if special_case != "bad_token":
+        actor_response = (
+            await ds_write.client.get("/-/actor.json", headers=kwargs["headers"])
+        ).json()
+        assert set((actor_response["actor"] or {}).get("_r", {}).get("a") or []) == set(
+            token_permissions
+        )
 
     if special_case == "invalid_json":
         del kwargs["json"]

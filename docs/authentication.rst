@@ -991,7 +991,9 @@ The ``/-/create-token`` page cannot be accessed by actors that are authenticated
 
 Datasette plugins that implement their own form of API token authentication should follow this convention.
 
-You can disable the signed token feature entirely using the :ref:`allow_signed_tokens <setting_allow_signed_tokens>` setting.
+If a request presents a token that a token handler recognizes but rejects - an invalid signature, a malformed payload or an expired token - Datasette responds with a ``401`` status, the :ref:`standard JSON error format <json_api_errors>` and a ``WWW-Authenticate: Bearer error="invalid_token"`` header. This means API clients can distinguish "your token needs to be renewed" (``401``) from "your token does not grant this permission" (``403``). A ``Bearer`` token that no registered handler recognizes at all is ignored, since it may be intended for an authentication plugin.
+
+You can disable the signed token feature entirely using the :ref:`allow_signed_tokens <setting_allow_signed_tokens>` setting. Requests presenting a ``dstok_`` token while the feature is disabled receive a ``401``.
 
 .. _authentication_cli_create_token:
 

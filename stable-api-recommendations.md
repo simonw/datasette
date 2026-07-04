@@ -96,19 +96,23 @@ request prefers JSON, mirroring `handle_exception`.
 completed, SQL is invalid" is defensible but should then not reuse the `ok`
 key — see §2.)
 
-### 1c. Wrong-status outliers (P2)
+### 1c. Wrong-status outliers (P2) — ✅ IMPLEMENTED
 
 - ~~Row **delete** write failures return **500** (views/row.py:757) while row
   **update** write failures return **400** (views/row.py:832-835). Same
   failure class, different status; pick 400 (or 409 for constraint
   violations) for both.~~ ✅ **Done** — delete now returns 400, matching
   update and the rest of the write API.
-- Invalid or expired bearer tokens silently degrade the request to anonymous,
+- ~~Invalid or expired bearer tokens silently degrade the request to anonymous,
   so clients see a 403 permission error (or worse, anonymous-permitted data)
   rather than a 401 (tokens.py:147-193). For 1.0, a malformed/expired
   `Authorization: Bearer dstok_...` header should produce **401** with a
   distinguishable error, so clients can tell "renew your token" apart from
-  "you lack permission".
+  "you lack permission".~~ ✅ **Done** — token handlers can raise
+  `TokenInvalid`; Datasette responds 401 with the canonical body and a
+  `WWW-Authenticate: Bearer error="invalid_token"` header. Unrecognized
+  token prefixes still fall through to anonymous so auth plugins keep
+  working.
 
 ---
 
@@ -391,7 +395,8 @@ Two details make tiering urgent rather than optional:
    objects (§2).~~ ✅ Done.
 5. ~~Filter `/-/databases.json` by `view-database` or gate it behind
    `permissions-debug` (§6).~~ ✅ Done.
-6. 401 (not silent-anonymous) for invalid/expired bearer tokens (§1c).
+6. ~~401 (not silent-anonymous) for invalid/expired bearer tokens (§1c).~~
+   ✅ Done.
 7. Publish explicit stability tiers, including extras and pagination-token
    opacity (§9).
 8. Resolve the looks-like-a-bug list (§8), especially trusted-query delete

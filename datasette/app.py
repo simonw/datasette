@@ -111,7 +111,9 @@ from .utils import (
     baseconv,
     call_with_supported_arguments,
     detect_json1,
+    add_cors_headers,
     display_actor,
+    error_body,
     escape_css_string,
     escape_sqlite,
     find_spatialite,
@@ -130,6 +132,7 @@ from .utils import (
     redact_keys,
     row_sql_params_pks,
 )
+from .tokens import TokenInvalid
 from .utils.asgi import (
     AsgiLifespan,
     Forbidden,
@@ -905,7 +908,9 @@ class Datasette:
         Verify an API token by trying all registered token handlers.
 
         Returns an actor dict from the first handler that recognizes the
-        token, or None if no handler accepts it.
+        token, or None if no handler accepts it. A handler may raise
+        TokenInvalid for a token it recognizes but rejects (bad signature,
+        expired) - Datasette turns that into a 401 response.
         """
         for token_handler in self._token_handlers():
             result = await token_handler.verify_token(self, token)
@@ -2887,13 +2892,24 @@ class DatasetteRouter:
         # Handle authentication
         default_actor = scope.get("actor") or None
         actor = None
+        token_error = None
         results = pm.hook.actor_from_request(datasette=self.ds, request=request)
         for result in results:
-            result = await await_me_maybe(result)
+            try:
+                result = await await_me_maybe(result)
+            except TokenInvalid as ex:
+                # A presented token was recognized but rejected - fail the
+                # request with a 401 even if another credential is valid,
+                # but keep awaiting the remaining coroutines first
+                if token_error is None:
+                    token_error = ex
+                continue
             if result and actor is None:
                 actor = result
                 # Don't break — we must await all coroutines to avoid
                 # "coroutine was never awaited" warnings
+        if token_error is not None:
+            return await self.handle_401(request, send, token_error)
         scope_modifications["actor"] = actor or default_actor
         scope = dict(scope, **scope_modifications)
 
@@ -2924,6 +2940,17 @@ class DatasetteRouter:
                 return await custom_response.asgi_send(send)
         except Exception as exception:
             return await self.handle_exception(request, send, exception)
+
+    async def handle_401(self, request, send, exception):
+        # A presented bearer token was recognized by a handler but rejected.
+        # Bearer tokens are API credentials, so this is always JSON.
+        headers = {"www-authenticate": 'Bearer error="invalid_token"'}
+        if self.ds.cors:
+            add_cors_headers(headers)
+        response = Response.json(
+            error_body([str(exception)], 401), status=401, headers=headers
+        )
+        await response.asgi_send(send)
 
     async def handle_404(self, request, send, exception=None):
         # If path contains % encoding, redirect to tilde encoding

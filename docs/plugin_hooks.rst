@@ -2546,6 +2546,10 @@ The default ``SignedTokenHandler`` uses itsdangerous signed tokens (``dstok_`` p
 
         async def verify_token(self, datasette, token):
             # Look up token in database, return actor dict or None
+            # if this handler does not recognize the token. Raise
+            # datasette.TokenInvalid for a token this handler
+            # recognizes but rejects (revoked, expired) - Datasette
+            # will respond with a 401 error.
             ...
 
 

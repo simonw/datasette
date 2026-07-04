@@ -18,6 +18,21 @@ if TYPE_CHECKING:
     from datasette.app import Datasette
 
 
+class TokenInvalid(Exception):
+    """
+    Raised by a TokenHandler when a token it recognizes is invalid -
+    for example a bad signature, malformed payload or expired token.
+
+    Datasette responds to this with an HTTP 401 error. Handlers should
+    return None instead for tokens they do not recognize at all, so that
+    other registered handlers get a chance to verify them.
+    """
+
+    def __init__(self, message="Invalid token"):
+        self.message = message
+        super().__init__(message)
+
+
 @dataclasses.dataclass
 class TokenRestrictions:
     """
@@ -108,8 +123,12 @@ class TokenHandler:
 
     async def verify_token(self, datasette: "Datasette", token: str) -> Optional[dict]:
         """
-        Verify a token and return an actor dict, or None if this handler
-        does not recognize the token.
+        Verify a token and return an actor dict.
+
+        Return None if this handler does not recognize the token at all,
+        so other handlers can try it. Raise TokenInvalid if the token is
+        recognized but invalid (bad signature, malformed, expired) - the
+        request will fail with a 401 error.
         """
         raise NotImplementedError
 
@@ -147,29 +166,32 @@ class SignedTokenHandler(TokenHandler):
     async def verify_token(self, datasette: "Datasette", token: str) -> Optional[dict]:
         prefix = "dstok_"
 
-        if not datasette.setting("allow_signed_tokens"):
+        if not token.startswith(prefix):
+            # Not one of our tokens - leave it for other handlers
             return None
+
+        if not datasette.setting("allow_signed_tokens"):
+            raise TokenInvalid(
+                "Signed tokens are not enabled for this Datasette instance"
+            )
 
         max_signed_tokens_ttl = datasette.setting("max_signed_tokens_ttl")
-
-        if not token.startswith(prefix):
-            return None
 
         raw = token[len(prefix) :]
         try:
             decoded = datasette.unsign(raw, namespace="token")
         except itsdangerous.BadSignature:
-            return None
+            raise TokenInvalid("Invalid token signature")
 
         if "t" not in decoded:
-            return None
+            raise TokenInvalid("Invalid token: no timestamp")
         created = decoded["t"]
         if not isinstance(created, int):
-            return None
+            raise TokenInvalid("Invalid token: invalid timestamp")
 
         duration = decoded.get("d")
         if duration is not None and not isinstance(duration, int):
-            return None
+            raise TokenInvalid("Invalid token: invalid duration")
 
         if (duration is None and max_signed_tokens_ttl) or (
             duration is not None
@@ -180,7 +202,7 @@ class SignedTokenHandler(TokenHandler):
 
         if duration:
             if time.time() - created > duration:
-                return None
+                raise TokenInvalid("Token has expired")
 
         actor = {"id": decoded["a"], "token": "dstok"}
 

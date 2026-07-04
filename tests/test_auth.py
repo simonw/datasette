@@ -236,7 +236,9 @@ def test_auth_create_token(
 
 @pytest.mark.asyncio
 async def test_auth_create_token_not_allowed_for_tokens(ds_client):
-    ds_tok = ds_client.ds.sign({"a": "test", "token": "dstok"}, "token")
+    ds_tok = ds_client.ds.sign(
+        {"a": "test", "token": "dstok", "t": int(time.time())}, "token"
+    )
     response = await ds_client.get(
         "/-/create-token",
         headers={"Authorization": "Bearer dstok_{}".format(ds_tok)},
@@ -304,8 +306,16 @@ async def test_auth_with_dstok_token(ds_client, scenario, should_work):
             assert actor["token"] == "dstok"
             if scenario != "valid_unlimited_token":
                 assert isinstance(actor["token_expires"], int)
-        else:
+        elif scenario == "no_token":
+            # No credentials presented - request proceeds as anonymous
             assert response.json() == {"ok": True, "actor": None}
+        else:
+            # Invalid credentials presented - hard 401
+            assert response.status_code == 401
+            data = response.json()
+            assert data["ok"] is False
+            assert data["status"] == 401
+            assert response.headers["www-authenticate"].startswith("Bearer")
     finally:
         ds_client.ds._settings["allow_signed_tokens"] = True
 
@@ -339,8 +349,9 @@ def test_cli_create_token(app_client, expires):
             expected_actor["token_expires"] = details["t"] + expires
         assert response.json == {"ok": True, "actor": expected_actor}
     else:
-        expected_actor = None
-    assert response.json == {"ok": True, "actor": expected_actor}
+        # Expired token - hard 401
+        assert response.status == 401
+        assert response.json["ok"] is False
 
 
 @pytest.mark.asyncio

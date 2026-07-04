@@ -1156,14 +1156,17 @@ registered via `register_token_handler`; the default is
 - **Format:** `dstok_` + itsdangerous-signed payload (namespace `token`)
   containing `a` (actor id), `t` (creation Unix time), optional `d`
   (duration seconds), optional `_r` (restrictions).
-- **Verification** returns no actor when: `allow_signed_tokens` is off, the
-  signature is invalid, `t` is missing/non-integer, or the token is expired.
-  The effective duration is `d` capped by `max_signed_tokens_ttl` (default 0
-  = no cap; a non-zero setting also imposes a TTL on tokens without `d`).
+- **Verification:** a `dstok_`-prefixed token that fails verification —
+  `allow_signed_tokens` off, invalid signature, missing/non-integer `t`,
+  malformed `d`, or expired — raises `TokenInvalid`, and the request fails
+  with **401**, the canonical error body and a
+  `WWW-Authenticate: Bearer error="invalid_token"` header (even if a valid
+  `ds_actor` cookie is also present). Tokens with prefixes no registered
+  handler recognizes are ignored (they may belong to an auth plugin). The
+  effective duration is `d` capped by `max_signed_tokens_ttl` (default 0 =
+  no cap; a non-zero setting also imposes a TTL on tokens without `d`).
 - **Resulting actor:** `{"id": <a>, "token": "dstok"}` plus `"_r"` and
-  `"token_expires"` when applicable. Invalid/expired tokens silently produce
-  an anonymous request (no 401) — the failure then surfaces as a 403 from
-  whatever permission check the request hits.
+  `"token_expires"` when applicable.
 
 **Restrictions (`_r`)** (default_permissions/restrictions.py):
 

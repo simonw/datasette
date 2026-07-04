@@ -18,6 +18,7 @@ https://github.com/simonw/datasette/issues - 1.0 API consistency
 """
 
 import pytest
+import time
 from datasette.app import Datasette
 from datasette.utils import sqlite3
 
@@ -393,5 +394,92 @@ async def test_row_delete_write_failure_is_400(tmp_path_factory):
         )
         data = assert_canonical_error(response, 400)
         assert "deletes are blocked" in data["error"]
+    finally:
+        ds.close()
+
+
+# Invalid bearer tokens must produce 401, not silent anonymous access
+
+
+@pytest.mark.asyncio
+async def test_expired_token_returns_401(ds_error_shape):
+    token = "dstok_{}".format(
+        ds_error_shape.sign(
+            {"a": "root", "t": int(time.time()) - 2000, "d": 1000},
+            namespace="token",
+        )
+    )
+    response = await ds_error_shape.client.get(
+        "/-/actor.json", headers={"Authorization": "Bearer {}".format(token)}
+    )
+    data = assert_canonical_error(response, 401)
+    assert "expired" in data["error"].lower()
+    assert response.headers["www-authenticate"].startswith("Bearer")
+
+
+@pytest.mark.asyncio
+async def test_bad_signature_token_returns_401(ds_error_shape):
+    response = await ds_error_shape.client.get(
+        "/-/actor.json", headers={"Authorization": "Bearer dstok_garbage"}
+    )
+    data = assert_canonical_error(response, 401)
+    assert response.headers["www-authenticate"].startswith("Bearer")
+
+
+@pytest.mark.asyncio
+async def test_unrecognized_token_prefix_stays_anonymous(ds_error_shape):
+    # No registered handler claims this token - it might belong to a
+    # plugin's actor_from_request hook, so it must not hard-fail
+    response = await ds_error_shape.client.get(
+        "/-/actor.json", headers={"Authorization": "Bearer sometoken_abc"}
+    )
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "actor": None}
+
+
+@pytest.mark.asyncio
+async def test_valid_token_still_authenticates(ds_error_shape):
+    token = "dstok_{}".format(
+        ds_error_shape.sign(
+            {"a": "root", "t": int(time.time())},
+            namespace="token",
+        )
+    )
+    response = await ds_error_shape.client.get(
+        "/-/actor.json", headers={"Authorization": "Bearer {}".format(token)}
+    )
+    assert response.status_code == 200
+    assert response.json()["actor"]["id"] == "root"
+
+
+@pytest.mark.asyncio
+async def test_bad_token_beats_valid_cookie(ds_error_shape):
+    # A malformed Authorization header is a hard error even if a valid
+    # ds_actor cookie is also present
+    response = await ds_error_shape.client.get(
+        "/-/actor.json",
+        headers={"Authorization": "Bearer dstok_garbage"},
+        cookies={"ds_actor": ds_error_shape.client.actor_cookie({"id": "root"})},
+    )
+    assert_canonical_error(response, 401)
+
+
+@pytest.mark.asyncio
+async def test_token_when_signed_tokens_disabled_returns_401(tmp_path_factory):
+    db_directory = tmp_path_factory.mktemp("dbs")
+    db_path = str(db_directory / "data.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute("vacuum")
+    conn.close()
+    ds = Datasette([db_path], settings={"allow_signed_tokens": False})
+    try:
+        token = "dstok_{}".format(
+            ds.sign({"a": "root", "t": int(time.time())}, namespace="token")
+        )
+        response = await ds.client.get(
+            "/-/actor.json", headers={"Authorization": "Bearer {}".format(token)}
+        )
+        data = assert_canonical_error(response, 401)
+        assert "not enabled" in data["error"]
     finally:
         ds.close()

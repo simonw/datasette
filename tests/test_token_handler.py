@@ -5,7 +5,12 @@ Tests for the register_token_handler plugin hook.
 from datasette.app import Datasette
 from datasette.hookspecs import hookimpl
 from datasette.plugins import pm
-from datasette.tokens import TokenHandler, TokenRestrictions, SignedTokenHandler
+from datasette.tokens import (
+    TokenHandler,
+    TokenInvalid,
+    TokenRestrictions,
+    SignedTokenHandler,
+)
 import pytest
 
 
@@ -66,10 +71,10 @@ async def test_verify_token_unknown_returns_none(datasette):
 
 
 @pytest.mark.asyncio
-async def test_verify_token_bad_signature_returns_none(datasette):
-    """verify_token() should return None for tokens with bad signatures."""
-    result = await datasette.verify_token("dstok_tampered_data_here")
-    assert result is None
+async def test_verify_token_bad_signature_raises(datasette):
+    """verify_token() should raise TokenInvalid for tokens with bad signatures."""
+    with pytest.raises(TokenInvalid):
+        await datasette.verify_token("dstok_tampered_data_here")
 
 
 @pytest.mark.asyncio
@@ -334,5 +339,6 @@ async def test_signed_tokens_disabled():
     ds = Datasette(settings={"allow_signed_tokens": False})
     with pytest.raises(ValueError, match="Signed tokens are not enabled"):
         await ds.create_token("test_actor", handler="signed")
-    # verify_token should return None rather than raising
-    assert await ds.verify_token("dstok_anything") is None
+    # verify_token should raise TokenInvalid for a dstok_ token
+    with pytest.raises(TokenInvalid, match="not enabled"):
+        await ds.verify_token("dstok_anything")

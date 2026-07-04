@@ -156,10 +156,12 @@ Endpoints disagree about the success envelope:
 
 ### 2a. Collection representations disagree (P2)
 
-- Homepage `/.json` returns `databases` as an **object keyed by name**
+- ~~Homepage `/.json` returns `databases` as an **object keyed by name**
   (index.py:147-161); `/-/databases.json` returns an **array**; the database
   page returns `tables` as an array. Choose arrays-of-objects everywhere
-  (objects-keyed-by-name break when names need ordering or pagination).
+  (objects-keyed-by-name break when names need ordering or pagination).~~
+  ✅ **Done** — the homepage returns a list, matching `/-/databases.json`.
+  The homepage JSON remains deliberately undocumented.
 - ~~Insert/upsert with `return: true` respond with `rows` (plural, list); row
   update with `return: true` responds with `row` (singular, object)
   (views/row.py:837-844). Pick one (`rows` everywhere, even for one row,

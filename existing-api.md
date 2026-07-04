@@ -201,8 +201,8 @@ Routes: `/(\.(?P<format>jsono?))?$` and `/-/(\.(?P<format>jsono?))?$`
 - **Parameters:** `_sort=relationships` sorts each database's truncated table
   list by foreign-key relationship count.
 - **JSON response** (index.py:147-161) — includes `ok: true` plus:
-  - `databases` — an **object keyed by database name** (not a list). Each
-    value: `name`, `hash` (or null), `color`, `path`,
+  - `databases` — a **list** of database objects (undocumented API, subject
+    to change). Each item: `name`, `hash` (or null), `color`, `path`,
     `tables_and_views_truncated` (up to 5 items: `name`, `columns`,
     `primary_keys`, `count` (int or null), `hidden`, `fts_table`,
     `num_relationships_for_sorting`, `private`; view items are just

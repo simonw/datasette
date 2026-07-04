@@ -26,8 +26,9 @@ async def test_homepage(ds_client):
         "title",
     ]
     databases = data.get("databases")
-    assert databases.keys() == {"fixtures": 0}.keys()
-    d = databases["fixtures"]
+    assert isinstance(databases, list)
+    assert [d["name"] for d in databases] == ["fixtures"]
+    d = databases[0]
     assert d["name"] == "fixtures"
     assert isinstance(d["tables_count"], int)
     assert isinstance(len(d["tables_and_views_truncated"]), int)
@@ -43,7 +44,7 @@ async def test_homepage_sort_by_relationships(ds_client):
     assert response.status_code == 200
     tables = [
         t["name"]
-        for t in response.json()["databases"]["fixtures"]["tables_and_views_truncated"]
+        for t in response.json()["databases"][0]["tables_and_views_truncated"]
     ]
     assert tables == [
         "simple_primary_key",
@@ -251,8 +252,8 @@ def test_no_files_uses_memory_database(app_client_no_files):
     assert response.status == 200
     assert {
         "ok": True,
-        "databases": {
-            "_memory": {
+        "databases": [
+            {
                 "name": "_memory",
                 "hash": None,
                 "color": "a6c7b9",
@@ -267,7 +268,7 @@ def test_no_files_uses_memory_database(app_client_no_files):
                 "views_count": 0,
                 "private": False,
             },
-        },
+        ],
         "metadata": {},
     } == response.json
     # Try that SQL query
@@ -852,8 +853,9 @@ async def test_tilde_encoded_database_names(db_name):
     ds = Datasette()
     ds.add_memory_database(db_name)
     response = await ds.client.get("/.json")
-    assert db_name in response.json()["databases"].keys()
-    path = response.json()["databases"][db_name]["path"]
+    databases_by_name = {d["name"]: d for d in response.json()["databases"]}
+    assert db_name in databases_by_name
+    path = databases_by_name[db_name]["path"]
     # And the JSON for that database
     response2 = await ds.client.get(path + ".json")
     assert response2.status_code == 200

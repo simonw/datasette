@@ -152,7 +152,7 @@ class IndexView(BaseView):
                 json.dumps(
                     {
                         "ok": True,
-                        "databases": {db["name"]: db for db in databases},
+                        "databases": databases,
                         "metadata": await self.ds.get_instance_metadata(),
                     },
                     cls=CustomJSONEncoder,

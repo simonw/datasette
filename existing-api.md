@@ -377,8 +377,8 @@ path always renders the HTML form; `.json` returns JSON.
   resources. Items gain a `reason` field if the actor also holds
   `permissions-debug`.
 - **Parameters:** `action` (required; missing → 400 canonical error, unknown
-  → 404), `parent`, `child` (requires `parent`), `page` (default 1),
-  `page_size` (default 50, silently capped at 200).
+  → 404), `parent`, `child` (requires `parent`), `_page` (default 1),
+  `_size` (default 50, maximum 200, accepts `max`; out-of-range → 400).
 - **Response:** `{"action", "actor_id", "page", "page_size", "total",
   "items": [{"parent", "child", "resource"}]}` with optional `next_url` /
   `previous_url`.
@@ -1031,8 +1031,9 @@ databases (`database`/`database_color` are null, `show_database` true).
 
 - **Permissions:** no single gate; results filtered per query by
   `view-query` (private queries appear only for their owner).
-- **Parameters:** `_size` (default 20 HTML / **50 JSON**, clamped 1–1000;
-  non-integer → 400), `_next` (cursor), `q` (substring search over
+- **Parameters:** `_size` (default 20 HTML / **50 JSON**; accepts `max`;
+  values over `max_returned_rows` or non-integers → 400, matching table
+  `_size` semantics), `_next` (cursor), `q` (substring search over
   name/title/description/sql), `is_write` / `is_private` (booleans; invalid →
   400 `"is_write must be 0 or 1"`), `source`, `owner_id`.
 - **Response** — 200:

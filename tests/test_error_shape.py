@@ -612,3 +612,53 @@ async def test_threads_requires_permissions_debug(ds_error_shape):
     allowed = await ds_error_shape.client.get("/-/threads.json", actor={"id": "root"})
     assert allowed.status_code == 200
     assert allowed.json()["ok"] is True
+
+
+# _size is the one page-size parameter, with uniform validation
+
+
+@pytest.mark.asyncio
+async def test_query_list_size_supports_max_keyword(ds_client):
+    response = await ds_client.get("/fixtures/-/queries.json?_size=max")
+    assert response.status_code == 200
+    # ds_client runs with max_returned_rows=100
+    assert response.json()["limit"] == 100
+
+
+@pytest.mark.asyncio
+async def test_query_list_size_rejects_out_of_range(ds_client):
+    response = await ds_client.get("/fixtures/-/queries.json?_size=5000")
+    data = assert_canonical_error(response, 400)
+    assert data["errors"] == ["_size must be <= 100"]
+
+
+@pytest.mark.asyncio
+async def test_query_list_size_rejects_non_integer(ds_client):
+    response = await ds_client.get("/fixtures/-/queries.json?_size=bananas")
+    data = assert_canonical_error(response, 400)
+    assert data["errors"] == ["_size must be a positive integer"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ("allowed", "rules"))
+async def test_debug_endpoints_use_size_and_page_parameters(ds_error_shape, endpoint):
+    base = "/-/{}.json?action=view-instance".format(endpoint)
+    ok = await ds_error_shape.client.get(
+        base + "&_size=1&_page=1", actor={"id": "root"}
+    )
+    assert ok.status_code == 200
+    assert ok.json()["page_size"] == 1
+
+    max_size = await ds_error_shape.client.get(
+        base + "&_size=max", actor={"id": "root"}
+    )
+    assert max_size.status_code == 200
+    assert max_size.json()["page_size"] == 200
+
+    too_big = await ds_error_shape.client.get(base + "&_size=500", actor={"id": "root"})
+    data = assert_canonical_error(too_big, 400)
+    assert data["errors"] == ["_size must be <= 200"]
+
+    bad_page = await ds_error_shape.client.get(base + "&_page=0", actor={"id": "root"})
+    data = assert_canonical_error(bad_page, 400)
+    assert data["errors"] == ["_page must be a positive integer"]

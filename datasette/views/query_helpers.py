@@ -13,6 +13,7 @@ from datasette.write_sql import (
     operation_is_write,
 )
 from datasette.utils import (
+    parse_size_limit,
     named_parameters as derive_named_parameters,
     escape_sqlite,
     path_from_row_pks,
@@ -94,13 +95,11 @@ def _as_optional_bool(value, name):
     raise QueryValidationError("{} must be 0 or 1".format(name))
 
 
-def _query_list_limit(value, default=50):
-    if value in (None, ""):
-        return default
+def _query_list_limit(value, default, maximum):
     try:
-        return min(max(1, int(value)), 1000)
+        return parse_size_limit(value, default, maximum)
     except ValueError as ex:
-        raise QueryValidationError("_size must be an integer") from ex
+        raise QueryValidationError(str(ex)) from ex
 
 
 def _derived_query_parameters(sql):

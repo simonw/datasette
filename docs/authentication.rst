@@ -1162,7 +1162,7 @@ The ``/-/allowed`` endpoint displays resources that the current actor can access
 
 This endpoint provides an interactive HTML form interface. Add ``.json`` to the URL path (e.g. ``/-/allowed.json``) to get the raw JSON response instead.
 
-Pass ``?action=view-table`` (or another action) to select the action. Optional ``parent=`` and ``child=`` query parameters can narrow the results to a specific database/table pair.
+Pass ``?action=view-table`` (or another action) to select the action. Optional ``parent=`` and ``child=`` query parameters can narrow the results to a specific database/table pair. Results are paginated: ``?_size=`` sets the page size (default 50, maximum 200, ``max`` for the maximum) and ``?_page=`` selects a page.
 
 This endpoint is publicly accessible to help users understand their own permissions. The potentially sensitive ``reason`` field is only shown to users with the ``permissions-debug`` permission - it shows the plugins and explanatory reasons that were responsible for each decision.
 
@@ -1175,7 +1175,7 @@ The ``/-/rules`` endpoint displays all permission rules (both allow and deny) fo
 
 This endpoint provides an interactive HTML form interface. Add ``.json`` to the URL path (e.g. ``/-/rules.json?action=view-table``) to get the raw JSON response instead.
 
-Pass ``?action=`` as a query parameter to specify which action to check.
+Pass ``?action=`` as a query parameter to specify which action to check. The ``?_size=`` and ``?_page=`` pagination parameters work the same as on ``/-/allowed``.
 
 This endpoint requires the ``permissions-debug`` permission.
 

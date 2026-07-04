@@ -90,6 +90,7 @@ class QueryListView(BaseView):
             limit = _query_list_limit(
                 request.args.get("_size"),
                 default=20 if format_ == "html" else 50,
+                maximum=self.ds.max_returned_rows,
             )
             is_write = _as_optional_bool(request.args.get("is_write"), "is_write")
             is_private = _as_optional_bool(request.args.get("is_private"), "is_private")

@@ -95,7 +95,7 @@ Use the :ref:`ExecuteWriteView` JSON API to execute writable SQL programmaticall
 Stored query browsers
 ---------------------
 
-The ``/-/queries`` page lists stored queries across every database visible to the current actor. The ``/database-name/-/queries`` page lists stored queries for a single database.
+The ``/-/queries`` page lists stored queries across every database visible to the current actor. The ``/database-name/-/queries`` page lists stored queries for a single database. The JSON versions accept ``?_size=`` (default 50, ``max`` for the :ref:`setting_max_returned_rows` limit) and a ``?_next=`` pagination token.
 
 These pages support search, pagination and filters for read-only or writable queries and private or public queries. Adding a ``.json`` extension to either URL returns the same list as JSON.
 

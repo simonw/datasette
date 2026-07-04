@@ -37,7 +37,7 @@
 
         <div class="form-section">
             <label for="page_size">Page size:</label>
-            <input type="number" id="page_size" name="page_size" value="50" min="1" max="200" style="max-width: 100px;">
+            <input type="number" id="page_size" name="_size" value="50" min="1" max="200" style="max-width: 100px;">
             <small>Number of results per page (max 200)</small>
         </div>
 
@@ -75,7 +75,7 @@ const submitBtn = document.getElementById('submit-btn');
 (function() {
     const params = populateFormFromURL();
     const action = params.get('action');
-    const page = params.get('page');
+    const page = params.get('_page');
     if (action) {
         fetchResults(page ? parseInt(page) : 1);
     }
@@ -89,14 +89,14 @@ async function fetchResults(page = 1) {
     const params = new URLSearchParams();
 
     for (const [key, value] of formData.entries()) {
-        if (value && key !== 'page_size') {
+        if (value && key !== '_size' && key !== '_page') {
             params.append(key, value);
         }
     }
 
     const pageSize = document.getElementById('page_size').value || '50';
-    params.append('page', page.toString());
-    params.append('page_size', pageSize);
+    params.append('_page', page.toString());
+    params.append('_size', pageSize);
 
     try {
         const response = await fetch('{{ urls.path("-/rules.json") }}?' + params.toString(), {

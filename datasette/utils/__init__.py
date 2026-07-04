@@ -1294,6 +1294,28 @@ async def derive_named_parameters(db: "Database", sql: str) -> List[str]:
     return named_parameters(sql)
 
 
+def parse_size_limit(value, default, maximum, name="_size"):
+    """
+    Parse a page-size parameter using the same semantics as the table
+    view's ?_size=: blank means default, "max" means maximum, integers
+    must be 0 or greater and no larger than maximum. Raises ValueError
+    with a message suitable for a 400 response.
+    """
+    if value in (None, ""):
+        return default
+    if value == "max":
+        return maximum
+    try:
+        size = int(value)
+        if size < 0:
+            raise ValueError
+    except ValueError:
+        raise ValueError("{} must be a positive integer".format(name))
+    if size > maximum:
+        raise ValueError("{} must be <= {}".format(name, maximum))
+    return size
+
+
 UNSTABLE_API_MESSAGE = (
     "This API is not part of Datasette's stable interface and may change at any time"
 )

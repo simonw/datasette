@@ -8,6 +8,7 @@ from datasette.utils.asgi import Response, Forbidden
 from datasette.utils import (
     UNSTABLE_API_MESSAGE,
     actor_matches_allow,
+    parse_size_limit,
     add_cors_headers,
     await_me_maybe,
     error_body,
@@ -373,17 +374,17 @@ class AllowedResourcesView(BaseView):
             )
 
         try:
-            page = int(request.args.get("page", "1"))
-            page_size = int(request.args.get("page_size", "50"))
+            page = int(request.args.get("_page", "1"))
+            if page < 1:
+                raise ValueError
         except ValueError:
-            return error_body("page and page_size must be integers", 400), 400
-        if page < 1:
-            return error_body("page must be >= 1", 400), 400
-        if page_size < 1:
-            return error_body("page_size must be >= 1", 400), 400
-        max_page_size = 200
-        if page_size > max_page_size:
-            page_size = max_page_size
+            return error_body("_page must be a positive integer", 400), 400
+        try:
+            page_size = parse_size_limit(
+                request.args.get("_size"), default=50, maximum=200
+            )
+        except ValueError as ex:
+            return error_body(str(ex), 400), 400
         offset = (page - 1) * page_size
 
         # Use the simplified allowed_resources method
@@ -448,12 +449,12 @@ class AllowedResourcesView(BaseView):
         def build_page_url(page_number):
             pairs = []
             for key in request.args:
-                if key in {"page", "page_size"}:
+                if key in {"_page", "_size"}:
                     continue
                 for value in request.args.getlist(key):
                     pairs.append((key, value))
-            pairs.append(("page", str(page_number)))
-            pairs.append(("page_size", str(page_size)))
+            pairs.append(("_page", str(page_number)))
+            pairs.append(("_size", str(page_size)))
             query = urllib.parse.urlencode(pairs)
             return f"{request.path}?{query}"
 
@@ -511,19 +512,19 @@ class PermissionRulesView(BaseView):
         actor = request.actor if isinstance(request.actor, dict) else None
 
         try:
-            page = int(request.args.get("page", "1"))
-            page_size = int(request.args.get("page_size", "50"))
+            page = int(request.args.get("_page", "1"))
+            if page < 1:
+                raise ValueError
         except ValueError:
             return Response.json(
-                error_body("page and page_size must be integers", 400), status=400
+                error_body("_page must be a positive integer", 400), status=400
             )
-        if page < 1:
-            return Response.json(error_body("page must be >= 1", 400), status=400)
-        if page_size < 1:
-            return Response.json(error_body("page_size must be >= 1", 400), status=400)
-        max_page_size = 200
-        if page_size > max_page_size:
-            page_size = max_page_size
+        try:
+            page_size = parse_size_limit(
+                request.args.get("_size"), default=50, maximum=200
+            )
+        except ValueError as ex:
+            return Response.json(error_body(str(ex), 400), status=400)
         offset = (page - 1) * page_size
 
         from datasette.utils.actions_sql import build_permission_rules_sql
@@ -574,12 +575,12 @@ class PermissionRulesView(BaseView):
         def build_page_url(page_number):
             pairs = []
             for key in request.args:
-                if key in {"page", "page_size"}:
+                if key in {"_page", "_size"}:
                     continue
                 for value in request.args.getlist(key):
                     pairs.append((key, value))
-            pairs.append(("page", str(page_number)))
-            pairs.append(("page_size", str(page_size)))
+            pairs.append(("_page", str(page_number)))
+            pairs.append(("_size", str(page_size)))
             query = urllib.parse.urlencode(pairs)
             return f"{request.path}?{query}"
 

@@ -2254,6 +2254,10 @@ async def table_view_data(
 
     # Resolve extras
     extras = extra_names_from_request(request)
+    if not extra_extras:
+        # Data formats reject unknown extras; the HTML path (which passes
+        # extra_extras={"_html"}) resolves internal extras of its own
+        table_extra_registry.validate_requested(extras, ExtraScope.TABLE)
     if any(k for k in request.args.keys() if k == "_facet" or k.startswith("_facet_")):
         extras.add("facet_results")
     if request.args.get("_shape") == "object":

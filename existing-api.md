@@ -176,9 +176,10 @@ build JSON directly):
 Table, row and query JSON responses support `?_extra=` (repeatable and/or
 comma-separated, extras.py:9-14) to add keys to the response. Extras are
 scope-registered (`ExtraScope.TABLE` / `ROW` / `QUERY`) and only **public**
-extras are available over JSON (extras.py:73-92). Unknown extra names are
-silently ignored. The available names per scope are listed with the relevant
-endpoints below.
+extras are available over JSON (extras.py:73-92). Unknown extra names (and
+internal HTML-only names) on data formats return 400
+`Unknown _extra: <names>`; HTML pages ignore them. The available names per
+scope are listed with the relevant endpoints below.
 
 ---
 

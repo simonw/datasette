@@ -283,6 +283,8 @@ These can be repeated or comma-separated:
 
     ?_extra=columns&_extra=count,next_url
 
+Requesting an ``_extra`` name that does not exist returns a ``400`` error in the :ref:`standard error format <json_api_errors>`, for example ``{"ok": false, "error": "Unknown _extra: nope", ...}``.
+
 .. [[[cog
     from json_api_doc import table_extras
     table_extras(cog)

@@ -166,7 +166,11 @@ Endpoints disagree about the success envelope:
   matches the read API).~~ ✅ **Done** — row update now returns
   `rows: [{...}]`.
 
-### 2b. `_extra`/`_shape` support is uneven (P2)
+### 2b. `_extra`/`_shape` support is uneven (P2) — partially implemented
+
+> **Status:** unknown `_extra` names on data formats now return 400
+> `Unknown _extra: <names>` (HTML pages still ignore them). Extending
+> extras/shaping to database/instance scope remains open.
 
 The extras system (`?_extra=`, scope-registered) is the 1.0 mechanism for
 response shaping — but it only exists on table, row and query endpoints. The

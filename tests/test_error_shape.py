@@ -570,3 +570,37 @@ async def test_schema_endpoints_no_existence_oracle(tmp_path_factory):
 async def test_table_schema_unknown_database_is_404_not_500(ds_client):
     response = await ds_client.get("/no_such_db/some_table/-/schema.json")
     assert_canonical_error(response, 404)
+
+
+# Unknown _extra names are a 400, not silently ignored
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/fixtures/facetable.json?_extra=nope",
+        "/fixtures/facetable.json?_extra=count,nope",
+        "/fixtures/simple_primary_key/1.json?_extra=nope",
+        "/fixtures/-/query.json?sql=select+1&_extra=nope",
+    ),
+)
+async def test_unknown_extra_is_400(ds_client, path):
+    response = await ds_client.get(path)
+    data = assert_canonical_error(response, 400)
+    assert data["errors"] == ["Unknown _extra: nope"]
+
+
+@pytest.mark.asyncio
+async def test_html_only_extra_via_json_is_400(ds_client):
+    # display_rows exists for the HTML view but is not part of the JSON API
+    response = await ds_client.get("/fixtures/facetable.json?_extra=display_rows")
+    data = assert_canonical_error(response, 400)
+    assert data["errors"] == ["Unknown _extra: display_rows"]
+
+
+@pytest.mark.asyncio
+async def test_unknown_extra_ignored_on_html_pages(ds_client):
+    response = await ds_client.get("/fixtures/facetable?_extra=nope")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")

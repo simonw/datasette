@@ -8,7 +8,7 @@ import markupsafe
 import os
 import textwrap
 
-from datasette.extras import extra_names_from_request
+from datasette.extras import extra_names_from_request, ExtraScope
 from datasette.database import QueryInterrupted
 from datasette.resources import DatabaseResource, QueryResource
 from datasette.stored_queries import StoredQuery, stored_query_to_dict
@@ -855,6 +855,7 @@ class QueryView(View):
                 raise DatasetteError("?sql= is required", status=400)
             data = {"ok": True, "rows": rows, "columns": columns}
             extras = extra_names_from_request(request)
+            table_extra_registry.validate_requested(extras, ExtraScope.QUERY)
             if extras:
                 query_extra_context = QueryExtraContext(
                     datasette=datasette,

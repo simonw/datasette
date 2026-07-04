@@ -596,6 +596,9 @@ class RowView(BaseView):
         }
 
         extras = extra_names_from_request(request)
+        if request.url_vars.get("format"):
+            # Data formats reject unknown extras; HTML ignores them
+            table_extra_registry.validate_requested(extras, ExtraScope.ROW)
 
         # Process extras
         row_extra_context = RowExtraContext(

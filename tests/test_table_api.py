@@ -123,8 +123,8 @@ async def test_html_only_extras_are_not_available_via_json(ds_client, extra):
     # These extras exist for the HTML view; their values are not JSON
     # serializable so they are internal, not part of the JSON API
     response = await ds_client.get(f"/fixtures/facetable.json?_extra={extra}")
-    assert response.status_code == 200
-    assert extra not in response.json()
+    assert response.status_code == 400
+    assert response.json()["errors"] == [f"Unknown _extra: {extra}"]
 
 
 @pytest.mark.asyncio

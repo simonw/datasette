@@ -101,3 +101,14 @@ async def test_databases_json_is_object(ds_client):
     assert data["ok"] is True
     assert isinstance(data["databases"], list)
     assert "fixtures" in {db["name"] for db in data["databases"]}
+
+
+@pytest.mark.asyncio
+async def test_actions_json_is_object(ds_envelope):
+    response = await ds_envelope.client.get("/-/actions.json", actor={"id": "root"})
+    assert response.status_code == 200
+    data = response.json()
+    assert set(data.keys()) == {"ok", "actions"}
+    assert data["ok"] is True
+    assert isinstance(data["actions"], list)
+    assert "view-instance" in {action["name"] for action in data["actions"]}

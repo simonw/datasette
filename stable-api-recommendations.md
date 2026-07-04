@@ -102,15 +102,18 @@ key — see §2.)
 
 ---
 
-## 2. Success envelope: `ok` is not universal, arrays are not extensible (P1/P2) — ✅ PARTIALLY IMPLEMENTED
+## 2. Success envelope: `ok` is not universal, arrays are not extensible (P1/P2) — ✅ IMPLEMENTED (§2a-2c open)
 
-> **Status:** recommendation 2 and 3 are implemented — every JSON-object
+> **Status:** recommendations 1-3 are implemented. Every JSON-object
 > success response now includes `"ok": true` (`JsonDataView` injects it for
 > dict responses; homepage, jump, schema, permission-debug and autocomplete
-> views set it explicitly; covered by `tests/test_success_envelope.py`).
-> Recommendation 1 (wrapping the `/-/plugins`, `/-/databases`, `/-/actions`
-> top-level arrays in objects) is being landed as separate per-endpoint
-> commits. §2a/2b/2c remain open.
+> views set it explicitly), and the three top-level-array endpoints now
+> return objects: `/-/plugins` → `{"ok": true, "plugins": [...]}`,
+> `/-/databases` → `{"ok": true, "databases": [...]}`, `/-/actions` →
+> `{"ok": true, "actions": [...]}`. Covered by
+> `tests/test_success_envelope.py`. The sub-findings §2a (collection
+> representations), §2b (`_extra`/`_shape` coverage) and §2c (count
+> truncation) remain open.
 
 Endpoints disagree about the success envelope:
 
@@ -372,8 +375,8 @@ Two details make tiering urgent rather than optional:
 2. `Forbidden` → JSON 403 for JSON requests (§1a).
 3. No `ok: false` with HTTP 200 (§1b: `_shape=object`, write canned-query
    SQL errors).
-4. Wrap `/-/plugins`, `/-/databases`, `/-/actions` top-level arrays in
-   objects (§2).
+4. ~~Wrap `/-/plugins`, `/-/databases`, `/-/actions` top-level arrays in
+   objects (§2).~~ ✅ Done.
 5. Filter `/-/databases.json` by `view-database` or gate it behind
    `permissions-debug` (§6).
 6. 401 (not silent-anonymous) for invalid/expired bearer tokens (§1c).

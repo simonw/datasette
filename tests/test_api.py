@@ -579,7 +579,7 @@ async def test_actions_json(ds_client):
     try:
         ds_client.ds.root_enabled = True
         response = await ds_client.get("/-/actions.json", actor={"id": "root"})
-        data = response.json()
+        data = response.json()["actions"]
     finally:
         ds_client.ds.root_enabled = original_root_enabled
     assert isinstance(data, list)

@@ -155,6 +155,30 @@ Shows currently attached databases. `Databases example <https://latest.datasette
         ]
     }
 
+.. _JsonDataView_actions:
+
+/-/actions
+----------
+
+Shows all actions registered with the permission system, including those added by plugins. Requires the ``permissions-debug`` permission.
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "actions": [
+            {
+                "name": "view-instance",
+                "abbr": "vi",
+                "description": "View Datasette instance",
+                "takes_parent": false,
+                "takes_child": false,
+                "resource_class": null,
+                "also_requires": null
+            }
+        ]
+    }
+
 .. _JumpView:
 
 /-/jump

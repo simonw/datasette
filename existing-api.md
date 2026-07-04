@@ -48,9 +48,9 @@ directory: every claim below is based on the route table in `datasette/app.py`
 Every JSON endpoint that returns an object includes `"ok": true` on
 success. `JsonDataView` injects it automatically for dict responses
 (views/special.py); the homepage, jump, schema, permission-debug and
-autocomplete views add it explicitly. The remaining top-level-array
-endpoints (`/-/plugins`, `/-/databases`, `/-/actions`) are being converted
-to objects.
+autocomplete views add it explicitly. The former top-level-array endpoints
+(`/-/plugins`, `/-/databases`, `/-/actions`) now return objects wrapping
+their arrays (`{"ok": true, "plugins": [...]}` etc.).
 
 ### Error shape (canonical)
 
@@ -276,9 +276,9 @@ Response: `{"ok": true, "actor": {...}}` or `{"ok": true, "actor": null}` (app.p
 
 app.py:2580-2589. Permission **`permissions-debug`**. No parameters.
 
-Response: a JSON array, sorted by name, of `{"name", "abbr", "description",
-"takes_parent", "takes_child", "resource_class", "also_requires"}`
-(app.py:2290-2304).
+Response: `{"ok": true, "actions": [...]}` — each action is
+`{"name", "abbr", "description", "takes_parent", "takes_child",
+"resource_class", "also_requires"}`, sorted by name (app.py:2290-2304).
 
 ### GET /-/auth-token
 

@@ -2588,7 +2588,7 @@ class Datasette:
             JsonDataView.as_view(
                 self,
                 "actions.json",
-                self._actions,
+                lambda: {"actions": self._actions()},
                 template="debug_actions.html",
                 permission="permissions-debug",
             ),

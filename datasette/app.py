@@ -2514,8 +2514,8 @@ class Datasette:
         def add_route(view, regex):
             routes.append((regex, view))
 
-        add_route(IndexView.as_view(self), r"/(\.(?P<format>jsono?))?$")
-        add_route(IndexView.as_view(self), r"/-/(\.(?P<format>jsono?))?$")
+        add_route(IndexView.as_view(self), r"/(\.(?P<format>json))?$")
+        add_route(IndexView.as_view(self), r"/-/(\.(?P<format>json))?$")
         add_route(permanent_redirect("/-/"), r"/-$")
         add_route(favicon, "/favicon.ico")
 

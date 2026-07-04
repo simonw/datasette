@@ -233,8 +233,10 @@ Concerns:
   `_labels=on/off`, `?all=1`, `is_write=1|0|true|false|t|f|yes|no|on|off`,
   `_nocount=1`. Adopt one accepted set (the query-list parser at
   query_helpers.py:81-94 is a good candidate) and apply it everywhere.
-- **`.jsono`** survives on the homepage route (identical output to `.json`)
-  and as a row-view redirect. Remove it at 1.0; it is pure legacy.
+- ~~**`.jsono`** survives on the homepage route (identical output to `.json`)
+  and as a row-view redirect. Remove it at 1.0; it is pure legacy.~~
+  ✅ Removed: the homepage routes only accept `.json` and the row-view
+  redirect is gone.
 - **`_json` is overloaded:** on GET it is a renderer option naming a column
   to parse as JSON (repeatable); on canned-query POST a `_json` body field
   forces a JSON response. Two unrelated meanings for one name.

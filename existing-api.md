@@ -25,8 +25,7 @@ directory: every claim below is based on the route table in `datasette/app.py`
 
 - Most read endpoints are registered with an optional format suffix:
   `/(...)(\.(?P<format>json))?$`. The bare path returns HTML; the `.json`
-  extension returns JSON. The homepage additionally accepts the legacy
-  `.jsono` extension, which returns identical JSON (app.py:2517-2518).
+  extension returns JSON.
 - Table, row and query routes accept any `\w+` format extension; formats other
   than the built-in `html`, `json`, `csv`, `blob` must be provided by a plugin
   via `register_output_renderer`, otherwise the request 404s.
@@ -772,8 +771,7 @@ tilde-encoded primary key values (rowid for rowid tables).
 - **Foreign-key label expansion does not apply to row JSON** — `_labels` has
   no effect here; expansion happens only in the HTML path
   (views/row.py:445-475).
-- `_shape`, `_json`, `_nl`, `_json_infinity`, `_ttl` apply. A `.jsono`
-  request redirects to `.json?_shape=objects`.
+- `_shape`, `_json`, `_nl`, `_json_infinity`, `_ttl` apply.
 
 ### The .blob format
 

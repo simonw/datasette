@@ -21,7 +21,6 @@ from datasette.utils import (
     InvalidSql,
     make_slot_function,
     path_from_row_pks,
-    path_with_added_args,
     path_with_format,
     path_with_removed_args,
     to_css_class,
@@ -208,18 +207,6 @@ class RowView(BaseView):
 
         end = time.perf_counter()
         data["query_ms"] = (end - start) * 1000
-
-        # Special case for .jsono extension - redirect to _shape=objects
-        if format_ == "jsono":
-            return self.redirect(
-                request,
-                path_with_added_args(
-                    request,
-                    {"_shape": "objects"},
-                    path=request.path.rsplit(".jsono", 1)[0] + ".json",
-                ),
-                forward_querystring=False,
-            )
 
         if format_ in self.ds.renderers.keys():
             # Dispatch request to the correct output format renderer

@@ -90,3 +90,14 @@ async def test_plugins_json_is_object(ds_client):
     response_all = await ds_client.get("/-/plugins.json?all=1")
     all_plugins = response_all.json()["plugins"]
     assert len(all_plugins) > len(data["plugins"])
+
+
+@pytest.mark.asyncio
+async def test_databases_json_is_object(ds_client):
+    response = await ds_client.get("/-/databases.json")
+    assert response.status_code == 200
+    data = response.json()
+    assert set(data.keys()) == {"ok", "databases"}
+    assert data["ok"] is True
+    assert isinstance(data["databases"], list)
+    assert "fixtures" in {db["name"] for db in data["databases"]}

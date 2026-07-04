@@ -141,16 +141,19 @@ Shows currently attached databases. `Databases example <https://latest.datasette
 
 .. code-block:: json
 
-    [
-        {
-            "hash": null,
-            "is_memory": false,
-            "is_mutable": true,
-            "name": "fixtures",
-            "path": "fixtures.db",
-            "size": 225280
-        }
-    ]
+    {
+        "ok": true,
+        "databases": [
+            {
+                "hash": null,
+                "is_memory": false,
+                "is_mutable": true,
+                "name": "fixtures",
+                "path": "fixtures.db",
+                "size": 225280
+            }
+        ]
+    }
 
 .. _JumpView:
 

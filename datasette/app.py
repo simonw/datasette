@@ -2571,7 +2571,11 @@ class Datasette:
             r"/-/threads(\.(?P<format>json))?$",
         )
         add_route(
-            JsonDataView.as_view(self, "databases.json", self._connected_databases),
+            JsonDataView.as_view(
+                self,
+                "databases.json",
+                lambda: {"databases": self._connected_databases()},
+            ),
             r"/-/databases(\.(?P<format>json))?$",
         )
         add_route(

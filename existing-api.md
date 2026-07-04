@@ -260,9 +260,10 @@ Response: `num_threads`, `threads` (list of `{name, ident, daemon}`),
 app.py:2570-2573, `Datasette._connected_databases` (app.py:2157-2169).
 Permission `view-instance`. No parameters.
 
-Response: a JSON array of `{"name", "route", "path", "size", "is_mutable",
-"is_memory", "hash"}` — **all attached databases are listed regardless of
-per-database `view-database` permissions**.
+Response: `{"ok": true, "databases": [...]}` — each database is
+`{"name", "route", "path", "size", "is_mutable", "is_memory", "hash"}`.
+**All attached databases are listed regardless of per-database
+`view-database` permissions**.
 
 ### GET /-/actor(.json)
 

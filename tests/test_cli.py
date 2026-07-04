@@ -444,7 +444,7 @@ def test_serve_create(tmpdir):
         cli, [str(db_path), "--create", "--get", "/-/databases.json"]
     )
     assert result.exit_code == 0, result.output
-    databases = json.loads(result.output)
+    databases = json.loads(result.output)["databases"]
     assert {
         "name": "does_not_exist_yet",
         "is_mutable": True,
@@ -493,7 +493,7 @@ def test_serve_duplicate_database_names(tmpdir):
         conn.close()
     result = runner.invoke(cli, [db_1_path, db_2_path, "--get", "/-/databases.json"])
     assert result.exit_code == 0, result.output
-    databases = json.loads(result.output)
+    databases = json.loads(result.output)["databases"]
     assert {db["name"] for db in databases} == {"db", "db_2"}
 
 
@@ -585,7 +585,7 @@ def test_duplicate_database_files_error(tmpdir):
         cli, ["serve", other_db_path, str(config_dir), "--get", "/-/databases.json"]
     )
     assert result4.exit_code == 0
-    databases = json.loads(result4.output)
+    databases = json.loads(result4.output)["databases"]
     assert {db["name"] for db in databases} == {"other", "data"}
 
     # Test that multiple directories raise an error

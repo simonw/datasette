@@ -509,7 +509,7 @@ async def test_row_extra_render_cell():
 
 def test_databases_json(app_client_two_attached_databases_one_immutable):
     response = app_client_two_attached_databases_one_immutable.get("/-/databases.json")
-    databases = response.json
+    databases = response.json["databases"]
     assert 2 == len(databases)
     extra_database, fixtures_database = databases
     assert "extra database" == extra_database["name"]
@@ -775,7 +775,9 @@ def test_common_prefix_database_names(app_client_conflicting_database_names):
     # https://github.com/simonw/datasette/issues/597
     assert ["foo-bar", "foo", "fixtures"] == [
         d["name"]
-        for d in app_client_conflicting_database_names.get("/-/databases.json").json
+        for d in app_client_conflicting_database_names.get("/-/databases.json").json[
+            "databases"
+        ]
     ]
     for db_name, path in (("foo", "/foo.json"), ("foo-bar", "/foo-bar.json")):
         data = app_client_conflicting_database_names.get(path).json

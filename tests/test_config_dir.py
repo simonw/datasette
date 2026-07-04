@@ -137,7 +137,7 @@ def test_static_directory_browsing_not_allowed(config_dir_client):
 def test_databases(config_dir_client):
     response = config_dir_client.get("/-/databases.json")
     assert 200 == response.status
-    databases = response.json
+    databases = response.json["databases"]
     assert 4 == len(databases)
     databases.sort(key=lambda d: d["name"])
     for db, expected_name in zip(databases, ("demo", "immutable", "j", "k")):

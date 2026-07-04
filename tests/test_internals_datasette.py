@@ -167,7 +167,7 @@ def test_static_rejects_path_traversal(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_datasette_constructor():
     ds = Datasette()
-    databases = (await ds.client.get("/-/databases.json")).json()
+    databases = (await ds.client.get("/-/databases.json")).json()["databases"]
     assert databases == [
         {
             "name": "_memory",

@@ -288,11 +288,13 @@ Concerns:
   databases this leaks filesystem paths and database names. Filter it, or
   gate it behind `permissions-debug`.~~ ✅ **Done** — the endpoint now
   filters through `allowed_resources("view-database", actor)`.
-- **(P2) `/db/-/schema` checks existence before permission**
+- ~~**(P2) `/db/-/schema` checks existence before permission**
   (views/special.py:1308-1317): an actor without `view-database` can
   distinguish "database exists" (403) from "does not exist" (404).
   Standardize on permission-check-first (as the table view does) so
-  unauthorized actors get a uniform response.
+  unauthorized actors get a uniform response.~~ ✅ **Done** — permission is
+  checked first; the table schema view also now 404s (instead of a 500
+  KeyError) for an unknown database.
 - **(P2) `/-/threads` exposes runtime internals** (thread idents, asyncio
   task reprs including file paths) behind only `view-instance`. Consider
   `permissions-debug`, alongside `/-/actions` which already requires it.

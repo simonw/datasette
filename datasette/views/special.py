@@ -1321,16 +1321,16 @@ class DatabaseSchemaView(SchemaBaseView):
         database_name = request.url_vars["database"]
         format_ = request.url_vars.get("format") or "html"
 
-        # Check if database exists
-        if database_name not in self.ds.databases:
-            return self.format_error_response("Database not found", format_)
-
-        # Check view-database permission
+        # Permission check comes first, so actors without view-database
+        # cannot distinguish existing databases from missing ones
         await self.ds.ensure_permission(
             action="view-database",
             resource=DatabaseResource(database=database_name),
             actor=request.actor,
         )
+
+        if database_name not in self.ds.databases:
+            return self.format_error_response("Database not found", format_)
 
         schema = await self.get_database_schema(database_name)
 
@@ -1364,6 +1364,9 @@ class TableSchemaView(SchemaBaseView):
             resource=TableResource(database=database_name, table=table_name),
             actor=request.actor,
         )
+
+        if database_name not in self.ds.databases:
+            return self.format_error_response("Database not found", format_)
 
         # Get schema for the table
         db = self.ds.databases[database_name]

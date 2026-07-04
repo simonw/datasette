@@ -618,8 +618,8 @@ views/table_create_alter.py:965-1005).
 
 - **Permission:** `view-database` (denied → `Forbidden` → 403 HTML).
 - **Unknown database** → 404; for `.json`:
-  `{"ok": false, "error": "Database not found"}`. (The existence check runs
-  before the permission check.)
+  `{"ok": false, "error": "Database not found"}`. The permission check runs
+  first, so unauthorized actors cannot probe for database existence.
 - **Responses:** `.json` → 200 `{"ok": true, "database": "<name>", "schema": "<SQL>"}`
   (concatenated `sqlite_master.sql` joined with `;\n`); `.md` →
   `text/markdown`; no extension → HTML.

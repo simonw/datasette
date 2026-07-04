@@ -531,3 +531,42 @@ async def test_row_update_return_uses_rows_list(ds_error_shape):
     assert data["ok"] is True
     assert "row" not in data
     assert data["rows"] == [{"id": 1, "title": "Updated"}]
+
+
+# Schema endpoints: no existence oracle, no 500 on unknown database
+
+
+@pytest.mark.asyncio
+async def test_schema_endpoints_no_existence_oracle(tmp_path_factory):
+    db_directory = tmp_path_factory.mktemp("dbs")
+    db_path = str(db_directory / "data.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute("vacuum")
+    conn.execute("create table docs (id integer primary key)")
+    conn.close()
+    ds = Datasette([db_path], default_deny=True)
+    ds.root_enabled = True
+    try:
+        # An actor without view-database cannot distinguish an existing
+        # database from a missing one
+        denied_existing = await ds.client.get("/data/-/schema.json")
+        denied_missing = await ds.client.get("/nope/-/schema.json")
+        assert denied_existing.status_code == denied_missing.status_code == 403
+
+        # An authorized actor sees the real thing
+        root_existing = await ds.client.get(
+            "/data/-/schema.json", actor={"id": "root"}
+        )
+        assert root_existing.status_code == 200
+        root_missing = await ds.client.get(
+            "/nope/-/schema.json", actor={"id": "root"}
+        )
+        assert root_missing.status_code == 404
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_table_schema_unknown_database_is_404_not_500(ds_client):
+    response = await ds_client.get("/no_such_db/some_table/-/schema.json")
+    assert_canonical_error(response, 404)

@@ -183,3 +183,52 @@ async def test_method_not_allowed_error_shape(ds_client):
 async def test_schema_unknown_database_error_shape(ds_client):
     response = await ds_client.get("/no_such_db/-/schema.json")
     assert_canonical_error(response, 404)
+
+
+# Forbidden responses (the default forbidden() hook)
+
+
+@pytest.fixture
+def ds_forbidden(tmp_path_factory):
+    db_directory = tmp_path_factory.mktemp("dbs")
+    db_path = str(db_directory / "data.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute("vacuum")
+    conn.execute("create table docs (id integer primary key, title text)")
+    conn.close()
+    ds = Datasette(
+        [db_path],
+        config={"databases": {"data": {"tables": {"docs": {"allow": {"id": "root"}}}}}},
+    )
+    ds.root_enabled = True
+    yield ds
+    ds.close()
+
+
+@pytest.mark.asyncio
+async def test_forbidden_json_path_returns_canonical_json(ds_forbidden):
+    response = await ds_forbidden.client.get("/data/docs.json")
+    data = assert_canonical_error(response, 403)
+    assert "permission" in data["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_forbidden_accept_json_returns_canonical_json(ds_forbidden):
+    response = await ds_forbidden.client.get(
+        "/data/docs", headers={"Accept": "application/json"}
+    )
+    assert_canonical_error(response, 403)
+
+
+@pytest.mark.asyncio
+async def test_forbidden_html_path_still_returns_html(ds_forbidden):
+    response = await ds_forbidden.client.get("/data/docs")
+    assert response.status_code == 403
+    assert response.headers["content-type"].startswith("text/html")
+
+
+@pytest.mark.asyncio
+async def test_forbidden_json_path_allowed_actor_still_works(ds_forbidden):
+    response = await ds_forbidden.client.get("/data/docs.json", actor={"id": "root"})
+    assert response.status_code == 200
+    assert response.json()["ok"] is True

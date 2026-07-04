@@ -81,6 +81,11 @@ Some endpoints add extra context keys. For example, a SQL error from a
 ``"rows"`` and ``"truncated"`` keys of the response it was unable to
 produce.
 
+Permission errors use the same format: a request that fails a permission
+check receives a ``403`` with this JSON error body when the URL ends in
+``.json`` or the request sends an ``Accept: application/json`` or
+``Content-Type: application/json`` header.
+
 .. _json_api_custom_sql:
 
 Executing custom SQL

@@ -385,7 +385,9 @@ def test_setting_boolean_validation_false_values(value):
     )
     # Should be forbidden (setting is false)
     assert result.exit_code == 1, result.output
-    assert "Forbidden" in result.output
+    error = json.loads(result.output)
+    assert error["ok"] is False
+    assert error["status"] == 403
 
 
 @pytest.mark.parametrize("value", ("on", "true", "1"))
@@ -425,8 +427,9 @@ def test_setting_default_allow_sql(default_allow_sql):
         assert json.loads(result.output)["rows"][0] == {"21": 21}
     else:
         assert result.exit_code == 1, result.output
-        # This isn't JSON at the moment, maybe it should be though
-        assert "Forbidden" in result.output
+        error = json.loads(result.output)
+        assert error["ok"] is False
+        assert error["status"] == 403
 
 
 def test_sql_errors_logged_to_stderr():

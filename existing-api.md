@@ -98,13 +98,13 @@ Method-not-allowed responses return HTTP 405 with the canonical shape when
 the path ends in `.json` or the request content type is `application/json`;
 plain text otherwise (views/base.py).
 
-**`Forbidden` is special:** when a view raises `Forbidden` (e.g. via
-`ensure_permission`), the default `forbidden()` plugin hook renders an **HTML
-error page with status 403 even for `.json` requests**
-(forbidden.py:4-19, app.py:2895-2904). Endpoints that check permissions
-themselves and return `_error(..., 403)` produce JSON instead. So a JSON
-client may receive either an HTML 403 page or a JSON 403 body depending on
-the endpoint.
+**`Forbidden` handling:** when a view raises `Forbidden` (e.g. via
+`ensure_permission`), the default `forbidden()` plugin hook returns the
+canonical JSON error with status 403 when the path ends in `.json` or the
+request carries an `Accept: application/json` / `Content-Type:
+application/json` header; other requests get an HTML error page
+(forbidden.py). Endpoints that check permissions themselves return
+`_error(..., 403)` JSON directly.
 
 ### CORS
 

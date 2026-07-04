@@ -26,9 +26,9 @@ Findings are grouped by theme. Each carries a priority:
 > The `title` key is no longer emitted in JSON; the bare `{"error": ...}`
 > debug-endpoint shape is gone; `_shape=object` misuse now returns HTTP 400
 > (part of §1b). Covered by `tests/test_error_shape.py` and documented in
-> the "Error responses" section of `docs/json_api.rst`. Still open from
-> this section's sub-items: §1a (`Forbidden` → HTML), the write
-> canned-query 200 (§1b), and the §1c status outliers.
+> the "Error responses" section of `docs/json_api.rst`. §1a (`Forbidden` →
+> JSON) is now also implemented. Still open from this section's sub-items:
+> the write canned-query 200 (§1b) and the §1c status outliers.
 
 The API currently produces four distinct JSON error shapes depending on which
 internal layer generates the error:
@@ -58,7 +58,11 @@ defaults). At minimum, eliminate the bare `{"error": ...}` shape and the
 `status`/`title` keys nobody else emits (`title` is a template-rendering
 concern that leaked into the API).
 
-### 1a. `Forbidden` returns an HTML 403 to JSON clients (P1)
+### 1a. `Forbidden` returns an HTML 403 to JSON clients (P1) — ✅ IMPLEMENTED
+
+> **Status:** implemented — the default `forbidden()` hook now returns the
+> canonical JSON error for requests whose path ends in `.json` or that send
+> `Accept: application/json` / `Content-Type: application/json`.
 
 Read endpoints that deny access via `ensure_permission`/`check_visibility`
 raise `Forbidden`, and the default `forbidden()` hook renders an **HTML error
@@ -373,7 +377,7 @@ Two details make tiering urgent rather than optional:
 ## 10. Summary of P1 items (the pre-1.0 checklist)
 
 1. ~~One canonical JSON error shape; retire the other three (§1).~~ ✅ Done.
-2. `Forbidden` → JSON 403 for JSON requests (§1a).
+2. ~~`Forbidden` → JSON 403 for JSON requests (§1a).~~ ✅ Done.
 3. No `ok: false` with HTTP 200 (§1b: `_shape=object`, write canned-query
    SQL errors).
 4. ~~Wrap `/-/plugins`, `/-/databases`, `/-/actions` top-level arrays in

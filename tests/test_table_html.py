@@ -2313,6 +2313,7 @@ async def test_foreign_key_labels_obey_permissions(config):
     assert root_b.json() == {
         "ok": True,
         "next": None,
+        "next_url": None,
         "rows": [{"id": 1, "name": "world", "a_id": {"value": 1, "label": "hello"}}],
         "truncated": False,
     }
@@ -2320,6 +2321,7 @@ async def test_foreign_key_labels_obey_permissions(config):
     assert anon_b.json() == {
         "ok": True,
         "next": None,
+        "next_url": None,
         "rows": [{"id": 1, "name": "world", "a_id": 1}],
         "truncated": False,
     }

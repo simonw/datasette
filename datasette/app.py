@@ -2551,7 +2551,10 @@ class Datasette:
         )
         add_route(
             JsonDataView.as_view(
-                self, "plugins.json", self._plugins, needs_request=True
+                self,
+                "plugins.json",
+                lambda request: {"plugins": self._plugins(request)},
+                needs_request=True,
             ),
             r"/-/plugins(\.(?P<format>json))?$",
         )

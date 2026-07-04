@@ -109,9 +109,10 @@ def test_settings(config_dir_client):
 def test_plugins(config_dir_client):
     response = config_dir_client.get("/-/plugins.json")
     assert 200 == response.status
-    assert "hooray.py" in {p["name"] for p in response.json}
-    assert "non_py_file.txt" not in {p["name"] for p in response.json}
-    assert "mypy_cache" not in {p["name"] for p in response.json}
+    plugins = response.json["plugins"]
+    assert "hooray.py" in {p["name"] for p in plugins}
+    assert "non_py_file.txt" not in {p["name"] for p in plugins}
+    assert "mypy_cache" not in {p["name"] for p in plugins}
 
 
 def test_templates_and_plugin(config_dir_client):

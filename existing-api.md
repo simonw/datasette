@@ -228,8 +228,8 @@ app.py:2552-2557, `Datasette._plugins` (app.py:2247-2266). Permission
 
 - **Parameters:** `?all=1` — include Datasette's built-in default plugins
   (filtered out by default).
-- **Response:** a JSON **array**, sorted by name, of
-  `{"name", "static", "templates", "version", "hooks"}`.
+- **Response:** `{"ok": true, "plugins": [...]}` — each plugin is
+  `{"name", "static", "templates", "version", "hooks"}`, sorted by name.
 
 ### GET /-/settings(.json)
 

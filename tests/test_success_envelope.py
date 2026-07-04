@@ -76,3 +76,17 @@ async def test_permissions_post_success_has_ok_true(ds_envelope):
     )
     assert response.status_code == 200
     assert response.json()["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_plugins_json_is_object(ds_client):
+    response = await ds_client.get("/-/plugins.json")
+    assert response.status_code == 200
+    data = response.json()
+    assert set(data.keys()) == {"ok", "plugins"}
+    assert data["ok"] is True
+    assert isinstance(data["plugins"], list)
+    # ?all=1 should include Datasette's default plugins in the same shape
+    response_all = await ds_client.get("/-/plugins.json?all=1")
+    all_plugins = response_all.json()["plugins"]
+    assert len(all_plugins) > len(data["plugins"])

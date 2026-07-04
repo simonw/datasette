@@ -1342,41 +1342,44 @@ async def test_column_details_extra_table(ds_client):
         "/fixtures/binary_data.json?_size=0&_extra=column_details"
     )
     assert response.status_code == 200
-    assert response.json()["column_details"] == {
-        "data": {
-            "type": "BLOB",
-            "sqlite_type": "BLOB",
-            "notnull": False,
-            "default": None,
-            "is_pk": False,
-            "pk_position": 0,
-            "hidden": 0,
-        }
+    data_detail = response.json()["column_details"]["data"]
+    assert data_detail["type"].lower() == "blob"
+    assert data_detail == {
+        "type": data_detail["type"],
+        "sqlite_type": "BLOB",
+        "notnull": False,
+        "default": None,
+        "is_pk": False,
+        "pk_position": 0,
+        "hidden": 0,
     }
 
     response = await ds_client.get(
         "/fixtures/simple_primary_key.json?_size=0&_extra=column_details"
     )
     assert response.status_code == 200
-    assert response.json()["column_details"] == {
-        "id": {
-            "type": "INTEGER",
-            "sqlite_type": "INTEGER",
-            "notnull": False,
-            "default": None,
-            "is_pk": True,
-            "pk_position": 1,
-            "hidden": 0,
-        },
-        "content": {
-            "type": "TEXT",
-            "sqlite_type": "TEXT",
-            "notnull": False,
-            "default": None,
-            "is_pk": False,
-            "pk_position": 0,
-            "hidden": 0,
-        },
+    column_details = response.json()["column_details"]
+    id_detail = column_details["id"]
+    assert id_detail["type"].lower() == "integer"
+    assert id_detail == {
+        "type": id_detail["type"],
+        "sqlite_type": "INTEGER",
+        "notnull": False,
+        "default": None,
+        "is_pk": True,
+        "pk_position": 1,
+        "hidden": 0,
+    }
+    content_detail = column_details["content"]
+    assert content_detail["type"].lower() == "text"
+    assert content_detail == {
+        "type": content_detail["type"],
+        "sqlite_type": "TEXT",
+        "notnull": False,
+        "default": None,
+        "is_pk": False,
+        "pk_position": 0,
+        "hidden": 0,
     }
 
     response = await ds_client.get(

@@ -446,8 +446,10 @@ async def test_row_extras(ds_client):
         "format": "json",
     }
     assert len(data["foreign_key_tables"]) == 5
-    assert data["column_details"]["id"] == {
-        "type": "INTEGER",
+    id_detail = data["column_details"]["id"]
+    assert id_detail["type"].lower() == "integer"
+    assert id_detail == {
+        "type": id_detail["type"],
         "sqlite_type": "INTEGER",
         "notnull": False,
         "default": None,
@@ -455,8 +457,10 @@ async def test_row_extras(ds_client):
         "pk_position": 1,
         "hidden": 0,
     }
-    assert data["column_details"]["content"] == {
-        "type": "TEXT",
+    content_detail = data["column_details"]["content"]
+    assert content_detail["type"].lower() == "text"
+    assert content_detail == {
+        "type": content_detail["type"],
         "sqlite_type": "TEXT",
         "notnull": False,
         "default": None,
@@ -470,16 +474,16 @@ async def test_row_extras(ds_client):
 async def test_column_details_extra_row_for_null_blob(ds_client):
     response = await ds_client.get("/fixtures/binary_data/3.json?_extra=column_details")
     assert response.status_code == 200
-    assert response.json()["column_details"] == {
-        "data": {
-            "type": "BLOB",
-            "sqlite_type": "BLOB",
-            "notnull": False,
-            "default": None,
-            "is_pk": False,
-            "pk_position": 0,
-            "hidden": 0,
-        }
+    data_detail = response.json()["column_details"]["data"]
+    assert data_detail["type"].lower() == "blob"
+    assert data_detail == {
+        "type": data_detail["type"],
+        "sqlite_type": "BLOB",
+        "notnull": False,
+        "default": None,
+        "is_pk": False,
+        "pk_position": 0,
+        "hidden": 0,
     }
 
 

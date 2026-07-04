@@ -151,6 +151,7 @@ class IndexView(BaseView):
             return Response(
                 json.dumps(
                     {
+                        "ok": True,
                         "databases": {db["name"]: db for db in databases},
                         "metadata": await self.ds.get_instance_metadata(),
                     },

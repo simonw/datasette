@@ -1525,7 +1525,7 @@ class TableAutocompleteView(BaseView):
             and value_as_boolean(initial_arg)
         )
         if not q and not initial:
-            return Response.json({"rows": []})
+            return Response.json({"ok": True, "rows": []})
         params = {
             "q": q,
             "like": "%{}%".format(_escape_like(q)),
@@ -1588,10 +1588,13 @@ class TableAutocompleteView(BaseView):
                     custom_time_limit=AUTOCOMPLETE_TIME_LIMIT_MS,
                 )
             except QueryInterrupted:
-                return Response.json({"rows": []})
+                return Response.json({"ok": True, "rows": []})
 
         return Response.json(
-            {"rows": _autocomplete_response_rows(results.rows, pks, label_column)}
+            {
+                "ok": True,
+                "rows": _autocomplete_response_rows(results.rows, pks, label_column),
+            }
         )
 
 

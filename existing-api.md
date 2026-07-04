@@ -43,6 +43,15 @@ directory: every claim below is based on the route table in `datasette/app.py`
 - Success content type: `application/json; charset=utf-8`
   (`_shape=array&_nl=on` responses use `text/plain`).
 
+### Success envelope
+
+Every JSON endpoint that returns an object includes `"ok": true` on
+success. `JsonDataView` injects it automatically for dict responses
+(views/special.py); the homepage, jump, schema, permission-debug and
+autocomplete views add it explicitly. The remaining top-level-array
+endpoints (`/-/plugins`, `/-/databases`, `/-/actions`) are being converted
+to objects.
+
 ### Error shape (canonical)
 
 Every JSON error response uses one canonical shape, built by `error_body()`
@@ -190,7 +199,7 @@ Routes: `/(\.(?P<format>jsono?))?$` and `/-/(\.(?P<format>jsono?))?$`
   further filtered by `view-database` / `view-table` for the actor.
 - **Parameters:** `_sort=relationships` sorts each database's truncated table
   list by foreign-key relationship count.
-- **JSON response** (index.py:147-161):
+- **JSON response** (index.py:147-161) — includes `ok: true` plus:
   - `databases` — an **object keyed by database name** (not a list). Each
     value: `name`, `hash` (or null), `color`, `path`,
     `tables_and_views_truncated` (up to 5 items: `name`, `columns`,
@@ -260,7 +269,7 @@ per-database `view-database` permissions**.
 app.py:2574-2579, registered with `permission=None` — **accessible to any
 request including anonymous**. No parameters.
 
-Response: `{"actor": {...}}` or `{"actor": null}` (app.py:2287-2288).
+Response: `{"ok": true, "actor": {...}}` or `{"ok": true, "actor": null}` (app.py:2287-2288).
 
 ### GET /-/actions(.json)
 
@@ -313,7 +322,7 @@ an optional `.json` suffix but the view **always returns JSON**.
   `jump_items_sql` plugin hook).
 - **Parameter:** `q` — whitespace-split terms matched as a case-insensitive
   `%term1%term2%` LIKE pattern.
-- **Response:** `{"matches": [...], "truncated": bool}`; each match:
+- **Response:** `{"ok": true, "matches": [...], "truncated": bool}`; each match:
   `name`, `url`, `type` (`database`/`table`/`view`/`query`/plugin-defined),
   `description`, optional `display_name`. Capped at 100 matches.
 
@@ -324,7 +333,7 @@ an optional `.json` suffix but the view **always returns JSON**.
 - **Permission:** no explicit check; only databases the actor can
   `view-database` are included (others silently omitted).
 - **Formats:** no extension → HTML; `.json` →
-  `{"schemas": [{"database": name, "schema": "..."}]}`; `.md` →
+  `{"ok": true, "schemas": [{"database": name, "schema": "..."}]}`; `.md` →
   `text/markdown` rendering.
 
 ### GET/POST /-/logout
@@ -610,10 +619,9 @@ views/table_create_alter.py:965-1005).
 - **Unknown database** → 404; for `.json`:
   `{"ok": false, "error": "Database not found"}`. (The existence check runs
   before the permission check.)
-- **Responses:** `.json` → 200 `{"database": "<name>", "schema": "<SQL>"}`
+- **Responses:** `.json` → 200 `{"ok": true, "database": "<name>", "schema": "<SQL>"}`
   (concatenated `sqlite_master.sql` joined with `;\n`); `.md` →
-  `text/markdown`; no extension → HTML. Note the JSON has **no `ok` key** on
-  success.
+  `text/markdown`; no extension → HTML.
 
 ---
 
@@ -787,8 +795,8 @@ download attachment. In JSON output, binary cells appear as
 `TableSchemaView` (app.py:2751-2754; views/special.py:1332-1378).
 
 - **Permission:** `view-table` via `ensure_permission` (denied → 403 HTML).
-- **Responses:** `.json` → 200 `{"database", "table", "schema"}` (no `ok`
-  key); `.md` → `text/markdown`; no extension → HTML. Missing table → 404
+- **Responses:** `.json` → 200 `{"ok": true, "database", "table", "schema"}`;
+  `.md` → `text/markdown`; no extension → HTML. Missing table → 404
   `{"ok": false, "error": "Table not found"}` for `.json`.
 
 ### GET /\<database\>/\<table\>/-/fragment
@@ -805,10 +813,10 @@ only — views get 400 `"Autocomplete is only available for tables"`.
 - **Permission:** `view-table` (denied → `Forbidden` → 403).
 - **Parameters:** `q` (matched with escaped `LIKE %q%` against pk columns and
   the label column) and `_initial` (truthy: with empty `q`, return the 10
-  most recent rows). Neither → `{"rows": []}`.
+  most recent rows). Neither → `{"ok": true, "rows": []}`.
 - **Response:** `{"rows": [{"pks": {pk_name: value}, "label": "..."}]}` — max
   10 items; 500 ms query budget with fallbacks, timing out to
-  `{"rows": []}`.
+  `{"ok": true, "rows": []}`.
 
 ---
 

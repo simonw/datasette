@@ -294,7 +294,7 @@ async def test_auth_with_dstok_token(ds_client, scenario, should_work):
     try:
         if should_work:
             data = response.json()
-            assert data.keys() == {"actor"}
+            assert data.keys() == {"ok", "actor"}
             actor = data["actor"]
             expected_keys = {"id", "token"}
             if scenario != "valid_unlimited_token":
@@ -305,7 +305,7 @@ async def test_auth_with_dstok_token(ds_client, scenario, should_work):
             if scenario != "valid_unlimited_token":
                 assert isinstance(actor["token_expires"], int)
         else:
-            assert response.json() == {"actor": None}
+            assert response.json() == {"ok": True, "actor": None}
     finally:
         ds_client.ds._settings["allow_signed_tokens"] = True
 
@@ -337,10 +337,10 @@ def test_cli_create_token(app_client, expires):
         }
         if expires and expires > 0:
             expected_actor["token_expires"] = details["t"] + expires
-        assert response.json == {"actor": expected_actor}
+        assert response.json == {"ok": True, "actor": expected_actor}
     else:
         expected_actor = None
-    assert response.json == {"actor": expected_actor}
+    assert response.json == {"ok": True, "actor": expected_actor}
 
 
 @pytest.mark.asyncio

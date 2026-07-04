@@ -188,7 +188,7 @@ async def test_num_sql_threads_zero():
     await db.execute_write("create table t(id integer primary key)")
     await db.execute_write("insert into t (id) values (1)")
     response = await ds.client.get("/-/threads.json")
-    assert response.json() == {"num_threads": 0, "threads": []}
+    assert response.json() == {"ok": True, "num_threads": 0, "threads": []}
     response2 = await ds.client.get("/test_num_sql_threads_zero/t.json?_shape=array")
     assert response2.json() == [{"id": 1}]
 

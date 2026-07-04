@@ -102,7 +102,15 @@ key — see §2.)
 
 ---
 
-## 2. Success envelope: `ok` is not universal, arrays are not extensible (P1/P2)
+## 2. Success envelope: `ok` is not universal, arrays are not extensible (P1/P2) — ✅ PARTIALLY IMPLEMENTED
+
+> **Status:** recommendation 2 and 3 are implemented — every JSON-object
+> success response now includes `"ok": true` (`JsonDataView` injects it for
+> dict responses; homepage, jump, schema, permission-debug and autocomplete
+> views set it explicitly; covered by `tests/test_success_envelope.py`).
+> Recommendation 1 (wrapping the `/-/plugins`, `/-/databases`, `/-/actions`
+> top-level arrays in objects) is being landed as separate per-endpoint
+> commits. §2a/2b/2c remain open.
 
 Endpoints disagree about the success envelope:
 

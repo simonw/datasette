@@ -7,6 +7,8 @@ Datasette includes some pages and JSON API endpoints for introspecting the curre
 
 Each of these pages can be viewed in your browser. Add ``.json`` to the URL to get back the contents as JSON.
 
+JSON responses that return an object include an ``"ok": true`` key, consistent with the rest of the :ref:`JSON API <json_api>`.
+
 .. _JsonDataView_metadata:
 
 /-/metadata
@@ -37,6 +39,7 @@ Shows the version of Datasette, Python and SQLite. `Versions example <https://la
 .. code-block:: json
 
     {
+        "ok": true,
         "datasette": {
             "version": "0.60"
         },
@@ -97,6 +100,7 @@ Shows the :ref:`settings` for this instance of Datasette. `Settings example <htt
 .. code-block:: json
 
     {
+        "ok": true,
         "default_facet_size": 30,
         "default_page_size": 100,
         "facet_suggest_time_limit_ms": 50,
@@ -115,6 +119,7 @@ Shows the :ref:`configuration <configuration>` for this instance of Datasette. T
 .. code-block:: json
 
     {
+        "ok": true,
         "settings": {
             "template_debug": true,
             "trace_debug": true,
@@ -160,6 +165,7 @@ The endpoint supports a ``?q=`` query parameter for filtering items by name.
 .. code-block:: json
 
     {
+        "ok": true,
         "matches": [
             {
                 "name": "fixtures",
@@ -188,6 +194,7 @@ Search example with ``?q=facet`` returns only items matching ``.*facet.*``:
 .. code-block:: json
 
     {
+        "ok": true,
         "matches": [
             {
                 "name": "fixtures: facetable",
@@ -220,6 +227,7 @@ Shows details of threads and ``asyncio`` tasks. `Threads example <https://latest
 .. code-block:: json
 
     {
+        "ok": true,
         "num_threads": 2,
         "threads": [
             {
@@ -251,6 +259,7 @@ Shows the currently authenticated actor. Useful for debugging Datasette authenti
 .. code-block:: json
 
     {
+        "ok": true,
         "actor": {
             "id": 1,
             "username": "some-user"

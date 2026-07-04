@@ -169,11 +169,13 @@ Use ``/-/schema.json`` to get the same information as JSON, which looks like thi
 .. code-block:: json
 
     {
+      "ok": true,
       "schemas": [
         {
           "database": "content",
           "schema": "create table posts ..."
         }
+      ]
     }
 
 .. _DatabaseSchemaView:
@@ -181,11 +183,11 @@ Use ``/-/schema.json`` to get the same information as JSON, which looks like thi
 Database schema
 ---------------
 
-Use ``/database-name/-/schema`` to see the complete schema for a specific database. The ``.md`` and ``.json`` extensions work here too. The JSON returns an object with ``"database"`` and ``"schema"`` keys.
+Use ``/database-name/-/schema`` to see the complete schema for a specific database. The ``.md`` and ``.json`` extensions work here too. The JSON returns an object with ``"ok"``, ``"database"`` and ``"schema"`` keys.
 
 .. _TableSchemaView:
 
 Table schema
 ------------
 
-Use ``/database-name/table-name/-/schema`` to see the schema for a specific table. The ``.md`` and ``.json`` extensions work here too. The JSON returns an object with ``"database"``, ``"table"``, and ``"schema"`` keys.
+Use ``/database-name/table-name/-/schema`` to see the schema for a specific table. The ``.md`` and ``.json`` extensions work here too. The JSON returns an object with ``"ok"``, ``"database"``, ``"table"``, and ``"schema"`` keys.

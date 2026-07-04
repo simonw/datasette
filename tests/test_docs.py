@@ -248,7 +248,7 @@ async def test_homepage():
 async def test_actor_is_null():
     ds = Datasette(memory=True)
     response = await ds.client.get("/-/actor.json")
-    assert response.json() == {"actor": None}
+    assert response.json() == {"ok": True, "actor": None}
 # -- end test_actor_is_null --
 
 
@@ -258,5 +258,5 @@ async def test_signed_cookie_actor():
     ds = Datasette(memory=True)
     cookies = {"ds_actor": ds.client.actor_cookie({"id": "root"})}
     response = await ds.client.get("/-/actor.json", cookies=cookies)
-    assert response.json() == {"actor": {"id": "root"}}
+    assert response.json() == {"ok": True, "actor": {"id": "root"}}
 # -- end test_signed_cookie_actor --

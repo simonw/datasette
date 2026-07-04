@@ -318,7 +318,7 @@ async def test_actor_parameter_sets_cookie(datasette):
     """Passing actor= should sign a ds_actor cookie and authenticate the request."""
     response = await datasette.client.get("/-/actor.json", actor={"id": "root"})
     assert response.status_code == 200
-    assert response.json() == {"actor": {"id": "root"}}
+    assert response.json() == {"ok": True, "actor": {"id": "root"}}
 
 
 @pytest.mark.asyncio
@@ -327,7 +327,7 @@ async def test_actor_parameter_works_with_request_method(datasette):
         "GET", "/-/actor.json", actor={"id": "root"}
     )
     assert response.status_code == 200
-    assert response.json() == {"actor": {"id": "root"}}
+    assert response.json() == {"ok": True, "actor": {"id": "root"}}
 
 
 @pytest.mark.asyncio
@@ -362,7 +362,7 @@ async def test_actor_parameter_merges_with_other_cookies(datasette):
         cookies={"unrelated": "value"},
     )
     assert response.status_code == 200
-    assert response.json() == {"actor": {"id": "root"}}
+    assert response.json() == {"ok": True, "actor": {"id": "root"}}
 
 
 @pytest.mark.asyncio

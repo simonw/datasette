@@ -250,6 +250,7 @@ def test_no_files_uses_memory_database(app_client_no_files):
     response = app_client_no_files.get("/.json")
     assert response.status == 200
     assert {
+        "ok": True,
         "databases": {
             "_memory": {
                 "name": "_memory",
@@ -525,7 +526,7 @@ def test_databases_json(app_client_two_attached_databases_one_immutable):
 @pytest.mark.asyncio
 async def test_threads_json(ds_client):
     response = await ds_client.get("/-/threads.json")
-    expected_keys = {"threads", "num_threads"}
+    expected_keys = {"ok", "threads", "num_threads"}
     if sys.version_info >= (3, 7, 0):
         expected_keys.update({"tasks", "num_tasks"})
     data = response.json()
@@ -610,6 +611,7 @@ async def test_actions_json(ds_client):
 async def test_settings_json(ds_client):
     response = await ds_client.get("/-/settings.json")
     assert response.json() == {
+        "ok": True,
         "default_page_size": 50,
         "default_facet_size": 30,
         "default_allow_sql": True,
@@ -884,7 +886,7 @@ async def test_config_json(config, expected):
     "/-/config.json should return redacted configuration"
     ds = Datasette(config=config)
     response = await ds.client.get("/-/config.json")
-    assert response.json() == expected
+    assert response.json() == {"ok": True, **expected}
 
 
 @pytest.mark.asyncio
@@ -980,7 +982,7 @@ async def test_config_json(config, expected):
 async def test_upgrade_metadata(metadata, expected_config, expected_metadata):
     ds = Datasette(metadata=metadata)
     response = await ds.client.get("/-/config.json")
-    assert response.json() == expected_config
+    assert response.json() == {"ok": True, **expected_config}
     response2 = await ds.client.get("/-/metadata.json")
     assert response2.json() == expected_metadata
 

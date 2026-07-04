@@ -42,7 +42,7 @@ looks like this:
       "truncated": false
     }
 
-``"ok"`` is always ``true`` if an error did not occur.
+``"ok"`` is always ``true`` if an error did not occur. Every Datasette JSON endpoint that returns an object includes this key on success.
 
 The ``"rows"`` key is a list of objects, each one representing a row.
 

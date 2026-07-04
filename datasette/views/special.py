@@ -63,6 +63,8 @@ class JsonDataView(BaseView):
             headers = {}
             if self.ds.cors:
                 add_cors_headers(headers)
+            if isinstance(data, dict):
+                data = {"ok": True, **data}
             return Response.json(data, headers=headers)
         else:
             context = {
@@ -414,6 +416,7 @@ class AllowedResourcesView(BaseView):
             # If catalog tables don't exist yet, return empty results
             return (
                 {
+                    "ok": True,
                     "action": action,
                     "actor_id": actor_id,
                     "page": page,
@@ -448,6 +451,7 @@ class AllowedResourcesView(BaseView):
             return f"{request.path}?{query}"
 
         response = {
+            "ok": True,
             "action": action,
             "actor_id": actor_id,
             "page": page,
@@ -573,6 +577,7 @@ class PermissionRulesView(BaseView):
             return f"{request.path}?{query}"
 
         response = {
+            "ok": True,
             "action": action,
             "actor_id": (actor or {}).get("id") if actor else None,
             "page": page,
@@ -623,6 +628,7 @@ async def _check_permission_for_actor(ds, action, parent, child, actor):
     allowed = await ds.allowed(action=action, resource=resource_obj, actor=actor)
 
     response = {
+        "ok": True,
         "action": action,
         "allowed": bool(allowed),
         "resource": {
@@ -1208,7 +1214,7 @@ class JumpView(BaseView):
                 match["display_name"] = row["display_name"]
             matches.append(match)
 
-        return Response.json({"matches": matches, "truncated": truncated})
+        return Response.json({"ok": True, "matches": matches, "truncated": truncated})
 
 
 class SchemaBaseView(BaseView):
@@ -1230,7 +1236,7 @@ class SchemaBaseView(BaseView):
         headers = {}
         if self.ds.cors:
             add_cors_headers(headers)
-        return Response.json(data, headers=headers)
+        return Response.json({"ok": True, **data}, headers=headers)
 
     def format_error_response(self, error_message, format_, status=404):
         """Format error response based on requested format."""

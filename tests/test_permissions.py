@@ -739,6 +739,7 @@ async def test_actor_restricted_permissions(
         "path": expected_path,
     }
     expected = {
+        "ok": True,
         "action": permission,
         "allowed": expected_result,
         "resource": expected_resource,
@@ -1115,7 +1116,7 @@ def test_cli_create_token(options, expected):
         ],
     )
     assert 0 == result2.exit_code, result2.output
-    assert json.loads(result2.output) == {"actor": expected}
+    assert json.loads(result2.output) == {"ok": True, "actor": expected}
 
 
 _visible_tables_re = re.compile(r">\/((\w+)\/(\w+))\.json<\/a> - Get rows for")

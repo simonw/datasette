@@ -25,13 +25,14 @@ async def test_autocomplete_single_pk_exact_match_and_label_order():
 
     assert response.status_code == 200
     assert response.json() == {
+        "ok": True,
         "rows": [
             {"pks": {"id": 2}, "label": "Longer non-label pk match"},
             {"pks": {"id": 20}, "label": "2"},
             {"pks": {"id": 21}, "label": "22"},
             {"pks": {"id": 3}, "label": "A label containing 2"},
             {"pks": {"id": 200}, "label": "A"},
-        ]
+        ],
     }
 
 
@@ -52,12 +53,12 @@ async def test_autocomplete_blank_q_returns_no_results():
     response = await ds.client.get("/autocomplete_blank/people/-/autocomplete?q=")
 
     assert response.status_code == 200
-    assert response.json() == {"rows": []}
+    assert response.json() == {"ok": True, "rows": []}
 
     response = await ds.client.get("/autocomplete_blank/people/-/autocomplete")
 
     assert response.status_code == 200
-    assert response.json() == {"rows": []}
+    assert response.json() == {"ok": True, "rows": []}
 
 
 @pytest.mark.asyncio
@@ -81,11 +82,12 @@ async def test_autocomplete_initial_returns_latest_rows():
 
     assert response.status_code == 200
     assert response.json() == {
+        "ok": True,
         "rows": [
             {"pks": {"id": 3}, "label": "Cleo"},
             {"pks": {"id": 2}, "label": "Bob"},
             {"pks": {"id": 1}, "label": "Alice"},
-        ]
+        ],
     }
 
     response = await ds.client.get(
@@ -94,11 +96,12 @@ async def test_autocomplete_initial_returns_latest_rows():
 
     assert response.status_code == 200
     assert response.json() == {
+        "ok": True,
         "rows": [
             {"pks": {"id": 3}, "label": "Cleo"},
             {"pks": {"id": 2}, "label": "Bob"},
             {"pks": {"id": 1}, "label": "Alice"},
-        ]
+        ],
     }
 
 
@@ -121,9 +124,10 @@ async def test_autocomplete_escapes_like_characters():
 
     assert response.status_code == 200
     assert response.json() == {
+        "ok": True,
         "rows": [
             {"pks": {"id": 1}, "label": "100% real"},
-        ]
+        ],
     }
 
 
@@ -149,11 +153,12 @@ async def test_autocomplete_compound_pk_searches_all_pk_columns():
 
     assert response.status_code == 200
     assert response.json() == {
+        "ok": True,
         "rows": [
             {"pks": {"country": "mx", "code": "ca"}, "label": "Campeche"},
             {"pks": {"country": "us", "code": "ca"}, "label": "California"},
             {"pks": {"country": "ca", "code": "bc"}, "label": "British Columbia"},
-        ]
+        ],
     }
 
 
@@ -184,9 +189,10 @@ async def test_autocomplete_primary_key_called_label():
 
     assert response.status_code == 200
     assert response.json() == {
+        "ok": True,
         "rows": [
             {"pks": {"label": "abc"}, "label": "Display value"},
-        ]
+        ],
     }
 
 
@@ -246,8 +252,9 @@ async def test_autocomplete_timeout_uses_prefix_fallback(monkeypatch):
     assert timeout_was_simulated
     data = response.json()
     assert data == {
+        "ok": True,
         "rows": [
             {"pks": {"id": f"item-1999{i:02d}"}, "label": f"name 1999{i:02d}"}
             for i in range(10)
-        ]
+        ],
     }

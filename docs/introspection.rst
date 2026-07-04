@@ -137,7 +137,7 @@ Any keys that include the one of the following substrings in their names will be
 /-/databases
 ------------
 
-Shows currently attached databases. `Databases example <https://latest.datasette.io/-/databases>`_:
+Shows currently attached databases that the current actor is allowed to view, based on the ``view-database`` permission. `Databases example <https://latest.datasette.io/-/databases>`_:
 
 .. code-block:: json
 

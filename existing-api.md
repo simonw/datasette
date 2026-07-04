@@ -262,8 +262,7 @@ Permission `view-instance`. No parameters.
 
 Response: `{"ok": true, "databases": [...]}` — each database is
 `{"name", "route", "path", "size", "is_mutable", "is_memory", "hash"}`.
-**All attached databases are listed regardless of per-database
-`view-database` permissions**.
+Only databases the actor is allowed to `view-database` are listed.
 
 ### GET /-/actor(.json)
 

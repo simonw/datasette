@@ -260,12 +260,13 @@ Concerns:
 
 ## 6. Permissions and security consistency (P1/P2)
 
-- **(P1) `/-/databases.json` ignores per-database permissions** — it lists
+- ~~**(P1) `/-/databases.json` ignores per-database permissions** — it lists
   every attached database (name, path on disk, size) to any actor holding
   `view-instance` (app.py:2157-2169), while the homepage and every other
   endpoint filter by `view-database`. On a public instance with private
   databases this leaks filesystem paths and database names. Filter it, or
-  gate it behind `permissions-debug`.
+  gate it behind `permissions-debug`.~~ ✅ **Done** — the endpoint now
+  filters through `allowed_resources("view-database", actor)`.
 - **(P2) `/db/-/schema` checks existence before permission**
   (views/special.py:1308-1317): an actor without `view-database` can
   distinguish "database exists" (403) from "does not exist" (404).
@@ -377,8 +378,8 @@ Two details make tiering urgent rather than optional:
    SQL errors).
 4. ~~Wrap `/-/plugins`, `/-/databases`, `/-/actions` top-level arrays in
    objects (§2).~~ ✅ Done.
-5. Filter `/-/databases.json` by `view-database` or gate it behind
-   `permissions-debug` (§6).
+5. ~~Filter `/-/databases.json` by `view-database` or gate it behind
+   `permissions-debug` (§6).~~ ✅ Done.
 6. 401 (not silent-anonymous) for invalid/expired bearer tokens (§1c).
 7. Publish explicit stability tiers, including extras and pagination-token
    opacity (§9).

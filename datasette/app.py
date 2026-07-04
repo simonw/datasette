@@ -2168,6 +2168,18 @@ class Datasette:
             for name, d in self.databases.items()
         ]
 
+    async def _connected_databases_for_actor(self, actor):
+        page = await self.allowed_resources("view-database", actor)
+        allowed_names = {resource.parent async for resource in page.all()}
+        return [
+            database
+            for database in self._connected_databases()
+            if database["name"] in allowed_names
+        ]
+
+    async def _databases_data(self, request):
+        return {"databases": await self._connected_databases_for_actor(request.actor)}
+
     def _versions(self):
         conn = sqlite3.connect(":memory:")
         self._prepare_connection(conn, "_memory")
@@ -2574,7 +2586,8 @@ class Datasette:
             JsonDataView.as_view(
                 self,
                 "databases.json",
-                lambda: {"databases": self._connected_databases()},
+                self._databases_data,
+                needs_request=True,
             ),
             r"/-/databases(\.(?P<format>json))?$",
         )

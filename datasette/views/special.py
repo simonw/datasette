@@ -53,9 +53,9 @@ class JsonDataView(BaseView):
         if self.permission:
             await self.ds.ensure_permission(action=self.permission, actor=request.actor)
         if self.needs_request:
-            data = self.data_callback(request)
+            data = await await_me_maybe(self.data_callback(request))
         else:
-            data = self.data_callback()
+            data = await await_me_maybe(self.data_callback())
 
         # Return JSON or HTML depending on format parameter
         as_format = request.url_vars.get("format")

@@ -1504,6 +1504,7 @@ async def test_col_nocol_errors(ds_client, path, expected_error):
                 "rows": [{"id": "1", "content": "hey", "content2": "world"}],
                 "truncated": False,
                 "count": 1,
+                "count_truncated": False,
             },
         ),
     ),
@@ -1590,3 +1591,39 @@ async def test_extra_render_cell():
 
     finally:
         ds.pm.unregister(name="TestRenderCellPlugin")
+
+
+@pytest.mark.asyncio
+async def test_count_truncated_included_with_count_extra(tmp_path_factory):
+    from datasette.app import Datasette
+    from datasette.utils import sqlite3
+
+    db_directory = tmp_path_factory.mktemp("dbs")
+    db_path = str(db_directory / "counts.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute("vacuum")
+    conn.execute("create table big (id integer primary key)")
+    conn.execute("create table small (id integer primary key)")
+    conn.executemany("insert into big (id) values (?)", [(i,) for i in range(10)])
+    conn.executemany("insert into small (id) values (?)", [(i,) for i in range(3)])
+    conn.commit()
+    conn.close()
+    ds = Datasette([db_path])
+    ds.get_database("counts").count_limit = 5
+    try:
+        response = await ds.client.get("/counts/big.json?_extra=count")
+        data = response.json()
+        # Count is capped at count_limit + 1 and flagged as truncated
+        assert data["count"] == 6
+        assert data["count_truncated"] is True
+
+        response = await ds.client.get("/counts/small.json?_extra=count")
+        data = response.json()
+        assert data["count"] == 3
+        assert data["count_truncated"] is False
+
+        # count_truncated can also be requested on its own
+        response = await ds.client.get("/counts/big.json?_extra=count_truncated")
+        assert response.json()["count_truncated"] is True
+    finally:
+        ds.close()

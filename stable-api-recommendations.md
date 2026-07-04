@@ -178,7 +178,10 @@ is a table/row/query feature. Also decide the contract for **unknown
 silent ignoring means typos return the default payload with no signal;
 recommend a 400 or a `warnings` key.
 
-### 2c. Count truncation is invisible in JSON (P2)
+### 2c. Count truncation is invisible in JSON (P2) — ✅ IMPLEMENTED
+
+> **Status:** implemented — a public `count_truncated` extra now exists and
+> is implicitly included whenever `count` is requested.
 
 The `count` extra is computed with a `limit 10001` subquery, so `count:
 10001` actually means "at least 10001" — the `count_truncated` flag exists

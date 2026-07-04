@@ -302,6 +302,15 @@ The available table extras are listed below.
 
         15
 
+``count_truncated``
+    True if the count hit Datasette's counting limit, meaning the real number of matching rows is at least the reported count. (May execute additional queries.)
+
+    ``GET /fixtures/facetable.json?_extra=count,count_truncated``
+
+    .. code-block:: json
+
+        false
+
 ``count_sql``
     SQL query string used to calculate the total count for the current table view, including active filters.
 

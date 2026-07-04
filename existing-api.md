@@ -658,7 +658,8 @@ views/table_extras.py:1197-1235; unknown names silently ignored):
 
 | `_extra=` | Returns |
 |---|---|
-| `count` | total matching-row count, computed with a `limit 10001` subquery so it caps at 10001; `null` with `_nocount` or on count timeout |
+| `count` | total matching-row count, computed with a `limit 10001` subquery so it caps at 10001; `null` with `_nocount` or on count timeout. Requesting `count` implicitly includes `count_truncated` |
+| `count_truncated` | `true` when `count` hit the counting limit (the real count is at least the reported value) |
 | `count_sql` | the SQL used for the count |
 | `facet_results` | `{"results": {name: facet}, "timed_out": [...]}`; each facet: `{name, type, hideable, toggle_url, results: [{value, label, count, toggle_url, selected}], truncated}` |
 | `facets_timed_out` | facet names that exceeded `facet_time_limit_ms` |

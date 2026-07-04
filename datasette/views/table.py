@@ -62,6 +62,7 @@ from .table_create_alter import (
 from .table_extras import (
     TABLE_EXTRA_BUNDLES,
     TableExtraContext,
+    count_is_truncated,
     precompute_database_action_permissions,
     precompute_table_action_permissions,
     resolve_table_extras,
@@ -2257,6 +2258,8 @@ async def table_view_data(
         extras.add("facet_results")
     if request.args.get("_shape") == "object":
         extras.add("primary_keys")
+    if "count" in extras:
+        extras.add("count_truncated")
     if extra_extras:
         extras.update(extra_extras)
 
@@ -2335,7 +2338,7 @@ async def table_view_data(
     data["rows"] = transformed_rows
 
     if context_for_html_hack:
-        data["count_truncated"] = _count_truncated_for_table_page(
+        data["count_truncated"] = count_is_truncated(
             datasette, db, database_name, table_name, count_sql, data.get("count")
         )
         data.update(extra_context_from_filters)
@@ -2401,24 +2404,6 @@ async def table_view_data(
         )
 
     return data, rows[:page_size], columns, expanded_columns, sql, next_url
-
-
-def _count_truncated_for_table_page(
-    datasette, db, database_name, table_name, count_sql, count
-):
-    if count != db.count_limit + 1:
-        return False
-    if (
-        not db.is_mutable
-        and datasette.inspect_data
-        and count_sql == f"select count(*) from {table_name} "
-    ):
-        try:
-            datasette.inspect_data[database_name]["tables"][table_name]["count"]
-            return False
-        except KeyError:
-            pass
-    return True
 
 
 async def _next_value_and_url(

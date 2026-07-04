@@ -160,10 +160,11 @@ Endpoints disagree about the success envelope:
   (index.py:147-161); `/-/databases.json` returns an **array**; the database
   page returns `tables` as an array. Choose arrays-of-objects everywhere
   (objects-keyed-by-name break when names need ordering or pagination).
-- Insert/upsert with `return: true` respond with `rows` (plural, list); row
+- ~~Insert/upsert with `return: true` respond with `rows` (plural, list); row
   update with `return: true` responds with `row` (singular, object)
   (views/row.py:837-844). Pick one (`rows` everywhere, even for one row,
-  matches the read API).
+  matches the read API).~~ ✅ **Done** — row update now returns
+  `rows: [{...}]`.
 
 ### 2b. `_extra`/`_shape` support is uneven (P2)
 

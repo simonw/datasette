@@ -1629,7 +1629,7 @@ async def test_row_update_sets_message():
             json={"update": {"name": long_name}, "return": True},
         )
         assert response.status_code == 200
-        assert response.json()["row"]["name"] == long_name
+        assert response.json()["rows"][0]["name"] == long_name
         assert ds.unsign(response.cookies["ds_messages"], "messages") == [
             ["Updated row 1 ({})".format(truncated_name), ds.INFO]
         ]

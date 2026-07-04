@@ -958,8 +958,8 @@ does not change the SQLite schema.
   `"Invalid keys: ..."`; write failures (bad column, constraint violation) →
   400 with the message.
 - **Response** — 200 `{"ok": true}`; with `return: true`,
-  `{"ok": true, "row": {...}}` (singular `row`, unlike insert/upsert's
-  `rows`). Emits `update-row`.
+  `{"ok": true, "rows": [{...}]}` — a single-item list, matching
+  insert/upsert. Emits `update-row`.
 
 ### POST /\<database\>/\<table\>/\<pks\>/-/delete
 

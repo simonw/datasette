@@ -1481,9 +1481,9 @@ async def test_update_row(ds_write, input, expected_errors, use_return):
 
     assert response.json()["ok"] is True
     if not use_return:
-        assert "row" not in response.json()
+        assert "rows" not in response.json()
     else:
-        returned_row = response.json()["row"]
+        returned_row = response.json()["rows"][0]
         assert returned_row["id"] == pk
         for k, v in input.items():
             assert returned_row[k] == v

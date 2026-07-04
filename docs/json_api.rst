@@ -1955,11 +1955,13 @@ The returned JSON will look like this:
 
     {
         "ok": true,
-        "row": {
-            "id": 1,
-            "title": "New title",
-            "other_column": "Will be present here too"
-        }
+        "rows": [
+            {
+                "id": 1,
+                "title": "New title",
+                "other_column": "Will be present here too"
+            }
+        ]
     }
 
 Any errors will use the :ref:`standard error format <json_api_errors>`, with a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.

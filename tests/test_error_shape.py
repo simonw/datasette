@@ -507,3 +507,27 @@ async def test_query_html_without_sql_is_still_the_editor(ds_client):
     response = await ds_client.get("/fixtures/-/query")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
+
+
+# Write API return:true responses use "rows" consistently
+
+
+@pytest.mark.asyncio
+async def test_row_update_return_uses_rows_list(ds_error_shape):
+    await ds_error_shape.client.post(
+        "/data/docs/-/insert",
+        json={"row": {"id": 1, "title": "One"}},
+        headers={"Content-Type": "application/json"},
+        actor={"id": "root"},
+    )
+    response = await ds_error_shape.client.post(
+        "/data/docs/1/-/update",
+        json={"update": {"title": "Updated"}, "return": True},
+        headers={"Content-Type": "application/json"},
+        actor={"id": "root"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert "row" not in data
+    assert data["rows"] == [{"id": 1, "title": "Updated"}]

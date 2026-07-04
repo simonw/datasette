@@ -4116,8 +4116,6 @@ function updateRowEditBinaryPreview(wrapper, encoded, byteLength) {
   image.alt = "";
   var objectUrl = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
   wrapper._rowEditBinaryPreviewUrl = objectUrl;
-  image.src = objectUrl;
-  preview.appendChild(image);
 
   var showPreview = function () {
     if (wrapper._rowEditBinaryPreviewUrl === objectUrl) {
@@ -4131,12 +4129,10 @@ function updateRowEditBinaryPreview(wrapper, encoded, byteLength) {
       preview.textContent = "";
     }
   };
-  if (image.decode) {
-    image.decode().then(showPreview).catch(hidePreview);
-  } else {
-    image.onload = showPreview;
-    image.onerror = hidePreview;
-  }
+  image.onload = showPreview;
+  image.onerror = hidePreview;
+  image.src = objectUrl;
+  preview.appendChild(image);
 }
 
 function updateRowEditBinaryDisplay(wrapper, control, fileName) {

@@ -851,6 +851,8 @@ class QueryView(View):
 
             return await stream_csv(datasette, fetch_data_for_csv, request, db.name)
         elif format_ in datasette.renderers.keys():
+            if not sql:
+                raise DatasetteError("?sql= is required", status=400)
             data = {"ok": True, "rows": rows, "columns": columns}
             extras = extra_names_from_request(request)
             if extras:

@@ -486,8 +486,9 @@ queries section).
     HTTP 400 `{"ok": false, "error": "<message>", "rows": [], "truncated": false}`.
   - Time limit → 400 titled `"SQL Interrupted"` (the `error` value contains
     an HTML fragment).
-  - `?sql=` omitted → 200 `{"ok": true, "rows": [], "truncated": false}`
-    (the CSV format instead errors 400 `"?sql= is required"`).
+  - `?sql=` omitted or blank → 400 `"?sql= is required"` for all data
+    formats (`.json`, `.csv`, plugin formats). The HTML page remains the
+    SQL editor.
 - `.csv` streams CSV; unknown extensions → 404.
 
 ### GET /\<database\>/-/query/parameters

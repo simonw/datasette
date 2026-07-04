@@ -483,3 +483,27 @@ async def test_token_when_signed_tokens_disabled_returns_401(tmp_path_factory):
         assert "not enabled" in data["error"]
     finally:
         ds.close()
+
+
+# GET /db/-/query without SQL: 400 for data formats, HTML editor stays 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/fixtures/-/query.json",
+        "/fixtures/-/query.json?sql=",
+    ),
+)
+async def test_query_json_without_sql_is_400(ds_client, path):
+    response = await ds_client.get(path)
+    data = assert_canonical_error(response, 400)
+    assert data["errors"] == ["?sql= is required"]
+
+
+@pytest.mark.asyncio
+async def test_query_html_without_sql_is_still_the_editor(ds_client):
+    response = await ds_client.get("/fixtures/-/query")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")

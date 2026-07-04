@@ -338,9 +338,11 @@ Concerns:
    `is_trusted` — an actor with `delete-query` can delete a config-defined
    trusted query via the API (it will resync on restart, making the
    behavior confusing rather than catastrophic). Align delete with update.
-2. **GET `/db/-/query` with no `?sql=` returns 200 `{"ok": true, "rows":
+2. ~~**GET `/db/-/query` with no `?sql=` returns 200 `{"ok": true, "rows":
    []}`** while `.csv` on the same request returns 400 `"?sql= is
-   required"`. The JSON behavior masks caller bugs; return 400 on both.
+   required"`. The JSON behavior masks caller bugs; return 400 on both.~~
+   ✅ **Done** — all data formats now return 400; the HTML SQL editor page
+   is unchanged.
 3. **`_shape=object` HTTP 200 error** (§1b) — almost certainly unintended.
 4. ~~**Row delete 500** (§1c) — inconsistent with every sibling endpoint.~~
    ✅ Done — now 400.

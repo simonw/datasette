@@ -180,9 +180,11 @@ def test_query_extra_query_reports_bound_params():
         assert response.json["query"]["params"] == {}
 
 
-def test_query_extra_query_does_not_echo_querystring_without_sql():
+def test_query_extra_query_does_not_echo_querystring():
     with make_app_client() as client:
-        response = client.get("/fixtures/-/query.json?_extra=query&foo=bar")
+        response = client.get(
+            "/fixtures/-/query.json?sql=select+1&_extra=query&foo=bar"
+        )
         assert response.status == 200
         assert response.json["query"]["params"] == {}
 

@@ -1132,12 +1132,14 @@ queries.
   `_random_chars_<N>`, `_cookie_<name>`, `_header_<name>` (underscores →
   hyphens). User-stored queries cannot contain magic parameters — they are a
   feature of config/trusted queries.
-- **Response — 200 for both success and SQL failure** (only permission
-  rejection is 403):
-  `{"ok": true|false, "message": "...", "redirect": "..."|null}` —
-  `message` honors `on_success_message_sql` / `on_success_message` /
-  `on_error_message`, falling back to `"Query executed"` or
-  `"Query executed, N rows affected"`.
+- **Response:** success → 200
+  `{"ok": true, "message": "...", "redirect": "..."|null}` — `message`
+  honors `on_success_message_sql` / `on_success_message`, falling back to
+  `"Query executed"` or `"Query executed, N rows affected"`. SQL failure →
+  **400** canonical error (message honors `on_error_message`) plus a
+  `redirect` context key from `on_error_redirect`. Operation rejection
+  (`QueryWriteRejected`, e.g. VACUUM) → 403 canonical error plus
+  `redirect: null`.
 
 ---
 

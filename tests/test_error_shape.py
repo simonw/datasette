@@ -232,3 +232,134 @@ async def test_forbidden_json_path_allowed_actor_still_works(ds_forbidden):
     response = await ds_forbidden.client.get("/data/docs.json", actor={"id": "root"})
     assert response.status_code == 200
     assert response.json()["ok"] is True
+
+
+# Write canned queries: SQL failures must not return HTTP 200
+
+
+@pytest.fixture
+def ds_write_query(tmp_path_factory):
+    db_directory = tmp_path_factory.mktemp("dbs")
+    db_path = str(db_directory / "data.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute("vacuum")
+    conn.execute("create table docs (id integer primary key, title text)")
+    conn.close()
+    ds = Datasette(
+        [db_path],
+        config={
+            "databases": {
+                "data": {
+                    "queries": {
+                        "add_doc": {
+                            "sql": (
+                                "insert into docs (id, title)" " values (:id, :title)"
+                            ),
+                            "write": True,
+                        },
+                        "add_doc_custom_error": {
+                            "sql": (
+                                "insert into docs (id, title)" " values (:id, :title)"
+                            ),
+                            "write": True,
+                            "on_error_message": "Custom error message",
+                            "on_error_redirect": "/data",
+                        },
+                    }
+                }
+            }
+        },
+    )
+    yield ds
+    ds.close()
+
+
+@pytest.mark.asyncio
+async def test_write_query_success_returns_200(ds_write_query):
+    response = await ds_write_query.client.post(
+        "/data/add_doc",
+        json={"id": 1, "title": "One"},
+        headers={"Accept": "application/json"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["message"] == "Query executed, 1 row affected"
+    assert data["redirect"] is None
+
+
+@pytest.mark.asyncio
+async def test_write_query_sql_failure_returns_400(ds_write_query):
+    for _ in range(2):
+        response = await ds_write_query.client.post(
+            "/data/add_doc",
+            json={"id": 1, "title": "One"},
+            headers={"Accept": "application/json"},
+        )
+    data = assert_canonical_error(response, 400)
+    assert "UNIQUE constraint failed" in data["error"]
+    # The redirect context key from the canned query flow is preserved
+    assert data["redirect"] is None
+
+
+@pytest.mark.asyncio
+async def test_write_query_failure_uses_on_error_message_and_redirect(
+    ds_write_query,
+):
+    for _ in range(2):
+        response = await ds_write_query.client.post(
+            "/data/add_doc_custom_error",
+            json={"id": 1, "title": "One"},
+            headers={"Accept": "application/json"},
+        )
+    data = assert_canonical_error(response, 400)
+    assert data["error"] == "Custom error message"
+    assert data["redirect"] == "/data"
+
+
+@pytest.mark.asyncio
+async def test_write_query_forbidden_is_canonical_403(ds_write_query):
+    # An untrusted write query run by an actor without execute-write-sql
+    # raises Forbidden, handled by the forbidden() hook
+    await ds_write_query.invoke_startup()
+    await ds_write_query.add_query(
+        "data",
+        name="untrusted_add",
+        sql="insert into docs (id, title) values (:id, :title)",
+        is_write=True,
+        is_trusted=False,
+        source="user",
+        owner_id="someone",
+    )
+    response = await ds_write_query.client.post(
+        "/data/untrusted_add",
+        json={"id": 5, "title": "Five"},
+        headers={"Accept": "application/json"},
+        actor={"id": "someone"},
+    )
+    assert_canonical_error(response, 403)
+
+
+@pytest.mark.asyncio
+async def test_write_query_rejected_operation_is_canonical_403(ds_write_query):
+    # A rejected operation (VACUUM) raises QueryWriteRejected, handled by
+    # the dedicated branch in QueryView.post - root has execute-write-sql
+    ds_write_query.root_enabled = True
+    await ds_write_query.invoke_startup()
+    await ds_write_query.add_query(
+        "data",
+        name="vacuum_it",
+        sql="vacuum",
+        is_write=True,
+        is_trusted=False,
+        source="user",
+        owner_id="root",
+    )
+    response = await ds_write_query.client.post(
+        "/data/vacuum_it",
+        json={},
+        headers={"Accept": "application/json"},
+        actor={"id": "root"},
+    )
+    data = assert_canonical_error(response, 403)
+    assert data["redirect"] is None

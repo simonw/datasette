@@ -16,6 +16,7 @@ from datasette.write_sql import QueryWriteRejected
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
+    error_body,
     call_with_supported_arguments,
     named_parameters as derive_named_parameters,
     format_bytes,
@@ -607,11 +608,7 @@ class QueryView(View):
                 "_json"
             ):
                 return Response.json(
-                    {
-                        "ok": False,
-                        "message": ex.message,
-                        "redirect": None,
-                    },
+                    dict(error_body([ex.message], 403), redirect=None),
                     status=403,
                 )
             datasette.add_message(request, ex.message, datasette.ERROR)
@@ -681,12 +678,17 @@ class QueryView(View):
             redirect_url = stored_query.on_error_redirect
             ok = False
         if should_return_json:
+            if ok:
+                return Response.json(
+                    {
+                        "ok": True,
+                        "message": message,
+                        "redirect": redirect_url,
+                    }
+                )
             return Response.json(
-                {
-                    "ok": ok,
-                    "message": message,
-                    "redirect": redirect_url,
-                }
+                dict(error_body([message], 400), redirect=redirect_url),
+                status=400,
             )
         else:
             datasette.add_message(request, message, message_type)

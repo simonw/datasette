@@ -3093,9 +3093,9 @@ async def test_untrusted_stored_write_query_rejects_virtual_table_control_insert
     )
 
     assert denied_response.status_code == 403
-    assert denied_response.json()["message"] == (
+    assert denied_response.json()["errors"] == [
         "Writes to virtual tables are not allowed in user-supplied SQL"
-    )
+    ]
     assert (
         await db.execute("select count(*) from docs where docs match 'hello'")
     ).first()[0] == 1

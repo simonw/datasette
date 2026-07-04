@@ -27,8 +27,8 @@ Findings are grouped by theme. Each carries a priority:
 > debug-endpoint shape is gone; `_shape=object` misuse now returns HTTP 400
 > (part of §1b). Covered by `tests/test_error_shape.py` and documented in
 > the "Error responses" section of `docs/json_api.rst`. §1a (`Forbidden` →
-> JSON) is now also implemented. Still open from this section's sub-items:
-> the write canned-query 200 (§1b) and the §1c status outliers.
+> JSON) and §1b (write canned-query 200) are now also implemented. Still
+> open from this section's sub-items: the §1c status outliers.
 
 The API currently produces four distinct JSON error shapes depending on which
 internal layer generates the error:
@@ -76,7 +76,12 @@ machine-readable answer. **Recommendation:** the default forbidden handler
 must return the canonical JSON error when the path ends in `.json` or the
 request prefers JSON, mirroring `handle_exception`.
 
-### 1b. Errors that return HTTP 200 (P1)
+### 1b. Errors that return HTTP 200 (P1) — ✅ IMPLEMENTED
+
+> **Status:** implemented. `_shape=object` misuse returns 400 (done with
+> §1), and write canned-query SQL failures now return **400** with the
+> canonical error shape (plus the `redirect` context key); the
+> `QueryWriteRejected` 403 branch also uses the canonical shape.
 
 - `_shape=object` on a query or pk-less table → `{"ok": false, "error":
   "_shape=object is only available on tables"}` with **200**
@@ -378,8 +383,8 @@ Two details make tiering urgent rather than optional:
 
 1. ~~One canonical JSON error shape; retire the other three (§1).~~ ✅ Done.
 2. ~~`Forbidden` → JSON 403 for JSON requests (§1a).~~ ✅ Done.
-3. No `ok: false` with HTTP 200 (§1b: `_shape=object`, write canned-query
-   SQL errors).
+3. ~~No `ok: false` with HTTP 200 (§1b: `_shape=object`, write canned-query
+   SQL errors).~~ ✅ Done.
 4. ~~Wrap `/-/plugins`, `/-/databases`, `/-/actions` top-level arrays in
    objects (§2).~~ ✅ Done.
 5. ~~Filter `/-/databases.json` by `view-database` or gate it behind

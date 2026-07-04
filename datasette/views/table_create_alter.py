@@ -269,6 +269,11 @@ async def _create_table_ui_context(
         "databaseName": database_name,
         "columnTypes": CREATE_TABLE_COLUMN_TYPES,
         "defaultExpressions": default_expression_options(),
+        "canInsertRows": await datasette.allowed(
+            action="insert-row",
+            resource=DatabaseResource(database=database_name),
+            actor=request.actor,
+        ),
     }
     can_set_column_type = await datasette.allowed(
         action="set-column-type",

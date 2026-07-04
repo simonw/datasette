@@ -150,7 +150,6 @@ _SQLITE_INTERNAL_SCHEMA_FUNCTIONS = {
     "sqlite_rename_test",
     "substr",
 }
-
 _AUTHORIZER_ACTION_NAMES = {
     getattr(sqlite3, name): name
     for name in (
@@ -391,6 +390,10 @@ def analyze_sql_tables(
             )
             return sqlite3.SQLITE_OK
 
+        if action == sqlite3.SQLITE_RECURSIVE:
+            # Recursive CTE bookkeeping; table reads are reported separately.
+            return sqlite3.SQLITE_OK
+
         if action == sqlite3.SQLITE_FUNCTION and arg2 is not None:
             record(
                 "function",
@@ -485,17 +488,17 @@ def analyze_sql_tables(
         and key.operation in {"create", "alter", "drop"}
         for key in operations
     )
-    dropped_tables = {
+    dropped_tables_and_views = {
         (key.database, key.table)
         for key in operations
-        if key.operation == "drop" and key.target_type == "table"
+        if key.operation == "drop" and key.target_type in {"table", "view"}
     }
 
     def key_is_drop_table_delete(key: OperationKey) -> bool:
         return (
             key.operation == "delete"
             and key.target_type == "table"
-            and (key.database, key.table) in dropped_tables
+            and (key.database, key.table) in dropped_tables_and_views
         )
 
     has_user_table_access_in_schema_operation = any(

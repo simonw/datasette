@@ -138,6 +138,33 @@ def decision_for_write_sql_operation(
                 ),
             )
         )
+    if operation.operation == "create" and operation.target_type == "view":
+        if operation.database is None:
+            return UnsupportedWriteSqlOperation(unsupported_message)
+        return RequireWriteSqlPermissions(
+            (
+                PermissionRequirement(
+                    action="create-view",
+                    resource=DatabaseResource(database=operation.database),
+                ),
+            )
+        )
+    if (
+        operation.operation == "drop"
+        and operation.target_type == "view"
+        and operation.database is not None
+        and operation.table is not None
+    ):
+        return RequireWriteSqlPermissions(
+            (
+                PermissionRequirement(
+                    action="drop-view",
+                    resource=TableResource(
+                        database=operation.database, table=operation.table
+                    ),
+                ),
+            )
+        )
     if (
         operation.operation == "alter"
         and operation.target_type == "table"

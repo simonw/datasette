@@ -98,7 +98,7 @@ The page listing the tables, views and queries in a database, e.g. /fixtures. Re
     The color assigned to the database
 
 ``database_page_data`` - ``dict``
-    JSON data used by JavaScript on the database page. Currently ``{}`` or ``{"createTable": {...}}`` where ``createTable`` includes ``path``, ``foreignKeyTargetsPath``, ``databaseName``, ``columnTypes``, ``defaultExpressions`` and optional ``customColumnTypes``.
+    JSON data used by JavaScript on the database page. Currently ``{}`` or ``{"createTable": {...}}`` where ``createTable`` includes ``path``, ``foreignKeyTargetsPath``, ``databaseName``, ``columnTypes``, ``defaultExpressions``, ``canInsertRows`` and optional ``customColumnTypes``.
 
 ``editable`` - ``bool``
     Boolean indicating if the database is editable
@@ -389,7 +389,7 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     SQL definition for this table
 
 ``table_insert_ui`` - ``dict``
-    Information needed to enable the row insertion UI, or ``None`` if row insertion is not available to the current actor. When present it has ``path``, ``tableName``, ``columns`` and ``primaryKeys`` keys; each column includes ``name``, ``sqlite_type``, ``notnull``, ``default``, ``has_default``, ``is_pk``, ``value_kind`` and ``column_type`` keys.
+    Information needed to enable the row insertion UI, or ``None`` if row insertion is not available to the current actor. When present it has ``path``, ``tableName``, ``columns``, ``bulkColumns``, ``primaryKeys`` and ``maxInsertRows`` keys, plus optional ``upsertPath`` if the current actor has permission to update rows. ``columns`` lists columns for the single-row insert form, while ``bulkColumns`` lists columns for the bulk insert form. Each column includes ``name``, ``sqlite_type``, ``notnull``, ``default``, ``has_default``, ``is_pk``, ``is_auto_pk``, ``value_kind`` and ``column_type`` keys.
 
 ``table_page_data`` - ``dict``
     JSON data used by JavaScript on the table page. Includes ``database``, ``table`` and ``tableUrl``, plus optional ``foreignKeys`` mapping column names to autocomplete URLs, optional ``insertRow`` data and optional ``alterTable`` data.

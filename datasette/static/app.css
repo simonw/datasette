@@ -1641,6 +1641,11 @@ dialog.row-edit-dialog::backdrop {
     overflow-y: auto;
 }
 
+.row-edit-fields[hidden],
+.row-edit-bulk[hidden] {
+    display: none;
+}
+
 .row-edit-field {
     display: grid;
     grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
@@ -1910,6 +1915,207 @@ textarea.row-edit-input {
     margin: 0;
 }
 
+.row-edit-bulk {
+    display: grid;
+    gap: 8px;
+    padding: 16px 24px 24px;
+    overflow-y: auto;
+}
+
+.row-edit-bulk-editor {
+    display: grid;
+    gap: 8px;
+}
+
+.row-edit-bulk-editor[hidden] {
+    display: none;
+}
+
+.row-edit-bulk-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-start;
+}
+
+.row-edit-bulk-actions .btn {
+    padding-left: 12px;
+    padding-right: 12px;
+}
+
+.row-edit-bulk-conflict {
+    display: grid;
+    grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
+    gap: 8px 12px;
+    align-items: start;
+}
+
+.row-edit-bulk-conflict[hidden] {
+    display: none;
+}
+
+.row-edit-bulk-conflict-label {
+    color: var(--ink);
+    font-size: 0.82rem;
+    padding-top: 8px;
+}
+
+.row-edit-bulk-conflict-control {
+    display: grid;
+    gap: 4px;
+}
+
+.row-edit-bulk-conflict-help {
+    color: var(--muted);
+    font-size: 0.78rem;
+    margin: 0;
+}
+
+.row-edit-copy-template-label-narrow {
+    display: none;
+}
+
+.row-edit-bulk-template-note {
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+
+.row-edit-bulk-template-note-narrow {
+    display: none;
+}
+
+.row-edit-bulk-textarea {
+    min-height: 16rem;
+    resize: vertical;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+
+.row-edit-bulk-textarea.row-edit-bulk-drop-target {
+    border-color: var(--accent);
+    background: #f8fbff;
+    outline: 3px solid rgba(26, 86, 219, 0.12);
+}
+
+.row-edit-bulk-note {
+    color: var(--muted);
+    font-size: 0.82rem;
+    margin: 0;
+}
+
+.row-edit-bulk-note label,
+.row-edit-bulk-note .button-as-link {
+    font: inherit;
+}
+
+@media (max-width: 640px) {
+    .row-edit-copy-template-label-wide {
+        display: none;
+    }
+
+    .row-edit-copy-template-label-narrow {
+        display: inline;
+    }
+
+    .row-edit-bulk-template-note-wide {
+        display: none;
+    }
+
+    .row-edit-bulk-template-note-narrow {
+        display: inline;
+    }
+}
+
+.row-edit-bulk-preview {
+    display: grid;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.row-edit-bulk-preview[hidden] {
+    display: none;
+}
+
+.row-edit-bulk-preview-summary {
+    color: var(--ink);
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.row-edit-bulk-preview-table-wrap {
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    max-height: 18rem;
+    overflow: auto;
+    background: #fff;
+}
+
+.row-edit-bulk-preview-table {
+    border-collapse: collapse;
+    font-size: 0.78rem;
+    min-width: 100%;
+    width: max-content;
+}
+
+.row-edit-bulk-preview-table th,
+.row-edit-bulk-preview-table td {
+    border-bottom: 1px solid var(--rule);
+    border-right: 1px solid var(--rule);
+    max-width: 18rem;
+    overflow-wrap: anywhere;
+    padding: 6px 8px;
+    text-align: left;
+    vertical-align: top;
+    white-space: normal;
+}
+
+.row-edit-bulk-preview-table th {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.row-edit-bulk-preview-table tr:last-child td {
+    border-bottom: none;
+}
+
+.row-edit-bulk-preview-table th:last-child,
+.row-edit-bulk-preview-table td:last-child {
+    border-right: none;
+}
+
+.row-edit-bulk-preview-null,
+.row-edit-bulk-preview-auto {
+    color: var(--muted);
+    font-style: italic;
+}
+
+.row-edit-bulk-progress {
+    display: grid;
+    gap: 6px;
+}
+
+.row-edit-bulk-progress[hidden] {
+    display: none;
+}
+
+.row-edit-bulk-progress-bar {
+    width: 100%;
+}
+
+.row-edit-bulk-progress-status {
+    color: var(--ink);
+    font-size: 0.9rem;
+    margin: 0;
+}
+
 datasette-autocomplete {
     display: block;
     position: relative;
@@ -1986,6 +2192,16 @@ datasette-autocomplete input[type="text"],
     gap: 10px;
     flex-shrink: 0;
     background: var(--paper);
+}
+
+.row-edit-mode-link {
+    color: var(--accent);
+    font-size: 0.9rem;
+    margin-right: auto;
+}
+
+.row-edit-mode-link[hidden] {
+    display: none;
 }
 
 .row-edit-dialog .btn {
@@ -2182,6 +2398,120 @@ select.table-create-input {
 .table-create-columns {
     display: grid;
     gap: 10px;
+}
+
+.table-create-columns[hidden],
+.table-create-data[hidden],
+.table-create-data-editor[hidden],
+.table-create-data-preview[hidden] {
+    display: none;
+}
+
+.table-create-data,
+.table-create-data-editor {
+    display: grid;
+    gap: 8px;
+}
+
+.table-create-data-label {
+    color: var(--ink);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+}
+
+.table-create-data-textarea {
+    min-height: 16rem;
+    resize: vertical;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+
+.table-create-data-textarea.table-create-data-drop-target {
+    border-color: var(--accent);
+    background: #f8fbff;
+    outline: 3px solid rgba(26, 86, 219, 0.12);
+}
+
+.table-create-data-note {
+    color: var(--muted);
+    font-size: 0.82rem;
+    margin: 0;
+}
+
+.table-create-data-note label,
+.table-create-data-note .button-as-link {
+    font: inherit;
+}
+
+.table-create-data-preview {
+    display: grid;
+    gap: 10px;
+}
+
+.table-create-data-preview-summary {
+    color: var(--ink);
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.table-create-data-pk-field {
+    display: grid;
+    grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
+    gap: 12px;
+    align-items: center;
+}
+
+.table-create-data-preview-table-wrap {
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    max-height: 18rem;
+    overflow: auto;
+    background: #fff;
+}
+
+.table-create-data-preview-table {
+    border-collapse: collapse;
+    font-size: 0.78rem;
+    min-width: 100%;
+    width: max-content;
+}
+
+.table-create-data-preview-table th,
+.table-create-data-preview-table td {
+    border-bottom: 1px solid var(--rule);
+    border-right: 1px solid var(--rule);
+    max-width: 18rem;
+    overflow-wrap: anywhere;
+    padding: 6px 8px;
+    text-align: left;
+    vertical-align: top;
+    white-space: normal;
+}
+
+.table-create-data-preview-table th {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.table-create-data-preview-table tr:last-child td {
+    border-bottom: none;
+}
+
+.table-create-data-preview-table th:last-child,
+.table-create-data-preview-table td:last-child {
+    border-right: none;
+}
+
+.table-create-data-preview-null {
+    color: var(--muted);
+    font-style: italic;
 }
 
 .table-create-column-list {
@@ -2409,6 +2739,16 @@ select.table-create-input {
     gap: 10px;
     flex-shrink: 0;
     background: var(--paper);
+}
+
+.table-create-mode-link {
+    color: var(--accent);
+    font-size: 0.9rem;
+    margin-right: auto;
+}
+
+.table-create-mode-link[hidden] {
+    display: none;
 }
 
 .table-create-dialog .btn {
@@ -3124,7 +3464,8 @@ select.table-alter-input {
     .row-edit-dialog .modal-header,
     .row-edit-summary,
     .row-edit-loading,
-    .row-edit-fields {
+    .row-edit-fields,
+    .row-edit-bulk {
         padding-left: 18px;
         padding-right: 18px;
     }
@@ -3140,6 +3481,15 @@ select.table-alter-input {
     }
 
     .row-edit-label {
+        padding-top: 0;
+    }
+
+    .row-edit-bulk-conflict {
+        grid-template-columns: 1fr;
+        gap: 5px;
+    }
+
+    .row-edit-bulk-conflict-label {
         padding-top: 0;
     }
 
@@ -3172,6 +3522,11 @@ select.table-alter-input {
 
     .table-create-label {
         padding-top: 0;
+    }
+
+    .table-create-data-pk-field {
+        grid-template-columns: 1fr;
+        gap: 5px;
     }
 
     .table-create-column-headings {

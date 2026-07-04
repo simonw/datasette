@@ -1586,6 +1586,66 @@ async def test_create_query_analyze_endpoint_uses_sql_only():
 
 
 @pytest.mark.asyncio
+async def test_create_query_supports_recursive_cte():
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("query_create_recursive_cte", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    sql = """
+    with recursive dog_tree(id, name) as (
+        select id, name from dogs
+        union all
+        select id + 1, name from dog_tree where id < 3
+    )
+    select name from dog_tree
+    """.strip()
+
+    analysis_response = await ds.client.get(
+        "/data/-/queries/analyze",
+        actor={"id": "root"},
+        params={"sql": sql},
+    )
+    form_response = await ds.client.get(
+        "/data/-/queries/store",
+        actor={"id": "root"},
+        params={"sql": sql},
+    )
+    store_response = await ds.client.post(
+        "/data/-/queries/store",
+        actor={"id": "root"},
+        data={
+            "name": "dog-tree",
+            "title": "Dog tree",
+            "sql": sql,
+            "is_private": "1",
+        },
+    )
+
+    assert analysis_response.status_code == 200
+    analysis_data = analysis_response.json()
+    assert analysis_data["ok"] is True
+    assert analysis_data["analysis_error"] is None
+    assert analysis_data["analysis_is_write"] is False
+    assert analysis_data["save_disabled"] is False
+
+    assert form_response.status_code == 200
+    soup = Soup(form_response.text, "html.parser")
+    submit = soup.select_one("[data-query-create-submit]")
+    assert submit is not None
+    assert not submit.has_attr("disabled")
+    assert "This is a read-only query." in form_response.text
+
+    assert store_response.status_code == 302
+    assert store_response.headers["location"] == "/data/dog-tree"
+    query = await ds.get_query("data", "dog-tree")
+    assert query is not None
+    assert query.sql == sql
+    assert query.is_write is False
+
+
+@pytest.mark.asyncio
 async def test_create_query_form_error_redisplays_form_with_values():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True
@@ -3154,6 +3214,74 @@ async def test_execute_write_create_table_uses_create_table_permission():
     assert not await db.table_exists("should_not_exist")
 
 
+@pytest.mark.asyncio
+async def test_execute_write_create_view_uses_create_view_permission():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "permissions": {
+                "insert-row": {"id": "row-writer"},
+                "update-row": {"id": "row-writer"},
+            },
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-database": {"id": ["creator", "row-writer"]},
+                        "execute-write-sql": {"id": ["creator", "row-writer"]},
+                        "create-view": {"id": "creator"},
+                    }
+                }
+            },
+        },
+    )
+    db = ds.add_memory_database("execute_write_create_view", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    analysis_response = await ds.client.get(
+        "/data/-/execute-write/analyze",
+        actor={"id": "creator"},
+        params={"sql": "create view dog_names as select id, name from dogs"},
+    )
+    allowed_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "creator"},
+        json={"sql": "create view dog_names as select id, name from dogs"},
+    )
+    row_permission_response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "row-writer"},
+        json={"sql": "create view should_not_exist as select id from dogs"},
+    )
+
+    assert analysis_response.status_code == 200
+    analysis_data = analysis_response.json()
+    assert analysis_data["ok"] is True
+    assert analysis_data["execute_disabled"] is False
+    assert analysis_data["analysis_rows"] == [
+        {
+            "operation": "create",
+            "database": "data",
+            "table": "dog_names",
+            "required_permission": "create-view",
+            "source": None,
+            "allowed": True,
+        }
+    ]
+
+    assert allowed_response.status_code == 200
+    assert allowed_response.json()["ok"] is True
+    assert allowed_response.json()["message"] == "Query executed"
+    assert await db.view_exists("dog_names")
+
+    assert row_permission_response.status_code == 403
+    assert row_permission_response.json()["errors"] == [
+        "Permission denied: need create-view on data"
+    ]
+    assert not await db.view_exists("should_not_exist")
+
+
 @pytest.mark.parametrize(
     (
         "database_name",
@@ -3204,8 +3332,20 @@ async def test_execute_write_create_table_uses_create_table_permission():
             (),
             "drop-table",
         ),
+        (
+            "execute_write_drop_view",
+            "dropper",
+            "drop view dogs_view",
+            "drop view cats_view",
+            "Permission denied: need drop-view on data/cats_view",
+            (
+                "create view dogs_view as select * from dogs",
+                "create view cats_view as select * from cats",
+            ),
+            "drop-view",
+        ),
     ),
-    ids=("alter-table", "create-index", "drop-index", "drop-table"),
+    ids=("alter-table", "create-index", "drop-index", "drop-table", "drop-view"),
 )
 @pytest.mark.asyncio
 async def test_execute_write_schema_operations_use_schema_permissions(
@@ -3240,7 +3380,12 @@ async def test_execute_write_schema_operations_use_schema_permissions(
                                 "drop-table": {"id": "dropper"},
                                 "view-table": {"id": "alterer"},
                             }
-                        }
+                        },
+                        "dogs_view": {
+                            "permissions": {
+                                "drop-view": {"id": "dropper"},
+                            }
+                        },
                     },
                 }
             },
@@ -3293,6 +3438,9 @@ async def test_execute_write_schema_operations_use_schema_permissions(
     elif expected_state == "drop-table":
         assert not await db.table_exists("dogs")
         assert await db.table_exists("cats")
+    elif expected_state == "drop-view":
+        assert not await db.view_exists("dogs_view")
+        assert await db.view_exists("cats_view")
 
 
 @pytest.mark.asyncio

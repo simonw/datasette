@@ -33,10 +33,11 @@ export DATASETTE_SECRET := "not_a_secret"
   uv run codespell datasette -S datasette/static --ignore-words docs/codespell-ignore-words.txt
   uv run codespell tests --ignore-words docs/codespell-ignore-words.txt
 
-# Run linters: black, ruff, cog
+# Run linters: black, ruff, prettier, cog
 @lint: codespell
   uv run black datasette tests --check
   uv run ruff check datasette tests
+  npm run prettier -- --check
   uv run cog --check README.md docs/*.rst
 
 # Apply ruff fixes

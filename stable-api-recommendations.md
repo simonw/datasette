@@ -332,12 +332,15 @@ Concerns:
 
 ## 8. Behavior that looks like a bug and should be resolved before freezing
 
-1. **Trusted queries: update is blocked, delete is not.**
+1. ~~**Trusted queries: update is blocked, delete is not.**
    `QueryUpdateView` rejects `is_trusted` queries with 403
    (stored_queries.py:426-427) but `QueryDeleteView.post` never checks
    `is_trusted` — an actor with `delete-query` can delete a config-defined
    trusted query via the API (it will resync on restart, making the
-   behavior confusing rather than catastrophic). Align delete with update.
+   behavior confusing rather than catastrophic). Align delete with update.~~
+   ✅ **Done** — both the POST endpoint and the HTML confirmation page now
+   return 403 `"Trusted queries cannot be deleted using the API"`;
+   `datasette.remove_query()` remains available for internal use.
 2. ~~**GET `/db/-/query` with no `?sql=` returns 200 `{"ok": true, "rows":
    []}`** while `.csv` on the same request returns 400 `"?sql= is
    required"`. The JSON behavior masks caller bugs; return 400 on both.~~
@@ -401,8 +404,8 @@ Two details make tiering urgent rather than optional:
    ✅ Done.
 7. Publish explicit stability tiers, including extras and pagination-token
    opacity (§9).
-8. Resolve the looks-like-a-bug list (§8), especially trusted-query delete
-   and row-delete 500.
+8. Resolve the looks-like-a-bug list (§8), especially ~~trusted-query delete
+   and row-delete 500~~ (both done).
 
 Everything in P2 is worth doing now because each item is breaking-to-fix
 later; each P3 can be resolved by a sentence of documentation declaring the

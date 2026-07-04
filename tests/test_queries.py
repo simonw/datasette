@@ -3654,3 +3654,51 @@ async def test_stored_write_query_with_truncated_returning_message():
     assert response.status_code == 200
     assert response.json()["ok"] is True
     assert response.json()["message"] == "Query executed"
+
+
+@pytest.mark.asyncio
+async def test_query_delete_api_rejects_trusted_queries():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-query": {"id": "editor"},
+                        "delete-query": {"id": "editor"},
+                    },
+                    "queries": {
+                        "trusted_report": {
+                            "sql": "select 1 as one",
+                        },
+                    },
+                }
+            }
+        },
+    )
+    ds.add_memory_database("query_delete_trusted_api", name="data")
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/data/trusted_report/-/delete",
+        actor={"id": "editor"},
+        json={},
+    )
+    assert response.status_code == 403
+    assert response.json()["errors"] == [
+        "Trusted queries cannot be deleted using the API"
+    ]
+    # The query must still exist
+    assert await ds.get_query("data", "trusted_report") is not None
+
+    # The HTML confirmation page refuses too
+    get_response = await ds.client.get(
+        "/data/trusted_report/-/delete",
+        actor={"id": "editor"},
+    )
+    assert get_response.status_code == 403
+
+    # datasette.remove_query() remains available for internal use
+    await ds.remove_query("data", "trusted_report")
+    assert await ds.get_query("data", "trusted_report") is None

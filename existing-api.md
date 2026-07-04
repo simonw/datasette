@@ -1093,8 +1093,9 @@ updates use `/-/update`.
 `QueryDeleteView` (app.py:2707-2710; views/stored_queries.py:594-644). GET
 renders an HTML confirmation page.
 
-- **Permission:** `delete-query` (403 `need delete-query`). Unlike update,
-  **trusted queries are not blocked** from API deletion.
+- **Permission:** `delete-query` (403 `need delete-query`). Trusted
+  queries → 403 `"Trusted queries cannot be deleted using the API"`,
+  matching update.
 - **Response:** JSON request → 200 `{"ok": true}`; form → 302; 404
   `"Query not found: x"`. No `confirm` field required (unlike table drop).
 

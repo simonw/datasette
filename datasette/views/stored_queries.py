@@ -610,6 +610,8 @@ class QueryDeleteView(BaseView):
             resource=QueryResource(db.name, query_name),
             actor=request.actor,
         )
+        if existing.is_trusted:
+            return _error(["Trusted queries cannot be deleted using the API"], 403)
         return await self.render(
             ["query_delete.html"],
             request,
@@ -631,6 +633,8 @@ class QueryDeleteView(BaseView):
             actor=request.actor,
         ):
             return _error(["Permission denied: need delete-query"], 403)
+        if existing.is_trusted:
+            return _error(["Trusted queries cannot be deleted using the API"], 403)
 
         data, is_json = await _json_or_form_payload(request)
         await self.ds.remove_query(db.name, query_name)

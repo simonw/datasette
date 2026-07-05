@@ -3,7 +3,29 @@ from datasette.events import RenameTableEvent
 from datasette.utils import escape_sqlite, sqlite3
 from .utils import last_event
 import pytest
+import re
 import time
+
+
+def schema_variants(schema):
+    # sqlite-utils < 4 quotes identifiers [like_this] and uses FLOAT;
+    # sqlite-utils >= 4 quotes them "like_this" and uses REAL. Given a
+    # schema fragment in the old format, return both variants so tests
+    # can pass against either version.
+    converted = re.sub(r"\[([^\]]+)\]", r'"\1"', schema).replace("FLOAT", "REAL")
+    return (schema, converted)
+
+
+def assert_schema_contains(fragment, schema):
+    assert any(
+        variant in schema for variant in schema_variants(fragment)
+    ), "Expected schema to contain {!r}, got {!r}".format(fragment, schema)
+
+
+def assert_schema_not_contains(fragment, schema):
+    assert not any(
+        variant in schema for variant in schema_variants(fragment)
+    ), "Expected schema not to contain {!r}, got {!r}".format(fragment, schema)
 
 
 @pytest.fixture
@@ -72,8 +94,8 @@ async def test_base64_write_api_create_table_infers_blob_and_raw_escapes(ds_writ
         headers=_headers(token),
     )
     assert response.status_code == 201
-    assert "[data] BLOB" in response.json()["schema"]
-    assert "[literal] TEXT" in response.json()["schema"]
+    assert_schema_contains("[data] BLOB", response.json()["schema"])
+    assert_schema_contains("[literal] TEXT", response.json()["schema"])
 
     rows = (await ds_write.get_database("data").execute("""
             select
@@ -1197,7 +1219,9 @@ async def test_alter_table_foreign_key_operations(ds_write):
     assert response.status_code == 200, response.text
     data = response.json()
     assert data["operations_applied"] == 2
-    assert "[owner_id] INTEGER REFERENCES [owners]([id])" in data["schema"]
+    assert_schema_contains(
+        "[owner_id] INTEGER REFERENCES [owners]([id])", data["schema"]
+    )
 
     response = await ds_write.client.post(
         "/data/docs/-/alter",
@@ -1208,7 +1232,7 @@ async def test_alter_table_foreign_key_operations(ds_write):
     )
     assert response.status_code == 200, response.text
     data = response.json()
-    assert "[owner_id] INTEGER REFERENCES" not in data["schema"]
+    assert_schema_not_contains("[owner_id] INTEGER REFERENCES", data["schema"])
 
     response = await ds_write.client.post(
         "/data/docs/-/alter",
@@ -1232,7 +1256,9 @@ async def test_alter_table_foreign_key_operations(ds_write):
     )
     assert response.status_code == 200, response.text
     data = response.json()
-    assert "[owner_id] INTEGER REFERENCES [categories]([id])" in data["schema"]
+    assert_schema_contains(
+        "[owner_id] INTEGER REFERENCES [categories]([id])", data["schema"]
+    )
 
     response = await ds_write.client.post(
         "/data/docs/-/alter",
@@ -1241,7 +1267,7 @@ async def test_alter_table_foreign_key_operations(ds_write):
     )
     assert response.status_code == 200, response.text
     data = response.json()
-    assert "[owner_id] INTEGER REFERENCES" not in data["schema"]
+    assert_schema_not_contains("[owner_id] INTEGER REFERENCES", data["schema"])
 
 
 @pytest.mark.asyncio
@@ -2177,6 +2203,9 @@ async def test_create_table(
     )
     assert response.status_code == expected_status
     data = response.json()
+    if isinstance(expected_response, dict) and "schema" in expected_response:
+        assert data.get("schema") in schema_variants(expected_response["schema"])
+        expected_response = dict(expected_response, schema=data.get("schema"))
     assert data == expected_response
     # Should have tracked the expected events
     events = ds_write._tracked_events
@@ -2219,7 +2248,9 @@ async def test_create_table_with_foreign_key(ds_write):
     )
     assert response.status_code == 201
     data = response.json()
-    assert "[owner_id] INTEGER REFERENCES [owners]([id])" in data["schema"]
+    assert_schema_contains(
+        "[owner_id] INTEGER REFERENCES [owners]([id])", data["schema"]
+    )
 
 
 @pytest.mark.asyncio

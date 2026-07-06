@@ -243,10 +243,11 @@ Concerns:
 
 ## 4. HTTP semantics (P2)
 
-- **201 vs 200:** insert → 201, upsert → 200 (views/table.py:1194), create
+- ~~**201 vs 200:** insert → 201, upsert → 200 (views/table.py:1194), create
   table → 201, store query → 201. Insert-201/upsert-200 is defensible
   (upsert may not create) but it is undocumented subtlety; state it, or
-  return 200 for both with an explicit `created` count.
+  return 200 for both with an explicit `created` count.~~ ✅ **Done** —
+  documented as deliberate in the upsert docs.
 - **Destructive-action confirmation is asymmetric:** table drop requires
   `{"confirm": true}` and has a preview response (views/table.py:1346-1365);
   row delete executes immediately and ignores the body; query delete
@@ -284,10 +285,13 @@ Concerns:
   accepted input alias for API creation and `datasette.yaml` config.
 - **Three names for the same concept across error/message payloads:**
   `error`, `errors`, `message`. See §1.
-- **Boolean query parameters have at least three grammars:** `_nl=on`,
+- ~~**Boolean query parameters have at least three grammars:** `_nl=on`,
   `_labels=on/off`, `?all=1`, `is_write=1|0|true|false|t|f|yes|no|on|off`,
   `_nocount=1`. Adopt one accepted set (the query-list parser at
-  query_helpers.py:81-94 is a good candidate) and apply it everywhere.
+  query_helpers.py:81-94 is a good candidate) and apply it everywhere.~~
+  ✅ **Documented** — the JSON API docs state the canonical grammar
+  (`on/true/1`, `off/false/0`), which `value_as_boolean` already accepts
+  everywhere it is used.
 - ~~**`.jsono`** survives on the homepage route (identical output to `.json`)
   and as a row-view redirect. Remove it at 1.0; it is pure legacy.~~
   ✅ Removed: the homepage routes only accept `.json` and the row-view
@@ -322,9 +326,12 @@ Concerns:
   task reprs including file paths) behind only `view-instance`. Consider
   `permissions-debug`, alongside `/-/actions` which already requires it.~~
   ✅ **Done** — `/-/threads` now requires `permissions-debug`.
-- **(P3) `/-/config` redaction is substring-based** on six key names
+- ~~**(P3) `/-/config` redaction is substring-based** on six key names
   (app.py:2502-2505); plugins storing secrets under other names leak. Worth
-  a note in plugin authoring docs plus a `redact_keys` plugin hook.
+  a note in plugin authoring docs plus a `redact_keys` plugin hook.~~
+  ✅ **Documented** — the plugin secrets docs now advise naming keys to
+  match the redaction substrings (a `redact_keys` hook remains a possible
+  future addition).
 - **(P3) Database-level checks on `/-/create`** (insert-row/update-row
   checked against `DatabaseResource`, not the about-to-exist table —
   table_create_alter.py:819-856) vs table-level checks on `/-/insert`.

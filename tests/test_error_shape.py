@@ -422,7 +422,7 @@ async def test_bad_signature_token_returns_401(ds_error_shape):
     response = await ds_error_shape.client.get(
         "/-/actor.json", headers={"Authorization": "Bearer dstok_garbage"}
     )
-    data = assert_canonical_error(response, 401)
+    assert_canonical_error(response, 401)
     assert response.headers["www-authenticate"].startswith("Bearer")
 
 

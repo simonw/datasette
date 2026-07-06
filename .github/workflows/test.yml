@@ -67,7 +67,7 @@ jobs:
     - name: Install dependencies
       run: |
         pip install . --group dev
-        pip install --pre 'sqlite-utils>=4.0rc2'
+        pip install --pre 'sqlite-utils>=4.0rc3'
         pip freeze
     - name: Run tests
       run: |

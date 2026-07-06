@@ -200,6 +200,10 @@ class RowView(BaseView):
                 title="SQL Interrupted",
                 status=400,
                 message_is_html=True,
+                plain_message=(
+                    "SQL query took too long. The time limit is"
+                    " controlled by the sql_time_limit_ms setting."
+                ),
             )
         except (sqlite3.OperationalError, InvalidSql) as e:
             raise DatasetteError(str(e), title="Invalid SQL", status=400)

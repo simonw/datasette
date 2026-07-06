@@ -717,3 +717,25 @@ async def test_alter_and_set_column_type_ignore_content_type(ds_error_shape):
         actor={"id": "root"},
     )
     assert sct.status_code == 200, sct.text
+
+
+# SQL Interrupted errors carry plain text in JSON, not an HTML fragment
+
+
+@pytest.mark.asyncio
+async def test_sql_interrupted_json_error_is_plain_text(ds_client):
+    response = await ds_client.get(
+        "/fixtures/-/query.json?sql=select+sleep(0.01)&_timelimit=5"
+    )
+    data = assert_canonical_error(response, 400)
+    assert "<" not in data["error"]
+    assert data["error"].startswith("SQL query took too long.")
+
+
+@pytest.mark.asyncio
+async def test_sql_interrupted_html_page_keeps_rich_error(ds_client):
+    response = await ds_client.get(
+        "/fixtures/-/query?sql=select+sleep(0.01)&_timelimit=5"
+    )
+    assert response.status_code == 400
+    assert "<textarea" in response.text

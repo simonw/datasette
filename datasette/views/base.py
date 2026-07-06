@@ -29,12 +29,15 @@ class DatasetteError(Exception):
         status=500,
         template=None,
         message_is_html=False,
+        plain_message=None,
     ):
         self.message = message
         self.title = title
         self.error_dict = error_dict or {}
         self.status = status
         self.message_is_html = message_is_html
+        # Plain text used for JSON error responses when message is HTML
+        self.plain_message = plain_message
 
 
 class View:

@@ -28,6 +28,7 @@ def handle_exception(datasette, request, exception):
             rich.get_console().print_exception(show_locals=True)
 
         title = None
+        plain_message = None
         if isinstance(exception, Base400):
             status = exception.status
             info = {}
@@ -36,6 +37,7 @@ def handle_exception(datasette, request, exception):
             status = exception.status
             info = exception.error_dict
             message = exception.message
+            plain_message = exception.plain_message
             if exception.message_is_html:
                 message = Markup(message)
             title = exception.title
@@ -50,7 +52,7 @@ def handle_exception(datasette, request, exception):
             add_cors_headers(headers)
         if request.path.split("?")[0].endswith(".json"):
             body = dict(info)
-            body.update(error_body(message, status))
+            body.update(error_body(plain_message or message, status))
             return Response.json(body, status=status, headers=headers)
         info.update(
             {

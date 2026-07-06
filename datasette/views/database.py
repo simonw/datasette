@@ -819,6 +819,10 @@ class QueryView(View):
                     title="SQL Interrupted",
                     status=400,
                     message_is_html=True,
+                    plain_message=(
+                        "SQL query took too long. The time limit is"
+                        " controlled by the sql_time_limit_ms setting."
+                    ),
                 )
             except sqlite3.DatabaseError as ex:
                 query_error = str(ex)

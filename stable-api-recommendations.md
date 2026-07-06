@@ -394,9 +394,11 @@ Concerns:
    ✅ Done — now 400 (fixed with §1b).
 4. ~~**Row delete 500** (§1c) — inconsistent with every sibling endpoint.~~
    ✅ Done — now 400.
-5. **The "SQL Interrupted" error embeds an HTML fragment in the JSON `error`
+5. ~~**The "SQL Interrupted" error embeds an HTML fragment in the JSON `error`
    value** (views/database.py:805-820). Error strings in the JSON API should
-   be plain text.
+   be plain text.~~ ✅ **Done** — `DatasetteError` gained a `plain_message`
+   used for JSON responses; the HTML error page keeps the rich version with
+   the SQL textarea. §8 is now fully resolved.
 
 ---
 

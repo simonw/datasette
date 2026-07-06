@@ -107,7 +107,6 @@ class TableContext(Context):
     human_description_en: str = from_extra()
     is_view: bool = from_extra()
     metadata: dict = from_extra()
-    next_url: str = from_extra()
     primary_keys: list = from_extra()
     private: bool = from_extra()
     query: dict = from_extra()
@@ -124,6 +123,11 @@ class TableContext(Context):
         metadata={"help": "True if the data for this page was retrieved without errors"}
     )
     next: str = field(metadata={"help": "Pagination token for the next page, or None"})
+    next_url: str = field(
+        metadata={
+            "help": "Full URL for the next page of results, or None if there are no more pages. See :ref:`json_api_pagination`."
+        }
+    )
     count_truncated: bool = field(
         metadata={
             "help": "True if ``count`` is a capped lower bound rather than an exact total, because Datasette stopped counting after its configured row-count limit."

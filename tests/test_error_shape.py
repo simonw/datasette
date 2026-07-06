@@ -739,3 +739,11 @@ async def test_sql_interrupted_html_page_keeps_rich_error(ds_client):
     )
     assert response.status_code == 400
     assert "<textarea" in response.text
+
+
+@pytest.mark.asyncio
+async def test_next_url_extra_no_longer_exists(ds_client):
+    # next_url is always present in table JSON; the extra was removed
+    response = await ds_client.get("/fixtures/facetable.json?_extra=next_url")
+    data = assert_canonical_error(response, 400)
+    assert data["errors"] == ["Unknown _extra: next_url"]

@@ -333,7 +333,7 @@ These can be repeated or comma-separated:
 
 ::
 
-    ?_extra=columns&_extra=count,next_url
+    ?_extra=columns&_extra=count,count_sql
 
 Requesting an ``_extra`` name that does not exist returns a ``400`` error in the :ref:`standard error format <json_api_errors>`, for example ``{"ok": false, "error": "Unknown _extra: nope", ...}``.
 
@@ -436,17 +436,6 @@ The available table extras are listed below.
     .. code-block:: json
 
         "where state = \"CA\" sorted by pk"
-
-``next_url``
-    Full URL for the next page of results
-
-    ``GET /fixtures/facetable.json?_size=1&_extra=next_url``
-
-    ``null`` if there are no more pages of results. See :ref:`json_api_pagination`.
-
-    .. code-block:: json
-
-        "http://localhost/fixtures/facetable.json?_size=1&_extra=next_url&_next=1"
 
 ``columns``
     List of column names returned by this table, row or query.

@@ -323,10 +323,6 @@ async def test_paginate_tables_and_views(
     fetched = []
     count = 0
     while path:
-        if "?" in path:
-            path += "&_extra=next_url"
-        else:
-            path += "?_extra=next_url"
         response = await ds_client.get(path)
         assert response.status_code == 200
         count += 1
@@ -359,9 +355,7 @@ async def test_validate_page_size(ds_client, path, expected_error):
 @pytest.mark.asyncio
 async def test_page_size_zero(ds_client):
     """For _size=0 we return the counts, empty rows and no continuation token"""
-    response = await ds_client.get(
-        "/fixtures/no_primary_key.json?_size=0&_extra=count,next_url"
-    )
+    response = await ds_client.get("/fixtures/no_primary_key.json?_size=0&_extra=count")
     assert response.status_code == 200
     assert [] == response.json()["rows"]
     assert 202 == response.json()["count"]
@@ -372,7 +366,7 @@ async def test_page_size_zero(ds_client):
 @pytest.mark.asyncio
 async def test_paginate_compound_keys(ds_client):
     fetched = []
-    path = "/fixtures/compound_three_primary_keys.json?_shape=objects&_extra=next_url"
+    path = "/fixtures/compound_three_primary_keys.json?_shape=objects"
     page = 0
     while path:
         page += 1
@@ -393,7 +387,9 @@ async def test_paginate_compound_keys(ds_client):
 @pytest.mark.asyncio
 async def test_paginate_compound_keys_with_extra_filters(ds_client):
     fetched = []
-    path = "/fixtures/compound_three_primary_keys.json?content__contains=d&_shape=objects&_extra=next_url"
+    path = (
+        "/fixtures/compound_three_primary_keys.json?content__contains=d&_shape=objects"
+    )
     page = 0
     while path:
         page += 1
@@ -446,7 +442,7 @@ async def test_paginate_compound_keys_with_extra_filters(ds_client):
     ],
 )
 async def test_sortable(ds_client, query_string, sort_key, human_description_en):
-    path = f"/fixtures/sortable.json?_shape=objects&_extra=human_description_en,next_url&{query_string}"
+    path = f"/fixtures/sortable.json?_shape=objects&_extra=human_description_en&{query_string}"
     fetched = []
     page = 0
     while path:
@@ -850,7 +846,7 @@ def test_page_size_matching_max_returned_rows(
     app_client_returned_rows_matches_page_size,
 ):
     fetched = []
-    path = "/fixtures/no_primary_key.json?_extra=next_url"
+    path = "/fixtures/no_primary_key.json"
     while path:
         response = app_client_returned_rows_matches_page_size.get(path)
         fetched.extend(response.json["rows"])

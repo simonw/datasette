@@ -722,7 +722,7 @@ def test_config_cache_size(app_client_larger_cache_size):
 def test_config_force_https_urls():
     with make_app_client(settings={"force_https_urls": True}) as client:
         response = client.get(
-            "/fixtures/facetable.json?_size=3&_facet=state&_extra=next_url,suggested_facets"
+            "/fixtures/facetable.json?_size=3&_facet=state&_extra=suggested_facets"
         )
         assert response.json["next_url"].startswith("https://")
         assert response.json["facet_results"]["results"]["state"]["results"][0][

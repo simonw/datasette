@@ -321,21 +321,6 @@ class HumanDescriptionEnExtra(Extra):
         return human_description_en
 
 
-class NextUrlExtra(Extra):
-    description = "Full URL for the next page of results"
-    example = ExtraExample(
-        "/fixtures/facetable.json?_size=1&_extra=next_url",
-        note=(
-            "``null`` if there are no more pages of results. "
-            "See :ref:`json_api_pagination`."
-        ),
-    )
-    scopes = {ExtraScope.TABLE}
-
-    async def resolve(self, context):
-        return context.next_url
-
-
 class ColumnsExtra(Extra):
     description = "List of column names returned by this table, row or query."
     example = ExtraExample("/fixtures/facetable.json?_extra=columns")
@@ -1250,7 +1235,6 @@ TABLE_EXTRA_BUNDLES = {
         "count",
         "count_sql",
         "human_description_en",
-        "next_url",
         "metadata",
         "query",
         "columns",
@@ -1286,7 +1270,6 @@ TABLE_EXTRA_CLASSES = [
     SuggestedFacetsExtra,
     FacetInstancesProvider,
     HumanDescriptionEnExtra,
-    NextUrlExtra,
     ColumnsExtra,
     AllColumnsExtra,
     PrimaryKeysExtra,

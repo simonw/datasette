@@ -1944,7 +1944,7 @@ The above example will:
 
 Similar to ``/-/insert``, a ``row`` key with an object can be used instead of a ``rows`` array to upsert a single row.
 
-If successful, this will return a ``200`` status code and a ``{"ok": true}`` response body.
+If successful, this will return a ``200`` status code and a ``{"ok": true}`` response body. This is deliberately different from the ``201`` returned by :ref:`insert <TableInsertView>`: an upsert may update existing rows without creating anything, so it does not claim resource creation.
 
 Add ``"return": true`` to the request body to return full copies of the affected rows after they have been inserted or updated:
 

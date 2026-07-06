@@ -662,3 +662,58 @@ async def test_debug_endpoints_use_size_and_page_parameters(ds_error_shape, endp
     bad_page = await ds_error_shape.client.get(base + "&_page=0", actor={"id": "root"})
     data = assert_canonical_error(bad_page, 400)
     assert data["errors"] == ["_page must be a positive integer"]
+
+
+# Write endpoints parse the body as JSON regardless of Content-Type
+
+
+@pytest.mark.asyncio
+async def test_insert_works_without_content_type_header(ds_error_shape):
+    # Previously a 500 AttributeError
+    response = await ds_error_shape.client.post(
+        "/data/docs/-/insert",
+        content='{"row": {"id": 1, "title": "One"}}',
+        actor={"id": "root"},
+    )
+    assert response.status_code == 201
+    assert response.json()["rows"][0]["title"] == "One"
+
+
+@pytest.mark.asyncio
+async def test_insert_works_with_form_content_type(ds_error_shape):
+    # Previously 400 "Invalid content-type, must be application/json"
+    response = await ds_error_shape.client.post(
+        "/data/docs/-/insert",
+        content='{"row": {"id": 2, "title": "Two"}}',
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        actor={"id": "root"},
+    )
+    assert response.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_insert_form_encoded_body_is_invalid_json(ds_error_shape):
+    response = await ds_error_shape.client.post(
+        "/data/docs/-/insert",
+        content="title=Three",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        actor={"id": "root"},
+    )
+    data = assert_canonical_error(response, 400)
+    assert data["errors"][0].startswith("Invalid JSON:")
+
+
+@pytest.mark.asyncio
+async def test_alter_and_set_column_type_ignore_content_type(ds_error_shape):
+    alter = await ds_error_shape.client.post(
+        "/data/docs/-/alter",
+        content='{"operations": [{"op": "add_column", "args": {"name": "extra"}}]}',
+        actor={"id": "root"},
+    )
+    assert alter.status_code == 200, alter.text
+    sct = await ds_error_shape.client.post(
+        "/data/docs/-/set-column-type",
+        content='{"column": "title", "column_type": {"type": "textarea"}}',
+        actor={"id": "root"},
+    )
+    assert sct.status_code == 200, sct.text

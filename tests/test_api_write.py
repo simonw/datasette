@@ -396,13 +396,6 @@ async def test_insert_rows_post_body_too_large(tmp_path_factory):
         ),
         (
             "/data/docs/-/insert",
-            {},
-            "invalid_content_type",
-            400,
-            ["Invalid content-type, must be application/json"],
-        ),
-        (
-            "/data/docs/-/insert",
             [],
             None,
             400,
@@ -582,11 +575,7 @@ async def test_insert_or_upsert_row_errors(
         json=input,
         headers={
             "Authorization": "Bearer {}".format(token),
-            "Content-Type": (
-                "text/plain"
-                if special_case == "invalid_content_type"
-                else "application/json"
-            ),
+            "Content-Type": "application/json",
         },
     )
 

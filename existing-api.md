@@ -853,8 +853,8 @@ shape) and check permissions with
   additionally required for `alter: true` (403
   `Permission denied for alter-table`). Immutable database → 403
   `Database is immutable`.
-- **Request** — requires `Content-Type: application/json` (else 400
-  `"Invalid content-type, must be application/json"`). Body:
+- **Request** — the body is parsed as JSON regardless of the request
+  `Content-Type` header (invalid JSON → 400). Body:
 
   | Field | Rules |
   |---|---|
@@ -937,7 +937,7 @@ shape) and check permissions with
 does not change the SQLite schema.
 
 - **Permission:** `set-column-type` (403 `Permission denied`).
-- **Request** (JSON content type required): `{"column": "name",
+- **Request**: `{"column": "name",
   "column_type": {"type": "url", "config": {...}?} | null}`. Unknown
   keys/invalid structure → detailed 400 errors; unknown type → 400
   `"Unknown column type: x"`. Default registered types (via the

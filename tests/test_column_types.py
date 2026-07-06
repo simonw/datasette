@@ -323,12 +323,6 @@ async def test_clear_column_type_api(ds_ct):
             ],
         ),
         (
-            {"column": "title", "column_type": {"type": "email"}},
-            "invalid_content_type",
-            400,
-            ["Invalid content-type, must be application/json"],
-        ),
-        (
             [],
             None,
             400,
@@ -413,11 +407,7 @@ async def test_set_column_type_api_errors(
     kwargs = {
         "headers": {
             "Authorization": f"Bearer {token}",
-            "Content-Type": (
-                "text/plain"
-                if special_case == "invalid_content_type"
-                else "application/json"
-            ),
+            "Content-Type": "application/json",
         }
     }
     if special_case == "invalid_json":

@@ -951,9 +951,7 @@ class TableInsertView(BaseView):
         def _errors(errors):
             return None, errors, {}
 
-        if not request.headers.get("content-type").startswith("application/json"):
-            # TODO: handle form-encoded data
-            return _errors(["Invalid content-type, must be application/json"])
+        # The body is parsed as JSON regardless of the Content-Type header
         try:
             data = await request.json()
         except json.JSONDecodeError as e:
@@ -1259,10 +1257,6 @@ class TableSetColumnTypeView(BaseView):
             actor=request.actor,
         ):
             return _error(["Permission denied"], 403)
-
-        content_type = request.headers.get("content-type") or ""
-        if not content_type.startswith("application/json"):
-            return _error(["Invalid content-type, must be application/json"], 400)
 
         try:
             data = await request.json()

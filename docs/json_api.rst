@@ -1668,6 +1668,8 @@ The JSON write API
 
 Datasette provides a write API for JSON data. This is a POST-only API that requires an authenticated API token, see :ref:`CreateTokenView`. The token will need to have the specified :ref:`authentication_permissions`.
 
+The request body is always parsed as JSON, regardless of the request's ``Content-Type`` header - a body that is not valid JSON returns a ``400`` error. Cross-site request forgery is prevented by Datasette's ``Origin`` and ``Sec-Fetch-Site`` header checks rather than by content type requirements.
+
 The row-based write APIs can write :ref:`binary values in JSON <binary_json_format>` using Datasette's Base64 representation for BLOB data.
 
 .. _ExecuteWriteView:

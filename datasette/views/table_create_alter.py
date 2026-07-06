@@ -1166,10 +1166,6 @@ class TableAlterView(BaseView):
         if not db.is_mutable:
             return _error(["Database is immutable"], 403)
 
-        content_type = request.headers.get("content-type") or ""
-        if not content_type.startswith("application/json"):
-            return _error(["Invalid content-type, must be application/json"], 400)
-
         try:
             data = await request.json()
         except json.JSONDecodeError as e:

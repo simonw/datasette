@@ -254,11 +254,15 @@ Concerns:
   executes immediately. Decide the 1.0 rule (suggestion: confirmation only
   for schema-destroying operations, i.e. keep as is — but document it as a
   deliberate contract).
-- **Content-type enforcement is inconsistent:** `/-/insert`, `/-/upsert`,
+- ~~**Content-type enforcement is inconsistent:** `/-/insert`, `/-/upsert`,
   `/-/alter`, `/-/set-column-type` demand `Content-Type: application/json`
   (400 otherwise); `/-/create` parses the body as JSON regardless of
   content type; execute-write and the query CRUD endpoints accept both JSON
-  and form encodings. Pick one rule for JSON-only endpoints.
+  and form encodings. Pick one rule for JSON-only endpoints.~~ ✅ **Done**
+  — the lenient rule won: JSON-only write endpoints parse the body as JSON
+  regardless of `Content-Type` (CSRF protection comes from the
+  cross-origin header checks, not content types). This also fixed a 500 on
+  insert when the header was absent entirely.
 - **JSON-vs-HTML negotiation on POST differs per endpoint:** execute-write
   and canned queries key off `Accept: application/json` / a `_json` body
   field; the write API keys off nothing (always JSON); query store keys off

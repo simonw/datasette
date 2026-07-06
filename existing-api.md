@@ -1038,7 +1038,7 @@ databases (`database`/`database_color` are null, `show_database` true).
   400 `"is_write must be 0 or 1"`), `source`, `owner_id`.
 - **Response** — 200:
   `{"ok": true, "database", "database_color", "queries": [...], "next",
-  "next_url", "has_more", "limit", "show_private_note",
+  "next_url", "limit", "show_private_note",
   "show_trusted_note", "query_list_path", "show_database",
   "facets": [{title, items: [{label, count, href, active}]}],
   "filters": {q, is_write, is_private, source, owner_id}}`.

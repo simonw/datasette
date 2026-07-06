@@ -120,9 +120,9 @@ class QueryListView(BaseView):
                 if key != "_next"
             ]
             pairs.append(("_next", page.next))
-            next_url = "{}?{}".format(
-                query_list_path,
-                urlencode(pairs),
+            next_url = self.ds.absolute_url(
+                request,
+                "{}?{}".format(request.path, urlencode(pairs)),
             )
 
         current_filters = {
@@ -208,7 +208,6 @@ class QueryListView(BaseView):
             "queries": page.queries,
             "next": page.next,
             "next_url": next_url,
-            "has_more": page.has_more,
             "limit": page.limit,
             "show_private_note": any(query.is_private for query in page.queries),
             "show_trusted_note": any(query.is_trusted for query in page.queries),

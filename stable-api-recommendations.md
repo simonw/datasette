@@ -209,7 +209,13 @@ number.
 > values (previously silently clamped), and the `/-/allowed` and
 > `/-/rules` debug endpoints renamed `page`/`page_size` to
 > `_page`/`_size` with the same validation (400 instead of silent
-> capping at 200). The `has_more`/`total` differences remain open.
+> capping at 200). `has_more` has been **removed** from the query-list
+> JSON — `next: null` is the single end-of-results signal everywhere,
+> keeping default response keys minimal (`total` remains a debug-endpoint
+> nicety). Fixing this also uncovered and fixed a bug where the query
+> list's JSON `next_url` pointed at the HTML page (it dropped the `.json`
+> extension) and was relative where the table `next_url` is absolute.
+> §3 is now fully resolved.
 
 | Endpoint | Mechanism | Token | Extras |
 |---|---|---|---|

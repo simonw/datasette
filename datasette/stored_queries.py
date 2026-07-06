@@ -83,7 +83,6 @@ def stored_query_page_to_dict(page: StoredQueryPage) -> dict[str, Any]:
     return {
         "queries": [stored_query_to_dict(query) for query in page.queries],
         "next": page.next,
-        "has_more": page.has_more,
         "limit": page.limit,
     }
 

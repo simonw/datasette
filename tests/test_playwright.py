@@ -356,6 +356,14 @@ def binary_file_blob(datasette_server, pk):
     return response.content
 
 
+def wait_for_binary_control_file(binary_control, size, name=None):
+    binary_control.locator(
+        ".row-edit-binary-size", has_text=f"Binary: {size} bytes"
+    ).wait_for()
+    if name:
+        binary_control.locator(".row-edit-binary-name", has_text=name).wait_for()
+
+
 def bulk_default_rows(datasette_server, **filters):
     params = {
         "_shape": "objects",
@@ -1516,11 +1524,7 @@ def test_edit_row_binary_control_replaces_blob_from_file(page, datasette_server)
             "buffer": replacement,
         }
     )
-    assert (
-        binary_control.locator(".row-edit-binary-size").inner_text()
-        == f"Binary: {len(replacement)} bytes"
-    )
-    assert "replacement.bin" in binary_control.inner_text()
+    wait_for_binary_control_file(binary_control, len(replacement), "replacement.bin")
 
     dialog.locator(".row-edit-save").click()
     page.locator(".row-mutation-status", has_text="Updated row 1").wait_for()
@@ -1547,10 +1551,7 @@ def test_edit_row_binary_control_handles_null_blob(page, datasette_server):
             "buffer": replacement,
         }
     )
-    assert (
-        binary_control.locator(".row-edit-binary-size").inner_text()
-        == f"Binary: {len(replacement)} bytes"
-    )
+    wait_for_binary_control_file(binary_control, len(replacement), "from-null.bin")
 
     dialog.locator(".row-edit-save").click()
     page.locator(".row-mutation-status", has_text="Updated row 3").wait_for()
@@ -1583,11 +1584,7 @@ def test_insert_row_binary_control_accepts_pasted_file(page, datasette_server):
         }""",
         list(pasted),
     )
-    assert (
-        binary_control.locator(".row-edit-binary-size").inner_text()
-        == f"Binary: {len(pasted)} bytes"
-    )
-    assert "pasted.bin" in binary_control.inner_text()
+    wait_for_binary_control_file(binary_control, len(pasted), "pasted.bin")
 
     dialog.locator(".row-edit-save").click()
     page.locator(".row-mutation-status", has_text="Inserted row 4").wait_for()

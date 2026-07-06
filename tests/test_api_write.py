@@ -169,7 +169,10 @@ async def test_base64_write_api_insert_upsert_update_decode_blobs(ds_write):
         headers=_headers(token),
     )
     assert update_response.status_code == 200
-    assert update_response.json()["row"]["data"] == {"$base64": True, "encoded": "/wAB"}
+    assert update_response.json()["rows"][0]["data"] == {
+        "$base64": True,
+        "encoded": "/wAB",
+    }
 
     rows = (await db.execute("""
             select
@@ -344,10 +347,9 @@ async def test_insert_rows_post_body_too_large(tmp_path_factory):
         headers=_headers(token),
     )
     assert response.status_code == 413
-    assert response.json() == {
-        "ok": False,
-        "errors": ["Request body exceeded maximum size of 100 bytes"],
-    }
+    assert response.json() == error_body(
+        ["Request body exceeded maximum size of 100 bytes"], 413
+    )
     # A small body should still work
     response2 = await ds.client.post(
         "/data/docs/-/insert",

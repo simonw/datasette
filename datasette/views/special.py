@@ -501,13 +501,9 @@ class PermissionRulesView(BaseView):
         # JSON API - action parameter is required
         action = request.args.get("action")
         if not action:
-            return Response.json(
-                error_body("action parameter is required", 400), status=400
-            )
+            return Response.error("action parameter is required", 400)
         if action not in self.ds.actions:
-            return Response.json(
-                error_body(f"Unknown action: {action}", 404), status=404
-            )
+            return Response.error(f"Unknown action: {action}", 404)
 
         actor = request.actor if isinstance(request.actor, dict) else None
 
@@ -516,15 +512,13 @@ class PermissionRulesView(BaseView):
             if page < 1:
                 raise ValueError
         except ValueError:
-            return Response.json(
-                error_body("_page must be a positive integer", 400), status=400
-            )
+            return Response.error("_page must be a positive integer", 400)
         try:
             page_size = parse_size_limit(
                 request.args.get("_size"), default=50, maximum=200
             )
         except ValueError as ex:
-            return Response.json(error_body(str(ex), 400), status=400)
+            return Response.error(str(ex), 400)
         offset = (page - 1) * page_size
 
         from datasette.utils.actions_sql import build_permission_rules_sql
@@ -673,9 +667,7 @@ class PermissionCheckView(BaseView):
         # JSON API - action parameter is required
         action = request.args.get("action")
         if not action:
-            return Response.json(
-                error_body("action parameter is required", 400), status=400
-            )
+            return Response.error("action parameter is required", 400)
 
         parent = request.args.get("parent")
         child = request.args.get("child")

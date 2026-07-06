@@ -5,7 +5,7 @@ from datasette.resources import DatabaseResource
 from datasette.utils import UNSTABLE_API_MESSAGE, sqlite3
 from datasette.utils.asgi import Response
 
-from .base import BaseView, _error
+from .base import BaseView
 from .database import display_rows as display_query_rows
 from .query_helpers import (
     QueryValidationError,
@@ -348,7 +348,7 @@ class ExecuteWriteView(BaseView):
         )
         if not db.is_mutable:
             return _block_framing(
-                _error(
+                Response.error(
                     ["Cannot execute write SQL because this database is immutable."],
                     403,
                 )
@@ -367,10 +367,10 @@ class ExecuteWriteView(BaseView):
             actor=request.actor,
         ):
             return _block_framing(
-                _error(["Permission denied: need execute-write-sql"], 403)
+                Response.error(["Permission denied: need execute-write-sql"], 403)
             )
         if not db.is_mutable:
-            return _block_framing(_error(["Database is immutable"], 403))
+            return _block_framing(Response.error(["Database is immutable"], 403))
 
         data = {}
         is_json = request.headers.get("content-type", "").startswith("application/json")
@@ -384,7 +384,7 @@ class ExecuteWriteView(BaseView):
             )
         except QueryValidationError as ex:
             if _wants_json(request, is_json, data):
-                return _block_framing(_error([ex.message], ex.status))
+                return _block_framing(Response.error([ex.message], ex.status))
             if ex.flash:
                 self.ds.add_message(request, ex.message, self.ds.ERROR)
             return await self._render_form(
@@ -405,7 +405,7 @@ class ExecuteWriteView(BaseView):
         except sqlite3.DatabaseError as ex:
             message = str(ex)
             if wants_json:
-                return _block_framing(_error([message], 400))
+                return _block_framing(Response.error([message], 400))
             return await self._render_form(
                 request,
                 db,
@@ -488,13 +488,13 @@ class ExecuteWriteAnalyzeView(BaseView):
             actor=request.actor,
         ):
             return _block_framing(
-                _error(["Permission denied: need execute-write-sql"], 403)
+                Response.error(["Permission denied: need execute-write-sql"], 403)
             )
 
         invalid_keys = set(request.args) - {"sql"}
         if invalid_keys:
             return _block_framing(
-                _error(
+                Response.error(
                     ["Invalid keys: {}".format(", ".join(sorted(invalid_keys)))],
                     400,
                 )

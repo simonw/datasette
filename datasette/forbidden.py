@@ -1,5 +1,5 @@
 from datasette import hookimpl, Response
-from .utils import add_cors_headers, error_body
+from .utils import add_cors_headers
 
 
 @hookimpl(trylast=True)
@@ -13,7 +13,7 @@ def forbidden(datasette, request, message):
             headers = {}
             if datasette.cors:
                 add_cors_headers(headers)
-            return Response.json(error_body(message, 403), status=403, headers=headers)
+            return Response.error(message, 403, headers=headers)
         return Response.html(
             await datasette.render_template(
                 "error.html",

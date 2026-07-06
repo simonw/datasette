@@ -1,6 +1,6 @@
 import json
 from typing import Optional
-from datasette.utils import MultiParams, calculate_etag, sha256_file
+from datasette.utils import MultiParams, calculate_etag, error_body, sha256_file
 from datasette.utils.multipart import (
     parse_form_data,
     MultipartParseError,
@@ -574,6 +574,18 @@ class Response:
             headers=headers,
             content_type="application/json; charset=utf-8",
         )
+
+    @classmethod
+    def error(cls, messages, status=400, headers=None):
+        """
+        A JSON error response using Datasette's standard error format.
+
+        messages can be a single string or a list of strings. For errors
+        that should content-negotiate between JSON and HTML, raise
+        Forbidden, NotFound, BadRequest or DatasetteError instead and let
+        Datasette's error handling hooks build the response.
+        """
+        return cls.json(error_body(messages, status), status=status, headers=headers)
 
     @classmethod
     def redirect(cls, path, status=302, headers=None):

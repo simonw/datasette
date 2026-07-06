@@ -5,7 +5,6 @@ import sys
 from datasette.utils.asgi import Request
 from datasette.utils import (
     add_cors_headers,
-    error_body,
     EscapeHtmlWriter,
     InvalidSql,
     LimitedWriter,
@@ -53,7 +52,7 @@ class View:
             request.path.endswith(".json")
             or request.headers.get("content-type") == "application/json"
         ):
-            response = Response.json(error_body("Method not allowed", 405), status=405)
+            response = Response.error("Method not allowed", 405)
         else:
             response = Response.text("Method not allowed", status=405)
         return response
@@ -92,7 +91,7 @@ class BaseView:
             request.path.endswith(".json")
             or request.headers.get("content-type") == "application/json"
         ):
-            response = Response.json(error_body("Method not allowed", 405), status=405)
+            response = Response.error("Method not allowed", 405)
         else:
             response = Response.text("Method not allowed", status=405)
         return response
@@ -178,10 +177,6 @@ class BaseView:
         view.__module__ = cls.__module__
         view.__name__ = cls.__name__
         return view
-
-
-def _error(messages, status=400):
-    return Response.json(error_body(messages, status), status=status)
 
 
 async def stream_csv(datasette, fetch_data, request, database):

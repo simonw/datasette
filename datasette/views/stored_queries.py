@@ -5,7 +5,7 @@ from datasette.stored_queries import stored_query_to_dict
 from datasette.utils import UNSTABLE_API_MESSAGE, sqlite3, tilde_decode
 from datasette.utils.asgi import Response
 
-from .base import BaseView, _error
+from .base import BaseView
 from .query_helpers import (
     QueryValidationError,
     _as_bool,
@@ -34,12 +34,14 @@ class QueryParametersView(BaseView):
             resource=DatabaseResource(db.name),
             actor=request.actor,
         ):
-            return _block_framing(_error(["Permission denied: need execute-sql"], 403))
+            return _block_framing(
+                Response.error(["Permission denied: need execute-sql"], 403)
+            )
 
         invalid_keys = set(request.args) - {"sql"}
         if invalid_keys:
             return _block_framing(
-                _error(
+                Response.error(
                     ["Invalid keys: {}".format(", ".join(sorted(invalid_keys)))],
                     400,
                 )
@@ -47,7 +49,7 @@ class QueryParametersView(BaseView):
         try:
             parameters = _derived_query_parameters(request.args.get("sql") or "")
         except QueryValidationError as ex:
-            return _block_framing(_error([ex.message], ex.status))
+            return _block_framing(Response.error([ex.message], ex.status))
         return _block_framing(
             Response.json(
                 {
@@ -95,7 +97,7 @@ class QueryListView(BaseView):
             is_write = _as_optional_bool(request.args.get("is_write"), "is_write")
             is_private = _as_optional_bool(request.args.get("is_private"), "is_private")
         except QueryValidationError as ex:
-            return _error([ex.message], ex.status)
+            return Response.error([ex.message], ex.status)
 
         page = await self.ds.list_queries(
             database,
@@ -306,18 +308,22 @@ class QueryCreateAnalyzeView(BaseView):
             resource=DatabaseResource(db.name),
             actor=request.actor,
         ):
-            return _block_framing(_error(["Permission denied: need execute-sql"], 403))
+            return _block_framing(
+                Response.error(["Permission denied: need execute-sql"], 403)
+            )
         if not await self.ds.allowed(
             action="store-query",
             resource=DatabaseResource(db.name),
             actor=request.actor,
         ):
-            return _block_framing(_error(["Permission denied: need store-query"], 403))
+            return _block_framing(
+                Response.error(["Permission denied: need store-query"], 403)
+            )
 
         invalid_keys = set(request.args) - {"sql"}
         if invalid_keys:
             return _block_framing(
-                _error(
+                Response.error(
                     ["Invalid keys: {}".format(", ".join(sorted(invalid_keys)))],
                     400,
                 )
@@ -352,13 +358,13 @@ class QueryStoreView(QueryCreateView):
             resource=DatabaseResource(db.name),
             actor=request.actor,
         ):
-            return _error(["Permission denied: need execute-sql"], 403)
+            return Response.error(["Permission denied: need execute-sql"], 403)
         if not await self.ds.allowed(
             action="store-query",
             resource=DatabaseResource(db.name),
             actor=request.actor,
         ):
-            return _error(["Permission denied: need store-query"], 403)
+            return Response.error(["Permission denied: need store-query"], 403)
 
         is_json = False
         query_data = {}
@@ -375,7 +381,7 @@ class QueryStoreView(QueryCreateView):
                 return await self._error_response(
                     request, db, query_data, ex.message, ex.status
                 )
-            return _error([ex.message], ex.status)
+            return Response.error([ex.message], ex.status)
 
         prepared.pop("analysis")
         name = prepared.pop("name")
@@ -384,7 +390,7 @@ class QueryStoreView(QueryCreateView):
         except sqlite3.IntegrityError as ex:
             if not is_json and isinstance(query_data, dict):
                 return await self._error_response(request, db, query_data, str(ex), 400)
-            return _error([str(ex)], 400)
+            return Response.error([str(ex)], 400)
 
         query = await self.ds.get_query(db.name, name)
         assert query is not None
@@ -409,13 +415,13 @@ class QueryDefinitionView(BaseView):
         query_name = tilde_decode(request.url_vars["query"])
         query = await self.ds.get_query(db.name, query_name)
         if query is None:
-            return _error(["Query not found: {}".format(query_name)], 404)
+            return Response.error(["Query not found: {}".format(query_name)], 404)
         if not await self.ds.allowed(
             action="view-query",
             resource=QueryResource(db.name, query_name),
             actor=request.actor,
         ):
-            return _error(["Permission denied"], 403)
+            return Response.error(["Permission denied"], 403)
         return Response.json(
             {
                 "ok": True,
@@ -433,15 +439,17 @@ class QueryUpdateView(BaseView):
         query_name = tilde_decode(request.url_vars["query"])
         existing = await self.ds.get_query(db.name, query_name)
         if existing is None:
-            return _error(["Query not found: {}".format(query_name)], 404)
+            return Response.error(["Query not found: {}".format(query_name)], 404)
         if not await self.ds.allowed(
             action="update-query",
             resource=QueryResource(db.name, query_name),
             actor=request.actor,
         ):
-            return _error(["Permission denied: need update-query"], 403)
+            return Response.error(["Permission denied: need update-query"], 403)
         if existing.is_trusted:
-            return _error(["Trusted queries cannot be updated using the API"], 403)
+            return Response.error(
+                ["Trusted queries cannot be updated using the API"], 403
+            )
 
         try:
             data, _ = await _json_or_form_payload(request)
@@ -467,7 +475,7 @@ class QueryUpdateView(BaseView):
                 self.ds, request, db, existing, update
             )
         except QueryValidationError as ex:
-            return _error([ex.message], ex.status)
+            return Response.error([ex.message], ex.status)
 
         await self.ds.update_query(db.name, query_name, **update_kwargs)
         if data.get("return"):
@@ -524,32 +532,32 @@ class QueryEditView(BaseView):
     async def get(self, request):
         db, query_name, existing = await self._load(request)
         if existing is None:
-            return _error(["Query not found: {}".format(query_name)], 404)
+            return Response.error(["Query not found: {}".format(query_name)], 404)
         await self.ds.ensure_permission(
             action="update-query",
             resource=QueryResource(db.name, query_name),
             actor=request.actor,
         )
         if existing.is_trusted:
-            return _error(["Trusted queries cannot be edited"], 403)
+            return Response.error(["Trusted queries cannot be edited"], 403)
         return await self._render_form(request, db, existing)
 
     async def post(self, request):
         db, query_name, existing = await self._load(request)
         if existing is None:
-            return _error(["Query not found: {}".format(query_name)], 404)
+            return Response.error(["Query not found: {}".format(query_name)], 404)
         if not await self.ds.allowed(
             action="update-query",
             resource=QueryResource(db.name, query_name),
             actor=request.actor,
         ):
-            return _error(["Permission denied: need update-query"], 403)
+            return Response.error(["Permission denied: need update-query"], 403)
         if existing.is_trusted:
-            return _error(["Trusted queries cannot be edited"], 403)
+            return Response.error(["Trusted queries cannot be edited"], 403)
 
         data, _ = await _json_or_form_payload(request)
         if not isinstance(data, dict):
-            return _error(["Invalid form submission"], 400)
+            return Response.error(["Invalid form submission"], 400)
         sql = data.get("sql")
         sql = existing.sql if sql is None else sql.strip()
         title = data.get("title") or ""
@@ -621,14 +629,16 @@ class QueryDeleteView(BaseView):
     async def get(self, request):
         db, query_name, existing = await self._load(request)
         if existing is None:
-            return _error(["Query not found: {}".format(query_name)], 404)
+            return Response.error(["Query not found: {}".format(query_name)], 404)
         await self.ds.ensure_permission(
             action="delete-query",
             resource=QueryResource(db.name, query_name),
             actor=request.actor,
         )
         if existing.is_trusted:
-            return _error(["Trusted queries cannot be deleted using the API"], 403)
+            return Response.error(
+                ["Trusted queries cannot be deleted using the API"], 403
+            )
         return await self.render(
             ["query_delete.html"],
             request,
@@ -643,15 +653,17 @@ class QueryDeleteView(BaseView):
     async def post(self, request):
         db, query_name, existing = await self._load(request)
         if existing is None:
-            return _error(["Query not found: {}".format(query_name)], 404)
+            return Response.error(["Query not found: {}".format(query_name)], 404)
         if not await self.ds.allowed(
             action="delete-query",
             resource=QueryResource(db.name, query_name),
             actor=request.actor,
         ):
-            return _error(["Permission denied: need delete-query"], 403)
+            return Response.error(["Permission denied: need delete-query"], 403)
         if existing.is_trusted:
-            return _error(["Trusted queries cannot be deleted using the API"], 403)
+            return Response.error(
+                ["Trusted queries cannot be deleted using the API"], 403
+            )
 
         data, is_json = await _json_or_form_payload(request)
         await self.ds.remove_query(db.name, query_name)

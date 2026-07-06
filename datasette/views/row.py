@@ -12,7 +12,7 @@ from datasette.utils.asgi import NotFound, Forbidden, PayloadTooLarge, Response
 from datasette.database import QueryInterrupted
 from datasette.events import UpdateRowEvent, DeleteRowEvent
 from datasette.resources import TableResource
-from .base import BaseView, DatasetteError, _error, stream_csv
+from .base import BaseView, DatasetteError, stream_csv
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
@@ -715,11 +715,13 @@ async def _resolve_row_and_check_permission(datasette, request, permission):
     try:
         resolved = await datasette.resolve_row(request)
     except DatabaseNotFound as e:
-        return False, _error(["Database not found: {}".format(e.database_name)], 404)
+        return False, Response.error(
+            ["Database not found: {}".format(e.database_name)], 404
+        )
     except TableNotFound as e:
-        return False, _error(["Table not found: {}".format(e.table)], 404)
+        return False, Response.error(["Table not found: {}".format(e.table)], 404)
     except RowNotFound as e:
-        return False, _error(["Record not found: {}".format(e.pk_values)], 404)
+        return False, Response.error(["Record not found: {}".format(e.pk_values)], 404)
 
     # Ensure user has permission to delete this row
     if not await datasette.allowed(
@@ -727,7 +729,7 @@ async def _resolve_row_and_check_permission(datasette, request, permission):
         resource=TableResource(database=resolved.db.name, table=resolved.table),
         actor=request.actor,
     ):
-        return False, _error(["Permission denied"], 403)
+        return False, Response.error(["Permission denied"], 403)
 
     return True, resolved
 
@@ -752,7 +754,7 @@ class RowDeleteView(BaseView):
         try:
             await resolved.db.execute_write_fn(delete_row, request=request)
         except Exception as e:
-            return _error([str(e)], 400)
+            return Response.error([str(e)], 400)
 
         await self.ds.track_event(
             DeleteRowEvent(
@@ -791,24 +793,24 @@ class RowUpdateView(BaseView):
         try:
             data = await request.json()
         except json.JSONDecodeError as e:
-            return _error(["Invalid JSON: {}".format(e)])
+            return Response.error(["Invalid JSON: {}".format(e)])
         except PayloadTooLarge as e:
-            return _error([str(e)], 413)
+            return Response.error([str(e)], 413)
 
         if not isinstance(data, dict):
-            return _error(["JSON must be a dictionary"])
+            return Response.error(["JSON must be a dictionary"])
         if "update" not in data or not isinstance(data["update"], dict):
-            return _error(["JSON must contain an update dictionary"])
+            return Response.error(["JSON must contain an update dictionary"])
 
         invalid_keys = set(data.keys()) - {"update", "return", "alter"}
         if invalid_keys:
-            return _error(["Invalid keys: {}".format(", ".join(invalid_keys))])
+            return Response.error(["Invalid keys: {}".format(", ".join(invalid_keys))])
 
         update = data["update"]
         try:
             update = decode_write_json_row(update)
         except WriteJsonValueError as e:
-            return _error([str(e)], 400)
+            return Response.error([str(e)], 400)
 
         # Validate column types
         from datasette.views.table import _validate_column_types
@@ -817,7 +819,7 @@ class RowUpdateView(BaseView):
             self.ds, resolved.db.name, resolved.table, [update]
         )
         if ct_errors:
-            return _error(ct_errors, 400)
+            return Response.error(ct_errors, 400)
 
         alter = data.get("alter")
         if alter and not await self.ds.allowed(
@@ -825,7 +827,7 @@ class RowUpdateView(BaseView):
             resource=TableResource(database=resolved.db.name, table=resolved.table),
             actor=request.actor,
         ):
-            return _error(["Permission denied for alter-table"], 403)
+            return Response.error(["Permission denied for alter-table"], 403)
 
         def update_row(conn):
             sqlite_utils.Database(conn)[resolved.table].update(
@@ -835,7 +837,7 @@ class RowUpdateView(BaseView):
         try:
             await resolved.db.execute_write_fn(update_row, request=request)
         except Exception as e:
-            return _error([str(e)], 400)
+            return Response.error([str(e)], 400)
 
         result = {"ok": True}
         returned_row = None

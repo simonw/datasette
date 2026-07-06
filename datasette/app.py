@@ -113,7 +113,6 @@ from .utils import (
     detect_json1,
     add_cors_headers,
     display_actor,
-    error_body,
     escape_css_string,
     escape_sqlite,
     find_spatialite,
@@ -2958,9 +2957,7 @@ class DatasetteRouter:
         headers = {"www-authenticate": 'Bearer error="invalid_token"'}
         if self.ds.cors:
             add_cors_headers(headers)
-        response = Response.json(
-            error_body([str(exception)], 401), status=401, headers=headers
-        )
+        response = Response.error([str(exception)], 401, headers=headers)
         await response.asgi_send(send)
 
     async def handle_404(self, request, send, exception=None):

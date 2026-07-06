@@ -29,7 +29,7 @@ from datasette.utils import (
 from datasette.utils.asgi import NotFound, PayloadTooLarge, Response
 from datasette.utils.sqlite import sqlite_hidden_table_names
 
-from .base import BaseView, _error
+from .base import BaseView
 
 CREATE_TABLE_COLUMN_TYPES = ["text", "integer", "float", "blob"]
 CREATE_TABLE_SQLITE_TYPES = {
@@ -805,22 +805,22 @@ class TableCreateView(BaseView):
             resource=DatabaseResource(database=database_name),
             actor=request.actor,
         ):
-            return _error(["Permission denied"], 403)
+            return Response.error(["Permission denied"], 403)
 
         try:
             data = await request.json()
         except json.JSONDecodeError as e:
-            return _error(["Invalid JSON: {}".format(e)])
+            return Response.error(["Invalid JSON: {}".format(e)])
         except PayloadTooLarge as e:
-            return _error([str(e)], 413)
+            return Response.error([str(e)], 413)
 
         if not isinstance(data, dict):
-            return _error(["JSON must be an object"])
+            return Response.error(["JSON must be an object"])
 
         try:
             create_request = CreateTableRequest.model_validate(data)
         except ValidationError as e:
-            return _error(_create_table_pydantic_errors(e))
+            return Response.error(_create_table_pydantic_errors(e))
 
         ignore = create_request.ignore
         replace = create_request.replace
@@ -832,7 +832,7 @@ class TableCreateView(BaseView):
                 resource=DatabaseResource(database=database_name),
                 actor=request.actor,
             ):
-                return _error(["Permission denied: need update-row"], 403)
+                return Response.error(["Permission denied: need update-row"], 403)
 
         table_name = create_request.table
         table_exists = await db.table_exists(table_name)
@@ -846,11 +846,11 @@ class TableCreateView(BaseView):
                 resource=DatabaseResource(database=database_name),
                 actor=request.actor,
             ):
-                return _error(["Permission denied: need insert-row"], 403)
+                return Response.error(["Permission denied: need insert-row"], 403)
             try:
                 rows = decode_write_json_rows(rows)
             except WriteJsonValueError as e:
-                return _error([str(e)], 400)
+                return Response.error([str(e)], 400)
 
         alter = False
         if rows:
@@ -865,7 +865,9 @@ class TableCreateView(BaseView):
                         resource=DatabaseResource(database=database_name),
                         actor=request.actor,
                     ):
-                        return _error(["Permission denied: need alter-table"], 403)
+                        return Response.error(
+                            ["Permission denied: need alter-table"], 403
+                        )
                     alter = True
 
         pk = create_request.pk
@@ -881,7 +883,7 @@ class TableCreateView(BaseView):
             elif len(actual_pks) > 1 and pks and set(pks) != set(actual_pks):
                 bad_pks = True
             if bad_pks:
-                return _error(["pk cannot be changed for existing table"])
+                return Response.error(["pk cannot be changed for existing table"])
             pks = actual_pks
 
         initial_schema = None
@@ -924,7 +926,7 @@ class TableCreateView(BaseView):
         try:
             schema = await db.execute_write_fn(create_table, request=request)
         except Exception as e:
-            return _error([str(e)])
+            return Response.error([str(e)])
 
         if initial_schema is not None and initial_schema != schema:
             await self.ds.track_event(
@@ -999,7 +1001,7 @@ class DatabaseForeignKeyTargetsView(BaseView):
                 actor=request.actor,
             )
         if not (can_create_table or can_alter_table):
-            return _error(["Permission denied: need create-table"], 403)
+            return Response.error(["Permission denied: need create-table"], 403)
 
         hidden_tables = await db.execute_fn(
             lambda conn: set(sqlite_hidden_table_names(conn))
@@ -1028,21 +1030,21 @@ class TableForeignKeySuggestionsView(BaseView):
         try:
             resolved = await self.ds.resolve_table(request)
         except NotFound as e:
-            return _error([e.args[0]], 404)
+            return Response.error([e.args[0]], 404)
 
         db = resolved.db
         database_name = db.name
         table_name = resolved.table
 
         if resolved.is_view:
-            return _error(["Cannot suggest foreign keys for a view"], 400)
+            return Response.error(["Cannot suggest foreign keys for a view"], 400)
 
         if not await self.ds.allowed(
             action="alter-table",
             resource=TableResource(database=database_name, table=table_name),
             actor=request.actor,
         ):
-            return _error(["Permission denied: need alter-table"], 403)
+            return Response.error(["Permission denied: need alter-table"], 403)
 
         source_columns, targets, current_by_column = await db.execute_fn(
             lambda conn: _foreign_key_suggestion_metadata(conn, table_name)
@@ -1150,7 +1152,7 @@ class TableAlterView(BaseView):
         try:
             resolved = await self.ds.resolve_table(request)
         except NotFound as e:
-            return _error([e.args[0]], 404)
+            return Response.error([e.args[0]], 404)
 
         db = resolved.db
         database_name = db.name
@@ -1161,25 +1163,25 @@ class TableAlterView(BaseView):
             resource=TableResource(database=database_name, table=table_name),
             actor=request.actor,
         ):
-            return _error(["Permission denied: need alter-table"], 403)
+            return Response.error(["Permission denied: need alter-table"], 403)
 
         if not db.is_mutable:
-            return _error(["Database is immutable"], 403)
+            return Response.error(["Database is immutable"], 403)
 
         try:
             data = await request.json()
         except json.JSONDecodeError as e:
-            return _error(["Invalid JSON: {}".format(e)], 400)
+            return Response.error(["Invalid JSON: {}".format(e)], 400)
         except PayloadTooLarge as e:
-            return _error([str(e)], 413)
+            return Response.error([str(e)], 413)
 
         if not isinstance(data, dict):
-            return _error(["JSON must be a dictionary"], 400)
+            return Response.error(["JSON must be a dictionary"], 400)
 
         try:
             alter_request = AlterTableRequest.model_validate(data)
         except ValidationError as e:
-            return _error(_pydantic_errors(e), 400)
+            return Response.error(_pydantic_errors(e), 400)
 
         def alter_table(conn):
             before_schema = _table_schema_from_conn(conn, table_name)
@@ -1328,7 +1330,7 @@ class TableAlterView(BaseView):
                 alter_table, request=request
             )
         except Exception as e:
-            return _error([str(e)], 400)
+            return Response.error([str(e)], 400)
 
         altered = before_schema != after_schema
         if altered:

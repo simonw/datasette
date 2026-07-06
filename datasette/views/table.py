@@ -22,9 +22,11 @@ from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
     call_with_supported_arguments,
+    CustomJSONEncoder,
     CustomRow,
     append_querystring,
     compound_keys_after_sql,
+    decode_write_json_rows,
     format_bytes,
     make_slot_function,
     tilde_encode,
@@ -41,9 +43,17 @@ from datasette.utils import (
     urlsafe_components,
     value_as_boolean,
     InvalidSql,
+    WriteJsonValueError,
     sqlite3,
 )
-from datasette.utils.asgi import BadRequest, Forbidden, NotFound, Request, Response
+from datasette.utils.asgi import (
+    BadRequest,
+    Forbidden,
+    NotFound,
+    PayloadTooLarge,
+    Request,
+    Response,
+)
 from datasette.filters import Filters
 import sqlite_utils
 from dataclasses import dataclass, field
@@ -206,7 +216,7 @@ class TableContext(Context):
     )
     table_insert_ui: dict = field(
         metadata={
-            "help": "Information needed to enable the row insertion UI, or ``None`` if row insertion is not available to the current actor. When present it has ``path``, ``tableName``, ``columns`` and ``primaryKeys`` keys; each column includes ``name``, ``sqlite_type``, ``notnull``, ``default``, ``has_default``, ``is_pk``, ``value_kind`` and ``column_type`` keys."
+            "help": "Information needed to enable the row insertion UI, or ``None`` if row insertion is not available to the current actor. When present it has ``path``, ``tableName``, ``columns``, ``bulkColumns``, ``primaryKeys`` and ``maxInsertRows`` keys, plus optional ``upsertPath`` if the current actor has permission to update rows. ``columns`` lists columns for the single-row insert form, while ``bulkColumns`` lists columns for the bulk insert form. Each column includes ``name``, ``sqlite_type``, ``notnull``, ``default``, ``has_default``, ``is_pk``, ``is_auto_pk``, ``value_kind`` and ``column_type`` keys."
         }
     )
     table_alter_ui: dict = field(
@@ -481,8 +491,15 @@ async def _table_insert_ui(
     ):
         return None
 
+    can_update = await datasette.allowed(
+        action="update-row",
+        resource=TableResource(database=database_name, table=table_name),
+        actor=request.actor,
+    )
+
     column_types_map = await datasette.get_column_types(database_name, table_name)
     columns = []
+    bulk_columns = []
     column_details = await db.table_column_details(table_name)
     for column in column_details:
         if column.hidden:
@@ -493,32 +510,40 @@ async def _table_insert_ui(
             and len(pks) == 1
             and SQLiteType.from_declared_type(column.type) == SQLiteType.INTEGER
         )
+        column_type = column_types_map.get(column.name)
+        column_data = {
+            "name": column.name,
+            "sqlite_type": _column_sqlite_type_for_insert_form(column),
+            "notnull": column.notnull,
+            "default": column.default_value,
+            "has_default": column.default_value is not None,
+            "is_pk": is_pk,
+            "is_auto_pk": is_auto_pk,
+            "value_kind": _column_value_kind_for_insert_form(column),
+            "column_type": (
+                {"type": column_type.name, "config": column_type.config}
+                if column_type is not None
+                else None
+            ),
+        }
+        bulk_columns.append(column_data)
         if is_auto_pk:
             continue
-        column_type = column_types_map.get(column.name)
-        columns.append(
-            {
-                "name": column.name,
-                "sqlite_type": _column_sqlite_type_for_insert_form(column),
-                "notnull": column.notnull,
-                "default": column.default_value,
-                "has_default": column.default_value is not None,
-                "is_pk": is_pk,
-                "value_kind": _column_value_kind_for_insert_form(column),
-                "column_type": (
-                    {"type": column_type.name, "config": column_type.config}
-                    if column_type is not None
-                    else None
-                ),
-            }
-        )
+        columns.append(column_data)
 
-    return {
+    data = {
         "path": "{}/-/insert".format(datasette.urls.table(database_name, table_name)),
         "tableName": table_name,
         "columns": columns,
+        "bulkColumns": bulk_columns,
         "primaryKeys": pks,
+        "maxInsertRows": datasette.setting("max_insert_rows"),
     }
+    if can_update:
+        data["upsertPath"] = "{}/-/upsert".format(
+            datasette.urls.table(database_name, table_name)
+        )
+    return data
 
 
 async def _table_alter_ui(
@@ -1053,11 +1078,18 @@ class TableInsertView(BaseView):
 
         pks = await db.primary_keys(table_name)
 
-        rows, errors, extras = await self._validate_data(
-            request, db, table_name, pks, upsert
-        )
+        try:
+            rows, errors, extras = await self._validate_data(
+                request, db, table_name, pks, upsert
+            )
+        except PayloadTooLarge as e:
+            return _error([str(e)], 413)
         if errors:
             return _error(errors, 400)
+        try:
+            rows = decode_write_json_rows(rows)
+        except WriteJsonValueError as e:
+            return _error([str(e)], 400)
 
         # Validate column types
         ct_errors = await _validate_column_types(
@@ -1192,7 +1224,11 @@ class TableInsertView(BaseView):
                     )
                 )
 
-        return Response.json(result, status=200 if upsert else 201)
+        return Response.json(
+            result,
+            status=200 if upsert else 201,
+            default=CustomJSONEncoder().default,
+        )
 
 
 class TableUpsertView(TableInsertView):
@@ -1232,6 +1268,8 @@ class TableSetColumnTypeView(BaseView):
             data = await request.json()
         except json.JSONDecodeError as e:
             return _error(["Invalid JSON: {}".format(e)], 400)
+        except PayloadTooLarge as e:
+            return _error([str(e)], 413)
 
         if not isinstance(data, dict):
             return _error(["JSON must be a dictionary"], 400)
@@ -1350,6 +1388,8 @@ class TableDropView(BaseView):
             confirm = data.get("confirm")
         except json.JSONDecodeError:
             pass
+        except PayloadTooLarge as e:
+            return _error([str(e)], 413)
 
         if not confirm:
             return Response.json(

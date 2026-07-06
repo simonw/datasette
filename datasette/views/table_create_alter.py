@@ -20,11 +20,13 @@ from datasette.column_types import SQLiteType
 from datasette.events import AlterTableEvent, CreateTableEvent, InsertRowsEvent
 from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
+    decode_write_json_rows,
     escape_sqlite,
     get_outbound_foreign_keys,
     table_column_details,
+    WriteJsonValueError,
 )
-from datasette.utils.asgi import NotFound, Response
+from datasette.utils.asgi import NotFound, PayloadTooLarge, Response
 from datasette.utils.sqlite import sqlite_hidden_table_names
 
 from .base import BaseView, _error
@@ -267,6 +269,11 @@ async def _create_table_ui_context(
         "databaseName": database_name,
         "columnTypes": CREATE_TABLE_COLUMN_TYPES,
         "defaultExpressions": default_expression_options(),
+        "canInsertRows": await datasette.allowed(
+            action="insert-row",
+            resource=DatabaseResource(database=database_name),
+            actor=request.actor,
+        ),
     }
     can_set_column_type = await datasette.allowed(
         action="set-column-type",
@@ -804,6 +811,8 @@ class TableCreateView(BaseView):
             data = await request.json()
         except json.JSONDecodeError as e:
             return _error(["Invalid JSON: {}".format(e)])
+        except PayloadTooLarge as e:
+            return _error([str(e)], 413)
 
         if not isinstance(data, dict):
             return _error(["JSON must be an object"])
@@ -838,6 +847,10 @@ class TableCreateView(BaseView):
                 actor=request.actor,
             ):
                 return _error(["Permission denied: need insert-row"], 403)
+            try:
+                rows = decode_write_json_rows(rows)
+            except WriteJsonValueError as e:
+                return _error([str(e)], 400)
 
         alter = False
         if rows:
@@ -1161,6 +1174,8 @@ class TableAlterView(BaseView):
             data = await request.json()
         except json.JSONDecodeError as e:
             return _error(["Invalid JSON: {}".format(e)], 400)
+        except PayloadTooLarge as e:
+            return _error([str(e)], 413)
 
         if not isinstance(data, dict):
             return _error(["JSON must be a dictionary"], 400)

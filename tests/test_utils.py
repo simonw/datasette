@@ -132,7 +132,11 @@ def test_path_from_row_pks(row, pks, expected_path):
             """
         {"CategoryID": 1, "Description": "Soft drinks", "Picture": {"$base64": true, "encoded": "FRwCx60F/g=="}}
     """.strip(),
-        )
+        ),
+        (
+            {"message": b"hello"},
+            '{"message": {"$base64": true, "encoded": "aGVsbG8="}}',
+        ),
     ],
 )
 def test_custom_json_encoder(obj, expected):

@@ -52,6 +52,9 @@ The request object is passed to various plugin hooks. It represents an incoming 
 ``.actor`` - dictionary (str -> Any) or None
     The currently authenticated actor (see :ref:`actors <authentication_actor>`), or ``None`` if the request is unauthenticated.
 
+``.max_post_body_bytes`` - integer
+    The maximum number of bytes ``await request.post_body()`` will read into memory, or ``0`` for no limit. Set from the :ref:`setting_max_post_body_bytes` setting (default 2MB) for requests created by Datasette. Can be passed to the ``Request`` constructor as a keyword argument.
+
 The object also has the following awaitable methods:
 
 ``await request.form(files=False, ...)`` - FormData
@@ -109,8 +112,10 @@ The object also has the following awaitable methods:
 ``await request.json()`` - Any
     Returns the parsed JSON body of a request submitted by ``POST``.
 
-``await request.post_body()`` - bytes
+``await request.post_body(max_bytes=None)`` - bytes
     Returns the un-parsed body of a request submitted by ``POST`` - useful for things like incoming JSON data.
+
+    The body is read fully into memory, capped at ``request.max_post_body_bytes`` - which Datasette sets from the :ref:`setting_max_post_body_bytes` setting (default 2MB). Bodies that exceed the limit raise a ``datasette.PayloadTooLarge`` exception, which Datasette turns into an HTTP 413 error response. Pass ``max_bytes=`` to override the limit for a specific call, or ``max_bytes=0`` to disable it. ``request.post_vars()`` and ``request.json()`` read the body through this method, so the same limit applies to them.
 
 And a class method that can be used to create fake request objects for use in tests:
 

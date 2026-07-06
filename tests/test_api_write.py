@@ -3,7 +3,29 @@ from datasette.events import RenameTableEvent
 from datasette.utils import error_body, escape_sqlite, sqlite3
 from .utils import last_event
 import pytest
+import re
 import time
+
+
+def schema_variants(schema):
+    # sqlite-utils < 4 quotes identifiers [like_this] and uses FLOAT;
+    # sqlite-utils >= 4 quotes them "like_this" and uses REAL. Given a
+    # schema fragment in the old format, return both variants so tests
+    # can pass against either version.
+    converted = re.sub(r"\[([^\]]+)\]", r'"\1"', schema).replace("FLOAT", "REAL")
+    return (schema, converted)
+
+
+def assert_schema_contains(fragment, schema):
+    assert any(
+        variant in schema for variant in schema_variants(fragment)
+    ), "Expected schema to contain {!r}, got {!r}".format(fragment, schema)
+
+
+def assert_schema_not_contains(fragment, schema):
+    assert not any(
+        variant in schema for variant in schema_variants(fragment)
+    ), "Expected schema not to contain {!r}, got {!r}".format(fragment, schema)
 
 
 @pytest.fixture
@@ -48,6 +70,133 @@ def _insert_and_fetch_created(conn, table, insert_sql):
         ),
         (cursor.lastrowid,),
     ).fetchone()
+
+
+BASE64_WRITE_API_VALUE = {"$base64": True, "encoded": "AAEC/f7/"}
+BASE64_WRITE_API_LITERAL = '{"$base64": true, "encoded": "AAEC/f7/"}'
+
+
+@pytest.mark.asyncio
+async def test_base64_write_api_create_table_infers_blob_and_raw_escapes(ds_write):
+    token = write_token(ds_write)
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "binary_create",
+            "row": {
+                "id": 1,
+                "data": BASE64_WRITE_API_VALUE,
+                "literal": {"$raw": BASE64_WRITE_API_VALUE},
+                "double_raw": {"$raw": {"$raw": BASE64_WRITE_API_VALUE}},
+            },
+            "pk": "id",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201
+    assert_schema_contains("[data] BLOB", response.json()["schema"])
+    assert_schema_contains("[literal] TEXT", response.json()["schema"])
+
+    rows = (await ds_write.get_database("data").execute("""
+            select
+              typeof(data) as data_type,
+              hex(data) as data_hex,
+              typeof(literal) as literal_type,
+              literal,
+              typeof(double_raw) as double_raw_type,
+              double_raw
+            from binary_create
+            """)).dicts()
+    assert rows == [
+        {
+            "data_type": "blob",
+            "data_hex": "000102FDFEFF",
+            "literal_type": "text",
+            "literal": BASE64_WRITE_API_LITERAL,
+            "double_raw_type": "text",
+            "double_raw": '{"$raw": {"$base64": true, "encoded": "AAEC/f7/"}}',
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_base64_write_api_insert_upsert_update_decode_blobs(ds_write):
+    token = write_token(ds_write)
+    db = ds_write.get_database("data")
+    await db.execute_write(
+        "create table binary_api (id integer primary key, data blob, literal text)"
+    )
+
+    insert_response = await ds_write.client.post(
+        "/data/binary_api/-/insert",
+        json={
+            "row": {
+                "id": 1,
+                "data": BASE64_WRITE_API_VALUE,
+                "literal": {"$raw": BASE64_WRITE_API_VALUE},
+            }
+        },
+        headers=_headers(token),
+    )
+    assert insert_response.status_code == 201
+    assert insert_response.json()["rows"][0]["data"] == BASE64_WRITE_API_VALUE
+
+    upsert_response = await ds_write.client.post(
+        "/data/binary_api/-/upsert",
+        json={
+            "rows": [
+                {
+                    "id": 2,
+                    "data": BASE64_WRITE_API_VALUE,
+                    "literal": {"$raw": BASE64_WRITE_API_VALUE},
+                }
+            ]
+        },
+        headers=_headers(token),
+    )
+    assert upsert_response.status_code == 200
+    assert upsert_response.json() == {"ok": True}
+
+    update_response = await ds_write.client.post(
+        "/data/binary_api/1/-/update",
+        json={
+            "update": {
+                "data": {"$base64": True, "encoded": "/wAB"},
+                "literal": {"$raw": {"$raw": BASE64_WRITE_API_VALUE}},
+            },
+            "return": True,
+        },
+        headers=_headers(token),
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["row"]["data"] == {"$base64": True, "encoded": "/wAB"}
+
+    rows = (await db.execute("""
+            select
+              id,
+              typeof(data) as data_type,
+              hex(data) as data_hex,
+              typeof(literal) as literal_type,
+              literal
+            from binary_api
+            order by id
+            """)).dicts()
+    assert rows == [
+        {
+            "id": 1,
+            "data_type": "blob",
+            "data_hex": "FF0001",
+            "literal_type": "text",
+            "literal": '{"$raw": {"$base64": true, "encoded": "AAEC/f7/"}}',
+        },
+        {
+            "id": 2,
+            "data_type": "blob",
+            "data_hex": "000102FDFEFF",
+            "literal_type": "text",
+            "literal": BASE64_WRITE_API_LITERAL,
+        },
+    ]
 
 
 @pytest.mark.asyncio
@@ -178,6 +327,35 @@ async def test_insert_rows(ds_write, return_rows):
     assert response.json()["ok"] is True
     if return_rows:
         assert response.json()["rows"] == actual_rows
+
+
+@pytest.mark.asyncio
+async def test_insert_rows_post_body_too_large(tmp_path_factory):
+    db_path = str(tmp_path_factory.mktemp("dbs") / "data.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute("create table docs (id integer primary key, title text)")
+    conn.close()
+    ds = Datasette([db_path], settings={"max_post_body_bytes": 100})
+    ds.root_enabled = True
+    token = write_token(ds)
+    response = await ds.client.post(
+        "/data/docs/-/insert",
+        json={"rows": [{"title": "x" * 200}]},
+        headers=_headers(token),
+    )
+    assert response.status_code == 413
+    assert response.json() == {
+        "ok": False,
+        "errors": ["Request body exceeded maximum size of 100 bytes"],
+    }
+    # A small body should still work
+    response2 = await ds.client.post(
+        "/data/docs/-/insert",
+        json={"row": {"title": "hi"}},
+        headers=_headers(token),
+    )
+    assert response2.status_code == 201
+    ds.close()
 
 
 @pytest.mark.asyncio
@@ -1047,7 +1225,9 @@ async def test_alter_table_foreign_key_operations(ds_write):
     assert response.status_code == 200, response.text
     data = response.json()
     assert data["operations_applied"] == 2
-    assert "[owner_id] INTEGER REFERENCES [owners]([id])" in data["schema"]
+    assert_schema_contains(
+        "[owner_id] INTEGER REFERENCES [owners]([id])", data["schema"]
+    )
 
     response = await ds_write.client.post(
         "/data/docs/-/alter",
@@ -1058,7 +1238,7 @@ async def test_alter_table_foreign_key_operations(ds_write):
     )
     assert response.status_code == 200, response.text
     data = response.json()
-    assert "[owner_id] INTEGER REFERENCES" not in data["schema"]
+    assert_schema_not_contains("[owner_id] INTEGER REFERENCES", data["schema"])
 
     response = await ds_write.client.post(
         "/data/docs/-/alter",
@@ -1082,7 +1262,9 @@ async def test_alter_table_foreign_key_operations(ds_write):
     )
     assert response.status_code == 200, response.text
     data = response.json()
-    assert "[owner_id] INTEGER REFERENCES [categories]([id])" in data["schema"]
+    assert_schema_contains(
+        "[owner_id] INTEGER REFERENCES [categories]([id])", data["schema"]
+    )
 
     response = await ds_write.client.post(
         "/data/docs/-/alter",
@@ -1091,7 +1273,7 @@ async def test_alter_table_foreign_key_operations(ds_write):
     )
     assert response.status_code == 200, response.text
     data = response.json()
-    assert "[owner_id] INTEGER REFERENCES" not in data["schema"]
+    assert_schema_not_contains("[owner_id] INTEGER REFERENCES", data["schema"])
 
 
 @pytest.mark.asyncio
@@ -2019,6 +2201,9 @@ async def test_create_table(
     if expected_response.get("ok") is False:
         # Error expectations list their messages; derive the canonical envelope
         expected_response = error_body(expected_response["errors"], expected_status)
+    if isinstance(expected_response, dict) and "schema" in expected_response:
+        assert data.get("schema") in schema_variants(expected_response["schema"])
+        expected_response = dict(expected_response, schema=data.get("schema"))
     assert data == expected_response
     # Should have tracked the expected events
     events = ds_write._tracked_events
@@ -2061,7 +2246,9 @@ async def test_create_table_with_foreign_key(ds_write):
     )
     assert response.status_code == 201
     data = response.json()
-    assert "[owner_id] INTEGER REFERENCES [owners]([id])" in data["schema"]
+    assert_schema_contains(
+        "[owner_id] INTEGER REFERENCES [owners]([id])", data["schema"]
+    )
 
 
 @pytest.mark.asyncio

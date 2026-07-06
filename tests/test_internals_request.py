@@ -1,6 +1,36 @@
-from datasette.utils.asgi import Request
+from datasette.utils.asgi import PayloadTooLarge, Request
 import json
 import pytest
+
+
+def _post_scope(headers=None):
+    return {
+        "http_version": "1.1",
+        "method": "POST",
+        "path": "/",
+        "raw_path": b"/",
+        "query_string": b"",
+        "scheme": "http",
+        "type": "http",
+        "headers": headers or [[b"content-type", b"application/json"]],
+    }
+
+
+def _receive_chunks(chunks):
+    messages = [
+        {
+            "type": "http.request",
+            "body": chunk,
+            "more_body": i < len(chunks) - 1,
+        }
+        for i, chunk in enumerate(chunks)
+    ]
+    messages.reverse()
+
+    async def receive():
+        return messages.pop()
+
+    return receive
 
 
 @pytest.mark.asyncio
@@ -103,6 +133,70 @@ async def test_request_json_invalid():
 
     request = Request(scope, receive)
     with pytest.raises(json.JSONDecodeError):
+        await request.json()
+
+
+@pytest.mark.asyncio
+async def test_request_post_body_multiple_chunks():
+    request = Request(_post_scope(), _receive_chunks([b"hello ", b"world"]))
+    assert await request.post_body() == b"hello world"
+
+
+@pytest.mark.asyncio
+async def test_request_post_body_content_length_too_large():
+    # Should reject based on content-length without reading the body
+    async def receive():
+        raise AssertionError("receive() should not be called")
+
+    scope = _post_scope(
+        headers=[
+            [b"content-type", b"application/json"],
+            [b"content-length", b"101"],
+        ]
+    )
+    request = Request(scope, receive)
+    with pytest.raises(PayloadTooLarge):
+        await request.post_body(max_bytes=100)
+
+
+@pytest.mark.asyncio
+async def test_request_post_body_streaming_too_large():
+    # No content-length header - limit enforced as chunks arrive
+    chunks = [b"a" * 60, b"b" * 60, b"c" * 60]
+    request = Request(_post_scope(), _receive_chunks(chunks))
+    with pytest.raises(PayloadTooLarge):
+        await request.post_body(max_bytes=100)
+
+
+@pytest.mark.asyncio
+async def test_request_post_body_limit_from_constructor():
+    request = Request(
+        _post_scope(), _receive_chunks([b"too much data"]), max_post_body_bytes=5
+    )
+    with pytest.raises(PayloadTooLarge):
+        await request.post_body()
+
+
+@pytest.mark.asyncio
+async def test_request_post_body_limit_disabled():
+    body = b"a" * (3 * 1024 * 1024)
+    request = Request(_post_scope(), _receive_chunks([body]), max_post_body_bytes=0)
+    assert await request.post_body() == body
+
+
+@pytest.mark.asyncio
+async def test_request_post_body_default_limit():
+    # Bodies over 2MB are rejected by default
+    request = Request(_post_scope(), _receive_chunks([b"a" * (2 * 1024 * 1024 + 1)]))
+    with pytest.raises(PayloadTooLarge):
+        await request.post_body()
+
+
+@pytest.mark.asyncio
+async def test_request_json_too_large():
+    body = json.dumps({"rows": ["x" * 100]}).encode("utf-8")
+    request = Request(_post_scope(), _receive_chunks([body]), max_post_body_bytes=50)
+    with pytest.raises(PayloadTooLarge):
         await request.json()
 
 

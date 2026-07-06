@@ -125,6 +125,23 @@ You can increase or decrease this limit like so::
 
     datasette mydatabase.db --setting max_insert_rows 1000
 
+.. _setting_max_post_body_bytes:
+
+max_post_body_bytes
+~~~~~~~~~~~~~~~~~~~
+
+Maximum size in bytes for a POST body that Datasette reads fully into memory, such as JSON submitted to the :ref:`write API <json_api_write>`. Requests with larger bodies are rejected with an HTTP 413 error. Defaults to 2,097,152 (2MB).
+
+This limit exists to protect against memory exhaustion: unlike file uploads handled by ``request.form()``, which stream to disk, these bodies are held entirely in memory and parsing them as JSON can multiply their memory footprint several times over.
+
+If you increase :ref:`setting_max_insert_rows` to support larger bulk inserts you may need to increase this limit as well::
+
+    datasette mydatabase.db --setting max_post_body_bytes 10485760
+
+Set it to 0 to disable the limit entirely::
+
+    datasette mydatabase.db --setting max_post_body_bytes 0
+
 .. _setting_num_sql_threads:
 
 num_sql_threads

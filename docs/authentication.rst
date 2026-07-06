@@ -50,7 +50,7 @@ The one exception is the "root" account, which you can sign into while using Dat
 The ``--root`` flag is designed for local development and testing. When you start Datasette with ``--root``, the root user automatically receives every permission, including:
 
 * All view permissions (``view-instance``, ``view-database``, ``view-table``, etc.)
-* All write permissions (``insert-row``, ``update-row``, ``delete-row``, ``create-table``, ``alter-table``, ``set-column-type``, ``drop-table``)
+* All write permissions (``insert-row``, ``update-row``, ``delete-row``, ``create-table``, ``create-view``, ``alter-table``, ``set-column-type``, ``drop-table``, ``drop-view``)
 * Debug permissions (``permissions-debug``, ``debug-menu``)
 * Any custom permissions defined by plugins
 
@@ -1393,6 +1393,16 @@ Actor is allowed to create a database table.
 ``resource`` - ``datasette.resources.DatabaseResource(database)``
     ``database`` is the name of the database (string)
 
+.. _actions_create_view:
+
+create-view
+-----------
+
+Actor is allowed to create a database view.
+
+``resource`` - ``datasette.resources.DatabaseResource(database)``
+    ``database`` is the name of the database (string)
+
 .. _actions_alter_table:
 
 alter-table
@@ -1428,6 +1438,18 @@ Actor is allowed to drop a database table.
     ``database`` is the name of the database (string)
 
     ``table`` is the name of the table (string)
+
+.. _actions_drop_view:
+
+drop-view
+---------
+
+Actor is allowed to drop a database view.
+
+``resource`` - ``datasette.resources.TableResource(database, table)``
+    ``database`` is the name of the database (string)
+
+    ``table`` is the name of the view (string)
 
 .. _actions_execute_sql:
 

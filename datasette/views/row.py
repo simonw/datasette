@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 import markupsafe
 import sqlite_utils
 
-from datasette.utils.asgi import NotFound, Forbidden, Response
+from datasette.utils.asgi import NotFound, Forbidden, PayloadTooLarge, Response
 from datasette.database import QueryInterrupted
 from datasette.events import UpdateRowEvent, DeleteRowEvent
 from datasette.resources import TableResource
@@ -17,7 +17,9 @@ from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
     call_with_supported_arguments,
+    CustomJSONEncoder,
     CustomRow,
+    decode_write_json_row,
     InvalidSql,
     make_slot_function,
     path_from_row_pks,
@@ -26,6 +28,7 @@ from datasette.utils import (
     to_css_class,
     escape_sqlite,
     sqlite3,
+    WriteJsonValueError,
 )
 from datasette.plugins import pm
 from datasette.extras import extra_names_from_request, ExtraScope
@@ -785,6 +788,8 @@ class RowUpdateView(BaseView):
             data = await request.json()
         except json.JSONDecodeError as e:
             return _error(["Invalid JSON: {}".format(e)])
+        except PayloadTooLarge as e:
+            return _error([str(e)], 413)
 
         if not isinstance(data, dict):
             return _error(["JSON must be a dictionary"])
@@ -796,6 +801,10 @@ class RowUpdateView(BaseView):
             return _error(["Invalid keys: {}".format(", ".join(invalid_keys))])
 
         update = data["update"]
+        try:
+            update = decode_write_json_row(update)
+        except WriteJsonValueError as e:
+            return _error([str(e)], 400)
 
         # Validate column types
         from datasette.views.table import _validate_column_types
@@ -857,4 +866,4 @@ class RowUpdateView(BaseView):
                 self.ds.INFO,
             )
 
-        return Response.json(result, status=200)
+        return Response.json(result, status=200, default=CustomJSONEncoder().default)

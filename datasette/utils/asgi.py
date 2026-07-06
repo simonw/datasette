@@ -67,13 +67,25 @@ class BadRequest(Base400):
     status = 400
 
 
+class PayloadTooLarge(Base400):
+    status = 413
+
+
 SAMESITE_VALUES = ("strict", "lax", "none")
+
+# Bodies read fully into memory (post_body/post_vars/json) are capped at this
+# size unless the max_post_body_bytes setting says otherwise. Kept deliberately
+# far below multipart's DEFAULT_MAX_REQUEST_SIZE: that parser streams to disk,
+# while these bodies are held in RAM and json.loads() can multiply their
+# footprint several times over.
+DEFAULT_MAX_POST_BODY_BYTES = 2 * 1024 * 1024  # 2MB
 
 
 class Request:
-    def __init__(self, scope, receive):
+    def __init__(self, scope, receive, max_post_body_bytes=DEFAULT_MAX_POST_BODY_BYTES):
         self.scope = scope
         self.receive = receive
+        self.max_post_body_bytes = max_post_body_bytes
 
     def __repr__(self):
         return '<asgi.Request method="{}" url="{}">'.format(self.method, self.url)
@@ -141,15 +153,43 @@ class Request:
     def actor(self):
         return self.scope.get("actor", None)
 
-    async def post_body(self):
-        body = b""
+    async def post_body(self, max_bytes=None):
+        """
+        Read the request body fully into memory.
+
+        The body is capped at max_bytes - or self.max_post_body_bytes
+        (default 2MB, set from the max_post_body_bytes setting for requests
+        created by Datasette) if max_bytes is not provided. Pass max_bytes=0
+        to disable the limit. Raises PayloadTooLarge (HTTP 413) if exceeded -
+        oversized bodies are rejected as soon as the limit is passed, without
+        buffering the rest.
+        """
+        if max_bytes is None:
+            max_bytes = self.max_post_body_bytes
+        too_large = PayloadTooLarge(
+            "Request body exceeded maximum size of {} bytes".format(max_bytes)
+        )
+        if max_bytes:
+            # Reject early if the client declares an oversized body
+            try:
+                if int(self.headers.get("content-length", "")) > max_bytes:
+                    raise too_large
+            except ValueError:
+                # Missing or malformed - the streaming check below still applies
+                pass
+        chunks = []
+        received = 0
         more_body = True
         while more_body:
             message = await self.receive()
             assert message["type"] == "http.request", message
-            body += message.get("body", b"")
+            chunk = message.get("body", b"")
+            received += len(chunk)
+            if max_bytes and received > max_bytes:
+                raise too_large
+            chunks.append(chunk)
             more_body = message.get("more_body", False)
-        return body
+        return b"".join(chunks)
 
     async def post_vars(self):
         body = await self.post_body()

@@ -244,6 +244,9 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
                                    custom query (default=1000)
       max_insert_rows              Maximum rows that can be inserted at a time using
                                    the bulk insert API (default=100)
+      max_post_body_bytes          Maximum size in bytes for a POST body read into
+                                   memory, e.g. JSON API requests - set 0 to disable
+                                   this limit (default=2097152)
       num_sql_threads              Number of threads in the thread pool for
                                    executing SQLite queries (default=3)
       sql_time_limit_ms            Time limit for a SQL query in milliseconds

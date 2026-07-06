@@ -1,4 +1,5 @@
 import asyncio
+import binascii
 from contextlib import contextmanager
 import aiofiles
 import click
@@ -236,10 +237,8 @@ class CustomJSONEncoder(json.JSONEncoder):
     - ``sqlite3.Row`` becomes a tuple
     - ``sqlite3.Cursor`` becomes a list
 
-    If a binary blob can be decoded as UTF-8, the encoder returns it as text.
-
-    If it can't (for example, images), it is encoded as an object, with the actual
-    data base64-encoded, like so: ::
+    Binary blobs are encoded as an object, with the actual data base64-encoded,
+    like so: ::
 
         {
             "$base64": True,
@@ -255,15 +254,40 @@ class CustomJSONEncoder(json.JSONEncoder):
         if isinstance(obj, sqlite3.Cursor):
             return list(obj)
         if isinstance(obj, bytes):
-            # Does it encode to utf8?
-            try:
-                return obj.decode("utf8")
-            except UnicodeDecodeError:
-                return {
-                    "$base64": True,
-                    "encoded": base64.b64encode(obj).decode("latin1"),
-                }
+            return {
+                "$base64": True,
+                "encoded": base64.b64encode(obj).decode("latin1"),
+            }
         return json.JSONEncoder.default(self, obj)
+
+
+class WriteJsonValueError(ValueError):
+    pass
+
+
+def decode_write_json_cell(value):
+    if not isinstance(value, dict):
+        return value
+    keys = set(value.keys())
+    if keys == {"$raw"}:
+        return value["$raw"]
+    if keys == {"$base64", "encoded"} and value.get("$base64") is True:
+        encoded = value["encoded"]
+        if not isinstance(encoded, str):
+            raise WriteJsonValueError("$base64 encoded value must be a string")
+        try:
+            return base64.b64decode(encoded, validate=True)
+        except binascii.Error as ex:
+            raise WriteJsonValueError("Invalid $base64 encoded value") from ex
+    return value
+
+
+def decode_write_json_row(row):
+    return {key: decode_write_json_cell(value) for key, value in row.items()}
+
+
+def decode_write_json_rows(rows):
+    return [decode_write_json_row(row) for row in rows]
 
 
 @contextmanager

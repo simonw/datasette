@@ -390,7 +390,8 @@ Concerns:
    required"`. The JSON behavior masks caller bugs; return 400 on both.~~
    ✅ **Done** — all data formats now return 400; the HTML SQL editor page
    is unchanged.
-3. **`_shape=object` HTTP 200 error** (§1b) — almost certainly unintended.
+3. ~~**`_shape=object` HTTP 200 error** (§1b) — almost certainly unintended.~~
+   ✅ Done — now 400 (fixed with §1b).
 4. ~~**Row delete 500** (§1c) — inconsistent with every sibling endpoint.~~
    ✅ Done — now 400.
 5. **The "SQL Interrupted" error embeds an HTML fragment in the JSON `error`

@@ -276,6 +276,10 @@ Here is an example Python function built using `requests <https://requests.readt
 Special JSON arguments
 ----------------------
 
+Boolean query string arguments - such as ``?_labels=`` and
+``?_json_infinity=`` - accept ``on``, ``true`` or ``1`` for true and
+``off``, ``false`` or ``0`` for false.
+
 Every Datasette endpoint that can return JSON also accepts the following
 query string arguments:
 

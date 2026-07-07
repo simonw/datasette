@@ -48,7 +48,7 @@ Some JSON endpoints are **exempt** from this promise:
   debug playground.
 - Debug and support endpoints are documented so you can use them, but their
   JSON shapes are not frozen: :ref:`/-/threads <JsonDataView_threads>`,
-  :ref:`/-/actions <JsonDataView_actions>`, :ref:`/-/jump <JumpView>`,
+  :ref:`/-/actions <JsonDataView_actions>`,
   the :ref:`permission debug endpoints <PermissionsDebugView>`
   (``/-/allowed``, ``/-/rules``, ``/-/check``) and the
   :ref:`table autocomplete endpoint <TableAutocompleteView>`.

@@ -9,7 +9,7 @@ Each of these pages can be viewed in your browser. Add ``.json`` to the URL to g
 
 JSON responses that return an object include an ``"ok": true`` key, consistent with the rest of the :ref:`JSON API <json_api>`.
 
-The introspection endpoints documented on this page are covered by the :ref:`JSON API stability promise <json_api_stability>`, with the exception of the debug endpoints ``/-/threads``, ``/-/actions`` and ``/-/jump``, whose shapes may change in future releases.
+The introspection endpoints documented on this page are covered by the :ref:`JSON API stability promise <json_api_stability>`, with the exception of the debug endpoints ``/-/threads`` and ``/-/actions``, whose shapes may change in future releases.
 
 .. _JsonDataView_metadata:
 

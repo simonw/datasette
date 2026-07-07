@@ -1294,9 +1294,11 @@ class StartupError(Exception):
 _comments_and_strings_re = re.compile(
     r"""
     --[^\n]*            # single line comment
-    | /\*.*?\*/         # multi line comment
+    | /\*.*?(?:\*/|\Z)  # multi line comment, possibly to end-of-input
     | '(?:''|[^'])*'    # single quoted string ('' escapes a quote)
     | "(?:""|[^"])*"    # double quoted identifier ("" escapes a quote)
+    | \[(?:[^\]])*\]    # square-bracket quoted identifier
+    | `(?:``|[^`])*`    # backtick quoted identifier
     """,
     re.DOTALL | re.VERBOSE,
 )

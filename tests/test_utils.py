@@ -764,6 +764,11 @@ def test_parse_metadata(content, expected):
         # Parameters that live inside a comment should be ignored
         ("select :x -- and :ignored", ["x"]),
         ("select :x /* and :ignored */ from t", ["x"]),
+        ("select :x /* and :ignored", ["x"]),
+        # Parameters inside quoted identifiers should be ignored
+        ("select [a:b] from t where id = :id", ["id"]),
+        ("select `a:b` from t where id = :id", ["id"]),
+        ("select `a``:b` from t where id = :id", ["id"]),
         # Parameters inside a string literal should be ignored
         ("select ':ignored' || :real", ["real"]),
     ),

@@ -1,6 +1,8 @@
 import pytest
+import sqlite3
 
 from datasette.utils import escape_sqlite
+from datasette.utils.internal_db import INTERNAL_DB_SCHEMA_SQL
 
 
 # ensure refresh_schemas() gets called before interacting with internal_db
@@ -15,6 +17,53 @@ async def test_internal_databases(ds_client):
     databases = await internal_db.execute("select * from catalog_databases")
     assert len(databases) == 1
     assert databases.rows[0]["database_name"] == "fixtures"
+
+
+@pytest.mark.asyncio
+async def test_internal_migrations_recorded(ds_client):
+    internal_db = await ensure_internal(ds_client)
+    migrations = await internal_db.execute("""
+        select migration_set, name
+        from _sqlite_migrations
+        order by id
+        """)
+    assert [tuple(row) for row in migrations.rows] == [
+        ("datasette_internal", "0001_initial")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_internal_migrations_adopt_existing_internal_db(tmp_path):
+    from datasette.app import Datasette
+
+    internal_db_path = str(tmp_path / "internal.db")
+    conn = sqlite3.connect(internal_db_path)
+    conn.executescript(INTERNAL_DB_SCHEMA_SQL)
+    conn.execute(
+        "insert into metadata_instance (key, value) values (?, ?)",
+        ("legacy", "preserved"),
+    )
+    conn.commit()
+    conn.close()
+
+    ds = Datasette(internal=internal_db_path)
+    await ds.invoke_startup()
+    internal_db = ds.get_internal_database()
+
+    metadata = await internal_db.execute(
+        "select key, value from metadata_instance where key = 'legacy'"
+    )
+    assert [tuple(row) for row in metadata.rows] == [("legacy", "preserved")]
+    migrations = await internal_db.execute("""
+        select migration_set, name
+        from _sqlite_migrations
+        order by id
+        """)
+    assert [tuple(row) for row in migrations.rows] == [
+        ("datasette_internal", "0001_initial")
+    ]
+
+    ds.close()
 
 
 @pytest.mark.asyncio

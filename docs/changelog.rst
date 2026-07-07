@@ -17,7 +17,7 @@ Unreleased
 - The table and row JSON APIs now support ``?_extra=column_details`` for returning SQLite schema details for columns, including declared type, SQLite affinity, primary key, ``NOT NULL``, default and hidden-column metadata.
 - POST bodies that Datasette reads fully into memory - such as JSON submitted to the write API - are now capped by the new :ref:`setting_max_post_body_bytes` setting, defaulting to 2MB. Oversized requests are rejected with an HTTP 413 error as soon as the limit is exceeded, protecting smaller servers from memory exhaustion. File uploads are unaffected - ``request.form()`` streams those to disk and has its own separate limits.
 
-This release also includes the results of a detailed consistency review of Datasette's JSON API in preparation for the 1.0 stable release. Several of these changes are backwards-incompatible with previous 1.0 alphas. The new :ref:`API stability documentation <json_api_stability>` describes exactly which parts of the JSON API are covered by the 1.0 stability promise.
+This release also includes the results of a `detailed consistency review <https://github.com/simonw/datasette/pull/2824>`__ of Datasette's JSON API in preparation for the 1.0 stable release. Several of these changes are backwards-incompatible with previous 1.0 alphas. The new :ref:`API stability documentation <json_api_stability>` describes exactly which parts of the JSON API are covered by the 1.0 stability promise.
 
 JSON API: breaking changes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

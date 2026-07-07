@@ -17,6 +17,24 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 
 [Explore a demo](https://datasette.io/global-power-plants/global-power-plants), watch [a video about the project](https://simonwillison.net/2021/Feb/7/video/) or try it out [on GitHub Codespaces](https://github.com/datasette/datasette-studio).
 
+## Ultra-quickstart
+
+The fastest way to get started with Datasette if you have Python installed:
+
+```bash
+# Install with uv (recommended) or pip
+uv tool install datasette
+# Or: pip install datasette
+
+# Serve a SQLite database
+datasette my_database.db
+
+# Or try it with a demo database
+datasette https://datasette.io/fixtures.db
+```
+
+Then visit http://localhost:8001 to explore your data. See [Getting started](https://docs.datasette.io/en/stable/getting_started.html) for more.
+
 * [datasette.io](https://datasette.io/) is the official project website
 * Latest [Datasette News](https://datasette.io/news)
 * Comprehensive documentation: https://docs.datasette.io/

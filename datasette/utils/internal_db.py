@@ -1,9 +1,30 @@
 import textwrap
+
+from sqlite_utils import Database as SQLiteUtilsDatabase
+from sqlite_utils import Migrations
+
 from datasette.utils import table_column_details
 
+INTERNAL_DB_SCHEMA_TABLES = {
+    "catalog_databases",
+    "catalog_tables",
+    "catalog_views",
+    "catalog_columns",
+    "catalog_indexes",
+    "catalog_foreign_keys",
+    "metadata_instance",
+    "metadata_databases",
+    "metadata_resources",
+    "metadata_columns",
+    "column_types",
+    "queries",
+}
 
-async def init_internal_db(db):
-    create_tables_sql = textwrap.dedent("""
+INTERNAL_DB_SCHEMA_INDEXES = {
+    "queries_owner_idx",
+}
+
+INTERNAL_DB_SCHEMA_SQL = textwrap.dedent("""
     CREATE TABLE IF NOT EXISTS catalog_databases (
         database_name TEXT PRIMARY KEY,
         path TEXT,
@@ -67,74 +88,96 @@ async def init_internal_db(db):
         FOREIGN KEY (database_name) REFERENCES catalog_databases(database_name),
         FOREIGN KEY (database_name, table_name) REFERENCES catalog_tables(database_name, table_name)
     );
+
+    CREATE TABLE IF NOT EXISTS metadata_instance (
+        key text,
+        value text,
+        unique(key)
+    );
+
+    CREATE TABLE IF NOT EXISTS metadata_databases (
+        database_name text,
+        key text,
+        value text,
+        unique(database_name, key)
+    );
+
+    CREATE TABLE IF NOT EXISTS metadata_resources (
+        database_name text,
+        resource_name text,
+        key text,
+        value text,
+        unique(database_name, resource_name, key)
+    );
+
+    CREATE TABLE IF NOT EXISTS metadata_columns (
+        database_name text,
+        resource_name text,
+        column_name text,
+        key text,
+        value text,
+        unique(database_name, resource_name, column_name, key)
+    );
+
+    CREATE TABLE IF NOT EXISTS column_types (
+        database_name TEXT NOT NULL,
+        resource_name TEXT NOT NULL,
+        column_name TEXT NOT NULL,
+        column_type TEXT NOT NULL,
+        config TEXT,
+        PRIMARY KEY (database_name, resource_name, column_name)
+    );
+
+    CREATE TABLE IF NOT EXISTS queries (
+        database_name TEXT NOT NULL,
+        name TEXT NOT NULL,
+        sql TEXT NOT NULL,
+        title TEXT,
+        description TEXT,
+        description_html TEXT,
+        options TEXT NOT NULL DEFAULT '{}',
+        parameters TEXT NOT NULL DEFAULT '[]',
+        is_write INTEGER NOT NULL DEFAULT 0 CHECK (is_write IN (0, 1)),
+        is_private INTEGER NOT NULL DEFAULT 0 CHECK (is_private IN (0, 1)),
+        is_trusted INTEGER NOT NULL DEFAULT 0 CHECK (is_trusted IN (0, 1)),
+        source TEXT NOT NULL DEFAULT 'user',
+        owner_id TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (database_name, name)
+    );
+
+    CREATE INDEX IF NOT EXISTS queries_owner_idx
+        ON queries(owner_id);
     """).strip()
-    await db.execute_write_script(create_tables_sql)
-    await initialize_metadata_tables(db)
 
 
-async def initialize_metadata_tables(db):
-    await db.execute_write_script(textwrap.dedent("""
-        CREATE TABLE IF NOT EXISTS metadata_instance (
-            key text,
-            value text,
-            unique(key)
-        );
+internal_migrations = Migrations("datasette_internal")
 
-        CREATE TABLE IF NOT EXISTS metadata_databases (
-            database_name text,
-            key text,
-            value text,
-            unique(database_name, key)
-        );
 
-        CREATE TABLE IF NOT EXISTS metadata_resources (
-            database_name text,
-            resource_name text,
-            key text,
-            value text,
-            unique(database_name, resource_name, key)
-        );
+def _internal_schema_exists(db):
+    table_names = set(db.table_names())
+    if not INTERNAL_DB_SCHEMA_TABLES.issubset(table_names):
+        return False
+    index_names = {
+        row[0]
+        for row in db.execute("select name from sqlite_master where type = 'index'")
+    }
+    return INTERNAL_DB_SCHEMA_INDEXES.issubset(index_names)
 
-        CREATE TABLE IF NOT EXISTS metadata_columns (
-            database_name text,
-            resource_name text,
-            column_name text,
-            key text,
-            value text,
-            unique(database_name, resource_name, column_name, key)
-        );
 
-        CREATE TABLE IF NOT EXISTS column_types (
-            database_name TEXT NOT NULL,
-            resource_name TEXT NOT NULL,
-            column_name TEXT NOT NULL,
-            column_type TEXT NOT NULL,
-            config TEXT,
-            PRIMARY KEY (database_name, resource_name, column_name)
-        );
+@internal_migrations(name="0001_initial")
+def initial_internal_schema(db):
+    if _internal_schema_exists(db):
+        return
+    db.executescript(INTERNAL_DB_SCHEMA_SQL)
 
-        CREATE TABLE IF NOT EXISTS queries (
-            database_name TEXT NOT NULL,
-            name TEXT NOT NULL,
-            sql TEXT NOT NULL,
-            title TEXT,
-            description TEXT,
-            description_html TEXT,
-            options TEXT NOT NULL DEFAULT '{}',
-            parameters TEXT NOT NULL DEFAULT '[]',
-            is_write INTEGER NOT NULL DEFAULT 0 CHECK (is_write IN (0, 1)),
-            is_private INTEGER NOT NULL DEFAULT 0 CHECK (is_private IN (0, 1)),
-            is_trusted INTEGER NOT NULL DEFAULT 0 CHECK (is_trusted IN (0, 1)),
-            source TEXT NOT NULL DEFAULT 'user',
-            owner_id TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (database_name, name)
-        );
 
-        CREATE INDEX IF NOT EXISTS queries_owner_idx
-            ON queries(owner_id);
-            """))
+async def init_internal_db(db):
+    def apply_migrations(conn):
+        internal_migrations.apply(SQLiteUtilsDatabase(conn, execute_plugins=False))
+
+    await db.execute_write_fn(apply_migrations, transaction=False)
 
 
 async def populate_schema_tables(internal_db, db):

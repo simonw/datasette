@@ -6,9 +6,12 @@ from datasette.events import LogoutEvent, LoginEvent, CreateTokenEvent
 from datasette.resources import DatabaseResource, TableResource
 from datasette.utils.asgi import Response, Forbidden
 from datasette.utils import (
+    UNSTABLE_API_MESSAGE,
     actor_matches_allow,
+    parse_size_limit,
     add_cors_headers,
     await_me_maybe,
+    error_body,
     tilde_encode,
     tilde_decode,
 )
@@ -52,9 +55,9 @@ class JsonDataView(BaseView):
         if self.permission:
             await self.ds.ensure_permission(action=self.permission, actor=request.actor)
         if self.needs_request:
-            data = self.data_callback(request)
+            data = await await_me_maybe(self.data_callback(request))
         else:
-            data = self.data_callback()
+            data = await await_me_maybe(self.data_callback())
 
         # Return JSON or HTML depending on format parameter
         as_format = request.url_vars.get("format")
@@ -62,6 +65,8 @@ class JsonDataView(BaseView):
             headers = {}
             if self.ds.cors:
                 add_cors_headers(headers)
+            if isinstance(data, dict):
+                data = {"ok": True, **data}
             return Response.json(data, headers=headers)
         else:
             context = {
@@ -292,6 +297,12 @@ class PermissionsDebugView(BaseView):
         response, status = await _check_permission_for_actor(
             self.ds, permission, parent, child, actor
         )
+        if response.get("ok"):
+            response = {
+                "ok": True,
+                "unstable": UNSTABLE_API_MESSAGE,
+                **response,
+            }
         return Response.json(response, status=status)
 
 
@@ -348,29 +359,32 @@ class AllowedResourcesView(BaseView):
     async def _allowed_payload(self, request, has_debug_permission):
         action = request.args.get("action")
         if not action:
-            return {"error": "action parameter is required"}, 400
+            return error_body("action parameter is required", 400), 400
         if action not in self.ds.actions:
-            return {"error": f"Unknown action: {action}"}, 404
+            return error_body(f"Unknown action: {action}", 404), 404
 
         actor = request.actor if isinstance(request.actor, dict) else None
         actor_id = actor.get("id") if actor else None
         parent_filter = request.args.get("parent")
         child_filter = request.args.get("child")
         if child_filter and not parent_filter:
-            return {"error": "parent must be provided when child is specified"}, 400
+            return (
+                error_body("parent must be provided when child is specified", 400),
+                400,
+            )
 
         try:
-            page = int(request.args.get("page", "1"))
-            page_size = int(request.args.get("page_size", "50"))
+            page = int(request.args.get("_page", "1"))
+            if page < 1:
+                raise ValueError
         except ValueError:
-            return {"error": "page and page_size must be integers"}, 400
-        if page < 1:
-            return {"error": "page must be >= 1"}, 400
-        if page_size < 1:
-            return {"error": "page_size must be >= 1"}, 400
-        max_page_size = 200
-        if page_size > max_page_size:
-            page_size = max_page_size
+            return error_body("_page must be a positive integer", 400), 400
+        try:
+            page_size = parse_size_limit(
+                request.args.get("_size"), default=50, maximum=200
+            )
+        except ValueError as ex:
+            return error_body(str(ex), 400), 400
         offset = (page - 1) * page_size
 
         # Use the simplified allowed_resources method
@@ -410,6 +424,7 @@ class AllowedResourcesView(BaseView):
             # If catalog tables don't exist yet, return empty results
             return (
                 {
+                    "ok": True,
                     "action": action,
                     "actor_id": actor_id,
                     "page": page,
@@ -434,16 +449,17 @@ class AllowedResourcesView(BaseView):
         def build_page_url(page_number):
             pairs = []
             for key in request.args:
-                if key in {"page", "page_size"}:
+                if key in {"_page", "_size"}:
                     continue
                 for value in request.args.getlist(key):
                     pairs.append((key, value))
-            pairs.append(("page", str(page_number)))
-            pairs.append(("page_size", str(page_size)))
+            pairs.append(("_page", str(page_number)))
+            pairs.append(("_size", str(page_size)))
             query = urllib.parse.urlencode(pairs)
             return f"{request.path}?{query}"
 
         response = {
+            "ok": True,
             "action": action,
             "actor_id": actor_id,
             "page": page,
@@ -485,26 +501,24 @@ class PermissionRulesView(BaseView):
         # JSON API - action parameter is required
         action = request.args.get("action")
         if not action:
-            return Response.json({"error": "action parameter is required"}, status=400)
+            return Response.error("action parameter is required", 400)
         if action not in self.ds.actions:
-            return Response.json({"error": f"Unknown action: {action}"}, status=404)
+            return Response.error(f"Unknown action: {action}", 404)
 
         actor = request.actor if isinstance(request.actor, dict) else None
 
         try:
-            page = int(request.args.get("page", "1"))
-            page_size = int(request.args.get("page_size", "50"))
+            page = int(request.args.get("_page", "1"))
+            if page < 1:
+                raise ValueError
         except ValueError:
-            return Response.json(
-                {"error": "page and page_size must be integers"}, status=400
+            return Response.error("_page must be a positive integer", 400)
+        try:
+            page_size = parse_size_limit(
+                request.args.get("_size"), default=50, maximum=200
             )
-        if page < 1:
-            return Response.json({"error": "page must be >= 1"}, status=400)
-        if page_size < 1:
-            return Response.json({"error": "page_size must be >= 1"}, status=400)
-        max_page_size = 200
-        if page_size > max_page_size:
-            page_size = max_page_size
+        except ValueError as ex:
+            return Response.error(str(ex), 400)
         offset = (page - 1) * page_size
 
         from datasette.utils.actions_sql import build_permission_rules_sql
@@ -555,16 +569,17 @@ class PermissionRulesView(BaseView):
         def build_page_url(page_number):
             pairs = []
             for key in request.args:
-                if key in {"page", "page_size"}:
+                if key in {"_page", "_size"}:
                     continue
                 for value in request.args.getlist(key):
                     pairs.append((key, value))
-            pairs.append(("page", str(page_number)))
-            pairs.append(("page_size", str(page_size)))
+            pairs.append(("_page", str(page_number)))
+            pairs.append(("_size", str(page_size)))
             query = urllib.parse.urlencode(pairs)
             return f"{request.path}?{query}"
 
         response = {
+            "ok": True,
             "action": action,
             "actor_id": (actor or {}).get("id") if actor else None,
             "page": page,
@@ -587,15 +602,15 @@ class PermissionRulesView(BaseView):
 async def _check_permission_for_actor(ds, action, parent, child, actor):
     """Shared logic for checking permissions. Returns a dict with check results."""
     if action not in ds.actions:
-        return {"error": f"Unknown action: {action}"}, 404
+        return error_body(f"Unknown action: {action}", 404), 404
 
     if child and not parent:
-        return {"error": "parent is required when child is provided"}, 400
+        return error_body("parent is required when child is provided", 400), 400
 
     # Use the action's properties to create the appropriate resource object
     action_obj = ds.actions.get(action)
     if not action_obj:
-        return {"error": f"Unknown action: {action}"}, 400
+        return error_body(f"Unknown action: {action}", 400), 400
 
     # Global actions (no resource_class) don't have a resource
     if action_obj.resource_class is None:
@@ -610,11 +625,12 @@ async def _check_permission_for_actor(ds, action, parent, child, actor):
         resource_obj = action_obj.resource_class(parent)
     else:
         # This shouldn't happen given validation in Action.__post_init__
-        return {"error": f"Invalid action configuration: {action}"}, 500
+        return error_body(f"Invalid action configuration: {action}", 500), 500
 
     allowed = await ds.allowed(action=action, resource=resource_obj, actor=actor)
 
     response = {
+        "ok": True,
         "action": action,
         "allowed": bool(allowed),
         "resource": {
@@ -651,7 +667,7 @@ class PermissionCheckView(BaseView):
         # JSON API - action parameter is required
         action = request.args.get("action")
         if not action:
-            return Response.json({"error": "action parameter is required"}, status=400)
+            return Response.error("action parameter is required", 400)
 
         parent = request.args.get("parent")
         child = request.args.get("child")
@@ -1198,7 +1214,7 @@ class JumpView(BaseView):
                 match["display_name"] = row["display_name"]
             matches.append(match)
 
-        return Response.json({"matches": matches, "truncated": truncated})
+        return Response.json({"ok": True, "matches": matches, "truncated": truncated})
 
 
 class SchemaBaseView(BaseView):
@@ -1220,7 +1236,7 @@ class SchemaBaseView(BaseView):
         headers = {}
         if self.ds.cors:
             add_cors_headers(headers)
-        return Response.json(data, headers=headers)
+        return Response.json({"ok": True, **data}, headers=headers)
 
     def format_error_response(self, error_message, format_, status=404):
         """Format error response based on requested format."""
@@ -1229,7 +1245,7 @@ class SchemaBaseView(BaseView):
             if self.ds.cors:
                 add_cors_headers(headers)
             return Response.json(
-                {"ok": False, "error": error_message}, status=status, headers=headers
+                error_body(error_message, status), status=status, headers=headers
             )
         else:
             return Response.text(error_message, status=status)
@@ -1305,16 +1321,16 @@ class DatabaseSchemaView(SchemaBaseView):
         database_name = request.url_vars["database"]
         format_ = request.url_vars.get("format") or "html"
 
-        # Check if database exists
-        if database_name not in self.ds.databases:
-            return self.format_error_response("Database not found", format_)
-
-        # Check view-database permission
+        # Permission check comes first, so actors without view-database
+        # cannot distinguish existing databases from missing ones
         await self.ds.ensure_permission(
             action="view-database",
             resource=DatabaseResource(database=database_name),
             actor=request.actor,
         )
+
+        if database_name not in self.ds.databases:
+            return self.format_error_response("Database not found", format_)
 
         schema = await self.get_database_schema(database_name)
 
@@ -1348,6 +1364,9 @@ class TableSchemaView(SchemaBaseView):
             resource=TableResource(database=database_name, table=table_name),
             actor=request.actor,
         )
+
+        if database_name not in self.ds.databases:
+            return self.format_error_response("Database not found", format_)
 
         # Get schema for the table
         db = self.ds.databases[database_name]

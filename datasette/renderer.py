@@ -1,6 +1,7 @@
 import json
 from datasette.extras import extra_names_from_request
 from datasette.utils import (
+    error_body,
     value_as_boolean,
     remove_infinites,
     CustomJSONEncoder,
@@ -52,8 +53,7 @@ def json_renderer(request, args, data, error, truncated=None):
     if error:
         shape = "objects"
         status_code = 400
-        data["error"] = error
-        data["ok"] = False
+        data.update(error_body(error, status_code))
 
     if truncated is not None:
         data["truncated"] = truncated
@@ -87,7 +87,8 @@ def json_renderer(request, args, data, error, truncated=None):
                         object_rows[pk_string] = row
                     data = object_rows
             if shape_error:
-                data = {"ok": False, "error": shape_error}
+                status_code = 400
+                data = error_body(shape_error, status_code)
         elif shape == "array":
             data = data["rows"]
 
@@ -100,12 +101,7 @@ def json_renderer(request, args, data, error, truncated=None):
             data["rows"] = [list(row.values()) for row in data["rows"]]
     else:
         status_code = 400
-        data = {
-            "ok": False,
-            "error": f"Invalid _shape: {shape}",
-            "status": 400,
-            "title": None,
-        }
+        data = error_body(f"Invalid _shape: {shape}", status_code)
 
     # Don't include "columns" in output
     # https://github.com/simonw/datasette/issues/2136

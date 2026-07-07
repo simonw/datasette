@@ -95,7 +95,10 @@ def test_serve_with_get_and_token():
         ],
     )
     assert 0 == result2.exit_code, result2.output
-    assert json.loads(result2.output) == {"actor": {"id": "root", "token": "dstok"}}
+    assert json.loads(result2.output) == {
+        "ok": True,
+        "actor": {"id": "root", "token": "dstok"},
+    }
 
 
 def test_serve_with_get_exit_code_for_error():
@@ -130,8 +133,9 @@ def test_serve_get_actor():
     )
     assert result.exit_code == 0
     assert json.loads(result.output) == {
+        "ok": True,
         "actor": {
             "id": "root",
             "extra": "x",
-        }
+        },
     }

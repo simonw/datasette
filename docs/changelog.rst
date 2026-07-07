@@ -17,6 +17,42 @@ Unreleased
 - The table and row JSON APIs now support ``?_extra=column_details`` for returning SQLite schema details for columns, including declared type, SQLite affinity, primary key, ``NOT NULL``, default and hidden-column metadata.
 - POST bodies that Datasette reads fully into memory - such as JSON submitted to the write API - are now capped by the new :ref:`setting_max_post_body_bytes` setting, defaulting to 2MB. Oversized requests are rejected with an HTTP 413 error as soon as the limit is exceeded, protecting smaller servers from memory exhaustion. File uploads are unaffected - ``request.form()`` streams those to disk and has its own separate limits.
 
+This release also includes the results of a `detailed consistency review <https://github.com/simonw/datasette/pull/2824>`__ of Datasette's JSON API in preparation for the 1.0 stable release. Several of these changes are backwards-incompatible with previous 1.0 alphas. The new :ref:`API stability documentation <json_api_stability>` describes exactly which parts of the JSON API are covered by the 1.0 stability promise.
+
+JSON API: breaking changes
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- JSON error responses now use a single canonical format across every endpoint: ``{"ok": false, "error": "...", "errors": [...], "status": 400}``. The ``error`` key joins all error messages together, ``errors`` is the full list of messages and ``status`` always matches the HTTP status code. The legacy ``title`` key is no longer included in JSON errors (it remains available to the HTML error template), and endpoints that previously returned bare ``{"error": ...}`` objects have been updated. See :ref:`json_api_errors`.
+- Every JSON object success response now includes ``"ok": true``, including introspection endpoints such as ``/-/versions`` and ``/-/settings``.
+- ``/-/plugins.json``, ``/-/databases.json`` and ``/-/actions.json`` now return objects - ``{"ok": true, "plugins": [...]}`` and equivalents - instead of top-level JSON arrays, so these responses can gain additional keys in the future without a breaking change. The ``datasette plugins`` CLI command still outputs a plain array.
+- ``/-/databases`` now only lists databases the current actor is allowed to view. It previously listed every attached database, including their filesystem paths, to any actor with ``view-instance``.
+- Requests with an invalid or expired ``Authorization: Bearer`` token now receive a ``401`` status with the standard error body and a ``WWW-Authenticate: Bearer error="invalid_token"`` header, instead of being silently treated as unauthenticated. Bearer tokens that no registered token handler recognizes are still ignored, so authentication plugins with their own token formats keep working. Plugin :ref:`token handlers <plugin_hook_register_token_handler>` can raise the new ``datasette.TokenInvalid`` exception to trigger the same behavior.
+- Permission errors for JSON requests now return the standard JSON error format with a ``403`` status. The default forbidden handling previously rendered an HTML error page even for ``.json`` requests.
+- ``POST`` to a write canned query now returns a ``400`` error when the SQL fails to execute, instead of a ``200`` status with ``"ok": false`` in the body. The error response includes the standard error keys plus a ``"redirect"`` key.
+- The :ref:`row update API <RowUpdateView>` with ``"return": true`` now responds with a ``"rows"`` list, matching insert and upsert, instead of a singular ``"row"`` object.
+- Row delete write failures - such as a constraint violation raised by a trigger - now return ``400`` instead of ``500``, matching the other write endpoints.
+- ``/<database>/-/query.json`` with a missing or blank ``?sql=`` parameter now returns a ``400`` error, as the CSV format already did, instead of a ``200`` with empty rows.
+- Unknown ``?_extra=`` names now return a ``400`` error for JSON and other data formats, instead of being silently ignored. HTML pages continue to ignore unknown names.
+- Table JSON responses now include ``next_url`` alongside ``next`` by default - both are ``null`` on the final page. The now-redundant ``?_extra=next_url`` parameter has been removed.
+- The stored query list JSON no longer includes ``has_more`` - ``"next": null`` is the end-of-results signal across the whole API. This change also uncovered and fixed a bug where the query list ``next_url`` pointed at the HTML page and was a relative path; it is now an absolute URL that preserves the requested format.
+- Stored query JSON objects no longer duplicate the list of parameter names as both ``params`` and ``parameters`` - only ``parameters`` remains. The query create and update APIs no longer accept ``params`` as an input alias either; ``params`` is still the documented key for :ref:`queries defined in configuration <queries_named_parameters>`.
+- Page size parameters are now consistent across the API: the stored query lists accept ``?_size=max`` and return a ``400`` error for values over the maximum instead of silently clamping them, and the ``/-/allowed`` and ``/-/rules`` permission debug endpoints renamed their ``page`` and ``page_size`` parameters to ``_page`` and ``_size``, matching the underscore grammar used by every other Datasette system parameter.
+- ``/-/threads`` now requires the ``permissions-debug`` permission, since it exposes runtime internals such as file paths. It previously only required ``view-instance``.
+- Trusted stored queries - those defined in configuration - can no longer be deleted through the JSON API or web interface, matching the existing restriction on editing them.
+- The ``/<database>/-/schema`` endpoints now check the ``view-database`` permission before checking whether the database exists, so unauthorized actors can no longer probe for the existence of databases.
+- SQL time limit errors in JSON responses are now a plain text message. The error string previously embedded an HTML fragment.
+- The undocumented homepage JSON at ``/.json`` now returns ``databases`` as a list of objects rather than an object keyed by database name, matching every other collection in the API.
+- The legacy ``.jsono`` format extension, long since superseded by ``?_shape=``, has been removed.
+
+JSON API: other improvements
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- The :ref:`write API <json_api_write>` endpoints now parse the request body as JSON regardless of the ``Content-Type`` header, so ``curl -d`` invocations work without remembering to set it. Invalid JSON is a ``400`` error. Cross-site request forgery remains prevented by Datasette's ``Origin`` and ``Sec-Fetch-Site`` checks. This also fixes a ``500`` error from the insert API when the ``Content-Type`` header was missing entirely.
+- New ``Response.error(messages, status=400)`` helper for plugins that need to return a JSON error in Datasette's standard format. See :ref:`internals_response`.
+- New ``count_truncated`` extra for table JSON, included automatically whenever ``count`` is requested. ``true`` means the count reached Datasette's counting limit and the real number of rows may be higher. See :ref:`json_api_extra`.
+- JSON endpoints that are not part of the documented stable API now declare themselves with an ``"unstable"`` key in their responses.
+- New documentation covering the grammar for :ref:`boolean query string arguments <json_api_table_arguments>`, the reason :ref:`upsert <TableUpsertView>` returns ``200`` where insert returns ``201``, and advice for plugin authors on :ref:`naming secret configuration keys <plugins_configuration_secret>` so that ``/-/config`` redacts them automatically.
+
 .. _v1_0_a35:
 
 1.0a35 (2026-06-23)

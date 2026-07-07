@@ -73,7 +73,7 @@ async def ds_with_route():
 @pytest.mark.asyncio
 async def test_db_with_route_databases(ds_with_route):
     response = await ds_with_route.client.get("/-/databases.json")
-    assert response.json()[0] == {
+    assert response.json()["databases"][0] == {
         "name": "original-name",
         "route": "custom-route-name",
         "path": None,

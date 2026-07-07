@@ -62,7 +62,6 @@ def stored_query_to_dict(query: StoredQuery) -> dict[str, Any]:
         "description_html": query.description_html,
         "hide_sql": query.hide_sql,
         "fragment": query.fragment,
-        "params": list(query.parameters),
         "parameters": list(query.parameters),
         "is_write": query.is_write,
         "is_private": query.is_private,
@@ -84,7 +83,6 @@ def stored_query_page_to_dict(page: StoredQueryPage) -> dict[str, Any]:
     return {
         "queries": [stored_query_to_dict(query) for query in page.queries],
         "next": page.next,
-        "has_more": page.has_more,
         "limit": page.limit,
     }
 

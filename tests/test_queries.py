@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup as Soup
 from datasette.app import Datasette
 from datasette.resources import DatabaseResource, QueryResource
 from datasette.stored_queries import StoredQuery, StoredQueryPage
+from datasette.utils import UNSTABLE_API_MESSAGE
 from datasette.utils.asgi import Forbidden
 from datasette.utils.sqlite import sqlite3, supports_returning
 
@@ -879,7 +880,7 @@ async def test_query_list_html_defaults_to_twenty_and_shows_pagination():
     assert response.text.count('aria-label="Query pagination"') == 1
     assert "Demo query 20" in response.text
     assert "Demo query 21" not in response.text
-    assert 'href="/data/-/queries?_next=' in response.text
+    assert 'href="http://localhost/data/-/queries?_next=' in response.text
     assert len(json_response.json()["queries"]) == 25
 
 
@@ -1123,6 +1124,47 @@ async def test_query_update_api_rejects_config_only_fields():
     query = await ds.get_query("data", "editable")
     assert query.description_html is None
     assert query.on_success_message_sql is None
+
+
+@pytest.mark.asyncio
+async def test_query_api_rejects_params_alias():
+    # "params" is a datasette.yaml configuration key, not an API input -
+    # the API only accepts "parameters"
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("query_params_alias", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    store_response = await ds.client.post(
+        "/data/-/queries/store",
+        actor={"id": "root"},
+        json={
+            "query": {
+                "name": "by_name",
+                "sql": "select * from dogs where name = :name",
+                "params": ["name"],
+            }
+        },
+    )
+    assert store_response.status_code == 400
+    assert store_response.json()["errors"] == ["Invalid keys: params"]
+    assert await ds.get_query("data", "by_name") is None
+
+    await ds.add_query(
+        "data",
+        "editable",
+        "select * from dogs where name = :name",
+        source="user",
+        owner_id="root",
+    )
+    update_response = await ds.client.post(
+        "/data/editable/-/update",
+        actor={"id": "root"},
+        json={"update": {"params": ["name"]}},
+    )
+    assert update_response.status_code == 400
+    assert update_response.json()["errors"] == ["Invalid keys: params"]
 
 
 @pytest.mark.asyncio
@@ -2140,7 +2182,11 @@ async def test_query_parameters_endpoint_uses_get_sql_only():
     )
 
     assert response.status_code == 200
-    assert response.json() == {"ok": True, "parameters": ["name", "id"]}
+    assert response.json() == {
+        "ok": True,
+        "unstable": UNSTABLE_API_MESSAGE,
+        "parameters": ["name", "id"],
+    }
     assert permission_denied_response.status_code == 403
     assert permission_denied_response.json()["errors"] == [
         "Permission denied: need execute-sql"
@@ -3093,9 +3139,9 @@ async def test_untrusted_stored_write_query_rejects_virtual_table_control_insert
     )
 
     assert denied_response.status_code == 403
-    assert denied_response.json()["message"] == (
+    assert denied_response.json()["errors"] == [
         "Writes to virtual tables are not allowed in user-supplied SQL"
-    )
+    ]
     assert (
         await db.execute("select count(*) from docs where docs match 'hello'")
     ).first()[0] == 1
@@ -3742,3 +3788,81 @@ async def test_stored_write_query_with_truncated_returning_message():
     assert response.status_code == 200
     assert response.json()["ok"] is True
     assert response.json()["message"] == "Query executed"
+
+
+@pytest.mark.asyncio
+async def test_query_delete_api_rejects_trusted_queries():
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "permissions": {
+                        "view-query": {"id": "editor"},
+                        "delete-query": {"id": "editor"},
+                    },
+                    "queries": {
+                        "trusted_report": {
+                            "sql": "select 1 as one",
+                        },
+                    },
+                }
+            }
+        },
+    )
+    ds.add_memory_database("query_delete_trusted_api", name="data")
+    await ds.invoke_startup()
+
+    response = await ds.client.post(
+        "/data/trusted_report/-/delete",
+        actor={"id": "editor"},
+        json={},
+    )
+    assert response.status_code == 403
+    assert response.json()["errors"] == [
+        "Trusted queries cannot be deleted using the API"
+    ]
+    # The query must still exist
+    assert await ds.get_query("data", "trusted_report") is not None
+
+    # The HTML confirmation page refuses too
+    get_response = await ds.client.get(
+        "/data/trusted_report/-/delete",
+        actor={"id": "editor"},
+    )
+    assert get_response.status_code == 403
+
+    # datasette.remove_query() remains available for internal use
+    await ds.remove_query("data", "trusted_report")
+    assert await ds.get_query("data", "trusted_report") is None
+
+
+@pytest.mark.asyncio
+async def test_stored_query_json_uses_parameters_not_params():
+    ds = Datasette(
+        memory=True,
+        config={
+            "databases": {
+                "data": {
+                    "queries": {
+                        "with_params": {
+                            "sql": "select :name as name, :age as age",
+                            "params": ["name", "age"],
+                        },
+                    },
+                }
+            }
+        },
+    )
+    ds.add_memory_database("query_parameters_key", name="data")
+    await ds.invoke_startup()
+
+    definition = (await ds.client.get("/data/with_params/-/definition")).json()
+    assert definition["query"]["parameters"] == ["name", "age"]
+    assert "params" not in definition["query"]
+
+    listing = (await ds.client.get("/data/-/queries.json")).json()
+    query = [q for q in listing["queries"] if q["name"] == "with_params"][0]
+    assert query["parameters"] == ["name", "age"]
+    assert "params" not in query

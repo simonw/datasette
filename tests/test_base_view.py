@@ -53,6 +53,8 @@ async def test_get_view():
     assert json.loads(post_json_response.body) == {
         "ok": False,
         "error": "Method not allowed",
+        "errors": ["Method not allowed"],
+        "status": 405,
     }
     assert post_json_response.status == 405
 

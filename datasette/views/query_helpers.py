@@ -13,6 +13,7 @@ from datasette.write_sql import (
     operation_is_write,
 )
 from datasette.utils import (
+    parse_size_limit,
     named_parameters as derive_named_parameters,
     escape_sqlite,
     path_from_row_pks,
@@ -32,7 +33,6 @@ _query_fields = {
     "hide_sql",
     "fragment",
     "parameters",
-    "params",
     "is_private",
     "on_success_message",
     "on_success_redirect",
@@ -94,13 +94,11 @@ def _as_optional_bool(value, name):
     raise QueryValidationError("{} must be 0 or 1".format(name))
 
 
-def _query_list_limit(value, default=50):
-    if value in (None, ""):
-        return default
+def _query_list_limit(value, default, maximum):
     try:
-        return min(max(1, int(value)), 1000)
+        return parse_size_limit(value, default, maximum)
     except ValueError as ex:
-        raise QueryValidationError("_size must be an integer") from ex
+        raise QueryValidationError(str(ex)) from ex
 
 
 def _derived_query_parameters(sql):
@@ -541,7 +539,7 @@ async def _prepare_query_create(datasette, request, db, data):
         raise QueryValidationError("Writable query fields require writable SQL")
 
     parameters = _coerce_query_parameters(
-        data.get("parameters", data.get("params")),
+        data.get("parameters"),
         derived,
     )
     return {
@@ -586,9 +584,9 @@ async def _prepare_query_update(datasette, request, db, existing: StoredQuery, u
             actor=request.actor,
         )
 
-    if "parameters" in update or "params" in update:
+    if "parameters" in update:
         parameters = _coerce_query_parameters(
-            update.get("parameters", update.get("params")),
+            update.get("parameters"),
             derived,
         )
     elif "sql" in update:

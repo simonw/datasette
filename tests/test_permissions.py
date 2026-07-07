@@ -3,6 +3,7 @@ from asgiref.sync import async_to_sync
 from datasette.app import Datasette
 from datasette.cli import cli
 from datasette.default_permissions import restrictions_allow_action
+from datasette.utils import UNSTABLE_API_MESSAGE
 from .fixtures import assert_permissions_checked, make_app_client
 from click.testing import CliRunner
 from bs4 import BeautifulSoup as Soup
@@ -739,6 +740,8 @@ async def test_actor_restricted_permissions(
         "path": expected_path,
     }
     expected = {
+        "ok": True,
+        "unstable": UNSTABLE_API_MESSAGE,
         "action": permission,
         "allowed": expected_result,
         "resource": expected_resource,
@@ -1115,7 +1118,7 @@ def test_cli_create_token(options, expected):
         ],
     )
     assert 0 == result2.exit_code, result2.output
-    assert json.loads(result2.output) == {"actor": expected}
+    assert json.loads(result2.output) == {"ok": True, "actor": expected}
 
 
 _visible_tables_re = re.compile(r">\/((\w+)\/(\w+))\.json<\/a> - Get rows for")
@@ -1799,3 +1802,35 @@ async def test_root_allow_block_with_table_restricted_actor():
         actor=admin_actor,
     )
     assert result is True
+
+
+@pytest.mark.asyncio
+async def test_databases_json_respects_view_database(tmp_path_factory):
+    # https://github.com/simonw/datasette - /-/databases should not list
+    # databases the actor is not allowed to view
+    db_directory = tmp_path_factory.mktemp("dbs")
+    from datasette.utils import sqlite3 as _sqlite3
+
+    paths = []
+    for name in ("public", "private"):
+        path = str(db_directory / "{}.db".format(name))
+        conn = _sqlite3.connect(path)
+        conn.execute("vacuum")
+        conn.close()
+        paths.append(path)
+    ds = Datasette(
+        paths,
+        config={"databases": {"private": {"allow": {"id": "root"}}}},
+    )
+    ds.root_enabled = True
+    await ds.invoke_startup()
+    try:
+        anon_response = await ds.client.get("/-/databases.json")
+        assert anon_response.status_code == 200
+        anon_names = {db["name"] for db in anon_response.json()["databases"]}
+        assert anon_names == {"public"}
+        root_response = await ds.client.get("/-/databases.json", actor={"id": "root"})
+        root_names = {db["name"] for db in root_response.json()["databases"]}
+        assert root_names == {"public", "private"}
+    finally:
+        ds.close()

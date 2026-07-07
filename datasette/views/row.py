@@ -12,7 +12,7 @@ from datasette.utils.asgi import NotFound, Forbidden, PayloadTooLarge, Response
 from datasette.database import QueryInterrupted
 from datasette.events import UpdateRowEvent, DeleteRowEvent
 from datasette.resources import TableResource
-from .base import BaseView, DatasetteError, _error, stream_csv
+from .base import BaseView, DatasetteError, stream_csv
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
@@ -23,7 +23,6 @@ from datasette.utils import (
     InvalidSql,
     make_slot_function,
     path_from_row_pks,
-    path_with_added_args,
     path_with_format,
     path_with_removed_args,
     to_css_class,
@@ -201,6 +200,10 @@ class RowView(BaseView):
                 title="SQL Interrupted",
                 status=400,
                 message_is_html=True,
+                plain_message=(
+                    "SQL query took too long. The time limit is"
+                    " controlled by the sql_time_limit_ms setting."
+                ),
             )
         except (sqlite3.OperationalError, InvalidSql) as e:
             raise DatasetteError(str(e), title="Invalid SQL", status=400)
@@ -211,18 +214,6 @@ class RowView(BaseView):
 
         end = time.perf_counter()
         data["query_ms"] = (end - start) * 1000
-
-        # Special case for .jsono extension - redirect to _shape=objects
-        if format_ == "jsono":
-            return self.redirect(
-                request,
-                path_with_added_args(
-                    request,
-                    {"_shape": "objects"},
-                    path=request.path.rsplit(".jsono", 1)[0] + ".json",
-                ),
-                forward_querystring=False,
-            )
 
         if format_ in self.ds.renderers.keys():
             # Dispatch request to the correct output format renderer
@@ -612,6 +603,9 @@ class RowView(BaseView):
         }
 
         extras = extra_names_from_request(request)
+        if request.url_vars.get("format"):
+            # Data formats reject unknown extras; HTML ignores them
+            table_extra_registry.validate_requested(extras, ExtraScope.ROW)
 
         # Process extras
         row_extra_context = RowExtraContext(
@@ -721,11 +715,13 @@ async def _resolve_row_and_check_permission(datasette, request, permission):
     try:
         resolved = await datasette.resolve_row(request)
     except DatabaseNotFound as e:
-        return False, _error(["Database not found: {}".format(e.database_name)], 404)
+        return False, Response.error(
+            ["Database not found: {}".format(e.database_name)], 404
+        )
     except TableNotFound as e:
-        return False, _error(["Table not found: {}".format(e.table)], 404)
+        return False, Response.error(["Table not found: {}".format(e.table)], 404)
     except RowNotFound as e:
-        return False, _error(["Record not found: {}".format(e.pk_values)], 404)
+        return False, Response.error(["Record not found: {}".format(e.pk_values)], 404)
 
     # Ensure user has permission to delete this row
     if not await datasette.allowed(
@@ -733,7 +729,7 @@ async def _resolve_row_and_check_permission(datasette, request, permission):
         resource=TableResource(database=resolved.db.name, table=resolved.table),
         actor=request.actor,
     ):
-        return False, _error(["Permission denied"], 403)
+        return False, Response.error(["Permission denied"], 403)
 
     return True, resolved
 
@@ -758,7 +754,7 @@ class RowDeleteView(BaseView):
         try:
             await resolved.db.execute_write_fn(delete_row, request=request)
         except Exception as e:
-            return _error([str(e)], 500)
+            return Response.error([str(e)], 400)
 
         await self.ds.track_event(
             DeleteRowEvent(
@@ -797,24 +793,24 @@ class RowUpdateView(BaseView):
         try:
             data = await request.json()
         except json.JSONDecodeError as e:
-            return _error(["Invalid JSON: {}".format(e)])
+            return Response.error(["Invalid JSON: {}".format(e)])
         except PayloadTooLarge as e:
-            return _error([str(e)], 413)
+            return Response.error([str(e)], 413)
 
         if not isinstance(data, dict):
-            return _error(["JSON must be a dictionary"])
+            return Response.error(["JSON must be a dictionary"])
         if "update" not in data or not isinstance(data["update"], dict):
-            return _error(["JSON must contain an update dictionary"])
+            return Response.error(["JSON must contain an update dictionary"])
 
         invalid_keys = set(data.keys()) - {"update", "return", "alter"}
         if invalid_keys:
-            return _error(["Invalid keys: {}".format(", ".join(invalid_keys))])
+            return Response.error(["Invalid keys: {}".format(", ".join(invalid_keys))])
 
         update = data["update"]
         try:
             update = decode_write_json_row(update)
         except WriteJsonValueError as e:
-            return _error([str(e)], 400)
+            return Response.error([str(e)], 400)
 
         # Validate column types
         from datasette.views.table import _validate_column_types
@@ -823,7 +819,7 @@ class RowUpdateView(BaseView):
             self.ds, resolved.db.name, resolved.table, [update]
         )
         if ct_errors:
-            return _error(ct_errors, 400)
+            return Response.error(ct_errors, 400)
 
         alter = data.get("alter")
         if alter and not await self.ds.allowed(
@@ -831,7 +827,7 @@ class RowUpdateView(BaseView):
             resource=TableResource(database=resolved.db.name, table=resolved.table),
             actor=request.actor,
         ):
-            return _error(["Permission denied for alter-table"], 403)
+            return Response.error(["Permission denied for alter-table"], 403)
 
         def update_row(conn):
             sqlite_utils.Database(conn)[resolved.table].update(
@@ -841,7 +837,7 @@ class RowUpdateView(BaseView):
         try:
             await resolved.db.execute_write_fn(update_row, request=request)
         except Exception as e:
-            return _error([str(e)], 400)
+            return Response.error([str(e)], 400)
 
         result = {"ok": True}
         returned_row = None
@@ -850,7 +846,7 @@ class RowUpdateView(BaseView):
                 resolved.sql, resolved.params, truncate=True
             )
             returned_row = results.dicts()[0]
-            result["row"] = returned_row
+            result["rows"] = [returned_row]
 
         await self.ds.track_event(
             UpdateRowEvent(

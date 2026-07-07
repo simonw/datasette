@@ -1,4 +1,5 @@
 from datasette.utils.asgi import Response
+import json
 import pytest
 
 
@@ -52,3 +53,26 @@ async def test_response_set_cookie():
         },
         {"type": "http.response.body", "body": b""},
     ] == events
+
+
+def test_response_error_single_message():
+    response = Response.error("Method not allowed", 405)
+    assert response.status == 405
+    assert response.content_type == "application/json; charset=utf-8"
+    assert json.loads(response.body) == {
+        "ok": False,
+        "error": "Method not allowed",
+        "errors": ["Method not allowed"],
+        "status": 405,
+    }
+
+
+def test_response_error_message_list_and_default_status():
+    response = Response.error(["First problem", "Second problem"])
+    assert response.status == 400
+    assert json.loads(response.body) == {
+        "ok": False,
+        "error": "First problem; Second problem",
+        "errors": ["First problem", "Second problem"],
+        "status": 400,
+    }

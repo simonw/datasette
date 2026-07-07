@@ -28,12 +28,15 @@ class DatasetteError(Exception):
         status=500,
         template=None,
         message_is_html=False,
+        plain_message=None,
     ):
         self.message = message
         self.title = title
         self.error_dict = error_dict or {}
         self.status = status
         self.message_is_html = message_is_html
+        # Plain text used for JSON error responses when message is HTML
+        self.plain_message = plain_message
 
 
 class View:
@@ -49,9 +52,7 @@ class View:
             request.path.endswith(".json")
             or request.headers.get("content-type") == "application/json"
         ):
-            response = Response.json(
-                {"ok": False, "error": "Method not allowed"}, status=405
-            )
+            response = Response.error("Method not allowed", 405)
         else:
             response = Response.text("Method not allowed", status=405)
         return response
@@ -90,9 +91,7 @@ class BaseView:
             request.path.endswith(".json")
             or request.headers.get("content-type") == "application/json"
         ):
-            response = Response.json(
-                {"ok": False, "error": "Method not allowed"}, status=405
-            )
+            response = Response.error("Method not allowed", 405)
         else:
             response = Response.text("Method not allowed", status=405)
         return response
@@ -178,10 +177,6 @@ class BaseView:
         view.__module__ = cls.__module__
         view.__name__ = cls.__name__
         return view
-
-
-def _error(messages, status=400):
-    return Response.json({"ok": False, "errors": messages}, status=status)
 
 
 async def stream_csv(datasette, fetch_data, request, database):

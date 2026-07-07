@@ -1685,6 +1685,8 @@ forbidden(datasette, request, message)
 
 Plugins can use this to customize how Datasette responds when a 403 Forbidden error occurs - usually because a page failed a permission check, see :ref:`authentication_permissions`.
 
+Datasette's default behavior returns the :ref:`standard JSON error format <json_api_errors>` with a 403 status when the request path ends in ``.json`` or the request has an ``Accept: application/json`` or ``Content-Type: application/json`` header; other requests get an HTML error page.
+
 If a plugin hook wishes to react to the error, it should return a :ref:`Response object <internals_response>`.
 
 This example returns a redirect to a ``/-/login`` page:
@@ -2544,6 +2546,10 @@ The default ``SignedTokenHandler`` uses itsdangerous signed tokens (``dstok_`` p
 
         async def verify_token(self, datasette, token):
             # Look up token in database, return actor dict or None
+            # if this handler does not recognize the token. Raise
+            # datasette.TokenInvalid for a token this handler
+            # recognizes but rejects (revoked, expired) - Datasette
+            # will respond with a 401 error.
             ...
 
 

@@ -7,6 +7,10 @@ Datasette includes some pages and JSON API endpoints for introspecting the curre
 
 Each of these pages can be viewed in your browser. Add ``.json`` to the URL to get back the contents as JSON.
 
+JSON responses that return an object include an ``"ok": true`` key, consistent with the rest of the :ref:`JSON API <json_api>`.
+
+The introspection endpoints documented on this page are covered by the :ref:`JSON API stability promise <json_api_stability>`, with the exception of the debug endpoints ``/-/threads`` and ``/-/actions``, whose shapes may change in future releases.
+
 .. _JsonDataView_metadata:
 
 /-/metadata
@@ -37,6 +41,7 @@ Shows the version of Datasette, Python and SQLite. `Versions example <https://la
 .. code-block:: json
 
     {
+        "ok": true,
         "datasette": {
             "version": "0.60"
         },
@@ -75,15 +80,18 @@ Shows a list of currently installed plugins and their versions. `Plugins example
 
 .. code-block:: json
 
-    [
-        {
-            "name": "datasette_cluster_map",
-            "static": true,
-            "templates": false,
-            "version": "0.10",
-            "hooks": ["extra_css_urls", "extra_js_urls", "extra_body_script"]
-        }
-    ]
+    {
+        "ok": true,
+        "plugins": [
+            {
+                "name": "datasette_cluster_map",
+                "static": true,
+                "templates": false,
+                "version": "0.10",
+                "hooks": ["extra_css_urls", "extra_js_urls", "extra_body_script"]
+            }
+        ]
+    }
 
 Add ``?all=1`` to include details of the default plugins baked into Datasette.
 
@@ -97,6 +105,7 @@ Shows the :ref:`settings` for this instance of Datasette. `Settings example <htt
 .. code-block:: json
 
     {
+        "ok": true,
         "default_facet_size": 30,
         "default_page_size": 100,
         "facet_suggest_time_limit_ms": 50,
@@ -115,6 +124,7 @@ Shows the :ref:`configuration <configuration>` for this instance of Datasette. T
 .. code-block:: json
 
     {
+        "ok": true,
         "settings": {
             "template_debug": true,
             "trace_debug": true,
@@ -129,20 +139,47 @@ Any keys that include the one of the following substrings in their names will be
 /-/databases
 ------------
 
-Shows currently attached databases. `Databases example <https://latest.datasette.io/-/databases>`_:
+Shows currently attached databases that the current actor is allowed to view, based on the ``view-database`` permission. `Databases example <https://latest.datasette.io/-/databases>`_:
 
 .. code-block:: json
 
-    [
-        {
-            "hash": null,
-            "is_memory": false,
-            "is_mutable": true,
-            "name": "fixtures",
-            "path": "fixtures.db",
-            "size": 225280
-        }
-    ]
+    {
+        "ok": true,
+        "databases": [
+            {
+                "hash": null,
+                "is_memory": false,
+                "is_mutable": true,
+                "name": "fixtures",
+                "path": "fixtures.db",
+                "size": 225280
+            }
+        ]
+    }
+
+.. _JsonDataView_actions:
+
+/-/actions
+----------
+
+Shows all actions registered with the permission system, including those added by plugins. Requires the ``permissions-debug`` permission.
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "actions": [
+            {
+                "name": "view-instance",
+                "abbr": "vi",
+                "description": "View Datasette instance",
+                "takes_parent": false,
+                "takes_child": false,
+                "resource_class": null,
+                "also_requires": null
+            }
+        ]
+    }
 
 .. _JumpView:
 
@@ -160,6 +197,7 @@ The endpoint supports a ``?q=`` query parameter for filtering items by name.
 .. code-block:: json
 
     {
+        "ok": true,
         "matches": [
             {
                 "name": "fixtures",
@@ -188,6 +226,7 @@ Search example with ``?q=facet`` returns only items matching ``.*facet.*``:
 .. code-block:: json
 
     {
+        "ok": true,
         "matches": [
             {
                 "name": "fixtures: facetable",
@@ -215,11 +254,12 @@ Without those query string arguments, the page lists up to five tables with dete
 /-/threads
 ----------
 
-Shows details of threads and ``asyncio`` tasks. `Threads example <https://latest.datasette.io/-/threads>`_:
+Shows details of threads and ``asyncio`` tasks. This endpoint requires the ``permissions-debug`` permission, since it exposes runtime internals. `Threads example <https://latest.datasette.io/-/threads>`_:
 
 .. code-block:: json
 
     {
+        "ok": true,
         "num_threads": 2,
         "threads": [
             {
@@ -251,6 +291,7 @@ Shows the currently authenticated actor. Useful for debugging Datasette authenti
 .. code-block:: json
 
     {
+        "ok": true,
         "actor": {
             "id": 1,
             "username": "some-user"

@@ -657,7 +657,7 @@ There are three options for specifying that you would like the response to your 
 - Include ``?_json=1`` in the URL that you POST to
 - Include ``"_json": 1`` in your JSON body, or ``&_json=1`` in your form encoded body
 
-The JSON response will look like this:
+A successful JSON response will look like this:
 
 .. code-block:: json
 
@@ -667,7 +667,21 @@ The JSON response will look like this:
         "redirect": "/data/add_name"
     }
 
-The ``"message"`` and ``"redirect"`` values here will take into account ``on_success_message``, ``on_success_message_sql``,  ``on_success_redirect``, ``on_error_message`` and ``on_error_redirect``, if they have been set.
+If the SQL fails to execute - for example a constraint violation - the response uses the :ref:`standard error format <json_api_errors>` with a ``400`` status, plus the ``"redirect"`` key from the query configuration:
+
+.. code-block:: json
+
+    {
+        "ok": false,
+        "error": "UNIQUE constraint failed: docs.id",
+        "errors": [
+            "UNIQUE constraint failed: docs.id"
+        ],
+        "status": 400,
+        "redirect": null
+    }
+
+The ``"message"``, ``"error"`` and ``"redirect"`` values here take into account ``on_success_message``, ``on_success_message_sql``, ``on_success_redirect``, ``on_error_message`` and ``on_error_redirect``, if they have been set.
 
 .. _pagination:
 

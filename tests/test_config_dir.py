@@ -109,9 +109,10 @@ def test_settings(config_dir_client):
 def test_plugins(config_dir_client):
     response = config_dir_client.get("/-/plugins.json")
     assert 200 == response.status
-    assert "hooray.py" in {p["name"] for p in response.json}
-    assert "non_py_file.txt" not in {p["name"] for p in response.json}
-    assert "mypy_cache" not in {p["name"] for p in response.json}
+    plugins = response.json["plugins"]
+    assert "hooray.py" in {p["name"] for p in plugins}
+    assert "non_py_file.txt" not in {p["name"] for p in plugins}
+    assert "mypy_cache" not in {p["name"] for p in plugins}
 
 
 def test_templates_and_plugin(config_dir_client):
@@ -136,7 +137,7 @@ def test_static_directory_browsing_not_allowed(config_dir_client):
 def test_databases(config_dir_client):
     response = config_dir_client.get("/-/databases.json")
     assert 200 == response.status
-    databases = response.json
+    databases = response.json["databases"]
     assert 4 == len(databases)
     databases.sort(key=lambda d: d["name"])
     for db, expected_name in zip(databases, ("demo", "immutable", "j", "k")):

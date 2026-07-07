@@ -9,7 +9,7 @@
 {% include "_permissions_debug_tabs.html" %}
 
 <p style="margin-bottom: 2em;">
-  This Datasette instance has registered {{ data|length }} action{{ data|length != 1 and "s" or "" }}.
+  This Datasette instance has registered {{ data.actions|length }} action{{ data.actions|length != 1 and "s" or "" }}.
   Actions are used by the permission system to control access to different features.
 </p>
 
@@ -26,7 +26,7 @@
     </tr>
   </thead>
   <tbody>
-    {% for action in data %}
+    {% for action in data.actions %}
     <tr>
       <td><strong>{{ action.name }}</strong></td>
       <td>{% if action.abbr %}<code>{{ action.abbr }}</code>{% endif %}</td>

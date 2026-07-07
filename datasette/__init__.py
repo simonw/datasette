@@ -1,7 +1,7 @@
 from datasette.permissions import Permission  # noqa
 from datasette.version import __version_info__, __version__  # noqa
 from datasette.events import Event  # noqa
-from datasette.tokens import TokenHandler, TokenRestrictions  # noqa
+from datasette.tokens import TokenHandler, TokenInvalid, TokenRestrictions  # noqa
 from datasette.utils.asgi import (  # noqa
     Forbidden,
     NotFound,

@@ -329,7 +329,7 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     Pagination token for the next page, or None
 
 ``next_url`` - ``str``
-    Full URL for the next page of results
+    Full URL for the next page of results, or None if there are no more pages. See :ref:`json_api_pagination`.
 
 ``ok`` - ``bool``
     True if the data for this page was retrieved without errors

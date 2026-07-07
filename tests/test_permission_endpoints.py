@@ -137,9 +137,7 @@ async def test_allowed_json_pagination():
     await ds.refresh_schemas()
 
     # Test page 1
-    response = await ds.client.get(
-        "/-/allowed.json?action=view-table&page_size=10&page=1"
-    )
+    response = await ds.client.get("/-/allowed.json?action=view-table&_size=10&_page=1")
     assert response.status_code == 200
     data = response.json()
     assert data["page"] == 1
@@ -147,9 +145,7 @@ async def test_allowed_json_pagination():
     assert len(data["items"]) == 10
 
     # Test page 2
-    response = await ds.client.get(
-        "/-/allowed.json?action=view-table&page_size=10&page=2"
-    )
+    response = await ds.client.get("/-/allowed.json?action=view-table&_size=10&_page=2")
     assert response.status_code == 200
     data = response.json()
     assert data["page"] == 2
@@ -157,10 +153,10 @@ async def test_allowed_json_pagination():
 
     # Verify items are different between pages
     response1 = await ds.client.get(
-        "/-/allowed.json?action=view-table&page_size=10&page=1"
+        "/-/allowed.json?action=view-table&_size=10&_page=1"
     )
     response2 = await ds.client.get(
-        "/-/allowed.json?action=view-table&page_size=10&page=2"
+        "/-/allowed.json?action=view-table&_size=10&_page=2"
     )
     items1 = {(item["parent"], item["child"]) for item in response1.json()["items"]}
     items2 = {(item["parent"], item["child"]) for item in response2.json()["items"]}
@@ -323,7 +319,7 @@ async def test_rules_json_pagination():
 
     # Test basic pagination structure - just verify it returns paginated results
     response = await ds.client.get(
-        "/-/rules.json?action=view-table&page_size=2&page=1",
+        "/-/rules.json?action=view-table&_size=2&_page=1",
         actor={"id": "root"},
     )
     assert response.status_code == 200

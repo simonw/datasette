@@ -1,5 +1,6 @@
 from datasette.app import Datasette
 from datasette.plugins import DEFAULT_PLUGINS
+from datasette.utils import UNSTABLE_API_MESSAGE
 from datasette.utils.sqlite import sqlite_version
 from datasette.version import __version__
 from .fixtures import make_app_client, EXPECTED_PLUGINS
@@ -26,8 +27,9 @@ async def test_homepage(ds_client):
         "title",
     ]
     databases = data.get("databases")
-    assert databases.keys() == {"fixtures": 0}.keys()
-    d = databases["fixtures"]
+    assert isinstance(databases, list)
+    assert [d["name"] for d in databases] == ["fixtures"]
+    d = databases[0]
     assert d["name"] == "fixtures"
     assert isinstance(d["tables_count"], int)
     assert isinstance(len(d["tables_and_views_truncated"]), int)
@@ -42,8 +44,7 @@ async def test_homepage_sort_by_relationships(ds_client):
     response = await ds_client.get("/.json?_sort=relationships")
     assert response.status_code == 200
     tables = [
-        t["name"]
-        for t in response.json()["databases"]["fixtures"]["tables_and_views_truncated"]
+        t["name"] for t in response.json()["databases"][0]["tables_and_views_truncated"]
     ]
     assert tables == [
         "simple_primary_key",
@@ -250,8 +251,10 @@ def test_no_files_uses_memory_database(app_client_no_files):
     response = app_client_no_files.get("/.json")
     assert response.status == 200
     assert {
-        "databases": {
-            "_memory": {
+        "ok": True,
+        "unstable": UNSTABLE_API_MESSAGE,
+        "databases": [
+            {
                 "name": "_memory",
                 "hash": None,
                 "color": "a6c7b9",
@@ -266,7 +269,7 @@ def test_no_files_uses_memory_database(app_client_no_files):
                 "views_count": 0,
                 "private": False,
             },
-        },
+        ],
         "metadata": {},
     } == response.json
     # Try that SQL query
@@ -323,20 +326,15 @@ def test_sql_time_limit(app_client_shorter_time_limit):
         "/fixtures/-/query.json?sql=select+sleep(0.5)",
     )
     assert 400 == response.status
+    expected_message = (
+        "SQL query took too long. The time limit is"
+        " controlled by the sql_time_limit_ms setting."
+    )
     assert response.json == {
         "ok": False,
-        "error": (
-            "<p>SQL query took too long. The time limit is controlled by the\n"
-            '<a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>\n'
-            "configuration option.</p>\n"
-            '<textarea style="width: 90%">select sleep(0.5)</textarea>\n'
-            "<script>\n"
-            'let ta = document.querySelector("textarea");\n'
-            'ta.style.height = ta.scrollHeight + "px";\n'
-            "</script>"
-        ),
+        "error": expected_message,
+        "errors": [expected_message],
         "status": 400,
-        "title": "SQL Interrupted",
     }
 
 
@@ -350,7 +348,7 @@ async def test_custom_sql_time_limit(ds_client):
         "/fixtures/-/query.json?sql=select+sleep(0.01)&_timelimit=5",
     )
     assert response.status_code == 400
-    assert response.json()["title"] == "SQL Interrupted"
+    assert response.json()["error"].startswith("SQL query took too long.")
 
 
 @pytest.mark.asyncio
@@ -546,7 +544,7 @@ async def test_row_extra_render_cell():
 
 def test_databases_json(app_client_two_attached_databases_one_immutable):
     response = app_client_two_attached_databases_one_immutable.get("/-/databases.json")
-    databases = response.json
+    databases = response.json["databases"]
     assert 2 == len(databases)
     extra_database, fixtures_database = databases
     assert "extra database" == extra_database["name"]
@@ -562,8 +560,12 @@ def test_databases_json(app_client_two_attached_databases_one_immutable):
 
 @pytest.mark.asyncio
 async def test_threads_json(ds_client):
-    response = await ds_client.get("/-/threads.json")
-    expected_keys = {"threads", "num_threads"}
+    ds_client.ds.root_enabled = True
+    try:
+        response = await ds_client.get("/-/threads.json", actor={"id": "root"})
+    finally:
+        ds_client.ds.root_enabled = False
+    expected_keys = {"ok", "threads", "num_threads"}
     if sys.version_info >= (3, 7, 0):
         expected_keys.update({"tasks", "num_tasks"})
     data = response.json()
@@ -578,13 +580,13 @@ async def test_plugins_json(ds_client):
     response = await ds_client.get("/-/plugins.json")
     # Filter out TrackEventPlugin
     actual_plugins = sorted(
-        [p for p in response.json() if p["name"] != "TrackEventPlugin"],
+        [p for p in response.json()["plugins"] if p["name"] != "TrackEventPlugin"],
         key=lambda p: p["name"],
     )
     assert EXPECTED_PLUGINS == actual_plugins
     # Try with ?all=1
     response = await ds_client.get("/-/plugins.json?all=1")
-    names = {p["name"] for p in response.json()}
+    names = {p["name"] for p in response.json()["plugins"]}
     assert names.issuperset(p["name"] for p in EXPECTED_PLUGINS)
     assert names.issuperset(DEFAULT_PLUGINS)
 
@@ -616,7 +618,7 @@ async def test_actions_json(ds_client):
     try:
         ds_client.ds.root_enabled = True
         response = await ds_client.get("/-/actions.json", actor={"id": "root"})
-        data = response.json()
+        data = response.json()["actions"]
     finally:
         ds_client.ds.root_enabled = original_root_enabled
     assert isinstance(data, list)
@@ -648,6 +650,7 @@ async def test_actions_json(ds_client):
 async def test_settings_json(ds_client):
     response = await ds_client.get("/-/settings.json")
     assert response.json() == {
+        "ok": True,
         "default_page_size": 50,
         "default_facet_size": 30,
         "default_allow_sql": True,
@@ -717,7 +720,7 @@ def test_config_cache_size(app_client_larger_cache_size):
 def test_config_force_https_urls():
     with make_app_client(settings={"force_https_urls": True}) as client:
         response = client.get(
-            "/fixtures/facetable.json?_size=3&_facet=state&_extra=next_url,suggested_facets"
+            "/fixtures/facetable.json?_size=3&_facet=state&_extra=suggested_facets"
         )
         assert response.json["next_url"].startswith("https://")
         assert response.json["facet_results"]["results"]["state"]["results"][0][
@@ -812,7 +815,9 @@ def test_common_prefix_database_names(app_client_conflicting_database_names):
     # https://github.com/simonw/datasette/issues/597
     assert ["foo-bar", "foo", "fixtures"] == [
         d["name"]
-        for d in app_client_conflicting_database_names.get("/-/databases.json").json
+        for d in app_client_conflicting_database_names.get("/-/databases.json").json[
+            "databases"
+        ]
     ]
     for db_name, path in (("foo", "/foo.json"), ("foo-bar", "/foo-bar.json")):
         data = app_client_conflicting_database_names.get(path).json
@@ -883,8 +888,9 @@ async def test_tilde_encoded_database_names(db_name):
     ds = Datasette()
     ds.add_memory_database(db_name)
     response = await ds.client.get("/.json")
-    assert db_name in response.json()["databases"].keys()
-    path = response.json()["databases"][db_name]["path"]
+    databases_by_name = {d["name"]: d for d in response.json()["databases"]}
+    assert db_name in databases_by_name
+    path = databases_by_name[db_name]["path"]
     # And the JSON for that database
     response2 = await ds.client.get(path + ".json")
     assert response2.status_code == 200
@@ -923,7 +929,7 @@ async def test_config_json(config, expected):
     "/-/config.json should return redacted configuration"
     ds = Datasette(config=config)
     response = await ds.client.get("/-/config.json")
-    assert response.json() == expected
+    assert response.json() == {"ok": True, **expected}
 
 
 @pytest.mark.asyncio
@@ -1019,7 +1025,7 @@ async def test_config_json(config, expected):
 async def test_upgrade_metadata(metadata, expected_config, expected_metadata):
     ds = Datasette(metadata=metadata)
     response = await ds.client.get("/-/config.json")
-    assert response.json() == expected_config
+    assert response.json() == {"ok": True, **expected_config}
     response2 = await ds.client.get("/-/metadata.json")
     assert response2.json() == expected_metadata
 

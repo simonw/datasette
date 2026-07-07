@@ -141,6 +141,39 @@ class CountExtra(Extra):
         return count
 
 
+def count_is_truncated(datasette, db, database_name, table_name, count_sql, count):
+    if count != db.count_limit + 1:
+        return False
+    if (
+        not db.is_mutable
+        and datasette.inspect_data
+        and count_sql == f"select count(*) from {table_name} "
+    ):
+        try:
+            datasette.inspect_data[database_name]["tables"][table_name]["count"]
+            return False
+        except KeyError:
+            pass
+    return True
+
+
+class CountTruncatedExtra(Extra):
+    description = "True if the count hit Datasette's counting limit, meaning the real number of matching rows is at least the reported count."
+    example = ExtraExample("/fixtures/facetable.json?_extra=count,count_truncated")
+    scopes = {ExtraScope.TABLE}
+    expensive = True
+
+    async def resolve(self, context, count):
+        return count_is_truncated(
+            context.datasette,
+            context.db,
+            context.database_name,
+            context.table_name,
+            context.count_sql,
+            count,
+        )
+
+
 class FacetInstancesProvider(Provider):
     scopes = {ExtraScope.TABLE}
 
@@ -286,21 +319,6 @@ class HumanDescriptionEnExtra(Extra):
                 [b for b in [human_description_en, sorted_by] if b]
             )
         return human_description_en
-
-
-class NextUrlExtra(Extra):
-    description = "Full URL for the next page of results"
-    example = ExtraExample(
-        "/fixtures/facetable.json?_size=1&_extra=next_url",
-        note=(
-            "``null`` if there are no more pages of results. "
-            "See :ref:`json_api_pagination`."
-        ),
-    )
-    scopes = {ExtraScope.TABLE}
-
-    async def resolve(self, context):
-        return context.next_url
 
 
 class ColumnsExtra(Extra):
@@ -1217,7 +1235,6 @@ TABLE_EXTRA_BUNDLES = {
         "count",
         "count_sql",
         "human_description_en",
-        "next_url",
         "metadata",
         "query",
         "columns",
@@ -1246,13 +1263,13 @@ TABLE_EXTRA_BUNDLES = {
 
 TABLE_EXTRA_CLASSES = [
     CountExtra,
+    CountTruncatedExtra,
     CountSqlExtra,
     FacetResultsExtra,
     FacetsTimedOutExtra,
     SuggestedFacetsExtra,
     FacetInstancesProvider,
     HumanDescriptionEnExtra,
-    NextUrlExtra,
     ColumnsExtra,
     AllColumnsExtra,
     PrimaryKeysExtra,

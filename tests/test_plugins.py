@@ -783,9 +783,13 @@ async def test_hook_permission_resources_sql():
 
 @pytest.mark.asyncio
 async def test_actor_json(ds_client):
-    assert (await ds_client.get("/-/actor.json")).json() == {"actor": None}
+    assert (await ds_client.get("/-/actor.json")).json() == {
+        "ok": True,
+        "actor": None,
+    }
     assert (await ds_client.get("/-/actor.json?_bot2=1")).json() == {
-        "actor": {"id": "bot2", "1+1": 2}
+        "ok": True,
+        "actor": {"id": "bot2", "1+1": 2},
     }
 
 
@@ -1478,7 +1482,7 @@ async def test_plugin_is_installed():
         datasette.pm.register(DummyPlugin(), name="DummyPlugin")
         response = await datasette.client.get("/-/plugins.json")
         assert response.status_code == 200
-        installed_plugins = {p["name"] for p in response.json()}
+        installed_plugins = {p["name"] for p in response.json()["plugins"]}
         assert "DummyPlugin" in installed_plugins
 
     finally:

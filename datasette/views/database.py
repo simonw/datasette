@@ -8,7 +8,7 @@ import markupsafe
 import os
 import textwrap
 
-from datasette.extras import extra_names_from_request
+from datasette.extras import extra_names_from_request, ExtraScope
 from datasette.database import QueryInterrupted
 from datasette.resources import DatabaseResource, QueryResource
 from datasette.stored_queries import StoredQuery, stored_query_to_dict
@@ -16,6 +16,7 @@ from datasette.write_sql import QueryWriteRejected
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
+    error_body,
     call_with_supported_arguments,
     named_parameters as derive_named_parameters,
     format_bytes,
@@ -607,11 +608,7 @@ class QueryView(View):
                 "_json"
             ):
                 return Response.json(
-                    {
-                        "ok": False,
-                        "message": ex.message,
-                        "redirect": None,
-                    },
+                    dict(error_body([ex.message], 403), redirect=None),
                     status=403,
                 )
             datasette.add_message(request, ex.message, datasette.ERROR)
@@ -681,12 +678,17 @@ class QueryView(View):
             redirect_url = stored_query.on_error_redirect
             ok = False
         if should_return_json:
+            if ok:
+                return Response.json(
+                    {
+                        "ok": True,
+                        "message": message,
+                        "redirect": redirect_url,
+                    }
+                )
             return Response.json(
-                {
-                    "ok": ok,
-                    "message": message,
-                    "redirect": redirect_url,
-                }
+                dict(error_body([message], 400), redirect=redirect_url),
+                status=400,
             )
         else:
             datasette.add_message(request, message, message_type)
@@ -817,6 +819,10 @@ class QueryView(View):
                     title="SQL Interrupted",
                     status=400,
                     message_is_html=True,
+                    plain_message=(
+                        "SQL query took too long. The time limit is"
+                        " controlled by the sql_time_limit_ms setting."
+                    ),
                 )
             except sqlite3.DatabaseError as ex:
                 query_error = str(ex)
@@ -849,8 +855,11 @@ class QueryView(View):
 
             return await stream_csv(datasette, fetch_data_for_csv, request, db.name)
         elif format_ in datasette.renderers.keys():
+            if not sql:
+                raise DatasetteError("?sql= is required", status=400)
             data = {"ok": True, "rows": rows, "columns": columns}
             extras = extra_names_from_request(request)
+            table_extra_registry.validate_requested(extras, ExtraScope.QUERY)
             if extras:
                 query_extra_context = QueryExtraContext(
                     datasette=datasette,

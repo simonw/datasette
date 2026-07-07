@@ -1665,7 +1665,7 @@ async def test_row_update_sets_message():
             json={"update": {"name": long_name}, "return": True},
         )
         assert response.status_code == 200
-        assert response.json()["row"]["name"] == long_name
+        assert response.json()["rows"][0]["name"] == long_name
         assert ds.unsign(response.cookies["ds_messages"], "messages") == [
             ["Updated row 1 ({})".format(truncated_name), ds.INFO]
         ]
@@ -2015,8 +2015,8 @@ async def test_sort_errors(ds_client, json, params, error):
         assert response.json() == {
             "ok": False,
             "error": error,
+            "errors": [error],
             "status": 400,
-            "title": None,
         }
     else:
         assert error in response.text
@@ -2349,6 +2349,7 @@ async def test_foreign_key_labels_obey_permissions(config):
     assert root_b.json() == {
         "ok": True,
         "next": None,
+        "next_url": None,
         "rows": [{"id": 1, "name": "world", "a_id": {"value": 1, "label": "hello"}}],
         "truncated": False,
     }
@@ -2356,6 +2357,7 @@ async def test_foreign_key_labels_obey_permissions(config):
     assert anon_b.json() == {
         "ok": True,
         "next": None,
+        "next_url": None,
         "rows": [{"id": 1, "name": "world", "a_id": 1}],
         "truncated": False,
     }

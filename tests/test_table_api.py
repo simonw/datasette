@@ -31,8 +31,8 @@ async def test_table_not_exists_json(ds_client):
     assert (await ds_client.get("/fixtures/blah.json")).json() == {
         "ok": False,
         "error": "Table not found",
+        "errors": ["Table not found"],
         "status": 404,
-        "title": None,
     }
 
 
@@ -123,8 +123,8 @@ async def test_html_only_extras_are_not_available_via_json(ds_client, extra):
     # These extras exist for the HTML view; their values are not JSON
     # serializable so they are internal, not part of the JSON API
     response = await ds_client.get(f"/fixtures/facetable.json?_extra={extra}")
-    assert response.status_code == 200
-    assert extra not in response.json()
+    assert response.status_code == 400
+    assert response.json()["errors"] == [f"Unknown _extra: {extra}"]
 
 
 @pytest.mark.asyncio
@@ -180,9 +180,11 @@ def test_query_extra_query_reports_bound_params():
         assert response.json["query"]["params"] == {}
 
 
-def test_query_extra_query_does_not_echo_querystring_without_sql():
+def test_query_extra_query_does_not_echo_querystring():
     with make_app_client() as client:
-        response = client.get("/fixtures/-/query.json?_extra=query&foo=bar")
+        response = client.get(
+            "/fixtures/-/query.json?sql=select+1&_extra=query&foo=bar"
+        )
         assert response.status == 200
         assert response.json["query"]["params"] == {}
 
@@ -242,8 +244,8 @@ async def test_table_shape_invalid(ds_client):
     assert response.json() == {
         "ok": False,
         "error": "Invalid _shape: invalid",
+        "errors": ["Invalid _shape: invalid"],
         "status": 400,
-        "title": None,
     }
 
 
@@ -321,10 +323,6 @@ async def test_paginate_tables_and_views(
     fetched = []
     count = 0
     while path:
-        if "?" in path:
-            path += "&_extra=next_url"
-        else:
-            path += "?_extra=next_url"
         response = await ds_client.get(path)
         assert response.status_code == 200
         count += 1
@@ -357,9 +355,7 @@ async def test_validate_page_size(ds_client, path, expected_error):
 @pytest.mark.asyncio
 async def test_page_size_zero(ds_client):
     """For _size=0 we return the counts, empty rows and no continuation token"""
-    response = await ds_client.get(
-        "/fixtures/no_primary_key.json?_size=0&_extra=count,next_url"
-    )
+    response = await ds_client.get("/fixtures/no_primary_key.json?_size=0&_extra=count")
     assert response.status_code == 200
     assert [] == response.json()["rows"]
     assert 202 == response.json()["count"]
@@ -370,7 +366,7 @@ async def test_page_size_zero(ds_client):
 @pytest.mark.asyncio
 async def test_paginate_compound_keys(ds_client):
     fetched = []
-    path = "/fixtures/compound_three_primary_keys.json?_shape=objects&_extra=next_url"
+    path = "/fixtures/compound_three_primary_keys.json?_shape=objects"
     page = 0
     while path:
         page += 1
@@ -391,7 +387,9 @@ async def test_paginate_compound_keys(ds_client):
 @pytest.mark.asyncio
 async def test_paginate_compound_keys_with_extra_filters(ds_client):
     fetched = []
-    path = "/fixtures/compound_three_primary_keys.json?content__contains=d&_shape=objects&_extra=next_url"
+    path = (
+        "/fixtures/compound_three_primary_keys.json?content__contains=d&_shape=objects"
+    )
     page = 0
     while path:
         page += 1
@@ -444,7 +442,7 @@ async def test_paginate_compound_keys_with_extra_filters(ds_client):
     ],
 )
 async def test_sortable(ds_client, query_string, sort_key, human_description_en):
-    path = f"/fixtures/sortable.json?_shape=objects&_extra=human_description_en,next_url&{query_string}"
+    path = f"/fixtures/sortable.json?_shape=objects&_extra=human_description_en&{query_string}"
     fetched = []
     page = 0
     while path:
@@ -635,8 +633,8 @@ async def test_searchable_invalid_column(ds_client):
     assert response.json() == {
         "ok": False,
         "error": "Cannot search by that column",
+        "errors": ["Cannot search by that column"],
         "status": 400,
-        "title": None,
     }
 
 
@@ -775,7 +773,7 @@ async def test_table_filter_extra_where_invalid(ds_client):
         "/fixtures/facetable.json?_where=_neighborhood=Dogpatch'"
     )
     assert response.status_code == 400
-    assert "Invalid SQL" == response.json()["title"]
+    assert "unrecognized token" in response.json()["error"]
 
 
 def test_table_filter_extra_where_disabled_if_no_sql_allowed():
@@ -848,7 +846,7 @@ def test_page_size_matching_max_returned_rows(
     app_client_returned_rows_matches_page_size,
 ):
     fetched = []
-    path = "/fixtures/no_primary_key.json?_extra=next_url"
+    path = "/fixtures/no_primary_key.json"
     while path:
         response = app_client_returned_rows_matches_page_size.get(path)
         fetched.extend(response.json["rows"])
@@ -1592,6 +1590,7 @@ async def test_col_nocol_errors(ds_client, path, expected_error):
             {
                 "ok": True,
                 "next": None,
+                "next_url": None,
                 "columns": ["id", "content", "content2"],
                 "rows": [{"id": "1", "content": "hey", "content2": "world"}],
                 "truncated": False,
@@ -1602,9 +1601,11 @@ async def test_col_nocol_errors(ds_client, path, expected_error):
             {
                 "ok": True,
                 "next": None,
+                "next_url": None,
                 "rows": [{"id": "1", "content": "hey", "content2": "world"}],
                 "truncated": False,
                 "count": 1,
+                "count_truncated": False,
             },
         ),
     ),
@@ -1691,3 +1692,58 @@ async def test_extra_render_cell():
 
     finally:
         ds.pm.unregister(name="TestRenderCellPlugin")
+
+
+@pytest.mark.asyncio
+async def test_count_truncated_included_with_count_extra(tmp_path_factory):
+    from datasette.app import Datasette
+    from datasette.utils import sqlite3
+
+    db_directory = tmp_path_factory.mktemp("dbs")
+    db_path = str(db_directory / "counts.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute("vacuum")
+    conn.execute("create table big (id integer primary key)")
+    conn.execute("create table small (id integer primary key)")
+    conn.executemany("insert into big (id) values (?)", [(i,) for i in range(10)])
+    conn.executemany("insert into small (id) values (?)", [(i,) for i in range(3)])
+    conn.commit()
+    conn.close()
+    ds = Datasette([db_path])
+    ds.get_database("counts").count_limit = 5
+    try:
+        response = await ds.client.get("/counts/big.json?_extra=count")
+        data = response.json()
+        # Count is capped at count_limit + 1 and flagged as truncated
+        assert data["count"] == 6
+        assert data["count_truncated"] is True
+
+        response = await ds.client.get("/counts/small.json?_extra=count")
+        data = response.json()
+        assert data["count"] == 3
+        assert data["count_truncated"] is False
+
+        # count_truncated can also be requested on its own
+        response = await ds.client.get("/counts/big.json?_extra=count_truncated")
+        assert response.json()["count_truncated"] is True
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_next_url_included_by_default(ds_client):
+    response = await ds_client.get("/fixtures/compound_three_primary_keys.json")
+    data = response.json()
+    assert data["next"] is not None
+    assert data["next_url"].endswith(
+        "/fixtures/compound_three_primary_keys.json?_next="
+        + urllib.parse.quote(data["next"], safe="")
+    )
+    # Follow to the last page - next and next_url are both null there
+    while data["next"]:
+        response = await ds_client.get(
+            "/fixtures/compound_three_primary_keys.json?_next=" + data["next"]
+        )
+        data = response.json()
+    assert data["next"] is None
+    assert data["next_url"] is None

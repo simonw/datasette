@@ -385,7 +385,9 @@ def test_setting_boolean_validation_false_values(value):
     )
     # Should be forbidden (setting is false)
     assert result.exit_code == 1, result.output
-    assert "Forbidden" in result.output
+    error = json.loads(result.output)
+    assert error["ok"] is False
+    assert error["status"] == 403
 
 
 @pytest.mark.parametrize("value", ("on", "true", "1"))
@@ -425,8 +427,9 @@ def test_setting_default_allow_sql(default_allow_sql):
         assert json.loads(result.output)["rows"][0] == {"21": 21}
     else:
         assert result.exit_code == 1, result.output
-        # This isn't JSON at the moment, maybe it should be though
-        assert "Forbidden" in result.output
+        error = json.loads(result.output)
+        assert error["ok"] is False
+        assert error["status"] == 403
 
 
 def test_sql_errors_logged_to_stderr():
@@ -444,7 +447,7 @@ def test_serve_create(tmpdir):
         cli, [str(db_path), "--create", "--get", "/-/databases.json"]
     )
     assert result.exit_code == 0, result.output
-    databases = json.loads(result.output)
+    databases = json.loads(result.output)["databases"]
     assert {
         "name": "does_not_exist_yet",
         "is_mutable": True,
@@ -493,7 +496,7 @@ def test_serve_duplicate_database_names(tmpdir):
         conn.close()
     result = runner.invoke(cli, [db_1_path, db_2_path, "--get", "/-/databases.json"])
     assert result.exit_code == 0, result.output
-    databases = json.loads(result.output)
+    databases = json.loads(result.output)["databases"]
     assert {db["name"] for db in databases} == {"db", "db_2"}
 
 
@@ -585,7 +588,7 @@ def test_duplicate_database_files_error(tmpdir):
         cli, ["serve", other_db_path, str(config_dir), "--get", "/-/databases.json"]
     )
     assert result4.exit_code == 0
-    databases = json.loads(result4.output)
+    databases = json.loads(result4.output)["databases"]
     assert {db["name"] for db in databases} == {"other", "data"}
 
     # Test that multiple directories raise an error

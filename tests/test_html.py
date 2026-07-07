@@ -1363,12 +1363,12 @@ async def test_permission_debug_tabs_with_query_string(ds_client):
 
         # Test /-/allowed with query string
         response = await ds_client.get(
-            "/-/allowed?action=view-table&page_size=50", actor=actor
+            "/-/allowed?action=view-table&_size=50", actor=actor
         )
         assert response.status_code == 200
         # Check that Rules and Check tabs have the query string
-        assert 'href="/-/rules?action=view-table&amp;page_size=50"' in response.text
-        assert 'href="/-/check?action=view-table&amp;page_size=50"' in response.text
+        assert 'href="/-/rules?action=view-table&amp;_size=50"' in response.text
+        assert 'href="/-/check?action=view-table&amp;_size=50"' in response.text
         # Playground and Actions should not have query string
         assert 'href="/-/permissions"' in response.text
         assert 'href="/-/actions"' in response.text

@@ -9,7 +9,7 @@ from datasette.column_types import (
 )
 from datasette.hookspecs import hookimpl
 from datasette.plugins import pm
-from datasette.utils import sqlite3
+from datasette.utils import error_body, sqlite3
 from datasette.utils import StartupError
 import markupsafe
 import pytest
@@ -323,12 +323,6 @@ async def test_clear_column_type_api(ds_ct):
             ],
         ),
         (
-            {"column": "title", "column_type": {"type": "email"}},
-            "invalid_content_type",
-            400,
-            ["Invalid content-type, must be application/json"],
-        ),
-        (
             [],
             None,
             400,
@@ -413,11 +407,7 @@ async def test_set_column_type_api_errors(
     kwargs = {
         "headers": {
             "Authorization": f"Bearer {token}",
-            "Content-Type": (
-                "text/plain"
-                if special_case == "invalid_content_type"
-                else "application/json"
-            ),
+            "Content-Type": "application/json",
         }
     }
     if special_case == "invalid_json":
@@ -426,7 +416,7 @@ async def test_set_column_type_api_errors(
         kwargs["json"] = body
     response = await ds_ct.client.post("/data/posts/-/set-column-type", **kwargs)
     assert response.status_code == expected_status
-    assert response.json() == {"ok": False, "errors": expected_errors}
+    assert response.json() == error_body(expected_errors, expected_status)
 
 
 @pytest.mark.asyncio

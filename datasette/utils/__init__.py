@@ -1318,6 +1318,54 @@ async def derive_named_parameters(db: "Database", sql: str) -> List[str]:
     return named_parameters(sql)
 
 
+def parse_size_limit(value, default, maximum, name="_size"):
+    """
+    Parse a page-size parameter using the same semantics as the table
+    view's ?_size=: blank means default, "max" means maximum, integers
+    must be 0 or greater and no larger than maximum. Raises ValueError
+    with a message suitable for a 400 response.
+    """
+    if value in (None, ""):
+        return default
+    if value == "max":
+        return maximum
+    try:
+        size = int(value)
+        if size < 0:
+            raise ValueError
+    except ValueError:
+        raise ValueError("{} must be a positive integer".format(name))
+    if size > maximum:
+        raise ValueError("{} must be <= {}".format(name, maximum))
+    return size
+
+
+UNSTABLE_API_MESSAGE = (
+    "This API is not part of Datasette's stable interface and may change at any time"
+)
+
+
+def error_body(messages, status):
+    """
+    The canonical JSON error body used by every Datasette JSON error response:
+
+        {"ok": False, "error": "...", "errors": ["...", ...], "status": 400}
+
+    "error" is all of the messages joined with "; ", "errors" is the full
+    list, "status" matches the HTTP status code. Callers may add extra
+    context keys to the returned dictionary but must not remove these four.
+    """
+    if isinstance(messages, str):
+        messages = [messages]
+    messages = [str(message) for message in messages]
+    return {
+        "ok": False,
+        "error": "; ".join(messages),
+        "errors": messages,
+        "status": status,
+    }
+
+
 def add_cors_headers(headers):
     headers["Access-Control-Allow-Origin"] = "*"
     headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"

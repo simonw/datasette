@@ -4,10 +4,12 @@
 Changelog
 =========
 
-.. _unreleased:
+.. _v1_0_a36:
 
-Unreleased
-----------
+1.0a36 (2026-07-07)
+-------------------
+
+The signature features of this alpha are new UIs for **inserting multiple rows at once** (from TSV, CSV or JSON) and for **creating a table from rows**, plus a large number of small **JSON API consistency fixes** in preparation for a 1.0 stable release.
 
 - Table pages now offer an "Insert multiple rows" mode in the row insertion dialog. This accepts pasted TSV, CSV or JSON, previews the parsed rows before inserting them, validates unknown columns as data is pasted and displays omitted auto integer primary keys as ``auto`` in the preview. (:pr:`2813`)
 - The bulk insert UI can skip rows with existing primary keys, or update existing rows and insert new rows using the existing ``/<database>/<table>/-/upsert`` API when the actor has both :ref:`insert-row <actions_insert_row>` and :ref:`update-row <actions_update_row>` permissions. (:pr:`2813`)

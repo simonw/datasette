@@ -2363,6 +2363,14 @@ The internal database schema is as follows:
 
 .. code-block:: sql
 
+    CREATE TABLE "_sqlite_migrations" (
+       "id" INTEGER PRIMARY KEY,
+       "migration_set" TEXT,
+       "name" TEXT,
+       "applied_at" TEXT
+    );
+    CREATE UNIQUE INDEX "idx__sqlite_migrations_migration_set_name"
+        ON "_sqlite_migrations" ("migration_set", "name");
     CREATE TABLE catalog_databases (
         database_name TEXT PRIMARY KEY,
         path TEXT,

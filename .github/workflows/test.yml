@@ -58,7 +58,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v6
       with:
-        python-version: "3.13"
+        python-version: "3.14"
         cache: pip
         cache-dependency-path: pyproject.toml
     - name: Build extension for --load-extension test
@@ -67,7 +67,7 @@ jobs:
     - name: Install dependencies
       run: |
         pip install . --group dev
-        pip install --pre 'sqlite-utils>=4.0rc4'
+        pip install --pre 'sqlite-utils>=4.0'
         pip freeze
     - name: Run tests
       run: |

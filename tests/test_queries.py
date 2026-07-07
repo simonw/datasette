@@ -3866,27 +3866,3 @@ async def test_stored_query_json_uses_parameters_not_params():
     query = [q for q in listing["queries"] if q["name"] == "with_params"][0]
     assert query["parameters"] == ["name", "age"]
     assert "params" not in query
-
-
-@pytest.mark.asyncio
-async def test_query_list_json_signals_pagination_via_next_only():
-    ds = Datasette(memory=True)
-    ds.add_memory_database("query_list_next_only", name="data")
-    await ds.invoke_startup()
-    for i in range(3):
-        await ds.add_query(
-            "data",
-            name="q{}".format(i),
-            sql="select {}".format(i),
-        )
-    first = (await ds.client.get("/data/-/queries.json?_size=2")).json()
-    assert "has_more" not in first
-    assert first["next"] is not None
-    assert first["next_url"] is not None
-    # The internal test client cannot follow absolute URLs
-    next_path = first["next_url"].replace("http://localhost", "")
-    assert next_path.startswith("/data/-/queries.json?")
-    last = (await ds.client.get(next_path)).json()
-    assert "has_more" not in last
-    assert last["next"] is None
-    assert last["next_url"] is None

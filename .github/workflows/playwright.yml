@@ -16,7 +16,7 @@ jobs:
       matrix:
         browser: [chromium, firefox, webkit]
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - name: Set up Python 3.14
       uses: actions/setup-python@v6
       with:
@@ -25,14 +25,14 @@ jobs:
         cache: pip
         cache-dependency-path: pyproject.toml
     - name: Cache uv
-      uses: actions/cache@v5
+      uses: actions/cache@v6
       with:
         path: ~/.cache/uv
         key: ${{ runner.os }}-py3.14-uv-${{ hashFiles('pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-py3.14-uv-
     - name: Cache Playwright browsers
-      uses: actions/cache@v5
+      uses: actions/cache@v6
       with:
         path: ~/.cache/ms-playwright/
         key: ${{ runner.os }}-playwright-${{ matrix.browser }}-${{ hashFiles('pyproject.toml') }}

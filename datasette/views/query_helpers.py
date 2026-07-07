@@ -33,7 +33,6 @@ _query_fields = {
     "hide_sql",
     "fragment",
     "parameters",
-    "params",
     "is_private",
     "on_success_message",
     "on_success_redirect",
@@ -540,7 +539,7 @@ async def _prepare_query_create(datasette, request, db, data):
         raise QueryValidationError("Writable query fields require writable SQL")
 
     parameters = _coerce_query_parameters(
-        data.get("parameters", data.get("params")),
+        data.get("parameters"),
         derived,
     )
     return {
@@ -585,9 +584,9 @@ async def _prepare_query_update(datasette, request, db, existing: StoredQuery, u
             actor=request.actor,
         )
 
-    if "parameters" in update or "params" in update:
+    if "parameters" in update:
         parameters = _coerce_query_parameters(
-            update.get("parameters", update.get("params")),
+            update.get("parameters"),
             derived,
         )
     elif "sql" in update:

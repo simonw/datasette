@@ -1126,6 +1126,47 @@ async def test_query_update_api_rejects_config_only_fields():
 
 
 @pytest.mark.asyncio
+async def test_query_api_rejects_params_alias():
+    # "params" is a datasette.yaml configuration key, not an API input -
+    # the API only accepts "parameters"
+    ds = Datasette(memory=True, default_deny=True)
+    ds.root_enabled = True
+    db = ds.add_memory_database("query_params_alias", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+
+    store_response = await ds.client.post(
+        "/data/-/queries/store",
+        actor={"id": "root"},
+        json={
+            "query": {
+                "name": "by_name",
+                "sql": "select * from dogs where name = :name",
+                "params": ["name"],
+            }
+        },
+    )
+    assert store_response.status_code == 400
+    assert store_response.json()["errors"] == ["Invalid keys: params"]
+    assert await ds.get_query("data", "by_name") is None
+
+    await ds.add_query(
+        "data",
+        "editable",
+        "select * from dogs where name = :name",
+        source="user",
+        owner_id="root",
+    )
+    update_response = await ds.client.post(
+        "/data/editable/-/update",
+        actor={"id": "root"},
+        json={"update": {"params": ["name"]}},
+    )
+    assert update_response.status_code == 400
+    assert update_response.json()["errors"] == ["Invalid keys: params"]
+
+
+@pytest.mark.asyncio
 async def test_query_update_api_rejects_trusted_queries_but_internal_update_allowed():
     ds = Datasette(
         memory=True,

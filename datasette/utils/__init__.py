@@ -1288,10 +1288,18 @@ class StartupError(Exception):
     pass
 
 
-_single_line_comment_re = re.compile(r"--.*")
-_multi_line_comment_re = re.compile(r"/\*.*?\*/", re.DOTALL)
-_single_quote_re = re.compile(r"'(?:''|[^'])*'")
-_double_quote_re = re.compile(r'"(?:\"\"|[^"])*"')
+# Comments and string literals, matched in a single pass so that whichever
+# construct starts first "wins" - this ensures a comment marker inside a string
+# literal (or a quote inside a comment) does not confuse the parameter scan.
+_comments_and_strings_re = re.compile(
+    r"""
+    --[^\n]*            # single line comment
+    | /\*.*?\*/         # multi line comment
+    | '(?:''|[^'])*'    # single quoted string ('' escapes a quote)
+    | "(?:""|[^"])*"    # double quoted identifier ("" escapes a quote)
+    """,
+    re.DOTALL | re.VERBOSE,
+)
 _named_param_re = re.compile(r":(\w+)")
 
 
@@ -1302,10 +1310,9 @@ def named_parameters(sql: str) -> List[str]:
 
     e.g. for ``select * from foo where id=:id`` this would return ``["id"]``
     """
-    sql = _single_line_comment_re.sub("", sql)
-    sql = _multi_line_comment_re.sub("", sql)
-    sql = _single_quote_re.sub("", sql)
-    sql = _double_quote_re.sub("", sql)
+    # Strip comments and string literals first so that any ":name" sequences
+    # inside them are not mistaken for named parameters
+    sql = _comments_and_strings_re.sub("", sql)
     # Extract parameters from what is left
     return _named_param_re.findall(sql)
 

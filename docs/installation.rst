@@ -17,13 +17,6 @@ If you want to start making contributions to the Datasette project by installing
 Basic installation
 ==================
 
-.. _installation_datasette_desktop:
-
-Datasette Desktop for Mac
--------------------------
-
-`Datasette Desktop <https://datasette.io/desktop>`__ is a packaged Mac application which bundles Datasette together with Python and allows you to install and run Datasette directly on your laptop. This is the best option for local installation if you are not comfortable using the command line.
-
 .. _installation_homebrew:
 
 Using Homebrew

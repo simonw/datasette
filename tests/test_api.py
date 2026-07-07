@@ -1,5 +1,6 @@
 from datasette.app import Datasette
 from datasette.plugins import DEFAULT_PLUGINS
+from datasette.utils import UNSTABLE_API_MESSAGE
 from datasette.utils.sqlite import sqlite_version
 from datasette.version import __version__
 from .fixtures import make_app_client, EXPECTED_PLUGINS
@@ -251,10 +252,7 @@ def test_no_files_uses_memory_database(app_client_no_files):
     assert response.status == 200
     assert {
         "ok": True,
-        "unstable": (
-            "This API is not part of Datasette's stable interface"
-            " and may change at any time"
-        ),
+        "unstable": UNSTABLE_API_MESSAGE,
         "databases": [
             {
                 "name": "_memory",

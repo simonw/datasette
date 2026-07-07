@@ -3,6 +3,7 @@ from asgiref.sync import async_to_sync
 from datasette.app import Datasette
 from datasette.cli import cli
 from datasette.default_permissions import restrictions_allow_action
+from datasette.utils import UNSTABLE_API_MESSAGE
 from .fixtures import assert_permissions_checked, make_app_client
 from click.testing import CliRunner
 from bs4 import BeautifulSoup as Soup
@@ -740,10 +741,7 @@ async def test_actor_restricted_permissions(
     }
     expected = {
         "ok": True,
-        "unstable": (
-            "This API is not part of Datasette's stable interface"
-            " and may change at any time"
-        ),
+        "unstable": UNSTABLE_API_MESSAGE,
         "action": permission,
         "allowed": expected_result,
         "resource": expected_resource,

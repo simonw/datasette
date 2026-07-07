@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup as Soup
 from datasette.app import Datasette
 from datasette.resources import DatabaseResource, QueryResource
 from datasette.stored_queries import StoredQuery, StoredQueryPage
+from datasette.utils import UNSTABLE_API_MESSAGE
 from datasette.utils.asgi import Forbidden
 from datasette.utils.sqlite import sqlite3, supports_returning
 
@@ -2183,10 +2184,7 @@ async def test_query_parameters_endpoint_uses_get_sql_only():
     assert response.status_code == 200
     assert response.json() == {
         "ok": True,
-        "unstable": "{}".format(
-            "This API is not part of Datasette's stable interface"
-            " and may change at any time"
-        ),
+        "unstable": UNSTABLE_API_MESSAGE,
         "parameters": ["name", "id"],
     }
     assert permission_denied_response.status_code == 403

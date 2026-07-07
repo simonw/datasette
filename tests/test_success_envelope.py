@@ -8,7 +8,7 @@ objects separately - see /-/plugins, /-/databases, /-/actions.)
 
 import pytest
 from datasette.app import Datasette
-from datasette.utils import sqlite3
+from datasette.utils import sqlite3, UNSTABLE_API_MESSAGE
 
 
 @pytest.fixture
@@ -114,11 +114,6 @@ async def test_actions_json_is_object(ds_envelope):
     assert "view-instance" in {action["name"] for action in data["actions"]}
 
 
-UNSTABLE_MESSAGE = (
-    "This API is not part of Datasette's stable interface and may change at any time"
-)
-
-
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
@@ -137,7 +132,7 @@ async def test_undocumented_endpoints_report_unstable(ds_client, path):
     finally:
         ds_client.ds.root_enabled = False
     assert response.status_code == 200
-    assert response.json()["unstable"] == UNSTABLE_MESSAGE
+    assert response.json()["unstable"] == UNSTABLE_API_MESSAGE
 
 
 @pytest.mark.asyncio
@@ -148,12 +143,12 @@ async def test_query_store_and_definition_report_unstable(ds_envelope):
         actor={"id": "root"},
     )
     assert store.status_code == 201
-    assert store.json()["unstable"] == UNSTABLE_MESSAGE
+    assert store.json()["unstable"] == UNSTABLE_API_MESSAGE
     definition = await ds_envelope.client.get(
         "/data/unstable_check/-/definition", actor={"id": "root"}
     )
     assert definition.status_code == 200
-    assert definition.json()["unstable"] == UNSTABLE_MESSAGE
+    assert definition.json()["unstable"] == UNSTABLE_API_MESSAGE
 
 
 @pytest.mark.asyncio
@@ -164,7 +159,7 @@ async def test_permissions_post_reports_unstable(ds_envelope):
         actor={"id": "root"},
     )
     assert response.status_code == 200
-    assert response.json()["unstable"] == UNSTABLE_MESSAGE
+    assert response.json()["unstable"] == UNSTABLE_API_MESSAGE
 
 
 @pytest.mark.asyncio

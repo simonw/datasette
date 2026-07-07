@@ -50,7 +50,7 @@ JSON API: other improvements
 - The :ref:`write API <json_api_write>` endpoints now parse the request body as JSON regardless of the ``Content-Type`` header, so ``curl -d`` invocations work without remembering to set it. Invalid JSON is a ``400`` error. Cross-site request forgery remains prevented by Datasette's ``Origin`` and ``Sec-Fetch-Site`` checks. This also fixes a ``500`` error from the insert API when the ``Content-Type`` header was missing entirely.
 - New ``Response.error(messages, status=400)`` helper for plugins that need to return a JSON error in Datasette's standard format. See :ref:`internals_response`.
 - New ``count_truncated`` extra for table JSON, included automatically whenever ``count`` is requested. ``true`` means the count reached Datasette's counting limit and the real number of rows may be higher. See :ref:`json_api_extra`.
-- JSON endpoints that are not part of the documented stable API now declare themselves with an ``"unstable"`` key in their responses, making the stability tier machine-readable.
+- JSON endpoints that are not part of the documented stable API now declare themselves with an ``"unstable"`` key in their responses.
 - New documentation covering the grammar for :ref:`boolean query string arguments <json_api_table_arguments>`, the reason :ref:`upsert <TableUpsertView>` returns ``200`` where insert returns ``201``, and advice for plugin authors on :ref:`naming secret configuration keys <plugins_configuration_secret>` so that ``/-/config`` redacts them automatically.
 
 .. _v1_0_a35:

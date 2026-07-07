@@ -370,6 +370,40 @@ async def test_row(ds_client):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("suffix", ("", ".json"))
+@pytest.mark.parametrize(
+    "row_path",
+    (
+        "a",  # too few components for a two-column primary key
+        "a,b,c",  # too many components for a two-column primary key
+    ),
+)
+async def test_row_pk_arity_mismatch_returns_400(ds_client, row_path, suffix):
+    # A row URL with the wrong number of comma-separated primary key
+    # components used to raise an uncaught sqlite3.ProgrammingError (HTTP 500)
+    # because the SQL had one bind placeholder per PK column but params were
+    # only bound for the supplied components. It should be a 400 instead,
+    # mirroring the existing guard in datasette/views/table.py.
+    response = await ds_client.get(
+        "/fixtures/compound_primary_key/{}{}".format(row_path, suffix)
+    )
+    assert response.status_code == 400
+    if suffix == ".json":
+        assert response.json()["ok"] is False
+        assert response.json()["status"] == 400
+
+
+@pytest.mark.asyncio
+async def test_row_compound_pk_correct_arity(ds_client):
+    # The valid two-component URL still resolves the row.
+    response = await ds_client.get(
+        "/fixtures/compound_primary_key/a,b.json?_shape=objects"
+    )
+    assert response.status_code == 200
+    assert response.json()["rows"] == [{"pk1": "a", "pk2": "b", "content": "c"}]
+
+
+@pytest.mark.asyncio
 async def test_row_strange_table_name(ds_client):
     response = await ds_client.get(
         "/fixtures/table~2Fwith~2Fslashes~2Ecsv/3.json?_shape=objects"

@@ -3,28 +3,18 @@ from datasette.events import RenameTableEvent
 from datasette.utils import error_body, escape_sqlite, sqlite3
 from .utils import last_event
 import pytest
-import re
 import time
 
 
-def schema_variants(schema):
-    # sqlite-utils < 4 quotes identifiers [like_this] and uses FLOAT;
-    # sqlite-utils >= 4 quotes them "like_this" and uses REAL. Given a
-    # schema fragment in the old format, return both variants so tests
-    # can pass against either version.
-    converted = re.sub(r"\[([^\]]+)\]", r'"\1"', schema).replace("FLOAT", "REAL")
-    return (schema, converted)
-
-
 def assert_schema_contains(fragment, schema):
-    assert any(
-        variant in schema for variant in schema_variants(fragment)
-    ), "Expected schema to contain {!r}, got {!r}".format(fragment, schema)
+    assert fragment in schema, "Expected schema to contain {!r}, got {!r}".format(
+        fragment, schema
+    )
 
 
 def assert_schema_not_contains(fragment, schema):
-    assert not any(
-        variant in schema for variant in schema_variants(fragment)
+    assert (
+        fragment not in schema
     ), "Expected schema not to contain {!r}, got {!r}".format(fragment, schema)
 
 
@@ -94,8 +84,8 @@ async def test_base64_write_api_create_table_infers_blob_and_raw_escapes(ds_writ
         headers=_headers(token),
     )
     assert response.status_code == 201
-    assert_schema_contains("[data] BLOB", response.json()["schema"])
-    assert_schema_contains("[literal] TEXT", response.json()["schema"])
+    assert_schema_contains('"data" BLOB', response.json()["schema"])
+    assert_schema_contains('"literal" TEXT', response.json()["schema"])
 
     rows = (await ds_write.get_database("data").execute("""
             select
@@ -1217,7 +1207,7 @@ async def test_alter_table_foreign_key_operations(ds_write):
     data = response.json()
     assert data["operations_applied"] == 2
     assert_schema_contains(
-        "[owner_id] INTEGER REFERENCES [owners]([id])", data["schema"]
+        '"owner_id" INTEGER REFERENCES "owners"("id")', data["schema"]
     )
 
     response = await ds_write.client.post(
@@ -1229,7 +1219,7 @@ async def test_alter_table_foreign_key_operations(ds_write):
     )
     assert response.status_code == 200, response.text
     data = response.json()
-    assert_schema_not_contains("[owner_id] INTEGER REFERENCES", data["schema"])
+    assert_schema_not_contains('"owner_id" INTEGER REFERENCES', data["schema"])
 
     response = await ds_write.client.post(
         "/data/docs/-/alter",
@@ -1254,7 +1244,7 @@ async def test_alter_table_foreign_key_operations(ds_write):
     assert response.status_code == 200, response.text
     data = response.json()
     assert_schema_contains(
-        "[owner_id] INTEGER REFERENCES [categories]([id])", data["schema"]
+        '"owner_id" INTEGER REFERENCES "categories"("id")', data["schema"]
     )
 
     response = await ds_write.client.post(
@@ -1264,7 +1254,7 @@ async def test_alter_table_foreign_key_operations(ds_write):
     )
     assert response.status_code == 200, response.text
     data = response.json()
-    assert_schema_not_contains("[owner_id] INTEGER REFERENCES", data["schema"])
+    assert_schema_not_contains('"owner_id" INTEGER REFERENCES', data["schema"])
 
 
 @pytest.mark.asyncio
@@ -1791,12 +1781,12 @@ async def test_drop_table(ds_write, scenario):
                 "table_url": "http://localhost/data/one",
                 "table_api_url": "http://localhost/data/one.json",
                 "schema": (
-                    "CREATE TABLE [one] (\n"
-                    "   [id] INTEGER PRIMARY KEY,\n"
-                    "   [title] TEXT,\n"
-                    "   [score] INTEGER,\n"
-                    "   [weight] FLOAT,\n"
-                    "   [thumbnail] BLOB\n"
+                    'CREATE TABLE "one" (\n'
+                    '   "id" INTEGER PRIMARY KEY,\n'
+                    '   "title" TEXT,\n'
+                    '   "score" INTEGER,\n'
+                    '   "weight" REAL,\n'
+                    '   "thumbnail" BLOB\n'
                     ")"
                 ),
             },
@@ -1828,10 +1818,10 @@ async def test_drop_table(ds_write, scenario):
                 "table_url": "http://localhost/data/two",
                 "table_api_url": "http://localhost/data/two.json",
                 "schema": (
-                    "CREATE TABLE [two] (\n"
-                    "   [id] INTEGER PRIMARY KEY,\n"
-                    "   [title] TEXT,\n"
-                    "   [score] FLOAT\n"
+                    'CREATE TABLE "two" (\n'
+                    '   "id" INTEGER PRIMARY KEY,\n'
+                    '   "title" TEXT,\n'
+                    '   "score" REAL\n'
                     ")"
                 ),
                 "row_count": 2,
@@ -1857,10 +1847,10 @@ async def test_drop_table(ds_write, scenario):
                 "table_url": "http://localhost/data/three",
                 "table_api_url": "http://localhost/data/three.json",
                 "schema": (
-                    "CREATE TABLE [three] (\n"
-                    "   [id] INTEGER PRIMARY KEY,\n"
-                    "   [title] TEXT,\n"
-                    "   [score] FLOAT\n"
+                    'CREATE TABLE "three" (\n'
+                    '   "id" INTEGER PRIMARY KEY,\n'
+                    '   "title" TEXT,\n'
+                    '   "score" REAL\n'
                     ")"
                 ),
                 "row_count": 1,
@@ -1882,7 +1872,7 @@ async def test_drop_table(ds_write, scenario):
                 "table": "four",
                 "table_url": "http://localhost/data/four",
                 "table_api_url": "http://localhost/data/four.json",
-                "schema": ("CREATE TABLE [four] (\n" "   [name] TEXT\n" ")"),
+                "schema": ('CREATE TABLE "four" (\n' '   "name" TEXT\n' ")"),
                 "row_count": 1,
             },
             ["create-table", "insert-rows"],
@@ -1902,8 +1892,8 @@ async def test_drop_table(ds_write, scenario):
                 "table_url": "http://localhost/data/five",
                 "table_api_url": "http://localhost/data/five.json",
                 "schema": (
-                    "CREATE TABLE [five] (\n   [type] TEXT,\n   [key] INTEGER,\n"
-                    "   [title] TEXT,\n   PRIMARY KEY ([type], [key])\n)"
+                    'CREATE TABLE "five" (\n   "type" TEXT,\n   "key" INTEGER,\n'
+                    '   "title" TEXT,\n   PRIMARY KEY ("type", "key")\n)'
                 ),
                 "row_count": 1,
             },
@@ -2193,7 +2183,7 @@ async def test_create_table(
         # Error expectations list their messages; derive the canonical envelope
         expected_response = error_body(expected_response["errors"], expected_status)
     if isinstance(expected_response, dict) and "schema" in expected_response:
-        assert data.get("schema") in schema_variants(expected_response["schema"])
+        assert data.get("schema") == expected_response["schema"]
         expected_response = dict(expected_response, schema=data.get("schema"))
     assert data == expected_response
     # Should have tracked the expected events
@@ -2238,7 +2228,7 @@ async def test_create_table_with_foreign_key(ds_write):
     assert response.status_code == 201
     data = response.json()
     assert_schema_contains(
-        "[owner_id] INTEGER REFERENCES [owners]([id])", data["schema"]
+        '"owner_id" INTEGER REFERENCES "owners"("id")', data["schema"]
     )
 
 

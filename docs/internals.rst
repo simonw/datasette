@@ -2059,7 +2059,7 @@ If you need to retrieve every row returned by a statement, pass ``return_all=Tru
 
 If you pass ``block=False`` this behavior changes to "fire and forget" - queries will be added to the write queue and executed in a separate thread while your code can continue to do other things. The method will return a UUID representing the queued task.
 
-Each call to ``execute_write()`` will be executed inside a transaction.
+Each call to ``execute_write()`` will be executed inside a transaction, with the exception of statements that SQLite does not allow to run inside a transaction: ``VACUUM``, ``ATTACH``, ``DETACH`` and ``PRAGMA``. Those statements are executed in autocommit mode instead.
 
 .. _database_execute_write_script:
 
@@ -2151,7 +2151,11 @@ The value returned from ``await database.execute_write_fn(...)`` will be the ret
 
 If your function raises an exception that exception will be propagated up to the ``await`` line.
 
-By default your function will be executed inside a transaction. You can pass ``transaction=False`` to disable this behavior, though if you do that you should be careful to manually apply transactions - ideally using the ``with conn:`` pattern, or you may see ``OperationalError: database table is locked`` errors.
+By default your function will be executed inside a transaction. Datasette executes ``BEGIN IMMEDIATE`` on the write connection before calling your function, then commits the transaction when your function returns - or rolls it back if your function raises an exception. Nothing your function writes will be visible to other connections until that final commit.
+
+Because the transaction is already open when your function is called, write methods from libraries such as `sqlite-utils <https://sqlite-utils.datasette.io/>`__ will nest their work inside it (sqlite-utils uses savepoints) rather than committing independently, so an exception rolls back everything the function did.
+
+Your function should not manage transactions itself when ``transaction=True`` - do not execute ``BEGIN`` or call ``conn.commit()`` or ``conn.rollback()`` on the connection. If you need to manage transactions manually, pass ``transaction=False`` - ideally using the ``with conn:`` pattern, or you may see ``OperationalError: database table is locked`` errors.
 
 If you specify ``block=False`` the method becomes fire-and-forget, queueing your function to be executed and then allowing your code after the call to ``.execute_write_fn()`` to continue running while the underlying thread waits for an opportunity to run your function. A UUID representing the queued task will be returned. Any exceptions in your code will be silently swallowed.
 

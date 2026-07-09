@@ -4,6 +4,14 @@
 Changelog
 =========
 
+.. _v_unreleased:
+
+Unreleased
+----------
+
+- Write functions run via ``await db.execute_write_fn()`` now execute inside an explicitly opened ``BEGIN IMMEDIATE`` transaction, committed when the function returns or rolled back if it raises. Previously the transaction was only opened implicitly by the first raw data-modifying statement, which meant writes made through sqlite-utils committed independently mid-task - a function that used sqlite-utils and then failed could leave those writes permanently committed. sqlite-utils write methods now nest inside the task transaction as savepoints, so a failing write function rolls back everything it did. Functions run with ``transaction=True`` should no longer manage transactions themselves - use ``transaction=False`` for manual transaction control. (:issue:`2831`)
+- ``await db.execute_write()`` detects statements that SQLite cannot execute inside a transaction - ``VACUUM``, ``ATTACH``, ``DETACH`` and ``PRAGMA`` - and runs them in autocommit mode instead. (:issue:`2831`)
+
 .. _v1_0_a36:
 
 1.0a36 (2026-07-07)

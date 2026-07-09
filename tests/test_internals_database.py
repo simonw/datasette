@@ -11,6 +11,7 @@ from datasette.database import _deliver_write_result
 from datasette.utils.sqlite import sqlite3, supports_returning
 from datasette.utils import Column
 import pytest
+import sqlite_utils
 import time
 import uuid
 
@@ -109,6 +110,99 @@ async def test_execute_fn_transaction_false():
         assert conn.execute("select count(*) from foo").fetchone()[0] == 0
 
     await db.execute_write_fn(run, transaction=False)
+
+
+@pytest.mark.asyncio
+async def test_execute_write_fn_wraps_sqlite_utils_writes_in_transaction():
+    # https://github.com/simonw/datasette/issues/2831
+    # sqlite-utils write methods commit their own transactions unless one is
+    # already open - the write thread must open one before running each task
+    # so that a failing task rolls back everything, including those writes.
+    datasette = Datasette(memory=True)
+    db = datasette.add_memory_database("test_txn_sqlite_utils")
+    await db.execute_write("create table t (a integer)")
+
+    def failing_task(conn):
+        sqlite_utils.Database(conn)["t"].insert_all({"a": i} for i in range(5))
+        assert conn.in_transaction
+        raise ValueError("boom")
+
+    with pytest.raises(ValueError):
+        await db.execute_write_fn(failing_task)
+    count = (await db.execute("select count(*) from t")).single_value()
+    assert count == 0
+    # The write connection should be back in autocommit mode
+    assert (
+        await db.execute_write_fn(lambda conn: conn.in_transaction, transaction=False)
+    ) is False
+    # And a transaction=True task should see a transaction already open
+    assert (await db.execute_write_fn(lambda conn: conn.in_transaction)) is True
+
+
+@pytest.mark.asyncio
+async def test_execute_write_statements_disallowed_in_transaction(tmp_path):
+    # VACUUM (and ATTACH/DETACH/PRAGMA) cannot run inside a transaction, so
+    # execute_write() must run them outside one
+    # https://github.com/simonw/datasette/issues/2831
+    path = str(tmp_path / "test.db")
+    setup_conn = sqlite3.connect(path)
+    setup_conn.execute("create table t (a integer)")
+    setup_conn.close()
+    datasette = Datasette([path])
+    db = datasette.get_database("test")
+    await db.execute_write("vacuum")
+    await db.execute_write("  -- a comment\n  VACUUM")
+    # But regular DML statements still run inside a transaction
+    from datasette.database import _can_execute_in_transaction
+
+    assert _can_execute_in_transaction("insert into t values (1)")
+    assert _can_execute_in_transaction("with x as (select 1) insert into t select 1")
+    assert not _can_execute_in_transaction("vacuum")
+    assert not _can_execute_in_transaction("/* hi */ PRAGMA optimize")
+
+
+@pytest.mark.asyncio
+async def test_execute_write_fn_sqlite_utils_integrity_error_rolls_back_task():
+    # https://github.com/simonw/datasette/issues/2831
+    datasette = Datasette(memory=True)
+    db = datasette.add_memory_database("test_txn_integrity")
+    await db.execute_write("create table t (id integer primary key)")
+
+    def two_inserts(conn):
+        table = sqlite_utils.Database(conn)["t"]
+        table.insert({"id": 1})
+        table.insert({"id": 1})  # IntegrityError
+
+    with pytest.raises(sqlite3.IntegrityError):
+        await db.execute_write_fn(two_inserts)
+    count = (await db.execute("select count(*) from t")).single_value()
+    assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_execute_write_fn_writes_invisible_to_readers_until_task_ends(tmp_path):
+    # https://github.com/simonw/datasette/issues/2831
+    path = str(tmp_path / "test.db")
+    setup_conn = sqlite3.connect(path)
+    setup_conn.execute("create table t (a integer)")
+    setup_conn.close()
+    datasette = Datasette([path])
+    db = datasette.get_database("test")
+
+    def insert_and_check(conn):
+        sqlite_utils.Database(conn)["t"].insert_all({"a": i} for i in range(5))
+        # A separate read-only connection must not see the rows mid-task
+        reader = sqlite3.connect("file:{}?mode=ro".format(path), uri=True)
+        try:
+            return reader.execute("select count(*) from t").fetchone()[0]
+        finally:
+            reader.close()
+
+    mid_task_count = await db.execute_write_fn(insert_and_check)
+    assert mid_task_count == 0
+    # After the task commits the rows are visible
+    count = (await db.execute("select count(*) from t")).single_value()
+    assert count == 5
 
 
 @pytest.mark.parametrize(

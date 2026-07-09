@@ -5,6 +5,7 @@ import inspect
 import os
 from pathlib import Path
 import queue
+import re
 import sqlite_utils
 import sys
 import tempfile
@@ -41,6 +42,39 @@ class DatasetteClosedError(RuntimeError):
 
 
 _SHUTDOWN = object()
+
+# Statements that SQLite refuses to execute inside a transaction. These run
+# without the task transaction - a single statement needs no extra atomicity.
+_STATEMENTS_DISALLOWED_IN_TRANSACTION = {"vacuum", "attach", "detach", "pragma"}
+
+_FIRST_KEYWORD_RE = re.compile(
+    r"^(?:\s+|--[^\n]*(?:\n|$)|/\*.*?\*/)*([a-zA-Z]+)", re.DOTALL
+)
+
+
+def _can_execute_in_transaction(sql):
+    match = _FIRST_KEYWORD_RE.match(sql)
+    if match is None:
+        return True
+    return match.group(1).lower() not in _STATEMENTS_DISALLOWED_IN_TRANSACTION
+
+
+def _run_write_in_transaction(conn, fn):
+    # Open the transaction explicitly instead of relying on the sqlite3
+    # driver's implicit BEGIN, which only fires on the first data-modifying
+    # statement. With a transaction genuinely open, sqlite-utils write
+    # methods nest inside it as savepoints instead of committing their own
+    # transactions mid-task: https://github.com/simonw/datasette/issues/2831
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        result = fn(conn)
+    except Exception:
+        if conn.in_transaction:
+            conn.rollback()
+        raise
+    if conn.in_transaction:
+        conn.commit()
+    return result
 
 
 class Database:
@@ -258,7 +292,12 @@ class Database:
             )
 
         with trace("sql", database=self.name, sql=sql.strip(), params=params):
-            results = await self.execute_write_fn(_inner, block=block, request=request)
+            results = await self.execute_write_fn(
+                _inner,
+                block=block,
+                transaction=_can_execute_in_transaction(sql),
+                request=request,
+            )
         return results
 
     async def execute_write_script(self, sql, block=True, request=None):
@@ -347,8 +386,7 @@ class Database:
                 self._write_connection = self.connect(write=True)
                 self.ds._prepare_connection(self._write_connection, self.name)
             if transaction:
-                with self._write_connection:
-                    result = fn(self._write_connection)
+                result = _run_write_in_transaction(self._write_connection, fn)
             else:
                 result = fn(self._write_connection)
         else:
@@ -476,8 +514,7 @@ class Database:
             else:
                 try:
                     if task.transaction:
-                        with conn:
-                            result = task.fn(conn)
+                        result = _run_write_in_transaction(conn, task.fn)
                     else:
                         result = task.fn(conn)
                 except Exception as e:

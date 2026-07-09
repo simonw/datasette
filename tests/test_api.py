@@ -694,6 +694,8 @@ async def test_settings_json(ds_client):
         "max_insert_rows": 100,
         "max_post_body_bytes": 2 * 1024 * 1024,
         "sql_time_limit_ms": 200,
+        "busy_timeout_ms": 5000,
+        "journal_mode": "",
         "allow_download": True,
         "allow_signed_tokens": True,
         "max_signed_tokens_ttl": 0,

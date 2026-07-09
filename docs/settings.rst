@@ -103,6 +103,17 @@ You can optionally set a lower time limit for an individual query using the ``?_
 
 This would set the time limit to 100ms for that specific query. This feature is useful if you are working with databases of unknown size and complexity - a query that might make perfect sense for a smaller table could take too long to execute on a table with millions of rows. By setting custom time limits you can execute queries "optimistically" - e.g. give me an exact count of rows matching this query but only if it takes less than 100ms to calculate.
 
+.. _setting_busy_timeout_ms:
+
+busy_timeout_ms
+~~~~~~~~~~~~~~~
+
+How long SQLite should wait when a database file is locked by another connection or process before giving up with a ``database is locked`` error, in milliseconds. The default is 5000 (five seconds), matching the default used by Python's ``sqlite3`` module.
+
+This mostly matters when other processes write to the same database files that Datasette is serving - a common pattern is a separate script (using `sqlite-utils <https://sqlite-utils.datasette.io/>`__ or similar) that periodically updates a database while Datasette serves it. A larger value makes Datasette more patient with long write transactions from those processes::
+
+    datasette mydatabase.db --setting busy_timeout_ms 10000
+
 .. _setting_max_returned_rows:
 
 max_returned_rows

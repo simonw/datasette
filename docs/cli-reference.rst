@@ -251,6 +251,8 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
                                    executing SQLite queries (default=3)
       sql_time_limit_ms            Time limit for a SQL query in milliseconds
                                    (default=1000)
+      busy_timeout_ms              How long SQLite waits for a locked database file
+                                   before giving up (default=5000)
       default_facet_size           Number of values to return for requested facets
                                    (default=30)
       facet_time_limit_ms          Time limit for calculating a requested facet

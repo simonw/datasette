@@ -221,6 +221,11 @@ SETTINGS = (
     ),
     Setting("sql_time_limit_ms", 1000, "Time limit for a SQL query in milliseconds"),
     Setting(
+        "busy_timeout_ms",
+        5000,
+        "How long SQLite waits for a locked database file before giving up",
+    ),
+    Setting(
         "default_facet_size", 30, "Number of values to return for requested facets"
     ),
     Setting("facet_time_limit_ms", 200, "Time limit for calculating a requested facet"),

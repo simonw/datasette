@@ -210,6 +210,10 @@ class Database:
         extra_kwargs = {}
         if write:
             extra_kwargs["isolation_level"] = "IMMEDIATE"
+        # An explicit busy timeout policy rather than the driver's silent
+        # 5 second default - matters when external processes write to the
+        # same database files
+        extra_kwargs["timeout"] = self.ds.setting("busy_timeout_ms") / 1000
         if self.memory_name:
             uri = "file:{}?mode=memory&cache=shared".format(self.memory_name)
             conn = sqlite3.connect(

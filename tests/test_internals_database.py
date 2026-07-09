@@ -1323,3 +1323,36 @@ async def test_recursive_triggers_enabled_on_all_connections(tmp_path):
     )
     assert write_value == 1
     assert read_value == 1
+
+
+@pytest.mark.asyncio
+async def test_busy_timeout_ms_setting(tmp_path):
+    # https://github.com/simonw/datasette/issues/2831
+    # The SQLite busy timeout should be an explicit, configurable policy
+    # instead of the sqlite3 driver's inherited 5 second default
+    path = str(tmp_path / "test.db")
+    sqlite3.connect(path).close()
+    datasette = Datasette([path], settings={"busy_timeout_ms": 250})
+    db = datasette.get_database("test")
+    read_value = await db.execute_fn(
+        lambda conn: conn.execute("PRAGMA busy_timeout").fetchone()[0]
+    )
+    write_value = await db.execute_write_fn(
+        lambda conn: conn.execute("PRAGMA busy_timeout").fetchone()[0],
+        transaction=False,
+    )
+    assert read_value == 250
+    assert write_value == 250
+
+
+@pytest.mark.asyncio
+async def test_busy_timeout_ms_default(tmp_path):
+    # Default matches the sqlite3 driver's historical 5 second default
+    path = str(tmp_path / "test.db")
+    sqlite3.connect(path).close()
+    datasette = Datasette([path])
+    db = datasette.get_database("test")
+    read_value = await db.execute_fn(
+        lambda conn: conn.execute("PRAGMA busy_timeout").fetchone()[0]
+    )
+    assert read_value == 5000

@@ -2717,3 +2717,68 @@ async def test_create_using_alter_against_existing_table(
         insert_rows_event = ds_write._tracked_events[1]
         assert insert_rows_event.name == "insert-rows"
         assert insert_rows_event.num_rows == 1
+
+
+@pytest.mark.asyncio
+async def test_create_table_with_failing_rows_is_atomic(ds_write):
+    # https://github.com/simonw/datasette/issues/2831
+    # If inserting the initial rows fails, the create table should
+    # be rolled back as well
+    token = write_token(ds_write)
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "atomic_create",
+            "rows": [{"id": 1, "name": "one"}, {"id": 1, "name": "dupe"}],
+            "pk": "id",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 400
+    assert not await ds_write.get_database("data").table_exists("atomic_create")
+
+
+@pytest.mark.asyncio
+async def test_alter_table_with_failing_operation_is_atomic(ds_write):
+    # https://github.com/simonw/datasette/issues/2831
+    # If a later operation fails, earlier operations should be rolled back
+    token = write_token(ds_write)
+    response = await ds_write.client.post(
+        "/data/docs/-/alter",
+        json={
+            "operations": [
+                {"op": "add_column", "args": {"name": "new_col", "type": "text"}},
+                # Fails - column "title" already exists
+                {"op": "add_column", "args": {"name": "title", "type": "text"}},
+            ]
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 400
+    columns = await ds_write.get_database("data").table_columns("docs")
+    assert "new_col" not in columns
+
+
+@pytest.mark.asyncio
+async def test_insert_with_return_failing_row_is_atomic(ds_write):
+    # https://github.com/simonw/datasette/issues/2831
+    # Insert with "return": true runs one insert per row - a failure
+    # part way through should roll back the earlier rows
+    token = write_token(ds_write)
+    response = await ds_write.client.post(
+        "/data/docs/-/insert",
+        json={
+            "rows": [
+                {"id": 1, "title": "one"},
+                {"id": 2, "title": "two"},
+                {"id": 2, "title": "dupe"},
+            ],
+            "return": True,
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 400
+    count = (
+        await ds_write.get_database("data").execute("select count(*) from docs")
+    ).single_value()
+    assert count == 0

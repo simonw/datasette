@@ -1261,62 +1261,62 @@ class TableAlterView(BaseView):
                     elif operation.op == "set_foreign_keys":
                         foreign_keys = [fk.tuple for fk in args.foreign_keys]
 
-                with operation_conn:
-                    for column in add_columns:
-                        not_null_default = None
-                        if column.not_null:
-                            if "default_expr" in column.model_fields_set:
-                                not_null_default = _default_expression_sql(
-                                    column.default_expr
-                                )
-                            else:
-                                not_null_default = _literal_default(
-                                    db_for_write, column.default
-                                )
-                        table.add_column(
-                            column.name,
-                            column.type,
-                            not_null_default=not_null_default,
-                        )
+                # The write task transaction makes these operations atomic
+                for column in add_columns:
+                    not_null_default = None
+                    if column.not_null:
+                        if "default_expr" in column.model_fields_set:
+                            not_null_default = _default_expression_sql(
+                                column.default_expr
+                            )
+                        else:
+                            not_null_default = _literal_default(
+                                db_for_write, column.default
+                            )
+                    table.add_column(
+                        column.name,
+                        column.type,
+                        not_null_default=not_null_default,
+                    )
 
-                    should_transform = any(
-                        (
-                            types,
-                            rename,
-                            drop,
-                            not_null,
-                            defaults,
-                            column_order is not None,
-                            pk is not SQLITE_UTILS_DEFAULT,
-                            add_foreign_keys,
-                            drop_foreign_keys,
-                            foreign_keys is not None,
+                should_transform = any(
+                    (
+                        types,
+                        rename,
+                        drop,
+                        not_null,
+                        defaults,
+                        column_order is not None,
+                        pk is not SQLITE_UTILS_DEFAULT,
+                        add_foreign_keys,
+                        drop_foreign_keys,
+                        foreign_keys is not None,
+                    )
+                )
+                if should_transform:
+                    table.transform(
+                        types=types or None,
+                        rename=rename or None,
+                        drop=drop or None,
+                        pk=pk,
+                        not_null=not_null or None,
+                        defaults=defaults or None,
+                        column_order=column_order,
+                        add_foreign_keys=add_foreign_keys or None,
+                        drop_foreign_keys=drop_foreign_keys or None,
+                        foreign_keys=foreign_keys,
+                    )
+                if (
+                    rename_table_to is not None
+                    and rename_table_to != current_table_name
+                ):
+                    operation_conn.execute(
+                        "alter table {} rename to {}".format(
+                            escape_sqlite(current_table_name),
+                            escape_sqlite(rename_table_to),
                         )
                     )
-                    if should_transform:
-                        table.transform(
-                            types=types or None,
-                            rename=rename or None,
-                            drop=drop or None,
-                            pk=pk,
-                            not_null=not_null or None,
-                            defaults=defaults or None,
-                            column_order=column_order,
-                            add_foreign_keys=add_foreign_keys or None,
-                            drop_foreign_keys=drop_foreign_keys or None,
-                            foreign_keys=foreign_keys,
-                        )
-                    if (
-                        rename_table_to is not None
-                        and rename_table_to != current_table_name
-                    ):
-                        operation_conn.execute(
-                            "alter table {} rename to {}".format(
-                                escape_sqlite(current_table_name),
-                                escape_sqlite(rename_table_to),
-                            )
-                        )
-                        current_table_name = rename_table_to
+                    current_table_name = rename_table_to
 
                 return current_table_name, _table_schema_from_conn(
                     operation_conn, current_table_name

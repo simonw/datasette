@@ -1356,3 +1356,53 @@ async def test_busy_timeout_ms_default(tmp_path):
         lambda conn: conn.execute("PRAGMA busy_timeout").fetchone()[0]
     )
     assert read_value == 5000
+
+
+@pytest.mark.asyncio
+async def test_journal_mode_setting_applies_wal(tmp_path):
+    # https://github.com/simonw/datasette/issues/2831
+    # Opt-in WAL support for mutable database files - not the default
+    path = str(tmp_path / "test.db")
+    sqlite3.connect(path).close()
+    datasette = Datasette([path], settings={"journal_mode": "wal"})
+    db = datasette.get_database("test")
+    mode = await db.execute_write_fn(
+        lambda conn: conn.execute("PRAGMA journal_mode").fetchone()[0],
+        transaction=False,
+    )
+    assert mode == "wal"
+    # WAL is paired with synchronous=NORMAL (1) on the write connection
+    synchronous = await db.execute_write_fn(
+        lambda conn: conn.execute("PRAGMA synchronous").fetchone()[0],
+        transaction=False,
+    )
+    assert synchronous == 1
+
+
+@pytest.mark.asyncio
+async def test_journal_mode_defaults_to_leaving_files_alone(tmp_path):
+    path = str(tmp_path / "test.db")
+    sqlite3.connect(path).close()
+    datasette = Datasette([path])
+    db = datasette.get_database("test")
+    mode = await db.execute_write_fn(
+        lambda conn: conn.execute("PRAGMA journal_mode").fetchone()[0],
+        transaction=False,
+    )
+    assert mode == "delete"
+
+
+@pytest.mark.asyncio
+async def test_persistent_internal_database_gets_wal(tmp_path):
+    # https://github.com/simonw/datasette/issues/2831
+    # The temporary internal database enables WAL - a persistent one passed
+    # via --internal should get the same treatment
+    internal_path = str(tmp_path / "internal.db")
+    datasette = Datasette(memory=True, internal=internal_path)
+    await datasette.invoke_startup()
+    internal_db = datasette.get_internal_database()
+    mode = await internal_db.execute_write_fn(
+        lambda conn: conn.execute("PRAGMA journal_mode").fetchone()[0],
+        transaction=False,
+    )
+    assert mode == "wal"

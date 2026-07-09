@@ -226,6 +226,11 @@ SETTINGS = (
         "How long SQLite waits for a locked database file before giving up",
     ),
     Setting(
+        "journal_mode",
+        "",
+        "Journal mode to set on mutable database files, e.g. wal - leave blank to use each file's existing mode",
+    ),
+    Setting(
         "default_facet_size", 30, "Number of values to return for requested facets"
     ),
     Setting("facet_time_limit_ms", 200, "Time limit for calculating a requested facet"),
@@ -483,7 +488,11 @@ class Datasette:
         if internal is None:
             self._internal_database = Database(self, is_temp_disk=True)
         else:
-            self._internal_database = Database(self, path=internal, mode="rwc")
+            # WAL for the same reason as the temporary internal database:
+            # the catalog can be read while it is being rewritten
+            self._internal_database = Database(
+                self, path=internal, mode="rwc", enable_wal=True
+            )
         self._internal_database.name = INTERNAL_DB_NAME
 
         self.cache_headers = cache_headers

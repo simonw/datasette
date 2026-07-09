@@ -36,6 +36,8 @@ EXECUTE_WRITE_RETURNING_LIMIT = 10
 
 AttachedDatabase = namedtuple("AttachedDatabase", ("seq", "name", "file"))
 
+ALLOWED_JOURNAL_MODES = {"delete", "truncate", "persist", "wal"}
+
 
 class DatasetteClosedError(RuntimeError):
     """Raised when using a Datasette or Database instance after close()."""
@@ -129,6 +131,7 @@ class Database:
         memory_name=None,
         mode=None,
         is_temp_disk=False,
+        enable_wal=False,
     ):
         self.name = None
         self._thread_local_id = f"x{self._thread_local_id_counter}"
@@ -140,6 +143,8 @@ class Database:
         self.is_memory = is_memory
         self.memory_name = memory_name
         self.is_temp_disk = is_temp_disk
+        self.enable_wal = enable_wal or is_temp_disk
+        self._wal_enabled = False
         if memory_name is not None:
             self.is_memory = True
         if is_temp_disk:
@@ -148,10 +153,7 @@ class Database:
             self.path = temp_path
             self.is_mutable = True
             self.mode = "rwc"
-            self._wal_enabled = False
             atexit.register(self._cleanup_temp_file)
-        else:
-            self._wal_enabled = False
         self.cached_hash = None
         self.cached_size = None
         self._cached_table_counts = None
@@ -241,9 +243,23 @@ class Database:
             f"file:{self.path}{qs}", uri=True, check_same_thread=False, **extra_kwargs
         )
         self._all_file_connections.append(conn)
-        if self.is_temp_disk and not self._wal_enabled:
+        if self.enable_wal and not self._wal_enabled:
             conn.execute("PRAGMA journal_mode=WAL")
             self._wal_enabled = True
+        if write and self.is_mutable and not self.enable_wal:
+            journal_mode = self.ds.setting("journal_mode")
+            if journal_mode:
+                if journal_mode not in ALLOWED_JOURNAL_MODES:
+                    raise ValueError(
+                        "journal_mode setting must be one of: {}".format(
+                            ", ".join(sorted(ALLOWED_JOURNAL_MODES))
+                        )
+                    )
+                conn.execute("PRAGMA journal_mode={}".format(journal_mode))
+                if journal_mode == "wal":
+                    # The standard WAL pairing - fewer fsyncs, application
+                    # level consistency guarantees are unchanged
+                    conn.execute("PRAGMA synchronous=NORMAL")
         return conn
 
     def close(self):

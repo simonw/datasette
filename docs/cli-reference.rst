@@ -253,6 +253,9 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
                                    (default=1000)
       busy_timeout_ms              How long SQLite waits for a locked database file
                                    before giving up (default=5000)
+      journal_mode                 Journal mode to set on mutable database files,
+                                   e.g. wal - leave blank to use each file's
+                                   existing mode (default=)
       default_facet_size           Number of values to return for requested facets
                                    (default=30)
       facet_time_limit_ms          Time limit for calculating a requested facet

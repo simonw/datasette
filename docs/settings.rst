@@ -114,6 +114,28 @@ This mostly matters when other processes write to the same database files that D
 
     datasette mydatabase.db --setting busy_timeout_ms 10000
 
+.. _setting_journal_mode:
+
+journal_mode
+~~~~~~~~~~~~
+
+`Journal mode <https://www.sqlite.org/pragma.html#pragma_journal_mode>`__ to set on mutable database files. Leave blank (the default) to use whatever journal mode each database file already uses.
+
+Setting this to ``wal`` enables SQLite's `Write-Ahead Logging <https://www.sqlite.org/wal.html>`__ mode, which allows reads and writes to proceed concurrently - in the default rollback journal mode each commit blocks readers, and long reads block the writer::
+
+    datasette mydatabase.db --setting journal_mode wal
+
+When ``wal`` is selected Datasette also sets ``PRAGMA synchronous=NORMAL`` on the write connection, the standard pairing for WAL which reduces the number of ``fsync`` operations without weakening application-level consistency guarantees.
+
+Other allowed values are ``delete``, ``truncate`` and ``persist``.
+
+Things to be aware of before enabling WAL:
+
+- WAL mode is persistent - it is recorded in the database file and stays in effect when other tools open the same file later.
+- SQLite creates ``-wal`` and ``-shm`` files alongside the database file.
+- WAL does not work reliably on network filesystems such as NFS.
+- The directory containing the database must be writable by Datasette.
+
 .. _setting_max_returned_rows:
 
 max_returned_rows

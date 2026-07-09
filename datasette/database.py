@@ -59,6 +59,44 @@ def _can_execute_in_transaction(sql):
     return match.group(1).lower() not in _STATEMENTS_DISALLOWED_IN_TRANSACTION
 
 
+# Scripts that manage their own transactions also cannot run inside the
+# task transaction
+_SCRIPT_STATEMENTS_DISALLOWED_IN_TRANSACTION = _STATEMENTS_DISALLOWED_IN_TRANSACTION | {
+    "begin",
+    "commit",
+    "end",
+    "rollback",
+    "savepoint",
+    "release",
+}
+
+
+def _script_can_execute_in_transaction(statements):
+    for statement in statements:
+        match = _FIRST_KEYWORD_RE.match(statement)
+        if (
+            match is not None
+            and match.group(1).lower() in _SCRIPT_STATEMENTS_DISALLOWED_IN_TRANSACTION
+        ):
+            return False
+    return True
+
+
+def _iter_sql_statements(sql):
+    # Split a multi-statement SQL string into complete statements using
+    # sqlite3.complete_statement()
+    statement = []
+    for char in sql:
+        statement.append(char)
+        statement_sql = "".join(statement).strip()
+        if statement_sql and sqlite3.complete_statement(statement_sql):
+            yield statement_sql
+            statement = []
+    remainder = "".join(statement).strip()
+    if remainder:
+        yield remainder
+
+
 def _run_write_in_transaction(conn, fn):
     # Open the transaction explicitly instead of relying on the sqlite3
     # driver's implicit BEGIN, which only fires on the first data-modifying
@@ -302,13 +340,21 @@ class Database:
 
     async def execute_write_script(self, sql, block=True, request=None):
         self._check_not_closed()
+        statements = list(_iter_sql_statements(sql))
+        transaction = _script_can_execute_in_transaction(statements)
 
         def _inner(conn):
-            return conn.executescript(sql)
+            if transaction:
+                # Execute statements one at a time so they run inside the
+                # task transaction - conn.executescript() would commit it
+                for statement in statements:
+                    conn.execute(statement)
+            else:
+                return conn.executescript(sql)
 
         with trace("sql", database=self.name, sql=sql.strip(), executescript=True):
             results = await self.execute_write_fn(
-                _inner, block=block, transaction=False, request=request
+                _inner, block=block, transaction=transaction, request=request
             )
         return results
 

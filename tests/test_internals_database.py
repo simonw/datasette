@@ -180,6 +180,36 @@ async def test_execute_write_fn_sqlite_utils_integrity_error_rolls_back_task():
 
 
 @pytest.mark.asyncio
+async def test_execute_write_script_is_transactional():
+    # https://github.com/simonw/datasette/issues/2831
+    # A script that fails part way through should apply none of its statements
+    datasette = Datasette(memory=True)
+    db = datasette.add_memory_database("test_write_script_txn")
+    with pytest.raises(sqlite3.OperationalError):
+        await db.execute_write_script(
+            "create table one (id integer primary key);\n"
+            "insert into one (id) values (1);\n"
+            "insert into no_such_table (id) values (2);"
+        )
+    assert "one" not in await db.table_names()
+
+
+@pytest.mark.asyncio
+async def test_execute_write_script_with_transaction_unsafe_statements(tmp_path):
+    # Scripts containing statements that cannot run inside a transaction
+    # (VACUUM, BEGIN etc) still execute, using the previous autocommit behavior
+    path = str(tmp_path / "test.db")
+    sqlite3.connect(path).close()
+    datasette = Datasette([path])
+    db = datasette.get_database("test")
+    await db.execute_write_script("create table t (id integer primary key);\nvacuum;")
+    assert "t" in await db.table_names()
+    await db.execute_write_script("begin;\ninsert into t (id) values (1);\ncommit;")
+    count = (await db.execute("select count(*) from t")).single_value()
+    assert count == 1
+
+
+@pytest.mark.asyncio
 async def test_execute_write_fn_writes_invisible_to_readers_until_task_ends(tmp_path):
     # https://github.com/simonw/datasette/issues/2831
     path = str(tmp_path / "test.db")

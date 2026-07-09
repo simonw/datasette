@@ -2066,9 +2066,11 @@ Each call to ``execute_write()`` will be executed inside a transaction, with the
 await db.execute_write_script(sql, block=True)
 ----------------------------------------------
 
-Like ``execute_write()`` but can be used to send multiple SQL statements in a single string separated by semicolons, using the ``sqlite3`` `conn.executescript() <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.executescript>`__ method.
+Like ``execute_write()`` but can be used to send multiple SQL statements in a single string separated by semicolons.
 
-Each call to ``execute_write_script()`` will be executed inside a transaction.
+Each call to ``execute_write_script()`` will be executed inside a transaction - if any statement fails, none of the statements will be applied.
+
+The exception is scripts that include statements which SQLite cannot execute inside a transaction - ``VACUUM``, ``ATTACH``, ``DETACH``, ``PRAGMA`` - or that manage transactions themselves using ``BEGIN``, ``COMMIT``, ``ROLLBACK``, ``SAVEPOINT`` or ``RELEASE``. Those scripts are executed using the ``sqlite3`` `conn.executescript() <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.executescript>`__ method instead, where each statement is committed as it executes.
 
 .. _database_execute_write_many:
 

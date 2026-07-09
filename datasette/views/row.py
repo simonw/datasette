@@ -749,7 +749,9 @@ class RowDeleteView(BaseView):
 
         # Delete table
         def delete_row(conn):
-            sqlite_utils.Database(conn)[resolved.table].delete(resolved.pk_values)
+            sqlite_utils.Database(conn, execute_plugins=False)[resolved.table].delete(
+                resolved.pk_values
+            )
 
         try:
             await resolved.db.execute_write_fn(delete_row, request=request)
@@ -830,7 +832,7 @@ class RowUpdateView(BaseView):
             return Response.error(["Permission denied for alter-table"], 403)
 
         def update_row(conn):
-            sqlite_utils.Database(conn)[resolved.table].update(
+            sqlite_utils.Database(conn, execute_plugins=False)[resolved.table].update(
                 resolved.pk_values, update, alter=alter
             )
 

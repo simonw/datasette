@@ -2782,3 +2782,38 @@ async def test_insert_with_return_failing_row_is_atomic(ds_write):
         await ds_write.get_database("data").execute("select count(*) from docs")
     ).single_value()
     assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_write_api_does_not_run_sqlite_utils_plugins(ds_write):
+    # https://github.com/simonw/datasette/issues/2831
+    # sqlite-utils plugins should not have their prepare_connection hooks
+    # executed against Datasette's connections
+    import sqlite_utils.plugins
+    from sqlite_utils import hookimpl
+
+    prepared = []
+
+    class TrackingPlugin:
+        @hookimpl
+        def prepare_connection(self, conn):
+            prepared.append(conn)
+
+    sqlite_utils.plugins.pm.register(TrackingPlugin(), name="datasette-test-tracking")
+    try:
+        token = write_token(ds_write)
+        response = await ds_write.client.post(
+            "/data/docs/-/insert",
+            json={"rows": [{"id": 1, "title": "one"}]},
+            headers=_headers(token),
+        )
+        assert response.status_code == 201
+        response = await ds_write.client.post(
+            "/data/docs/1/-/update",
+            json={"update": {"title": "two"}},
+            headers=_headers(token),
+        )
+        assert response.status_code == 200
+        assert prepared == []
+    finally:
+        sqlite_utils.plugins.pm.unregister(name="datasette-test-tracking")

@@ -1565,6 +1565,10 @@ class Datasette:
                     conn.execute("SELECT load_extension(?)", [extension])
         if self.setting("cache_size_kb"):
             conn.execute(f"PRAGMA cache_size=-{self.setting('cache_size_kb')}")
+        # Consistent trigger semantics on every connection - sqlite-utils
+        # would otherwise enable this on just the write connection, as a
+        # side effect of the first sqlite-utils based write
+        conn.execute("PRAGMA recursive_triggers=on")
         # pylint: disable=no-member
         if database != INTERNAL_DB_NAME:
             pm.hook.prepare_connection(conn=conn, database=database, datasette=self)

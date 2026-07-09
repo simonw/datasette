@@ -1143,7 +1143,7 @@ class TableInsertView(BaseView):
             row_pk_values_for_later = [tuple(row[pk] for pk in pks) for row in rows]
 
         def insert_or_upsert_rows(conn):
-            table = sqlite_utils.Database(conn)[table_name]
+            table = sqlite_utils.Database(conn, execute_plugins=False)[table_name]
             kwargs = {}
             if upsert:
                 kwargs = {
@@ -1407,7 +1407,7 @@ class TableDropView(BaseView):
 
         # Drop table
         def drop_table(conn):
-            sqlite_utils.Database(conn)[table_name].drop()
+            sqlite_utils.Database(conn, execute_plugins=False)[table_name].drop()
 
         await db.execute_write_fn(drop_table, request=request)
         await self.ds.track_event(

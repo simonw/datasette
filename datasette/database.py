@@ -757,7 +757,7 @@ class Database:
 
         def column_details(conn):
             # Returns {column_name: (type, is_unique)}
-            db = sqlite_utils.Database(conn)
+            db = sqlite_utils.Database(conn, execute_plugins=False)
             columns = db[table].columns_dict
             indexes = db[table].indexes
             details = {}

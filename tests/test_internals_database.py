@@ -1302,3 +1302,24 @@ async def test_database_close_is_idempotent(tmpdir):
     # Second call should be a no-op, not raise
     db.close()
     ds._internal_database.close()
+
+
+@pytest.mark.asyncio
+async def test_recursive_triggers_enabled_on_all_connections(tmp_path):
+    # https://github.com/simonw/datasette/issues/2831
+    # Previously recursive_triggers was only enabled on the write connection,
+    # and only as a side effect of the first sqlite-utils based write - so
+    # trigger semantics could differ between connections
+    path = str(tmp_path / "test.db")
+    sqlite3.connect(path).close()
+    datasette = Datasette([path])
+    db = datasette.get_database("test")
+    write_value = await db.execute_write_fn(
+        lambda conn: conn.execute("PRAGMA recursive_triggers").fetchone()[0],
+        transaction=False,
+    )
+    read_value = await db.execute_fn(
+        lambda conn: conn.execute("PRAGMA recursive_triggers").fetchone()[0]
+    )
+    assert write_value == 1
+    assert read_value == 1

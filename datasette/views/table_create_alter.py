@@ -889,11 +889,13 @@ class TableCreateView(BaseView):
         initial_schema = None
         if table_exists:
             initial_schema = await db.execute_fn(
-                lambda conn: sqlite_utils.Database(conn)[table_name].schema
+                lambda conn: sqlite_utils.Database(conn, execute_plugins=False)[
+                    table_name
+                ].schema
             )
 
         def create_table(conn):
-            db_for_write = sqlite_utils.Database(conn)
+            db_for_write = sqlite_utils.Database(conn, execute_plugins=False)
             table = db_for_write[table_name]
             if rows:
                 table.insert_all(
@@ -1187,7 +1189,9 @@ class TableAlterView(BaseView):
             before_schema = _table_schema_from_conn(conn, table_name)
 
             def apply_operations(operation_conn):
-                db_for_write = sqlite_utils.Database(operation_conn)
+                db_for_write = sqlite_utils.Database(
+                    operation_conn, execute_plugins=False
+                )
                 table = db_for_write[table_name]
                 current_table_name = table_name
 

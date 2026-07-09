@@ -334,3 +334,51 @@ async def test_orphan_stale_catalog_child_entries_removed(tmp_path):
     assert response.status_code == 200
 
     ds2.close()
+
+
+@pytest.mark.asyncio
+async def test_populate_schema_tables_is_a_single_write_task(tmp_path):
+    # https://github.com/simonw/datasette/issues/2831
+    # The catalog rebuild should be one atomic write task, so readers of the
+    # internal database never observe a database with deleted-but-not-yet-
+    # reinserted catalog rows
+    from datasette.app import Datasette
+    from datasette.utils.internal_db import populate_schema_tables
+
+    path = str(tmp_path / "data.db")
+    conn = sqlite3.connect(path)
+    conn.execute("create table t (id integer primary key, name text)")
+    conn.execute("create view v as select * from t")
+    conn.close()
+    ds = Datasette([path])
+    await ds.invoke_startup()
+    await ds.refresh_schemas()
+    internal_db = ds.get_internal_database()
+
+    write_fns = []
+    original_execute_write_fn = internal_db.execute_write_fn
+
+    async def counting_execute_write_fn(fn, *args, **kwargs):
+        write_fns.append(fn)
+        return await original_execute_write_fn(fn, *args, **kwargs)
+
+    internal_db.execute_write_fn = counting_execute_write_fn
+    try:
+        await populate_schema_tables(internal_db, ds.get_database("data"))
+    finally:
+        internal_db.execute_write_fn = original_execute_write_fn
+
+    assert len(write_fns) == 1
+    # And the catalog should be correct
+    tables = await internal_db.execute(
+        "select table_name from catalog_tables where database_name = 'data'"
+    )
+    assert [row["table_name"] for row in tables.rows] == ["t"]
+    views = await internal_db.execute(
+        "select view_name from catalog_views where database_name = 'data'"
+    )
+    assert [row["view_name"] for row in views.rows] == ["v"]
+    columns = await internal_db.execute(
+        "select name from catalog_columns where database_name = 'data' and table_name = 't'"
+    )
+    assert {row["name"] for row in columns.rows} == {"id", "name"}

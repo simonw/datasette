@@ -13,6 +13,7 @@ Unreleased
 - ``await db.execute_write()`` detects statements that SQLite cannot execute inside a transaction - ``VACUUM``, ``ATTACH``, ``DETACH`` and ``PRAGMA`` - and runs them in autocommit mode instead. (:issue:`2831`)
 - ``await db.execute_write_script()`` is now transactional, matching its documentation: if any statement in the script fails, none of its statements are applied. Scripts containing statements that cannot run inside a transaction, or that manage transactions themselves, fall back to the previous ``conn.executescript()`` autocommit behavior. (:issue:`2831`)
 - The JSON write API is now atomic per request: ``/db/-/create`` with initial rows, multi-operation ``/db/table/-/alter`` calls and inserts using ``"return": true`` now either fully apply or roll back entirely if any part fails. Previously a failure part way through could leave earlier writes from the same request permanently committed. (:issue:`2831`)
+- Rebuilding the internal database catalog for a database is now a single atomic write. Previously the rebuild used six separate transactions, so queries against the internal database could observe a database with missing catalog rows while a rebuild was in progress. (:issue:`2831`)
 
 .. _v1_0_a36:
 

@@ -183,26 +183,6 @@ async def init_internal_db(db):
 async def populate_schema_tables(internal_db, db):
     database_name = db.name
 
-    def delete_everything(conn):
-        conn.execute(
-            "DELETE FROM catalog_tables WHERE database_name = ?", [database_name]
-        )
-        conn.execute(
-            "DELETE FROM catalog_views WHERE database_name = ?", [database_name]
-        )
-        conn.execute(
-            "DELETE FROM catalog_columns WHERE database_name = ?", [database_name]
-        )
-        conn.execute(
-            "DELETE FROM catalog_foreign_keys WHERE database_name = ?",
-            [database_name],
-        )
-        conn.execute(
-            "DELETE FROM catalog_indexes WHERE database_name = ?", [database_name]
-        )
-
-    await internal_db.execute_write_fn(delete_everything)
-
     tables = (await db.execute("select * from sqlite_master WHERE type = 'table'")).rows
     views = (await db.execute("select * from sqlite_master WHERE type = 'view'")).rows
 
@@ -266,47 +246,69 @@ async def populate_schema_tables(internal_db, db):
         indexes_to_insert,
     ) = await db.execute_fn(collect_info)
 
-    await internal_db.execute_write_many(
-        """
-        INSERT INTO catalog_tables (database_name, table_name, rootpage, sql)
-        values (?, ?, ?, ?)
-    """,
-        tables_to_insert,
-    )
-    await internal_db.execute_write_many(
-        """
-        INSERT INTO catalog_views (database_name, view_name, rootpage, sql)
-        values (?, ?, ?, ?)
-    """,
-        views_to_insert,
-    )
-    await internal_db.execute_write_many(
-        """
-        INSERT INTO catalog_columns (
-            database_name, table_name, cid, name, type, "notnull", default_value, is_pk, hidden
-        ) VALUES (
-            :database_name, :table_name, :cid, :name, :type, :notnull, :default_value, :is_pk, :hidden
+    def update_catalog(conn):
+        # Delete and reinsert as one write task so internal database readers
+        # never observe a database with missing catalog rows
+        # https://github.com/simonw/datasette/issues/2831
+        conn.execute(
+            "DELETE FROM catalog_tables WHERE database_name = ?", [database_name]
         )
-    """,
-        columns_to_insert,
-    )
-    await internal_db.execute_write_many(
-        """
-        INSERT INTO catalog_foreign_keys (
-            database_name, table_name, "id", seq, "table", "from", "to", on_update, on_delete, match
-        ) VALUES (
-            :database_name, :table_name, :id, :seq, :table, :from, :to, :on_update, :on_delete, :match
+        conn.execute(
+            "DELETE FROM catalog_views WHERE database_name = ?", [database_name]
         )
-    """,
-        foreign_keys_to_insert,
-    )
-    await internal_db.execute_write_many(
-        """
-        INSERT INTO catalog_indexes (
-            database_name, table_name, seq, name, "unique", origin, partial
-        ) VALUES (
-            :database_name, :table_name, :seq, :name, :unique, :origin, :partial
+        conn.execute(
+            "DELETE FROM catalog_columns WHERE database_name = ?", [database_name]
         )
-    """,
-        indexes_to_insert,
-    )
+        conn.execute(
+            "DELETE FROM catalog_foreign_keys WHERE database_name = ?",
+            [database_name],
+        )
+        conn.execute(
+            "DELETE FROM catalog_indexes WHERE database_name = ?", [database_name]
+        )
+        conn.executemany(
+            """
+            INSERT INTO catalog_tables (database_name, table_name, rootpage, sql)
+            values (?, ?, ?, ?)
+        """,
+            tables_to_insert,
+        )
+        conn.executemany(
+            """
+            INSERT INTO catalog_views (database_name, view_name, rootpage, sql)
+            values (?, ?, ?, ?)
+        """,
+            views_to_insert,
+        )
+        conn.executemany(
+            """
+            INSERT INTO catalog_columns (
+                database_name, table_name, cid, name, type, "notnull", default_value, is_pk, hidden
+            ) VALUES (
+                :database_name, :table_name, :cid, :name, :type, :notnull, :default_value, :is_pk, :hidden
+            )
+        """,
+            columns_to_insert,
+        )
+        conn.executemany(
+            """
+            INSERT INTO catalog_foreign_keys (
+                database_name, table_name, "id", seq, "table", "from", "to", on_update, on_delete, match
+            ) VALUES (
+                :database_name, :table_name, :id, :seq, :table, :from, :to, :on_update, :on_delete, :match
+            )
+        """,
+            foreign_keys_to_insert,
+        )
+        conn.executemany(
+            """
+            INSERT INTO catalog_indexes (
+                database_name, table_name, seq, name, "unique", origin, partial
+            ) VALUES (
+                :database_name, :table_name, :seq, :name, :unique, :origin, :partial
+            )
+        """,
+            indexes_to_insert,
+        )
+
+    await internal_db.execute_write_fn(update_catalog)

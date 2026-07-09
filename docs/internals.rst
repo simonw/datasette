@@ -2180,6 +2180,17 @@ Functions run using ``execute_isolated_fn()`` share the same queue as ``execute_
 
 The return value of the function will be returned by this method. Any exceptions raised by the function will be raised out of the ``await`` line as well.
 
+.. _internals_database_transactions:
+
+How Datasette manages transactions
+----------------------------------
+
+Each mutable database has a single write connection, owned by a dedicated write thread that executes queued write tasks one at a time. Each task submitted with ``transaction=True`` (the default) runs inside its own transaction: Datasette executes ``BEGIN IMMEDIATE`` before invoking the task, commits if it completes and rolls back if it raises. One write task equals one transaction, and writes made by a task only become visible to readers when the task completes.
+
+Read connections never open transactions - each read statement executes in autocommit mode with its own implicit SQLite read snapshot.
+
+Datasette's write connections rely on the legacy transaction handling of Python's ``sqlite3`` module (connections opened with ``isolation_level=`` rather than the ``autocommit=`` parameter introduced in Python 3.12). This is a deliberate constraint shared with `sqlite-utils <https://sqlite-utils.datasette.io/>`__, which refuses connections created with ``autocommit=True`` or ``autocommit=False`` - any future migration to the modern transaction API would need to be coordinated across both projects. Plugins should not change the transaction control mode of connections Datasette passes to them.
+
 .. _database_close:
 
 db.close()

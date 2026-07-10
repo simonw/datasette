@@ -438,6 +438,11 @@ Datasette bundles `CodeMirror <https://codemirror.net/>`__ for the SQL editing i
 
     npm install && npm run build:codemirror
 
-  This runs ``rollup -c`` against the ``rollup.config.mjs`` file at the root of the repository, which reads ``datasette/static/cm-editor.js`` and writes the bundled, minified output to ``datasette/static/cm-editor.bundle.js``. The bundle filename does not include the CodeMirror version number, so no template needs to be updated.
+  This runs ``rollup -c`` against the ``rollup.config.mjs`` file at the root of the repository, which builds two bundles:
 
-* Commit the rebuilt ``datasette/static/cm-editor.bundle.js`` - the bundle is checked into the repository.
+  * ``datasette/static/cm-editor.bundle.js`` - the minified IIFE bundle (global name ``cm``) used by Datasette's own pages, built from ``datasette/static/cm-editor.js``.
+  * ``datasette/static/datasette-sql-editor.bundle.js`` - a self-contained ESM bundle built from ``datasette/static/datasette-sql-editor.js``, which plugin authors can import directly (e.g. ``import {createSqlEditor, datasetteSchema} from "/-/static/datasette-sql-editor.bundle.js"``). ``cm-editor.js`` is a thin consumer of this shared module, so there is a single CodeMirror implementation.
+
+  The bundle filenames do not include the CodeMirror version number, so no template needs to be updated.
+
+* Commit the rebuilt ``datasette/static/cm-editor.bundle.js`` and ``datasette/static/datasette-sql-editor.bundle.js`` - the bundles are checked into the repository.

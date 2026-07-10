@@ -1,4 +1,5 @@
 import { EditorView, basicSetup } from "codemirror";
+import { Compartment } from "@codemirror/state";
 import { keymap } from "@codemirror/view";
 import { sql, SQLDialect } from "@codemirror/lang-sql";
 
@@ -17,10 +18,22 @@ const SQLite = SQLDialect.define({
   caseInsensitiveIdentifiers: true,
 });
 
+// Builds the sql() extension from a {schema, defaultTable, defaultSchema} conf object
+function sqlExtension(conf) {
+  return sql({
+    dialect: SQLite,
+    schema: conf.schema,
+    defaultTable: conf.defaultTable,
+    defaultSchema: conf.defaultSchema,
+  });
+}
+
 // Utility function from https://codemirror.net/docs/migration/
 export function editorFromTextArea(textarea, conf = {}) {
-  // This could also be configured with a set of tables and columns for better autocomplete:
-  // https://github.com/codemirror/lang-sql#user-content-sqlconfig.tables
+  // Wraps the sql() extension so it can be swapped out later via view.updateSchema()
+  // https://codemirror.net/examples/config/#dynamic-configuration
+  let sqlCompartment = new Compartment();
+
   let view = new EditorView({
     doc: textarea.value,
     extensions: [
@@ -46,14 +59,16 @@ export function editorFromTextArea(textarea, conf = {}) {
       // Meta-Enter from running
       basicSetup,
       EditorView.lineWrapping,
-      sql({
-        dialect: SQLite,
-        schema: conf.schema,
-        defaultTable: conf.defaultTable,
-        defaultSchema: conf.defaultSchema,
-      }),
+      sqlCompartment.of(sqlExtension(conf)),
     ],
   });
+
+  // Allows callers (and plugins) to update the schema/defaultTable/defaultSchema
+  // used for autocomplete after the editor has already been created.
+  view.updateSchema = (conf2) =>
+    view.dispatch({
+      effects: sqlCompartment.reconfigure(sqlExtension(conf2)),
+    });
 
   // Idea taken from https://discuss.codemirror.net/t/resizing-codemirror-6/3265.
   // Using CSS resize: both and scheduling a measurement when the element changes.

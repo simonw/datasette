@@ -285,6 +285,53 @@ async def test_query_page_with_no_sql(ds_client):
 
 
 @pytest.mark.asyncio
+async def test_table_page_view_and_edit_sql_link_carries_table(ds_client):
+    # The table page's "View and edit SQL" link should point at the query
+    # page with a &_table= param identifying the focal table, so the SQL
+    # editor can offer that table's columns unprefixed.
+    response = await ds_client.get("/fixtures/facetable")
+    assert response.status_code == 200
+    soup = Soup(response.content, "html.parser")
+    link = soup.find("span", string="View and edit SQL").find_parent("a")
+    assert link is not None
+    assert "_table=facetable" in link["href"]
+
+
+@pytest.mark.asyncio
+async def test_query_page_default_table_from_table_scoped_link(ds_client):
+    # Following the table page's edit-SQL link should result in a query page
+    # whose SQL editor is initialized with defaultTable set to that table.
+    table_response = await ds_client.get("/fixtures/facetable")
+    soup = Soup(table_response.content, "html.parser")
+    href = soup.find("span", string="View and edit SQL").find_parent("a")["href"]
+    response = await ds_client.get(href, follow_redirects=True)
+    assert response.status_code == 200
+    assert 'defaultTable: "facetable"' in response.text
+
+
+@pytest.mark.asyncio
+async def test_query_page_no_default_table_without_table_scope(ds_client):
+    # The plain database query page (no focal table) should not set
+    # defaultTable at all.
+    response = await ds_client.get("/fixtures/-/query?sql=select+1")
+    assert response.status_code == 200
+    assert "defaultTable" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_query_page_ignores_invalid_table_param(ds_client):
+    # A ?_table= value that isn't a real table/view in this database should
+    # not be reflected back into the page - and should not break execution
+    # of the query itself (leading-underscore params are not treated as SQL
+    # bind parameters unless they appear as :name in the SQL).
+    response = await ds_client.get(
+        "/fixtures/-/query?sql=select+1&_table=not_a_real_table"
+    )
+    assert response.status_code == 200
+    assert "defaultTable" not in response.text
+
+
+@pytest.mark.asyncio
 async def test_query_csv_with_no_sql_is_400(ds_client):
     # https://github.com/simonw/datasette/issues/2743
     response = await ds_client.get("/fixtures/-/query.csv")

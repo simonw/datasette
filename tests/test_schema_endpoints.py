@@ -1,3 +1,5 @@
+import json
+
 import pytest
 import pytest_asyncio
 from datasette.app import Datasette
@@ -245,3 +247,165 @@ async def test_table_not_exists(schema_ds):
     response = await schema_ds.client.get("/schema_public_db/nonexistent/-/schema.md")
     assert response.status_code == 404
     assert "not found" in response.text.lower()
+
+
+# ---------------------------------------------------------------------------
+# /<database>/-/editor-schema.json — neutral structured schema for SQL editors
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture(scope="module")
+async def editor_schema_ds():
+    """Datasette instance exercising the editor-schema endpoint.
+
+    - public db: tables + a view + an FTS table (hidden shadow tables)
+    - private db: gated behind view-database (allow root only)
+    - noexec db: view-database allowed for anyone, execute-sql denied
+    """
+    ds = Datasette(
+        config={
+            "databases": {
+                "editor_private_db": {"allow": {"id": "root"}},
+                "editor_noexec_db": {
+                    # Everyone may view the database, but nobody may run SQL
+                    "allow_sql": {"id": "root"},
+                },
+            }
+        }
+    )
+
+    public_db = ds.add_memory_database("editor_public_db")
+    await public_db.execute_write(
+        "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
+    )
+    await public_db.execute_write(
+        "CREATE TABLE posts (id INTEGER PRIMARY KEY, title TEXT, body TEXT)"
+    )
+    await public_db.execute_write(
+        "CREATE VIEW recent_posts AS SELECT id, title FROM posts ORDER BY id DESC"
+    )
+    # An FTS table produces hidden shadow tables (users_fts_data, etc.)
+    await public_db.execute_write(
+        "CREATE VIRTUAL TABLE users_fts USING fts5(name, content=users)"
+    )
+
+    private_db = ds.add_memory_database("editor_private_db")
+    await private_db.execute_write(
+        "CREATE TABLE secret_data (id INTEGER PRIMARY KEY, value TEXT)"
+    )
+
+    noexec_db = ds.add_memory_database("editor_noexec_db")
+    await noexec_db.execute_write(
+        "CREATE TABLE locked (id INTEGER PRIMARY KEY, value TEXT)"
+    )
+
+    await ds.invoke_startup()
+    await ds.refresh_schemas()
+    return ds
+
+
+@pytest.mark.asyncio
+async def test_editor_schema_allowed_shape(editor_schema_ds):
+    """Authorized fetch returns tables, columns, types and views in the
+    documented neutral shape."""
+    response = await editor_schema_ds.client.get(
+        "/editor_public_db/-/editor-schema.json"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["database"] == "editor_public_db"
+    assert isinstance(data["tables"], list)
+
+    by_name = {t["name"]: t for t in data["tables"]}
+
+    # Regular table with columns + declared types
+    users = by_name["users"]
+    assert users["view"] is False
+    assert users["columns"] == [
+        {"name": "id", "type": "INTEGER"},
+        {"name": "name", "type": "TEXT"},
+    ]
+
+    posts = by_name["posts"]
+    assert posts["view"] is False
+    assert {c["name"] for c in posts["columns"]} == {"id", "title", "body"}
+
+    # View is flagged and carries its real columns
+    view = by_name["recent_posts"]
+    assert view["view"] is True
+    assert [c["name"] for c in view["columns"]] == ["id", "title"]
+
+    # Whole payload is JSON-serializable and every entry matches the shape
+    for table in data["tables"]:
+        assert set(table) == {"name", "view", "columns"}
+        for column in table["columns"]:
+            assert set(column) == {"name", "type"}
+
+
+@pytest.mark.asyncio
+async def test_editor_schema_excludes_hidden_tables(editor_schema_ds):
+    """FTS shadow tables (hidden_table_names) must not appear."""
+    response = await editor_schema_ds.client.get(
+        "/editor_public_db/-/editor-schema.json"
+    )
+    assert response.status_code == 200
+    names = {t["name"] for t in response.json()["tables"]}
+    assert not any("_fts_" in name or name.endswith("_fts") for name in names), names
+    # Sanity: the visible objects are still there
+    assert {"users", "posts", "recent_posts"} <= names
+
+
+@pytest.mark.asyncio
+async def test_editor_schema_denied_view_database_403_no_leak(editor_schema_ds):
+    """Anonymous user lacking view-database gets a 403 that leaks no names."""
+    response = await editor_schema_ds.client.get(
+        "/editor_private_db/-/editor-schema.json"
+    )
+    assert response.status_code == 403
+    body = response.text
+    assert "secret_data" not in body
+    data = response.json()
+    assert data["ok"] is False
+    assert "secret_data" not in json.dumps(data)
+
+    # The permitted actor can read it
+    response = await editor_schema_ds.client.get(
+        "/editor_private_db/-/editor-schema.json", actor={"id": "root"}
+    )
+    assert response.status_code == 200
+    names = {t["name"] for t in response.json()["tables"]}
+    assert "secret_data" in names
+
+
+@pytest.mark.asyncio
+async def test_editor_schema_denied_execute_sql_403_no_leak(editor_schema_ds):
+    """A viewer who lacks execute-sql gets a 403 with no schema data."""
+    # Anonymous user may view editor_noexec_db but not run SQL against it
+    response = await editor_schema_ds.client.get(
+        "/editor_noexec_db/-/editor-schema.json"
+    )
+    assert response.status_code == 403
+    data = response.json()
+    assert data["ok"] is False
+    assert "tables" not in data
+    assert "locked" not in json.dumps(data)
+
+    # The actor granted execute-sql can read the schema
+    response = await editor_schema_ds.client.get(
+        "/editor_noexec_db/-/editor-schema.json", actor={"id": "root"}
+    )
+    assert response.status_code == 200
+    names = {t["name"] for t in response.json()["tables"]}
+    assert "locked" in names
+
+
+@pytest.mark.asyncio
+async def test_editor_schema_database_not_found(editor_schema_ds):
+    """A non-existent database returns a 404 JSON error."""
+    response = await editor_schema_ds.client.get(
+        "/nonexistent_db/-/editor-schema.json"
+    )
+    assert response.status_code == 404
+    data = response.json()
+    assert data["ok"] is False
+    assert "not found" in data["error"].lower()

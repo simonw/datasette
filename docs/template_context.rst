@@ -168,6 +168,9 @@ The page for arbitrary SQL queries (/database/-/query?sql=...) and stored querie
 ``db_is_immutable`` - ``bool``
     Boolean indicating if this database is immutable
 
+``default_table`` - ``str``
+    Name of the focal table for this query, if any - set when the query page was reached from a table-scoped context (such as the table page's 'View and edit SQL' link) so the SQL editor can complete that table's columns unprefixed. ``None`` otherwise, including for stored/canned queries.
+
 ``display_rows`` - ``list``
     List of result rows formatted for HTML display. Each row is a list of rendered cell values in the same order as ``columns``.
 

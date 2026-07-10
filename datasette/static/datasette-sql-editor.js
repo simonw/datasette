@@ -352,7 +352,10 @@ const sqlEditorTheme = EditorView.theme({
 //   default-table unqualified-column default table for autocomplete
 //   readonly      boolean; mounts the editor read-only
 //   autofocus     boolean; focuses the editor once mounted
-// The initial document is the element's trimmed textContent (cleared on mount).
+// The initial document is, in priority order: a programmatically-set value; the
+// value of a light-DOM <textarea> first child (a progressive-enhancement form
+// field that keeps working with JS disabled - it is adopted then removed); or
+// the element's trimmed textContent. The light DOM is cleared on mount.
 //
 // Properties:
 //   value       get/set the document (set is host-tagged: no "input" event)
@@ -393,8 +396,50 @@ export class DatasetteSqlEditorElement extends HTMLElement {
   connectedCallback() {
     if (this._handle) return; // already mounted (e.g. move within the DOM)
 
+    // Parser-timing guard. When this element's definition loads BEFORE the parser
+    // reaches the element (e.g. a non-deferred <script> in <head>, which is how
+    // Datasette's own pages load the bundle), the browser upgrades and connects
+    // the element at its start tag - before its light-DOM children (the initial
+    // document / fallback <textarea>) have been parsed. Reading them now would
+    // yield an empty document. Detect that case - still parsing, nothing set
+    // programmatically, no children yet - and defer mounting to DOMContentLoaded,
+    // by which point the element's subtree is fully parsed. The listener is
+    // registered as the parser sees this element (before any later inline
+    // script's DOMContentLoaded handler), so consumers reading .view on
+    // DOMContentLoaded still observe a mounted editor.
+    if (
+      this.ownerDocument.readyState === "loading" &&
+      this._pendingDoc == null &&
+      !this.firstChild
+    ) {
+      this.ownerDocument.addEventListener(
+        "DOMContentLoaded",
+        () => this.connectedCallback(),
+        { once: true },
+      );
+      return;
+    }
+
+    // Progressive-enhancement fallback: a light-DOM <textarea> first child is a
+    // real form field that keeps working with JavaScript disabled. When present,
+    // adopt its value as the initial document and remove it, so it does not also
+    // submit a duplicate field alongside the value the element contributes via
+    // setFormValue.
+    const firstEl = this.firstElementChild;
+    const fallbackTextarea =
+      firstEl && firstEl.tagName === "TEXTAREA" ? firstEl : null;
+    let fallbackDoc = null;
+    if (fallbackTextarea) {
+      fallbackDoc = fallbackTextarea.value;
+      fallbackTextarea.remove();
+    }
+
     const initialDoc =
-      this._pendingDoc != null ? this._pendingDoc : this.textContent.trim();
+      this._pendingDoc != null
+        ? this._pendingDoc
+        : fallbackDoc != null
+          ? fallbackDoc
+          : this.textContent.trim();
     this._initialDoc = initialDoc;
     this._pendingDoc = null;
     // Clear the light-DOM text so it doesn't render behind the editor.

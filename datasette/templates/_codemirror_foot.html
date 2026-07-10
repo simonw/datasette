@@ -8,28 +8,21 @@
   window.addEventListener("DOMContentLoaded", () => {
     const sqlFormat = document.querySelector("button#sql-format");
     const readOnly = document.querySelector("pre#sql-query");
-    const sqlInput = document.querySelector("textarea#sql-editor");
+    const editorElement = document.querySelector("datasette-sql-editor#sql-editor");
     if (sqlFormat && !readOnly) {
       sqlFormat.hidden = false;
     }
-    if (sqlInput) {
-      var editor = (window.editor = cm.editorFromTextArea(sqlInput, {
-        schema,
-        {% if default_table is defined and default_table %}
-        defaultTable: {{ default_table|tojson }},
-        {% endif %}
-      }));
+    if (editorElement) {
+      // Rich lang-sql schema inlined server-side (see const schema above): drives
+      // first-paint autocomplete with no extra HTTP request and no flash of
+      // no-completions. The default table is carried on the element attribute.
+      if (Object.keys(schema).length) {
+        editorElement.schema = schema;
+      }
+      // Back-compat: plugins and inline scripts reach the raw EditorView here.
+      window.editor = editorElement.view;
       if (sqlFormat) {
-        sqlFormat.addEventListener("click", (ev) => {
-          const formatted = sqlFormatter.format(editor.state.doc.toString());
-          editor.dispatch({
-            changes: {
-              from: 0,
-              to: editor.state.doc.length,
-              insert: formatted,
-            },
-          });
-        });
+        sqlFormat.addEventListener("click", () => editorElement.format());
       }
     }
     if (sqlFormat && readOnly) {

@@ -124,7 +124,7 @@ form.sql.core input[data-execute-write-submit]:disabled {
         <p class="message-warning execute-write-template-unavailable">There are no tables that you can currently edit.</p>
     {% endif %}
 
-    <p class="sql-editor{% if not sql %} sql-editor-min-lines{% endif %}"><textarea id="sql-editor" name="sql"{% if sql %} style="height: {{ sql.split("\n")|length + 2 }}em"{% endif %}>{{ sql }}</textarea></p>
+    <p class="sql-editor{% if not sql %} sql-editor-min-lines{% endif %}"><datasette-sql-editor id="sql-editor" name="sql"{% if default_table is defined and default_table %} default-table="{{ default_table }}"{% endif %}><textarea name="sql"{% if sql %} style="height: {{ sql.split("\n")|length + 2 }}em"{% endif %}>{{ sql }}</textarea></datasette-sql-editor></p>
 
     {% set sql_parameters_section_id = "execute-write-parameters-section" %}
     {% set sql_parameters_allow_expand = true %}
@@ -175,7 +175,7 @@ form.sql.core input[data-execute-write-submit]:disabled {
 
 <script>
 window.addEventListener("DOMContentLoaded", () => {
-  const executeWriteSqlInput = document.querySelector("textarea#sql-editor");
+  const executeWriteSqlInput = document.querySelector("#sql-editor");
   const form = document.querySelector("form.sql.core");
   const analysisSection = document.querySelector("#execute-write-analysis-section");
   const submitButton = form
@@ -261,7 +261,7 @@ window.addEventListener("DOMContentLoaded", () => {
 window.addEventListener("DOMContentLoaded", () => {
   const tableSelect = document.querySelector("#execute-write-template-table");
   const templateButtons = document.querySelectorAll("[data-sql-template]");
-  const sqlInput = document.querySelector("textarea#sql-editor");
+  const sqlInput = document.querySelector("#sql-editor");
 
   function dataKey(operation) {
     return `template${operation.charAt(0).toUpperCase()}${operation.slice(1)}Sql`;

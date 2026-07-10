@@ -95,6 +95,83 @@ async def test_queries_internal_table_schema():
 
 
 @pytest.mark.asyncio
+async def test_editor_schema_rich_completions():
+    from datasette.fixtures import TABLES
+    from datasette.views.query_helpers import _editor_schema
+
+    ds = Datasette(memory=True)
+    db = ds.add_memory_database("editor_schema")
+    await ds.invoke_startup()
+    await db.execute_write_script(TABLES)
+    await ds.refresh_schemas()
+
+    schema = await _editor_schema(ds, "editor_schema")
+
+    # Tables are plain lists of Completion objects carrying type + boost
+    attractions = schema["roadside_attractions"]
+    assert isinstance(attractions, list)
+    pk_completion = next(c for c in attractions if c["label"] == "pk")
+    assert pk_completion == {
+        "label": "pk",
+        "type": "property",
+        "boost": 10,
+        "detail": "INTEGER",
+    }
+    # Every column completion is boosted above bare keywords
+    assert all(c["boost"] == 10 and c["type"] == "property" for c in attractions)
+
+    # Views are wrapped in a self/children container labelled as a view
+    view = schema["paginated_view"]
+    assert view["self"] == {
+        "label": "paginated_view",
+        "type": "class",
+        "detail": "view",
+    }
+    child_labels = [c["label"] for c in view["children"]]
+    assert child_labels == ["content", "content_extra"]
+    # Column type inherited from the underlying table flows through as detail;
+    # the computed expression column has no declared type so carries no detail
+    content = next(c for c in view["children"] if c["label"] == "content")
+    assert content["detail"] == "TEXT"
+    content_extra = next(c for c in view["children"] if c["label"] == "content_extra")
+    assert "detail" not in content_extra
+
+    # Whole payload must be JSON-serializable
+    json.dumps(schema)
+
+
+@pytest.mark.asyncio
+async def test_database_page_editor_schema_permission_gated():
+    import secrets
+    from datasette.database import Database
+    from datasette.fixtures import TABLES
+
+    async def schema_for(datasette):
+        # Unique memory name so parallel instances don't share a backing DB
+        name = f"editor_gated_{secrets.token_hex(8)}"
+        db = datasette.add_database(
+            Database(datasette, memory_name=name), name="editor_gated"
+        )
+        await datasette.invoke_startup()
+        await db.execute_write_script(TABLES)
+        await datasette.refresh_schemas()
+        response = await datasette.client.get("/editor_gated.json")
+        assert response.status_code == 200
+        return response.json()["table_columns"]
+
+    # execute-sql allowed (default): rich schema is emitted
+    allowed = await schema_for(Datasette(memory=True))
+    assert isinstance(allowed["roadside_attractions"], list)
+    assert allowed["paginated_view"]["self"]["detail"] == "view"
+
+    # execute-sql denied: no schema leak, empty dict
+    denied = await schema_for(
+        Datasette(memory=True, settings={"default_allow_sql": False})
+    )
+    assert denied == {}
+
+
+@pytest.mark.asyncio
 async def test_add_get_and_remove_query():
     ds = Datasette(memory=True)
     ds.add_memory_database("query_api", name="data")

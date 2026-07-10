@@ -36,7 +36,10 @@ from datasette.utils.asgi import AsgiFileDownload, NotFound, Response, Forbidden
 from datasette.plugins import pm
 
 from .base import DatasetteError, View, stream_csv
-from .query_helpers import _ensure_stored_query_execution_permissions, _table_columns
+from .query_helpers import (
+    _ensure_stored_query_execution_permissions,
+    _editor_schema,
+)
 from .table_extras import (
     QueryExtraContext,
     resolve_query_extras,
@@ -201,7 +204,7 @@ class DatabaseView(View):
             "queries_count": queries_count,
             "allow_execute_sql": allow_execute_sql,
             "table_columns": (
-                await _table_columns(datasette, database) if allow_execute_sql else {}
+                await _editor_schema(datasette, database) if allow_execute_sql else {}
             ),
             "metadata": await datasette.get_database_metadata(database),
         }
@@ -242,7 +245,7 @@ class DatabaseView(View):
                     queries_count=queries_count,
                     allow_execute_sql=allow_execute_sql,
                     table_columns=(
-                        await _table_columns(datasette, database)
+                        await _editor_schema(datasette, database)
                         if allow_execute_sql
                         else {}
                     ),
@@ -1094,7 +1097,7 @@ class QueryView(View):
                             datasette, database, request, rows, columns
                         ),
                         table_columns=(
-                            await _table_columns(datasette, database)
+                            await _editor_schema(datasette, database)
                             if allow_execute_sql
                             else {}
                         ),

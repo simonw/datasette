@@ -634,3 +634,54 @@ async def _table_columns(datasette, database_name):
     for view_name in await db.view_names():
         table_columns[view_name] = []
     return table_columns
+
+
+def _column_completion(name, type_):
+    # A @codemirror/lang-sql Completion object for a single column. boost keeps
+    # columns ranked above bare SQL keywords in the autocomplete popup.
+    completion = {
+        "label": name,
+        "type": "property",
+        "boost": 10,
+    }
+    if type_:
+        completion["detail"] = type_
+    return completion
+
+
+async def _editor_schema(datasette, database_name):
+    """
+    Build a lang-sql SQLNamespace for the CodeMirror SQL editor autocomplete.
+
+    Returns a dict keyed by table or view name. Table values are lists of
+    Completion objects (one per column, carrying the column's SQLite type as
+    ``detail``). Views are wrapped in a ``{"self": Completion, "children": [...]}``
+    container so the popup can label them as views while still completing their
+    real columns. See @codemirror/lang-sql >= 6.6 SQLNamespace / Completion.
+    """
+    internal_db = datasette.get_internal_database()
+    result = await internal_db.execute(
+        "select table_name, name, type from catalog_columns where database_name = ?",
+        [database_name],
+    )
+    schema = {}
+    for row in result.rows:
+        schema.setdefault(row["table_name"], []).append(
+            _column_completion(row["name"], row["type"])
+        )
+    # Views are not represented in catalog_columns, so pull their real columns
+    # directly (PRAGMA table_xinfo works against views too).
+    db = datasette.get_database(database_name)
+    for view_name in await db.view_names():
+        columns = await db.table_column_details(view_name)
+        schema[view_name] = {
+            "self": {
+                "label": view_name,
+                "type": "class",
+                "detail": "view",
+            },
+            "children": [
+                _column_completion(column.name, column.type) for column in columns
+            ],
+        }
+    return schema

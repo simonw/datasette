@@ -154,6 +154,8 @@ The response uses the same default representation described above.
 
 .. _json_api_editor_schema:
 
+.. _DatabaseEditorSchemaView:
+
 Schema for SQL editors
 ----------------------
 

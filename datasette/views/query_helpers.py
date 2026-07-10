@@ -649,6 +649,52 @@ def _column_completion(name, type_):
     return completion
 
 
+async def _schema_tables(datasette, database_name, *, include_hidden=True):
+    """
+    Neutral introspection of a database's tables and views for SQL editors.
+
+    Returns an ordered list of dicts, one per table or view::
+
+        {"name": str, "view": bool,
+         "columns": [{"name": str, "type": str}, ...]}
+
+    ``type`` is the SQLite declared column type (empty string when the column
+    has no declared type). Regular-table columns come from the internal
+    ``catalog_columns`` catalog; views are absent from that catalog so their
+    columns are read directly via PRAGMA table_xinfo. Hidden tables (FTS shadow
+    tables and the like) are excluded unless ``include_hidden`` is True. This is
+    the shared, serialization-agnostic source for both ``_editor_schema`` (which
+    maps it to lang-sql Completion objects) and the ``/-/editor-schema.json``
+    endpoint (which emits it directly).
+    """
+    internal_db = datasette.get_internal_database()
+    result = await internal_db.execute(
+        "select table_name, name, type from catalog_columns where database_name = ?",
+        [database_name],
+    )
+    table_columns = {}
+    for row in result.rows:
+        table_columns.setdefault(row["table_name"], []).append(
+            {"name": row["name"], "type": row["type"]}
+        )
+    db = datasette.get_database(database_name)
+    hidden = set() if include_hidden else set(await db.hidden_table_names())
+    tables = []
+    for table_name, columns in table_columns.items():
+        if table_name in hidden:
+            continue
+        tables.append({"name": table_name, "view": False, "columns": columns})
+    # Views are not represented in catalog_columns, so pull their real columns
+    # directly (PRAGMA table_xinfo works against views too).
+    for view_name in await db.view_names():
+        columns = [
+            {"name": column.name, "type": column.type}
+            for column in await db.table_column_details(view_name)
+        ]
+        tables.append({"name": view_name, "view": True, "columns": columns})
+    return tables
+
+
 async def _editor_schema(datasette, database_name):
     """
     Build a lang-sql SQLNamespace for the CodeMirror SQL editor autocomplete.
@@ -659,29 +705,21 @@ async def _editor_schema(datasette, database_name):
     container so the popup can label them as views while still completing their
     real columns. See @codemirror/lang-sql >= 6.6 SQLNamespace / Completion.
     """
-    internal_db = datasette.get_internal_database()
-    result = await internal_db.execute(
-        "select table_name, name, type from catalog_columns where database_name = ?",
-        [database_name],
-    )
     schema = {}
-    for row in result.rows:
-        schema.setdefault(row["table_name"], []).append(
-            _column_completion(row["name"], row["type"])
-        )
-    # Views are not represented in catalog_columns, so pull their real columns
-    # directly (PRAGMA table_xinfo works against views too).
-    db = datasette.get_database(database_name)
-    for view_name in await db.view_names():
-        columns = await db.table_column_details(view_name)
-        schema[view_name] = {
-            "self": {
-                "label": view_name,
-                "type": "class",
-                "detail": "view",
-            },
-            "children": [
-                _column_completion(column.name, column.type) for column in columns
-            ],
-        }
+    for table in await _schema_tables(datasette, database_name, include_hidden=True):
+        completions = [
+            _column_completion(column["name"], column["type"])
+            for column in table["columns"]
+        ]
+        if table["view"]:
+            schema[table["name"]] = {
+                "self": {
+                    "label": table["name"],
+                    "type": "class",
+                    "detail": "view",
+                },
+                "children": completions,
+            }
+        else:
+            schema[table["name"]] = completions
     return schema

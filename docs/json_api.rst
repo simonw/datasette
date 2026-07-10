@@ -152,6 +152,60 @@ Values for named SQL parameters can be provided as additional query string param
 
 The response uses the same default representation described above.
 
+.. _json_api_editor_schema:
+
+Schema for SQL editors
+----------------------
+
+The ``/-/editor-schema.json`` endpoint returns a machine-readable description of
+a database's tables, views and columns, shaped for SQL editor autocomplete. It
+powers Datasette's own CodeMirror SQL editor and is available for external
+consumers such as embeddable editor components.
+
+::
+
+    GET /<database>/-/editor-schema.json
+
+Access requires both the :ref:`actions_view_database` and
+:ref:`actions_execute_sql` permissions for the database - the same gate as the
+inline editor schema on the SQL query page. A request that fails either check
+receives a ``403`` JSON error that does not reveal any table or column names.
+
+The response is a neutral structure - a ``database`` name and a list of
+``tables``, each with a ``view`` flag (``true`` for SQL views) and a list of
+``columns`` carrying the SQLite declared ``type`` (an empty string when the
+column has no declared type):
+
+.. code-block:: json
+
+    {
+      "database": "fixtures",
+      "tables": [
+        {
+          "name": "facetable",
+          "view": false,
+          "columns": [
+            {"name": "pk", "type": "INTEGER"},
+            {"name": "state", "type": "TEXT"}
+          ]
+        },
+        {
+          "name": "paginated_view",
+          "view": true,
+          "columns": [
+            {"name": "content", "type": "TEXT"}
+          ]
+        }
+      ]
+    }
+
+Hidden tables - such as the shadow tables that back SQLite full-text search -
+are excluded from the response.
+
+This endpoint is distinct from the :ref:`database schema endpoint <DatabaseSchemaView>`
+at ``/<database>/-/schema.json``, which returns the raw ``CREATE`` statements as
+a SQL string.
+
 .. _json_api_shapes:
 
 Different shapes

@@ -85,6 +85,7 @@ from .views.special import (
     JumpView,
     InstanceSchemaView,
     DatabaseSchemaView,
+    DatabaseEditorSchemaView,
     TableSchemaView,
 )
 from .views.table import (
@@ -2715,6 +2716,10 @@ class Datasette:
         add_route(
             DatabaseSchemaView.as_view(self),
             r"/(?P<database>[^\/\.]+)/-/schema(\.(?P<format>json|md))?$",
+        )
+        add_route(
+            DatabaseEditorSchemaView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/-/editor-schema\.json$",
         )
         add_route(
             QueryParametersView.as_view(self),

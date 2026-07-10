@@ -280,7 +280,7 @@ async def test_query_page_with_no_sql(ds_client):
     # https://github.com/simonw/datasette/issues/2743
     response = await ds_client.get("/fixtures/-/query")
     assert response.status_code == 200
-    assert '<textarea id="sql-editor" name="sql"' in response.text
+    assert '<datasette-sql-editor id="sql-editor" name="sql"' in response.text
     assert 'class="rows-and-columns"' not in response.text
 
 
@@ -306,16 +306,16 @@ async def test_query_page_default_table_from_table_scoped_link(ds_client):
     href = soup.find("span", string="View and edit SQL").find_parent("a")["href"]
     response = await ds_client.get(href, follow_redirects=True)
     assert response.status_code == 200
-    assert 'defaultTable: "facetable"' in response.text
+    assert 'default-table="facetable"' in response.text
 
 
 @pytest.mark.asyncio
 async def test_query_page_no_default_table_without_table_scope(ds_client):
     # The plain database query page (no focal table) should not set
-    # defaultTable at all.
+    # default-table at all.
     response = await ds_client.get("/fixtures/-/query?sql=select+1")
     assert response.status_code == 200
-    assert "defaultTable" not in response.text
+    assert "default-table=" not in response.text
 
 
 @pytest.mark.asyncio
@@ -328,7 +328,7 @@ async def test_query_page_ignores_invalid_table_param(ds_client):
         "/fixtures/-/query?sql=select+1&_table=not_a_real_table"
     )
     assert response.status_code == 200
-    assert "defaultTable" not in response.text
+    assert "default-table=" not in response.text
 
 
 @pytest.mark.asyncio
@@ -923,7 +923,8 @@ async def test_query_error(ds_client):
     response = await ds_client.get("/fixtures/-/query?sql=select+*+from+notatable")
     html = response.text
     assert '<p class="message-error">no such table: notatable</p>' in html
-    assert '<textarea id="sql-editor" name="sql" style="height: 3em' in html
+    assert '<datasette-sql-editor id="sql-editor" name="sql"' in html
+    assert '<textarea name="sql" style="height: 3em' in html
     assert ">select * from notatable</textarea>" in html
     assert "0 results" not in html
 

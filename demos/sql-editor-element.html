@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<!--
+  Manual-QA demo for <datasette-sql-editor> (ticket 08).
+
+  This page is NOT served by Datasette by default. Launch a Datasette instance
+  with this directory mounted at /demos so both the demo page and the ESM bundle
+  are served same-origin (the schema fetch needs same-origin):
+
+      uv run python tests/fixtures.py fixtures.db      # once, to build fixtures
+      uv run datasette fixtures.db --static demos:demos/ -p 8001
+
+  Then open:
+
+      http://localhost:8001/demos/sql-editor-element.html
+
+  The editor imports /-/static/datasette-sql-editor.bundle.js (Datasette's built
+  ESM module, which auto-registers the <datasette-sql-editor> tag on import) and
+  fetches its schema from /fixtures/-/editor-schema.json.
+
+  QA checklist:
+    [ ] Editor mounts; "ready" logs in the event panel.
+    [ ] Typing "select st" / "facetable." offers ranked, typed column completions
+        (schema fetch succeeded). Ctrl-Space forces the completion popup.
+    [ ] Editing fires "input" events (origin: user).
+    [ ] Shift-Enter / Mod-Enter fires a cancelable "submit"; with the checkbox
+        UNchecked the form GET-submits ?sql=... (name=sql). Checked cancels it.
+    [ ] The plain "Run SQL" button also submits the current editor text as sql=.
+    [ ] Escape fires "editor-escape".
+    [ ] Reset button restores the initial document (form reset).
+    [ ] Format button reformats via window.sqlFormatter (loaded below).
+    [ ] Read-only toggle disables editing.
+    [ ] Point schema-url at a bad URL (edit source) -> editor still works,
+        keyword-only completion, a console.warn appears.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>&lt;datasette-sql-editor&gt; demo</title>
+    <!-- sql-formatter global (window.sqlFormatter) so format() works. -->
+    <script src="/-/static/sql-formatter-2.3.3.min.js"></script>
+    <style>
+      :root {
+        --datasette-sql-editor-font-size: 14px;
+      }
+      body {
+        font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        max-width: 820px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      datasette-sql-editor {
+        display: block;
+      }
+      .cm-editor {
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
+      .toolbar {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin: 0.75rem 0;
+        align-items: center;
+      }
+      #log {
+        background: #111;
+        color: #b9f6ca;
+        font: 12px/1.5 ui-monospace, Menlo, monospace;
+        padding: 0.75rem;
+        border-radius: 4px;
+        height: 200px;
+        overflow: auto;
+        white-space: pre-wrap;
+      }
+      label {
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>&lt;datasette-sql-editor&gt; demo</h1>
+    <p>
+      Form-associated custom element against the live
+      <code>fixtures</code> database. See the HTML comment at the top of this file
+      for launch and QA instructions.
+    </p>
+
+    <form id="f" action="/fixtures/-/query" method="get">
+      <datasette-sql-editor
+        id="ed"
+        name="sql"
+        database="fixtures"
+        default-table="facetable"
+        autofocus
+      >
+select state, county, on_earth
+from facetable
+where on_earth = 1
+order by pk</datasette-sql-editor
+      >
+      <div class="toolbar">
+        <button type="submit">Run SQL</button>
+        <button type="button" id="format">Format</button>
+        <button type="reset">Reset</button>
+        <label
+          ><input type="checkbox" id="cancel" /> cancel submit event</label
+        >
+        <label
+          ><input type="checkbox" id="ro" /> read-only</label
+        >
+      </div>
+    </form>
+
+    <h3>Events</h3>
+    <div id="log"></div>
+
+    <script type="module">
+      // Importing the bundle auto-registers <datasette-sql-editor>.
+      import "/-/static/datasette-sql-editor.bundle.js";
+
+      const ed = document.getElementById("ed");
+      const log = document.getElementById("log");
+      const line = (m) => {
+        log.textContent += m + "\n";
+        log.scrollTop = log.scrollHeight;
+      };
+
+      ["ready", "input", "submit", "editor-escape"].forEach((type) => {
+        ed.addEventListener(type, (e) => {
+          if (type === "submit" && document.getElementById("cancel").checked) {
+            e.preventDefault();
+            line("submit (CANCELED via preventDefault)");
+            return;
+          }
+          line(
+            type +
+              (e.detail ? " " + JSON.stringify(e.detail) : "") +
+              " | value=" +
+              JSON.stringify(ed.value.replace(/\s+/g, " ").slice(0, 60)),
+          );
+        });
+      });
+
+      document.getElementById("format").addEventListener("click", () => {
+        ed.format();
+        line("format() called");
+      });
+      document.getElementById("ro").addEventListener("change", (e) => {
+        ed.readOnly = e.target.checked;
+        line("readOnly = " + e.target.checked);
+      });
+      // view escape hatch smoke test
+      line("view is EditorView? " + (ed.view && ed.view.constructor.name));
+    </script>
+  </body>
+</html>

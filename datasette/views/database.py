@@ -457,6 +457,11 @@ class QueryContext(Context):
             "help": "Dictionary mapping table names to lists of column names, used to power SQL autocomplete."
         }
     )
+    default_table: str = field(
+        metadata={
+            "help": "Name of the focal table for this query, if any - set when the query page was reached from a table-scoped context (such as the table page's 'View and edit SQL' link) so the SQL editor can complete that table's columns unprefixed. ``None`` otherwise, including for stored/canned queries."
+        }
+    )
     alternate_url_json: str = field(
         metadata={"help": "URL for alternate JSON version of this page"}
     )
@@ -715,6 +720,15 @@ class QueryView(View):
         )
         # Create lookup dict for quick access
         allowed_dict = {r.child: r for r in allowed_tables_page.resources}
+
+        # If the request carries a ?_table= pointing at a real (visible) table
+        # or view in this database, treat this as a table-scoped query - e.g.
+        # arriving here via the "View and edit SQL" link on a table page - so
+        # the SQL editor can offer that table's columns unprefixed. Anything
+        # else (including stored/canned queries, which may reference more
+        # than one table) leaves this as None.
+        requested_table = request.args.get("_table")
+        default_table = requested_table if requested_table in allowed_dict else None
 
         # Are we a stored query?
         stored_query = None
@@ -1101,6 +1115,7 @@ class QueryView(View):
                             if allow_execute_sql
                             else {}
                         ),
+                        default_table=default_table,
                         columns=columns,
                         renderers=renderers,
                         url_csv=datasette.urls.path(

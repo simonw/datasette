@@ -463,6 +463,7 @@ def escape_sqlite(s):
 
 def make_dockerfile(
     files,
+    config_file,
     metadata_file,
     extra_options,
     branch,
@@ -484,6 +485,8 @@ def make_dockerfile(
     for filename in files:
         cmd.extend(["-i", filename])
     cmd.extend(["--cors", "--inspect-file", "inspect-data.json"])
+    if config_file:
+        cmd.extend(["--config", f"{config_file}"])
     if metadata_file:
         cmd.extend(["--metadata", f"{metadata_file}"])
     if template_dir:
@@ -550,6 +553,7 @@ CMD {cmd}""".format(
 def temporary_docker_directory(
     files,
     name,
+    config,
     metadata,
     extra_options,
     branch,
@@ -573,6 +577,10 @@ def temporary_docker_directory(
     saved_cwd = os.getcwd()
     file_paths = [os.path.join(saved_cwd, file_path) for file_path in files]
     file_names = [os.path.split(f)[-1] for f in files]
+    if config:
+        config_content = parse_metadata(config.read())
+    else:
+        config_content = {}
     if metadata:
         metadata_content = parse_metadata(metadata.read())
     else:
@@ -585,6 +593,7 @@ def temporary_docker_directory(
     try:
         dockerfile = make_dockerfile(
             file_names,
+            config_content and "config.json",
             metadata_content and "metadata.json",
             extra_options,
             branch,
@@ -600,6 +609,9 @@ def temporary_docker_directory(
             apt_get_extras=apt_get_extras,
         )
         os.chdir(datasette_dir)
+        if config_content:
+            with open("config.json", "w") as fp:
+                fp.write(json.dumps(config_content, indent=2))
         if metadata_content:
             with open("metadata.json", "w") as fp:
                 fp.write(json.dumps(metadata_content, indent=2))

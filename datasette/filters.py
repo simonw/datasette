@@ -3,7 +3,11 @@ from datasette.resources import DatabaseResource
 from datasette.views.base import DatasetteError
 from datasette.utils.asgi import BadRequest
 import json
+import re
 from .utils import detect_json1, escape_sqlite, path_with_removed_args
+
+
+looks_like_number_re = re.compile(r"^-?(?:\d+(?:\.\d+)?|\.\d+)$")
 
 
 @hookimpl(specname="filters_from_request")
@@ -408,14 +412,30 @@ class Filters:
     def has_selections(self):
         return bool(self.pairs)
 
-    def build_where_clauses(self, table):
+    def build_where_clauses(self, table, column_details=None):
         sql_bits = []
         params = {}
         i = 0
         for column, lookup, value in self.selections():
             filter = self._filters_by_key.get(lookup, None)
             if filter:
-                sql_bit, param = filter.where_clause(table, column, value, i)
+                param_name = f"p{i}"
+                if self.should_compare_with_numeric_value(
+                    column_details, column, lookup, value
+                ):
+                    numeric_comparison = (
+                        f'"{column}" = :{param_name} or '
+                        f"(typeof(\"{column}\") in ('integer', 'real') "
+                        f'and "{column}" = CAST(:{param_name} AS NUMERIC))'
+                    )
+                    sql_bit = (
+                        f"not ({numeric_comparison})"
+                        if lookup == "not"
+                        else f"({numeric_comparison})"
+                    )
+                    param = value
+                else:
+                    sql_bit, param = filter.where_clause(table, column, value, i)
                 sql_bits.append(sql_bit)
                 if param is not None:
                     if not isinstance(param, list):
@@ -425,3 +445,19 @@ class Filters:
                         params[param_id] = individual_param
                         i += 1
         return sql_bits, params
+
+    def should_compare_with_numeric_value(
+        self, column_details, column, lookup, value
+    ):
+        if lookup not in ("exact", "not"):
+            return False
+        if not isinstance(value, str):
+            return False
+        if column_details is None:
+            return False
+        column_detail = column_details.get(column)
+        if column_detail is None:
+            return False
+        if (column_detail.type or "").strip():
+            return False
+        return bool(looks_like_number_re.match(value))

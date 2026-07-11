@@ -506,6 +506,45 @@ function renderActionLink(itemConfig) {
   return newLink;
 }
 
+function initializeStickyTableHeader(tableWrapper) {
+  var table = tableWrapper.querySelector("table.rows-and-columns");
+  var tableHead = table && table.querySelector("thead");
+  if (!tableHead || !window.requestAnimationFrame) {
+    return;
+  }
+
+  var animationFrame = null;
+  function updatePosition() {
+    animationFrame = null;
+    if (window.matchMedia("(max-width: 576px)").matches) {
+      tableHead.style.transform = "";
+      return;
+    }
+    // overflow-x: auto makes tableWrapper the sticky scroll container, even
+    // though the page handles vertical scrolling. Counter the page scroll so
+    // the real header stays aligned with both the viewport and the table.
+    var wrapperTop = tableWrapper.getBoundingClientRect().top;
+    var maximumOffset = Math.max(
+      0,
+      table.offsetHeight - tableHead.offsetHeight,
+    );
+    var offset = Math.min(Math.max(-wrapperTop, 0), maximumOffset);
+    tableHead.style.transform = offset
+      ? `translateY(${offset}px)`
+      : "";
+  }
+
+  function queuePositionUpdate() {
+    if (animationFrame === null) {
+      animationFrame = window.requestAnimationFrame(updatePosition);
+    }
+  }
+
+  window.addEventListener("scroll", queuePositionUpdate, { passive: true });
+  window.addEventListener("resize", queuePositionUpdate);
+  queuePositionUpdate();
+}
+
 /** Main initialization function for Datasette Table interactions */
 const initDatasetteTable = function (manager) {
   // Feature detection
@@ -521,6 +560,7 @@ const initDatasetteTable = function (manager) {
   if (tableWrapper) {
     tableWrapper.addEventListener("scroll", closeMenu);
   }
+  window.addEventListener("scroll", closeMenu, { passive: true });
   document.body.addEventListener("click", (ev) => {
     /* was this click outside the menu? */
     var target = ev.target;
@@ -631,6 +671,9 @@ const initDatasetteTable = function (manager) {
     icon.addEventListener("click", onTableHeaderClick);
     th.appendChild(icon);
   });
+  if (tableWrapper) {
+    initializeStickyTableHeader(tableWrapper);
+  }
 };
 
 function filterRowSelector(manager) {

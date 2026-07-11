@@ -411,6 +411,29 @@ def test_datasette_homepage_contains_datasette(page, datasette_server):
 
 
 @pytest.mark.playwright
+def test_table_header_stays_visible_while_scrolling(page, datasette_server):
+    page.set_viewport_size({"width": 600, "height": 400})
+    page.goto(f"{datasette_server}fixtures/sortable?_size=100")
+
+    wrapper = page.locator(".table-wrapper")
+    header = wrapper.locator("table.rows-and-columns th").first
+    assert wrapper.evaluate("node => node.scrollWidth > node.clientWidth")
+
+    wrapper.evaluate("""node => window.scrollTo(
+            0,
+            node.getBoundingClientRect().top + window.scrollY + 100
+        )""")
+    page.wait_for_function("""() => Math.abs(document.querySelector(
+            'table.rows-and-columns th'
+        ).getBoundingClientRect().top) < 1""")
+    assert abs(header.bounding_box()["y"]) < 1
+
+    wrapper.evaluate("node => node.scrollLeft = 100")
+    assert wrapper.evaluate("node => node.scrollLeft") == 100
+    assert abs(header.bounding_box()["y"]) < 1
+
+
+@pytest.mark.playwright
 def test_create_table_flow(page, datasette_server):
     page.goto(f"{datasette_server}data")
     page.locator("details.actions-menu-links summary").click()

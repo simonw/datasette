@@ -497,7 +497,10 @@ table.rows-and-columns td em {
     color: #aaa;
 }
 table.rows-and-columns th {
+    background: #F8FAFB;
     padding-right: 1em;
+    position: relative;
+    z-index: 1;
 }
 table.rows-and-columns a:link {
     text-decoration: none;

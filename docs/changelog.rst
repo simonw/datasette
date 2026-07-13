@@ -93,6 +93,7 @@ The edit interface takes :ref:`custom column types <table_configuration_column_t
 - Permission checks are now cached on a per-request basis, speeding up table pages with multiple plugins that check permissions in order to populate the :ref:`table actions menu <plugin_hook_table_actions>`.
 - Fixed a warning about ``gen.throw(*sys.exc_info())``. (:issue:`2776`)
 - New default custom column type ``textarea`` for multi-line text content. This is rendered as a ``<textarea>`` input in the edit UI.
+- Links rendered by the ``url`` :ref:`custom column type <table_configuration_column_types>` now have their displayed text truncated according to the :ref:`setting_truncate_cells_html` setting, while still linking to the full URL. (:issue:`1805`)
 - The ``json`` column type now implements client-side validation in the edit UI.
 - The :ref:`makeColumnField() <javascript_plugins_makeColumnField>` JavaScript plugin hook allows plugins to define custom fields in the edit interface for their custom column types.
 - New UI for inserting, editing, and deleting rows within Datasette. (:issue:`2780`)

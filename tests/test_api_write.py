@@ -1,6 +1,6 @@
 from datasette.app import Datasette
 from datasette.events import RenameTableEvent
-from datasette.utils import error_body, escape_sqlite, sqlite3
+from datasette.utils import error_body, escape_sqlite, path_from_row_pks, sqlite3
 from .utils import last_event
 import pytest
 import time
@@ -2717,3 +2717,27 @@ async def test_create_using_alter_against_existing_table(
         insert_rows_event = ds_write._tracked_events[1]
         assert insert_rows_event.name == "insert-rows"
         assert insert_rows_event.num_rows == 1
+
+
+@pytest.mark.asyncio
+async def test_row_page_with_binary_primary_key(ds_write):
+    # Regression test for #2419 - a row with a binary (BLOB) primary key value
+    # should be reachable via its generated URL instead of returning a 404.
+    db = ds_write.get_database("data")
+    await db.execute_write(
+        "create table binary_pk (id integer, term blob, primary key (id, term))"
+    )
+    terms = (b"0thei'", b"\xff\x00abc")
+    for term in terms:
+        await db.execute_write(
+            "insert into binary_pk (id, term) values (?, ?)", [3, term]
+        )
+    for term in terms:
+        path = path_from_row_pks(
+            {"id": 3, "term": term}, ["id", "term"], use_rowid=False
+        )
+        html = await ds_write.client.get(f"/data/binary_pk/{path}")
+        assert html.status_code == 200, html.text
+        js = await ds_write.client.get(f"/data/binary_pk/{path}.json?_shape=array")
+        assert js.status_code == 200, js.text
+        assert len(js.json()) == 1

@@ -2819,8 +2819,9 @@ class Datasette:
 
     async def resolve_row(self, request):
         db, table_name, _ = await self.resolve_table(request)
-        pk_values = urlsafe_components(request.url_vars["pks"])
-        sql, params, pks = await row_sql_params_pks(db, table_name, pk_values)
+        sql, params, pks, pk_values = await row_sql_params_pks(
+            db, table_name, request.url_vars["pks"]
+        )
         if len(pk_values) != len(pks):
             raise BadRequest(
                 "URL row identifier does not match the primary key for this table"

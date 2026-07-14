@@ -3,14 +3,8 @@
 {% block title %}Debug allow rules{% endblock %}
 
 {% block extra_head %}
+{% include "_permission_ui_styles.html" %}
 <style>
-textarea {
-    height: 10em;
-    width: 95%;
-    box-sizing: border-box;
-    padding: 0.5em;
-    border: 2px dotted black;
-}
 .two-col {
     display: inline-block;
     width: 48%;
@@ -41,11 +35,11 @@ p.message-warning {
 <form class="core" action="{{ urls.path('-/allow-debug') }}" method="get" style="margin-bottom: 1em">
     <div class="two-col">
         <p><label>Allow block</label></p>
-        <textarea name="allow">{{ allow_input }}</textarea>
+        <textarea class="permission-textarea" name="allow">{{ allow_input }}</textarea>
     </div>
     <div class="two-col">
         <p><label>Actor</label></p>
-        <textarea name="actor">{{ actor_input }}</textarea>
+        <textarea class="permission-textarea" name="actor">{{ actor_input }}</textarea>
     </div>
     <div style="margin-top: 1em;">
         <input type="submit" value="Apply allow block to actor">

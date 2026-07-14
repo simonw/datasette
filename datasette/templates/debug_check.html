@@ -7,47 +7,6 @@
 {% include "_permission_ui_styles.html" %}
 {% include "_debug_common_functions.html" %}
 <style>
-.permission-check-form form {
-    max-width: 60rem;
-}
-.permission-check-form .form-section {
-    margin-bottom: 1.25em;
-}
-.permission-check-form .form-section select,
-.permission-check-form .form-section input[type="text"],
-#actor {
-    background-color: #fff;
-    border: 1px solid #aaa;
-    border-radius: 4px;
-    box-sizing: border-box;
-    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08);
-    color: #222;
-    font-family: inherit;
-    font-size: 1rem;
-    line-height: 1.4;
-    max-width: none;
-    width: 100%;
-}
-.permission-check-form .form-section select {
-    min-height: 2.75rem;
-    padding: 0.6rem 0.75rem;
-}
-#actor {
-    font-family: monospace;
-    min-height: 12rem;
-    padding: 0.75rem;
-    resize: vertical;
-}
-.permission-check-form .form-section select:focus,
-.permission-check-form .form-section input[type="text"]:focus,
-#actor:focus {
-    border-color: #0066cc;
-    box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.18);
-    outline: none;
-}
-.permission-check-form .form-section small {
-    margin-top: 0.45em;
-}
 #output {
     margin-top: 2em;
     padding: 1em;
@@ -154,11 +113,11 @@
 
 <p>Test an actor, action and resource. The result explains which rules matched, which specificity level won, and whether actor restrictions or required actions changed the verdict.</p>
 
-<div class="permission-form permission-check-form">
+<div class="permission-form">
     <form id="check-form" method="get" action="{{ urls.path('-/check') }}">
         <div class="form-section">
             <label for="actor">Actor JSON:</label>
-            <textarea id="actor" name="actor">{{ actor_json }}</textarea>
+            <textarea class="permission-textarea" id="actor" name="actor">{{ actor_json }}</textarea>
             <small>Use <code>null</code> for an anonymous actor. This actor is simulated; it does not change who you are signed in as.</small>
         </div>
 

@@ -4,6 +4,20 @@
 Changelog
 =========
 
+.. _v1_0_a37:
+
+1.0a37 (2026-07-14)
+-------------------
+
+Performance improvement for SQL-backed permission checks, plus an improved permission debugging interface.
+
+- SQL used to resolve permission checks now aggregates permission rules before joining them to resources, improving performance on instances with large schemas. (:issue:`2832`)
+- The :ref:`PermissionCheckView` permission debugger now explains why a decision was allowed or denied, including the matching rules. The interactive form can also test a hypothetical actor supplied as JSON, and the :ref:`permissions documentation <authentication_permissions_explained>` now describes resolution rules in more detail. (:issue:`2841`)
+- :ref:`database_execute_write` has a new ``transaction=`` parameter, which can be set to ``False`` for statements such as ``VACUUM`` that cannot run inside a transaction. Write tasks now start their transactions using ``BEGIN IMMEDIATE``, which also ensures that writes are rolled back if the task fails. (:issue:`2831`)
+- Refreshing a database's schema in Datasette's internal catalog is now performed as a single atomic operation. (:issue:`2831`)
+- Fixed schema introspection, table pages, facets and table counts for tables with names containing a ``]`` character. Thanks, `TowyTowy <https://github.com/TowyTowy>`__. (:issue:`2431`, :pr:`2846`)
+- ``/-/plugins.json`` once again returns a top-level JSON array of plugin objects, reverting the object envelope introduced in 1.0a36. This should fix a large number of trivial test failures in existing plugins. (:issue:`2842`, :pr:`2843`)
+
 .. _v1_0_a36:
 
 1.0a36 (2026-07-07)

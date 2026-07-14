@@ -20,18 +20,6 @@
 .check-action, .check-when, .check-result {
     font-size: 1.3em;
 }
-.two-col {
-    display: inline-block;
-    width: 48%;
-}
-.two-col label {
-    width: 48%;
-}
-@media only screen and (max-width: 576px) {
-    .two-col {
-        width: 100%;
-    }
-}
 </style>
 {% endblock %}
 
@@ -47,28 +35,30 @@
 
 <div class="permission-form">
     <form action="{{ urls.path('-/permissions') }}" id="debug-post" method="post">
-        <div class="two-col">
-            <div class="form-section">
-                <label>Actor</label>
-                <textarea class="permission-textarea" name="actor">{% if actor_input %}{{ actor_input }}{% else %}{"id": "root"}{% endif %}</textarea>
+        <div class="permission-form-grid">
+            <div>
+                <div class="form-section">
+                    <label for="activity-actor">Actor</label>
+                    <textarea class="permission-textarea" id="activity-actor" name="actor">{% if actor_input %}{{ actor_input }}{% else %}{"id": "root"}{% endif %}</textarea>
+                </div>
             </div>
-        </div>
-        <div class="two-col" style="vertical-align: top">
-            <div class="form-section">
-                <label for="permission">Action</label>
-                <select name="permission" id="permission">
-                    {% for permission in permissions %}
-                        <option value="{{ permission.name }}">{{ permission.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="form-section">
-                <label for="resource_1">Parent</label>
-                <input type="text" id="resource_1" name="resource_1" placeholder="e.g., database name">
-            </div>
-            <div class="form-section">
-                <label for="resource_2">Child</label>
-                <input type="text" id="resource_2" name="resource_2" placeholder="e.g., table name">
+            <div>
+                <div class="form-section">
+                    <label for="permission">Action</label>
+                    <select name="permission" id="permission">
+                        {% for permission in permissions %}
+                            <option value="{{ permission.name }}">{{ permission.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-section">
+                    <label for="resource_1">Parent</label>
+                    <input type="text" id="resource_1" name="resource_1" placeholder="e.g., database name">
+                </div>
+                <div class="form-section">
+                    <label for="resource_2">Child</label>
+                    <input type="text" id="resource_2" name="resource_2" placeholder="e.g., table name">
+                </div>
             </div>
         </div>
         <div class="form-actions">

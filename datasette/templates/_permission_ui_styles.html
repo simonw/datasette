@@ -9,6 +9,15 @@
 .permission-form form {
     max-width: 60rem;
 }
+.permission-form-grid {
+    display: grid;
+    gap: 1.5rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.permission-form-result {
+    margin-top: 1rem;
+    max-width: 60rem;
+}
 .form-section {
     margin-bottom: 1.25em;
 }
@@ -173,5 +182,10 @@
     padding: 2em;
     text-align: center;
     color: #666;
+}
+@media only screen and (max-width: 576px) {
+    .permission-form-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
 }
 </style>

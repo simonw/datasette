@@ -5,20 +5,8 @@
 {% block extra_head %}
 {% include "_permission_ui_styles.html" %}
 <style>
-.two-col {
-    display: inline-block;
-    width: 48%;
-}
-.two-col label {
-    width: 48%;
-}
 p.message-warning {
     white-space: pre-wrap;
-}
-@media only screen and (max-width: 576px) {
-    .two-col {
-        width: 100%;
-    }
 }
 </style>
 {% endblock %}
@@ -32,24 +20,28 @@ p.message-warning {
 
 <p>Use this tool to try out different actor and allow combinations. See <a href="https://docs.datasette.io/en/stable/authentication.html#defining-permissions-with-allow-blocks">Defining permissions with "allow" blocks</a> for documentation.</p>
 
-<form class="core" action="{{ urls.path('-/allow-debug') }}" method="get" style="margin-bottom: 1em">
-    <div class="two-col">
-        <p><label>Allow block</label></p>
-        <textarea class="permission-textarea" name="allow">{{ allow_input }}</textarea>
-    </div>
-    <div class="two-col">
-        <p><label>Actor</label></p>
-        <textarea class="permission-textarea" name="actor">{{ actor_input }}</textarea>
-    </div>
-    <div style="margin-top: 1em;">
-        <input type="submit" value="Apply allow block to actor">
-    </div>
-</form>
+<div class="permission-form">
+    <form class="core" action="{{ urls.path('-/allow-debug') }}" method="get">
+        <div class="permission-form-grid">
+            <div class="form-section">
+                <label for="allow-block">Allow block</label>
+                <textarea class="permission-textarea" id="allow-block" name="allow">{{ allow_input }}</textarea>
+            </div>
+            <div class="form-section">
+                <label for="allow-actor">Actor</label>
+                <textarea class="permission-textarea" id="allow-actor" name="actor">{{ actor_input }}</textarea>
+            </div>
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="submit-btn">Apply allow block to actor</button>
+        </div>
+    </form>
 
-{% if error %}<p class="message-warning">{{ error }}</p>{% endif %}
+    {% if error %}<p class="message-warning permission-form-result">{{ error }}</p>{% endif %}
 
-{% if result == "True" %}<p class="message-info">Result: allow</p>{% endif %}
+    {% if result == "True" %}<p class="message-info permission-form-result">Result: allow</p>{% endif %}
 
-{% if result == "False" %}<p class="message-error">Result: deny</p>{% endif %}
+    {% if result == "False" %}<p class="message-error permission-form-result">Result: deny</p>{% endif %}
+</div>
 
 {% endblock %}

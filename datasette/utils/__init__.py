@@ -636,7 +636,7 @@ def detect_primary_keys(conn, table):
 
 
 def get_outbound_foreign_keys(conn, table):
-    infos = conn.execute(f"PRAGMA foreign_key_list([{table}])").fetchall()
+    infos = conn.execute(f"PRAGMA foreign_key_list({escape_sqlite(table)})").fetchall()
     fks = []
     for info in infos:
         if info is not None:

@@ -11,6 +11,7 @@ from datasette.database import _deliver_write_result
 from datasette.utils.sqlite import sqlite3, supports_returning
 from datasette.utils import Column
 import pytest
+import sqlite_utils
 import time
 import uuid
 
@@ -716,6 +717,31 @@ async def test_execute_write_fn_exception(db):
 
     with pytest.raises(AssertionError):
         await db.execute_write_fn(write_fn)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("num_sql_threads", (0, 1))
+async def test_execute_write_fn_sqlite_utils_transaction(tmp_path, num_sql_threads):
+    db_path = tmp_path / "test.db"
+    sqlite3.connect(db_path).close()
+    ds = Datasette([str(db_path)], settings={"num_sql_threads": num_sql_threads})
+    db = ds.get_database("test")
+    await db.execute_write("create table items (id integer primary key)")
+    reader = sqlite3.connect(db_path, check_same_thread=False)
+
+    def insert_then_fail(conn):
+        assert conn.in_transaction
+        sqlite_utils.Database(conn)["items"].insert({"id": 1})
+        assert reader.execute("select count(*) from items").fetchone()[0] == 0
+        raise ValueError("deliberate")
+
+    try:
+        with pytest.raises(ValueError, match="deliberate"):
+            await db.execute_write_fn(insert_then_fail)
+        assert reader.execute("select count(*) from items").fetchone()[0] == 0
+    finally:
+        reader.close()
+        db.close()
 
 
 @pytest.mark.asyncio

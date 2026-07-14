@@ -2023,8 +2023,8 @@ Example usage:
 
 .. _database_execute_write:
 
-await db.execute_write(sql, params=None, block=True, request=None, return_all=False, returning_limit=10)
---------------------------------------------------------------------------------------------------------
+await db.execute_write(sql, params=None, block=True, request=None, return_all=False, returning_limit=10, transaction=True)
+--------------------------------------------------------------------------------------------------------------------------
 
 SQLite only allows one database connection to write at a time. Datasette handles this for you by maintaining a queue of writes to be executed against a given database. Plugins can submit write operations to this queue and they will be executed in the order in which they are received.
 
@@ -2059,7 +2059,9 @@ If you need to retrieve every row returned by a statement, pass ``return_all=Tru
 
 If you pass ``block=False`` this behavior changes to "fire and forget" - queries will be added to the write queue and executed in a separate thread while your code can continue to do other things. The method will return a UUID representing the queued task.
 
-Each call to ``execute_write()`` will be executed inside a transaction.
+Each call to ``execute_write()`` will be executed inside a transaction. Pass
+``transaction=False`` for statements such as ``VACUUM`` that cannot run inside
+a transaction.
 
 .. _database_execute_write_script:
 

@@ -569,6 +569,44 @@ async def test_url_render_cell(ds_ct):
 
 
 @pytest.mark.asyncio
+async def test_url_render_cell_truncates(tmp_path_factory):
+    # truncate_cells_html should also truncate the displayed text of url
+    # column type links, while keeping the full URL in the href - refs #1805
+    db_directory = tmp_path_factory.mktemp("dbs")
+    db_path = str(db_directory / "data.db")
+    db = sqlite3.connect(db_path)
+    db.execute("create table posts (id integer primary key, website text)")
+    long_url = (
+        "https://images.openfoodfacts.org/images/products/000/000/000/088/"
+        "nutrition_fr.5.200.jpg"
+    )
+    db.execute("insert into posts values (1, ?)", [long_url])
+    db.commit()
+    db.close()
+    ds = Datasette(
+        [db_path],
+        settings={"truncate_cells_html": 30},
+        config={
+            "databases": {
+                "data": {"tables": {"posts": {"column_types": {"website": "url"}}}}
+            }
+        },
+    )
+    await ds.invoke_startup()
+    response = await ds.client.get("/data/posts.json?_extra=render_cell")
+    assert response.status_code == 200
+    rendered = response.json()["render_cell"][0]["website"]
+    # The full URL is preserved in the href
+    assert f'href="{long_url}"' in rendered
+    # ...but the visible link text is truncated
+    soup = Soup(rendered, "html.parser")
+    link_text = soup.find("a").text
+    assert link_text != long_url
+    assert "…" in link_text
+    ds.close()
+
+
+@pytest.mark.asyncio
 async def test_email_render_cell(ds_ct):
     await ds_ct.invoke_startup()
     response = await ds_ct.client.get("/data/posts.json?_extra=render_cell")

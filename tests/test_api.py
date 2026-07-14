@@ -1,6 +1,6 @@
 from datasette.app import Datasette
 from datasette.plugins import DEFAULT_PLUGINS
-from datasette.utils import UNSTABLE_API_MESSAGE
+from datasette.utils import UNSTABLE_API_MESSAGE, escape_sqlite, tilde_encode
 from datasette.utils.sqlite import sqlite_version
 from datasette.version import __version__
 from .fixtures import make_app_client, EXPECTED_PLUGINS
@@ -928,6 +928,37 @@ async def test_tilde_encoded_database_names(db_name):
     # And the JSON for that database
     response2 = await ds.client.get(path + ".json")
     assert response2.status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("table_name", ("[foo]", "foo]", "[foo]/bar"))
+async def test_table_with_reserved_characters_in_name(table_name):
+    # Table names containing characters such as "]" that cannot be escaped
+    # using SQLite [bracket] quoting used to break schema introspection and
+    # the table page - https://github.com/simonw/datasette/issues/2431
+    ds = Datasette()
+    db = ds.add_memory_database("test_reserved_table_names")
+    await db.execute_write(
+        "create table {} (id integer primary key, name text)".format(
+            escape_sqlite(table_name)
+        )
+    )
+    await db.execute_write(
+        "insert into {} (id, name) values (1, 'one')".format(escape_sqlite(table_name))
+    )
+    # Schema introspection (populate_schema_tables) must not crash:
+    db_response = await ds.client.get("/test_reserved_table_names.json")
+    assert db_response.status_code == 200
+    tables = {t["name"]: t for t in db_response.json()["tables"]}
+    assert tables[table_name]["count"] == 1
+    # And the table page itself must load and return the row:
+    table_response = await ds.client.get(
+        "/test_reserved_table_names/{}.json?_shape=array".format(
+            tilde_encode(table_name)
+        )
+    )
+    assert table_response.status_code == 200
+    assert table_response.json() == [{"id": 1, "name": "one"}]
 
 
 @pytest.mark.asyncio

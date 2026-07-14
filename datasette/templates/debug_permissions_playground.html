@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Debug permissions{% endblock %}
+{% block title %}Permission activity{% endblock %}
 
 {% block extra_head %}
 {% include "_permission_ui_styles.html" %}
@@ -20,60 +20,45 @@
 .check-action, .check-when, .check-result {
     font-size: 1.3em;
 }
-textarea {
-    height: 10em;
-    width: 95%;
-    box-sizing: border-box;
-    padding: 0.5em;
-    border: 2px dotted black;
-}
-.two-col {
-    display: inline-block;
-    width: 48%;
-}
-.two-col label {
-    width: 48%;
-}
-@media only screen and (max-width: 576px) {
-    .two-col {
-        width: 100%;
-    }
-}
 </style>
 {% endblock %}
 
 {% block content %}
-<h1>Permission playground</h1>
+<h1>Permission activity</h1>
 
 {% set current_tab = "permissions" %}
 {% include "_permissions_debug_tabs.html" %}
 
-<p>This tool lets you simulate an actor and a permission check for that actor.</p>
+<h2>Raw simulator</h2>
+
+<p>This form runs a hypothetical permission check and returns its raw explanation JSON. Use the <a href="{{ urls.path('-/check') }}">Explain tool</a> for a visual explanation of the same decision.</p>
 
 <div class="permission-form">
     <form action="{{ urls.path('-/permissions') }}" id="debug-post" method="post">
-        <div class="two-col">
-            <div class="form-section">
-                <label>Actor</label>
-                <textarea name="actor">{% if actor_input %}{{ actor_input }}{% else %}{"id": "root"}{% endif %}</textarea>
+        <div class="permission-form-grid">
+            <div>
+                <div class="form-section">
+                    <label for="activity-actor">Actor</label>
+                    <textarea class="permission-textarea" id="activity-actor" name="actor">{% if actor_input %}{{ actor_input }}{% else %}{"id": "root"}{% endif %}</textarea>
+                </div>
             </div>
-        </div>
-        <div class="two-col" style="vertical-align: top">
-            <div class="form-section">
-                <label for="permission">Action</label>
-                <select name="permission" id="permission">
-                    {% for permission in permissions %}
-                        <option value="{{ permission.name }}">{{ permission.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="form-section">
-                <label for="resource_1">Parent</label>
-                <input type="text" id="resource_1" name="resource_1" placeholder="e.g., database name">
-            </div>
-            <div class="form-section">
-                <label for="resource_2">Child</label>
-                <input type="text" id="resource_2" name="resource_2" placeholder="e.g., table name">
+            <div>
+                <div class="form-section">
+                    <label for="permission">Action</label>
+                    <select name="permission" id="permission">
+                        {% for permission in permissions %}
+                            <option value="{{ permission.name }}">{{ permission.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-section">
+                    <label for="resource_1">Parent</label>
+                    <input type="text" id="resource_1" name="resource_1" placeholder="e.g., database name">
+                </div>
+                <div class="form-section">
+                    <label for="resource_2">Child</label>
+                    <input type="text" id="resource_2" name="resource_2" placeholder="e.g., table name">
+                </div>
             </div>
         </div>
         <div class="form-actions">
@@ -125,7 +110,7 @@ debugPost.addEventListener('submit', function(ev) {
 });
 </script>
 
-<h1>Recent permissions checks</h1>
+<h2>Recent permission checks</h2>
 
 <p>
     {% if filter != "all" %}<a href="?filter=all">All</a>{% else %}<strong>All</strong>{% endif %},

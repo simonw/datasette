@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Permission Check{% endblock %}
+{% block title %}Explain a permission decision{% endblock %}
 
 {% block extra_head %}
 <script src="{{ static('json-format-highlight-1.0.1.js') }}"></script>
@@ -13,29 +13,35 @@
     border-radius: 5px;
 }
 #output.allowed {
-    background-color: #e8f5e9;
+    background-color: #f3fbf4;
     border: 2px solid #4caf50;
 }
 #output.denied {
-    background-color: #ffebee;
+    background-color: #fff7f7;
     border: 2px solid #f44336;
 }
 #output h2 {
     margin-top: 0;
 }
-#output .result-badge {
+#output h3 {
+    margin-bottom: 0.5em;
+}
+#output .result-badge,
+.effect-badge,
+.rule-status {
     display: inline-block;
-    padding: 0.3em 0.8em;
+    padding: 0.2em 0.5em;
     border-radius: 3px;
     font-weight: bold;
-    font-size: 1.1em;
 }
-#output .allowed-badge {
-    background-color: #4caf50;
+#output .allowed-badge,
+.effect-allow {
+    background-color: #2e7d32;
     color: white;
 }
-#output .denied-badge {
-    background-color: #f44336;
+#output .denied-badge,
+.effect-deny {
+    background-color: #c62828;
     color: white;
 }
 .details-section {
@@ -48,69 +54,129 @@
 .details-section dd {
     margin-left: 1em;
 }
+.explanation-section {
+    background: rgba(255, 255, 255, 0.75);
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-top: 1em;
+    padding: 0 1em 1em;
+}
+.rules-table {
+    border-collapse: collapse;
+    width: 100%;
+}
+.rules-table th,
+.rules-table td {
+    border-bottom: 1px solid #ddd;
+    padding: 0.5em;
+    text-align: left;
+    vertical-align: top;
+}
+.rule-status {
+    background: #e8f5e9;
+    color: #1b5e20;
+}
+.rule-ignored {
+    background: #eee;
+    color: #555;
+    font-weight: normal;
+}
+.requirement-allowed {
+    color: #1b5e20;
+}
+.requirement-denied {
+    color: #b71c1c;
+}
+@media only screen and (max-width: 576px) {
+    .rules-table,
+    .rules-table tbody,
+    .rules-table tr,
+    .rules-table td {
+        display: block;
+    }
+    .rules-table thead {
+        display: none;
+    }
+    .rules-table td::before {
+        content: attr(data-label) ": ";
+        font-weight: bold;
+    }
+}
 </style>
 {% endblock %}
 
 {% block content %}
-<h1>Permission check</h1>
+<h1>Explain a permission decision</h1>
 
 {% set current_tab = "check" %}
 {% include "_permissions_debug_tabs.html" %}
 
-<p>Use this tool to test permission checks for the current actor. It queries the <code>/-/check.json</code> API endpoint.</p>
-
-{% if request.actor %}
-<p>Current actor: <strong>{{ request.actor.get("id", "anonymous") }}</strong></p>
-{% else %}
-<p>Current actor: <strong>anonymous (not logged in)</strong></p>
-{% endif %}
+<p>Test an actor, action and resource. The result explains which rules matched, which specificity level won, and whether actor restrictions or required actions changed the verdict.</p>
 
 <div class="permission-form">
-    <form id="check-form" method="get" action="{{ urls.path("-/check") }}">
+    <form id="check-form" method="get" action="{{ urls.path('-/check') }}">
         <div class="form-section">
-            <label for="action">Action (permission name):</label>
+            <label for="actor">Actor JSON:</label>
+            <textarea class="permission-textarea" id="actor" name="actor">{{ actor_json }}</textarea>
+            <small>Use <code>null</code> for an anonymous actor. This actor is simulated; it does not change who you are signed in as.</small>
+        </div>
+
+        <div class="form-section">
+            <label for="action">Action:</label>
             <select id="action" name="action" required>
                 <option value="">Select an action...</option>
-                {% for action_name in sorted_actions %}
-                <option value="{{ action_name }}">{{ action_name }}</option>
+                {% for action in actions %}
+                <option value="{{ action.name }}">{{ action.name }}{% if action.description %} — {{ action.description }}{% endif %}</option>
                 {% endfor %}
             </select>
-            <small>The permission action to check</small>
+            <small id="action-help">The operation to evaluate</small>
         </div>
 
-        <div class="form-section">
-            <label for="parent">Parent resource (optional):</label>
+        <div class="form-section" id="parent-section">
+            <label for="parent">Parent resource:</label>
             <input type="text" id="parent" name="parent" placeholder="e.g., database name">
-            <small>For database-level permissions, specify the database name</small>
+            <small>The database or other parent resource</small>
         </div>
 
-        <div class="form-section">
-            <label for="child">Child resource (optional):</label>
-            <input type="text" id="child" name="child" placeholder="e.g., table name">
-            <small>For table-level permissions, specify the table name (requires parent)</small>
+        <div class="form-section" id="child-section">
+            <label for="child">Child resource:</label>
+            <input type="text" id="child" name="child" placeholder="e.g., table or query name">
+            <small>The table, query or other child resource</small>
         </div>
 
         <div class="form-actions">
-            <button type="submit" class="submit-btn" id="submit-btn">Check Permission</button>
+            <button type="submit" class="submit-btn" id="submit-btn">Explain decision</button>
         </div>
     </form>
 </div>
 
 <div id="output" style="display: none;">
     <h2>Result: <span class="result-badge" id="result-badge"></span></h2>
+    <p id="result-summary"></p>
 
     <dl class="details-section">
+        <dt>Actor:</dt>
+        <dd><code id="result-actor"></code></dd>
         <dt>Action:</dt>
-        <dd id="result-action"></dd>
-
-        <dt>Resource Path:</dt>
-        <dd id="result-resource"></dd>
-
-        <dt>Actor ID:</dt>
-        <dd id="result-actor"></dd>
-
-        <div id="additional-details"></div>
+        <dd><code id="result-action"></code></dd>
+        <dt>Resource:</dt>
+        <dd><code id="result-resource"></code></dd>
     </dl>
+
+    <section class="explanation-section">
+        <h3>Matching rules</h3>
+        <div id="matching-rules"></div>
+    </section>
+
+    <section class="explanation-section" id="restrictions-section">
+        <h3>Actor restrictions</h3>
+        <div id="restriction-results"></div>
+    </section>
+
+    <section class="explanation-section" id="requirements-section">
+        <h3>Required actions</h3>
+        <div id="requirement-results"></div>
+    </section>
 
     <details style="margin-top: 1em;">
         <summary style="cursor: pointer; font-weight: bold;">Raw JSON response</summary>
@@ -119,152 +185,134 @@
 </div>
 
 <script>
+const actions = Object.fromEntries({{ actions|tojson }}.map(action => [action.name, action]));
 const form = document.getElementById('check-form');
 const output = document.getElementById('output');
 const submitBtn = document.getElementById('submit-btn');
+const actionSelect = document.getElementById('action');
+
+function updateResourceFields() {
+    const action = actions[actionSelect.value];
+    document.getElementById('parent-section').style.display = action && action.takes_parent ? 'block' : 'none';
+    document.getElementById('child-section').style.display = action && action.takes_child ? 'block' : 'none';
+    let help = action && action.description ? action.description : 'The operation to evaluate';
+    if (action && action.also_requires) {
+        help += `; also requires ${action.also_requires}`;
+    }
+    document.getElementById('action-help').textContent = help;
+}
 
 async function performCheck() {
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Checking...';
-
-    const formData = new FormData(form);
-    const params = new URLSearchParams();
-
-    for (const [key, value] of formData.entries()) {
-        if (value) {
-            params.append(key, value);
-        }
-    }
+    submitBtn.textContent = 'Explaining...';
+    const params = new URLSearchParams(new FormData(form));
 
     try {
         const response = await fetch('{{ urls.path("-/check.json") }}?' + params.toString(), {
-            method: 'GET',
-            headers: {
-                'Accept': 'application/json',
-            }
+            headers: {'Accept': 'application/json'}
         });
-
         const data = await response.json();
-
         if (response.ok) {
             displayResult(data);
         } else {
             displayError(data);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        displayError({error: error.message});
     } finally {
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Check Permission';
+        submitBtn.textContent = 'Explain decision';
     }
 }
 
-// Populate form on initial load
-(function() {
-    const params = populateFormFromURL();
-    const action = params.get('action');
-    if (action) {
-        performCheck();
-    }
-})();
-
 function displayResult(data) {
     output.style.display = 'block';
-
-    // Set badge and styling
     const resultBadge = document.getElementById('result-badge');
-    if (data.allowed) {
-        output.className = 'allowed';
-        resultBadge.className = 'result-badge allowed-badge';
-        resultBadge.textContent = 'ALLOWED ✓';
-    } else {
-        output.className = 'denied';
-        resultBadge.className = 'result-badge denied-badge';
-        resultBadge.textContent = 'DENIED ✗';
-    }
-
-    // Basic details
-    document.getElementById('result-action').textContent = data.action || 'N/A';
-    document.getElementById('result-resource').textContent = data.resource?.path || '/';
-    document.getElementById('result-actor').textContent = data.actor_id || 'anonymous';
-
-    // Additional details
-    const additionalDetails = document.getElementById('additional-details');
-    additionalDetails.innerHTML = '';
-
-    if (data.reason !== undefined) {
-        const dt = document.createElement('dt');
-        dt.textContent = 'Reason:';
-        const dd = document.createElement('dd');
-        dd.textContent = data.reason || 'N/A';
-        additionalDetails.appendChild(dt);
-        additionalDetails.appendChild(dd);
-    }
-
-    if (data.source_plugin !== undefined) {
-        const dt = document.createElement('dt');
-        dt.textContent = 'Source Plugin:';
-        const dd = document.createElement('dd');
-        dd.textContent = data.source_plugin || 'N/A';
-        additionalDetails.appendChild(dt);
-        additionalDetails.appendChild(dd);
-    }
-
-    if (data.used_default !== undefined) {
-        const dt = document.createElement('dt');
-        dt.textContent = 'Used Default:';
-        const dd = document.createElement('dd');
-        dd.textContent = data.used_default ? 'Yes' : 'No';
-        additionalDetails.appendChild(dt);
-        additionalDetails.appendChild(dd);
-    }
-
-    if (data.depth !== undefined) {
-        const dt = document.createElement('dt');
-        dt.textContent = 'Depth:';
-        const dd = document.createElement('dd');
-        dd.textContent = data.depth;
-        additionalDetails.appendChild(dt);
-        additionalDetails.appendChild(dd);
-    }
-
-    // Raw JSON
+    output.className = data.allowed ? 'allowed' : 'denied';
+    resultBadge.className = `result-badge ${data.allowed ? 'allowed-badge' : 'denied-badge'}`;
+    resultBadge.textContent = data.allowed ? 'ALLOWED ✓' : 'DENIED ✗';
+    document.getElementById('result-summary').textContent = data.explanation.summary;
+    document.getElementById('result-actor').textContent = data.actor === null ? 'anonymous' : JSON.stringify(data.actor);
+    document.getElementById('result-action').textContent = data.action;
+    document.getElementById('result-resource').textContent = data.resource.path;
+    displayRules(data.explanation);
+    displayRestrictions(data.explanation.restrictions);
+    displayRequirements(data.explanation.required_actions);
     document.getElementById('raw-json').innerHTML = jsonFormatHighlight(data);
+}
 
-    // Scroll to output
-    output.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+function displayRules(explanation) {
+    const container = document.getElementById('matching-rules');
+    if (!explanation.matched_rules.length) {
+        container.innerHTML = '<p>No rules matched. Datasette denies access when there is no matching rule.</p>';
+        return;
+    }
+    let html = '<table class="rules-table"><thead><tr><th>Effect</th><th>Scope</th><th>Source</th><th>Reason</th><th>Role in decision</th></tr></thead><tbody>';
+    for (const rule of explanation.matched_rules) {
+        const status = rule.decisive
+            ? '<span class="rule-status">Decisive</span>'
+            : `<span class="rule-status rule-ignored">${escapeHtml(rule.ignored_because)}</span>`;
+        html += '<tr>';
+        html += `<td data-label="Effect"><span class="effect-badge effect-${rule.effect}">${rule.effect.toUpperCase()}</span></td>`;
+        html += `<td data-label="Scope">${escapeHtml(rule.scope)}</td>`;
+        html += `<td data-label="Source"><code>${escapeHtml(rule.source || 'unknown')}</code></td>`;
+        html += `<td data-label="Reason">${escapeHtml(rule.reason || 'No reason supplied')}</td>`;
+        html += `<td data-label="Role in decision">${status}</td>`;
+        html += '</tr>';
+    }
+    container.innerHTML = html + '</tbody></table>';
+}
+
+function displayRestrictions(restrictions) {
+    const section = document.getElementById('restrictions-section');
+    const container = document.getElementById('restriction-results');
+    section.style.display = restrictions.length ? 'block' : 'none';
+    container.innerHTML = restrictions.map(restriction => {
+        const className = restriction.allowed ? 'requirement-allowed' : 'requirement-denied';
+        const verdict = restriction.allowed ? 'INCLUDED ✓' : 'EXCLUDED ✗';
+        return `<p class="${className}"><strong>${verdict}</strong> by <code>${escapeHtml(restriction.source || 'unknown')}</code>: ${escapeHtml(restriction.reason)}</p>`;
+    }).join('');
+}
+
+function displayRequirements(requirements) {
+    const section = document.getElementById('requirements-section');
+    const container = document.getElementById('requirement-results');
+    section.style.display = requirements.length ? 'block' : 'none';
+    container.innerHTML = requirements.map(requirement => {
+        const className = requirement.allowed ? 'requirement-allowed' : 'requirement-denied';
+        const verdict = requirement.allowed ? 'ALLOWED ✓' : 'DENIED ✗';
+        return `<p class="${className}"><strong>${escapeHtml(requirement.action)}: ${verdict}</strong> — ${escapeHtml(requirement.summary)}</p>`;
+    }).join('');
 }
 
 function displayError(data) {
     output.style.display = 'block';
     output.className = 'denied';
-
     const resultBadge = document.getElementById('result-badge');
     resultBadge.className = 'result-badge denied-badge';
     resultBadge.textContent = 'ERROR';
-
-    document.getElementById('result-action').textContent = 'N/A';
-    document.getElementById('result-resource').textContent = 'N/A';
-    document.getElementById('result-actor').textContent = 'N/A';
-
-    const additionalDetails = document.getElementById('additional-details');
-    additionalDetails.innerHTML = '<dt>Error:</dt><dd>' + (data.error || 'Unknown error') + '</dd>';
-
+    document.getElementById('result-summary').textContent = data.error || 'Unknown error';
+    document.getElementById('result-actor').textContent = '—';
+    document.getElementById('result-action').textContent = '—';
+    document.getElementById('result-resource').textContent = '—';
+    document.getElementById('matching-rules').innerHTML = '';
+    document.getElementById('restrictions-section').style.display = 'none';
+    document.getElementById('requirements-section').style.display = 'none';
     document.getElementById('raw-json').innerHTML = jsonFormatHighlight(data);
-
-    output.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-// Disable child input if parent is empty
-const parentInput = document.getElementById('parent');
-const childInput = document.getElementById('child');
-
-childInput.addEventListener('focus', () => {
-    if (!parentInput.value) {
-        alert('Please specify a parent resource first before adding a child resource.');
-        parentInput.focus();
-    }
+form.addEventListener('submit', event => {
+    event.preventDefault();
+    performCheck();
 });
-</script>
+actionSelect.addEventListener('change', updateResourceFields);
 
+(function initializeFromUrl() {
+    const params = populateFormFromURL();
+    updateResourceFields();
+    if (params.get('action')) {
+        performCheck();
+    }
+})();
+</script>
 {% endblock %}

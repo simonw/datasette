@@ -96,6 +96,10 @@ class ConfigPermissionProcessor:
         """Evaluate an allow block against the current actor."""
         if allow_block is None:
             return None
+        # Values passed using ``-s permissions.* 1`` or ``0`` are parsed as
+        # integers, but should retain the CLI's boolean 1/0 behavior.
+        if isinstance(allow_block, int) and allow_block in (0, 1):
+            return bool(allow_block)
         return actor_matches_allow(self.actor, allow_block)
 
     def is_in_restriction_allowlist(

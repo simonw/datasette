@@ -252,88 +252,62 @@ async def _build_single_action_sql(
                 ]
             )
 
-    # Continue with the cascading logic
-    query_parts.extend(
-        [
-            "child_lvl AS (",
-            "  SELECT b.parent, b.child,",
-            "         MAX(CASE WHEN ar.allow = 0 THEN 1 ELSE 0 END) AS any_deny,",
-            "         MAX(CASE WHEN ar.allow = 1 THEN 1 ELSE 0 END) AS any_allow,",
-            "         json_group_array(CASE WHEN ar.allow = 0 THEN ar.source_plugin || ': ' || ar.reason END) AS deny_reasons,",
-            "         json_group_array(CASE WHEN ar.allow = 1 THEN ar.source_plugin || ': ' || ar.reason END) AS allow_reasons",
-            "  FROM base b",
-            "  LEFT JOIN all_rules ar ON ar.parent = b.parent AND ar.child = b.child",
-            "  GROUP BY b.parent, b.child",
-            "),",
-            "parent_lvl AS (",
-            "  SELECT b.parent, b.child,",
-            "         MAX(CASE WHEN ar.allow = 0 THEN 1 ELSE 0 END) AS any_deny,",
-            "         MAX(CASE WHEN ar.allow = 1 THEN 1 ELSE 0 END) AS any_allow,",
-            "         json_group_array(CASE WHEN ar.allow = 0 THEN ar.source_plugin || ': ' || ar.reason END) AS deny_reasons,",
-            "         json_group_array(CASE WHEN ar.allow = 1 THEN ar.source_plugin || ': ' || ar.reason END) AS allow_reasons",
-            "  FROM base b",
-            "  LEFT JOIN all_rules ar ON ar.parent = b.parent AND ar.child IS NULL",
-            "  GROUP BY b.parent, b.child",
-            "),",
-            "global_lvl AS (",
-            "  SELECT b.parent, b.child,",
-            "         MAX(CASE WHEN ar.allow = 0 THEN 1 ELSE 0 END) AS any_deny,",
-            "         MAX(CASE WHEN ar.allow = 1 THEN 1 ELSE 0 END) AS any_allow,",
-            "         json_group_array(CASE WHEN ar.allow = 0 THEN ar.source_plugin || ': ' || ar.reason END) AS deny_reasons,",
-            "         json_group_array(CASE WHEN ar.allow = 1 THEN ar.source_plugin || ': ' || ar.reason END) AS allow_reasons",
-            "  FROM base b",
-            "  LEFT JOIN all_rules ar ON ar.parent IS NULL AND ar.child IS NULL",
-            "  GROUP BY b.parent, b.child",
-            "),",
+    # Continue with the cascading logic.
+    # Aggregate the RULES by cascade level (small), rather than grouping
+    # base x rules (which scales with the number of resources).
+    def _agg(select_key, where, group_by):
+        parts = [
+            f"  SELECT {select_key}",
+            "         MAX(CASE WHEN allow = 0 THEN 1 ELSE 0 END) AS any_deny,",
+            "         MAX(CASE WHEN allow = 1 THEN 1 ELSE 0 END) AS any_allow,",
+            "         json_group_array(CASE WHEN allow = 0 THEN source_plugin || ': ' || reason END) AS deny_reasons,",
+            "         json_group_array(CASE WHEN allow = 1 THEN source_plugin || ': ' || reason END) AS allow_reasons",
+            f"  FROM all_rules WHERE {where}",
         ]
+        if group_by:
+            parts.append(f"  GROUP BY {group_by}")
+        return parts
+
+    query_parts.extend(
+        ["child_agg AS ("]
+        + _agg(
+            "parent, child,",
+            "parent IS NOT NULL AND child IS NOT NULL",
+            "parent, child",
+        )
+        + ["),", "parent_agg AS ("]
+        + _agg("parent,", "parent IS NOT NULL AND child IS NULL", "parent")
+        + ["),", "global_agg AS ("]
+        + _agg("", "parent IS NULL AND child IS NULL", None)
+        + ["),"]
     )
 
     # Add anonymous decision logic if needed
     if include_is_private:
-        query_parts.extend(
-            [
-                "anon_child_lvl AS (",
-                "  SELECT b.parent, b.child,",
-                "         MAX(CASE WHEN ar.allow = 0 THEN 1 ELSE 0 END) AS any_deny,",
-                "         MAX(CASE WHEN ar.allow = 1 THEN 1 ELSE 0 END) AS any_allow",
-                "  FROM base b",
-                "  LEFT JOIN anon_rules ar ON ar.parent = b.parent AND ar.child = b.child",
-                "  GROUP BY b.parent, b.child",
-                "),",
-                "anon_parent_lvl AS (",
-                "  SELECT b.parent, b.child,",
-                "         MAX(CASE WHEN ar.allow = 0 THEN 1 ELSE 0 END) AS any_deny,",
-                "         MAX(CASE WHEN ar.allow = 1 THEN 1 ELSE 0 END) AS any_allow",
-                "  FROM base b",
-                "  LEFT JOIN anon_rules ar ON ar.parent = b.parent AND ar.child IS NULL",
-                "  GROUP BY b.parent, b.child",
-                "),",
-                "anon_global_lvl AS (",
-                "  SELECT b.parent, b.child,",
-                "         MAX(CASE WHEN ar.allow = 0 THEN 1 ELSE 0 END) AS any_deny,",
-                "         MAX(CASE WHEN ar.allow = 1 THEN 1 ELSE 0 END) AS any_allow",
-                "  FROM base b",
-                "  LEFT JOIN anon_rules ar ON ar.parent IS NULL AND ar.child IS NULL",
-                "  GROUP BY b.parent, b.child",
-                "),",
-                "anon_decisions AS (",
-                "  SELECT",
-                "    b.parent, b.child,",
-                "    CASE",
-                "      WHEN acl.any_deny = 1 THEN 0",
-                "      WHEN acl.any_allow = 1 THEN 1",
-                "      WHEN apl.any_deny = 1 THEN 0",
-                "      WHEN apl.any_allow = 1 THEN 1",
-                "      WHEN agl.any_deny = 1 THEN 0",
-                "      WHEN agl.any_allow = 1 THEN 1",
-                "      ELSE 0",
-                "    END AS anon_is_allowed",
-                "  FROM base b",
-                "  JOIN anon_child_lvl acl ON b.parent = acl.parent AND (b.child = acl.child OR (b.child IS NULL AND acl.child IS NULL))",
-                "  JOIN anon_parent_lvl apl ON b.parent = apl.parent AND (b.child = apl.child OR (b.child IS NULL AND apl.child IS NULL))",
-                "  JOIN anon_global_lvl agl ON b.parent = agl.parent AND (b.child = agl.child OR (b.child IS NULL AND agl.child IS NULL))",
-                "),",
+
+        def _anon_agg(select_key, where, group_by):
+            parts = [
+                f"  SELECT {select_key}",
+                "         MAX(CASE WHEN allow = 0 THEN 1 ELSE 0 END) AS any_deny,",
+                "         MAX(CASE WHEN allow = 1 THEN 1 ELSE 0 END) AS any_allow",
+                f"  FROM anon_rules WHERE {where}",
             ]
+            if group_by:
+                parts.append(f"  GROUP BY {group_by}")
+            return parts
+
+        query_parts.extend(
+            ["anon_child_agg AS ("]
+            + _anon_agg(
+                "parent, child,",
+                "parent IS NOT NULL AND child IS NOT NULL",
+                "parent, child",
+            )
+            + ["),", "anon_parent_agg AS ("]
+            + _anon_agg("parent,", "parent IS NOT NULL AND child IS NULL", "parent")
+            + ["),", "anon_global_agg AS ("]
+            + _anon_agg("", "parent IS NULL AND child IS NULL", None)
+            + ["),"]
         )
 
     # Final decisions
@@ -342,31 +316,28 @@ async def _build_single_action_sql(
             "decisions AS (",
             "  SELECT",
             "    b.parent, b.child,",
-            "    -- Cascading permission logic: child → parent → global, DENY beats ALLOW at each level",
+            "    -- Cascading permission logic: child -> parent -> global, DENY beats ALLOW at each level",
             "    -- Priority order:",
-            "    --   1. Child-level deny (most specific, blocks access)",
-            "    --   2. Child-level allow (most specific, grants access)",
-            "    --   3. Parent-level deny (intermediate, blocks access)",
-            "    --   4. Parent-level allow (intermediate, grants access)",
-            "    --   5. Global-level deny (least specific, blocks access)",
-            "    --   6. Global-level allow (least specific, grants access)",
+            "    --   1. Child-level deny  2. Child-level allow",
+            "    --   3. Parent-level deny 4. Parent-level allow",
+            "    --   5. Global-level deny 6. Global-level allow",
             "    --   7. Default deny (no rules match)",
             "    CASE",
-            "      WHEN cl.any_deny = 1 THEN 0",
-            "      WHEN cl.any_allow = 1 THEN 1",
-            "      WHEN pl.any_deny = 1 THEN 0",
-            "      WHEN pl.any_allow = 1 THEN 1",
-            "      WHEN gl.any_deny = 1 THEN 0",
-            "      WHEN gl.any_allow = 1 THEN 1",
+            "      WHEN ca.any_deny = 1 THEN 0",
+            "      WHEN ca.any_allow = 1 THEN 1",
+            "      WHEN pa.any_deny = 1 THEN 0",
+            "      WHEN pa.any_allow = 1 THEN 1",
+            "      WHEN ga.any_deny = 1 THEN 0",
+            "      WHEN ga.any_allow = 1 THEN 1",
             "      ELSE 0",
             "    END AS is_allowed,",
             "    CASE",
-            "      WHEN cl.any_deny = 1 THEN cl.deny_reasons",
-            "      WHEN cl.any_allow = 1 THEN cl.allow_reasons",
-            "      WHEN pl.any_deny = 1 THEN pl.deny_reasons",
-            "      WHEN pl.any_allow = 1 THEN pl.allow_reasons",
-            "      WHEN gl.any_deny = 1 THEN gl.deny_reasons",
-            "      WHEN gl.any_allow = 1 THEN gl.allow_reasons",
+            "      WHEN ca.any_deny = 1 THEN ca.deny_reasons",
+            "      WHEN ca.any_allow = 1 THEN ca.allow_reasons",
+            "      WHEN pa.any_deny = 1 THEN pa.deny_reasons",
+            "      WHEN pa.any_allow = 1 THEN pa.allow_reasons",
+            "      WHEN ga.any_deny = 1 THEN ga.deny_reasons",
+            "      WHEN ga.any_allow = 1 THEN ga.allow_reasons",
             "      ELSE '[]'",
             "    END AS reason",
         ]
@@ -374,21 +345,34 @@ async def _build_single_action_sql(
 
     if include_is_private:
         query_parts.append(
-            "    , CASE WHEN ad.anon_is_allowed = 0 THEN 1 ELSE 0 END AS is_private"
+            "    , CASE WHEN ("
+            "CASE"
+            " WHEN aca.any_deny = 1 THEN 0"
+            " WHEN aca.any_allow = 1 THEN 1"
+            " WHEN apa.any_deny = 1 THEN 0"
+            " WHEN apa.any_allow = 1 THEN 1"
+            " WHEN aga.any_deny = 1 THEN 0"
+            " WHEN aga.any_allow = 1 THEN 1"
+            " ELSE 0 END"
+            ") = 0 THEN 1 ELSE 0 END AS is_private"
         )
 
     query_parts.extend(
         [
             "  FROM base b",
-            "  JOIN child_lvl cl ON b.parent = cl.parent AND (b.child = cl.child OR (b.child IS NULL AND cl.child IS NULL))",
-            "  JOIN parent_lvl pl ON b.parent = pl.parent AND (b.child = pl.child OR (b.child IS NULL AND pl.child IS NULL))",
-            "  JOIN global_lvl gl ON b.parent = gl.parent AND (b.child = gl.child OR (b.child IS NULL AND gl.child IS NULL))",
+            "  LEFT JOIN child_agg ca ON ca.parent = b.parent AND ca.child = b.child",
+            "  LEFT JOIN parent_agg pa ON pa.parent = b.parent",
+            "  CROSS JOIN global_agg ga",
         ]
     )
 
     if include_is_private:
-        query_parts.append(
-            "  JOIN anon_decisions ad ON b.parent = ad.parent AND (b.child = ad.child OR (b.child IS NULL AND ad.child IS NULL))"
+        query_parts.extend(
+            [
+                "  LEFT JOIN anon_child_agg aca ON aca.parent = b.parent AND aca.child = b.child",
+                "  LEFT JOIN anon_parent_agg apa ON apa.parent = b.parent",
+                "  CROSS JOIN anon_global_agg aga",
+            ]
         )
 
     query_parts.append(")")
@@ -400,8 +384,28 @@ async def _build_single_action_sql(
         restriction_intersect = "\nINTERSECT\n".join(
             f"SELECT * FROM ({sql})" for sql in restriction_sqls
         )
+        # Decompose by NULL-pattern so the final filter can use pure-equality
+        # EXISTS lookups (satisfiable via automatic indexes) instead of a
+        # correlated OR-scan over the whole list.
         query_parts.extend(
-            [",", "restriction_list AS (", f"  {restriction_intersect}", ")"]
+            [
+                ",",
+                "restriction_list AS (",
+                f"  {restriction_intersect}",
+                "),",
+                "restriction_exact AS (",
+                "  SELECT parent, child FROM restriction_list WHERE parent IS NOT NULL AND child IS NOT NULL",
+                "),",
+                "restriction_parent_any AS (",
+                "  SELECT DISTINCT parent FROM restriction_list WHERE parent IS NOT NULL AND child IS NULL",
+                "),",
+                "restriction_child_any AS (",
+                "  SELECT DISTINCT child FROM restriction_list WHERE parent IS NULL AND child IS NOT NULL",
+                "),",
+                "restriction_all AS (",
+                "  SELECT 1 AS matched FROM restriction_list WHERE parent IS NULL AND child IS NULL LIMIT 1",
+                ")",
+            ]
         )
 
     # Final SELECT
@@ -416,10 +420,11 @@ async def _build_single_action_sql(
     # Add restriction filter if there are restrictions
     if restriction_sqls:
         query_parts.append("""
-  AND EXISTS (
-    SELECT 1 FROM restriction_list r
-    WHERE (r.parent = decisions.parent OR r.parent IS NULL)
-      AND (r.child = decisions.child OR r.child IS NULL)
+  AND (
+    EXISTS (SELECT 1 FROM restriction_all)
+    OR EXISTS (SELECT 1 FROM restriction_parent_any r WHERE r.parent = decisions.parent)
+    OR EXISTS (SELECT 1 FROM restriction_child_any r WHERE r.child = decisions.child)
+    OR EXISTS (SELECT 1 FROM restriction_exact r WHERE r.parent = decisions.parent AND r.child = decisions.child)
   )""")
 
     # Add parent filter if specified

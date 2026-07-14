@@ -459,6 +459,20 @@ async def test_permissions_debug(ds_client, filter_):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    "permissions_debug,expected_status",
+    (
+        (1, 200),
+        (0, 403),
+    ),
+)
+async def test_permissions_debug_numeric_boolean(permissions_debug, expected_status):
+    ds = Datasette(config={"permissions": {"permissions-debug": permissions_debug}})
+    response = await ds.client.get("/-/permissions")
+    assert response.status_code == expected_status
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     "actor,allow,expected_fragment",
     [
         ('{"id":"root"}', "{}", "Result: deny"),

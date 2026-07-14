@@ -370,14 +370,17 @@ class QueryStoreView(QueryCreateView):
         query_data = {}
         try:
             data, is_json = await _json_or_form_payload(request)
-            if not isinstance(data, dict):
-                raise QueryValidationError("JSON must be a dictionary")
-            query_data = data.get("query") if is_json else data
-            if not isinstance(query_data, dict):
-                raise QueryValidationError("JSON must contain a query dictionary")
+            if is_json:
+                if not isinstance(data, dict):
+                    raise QueryValidationError("JSON must be a dictionary")
+                query_data = data.get("query")
+                if not isinstance(query_data, dict):
+                    raise QueryValidationError("JSON must contain a query dictionary")
+            else:
+                query_data = data
             prepared = await _prepare_query_create(self.ds, request, db, query_data)
         except QueryValidationError as ex:
-            if not is_json and isinstance(query_data, dict):
+            if not is_json:
                 return await self._error_response(
                     request, db, query_data, ex.message, ex.status
                 )
@@ -388,7 +391,7 @@ class QueryStoreView(QueryCreateView):
         try:
             await self.ds.add_query(db.name, name, replace=False, **prepared)
         except sqlite3.IntegrityError as ex:
-            if not is_json and isinstance(query_data, dict):
+            if not is_json:
                 return await self._error_response(request, db, query_data, str(ex), 400)
             return Response.error([str(ex)], 400)
 
@@ -452,8 +455,8 @@ class QueryUpdateView(BaseView):
             )
 
         try:
-            data, _ = await _json_or_form_payload(request)
-            if not isinstance(data, dict):
+            data, is_json = await _json_or_form_payload(request)
+            if is_json and not isinstance(data, dict):
                 raise QueryValidationError("JSON must be a dictionary")
             invalid_keys = set(data) - {"update", "return"}
             if invalid_keys:
@@ -555,8 +558,8 @@ class QueryEditView(BaseView):
         if existing.is_trusted:
             return Response.error(["Trusted queries cannot be edited"], 403)
 
-        data, _ = await _json_or_form_payload(request)
-        if not isinstance(data, dict):
+        data, is_json = await _json_or_form_payload(request)
+        if is_json and not isinstance(data, dict):
             return Response.error(["Invalid form submission"], 400)
         sql = data.get("sql")
         sql = existing.sql if sql is None else sql.strip()

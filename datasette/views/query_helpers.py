@@ -279,9 +279,9 @@ def _execute_write_disabled_reason(sql, analysis_error, analysis_rows):
 
 
 def _coerce_execute_write_payload(data, is_json):
-    if not isinstance(data, dict):
-        raise QueryValidationError("JSON must be a dictionary")
     if is_json:
+        if not isinstance(data, dict):
+            raise QueryValidationError("JSON must be a dictionary")
         invalid_keys = set(data) - {"sql", "params"}
         if invalid_keys:
             raise QueryValidationError(

@@ -722,6 +722,7 @@ async def test_execute_write_fn_exception(db):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("num_sql_threads", (0, 1))
 async def test_execute_write_fn_sqlite_utils_transaction(tmp_path, num_sql_threads):
+    # A write inside a failing Datasette task must never become visible or survive the rollback.
     db_path = tmp_path / "test.db"
     sqlite3.connect(db_path).close()
     ds = Datasette([str(db_path)], settings={"num_sql_threads": num_sql_threads})

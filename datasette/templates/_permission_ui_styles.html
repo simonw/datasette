@@ -18,6 +18,7 @@
     font-weight: bold;
 }
 .form-section input[type="text"],
+.form-section input[type="number"],
 .form-section select,
 .permission-textarea {
     background-color: #fff;
@@ -36,6 +37,11 @@
     height: 3rem;
     padding: 0.6rem 0.75rem;
 }
+.form-section input[type="number"] {
+    height: 3rem;
+    max-width: 7rem;
+    padding: 0.6rem 0.75rem;
+}
 .form-section select {
     height: 3rem;
     padding: 0.6rem 0.75rem;
@@ -47,6 +53,7 @@
     resize: vertical;
 }
 .form-section input[type="text"]:focus,
+.form-section input[type="number"]:focus,
 .form-section select:focus,
 .permission-textarea:focus {
     border-color: #0066cc;

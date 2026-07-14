@@ -748,7 +748,12 @@ async def test_actor_restricted_permissions(
     }
     if actor.get("id"):
         expected["actor_id"] = actor["id"]
-    assert response.json() == expected
+    data = response.json()
+    for key, value in expected.items():
+        assert data[key] == value
+    assert data["actor"] == actor
+    assert data["explanation"]["allowed"] is expected_result
+    assert data["explanation"]["summary"]
 
 
 PermConfigTestCase = collections.namedtuple(
@@ -1734,6 +1739,8 @@ async def test_permission_check_view_requires_debug_permission():
     data = response.json()
     assert data["action"] == "view-instance"
     assert data["allowed"] is True
+    assert data["explanation"]["allowed"] is True
+    assert data["explanation"]["summary"]
 
 
 @pytest.mark.asyncio
@@ -1757,6 +1764,211 @@ async def test_permission_check_view_query_actions(action):
         "child": "myquery",
         "path": "/mydb/myquery",
     }
+
+
+@pytest.mark.asyncio
+async def test_permission_check_explains_specificity_for_hypothetical_actor():
+    ds = Datasette(
+        config={
+            "permissions": {"view-table": {"id": "alice"}},
+            "databases": {
+                "analytics": {
+                    "permissions": {"view-table": False},
+                    "tables": {
+                        "public": {"permissions": {"view-table": {"id": "alice"}}}
+                    },
+                }
+            },
+        }
+    )
+    ds.root_enabled = True
+    await ds.invoke_startup()
+
+    def path_for(child):
+        return "/-/check.json?" + urllib.parse.urlencode(
+            {
+                "action": "view-table",
+                "parent": "analytics",
+                "child": child,
+                "actor": json.dumps({"id": "alice"}),
+            }
+        )
+
+    public_response = await ds.client.get(path_for("public"), actor={"id": "root"})
+    assert public_response.status_code == 200
+    public = public_response.json()
+    assert public["actor"] == {"id": "alice"}
+    assert public["allowed"] is True
+    assert public["explanation"]["allowed"] is True
+    assert public["explanation"]["winning_scope"] == "resource"
+    public_rules = public["explanation"]["matched_rules"]
+    assert any(
+        rule["scope"] == "resource" and rule["effect"] == "allow" and rule["decisive"]
+        for rule in public_rules
+    )
+    assert any(
+        rule["scope"] == "parent"
+        and rule["effect"] == "deny"
+        and rule["ignored_because"] == "A more specific rule matched"
+        for rule in public_rules
+    )
+
+    private_response = await ds.client.get(path_for("private"), actor={"id": "root"})
+    assert private_response.status_code == 200
+    private = private_response.json()
+    assert private["allowed"] is False
+    assert private["explanation"]["allowed"] is False
+    assert private["explanation"]["winning_scope"] == "parent"
+    assert private["explanation"]["summary"].startswith("Denied by a parent-level rule")
+
+
+@pytest.mark.asyncio
+async def test_permission_check_explains_deny_wins_at_same_scope():
+    ds = Datasette(config={"permissions": {"view-table": {"id": "someone-else"}}})
+    ds.root_enabled = True
+    await ds.invoke_startup()
+    path = "/-/check.json?" + urllib.parse.urlencode(
+        {
+            "action": "view-table",
+            "parent": "analytics",
+            "child": "users",
+            "actor": json.dumps({"id": "alice"}),
+        }
+    )
+    response = await ds.client.get(path, actor={"id": "root"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["allowed"] is False
+    assert data["explanation"]["winning_scope"] == "global"
+    rules = data["explanation"]["matched_rules"]
+    assert any(rule["effect"] == "deny" and rule["decisive"] for rule in rules)
+    assert any(
+        rule["effect"] == "allow"
+        and rule["ignored_because"] == "A deny rule matched at the same scope"
+        for rule in rules
+    )
+
+
+@pytest.mark.asyncio
+async def test_permission_check_explains_default_deny():
+    ds = Datasette()
+    ds.root_enabled = True
+    await ds.invoke_startup()
+    path = "/-/check.json?" + urllib.parse.urlencode(
+        {
+            "action": "insert-row",
+            "parent": "analytics",
+            "child": "users",
+            "actor": json.dumps({"id": "alice"}),
+        }
+    )
+    response = await ds.client.get(path, actor={"id": "root"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["allowed"] is False
+    explanation = data["explanation"]
+    assert explanation["allowed"] is False
+    assert explanation["matched_rules"] == []
+    assert explanation["winning_scope"] is None
+    assert explanation["summary"] == (
+        "Denied because no permission rule matched this actor and resource."
+    )
+
+
+@pytest.mark.asyncio
+async def test_permission_check_explains_actor_restrictions():
+    ds = Datasette()
+    ds.root_enabled = True
+    await ds.invoke_startup()
+    restricted_actor = {
+        "id": "alice",
+        "_r": {"r": {"analytics": {"public": ["vt"]}}},
+    }
+    path = "/-/check.json?" + urllib.parse.urlencode(
+        {
+            "action": "view-table",
+            "parent": "analytics",
+            "child": "private",
+            "actor": json.dumps(restricted_actor),
+        }
+    )
+    response = await ds.client.get(path, actor={"id": "root"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["allowed"] is False
+    explanation = data["explanation"]
+    assert explanation["rule_allowed"] is True
+    assert explanation["restriction_allowed"] is False
+    assert explanation["allowed"] is False
+    assert explanation["restrictions"]
+    assert any(
+        restriction["allowed"] is False for restriction in explanation["restrictions"]
+    )
+    assert "actor's restrictions" in explanation["summary"]
+
+
+@pytest.mark.asyncio
+async def test_permission_check_explains_required_actions():
+    from datasette import hookimpl
+    from datasette.permissions import PermissionSQL
+
+    class StoreQueryPermissions:
+        @hookimpl
+        def permission_resources_sql(self, actor, action):
+            if not actor or actor.get("id") != "alice":
+                return None
+            if action == "store-query":
+                return PermissionSQL(
+                    sql="SELECT 'analytics' AS parent, NULL AS child, 1 AS allow, 'alice can store queries' AS reason"
+                )
+            if action == "execute-sql":
+                return PermissionSQL(
+                    sql="SELECT 'analytics' AS parent, NULL AS child, 0 AS allow, 'alice cannot execute SQL' AS reason"
+                )
+
+    ds = Datasette()
+    ds.root_enabled = True
+    await ds.invoke_startup()
+    ds.pm.register(StoreQueryPermissions(), name="store-query-test")
+    path = "/-/check.json?" + urllib.parse.urlencode(
+        {
+            "action": "store-query",
+            "parent": "analytics",
+            "actor": json.dumps({"id": "alice"}),
+        }
+    )
+    response = await ds.client.get(path, actor={"id": "root"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["allowed"] is False
+    explanation = data["explanation"]
+    assert explanation["rule_allowed"] is True
+    assert explanation["required_actions"][0]["action"] == "execute-sql"
+    assert explanation["required_actions"][0]["allowed"] is False
+    assert explanation["summary"] == (
+        "Denied because store-query also requires execute-sql, which was denied."
+    )
+
+
+@pytest.mark.asyncio
+async def test_permission_check_hypothetical_actor_validation():
+    ds = Datasette()
+    ds.root_enabled = True
+    await ds.invoke_startup()
+
+    response = await ds.client.get(
+        "/-/check.json?action=view-instance&actor=not-json",
+        actor={"id": "root"},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"].startswith("Invalid actor JSON:")
+
+    response = await ds.client.get(
+        "/-/check.json?action=view-instance&actor=%5B%5D",
+        actor={"id": "root"},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"] == "actor must be a JSON object or null"
 
 
 @pytest.mark.asyncio

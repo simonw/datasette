@@ -600,7 +600,7 @@ class PermissionRulesView(BaseView):
 
 
 async def _check_permission_for_actor(ds, action, parent, child, actor):
-    """Shared logic for checking permissions. Returns a dict with check results."""
+    """Shared logic for checking and explaining a permission decision."""
     if action not in ds.actions:
         return error_body(f"Unknown action: {action}", 404), 404
 
@@ -629,15 +629,28 @@ async def _check_permission_for_actor(ds, action, parent, child, actor):
 
     allowed = await ds.allowed(action=action, resource=resource_obj, actor=actor)
 
+    from datasette.utils.actions_sql import explain_permission_for_resource
+
+    explanation = await explain_permission_for_resource(
+        datasette=ds,
+        actor=actor,
+        action=action,
+        parent=parent,
+        child=child,
+    )
+
     response = {
         "ok": True,
+        "unstable": UNSTABLE_API_MESSAGE,
         "action": action,
         "allowed": bool(allowed),
+        "actor": actor,
         "resource": {
             "parent": parent,
             "child": child,
             "path": _resource_path(parent, child),
         },
+        "explanation": explanation,
     }
 
     if actor and "id" in actor:
@@ -655,11 +668,25 @@ class PermissionCheckView(BaseView):
         as_format = request.url_vars.get("format")
 
         if not as_format:
+            actions = [
+                {
+                    "name": action.name,
+                    "description": action.description,
+                    "takes_parent": action.takes_parent,
+                    "takes_child": action.takes_child,
+                    "also_requires": action.also_requires,
+                }
+                for action in sorted(
+                    self.ds.actions.values(), key=lambda action: action.name
+                )
+            ]
             return await self.render(
                 ["debug_check.html"],
                 request,
                 {
-                    "sorted_actions": sorted(self.ds.actions.keys()),
+                    "actions": actions,
+                    "actor_json": request.args.get("actor")
+                    or json.dumps(request.actor, indent=2),
                     "has_debug_permission": True,
                 },
             )
@@ -671,9 +698,18 @@ class PermissionCheckView(BaseView):
 
         parent = request.args.get("parent")
         child = request.args.get("child")
+        actor = request.actor
+        actor_json = request.args.get("actor")
+        if actor_json is not None:
+            try:
+                actor = json.loads(actor_json)
+            except json.JSONDecodeError as ex:
+                return Response.error(f"Invalid actor JSON: {ex}", 400)
+            if actor is not None and not isinstance(actor, dict):
+                return Response.error("actor must be a JSON object or null", 400)
 
         response, status = await _check_permission_for_actor(
-            self.ds, action, parent, child, request.actor
+            self.ds, action, parent, child, actor
         )
         return Response.json(response, status=status)
 

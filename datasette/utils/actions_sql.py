@@ -673,3 +673,239 @@ async def check_permission_for_resource(
         child=child,
     )
     return results[action]
+
+
+async def explain_permission_for_resource(
+    *,
+    datasette: "Datasette",
+    actor: dict | None,
+    action: str,
+    parent: str | None,
+    child: str | None,
+) -> dict:
+    """Explain a permission decision for one action and resource.
+
+    This is intended for Datasette's permission debugging tools. It uses the
+    same ``permission_resources_sql`` hook results and the same resolution
+    rules as :func:`check_permissions_for_actions`, but also returns the
+    matching rules, actor restriction results and ``also_requires`` chain.
+
+    The returned dictionary is part of Datasette's unstable debugging API.
+    """
+
+    action_obj = datasette.actions.get(action)
+    if action_obj is None:
+        raise ValueError(f"Unknown action: {action}")
+
+    explanation = await _explain_single_action(
+        datasette=datasette,
+        actor=actor,
+        action=action,
+        parent=parent,
+        child=child,
+    )
+
+    required_actions = []
+    if action_obj.also_requires:
+        required = await explain_permission_for_resource(
+            datasette=datasette,
+            actor=actor,
+            action=action_obj.also_requires,
+            parent=parent,
+            child=child,
+        )
+        required_actions.append(required)
+
+    explanation["required_actions"] = required_actions
+    explanation["allowed"] = bool(
+        explanation["rule_allowed"]
+        and explanation["restriction_allowed"]
+        and all(required["allowed"] for required in required_actions)
+    )
+    explanation["summary"] = _permission_explanation_summary(explanation)
+    return explanation
+
+
+async def _explain_single_action(
+    *,
+    datasette: "Datasette",
+    actor: dict | None,
+    action: str,
+    parent: str | None,
+    child: str | None,
+) -> dict:
+    """Return matching rules and restrictions for a single action."""
+    from datasette.utils.permissions import SKIP_PERMISSION_CHECKS
+
+    permission_sqls = await gather_permission_sql_from_hooks(
+        datasette=datasette,
+        actor=actor,
+        action=action,
+    )
+
+    if permission_sqls is SKIP_PERMISSION_CHECKS:
+        return {
+            "action": action,
+            "rule_allowed": True,
+            "restriction_allowed": True,
+            "winning_scope": "global",
+            "matched_rules": [
+                {
+                    "scope": "global",
+                    "effect": "allow",
+                    "source": "skip_permission_checks",
+                    "reason": "Permission checks were explicitly skipped",
+                    "decisive": True,
+                    "ignored_because": None,
+                }
+            ],
+            "restrictions": [],
+        }
+
+    db = datasette.get_internal_database()
+    matched_rules = []
+    restrictions = []
+
+    for permission_sql in permission_sqls:
+        params = dict(permission_sql.params or {})
+        parent_param = _unused_parameter_name(params, "_explain_parent")
+        params[parent_param] = parent
+        child_param = _unused_parameter_name(params, "_explain_child")
+        params[child_param] = child
+
+        if permission_sql.sql:
+            rows = await db.execute(
+                f"""
+                SELECT parent, child, allow, reason
+                FROM ({permission_sql.sql}) AS permission_rules
+                WHERE (parent IS NULL OR parent = :{parent_param})
+                  AND (child IS NULL OR child = :{child_param})
+                """,
+                params,
+            )
+            for row in rows:
+                specificity = (
+                    2
+                    if row["child"] is not None
+                    else 1 if row["parent"] is not None else 0
+                )
+                matched_rules.append(
+                    {
+                        "scope": ("resource", "parent", "global")[2 - specificity],
+                        "effect": "allow" if row["allow"] else "deny",
+                        "source": permission_sql.source,
+                        "reason": row["reason"],
+                        "_specificity": specificity,
+                    }
+                )
+
+        if permission_sql.restriction_sql:
+            restriction_row = (
+                await db.execute(
+                    f"""
+                    SELECT EXISTS(
+                        SELECT 1 FROM ({permission_sql.restriction_sql}) AS restriction_rules
+                        WHERE (parent IS NULL OR parent = :{parent_param})
+                          AND (child IS NULL OR child = :{child_param})
+                    ) AS resource_is_in_allowlist
+                    """,
+                    params,
+                )
+            ).first()
+            restriction_allowed = bool(restriction_row[0])
+            restrictions.append(
+                {
+                    "source": permission_sql.source,
+                    "allowed": restriction_allowed,
+                    "reason": params.get("deny")
+                    or (
+                        "Resource is included in this restriction allowlist"
+                        if restriction_allowed
+                        else "Resource is not included in this restriction allowlist"
+                    ),
+                }
+            )
+
+    matched_rules.sort(
+        key=lambda rule: (
+            -rule["_specificity"],
+            0 if rule["effect"] == "deny" else 1,
+            rule["source"] or "",
+            rule["reason"] or "",
+        )
+    )
+
+    if matched_rules:
+        winning_specificity = matched_rules[0]["_specificity"]
+        winning_rules = [
+            rule
+            for rule in matched_rules
+            if rule["_specificity"] == winning_specificity
+        ]
+        rule_allowed = not any(rule["effect"] == "deny" for rule in winning_rules)
+        winning_scope = winning_rules[0]["scope"]
+    else:
+        winning_specificity = None
+        rule_allowed = False
+        winning_scope = None
+
+    for rule in matched_rules:
+        specificity = rule.pop("_specificity")
+        if specificity != winning_specificity:
+            rule["decisive"] = False
+            rule["ignored_because"] = "A more specific rule matched"
+        elif not rule_allowed and rule["effect"] == "allow":
+            rule["decisive"] = False
+            rule["ignored_because"] = "A deny rule matched at the same scope"
+        else:
+            rule["decisive"] = True
+            rule["ignored_because"] = None
+
+    return {
+        "action": action,
+        "rule_allowed": rule_allowed,
+        "restriction_allowed": all(
+            restriction["allowed"] for restriction in restrictions
+        ),
+        "winning_scope": winning_scope,
+        "matched_rules": matched_rules,
+        "restrictions": restrictions,
+    }
+
+
+def _unused_parameter_name(params: dict, preferred: str) -> str:
+    """Return a SQL parameter name that is not already in ``params``."""
+    candidate = preferred
+    suffix = 2
+    while candidate in params:
+        candidate = f"{preferred}_{suffix}"
+        suffix += 1
+    return candidate
+
+
+def _permission_explanation_summary(explanation: dict) -> str:
+    denied_requirement = next(
+        (
+            required
+            for required in explanation["required_actions"]
+            if not required["allowed"]
+        ),
+        None,
+    )
+    if denied_requirement:
+        return (
+            f"Denied because {explanation['action']} also requires "
+            f"{denied_requirement['action']}, which was denied."
+        )
+    if not explanation["matched_rules"]:
+        return "Denied because no permission rule matched this actor and resource."
+    if not explanation["rule_allowed"]:
+        return (
+            f"Denied by a {explanation['winning_scope']}-level rule. "
+            "Deny rules take precedence over allow rules at the same scope."
+        )
+    if not explanation["restriction_allowed"]:
+        return (
+            "Denied because the resource is not included in the actor's restrictions."
+        )
+    return f"Allowed by the matching {explanation['winning_scope']}-level rule."

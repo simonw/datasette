@@ -20,13 +20,6 @@
 .check-action, .check-when, .check-result {
     font-size: 1.3em;
 }
-textarea {
-    height: 10em;
-    width: 95%;
-    box-sizing: border-box;
-    padding: 0.5em;
-    border: 2px dotted black;
-}
 .two-col {
     display: inline-block;
     width: 48%;
@@ -57,7 +50,7 @@ textarea {
         <div class="two-col">
             <div class="form-section">
                 <label>Actor</label>
-                <textarea name="actor">{% if actor_input %}{{ actor_input }}{% else %}{"id": "root"}{% endif %}</textarea>
+                <textarea class="permission-textarea" name="actor">{% if actor_input %}{{ actor_input }}{% else %}{"id": "root"}{% endif %}</textarea>
             </div>
         </div>
         <div class="two-col" style="vertical-align: top">

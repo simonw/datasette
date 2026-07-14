@@ -45,10 +45,7 @@ Using the "root" actor
 
 Datasette currently leaves almost all forms of authentication to plugins - `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__ for example.
 
-The one exception is the "root" account, which you can sign into while using
-Datasette on your local machine. The root user starts with **all permissions**:
-Datasette contributes a global allow rule for every action. More specific deny
-rules can still override that global rule.
+The one exception is the "root" account, which you can sign into while using Datasette on your local machine. The root user starts with **all permissions**: Datasette contributes a global allow rule for every action. More specific deny rules can still override that global rule.
 
 The ``--root`` flag is designed for local development and testing. When you start Datasette with ``--root``, the root user automatically receives every permission, including:
 
@@ -91,9 +88,7 @@ The key question the permissions system answers is this:
 
     Is this **actor** allowed to perform this **action**, optionally against this particular **resource**?
 
-Every permission decision can be understood in terms of those three values.
-Datasette implements the decisions using SQL, but you do not need to understand
-the generated SQL to configure or debug permissions.
+Every permission decision can be understood in terms of those three values. Datasette implements the decisions using SQL, but you do not need to understand the generated SQL to configure or debug permissions.
 
 **Actors** are :ref:`described above <authentication_actor>`.
 
@@ -143,15 +138,13 @@ This configuration will deny access to everyone except the user with ``id`` of `
 How permissions are resolved
 ----------------------------
 
-Permission rules describe an effect (``allow`` or ``deny``) at one of three
-levels:
+Permission rules describe an effect (``allow`` or ``deny``) at one of three levels:
 
 ``resource``
     A specific child resource, such as the ``analytics/sales`` table.
 
 ``parent``
-    A parent resource, such as the ``analytics`` database. A parent rule also
-    applies to its child resources.
+    A parent resource, such as the ``analytics`` database. A parent rule also applies to its child resources.
 
 ``global``
     Every resource for that action.
@@ -163,9 +156,7 @@ Datasette resolves matching rules from most specific to least specific:
 #. If both allow and deny rules match at the same level, deny takes precedence.
 #. If no rule matches, access is denied.
 
-This means a resource-level allow can provide an exception to a parent-level
-deny. It also means that two plugins which disagree at the same level resolve
-to deny.
+This means a resource-level allow can provide an exception to a parent-level deny. It also means that two plugins which disagree at the same level resolve to deny.
 
 .. list-table:: Permission rule examples
    :header-rows: 1
@@ -189,13 +180,9 @@ to deny.
      - Deny
      - Permissions default to deny when no rule applies.
 
-The built-in public defaults are global allow rules for actions such as
-``view-instance``, ``view-database`` and ``view-table``. They follow the same
-precedence rules as configuration and plugin rules. The ``--default-deny``
-option prevents Datasette from contributing those default allow rules.
+The built-in public defaults are global allow rules for actions such as ``view-instance``, ``view-database`` and ``view-table``. They follow the same precedence rules as configuration and plugin rules. The ``--default-deny`` option prevents Datasette from contributing those default allow rules.
 
-Datasette performs checks using :ref:`datasette_allowed`, which accepts keyword
-arguments for ``action``, ``resource`` and an optional ``actor``.
+Datasette performs checks using :ref:`datasette_allowed`, which accepts keyword arguments for ``action``, ``resource`` and an optional ``actor``.
 
 ``resource`` should be an instance of the appropriate ``Resource`` subclass from :mod:`datasette.resources`—for example ``InstanceResource()``, ``DatabaseResource(database="...``)`` or ``TableResource(database="...", table="...")``. This defaults to ``InstanceResource()`` if not specified.
 
@@ -209,15 +196,9 @@ resources were allowed or denied. The combined sources are:
 * The "root" user rule when ``--root`` (or :attr:`Datasette.root_enabled <datasette.app.Datasette.root_enabled>`) is active. This is a global allow rule, so a more specific configuration deny can override it.
 * Any additional SQL provided by plugins implementing :ref:`plugin_hook_permission_resources_sql`.
 
-Actor restrictions are applied after the allow/deny rules. They act as an
-additional allowlist: a restriction can remove access but cannot grant access
-that the actor did not already have. See
-:ref:`authentication_cli_create_token_restrict`.
+Actor restrictions are applied after the allow/deny rules. They act as an additional allowlist: a restriction can remove access but cannot grant access that the actor did not already have. See :ref:`authentication_cli_create_token_restrict`.
 
-Some actions have dependencies on other actions. These are evaluated as an
-``AND`` condition. For example, ``execute-sql`` also requires
-``view-database``: both decisions must be allowed for the final result to be
-allowed.
+Some actions have dependencies on other actions. These are evaluated as an ``AND`` condition. For example, ``execute-sql`` also requires ``view-database``: both decisions must be allowed for the final result to be allowed.
 
 .. _authentication_permissions_allow:
 
@@ -1211,23 +1192,18 @@ The debug tool at ``/-/permissions`` is available to any actor with the ``permis
 The permission debug tools answer four different questions:
 
 Why was this decision allowed or denied?
-    Use :ref:`PermissionCheckView`. It shows every matching rule, identifies
-    the winning specificity level, applies actor restrictions and evaluates
-    any required actions.
+    Use :ref:`PermissionCheckView`. It shows every matching rule, identifies the winning specificity level, applies actor restrictions and evaluates any required actions.
 
 Which resources can the current actor access?
-    Use :ref:`AllowedResourcesView` to view an access map for a selected
-    action.
+    Use :ref:`AllowedResourcesView` to view an access map for a selected action.
 
 Which raw rules did Datasette and its plugins contribute?
-    Use :ref:`PermissionRulesView` to inspect the rules before they are
-    resolved into decisions.
+    Use :ref:`PermissionRulesView` to inspect the rules before they are resolved into decisions.
 
 Which checks has this Datasette instance performed recently?
     Use ``/-/permissions`` to view recent permission activity.
 
-These tools are designed to help administrators and plugin authors understand
-and confirm the effective permissions configuration.
+These tools are designed to help administrators and plugin authors understand and confirm the effective permissions configuration.
 
 These debug endpoints are exempt from the :ref:`JSON API stability promise <json_api_stability>` - their JSON shapes may change in future releases.
 
@@ -1262,28 +1238,20 @@ This endpoint requires the ``permissions-debug`` permission.
 Permission check view
 ---------------------
 
-The ``/-/check`` endpoint evaluates and explains a single actor, action and
-resource decision. The explanation includes:
+The ``/-/check`` endpoint evaluates and explains a single actor, action and resource decision. The explanation includes:
 
 * Every matching allow and deny rule, with its source and reason.
 * The winning resource, parent or global scope.
-* Rules ignored because a more specific rule matched, or because a deny won at
-  the same scope.
+* Rules ignored because a more specific rule matched, or because a deny won at the same scope.
 * Actor restriction allowlists that included or excluded the resource.
 * Additional actions required by the requested action.
 * An explicit default-deny explanation when no rule matched.
 
 This endpoint provides an interactive HTML form interface. Add ``.json`` to the URL path (e.g. ``/-/check.json?action=view-instance``) to get the raw JSON response instead.
 
-Pass ``?action=`` to specify the action to check, and optional ``?parent=`` and
-``?child=`` parameters to specify the resource. The interactive form also
-accepts actor JSON, allowing a hypothetical actor to be tested without signing
-in as that actor. The JSON endpoint accepts the same value using the ``actor``
-query string parameter. Use ``actor=null`` to represent an anonymous actor.
+Pass ``?action=`` to specify the action to check, and optional ``?parent=`` and ``?child=`` parameters to specify the resource. The interactive form also accepts actor JSON, allowing a hypothetical actor to be tested without signing in as that actor. The JSON endpoint accepts the same value using the ``actor`` query string parameter. Use ``actor=null`` to represent an anonymous actor.
 
-This endpoint requires the ``permissions-debug`` permission. The hypothetical
-actor is used only for the decision being explained; access to the debug tool
-is checked against the actor who is actually signed in.
+This endpoint requires the ``permissions-debug`` permission. The hypothetical actor is used only for the decision being explained; access to the debug tool is checked against the actor who is actually signed in.
 
 .. _authentication_ds_actor:
 

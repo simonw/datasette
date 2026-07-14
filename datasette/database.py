@@ -246,6 +246,7 @@ class Database:
         request=None,
         return_all=False,
         returning_limit=EXECUTE_WRITE_RETURNING_LIMIT,
+        transaction=True,
     ):
         self._check_not_closed()
         if returning_limit < 0:
@@ -258,7 +259,9 @@ class Database:
             )
 
         with trace("sql", database=self.name, sql=sql.strip(), params=params):
-            results = await self.execute_write_fn(_inner, block=block, request=request)
+            results = await self.execute_write_fn(
+                _inner, block=block, request=request, transaction=transaction
+            )
         return results
 
     async def execute_write_script(self, sql, block=True, request=None):
@@ -348,6 +351,7 @@ class Database:
                 self.ds._prepare_connection(self._write_connection, self.name)
             if transaction:
                 with self._write_connection:
+                    self._write_connection.execute("BEGIN IMMEDIATE")
                     result = fn(self._write_connection)
             else:
                 result = fn(self._write_connection)
@@ -477,6 +481,7 @@ class Database:
                 try:
                     if task.transaction:
                         with conn:
+                            conn.execute("BEGIN IMMEDIATE")
                             result = task.fn(conn)
                     else:
                         result = task.fn(conn)

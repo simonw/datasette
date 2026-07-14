@@ -643,8 +643,15 @@ class QueryView(View):
         ok = None
         redirect_url = None
         try:
+            execute_write_kwargs = {"request": request}
+            if stored_query.is_trusted:
+                analysis = await db.analyze_sql(stored_query.sql, params_for_query)
+                if any(
+                    operation.operation == "vacuum" for operation in analysis.operations
+                ):
+                    execute_write_kwargs["transaction"] = False
             cursor = await db.execute_write(
-                stored_query.sql, params_for_query, request=request
+                stored_query.sql, params_for_query, **execute_write_kwargs
             )
             # success message can come from on_success_message or on_success_message_sql
             message = None

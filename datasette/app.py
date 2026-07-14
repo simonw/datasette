@@ -2575,7 +2575,7 @@ class Datasette:
             JsonDataView.as_view(
                 self,
                 "plugins.json",
-                lambda request: {"plugins": self._plugins(request)},
+                self._plugins,
                 needs_request=True,
             ),
             r"/-/plugins(\.(?P<format>json))?$",

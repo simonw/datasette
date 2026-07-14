@@ -614,13 +614,13 @@ async def test_plugins_json(ds_client):
     response = await ds_client.get("/-/plugins.json")
     # Filter out TrackEventPlugin
     actual_plugins = sorted(
-        [p for p in response.json()["plugins"] if p["name"] != "TrackEventPlugin"],
+        [p for p in response.json() if p["name"] != "TrackEventPlugin"],
         key=lambda p: p["name"],
     )
     assert EXPECTED_PLUGINS == actual_plugins
     # Try with ?all=1
     response = await ds_client.get("/-/plugins.json?all=1")
-    names = {p["name"] for p in response.json()["plugins"]}
+    names = {p["name"] for p in response.json()}
     assert names.issuperset(p["name"] for p in EXPECTED_PLUGINS)
     assert names.issuperset(DEFAULT_PLUGINS)
 

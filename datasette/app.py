@@ -3001,7 +3001,15 @@ class DatasetteRouter:
                 for regex, wildcard_template in page_routes:
                     match = regex.match(route_path)
                     if match is not None:
-                        context.update(match.groupdict())
+                        # Tilde-decode captured path variables so templates see
+                        # the real value - e.g. "hello world" not "hello~20world"
+                        # https://github.com/simonw/datasette/issues/1732
+                        context.update(
+                            {
+                                key: tilde_decode(value)
+                                for key, value in match.groupdict().items()
+                            }
+                        )
                         template = wildcard_template
                         break
 

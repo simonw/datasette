@@ -92,6 +92,24 @@ def test_custom_route_pattern(custom_pages_client, path, expected):
     assert response.text.strip() == expected
 
 
+@pytest.mark.parametrize(
+    "path,expected",
+    [
+        # Tilde-encoded path variables should reach the template decoded
+        # https://github.com/simonw/datasette/issues/1732
+        ("/topic_hello~20world", "Topic page for hello world"),
+        ("/topic_caf~C3~A9", "Topic page for café"),
+        ("/topic_a~2Fb/x~20y", "Slug: x y, Topic: a/b"),
+    ],
+)
+def test_custom_route_pattern_decodes_path_variables(
+    custom_pages_client, path, expected
+):
+    response = custom_pages_client.get(path)
+    assert response.status == 200
+    assert response.text.strip() == expected
+
+
 def test_custom_route_pattern_404(custom_pages_client):
     response = custom_pages_client.get("/route_OhNo")
     assert response.status == 404

@@ -804,6 +804,17 @@ def test_tilde_encoding(original, expected):
 
 
 @pytest.mark.parametrize(
+    "value",
+    (b"0thei'", b"\xff\x00abc", b"hello", b"", b"a,b~c+d"),
+)
+def test_binary_pk_roundtrips_through_path(value):
+    # A binary (BLOB) primary key value survives path_from_row_pks and can be
+    # decoded back to the exact bytes - regression test for #2419
+    encoded = utils.path_from_row_pks({"pk": value}, ["pk"], False)
+    assert utils.tilde_decode_to_bytes(encoded) == value
+
+
+@pytest.mark.parametrize(
     "url,length,expected",
     (
         ("https://example.com/", 5, "http…"),

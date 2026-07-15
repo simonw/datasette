@@ -192,7 +192,14 @@ def path_from_row_pks(row, pks, use_rowid, quote=True):
             row[pk]["value"] if isinstance(row[pk], dict) else row[pk] for pk in pks
         ]
     if quote:
-        bits = [tilde_encode(str(bit)) for bit in bits]
+        bits = [
+            (
+                tilde_encode_bytes(bit)
+                if isinstance(bit, bytes)
+                else tilde_encode(str(bit))
+            )
+            for bit in bits
+        ]
     else:
         bits = [str(bit) for bit in bits]
 
@@ -1417,14 +1424,27 @@ def tilde_encode(s: str) -> str:
     return "".join(_tilde_encoder(char) for char in s.encode("utf-8"))
 
 
+def tilde_encode_bytes(b: bytes) -> str:
+    "Tilde-encodes raw bytes, used for binary (BLOB) primary key values"
+    return "".join(_tilde_encoder(byte) for byte in b)
+
+
 @documented
 def tilde_decode(s: str) -> str:
     "Decodes a tilde-encoded string, so ``~2Ffoo~2Fbar`` -> ``/foo/bar``"
+    return tilde_decode_to_bytes(s).decode("utf-8")
+
+
+def tilde_decode_to_bytes(s: str) -> bytes:
+    """Decodes a tilde-encoded string to raw bytes, preserving non-UTF-8 data.
+
+    Used to round-trip binary (BLOB) primary key values through row URLs."""
     # Avoid accidentally decoding a %2f style sequence
     temp = secrets.token_hex(16)
     s = s.replace("%", temp)
-    decoded = urllib.parse.unquote_plus(s.replace("~", "%"))
-    return decoded.replace(temp, "%")
+    # "+" encodes a space (as with urllib.parse.unquote_plus)
+    decoded = urllib.parse.unquote_to_bytes(s.replace("~", "%").replace("+", " "))
+    return decoded.replace(temp.encode("ascii"), b"%")
 
 
 def resolve_routes(routes, path):
@@ -1445,19 +1465,40 @@ def truncate_url(url, length):
     return url[: length - 1] + "…"
 
 
-async def row_sql_params_pks(db, table, pk_values):
+async def row_sql_params_pks(db, table, pks_string):
     pks = await db.primary_keys(table)
     use_rowid = not pks
     select = "*"
     if use_rowid:
         select = "rowid, *"
         pks = ["rowid"]
+    # BLOB primary keys need their query parameter as bytes so binary values
+    # match; the returned pk_values stay as text for display / identity.
+    blob_pks = set()
+    if not use_rowid:
+        blob_pks = {
+            column.name
+            for column in await db.table_column_details(table)
+            if column.name in pks and (column.type or "").upper() == "BLOB"
+        }
+    pk_values = []
+    param_values = []
+    for i, component in enumerate(pks_string.split(",")):
+        if i < len(pks) and pks[i] in blob_pks:
+            raw = tilde_decode_to_bytes(component)
+            param_values.append(raw)
+            try:
+                pk_values.append(raw.decode("utf-8"))
+            except UnicodeDecodeError:
+                pk_values.append(raw.hex())
+        else:
+            value = tilde_decode(component)
+            param_values.append(value)
+            pk_values.append(value)
     wheres = [f'"{pk}"=:p{i}' for i, pk in enumerate(pks)]
     sql = f"select {select} from {escape_sqlite(table)} where {' AND '.join(wheres)}"
-    params = {}
-    for i, pk_value in enumerate(pk_values):
-        params[f"p{i}"] = pk_value
-    return sql, params, pks
+    params = {f"p{i}": value for i, value in enumerate(param_values)}
+    return sql, params, pks, pk_values
 
 
 def _handle_pair(key: str, value: str) -> dict:

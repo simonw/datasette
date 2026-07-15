@@ -1,5 +1,5 @@
 from datasette.filters import Filters, through_filters, where_filters, search_filters
-from datasette.utils.asgi import Request
+from datasette.utils.asgi import BadRequest, Request
 import pytest
 
 
@@ -135,3 +135,62 @@ async def test_search_filters_from_request(ds_client):
     assert filter_args.params == {"search": "bobcat"}
     assert filter_args.human_descriptions == ['search matches "bobcat"']
     assert filter_args.extra_context == {"supports_search": True, "search": "bobcat"}
+
+
+@pytest.mark.asyncio
+async def test_search_filters_valid_column_search(ds_client):
+    # ?_search_text1=terry searches just the text1 FTS column
+    request = Request.fake("/?_search_text1=terry")
+    filter_args = await search_filters(
+        request=request,
+        datasette=ds_client.ds,
+        database="fixtures",
+        table="searchable",
+    )()
+    assert filter_args.where_clauses == [
+        "rowid in (select rowid from searchable_fts where text1 match escape_fts(:search_0))"
+    ]
+    assert filter_args.params == {"search_0": "terry"}
+    assert filter_args.human_descriptions == ['search column "text1" matches "terry"']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad_key", ["_searchcol", "_searchtext1", "_searchfoo"])
+async def test_search_filters_ignores_malformed_search_key(ds_client, bad_key):
+    # A key that starts with _search but is not the _search_column= form names
+    # no column; it must be ignored, not crash with an IndexError.
+    request = Request.fake(f"/?{bad_key}=terry")
+    filter_args = await search_filters(
+        request=request,
+        datasette=ds_client.ds,
+        database="fixtures",
+        table="searchable",
+    )()
+    assert filter_args.where_clauses == []
+    assert filter_args.params == {}
+    assert filter_args.human_descriptions == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad_through",
+    [
+        "not-json",
+        '{"table": "roadside_attraction_characteristics"}',
+        '{"table": "t", "column": "c"}',
+        "5",
+        '"just-a-string"',
+    ],
+)
+async def test_through_filters_rejects_malformed_through(ds_client, bad_through):
+    from urllib.parse import quote
+
+    request = Request.fake(f"/?_through={quote(bad_through)}")
+    with pytest.raises(BadRequest) as excinfo:
+        await through_filters(
+            request=request,
+            datasette=ds_client.ds,
+            table="roadside_attractions",
+            database="fixtures",
+        )()
+    assert "Invalid _through" in str(excinfo.value)

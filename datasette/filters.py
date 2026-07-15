@@ -90,6 +90,11 @@ def search_filters(request, database, table, datasette):
             else:
                 # More complex: search against specific columns
                 for i, (key, search_text) in enumerate(search_args.items()):
+                    if "_search_" not in key:
+                        # Malformed key such as ?_searchxxx= that starts with
+                        # _search but is not the ?_search_column= form - it
+                        # names no column, so ignore it rather than crashing.
+                        continue
                     search_col = key.split("_search_", 1)[1]
                     if search_col not in await db.table_columns(fts_table):
                         raise BadRequest("Cannot search by that column")
@@ -128,10 +133,16 @@ def through_filters(request, database, table, datasette):
         # Support for ?_through={table, column, value}
         if "_through" in request.args:
             for through in request.args.getlist("_through"):
-                through_data = json.loads(through)
-                through_table = through_data["table"]
-                other_column = through_data["column"]
-                value = through_data["value"]
+                try:
+                    through_data = json.loads(through)
+                    through_table = through_data["table"]
+                    other_column = through_data["column"]
+                    value = through_data["value"]
+                except (json.JSONDecodeError, KeyError, TypeError) as e:
+                    raise BadRequest(
+                        "Invalid _through - expected JSON object with table, "
+                        f"column and value keys: {e}"
+                    )
                 db = datasette.get_database(database)
                 outgoing_foreign_keys = await db.foreign_keys_for_table(through_table)
                 try:

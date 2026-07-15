@@ -692,11 +692,21 @@ def get_all_foreign_keys(conn):
 
     # Sort foreign keys for deterministic ordering
     for table in table_to_foreign_keys:
+        # other_column is None when a foreign key targets a table's implicit
+        # primary key, so coerce to "" to keep the sort key totally ordered.
         table_to_foreign_keys[table]["incoming"].sort(
-            key=lambda fk: (fk["other_table"], fk["column"], fk["other_column"])
+            key=lambda fk: (
+                fk["other_table"] or "",
+                fk["column"] or "",
+                fk["other_column"] or "",
+            )
         )
         table_to_foreign_keys[table]["outgoing"].sort(
-            key=lambda fk: (fk["other_table"], fk["column"], fk["other_column"])
+            key=lambda fk: (
+                fk["other_table"] or "",
+                fk["column"] or "",
+                fk["other_column"] or "",
+            )
         )
 
     return table_to_foreign_keys

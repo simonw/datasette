@@ -921,3 +921,28 @@ def test_deep_dict_update(dict1, dict2, expected):
     assert result == expected
     # Check that the original dict1 was modified
     assert dict1 == expected
+
+
+def test_get_all_foreign_keys_mixed_implicit_and_explicit_targets():
+    # Two foreign keys from the same table to the same parent, one targeting
+    # the implicit primary key (other_column is None) and one an explicit
+    # column. Sorting the collected keys must not crash comparing None to str.
+    conn = sqlite3.connect(":memory:")
+    conn.executescript("""
+        CREATE TABLE parent (id INTEGER PRIMARY KEY, alt TEXT UNIQUE);
+        CREATE TABLE child (
+            p_id1 INTEGER,
+            p_id2 INTEGER,
+            FOREIGN KEY(p_id1) REFERENCES parent,
+            FOREIGN KEY(p_id2) REFERENCES parent(alt)
+        );
+        """)
+    result = utils.get_all_foreign_keys(conn)
+    assert result["parent"]["incoming"] == [
+        {"other_table": "child", "column": None, "other_column": "p_id1"},
+        {"other_table": "child", "column": "alt", "other_column": "p_id2"},
+    ]
+    assert result["child"]["outgoing"] == [
+        {"other_table": "parent", "column": "p_id1", "other_column": None},
+        {"other_table": "parent", "column": "p_id2", "other_column": "alt"},
+    ]

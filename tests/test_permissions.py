@@ -295,13 +295,24 @@ def test_execute_sql(config):
         # Extract the schema= portion of the JavaScript
         schema_json = schema_re.search(response_text).group(1)
         schema = json.loads(schema_json)
-        assert set(schema["attraction_characteristic"]) == {"name", "pk"}
-        assert schema["paginated_view"] == []
+        assert {c["label"] for c in schema["attraction_characteristic"]} == {
+            "name",
+            "pk",
+        }
+        # Views are self/children containers carrying their real columns
+        assert schema["paginated_view"]["self"]["detail"] == "view"
+        assert {c["label"] for c in schema["paginated_view"]["children"]} == {
+            "content",
+            "content_extra",
+        }
         assert form_fragment in response_text
         query_response = client.get("/fixtures/-/query?sql=select+1", cookies=cookies)
         assert query_response.status == 200
         schema2 = json.loads(schema_re.search(query_response.text).group(1))
-        assert set(schema2["attraction_characteristic"]) == {"name", "pk"}
+        assert {c["label"] for c in schema2["attraction_characteristic"]} == {
+            "name",
+            "pk",
+        }
         assert (
             client.get("/fixtures/facet_cities?_where=id=3", cookies=cookies).status
             == 200

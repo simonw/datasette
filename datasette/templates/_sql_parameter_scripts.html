@@ -11,7 +11,9 @@ window.datasetteSqlParameters = (() => {
     if (window.editor) {
       return window.editor.state.doc.toString();
     }
-    const sqlInput = form.querySelector("textarea#sql-editor, input[name=sql]");
+    const sqlInput = form.querySelector(
+      "#sql-editor, textarea[name=sql], input[name=sql]"
+    );
     return sqlInput ? sqlInput.value : "";
   }
 
@@ -201,7 +203,7 @@ window.datasetteSqlParameters = (() => {
       editorElement.addEventListener("input", callback);
     }
     if (!window.editor) {
-      const sqlInput = form.querySelector("textarea#sql-editor");
+      const sqlInput = form.querySelector("#sql-editor");
       if (sqlInput) {
         sqlInput.addEventListener("input", callback);
       }

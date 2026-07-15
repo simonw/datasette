@@ -21,6 +21,7 @@ from .query_helpers import (
     _inserted_row_url,
     _json_or_form_payload,
     _prepare_execute_write,
+    _editor_schema,
     _table_columns,
     _wants_json,
 )
@@ -266,6 +267,7 @@ class ExecuteWriteView(BaseView):
         write_template_tables = await _write_template_tables(
             self.ds, db, table_columns, hidden_table_names, request.actor
         )
+        editor_schema = await _editor_schema(self.ds, db.name)
         write_template_operations = _write_template_operations(write_template_tables)
         write_create_table_template_sql = await _create_table_template_sql(
             self.ds, db, request.actor
@@ -328,7 +330,7 @@ class ExecuteWriteView(BaseView):
                 "sql_parameter_name_prefix": SQL_PARAMETER_FORM_PREFIX,
                 "execute_disabled": bool(execute_disabled_reason),
                 "execute_disabled_reason": execute_disabled_reason,
-                "table_columns": table_columns,
+                "table_columns": editor_schema,
                 "write_template_tables": write_template_tables,
                 "write_template_operations": write_template_operations,
                 "write_create_table_template_sql": write_create_table_template_sql,

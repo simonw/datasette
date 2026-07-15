@@ -1381,6 +1381,59 @@ class DatabaseSchemaView(SchemaBaseView):
             return await self.format_html_response(request, schemas)
 
 
+class DatabaseEditorSchemaView(BaseView):
+    """
+    JSON introspection of a database's tables, views and columns shaped for SQL
+    editor autocomplete consumers (the CodeMirror ``<datasette-sql-editor>``
+    component and external clients such as datasette-paper).
+
+    Distinct from :class:`DatabaseSchemaView` (``/<db>/-/schema.json``), which
+    returns the raw DDL as a SQL string gated on ``view-database`` alone. This
+    endpoint returns a neutral structured payload and is gated on both
+    ``view-database`` and ``execute-sql`` — the same permissions as the inline
+    editor schema handed to the SQL query page.
+    """
+
+    name = "database_editor_schema"
+    has_json_alternate = False
+
+    async def get(self, request):
+        from .query_helpers import _schema_tables
+
+        database_name = request.url_vars["database"]
+
+        # view-database is checked first so actors without it cannot
+        # distinguish an existing database from a missing one, and a denied
+        # request only ever leaks the permission action name, never table names.
+        await self.ds.ensure_permission(
+            action="view-database",
+            resource=DatabaseResource(database=database_name),
+            actor=request.actor,
+        )
+        if database_name not in self.ds.databases:
+            headers = {}
+            if self.ds.cors:
+                add_cors_headers(headers)
+            return Response.json(
+                error_body("Database not found", 404), status=404, headers=headers
+            )
+        await self.ds.ensure_permission(
+            action="execute-sql",
+            resource=DatabaseResource(database=database_name),
+            actor=request.actor,
+        )
+
+        await self.ds.refresh_schemas()
+        tables = await _schema_tables(self.ds, database_name, include_hidden=False)
+
+        headers = {}
+        if self.ds.cors:
+            add_cors_headers(headers)
+        return Response.json(
+            {"database": database_name, "tables": tables}, headers=headers
+        )
+
+
 class TableSchemaView(SchemaBaseView):
     """
     Displays schema for a specific table.

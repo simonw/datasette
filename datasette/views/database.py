@@ -36,7 +36,10 @@ from datasette.utils.asgi import AsgiFileDownload, NotFound, Response, Forbidden
 from datasette.plugins import pm
 
 from .base import DatasetteError, View, stream_csv
-from .query_helpers import _ensure_stored_query_execution_permissions, _table_columns
+from .query_helpers import (
+    _ensure_stored_query_execution_permissions,
+    _editor_schema,
+)
 from .table_extras import (
     QueryExtraContext,
     resolve_query_extras,
@@ -201,7 +204,7 @@ class DatabaseView(View):
             "queries_count": queries_count,
             "allow_execute_sql": allow_execute_sql,
             "table_columns": (
-                await _table_columns(datasette, database) if allow_execute_sql else {}
+                await _editor_schema(datasette, database) if allow_execute_sql else {}
             ),
             "metadata": await datasette.get_database_metadata(database),
         }
@@ -242,7 +245,7 @@ class DatabaseView(View):
                     queries_count=queries_count,
                     allow_execute_sql=allow_execute_sql,
                     table_columns=(
-                        await _table_columns(datasette, database)
+                        await _editor_schema(datasette, database)
                         if allow_execute_sql
                         else {}
                     ),
@@ -452,6 +455,11 @@ class QueryContext(Context):
     table_columns: dict = field(
         metadata={
             "help": "Dictionary mapping table names to lists of column names, used to power SQL autocomplete."
+        }
+    )
+    default_table: str = field(
+        metadata={
+            "help": "Name of the focal table for this query, if any - set when the query page was reached from a table-scoped context (such as the table page's 'View and edit SQL' link) so the SQL editor can complete that table's columns unprefixed. ``None`` otherwise, including for stored/canned queries."
         }
     )
     alternate_url_json: str = field(
@@ -719,6 +727,15 @@ class QueryView(View):
         )
         # Create lookup dict for quick access
         allowed_dict = {r.child: r for r in allowed_tables_page.resources}
+
+        # If the request carries a ?_table= pointing at a real (visible) table
+        # or view in this database, treat this as a table-scoped query - e.g.
+        # arriving here via the "View and edit SQL" link on a table page - so
+        # the SQL editor can offer that table's columns unprefixed. Anything
+        # else (including stored/canned queries, which may reference more
+        # than one table) leaves this as None.
+        requested_table = request.args.get("_table")
+        default_table = requested_table if requested_table in allowed_dict else None
 
         # Are we a stored query?
         stored_query = None
@@ -1101,10 +1118,11 @@ class QueryView(View):
                             datasette, database, request, rows, columns
                         ),
                         table_columns=(
-                            await _table_columns(datasette, database)
+                            await _editor_schema(datasette, database)
                             if allow_execute_sql
                             else {}
                         ),
+                        default_table=default_table,
                         columns=columns,
                         renderers=renderers,
                         url_csv=datasette.urls.path(

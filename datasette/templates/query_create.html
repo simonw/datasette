@@ -28,7 +28,7 @@
         <p class="query-create-field"><label for="query-description">Description</label> <textarea id="query-description" name="description" rows="3">{{ description or "" }}</textarea></p>
     </div>
 
-    <p class="query-create-sql sql-editor"><textarea id="sql-editor" name="sql"{% if sql %} style="height: {{ sql.split("\n")|length + 2 }}em"{% endif %}>{{ sql }}</textarea></p>
+    <p class="query-create-sql sql-editor"><datasette-sql-editor id="sql-editor" name="sql"{% if default_table is defined and default_table %} default-table="{{ default_table }}"{% endif %}><textarea name="sql"{% if sql %} style="height: {{ sql.split("\n")|length + 2 }}em"{% endif %}>{{ sql }}</textarea></datasette-sql-editor></p>
 
     <p class="query-create-options">
         <span class="query-create-analysis-note" data-query-create-analysis-note aria-live="polite">{% if analysis_error %}This query cannot be saved until the SQL is valid.{% elif not has_sql %}Enter SQL to analyze this query.{% elif analysis_is_write %}This query updates data in the database.{% else %}This is a read-only query.{% endif %}</span>

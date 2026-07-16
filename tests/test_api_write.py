@@ -2287,6 +2287,63 @@ async def test_create_table_with_column_constraints(ds_write):
 
 
 @pytest.mark.asyncio
+async def test_create_table_primary_keys_are_not_null(ds_write):
+    # Primary keys created via the JSON API must be NOT NULL - see #2807
+    token = write_token(ds_write)
+    db = ds_write.get_database("data")
+
+    # Single (non-integer) primary key
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "pk_single",
+            "columns": [
+                {"name": "code", "type": "text"},
+                {"name": "name", "type": "text"},
+            ],
+            "pk": "code",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201, response.text
+    assert "PRIMARY KEY NOT NULL" in response.json()["schema"]
+    columns = {
+        column["name"]: column
+        for column in (
+            await db.execute("select * from pragma_table_info('pk_single')")
+        ).dicts()
+    }
+    assert columns["code"]["pk"] == 1
+    assert columns["code"]["notnull"] == 1
+    assert columns["name"]["notnull"] == 0
+
+    # Composite primary key - every key column is NOT NULL
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "pk_composite",
+            "columns": [
+                {"name": "a", "type": "text"},
+                {"name": "b", "type": "text"},
+                {"name": "value", "type": "text"},
+            ],
+            "pks": ["a", "b"],
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201, response.text
+    columns = {
+        column["name"]: column
+        for column in (
+            await db.execute("select * from pragma_table_info('pk_composite')")
+        ).dicts()
+    }
+    assert columns["a"]["notnull"] == 1
+    assert columns["b"]["notnull"] == 1
+    assert columns["value"]["notnull"] == 0
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "default_expr,minimum_value,expected_schema",
     (

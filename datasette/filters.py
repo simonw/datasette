@@ -209,7 +209,16 @@ class TemplatedFilter(Filter):
             kwargs = {"c": column}
             converted = None
         else:
-            kwargs = {"c": column, "p": f"p{param_counter}", "t": table}
+            kwargs = {
+                "c": column,
+                "p": f"p{param_counter}",
+                "t": table,
+                # Properly quoted identifiers for templates that reference the
+                # table/column directly (e.g. json_each()). Bracket quoting
+                # cannot escape a "]" in a name, so use escape_sqlite() instead.
+                "c_escaped": escape_sqlite(column),
+                "t_escaped": escape_sqlite(table) if table is not None else "",
+            }
         return self.sql_template.format(**kwargs), converted
 
     def human_clause(self, column, value):
@@ -322,13 +331,13 @@ class Filters:
                 TemplatedFilter(
                     "arraycontains",
                     "array contains",
-                    """:{p} in (select value from json_each([{t}].[{c}]))""",
+                    """:{p} in (select value from json_each({t_escaped}.{c_escaped}))""",
                     '{c} contains "{v}"',
                 ),
                 TemplatedFilter(
                     "arraynotcontains",
                     "array does not contain",
-                    """:{p} not in (select value from json_each([{t}].[{c}]))""",
+                    """:{p} not in (select value from json_each({t_escaped}.{c_escaped}))""",
                     '{c} does not contain "{v}"',
                 ),
             ]

@@ -65,12 +65,24 @@ import pytest
         # JSON arraycontains, arraynotcontains
         (
             (("Availability+Info__arraycontains", "yes"),),
-            [":p0 in (select value from json_each([table].[Availability+Info]))"],
+            [':p0 in (select value from json_each("table"."Availability+Info"))'],
             ["yes"],
         ),
         (
             (("Availability+Info__arraynotcontains", "yes"),),
-            [":p0 not in (select value from json_each([table].[Availability+Info]))"],
+            [':p0 not in (select value from json_each("table"."Availability+Info"))'],
+            ["yes"],
+        ),
+        # A column name containing "]" must be escaped with escape_sqlite() -
+        # bracket quoting would produce invalid SQL, see refs #2431
+        (
+            (("ta]gs__arraycontains", "yes"),),
+            [':p0 in (select value from json_each("table"."ta]gs"))'],
+            ["yes"],
+        ),
+        (
+            (("ta]gs__arraynotcontains", "yes"),),
+            [':p0 not in (select value from json_each("table"."ta]gs"))'],
             ["yes"],
         ),
     ],

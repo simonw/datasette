@@ -2531,6 +2531,19 @@ Derive the list of ``:named`` parameters referenced in a SQL query.
 
 .. autofunction:: datasette.utils.named_parameters
 
+.. _internals_utils_to_css_class:
+
+to_css_class(value)
+-------------------
+
+Returns a string that can be used as a unique CSS class.
+
+Strings that already start with a letter and contain only letters, numbers, underscores or hyphens are returned unchanged. Other strings are normalized in this order: leading underscores are removed, then leading hyphens are removed, whitespace is replaced with hyphens and any remaining invalid characters are discarded. A six-character hash is appended to normalized values to avoid collisions.
+
+For example, ``to_css_class("MixedCase")`` returns ``"MixedCase"``, while ``to_css_class("no spaces")`` returns ``"no-spaces-7088d7"``.
+
+.. autofunction:: datasette.utils.to_css_class
+
 .. _internals_tilde_encoding:
 
 Tilde encoding

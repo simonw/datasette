@@ -1,15 +1,18 @@
-from bs4 import BeautifulSoup as Soup
-from datasette.app import Datasette
-from datasette.utils import allowed_pragmas
-from .fixtures import make_app_client
-from .utils import assert_footer_links, inner_html
 import copy
 import hashlib
 import json
 import pathlib
-import pytest
 import re
 import urllib.parse
+
+import pytest
+from bs4 import BeautifulSoup as Soup
+
+from datasette.app import Datasette
+from datasette.utils import allowed_pragmas
+
+from .fixtures import make_app_client
+from .utils import assert_footer_links, inner_html
 
 
 def test_homepage(app_client_two_attached_databases):
@@ -142,9 +145,7 @@ def test_static_mounts_hash_cache_control():
         )
 
         incorrect_hash = hashlib.sha256(b"incorrect").hexdigest()[:12]
-        response = client.get(
-            "/custom-static/test_html.py?_hash={}".format(incorrect_hash)
-        )
+        response = client.get(f"/custom-static/test_html.py?_hash={incorrect_hash}")
         assert response.status_code == 200
         assert "cache-control" not in response.headers
 
@@ -219,11 +220,9 @@ async def test_disallowed_custom_sql_pragma(ds_client):
         "/fixtures/-/query?sql=SELECT+*+FROM+pragma_not_on_allow_list('idx52')"
     )
     assert response.status_code == 400
-    pragmas = ", ".join("pragma_{}()".format(pragma) for pragma in allowed_pragmas)
+    pragmas = ", ".join(f"pragma_{pragma}()" for pragma in allowed_pragmas)
     assert (
-        "Statement contained a disallowed PRAGMA. Allowed pragma functions are {}".format(
-            pragmas
-        )
+        f"Statement contained a disallowed PRAGMA. Allowed pragma functions are {pragmas}"
         in response.text
     )
 
@@ -778,8 +777,8 @@ def test_stored_query_show_hide_metadata_option(
         },
         memory=True,
     ) as client:
-        expected_show_hide_fragment = '(<a href="{}">{}</a>)'.format(
-            expected_show_hide_link, expected_show_hide_text
+        expected_show_hide_fragment = (
+            f'(<a href="{expected_show_hide_link}">{expected_show_hide_text}</a>)'
         )
         response = client.get("/_memory/one" + querystring)
         html = response.text
@@ -788,10 +787,7 @@ def test_stored_query_show_hide_metadata_option(
         )[0]
         assert show_hide_fragment == expected_show_hide_fragment
         if expected_hidden:
-            assert (
-                '<input type="hidden" name="{}" value="1">'.format(expected_hidden)
-                in html
-            )
+            assert f'<input type="hidden" name="{expected_hidden}" value="1">' in html
         else:
             assert '<input type="hidden" ' not in html
 
@@ -1194,13 +1190,9 @@ async def test_alternate_url_json(ds_client, path, expected):
     response = await ds_client.get(path)
     assert response.status_code == 200
     link = response.headers["link"]
-    assert link == '<{}>; rel="alternate"; type="application/json+datasette"'.format(
-        expected
-    )
+    assert link == f'<{expected}>; rel="alternate"; type="application/json+datasette"'
     assert (
-        '<link rel="alternate" type="application/json+datasette" href="{}">'.format(
-            expected
-        )
+        f'<link rel="alternate" type="application/json+datasette" href="{expected}">'
         in response.text
     )
 
@@ -1292,8 +1284,8 @@ async def test_database_color(ds_client):
     expected_color = ds_client.ds.get_database("fixtures").color
     # Should be something like #9403e5
     expected_fragments = (
-        "10px solid #{}".format(expected_color),
-        "border-color: #{}".format(expected_color),
+        f"10px solid #{expected_color}",
+        f"border-color: #{expected_color}",
     )
     assert len(expected_color) == 6
     for path in (

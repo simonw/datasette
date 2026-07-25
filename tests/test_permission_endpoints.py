@@ -6,6 +6,7 @@ Tests for permission endpoints:
 
 import pytest
 import pytest_asyncio
+
 from datasette.app import Datasette
 
 
@@ -432,8 +433,8 @@ async def test_execute_sql_requires_view_database():
     A user who has execute-sql permission but not view-database permission should not
     be able to execute SQL on that database.
     """
-    from datasette.permissions import PermissionSQL
     from datasette import hookimpl
+    from datasette.permissions import PermissionSQL
 
     class TestPermissionPlugin:
         __name__ = "TestPermissionPlugin"

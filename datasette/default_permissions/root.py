@@ -6,7 +6,7 @@ Grants full permissions to the root user when --root flag is used.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from datasette.app import Datasette
@@ -17,9 +17,9 @@ from datasette.permissions import PermissionSQL
 
 @hookimpl(specname="permission_resources_sql")
 async def root_user_permissions_sql(
-    datasette: "Datasette",
-    actor: Optional[dict],
-) -> Optional[PermissionSQL]:
+    datasette: Datasette,
+    actor: dict | None,
+) -> PermissionSQL | None:
     """
     Grant root user full permissions when --root flag is used.
     """

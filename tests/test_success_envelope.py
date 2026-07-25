@@ -7,8 +7,9 @@ Every JSON object returned by a Datasette endpoint on success should include
 """
 
 import pytest
+
 from datasette.app import Datasette
-from datasette.utils import sqlite3, UNSTABLE_API_MESSAGE
+from datasette.utils import UNSTABLE_API_MESSAGE, sqlite3
 
 
 @pytest.fixture

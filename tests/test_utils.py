@@ -2,8 +2,17 @@
 Tests for various datasette helper functions.
 """
 
-from datasette.app import Datasette
+import hashlib
+import json
+import os
+import pathlib
+import tempfile
+from unittest.mock import patch
+
+import pytest
+
 from datasette import utils
+from datasette.app import Datasette
 from datasette.utils.asgi import Request
 from datasette.utils.sqlite import (
     sqlite3,
@@ -11,13 +20,6 @@ from datasette.utils.sqlite import (
     sqlite_table_type,
     supports_returning,
 )
-import hashlib
-import json
-import os
-import pathlib
-import pytest
-import tempfile
-from unittest.mock import patch
 
 
 @pytest.mark.parametrize(
@@ -194,7 +196,7 @@ def test_validate_sql_select_good(good_sql):
 
 @pytest.mark.parametrize("open_quote,close_quote", [('"', '"'), ("[", "]")])
 def test_detect_fts(open_quote, close_quote):
-    sql = """
+    sql = f"""
     CREATE TABLE "Dumb_Table" (
       "TreeID" INTEGER,
       "qSpecies" TEXT
@@ -209,9 +211,9 @@ def test_detect_fts(open_quote, close_quote):
       "qCaretaker" TEXT
     );
     CREATE VIEW Test_View AS SELECT * FROM Dumb_Table;
-    CREATE VIRTUAL TABLE {open}Street_Tree_List_fts{close} USING FTS4 ("qAddress", "qCaretaker", "qSpecies", content={open}Street_Tree_List{close});
+    CREATE VIRTUAL TABLE {open_quote}Street_Tree_List_fts{close_quote} USING FTS4 ("qAddress", "qCaretaker", "qSpecies", content={open_quote}Street_Tree_List{close_quote});
     CREATE VIRTUAL TABLE r USING rtree(a, b, c);
-    """.format(open=open_quote, close=close_quote)
+    """
     conn = utils.sqlite3.connect(":memory:")
     conn.executescript(sql)
     assert None is utils.detect_fts(conn, "Dumb_Table")
@@ -262,8 +264,8 @@ def test_escape_sqlite_prevents_injection():
     conn.execute("CREATE TABLE users (id INTEGER, password TEXT)")
     conn.execute("INSERT INTO users VALUES (1, 'super_secret_password')")
     malicious = "users] UNION SELECT password FROM users--"
-    conn.execute('CREATE TABLE "{}" (id INTEGER)'.format(malicious))
-    sql = "select count(*) from {}".format(utils.escape_sqlite(malicious))
+    conn.execute(f'CREATE TABLE "{malicious}" (id INTEGER)')
+    sql = f"select count(*) from {utils.escape_sqlite(malicious)}"
     results = conn.execute(sql).fetchall()
     conn.close()
     # The injected UNION must not execute - only the empty malicious table
@@ -273,16 +275,16 @@ def test_escape_sqlite_prevents_injection():
 
 @pytest.mark.parametrize("table", ("regular", "has'single quote"))
 def test_detect_fts_different_table_names(table):
-    sql = """
+    sql = f"""
     CREATE TABLE [{table}] (
       "TreeID" INTEGER,
       "qSpecies" TEXT
     );
     CREATE VIRTUAL TABLE [{table}_fts] USING FTS4 ("qSpecies", content="{table}");
-    """.format(table=table)
+    """
     conn = utils.sqlite3.connect(":memory:")
     conn.executescript(sql)
-    assert "{table}_fts".format(table=table) == utils.detect_fts(conn, table)
+    assert f"{table}_fts" == utils.detect_fts(conn, table)
     conn.close()
 
 
@@ -689,7 +691,6 @@ def test_resolve_env_secrets(config, expected):
     "actor,expected",
     [
         ({"id": "blah"}, "blah"),
-        ({"id": "blah", "login": "l"}, "l"),
         ({"id": "blah", "login": "l"}, "l"),
         ({"id": "blah", "login": "l", "username": "u"}, "u"),
         ({"login": "l", "name": "n"}, "n"),

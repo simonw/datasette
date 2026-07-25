@@ -5,6 +5,19 @@ from datasette.resources import DatabaseResource
 from datasette.stored_queries import (
     StoredQuery,
 )
+from datasette.utils import (
+    InvalidSql,
+    escape_sqlite,
+    parse_size_limit,
+    path_from_row_pks,
+    sqlite3,
+    validate_sql_select,
+)
+from datasette.utils import (
+    named_parameters as derive_named_parameters,
+)
+from datasette.utils.asgi import Forbidden
+from datasette.utils.sql_analysis import Operation, SQLAnalysis
 from datasette.write_sql import (
     IgnoreWriteSqlOperation,
     QueryWriteRejected,
@@ -12,17 +25,6 @@ from datasette.write_sql import (
     decision_for_write_sql_operation,
     operation_is_write,
 )
-from datasette.utils import (
-    parse_size_limit,
-    named_parameters as derive_named_parameters,
-    escape_sqlite,
-    path_from_row_pks,
-    sqlite3,
-    validate_sql_select,
-    InvalidSql,
-)
-from datasette.utils.asgi import Forbidden
-from datasette.utils.sql_analysis import Operation, SQLAnalysis
 
 _query_name_re = re.compile(r"^[^/\.\n]+$")
 
@@ -91,7 +93,7 @@ def _as_optional_bool(value, name):
             return True
         if lowered in {"0", "false", "f", "no", "off"}:
             return False
-    raise QueryValidationError("{} must be 0 or 1".format(name))
+    raise QueryValidationError(f"{name} must be 0 or 1")
 
 
 def _query_list_limit(value, default, maximum):
@@ -171,7 +173,7 @@ async def _json_or_form_payload(request):
         try:
             return json.loads(body or b"{}"), True
         except json.JSONDecodeError as e:
-            raise QueryValidationError("Invalid JSON: {}".format(e))
+            raise QueryValidationError(f"Invalid JSON: {e}")
     return await request.post_vars(), False
 
 
@@ -192,7 +194,7 @@ async def _analyze_user_query(datasette, db, sql, *, actor):
     try:
         analysis = await db.analyze_sql(sql, params)
     except sqlite3.DatabaseError as ex:
-        raise QueryValidationError("Could not analyze query: {}".format(ex)) from ex
+        raise QueryValidationError(f"Could not analyze query: {ex}") from ex
 
     is_write = _analysis_is_write(analysis)
     if is_write:
@@ -293,8 +295,7 @@ def _coerce_execute_write_payload(data, is_json):
         for key, value in data.items():
             if key in {"sql", "csrftoken", "_json"}:
                 continue
-            if key.startswith(SQL_PARAMETER_FORM_PREFIX):
-                key = key[len(SQL_PARAMETER_FORM_PREFIX) :]
+            key = key.removeprefix(SQL_PARAMETER_FORM_PREFIX)
             params[key] = value
     if not isinstance(params, dict):
         raise QueryValidationError("params must be a dictionary")
@@ -314,7 +315,7 @@ async def _prepare_execute_write(datasette, db, sql, params, actor):
     try:
         analysis = await db.analyze_sql(sql, params)
     except sqlite3.DatabaseError as ex:
-        raise QueryValidationError("Could not analyze query: {}".format(ex)) from ex
+        raise QueryValidationError(f"Could not analyze query: {ex}") from ex
     if not _analysis_is_write(analysis):
         raise QueryValidationError(
             "Use /-/query for read-only SQL; this endpoint only executes writes"
@@ -496,7 +497,7 @@ async def _inserted_row_url(datasette, db, analysis, cursor):
     )
     try:
         result = await db.execute(
-            "select {} from {} where rowid = ?".format(select, escape_sqlite(table)),
+            f"select {select} from {escape_sqlite(table)} where rowid = ?",
             [lastrowid],
         )
     except sqlite3.DatabaseError:

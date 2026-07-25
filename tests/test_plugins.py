@@ -1,21 +1,3 @@
-from bs4 import BeautifulSoup as Soup
-from .fixtures import (
-    make_app_client,
-    TEMP_PLUGIN_SECRET_FILE,
-    PLUGINS_DIR,
-    TestClient as _TestClient,
-)  # noqa
-from click.testing import CliRunner
-from datasette.app import Datasette
-from datasette import cli, hookimpl
-from datasette.fixtures import TABLES
-from datasette.filters import FilterArguments
-from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
-from datasette.permissions import PermissionSQL, Action
-from datasette.resources import DatabaseResource
-from datasette.utils.sqlite import sqlite3
-from datasette.utils import StartupError, await_me_maybe
-from jinja2 import ChoiceLoader, FileSystemLoader
 import base64
 import datetime
 import importlib
@@ -24,8 +6,31 @@ import os
 import pathlib
 import re
 import textwrap
-import pytest
 import urllib
+
+import pytest
+from bs4 import BeautifulSoup as Soup
+from click.testing import CliRunner
+from jinja2 import ChoiceLoader, FileSystemLoader
+
+from datasette import cli, hookimpl
+from datasette.app import Datasette
+from datasette.filters import FilterArguments
+from datasette.fixtures import TABLES
+from datasette.permissions import Action, PermissionSQL
+from datasette.plugins import DEFAULT_PLUGINS, get_plugins, pm
+from datasette.resources import DatabaseResource
+from datasette.utils import StartupError, await_me_maybe
+from datasette.utils.sqlite import sqlite3
+
+from .fixtures import (
+    PLUGINS_DIR,
+    TEMP_PLUGIN_SECRET_FILE,
+    make_app_client,
+)
+from .fixtures import (
+    TestClient as _TestClient,
+)
 
 at_memory_re = re.compile(r" at 0x\w+")
 
@@ -35,7 +40,7 @@ at_memory_re = re.compile(r" at 0x\w+")
 )
 def test_plugin_hooks_have_tests(plugin_hook):
     """Every plugin hook should be referenced in this test module"""
-    tests_in_this_module = [t for t in globals().keys() if t.startswith("test_hook_")]
+    tests_in_this_module = [t for t in globals() if t.startswith("test_hook_")]
     ok = False
     for test in tests_in_this_module:
         if plugin_hook in test:
@@ -125,11 +130,11 @@ async def test_hook_extra_css_urls(ds_client, path, expected_decoded_object):
     response = await ds_client.get(path)
     assert response.status_code == 200
     links = Soup(response.text, "html.parser").find_all("link")
-    special_href = [
+    special_href = next(
         link
         for link in links
         if link.attrs["href"].endswith("/extra-css-urls-demo.css")
-    ][0]["href"]
+    )["href"]
     # This link has a base64-encoded JSON blob in it
     encoded = special_href.split("/")[3]
     actual_decoded_object = json.loads(base64.b64decode(encoded).decode("utf8"))
@@ -152,7 +157,7 @@ async def test_hook_extra_js_urls(ds_client):
             "type": "module",
         },
     ]:
-        assert any(s == attrs for s in script_attrs), "Expected: {}".format(attrs)
+        assert any(s == attrs for s in script_attrs), f"Expected: {attrs}"
 
 
 @pytest.mark.asyncio
@@ -315,7 +320,8 @@ async def test_plugin_config_env_from_list(ds_client):
 
 @pytest.mark.asyncio
 async def test_plugin_config_file(ds_client):
-    with open(TEMP_PLUGIN_SECRET_FILE, "w") as fp:
+    # Blocking write is fine here - it is tiny test setup, not request handling
+    with open(TEMP_PLUGIN_SECRET_FILE, "w") as fp:  # noqa: ASYNC230
         fp.write("FROM_FILE")
     assert {"foo": "FROM_FILE"} == ds_client.ds.plugin_config("file-plugin")
     os.remove(TEMP_PLUGIN_SECRET_FILE)
@@ -823,7 +829,7 @@ def test_hook_register_routes_with_datasette(configured_path):
         assert response.status_code == 200
         assert configured_path.upper() == response.text
         # Other one should 404
-        other_path = [p for p in ("path1", "path2") if configured_path != p][0]
+        other_path = next(p for p in ("path1", "path2") if configured_path != p)
         assert client.get(f"/{other_path}/", follow_redirects=True).status_code == 404
 
 
@@ -928,7 +934,7 @@ async def test_plugin_startup_can_add_queries():
                 await datasette.add_query(
                     "data",
                     "from_startup",
-                    "select {}".format(result.first()[0]),
+                    f"select {result.first()[0]}",
                     source="plugin",
                 )
 
@@ -1040,7 +1046,7 @@ async def test_hook_handle_exception(ds_client):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("param", ("_custom_error", "_custom_error_async"))
 async def test_hook_handle_exception_custom_response(ds_client, param):
-    response = await ds_client.get("/trigger-error?{}=1".format(param))
+    response = await ds_client.get(f"/trigger-error?{param}=1")
     assert response.text == param
 
 
@@ -1374,7 +1380,7 @@ async def test_hook_register_actions_no_duplicates(duplicate):
     # This should error:
     with pytest.raises(StartupError) as ex:
         await ds.invoke_startup()
-        assert "Duplicate action {}".format(duplicate) in str(ex.value)
+        assert f"Duplicate action {duplicate}" in str(ex.value)
 
 
 @pytest.mark.asyncio

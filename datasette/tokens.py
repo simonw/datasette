@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import dataclasses
 import time
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import itsdangerous
 
@@ -50,24 +50,24 @@ class TokenRestrictions:
     database: dict[str, list[str]] = dataclasses.field(default_factory=dict)
     resource: dict[str, dict[str, list[str]]] = dataclasses.field(default_factory=dict)
 
-    def allow_all(self, action: str) -> "TokenRestrictions":
+    def allow_all(self, action: str) -> TokenRestrictions:
         """Allow an action across all databases and resources."""
         self.all.append(action)
         return self
 
-    def allow_database(self, database: str, action: str) -> "TokenRestrictions":
+    def allow_database(self, database: str, action: str) -> TokenRestrictions:
         """Allow an action on a specific database."""
         self.database.setdefault(database, []).append(action)
         return self
 
     def allow_resource(
         self, database: str, resource: str, action: str
-    ) -> "TokenRestrictions":
+    ) -> TokenRestrictions:
         """Allow an action on a specific resource within a database."""
         self.resource.setdefault(database, {}).setdefault(resource, []).append(action)
         return self
 
-    def abbreviated(self, datasette: "Datasette") -> Optional[dict]:
+    def abbreviated(self, datasette: Datasette) -> dict | None:
         """
         Return the abbreviated ``_r`` dictionary shape for this set of
         restrictions, using action abbreviations registered with ``datasette``.
@@ -112,16 +112,16 @@ class TokenHandler:
 
     async def create_token(
         self,
-        datasette: "Datasette",
+        datasette: Datasette,
         actor_id: str,
         *,
-        expires_after: Optional[int] = None,
-        restrictions: Optional[TokenRestrictions] = None,
+        expires_after: int | None = None,
+        restrictions: TokenRestrictions | None = None,
     ) -> str:
         """Create and return a token string for the given actor."""
         raise NotImplementedError
 
-    async def verify_token(self, datasette: "Datasette", token: str) -> Optional[dict]:
+    async def verify_token(self, datasette: Datasette, token: str) -> dict | None:
         """
         Verify a token and return an actor dict.
 
@@ -142,11 +142,11 @@ class SignedTokenHandler(TokenHandler):
 
     async def create_token(
         self,
-        datasette: "Datasette",
+        datasette: Datasette,
         actor_id: str,
         *,
-        expires_after: Optional[int] = None,
-        restrictions: Optional[TokenRestrictions] = None,
+        expires_after: int | None = None,
+        restrictions: TokenRestrictions | None = None,
     ) -> str:
         if not datasette.setting("allow_signed_tokens"):
             raise ValueError(
@@ -163,7 +163,7 @@ class SignedTokenHandler(TokenHandler):
                 token["_r"] = abbreviated
         return "dstok_{}".format(datasette.sign(token, namespace="token"))
 
-    async def verify_token(self, datasette: "Datasette", token: str) -> Optional[dict]:
+    async def verify_token(self, datasette: Datasette, token: str) -> dict | None:
         prefix = "dstok_"
 
         if not token.startswith(prefix):
@@ -200,9 +200,8 @@ class SignedTokenHandler(TokenHandler):
         ):
             duration = max_signed_tokens_ttl
 
-        if duration:
-            if time.time() - created > duration:
-                raise TokenInvalid("Token has expired")
+        if duration and time.time() - created > duration:
+            raise TokenInvalid("Token has expired")
 
         actor = {"id": decoded["a"], "token": "dstok"}
 

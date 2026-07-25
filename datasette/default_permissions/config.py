@@ -6,7 +6,7 @@ Applies permission rules from datasette.yaml configuration.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from datasette.app import Datasette
@@ -55,8 +55,8 @@ class ConfigPermissionProcessor:
 
     def __init__(
         self,
-        datasette: "Datasette",
-        actor: Optional[dict],
+        datasette: Datasette,
+        actor: dict | None,
         action: str,
     ):
         self.datasette = datasette
@@ -74,8 +74,8 @@ class ConfigPermissionProcessor:
         self.restrictions = actor.get("_r", {}) if actor else {}
 
         # Pre-compute restriction info for efficiency
-        self.restricted_databases: Set[str] = set()
-        self.restricted_tables: Set[Tuple[str, str]] = set()
+        self.restricted_databases: set[str] = set()
+        self.restricted_tables: set[tuple[str, str]] = set()
 
         if self.has_restrictions:
             self.restricted_databases = {
@@ -92,7 +92,7 @@ class ConfigPermissionProcessor:
             # Tables implicitly reference their parent databases
             self.restricted_databases.update(db for db, _ in self.restricted_tables)
 
-    def evaluate_allow_block(self, allow_block: Any) -> Optional[bool]:
+    def evaluate_allow_block(self, allow_block: Any) -> bool | None:
         """Evaluate an allow block against the current actor."""
         if allow_block is None:
             return None
@@ -104,8 +104,8 @@ class ConfigPermissionProcessor:
 
     def is_in_restriction_allowlist(
         self,
-        parent: Optional[str],
-        child: Optional[str],
+        parent: str | None,
+        child: str | None,
     ) -> bool:
         """Check if resource is allowed by actor restrictions."""
         if not self.has_restrictions:
@@ -147,9 +147,9 @@ class ConfigPermissionProcessor:
 
     def add_permissions_rule(
         self,
-        parent: Optional[str],
-        child: Optional[str],
-        permissions_block: Optional[dict],
+        parent: str | None,
+        child: str | None,
+        permissions_block: dict | None,
         scope_desc: str,
     ) -> None:
         """Add a rule from a permissions:{action} block."""
@@ -169,8 +169,8 @@ class ConfigPermissionProcessor:
 
     def add_allow_block_rule(
         self,
-        parent: Optional[str],
-        child: Optional[str],
+        parent: str | None,
+        child: str | None,
         allow_block: Any,
         scope_desc: str,
     ) -> None:
@@ -202,8 +202,8 @@ class ConfigPermissionProcessor:
 
     def _add_restriction_gate_denies(
         self,
-        parent: Optional[str],
-        child: Optional[str],
+        parent: str | None,
+        child: str | None,
         is_allowed: bool,
         scope_desc: str,
     ) -> None:
@@ -235,7 +235,7 @@ class ConfigPermissionProcessor:
                     if db_name == parent:
                         self.collector.add(db_name, table_name, False, reason)
 
-    def process(self) -> Optional[PermissionSQL]:
+    def process(self) -> PermissionSQL | None:
         """Process all config rules and return combined PermissionSQL."""
         self._process_root_permissions()
         self._process_databases()
@@ -425,10 +425,10 @@ class ConfigPermissionProcessor:
 
 @hookimpl(specname="permission_resources_sql")
 async def config_permissions_sql(
-    datasette: "Datasette",
-    actor: Optional[dict],
+    datasette: Datasette,
+    actor: dict | None,
     action: str,
-) -> Optional[List[PermissionSQL]]:
+) -> list[PermissionSQL] | None:
     """
     Apply permission rules from datasette.yaml configuration.
 

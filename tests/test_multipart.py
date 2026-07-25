@@ -6,12 +6,12 @@ Uses TDD approach - these tests are written first, then implementation follows.
 
 import base64
 import json
-import pytest
 from collections import namedtuple
 
+import pytest
 from multipart_form_data_conformance import get_tests_dir
 
-from datasette.utils.asgi import Request, BadRequest
+from datasette.utils.asgi import BadRequest, Request
 
 
 def make_receive(body: bytes):

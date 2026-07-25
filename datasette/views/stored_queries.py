@@ -124,7 +124,7 @@ class QueryListView(BaseView):
             pairs.append(("_next", page.next))
             next_url = self.ds.absolute_url(
                 request,
-                "{}?{}".format(request.path, urlencode(pairs)),
+                f"{request.path}?{urlencode(pairs)}",
             )
 
         current_filters = {
@@ -415,7 +415,7 @@ class QueryDefinitionView(BaseView):
         query_name = tilde_decode(request.url_vars["query"])
         query = await self.ds.get_query(db.name, query_name)
         if query is None:
-            return Response.error(["Query not found: {}".format(query_name)], 404)
+            return Response.error([f"Query not found: {query_name}"], 404)
         if not await self.ds.allowed(
             action="view-query",
             resource=QueryResource(db.name, query_name),
@@ -439,7 +439,7 @@ class QueryUpdateView(BaseView):
         query_name = tilde_decode(request.url_vars["query"])
         existing = await self.ds.get_query(db.name, query_name)
         if existing is None:
-            return Response.error(["Query not found: {}".format(query_name)], 404)
+            return Response.error([f"Query not found: {query_name}"], 404)
         if not await self.ds.allowed(
             action="update-query",
             resource=QueryResource(db.name, query_name),
@@ -532,7 +532,7 @@ class QueryEditView(BaseView):
     async def get(self, request):
         db, query_name, existing = await self._load(request)
         if existing is None:
-            return Response.error(["Query not found: {}".format(query_name)], 404)
+            return Response.error([f"Query not found: {query_name}"], 404)
         await self.ds.ensure_permission(
             action="update-query",
             resource=QueryResource(db.name, query_name),
@@ -545,7 +545,7 @@ class QueryEditView(BaseView):
     async def post(self, request):
         db, query_name, existing = await self._load(request)
         if existing is None:
-            return Response.error(["Query not found: {}".format(query_name)], 404)
+            return Response.error([f"Query not found: {query_name}"], 404)
         if not await self.ds.allowed(
             action="update-query",
             resource=QueryResource(db.name, query_name),
@@ -629,7 +629,7 @@ class QueryDeleteView(BaseView):
     async def get(self, request):
         db, query_name, existing = await self._load(request)
         if existing is None:
-            return Response.error(["Query not found: {}".format(query_name)], 404)
+            return Response.error([f"Query not found: {query_name}"], 404)
         await self.ds.ensure_permission(
             action="delete-query",
             resource=QueryResource(db.name, query_name),
@@ -653,7 +653,7 @@ class QueryDeleteView(BaseView):
     async def post(self, request):
         db, query_name, existing = await self._load(request)
         if existing is None:
-            return Response.error(["Query not found: {}".format(query_name)], 404)
+            return Response.error([f"Query not found: {query_name}"], 404)
         if not await self.ds.allowed(
             action="delete-query",
             resource=QueryResource(db.name, query_name),
@@ -665,13 +665,13 @@ class QueryDeleteView(BaseView):
                 ["Trusted queries cannot be deleted using the API"], 403
             )
 
-        data, is_json = await _json_or_form_payload(request)
+        _data, is_json = await _json_or_form_payload(request)
         await self.ds.remove_query(db.name, query_name)
         if is_json:
             return Response.json({"ok": True})
         self.ds.add_message(
             request,
-            "Query “{}” deleted".format(existing.title or query_name),
+            f"Query “{existing.title or query_name}” deleted",
             self.ds.INFO,
         )
         return Response.redirect(self.ds.urls.path(self.ds.urls.database(db.name)))

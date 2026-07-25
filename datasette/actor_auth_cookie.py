@@ -1,7 +1,9 @@
-from datasette import hookimpl
-from itsdangerous import BadSignature
-from datasette.utils import baseconv
 import time
+
+from itsdangerous import BadSignature
+
+from datasette import hookimpl
+from datasette.utils import baseconv
 
 
 @hookimpl

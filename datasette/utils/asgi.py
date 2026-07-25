@@ -1,28 +1,29 @@
 import json
-from typing import Optional
+import re
+from http.cookies import Morsel, SimpleCookie
+from mimetypes import guess_type
+from pathlib import Path
+from urllib.parse import parse_qs, parse_qsl, urlunparse
+
+import aiofiles
+import aiofiles.os
+
 from datasette.utils import MultiParams, calculate_etag, error_body, sha256_file
 from datasette.utils.multipart import (
-    parse_form_data,
-    MultipartParseError,
-    FormData,
-    DEFAULT_MAX_FILE_SIZE,
-    DEFAULT_MAX_REQUEST_SIZE,
-    DEFAULT_MAX_FIELDS,
-    DEFAULT_MAX_FILES,
-    DEFAULT_MAX_PARTS,
     DEFAULT_MAX_FIELD_SIZE,
+    DEFAULT_MAX_FIELDS,
+    DEFAULT_MAX_FILE_SIZE,
+    DEFAULT_MAX_FILES,
     DEFAULT_MAX_MEMORY_FILE_SIZE,
     DEFAULT_MAX_PART_HEADER_BYTES,
     DEFAULT_MAX_PART_HEADER_LINES,
+    DEFAULT_MAX_PARTS,
+    DEFAULT_MAX_REQUEST_SIZE,
     DEFAULT_MIN_FREE_DISK_BYTES,
+    FormData,
+    MultipartParseError,
+    parse_form_data,
 )
-from mimetypes import guess_type
-from urllib.parse import parse_qs, urlunparse, parse_qsl
-from pathlib import Path
-from http.cookies import SimpleCookie, Morsel
-import aiofiles
-import aiofiles.os
-import re
 
 # Workaround for adding samesite support to pre 3.8 python
 Morsel._reserved["samesite"] = "SameSite"
@@ -88,7 +89,7 @@ class Request:
         self.max_post_body_bytes = max_post_body_bytes
 
     def __repr__(self):
-        return '<asgi.Request method="{}" url="{}">'.format(self.method, self.url)
+        return f'<asgi.Request method="{self.method}" url="{self.url}">'
 
     @property
     def method(self):
@@ -167,7 +168,7 @@ class Request:
         if max_bytes is None:
             max_bytes = self.max_post_body_bytes
         too_large = PayloadTooLarge(
-            "Request body exceeded maximum size of {} bytes".format(max_bytes)
+            f"Request body exceeded maximum size of {max_bytes} bytes"
         )
         if max_bytes:
             # Reject early if the client declares an oversized body
@@ -206,7 +207,7 @@ class Request:
         max_request_size: int = DEFAULT_MAX_REQUEST_SIZE,
         max_fields: int = DEFAULT_MAX_FIELDS,
         max_files: int = DEFAULT_MAX_FILES,
-        max_parts: Optional[int] = DEFAULT_MAX_PARTS,
+        max_parts: int | None = DEFAULT_MAX_PARTS,
         max_field_size: int = DEFAULT_MAX_FIELD_SIZE,
         max_memory_file_size: int = DEFAULT_MAX_MEMORY_FILE_SIZE,
         max_part_header_bytes: int = DEFAULT_MAX_PART_HEADER_BYTES,
@@ -529,9 +530,9 @@ class Response:
         httponly=False,
         samesite="lax",
     ):
-        assert samesite in SAMESITE_VALUES, "samesite should be one of {}".format(
-            SAMESITE_VALUES
-        )
+        assert (
+            samesite in SAMESITE_VALUES
+        ), f"samesite should be one of {SAMESITE_VALUES}"
         cookie = SimpleCookie()
         cookie[key] = value
         for prop_name, prop_value in (

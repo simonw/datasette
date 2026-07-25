@@ -1,23 +1,25 @@
 import json
 import logging
+import secrets
+import urllib
+
+from datasette.events import CreateTokenEvent, LoginEvent, LogoutEvent
 from datasette.jump import JumpSQL, namespace_sql_params
 from datasette.plugins import pm
-from datasette.events import LogoutEvent, LoginEvent, CreateTokenEvent
 from datasette.resources import DatabaseResource, TableResource
-from datasette.utils.asgi import Response, Forbidden
 from datasette.utils import (
     UNSTABLE_API_MESSAGE,
     actor_matches_allow,
-    parse_size_limit,
     add_cors_headers,
     await_me_maybe,
     error_body,
-    tilde_encode,
+    parse_size_limit,
     tilde_decode,
+    tilde_encode,
 )
+from datasette.utils.asgi import Forbidden, Response
+
 from .base import BaseView, View
-import secrets
-import urllib
 
 logger = logging.getLogger(__name__)
 
@@ -179,9 +181,7 @@ class AutocompleteDebugView(BaseView):
                     )
                     context.update(
                         {
-                            "autocomplete_url": "{}/-/autocomplete".format(
-                                self.ds.urls.table(database_name, table_name)
-                            ),
+                            "autocomplete_url": f"{self.ds.urls.table(database_name, table_name)}/-/autocomplete",
                             "label_column": await db.label_column_for_table(table_name),
                         }
                     )
@@ -420,8 +420,11 @@ class AllowedResourcesView(BaseView):
                     row["reason"] = resource.reasons
 
                 allowed_rows.append(row)
-        except Exception:
-            # If catalog tables don't exist yet, return empty results
+        except Exception:  # noqa: BLE001
+            # Returns empty results if the catalog tables don't exist yet, but
+            # also swallows the AttributeError raised for instance-level actions
+            # such as view-instance, which have no resource_class.
+            # TODO: handle that case explicitly and narrow this to sqlite3.Error
             return (
                 {
                     "ok": True,
@@ -523,7 +526,7 @@ class PermissionRulesView(BaseView):
 
         from datasette.utils.actions_sql import build_permission_rules_sql
 
-        union_sql, union_params, restriction_sqls = await build_permission_rules_sql(
+        union_sql, union_params, _restriction_sqls = await build_permission_rules_sql(
             self.ds, actor, action
         )
         await self.ds.refresh_schemas()
@@ -936,7 +939,7 @@ class ApiExplorerView(BaseView):
                 tables.append({"name": table, "links": table_links})
                 table_links.append(
                     {
-                        "label": "Get rows for {}".format(table),
+                        "label": f"Get rows for {table}",
                         "method": "GET",
                         "path": self.ds.urls.table(name, table, format="json"),
                     }
@@ -956,7 +959,7 @@ class ApiExplorerView(BaseView):
                             {
                                 "path": self.ds.urls.table(name, table) + "/-/insert",
                                 "method": "POST",
-                                "label": "Insert rows into {}".format(table),
+                                "label": f"Insert rows into {table}",
                                 "json": {
                                     "rows": [
                                         {
@@ -970,7 +973,7 @@ class ApiExplorerView(BaseView):
                             {
                                 "path": self.ds.urls.table(name, table) + "/-/upsert",
                                 "method": "POST",
-                                "label": "Upsert rows into {}".format(table),
+                                "label": f"Upsert rows into {table}",
                                 "json": {
                                     "rows": [
                                         {
@@ -1000,7 +1003,7 @@ class ApiExplorerView(BaseView):
                     table_links.append(
                         {
                             "path": self.ds.urls.table(name, table) + "/-/drop",
-                            "label": "Drop table {}".format(table),
+                            "label": f"Drop table {table}",
                             "json": {"confirm": False},
                             "method": "POST",
                         }
@@ -1017,7 +1020,7 @@ class ApiExplorerView(BaseView):
                 database_links.append(
                     {
                         "path": self.ds.urls.database(name) + "/-/create",
-                        "label": "Create table in {}".format(name),
+                        "label": f"Create table in {name}",
                         "json": {
                             "table": "new_table",
                             "columns": [

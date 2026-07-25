@@ -1,5 +1,6 @@
-import pytest
 import sqlite3
+
+import pytest
 
 from datasette.utils import escape_sqlite
 from datasette.utils.internal_db import INTERNAL_DB_SCHEMA_SQL
@@ -137,7 +138,7 @@ async def test_internal_foreign_key_references(ds_client):
             return {
                 row[1]
                 for row in conn.execute(
-                    "PRAGMA table_info({})".format(escape_sqlite(table_name))
+                    f"PRAGMA table_info({escape_sqlite(table_name)})"
                 ).fetchall()
             }
 
@@ -147,7 +148,7 @@ async def test_internal_foreign_key_references(ds_client):
                 for _, name in sorted(
                     (row[5], row[1])
                     for row in conn.execute(
-                        "PRAGMA table_info({})".format(escape_sqlite(table_name))
+                        f"PRAGMA table_info({escape_sqlite(table_name)})"
                     ).fetchall()
                     if row[5]
                 )
@@ -159,7 +160,7 @@ async def test_internal_foreign_key_references(ds_client):
 
         for table_name in table_names:
             foreign_key_rows = conn.execute(
-                "PRAGMA foreign_key_list({})".format(escape_sqlite(table_name))
+                f"PRAGMA foreign_key_list({escape_sqlite(table_name)})"
             ).fetchall()
             foreign_keys_by_id = {}
             for foreign_key in foreign_key_rows:
@@ -169,25 +170,16 @@ async def test_internal_foreign_key_references(ds_client):
                 foreign_key_rows.sort(key=lambda row: row[1])
                 other_table = foreign_key_rows[0][2]
                 other_columns = [row[4] for row in foreign_key_rows]
-                message = 'Column "{}.{}" references other table "{}" which does not exist'.format(
-                    table_name, foreign_key_rows[0][3], other_table
-                )
+                message = f'Column "{table_name}.{foreign_key_rows[0][3]}" references other table "{other_table}" which does not exist'
                 assert other_table in table_names, message + " (bad table)"
                 if all(other_column is None for other_column in other_columns):
                     other_columns = primary_keys_for_table(other_table)
-                length_message = 'Foreign key from "{}" to "{}" has {} columns but references {} columns'.format(
-                    table_name,
-                    other_table,
-                    len(foreign_key_rows),
-                    len(other_columns),
-                )
+                length_message = f'Foreign key from "{table_name}" to "{other_table}" has {len(foreign_key_rows)} columns but references {len(other_columns)} columns'
                 assert len(other_columns) == len(foreign_key_rows), length_message
 
                 for foreign_key, other_column in zip(foreign_key_rows, other_columns):
                     column = foreign_key[3]
-                    message = 'Column "{}.{}" references other column "{}.{}" which does not exist'.format(
-                        table_name, column, other_table, other_column
-                    )
+                    message = f'Column "{table_name}.{column}" references other column "{other_table}.{other_column}" which does not exist'
                     assert other_column in columns_by_table[other_table], (
                         message + " (bad column)"
                     )
@@ -245,9 +237,9 @@ async def test_stale_catalog_entry_database_fix(tmp_path):
 
 @pytest.mark.asyncio
 async def test_stale_catalog_child_entries_removed_for_missing_database(tmp_path):
-    from datasette.app import Datasette
-
     import sqlite3
+
+    from datasette.app import Datasette
 
     internal_db_path = str(tmp_path / "internal.db")
     alpha_db_path = str(tmp_path / "alpha.db")
@@ -293,9 +285,9 @@ async def test_stale_catalog_child_entries_removed_for_missing_database(tmp_path
 
 @pytest.mark.asyncio
 async def test_orphan_stale_catalog_child_entries_removed(tmp_path):
-    from datasette.app import Datasette
-
     import sqlite3
+
+    from datasette.app import Datasette
 
     internal_db_path = str(tmp_path / "internal.db")
     alpha_db_path = str(tmp_path / "alpha.db")

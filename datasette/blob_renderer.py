@@ -1,7 +1,8 @@
-from datasette import hookimpl
-from datasette.utils.asgi import Response, BadRequest
-from datasette.utils import to_css_class
 import hashlib
+
+from datasette import hookimpl
+from datasette.utils import to_css_class
+from datasette.utils.asgi import BadRequest, Response
 
 _BLOB_COLUMN = "_blob_column"
 _BLOB_HASH = "_blob_hash"

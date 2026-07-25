@@ -3,14 +3,16 @@ Tests for the write_wrapper plugin hook.
 """
 
 import asyncio
+import sqlite3
+import time
 from dataclasses import dataclass
+
+import pytest
+
 from datasette.app import Datasette
 from datasette.events import Event
 from datasette.hookspecs import hookimpl
 from datasette.plugins import pm
-import pytest
-import sqlite3
-import time
 
 
 @dataclass
@@ -113,7 +115,8 @@ async def test_write_wrapper_exception_thrown_into_generator(datasette):
             def wrapper(conn):
                 try:
                     yield
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
+                    # Test helper deliberately captures whatever the wrapped write raised
                     caught["error"] = e
 
             return wrapper
@@ -232,7 +235,6 @@ async def test_write_wrapper_return_none_skips(datasette):
         @hookimpl
         def write_wrapper(datasette, database, request, transaction):
             log.append("hook-called")
-            return None
 
     pm.register(Plugin(), name="test_skip")
     try:
@@ -339,7 +341,7 @@ async def test_write_wrapper_via_api(tmp_path):
             "/test/api_test/-/insert",
             json={"row": {"name": "test"}, "return": True},
             headers={
-                "Authorization": "Bearer {}".format(token),
+                "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json",
             },
         )
@@ -466,7 +468,7 @@ async def test_write_wrapper_set_authorizer(datasette, actor, table, should_deny
     try:
         request = FakeRequest(actor)
         if should_deny:
-            with pytest.raises(Exception):
+            with pytest.raises(sqlite3.DatabaseError, match="not authorized"):
                 await db.execute_write_fn(
                     lambda conn: conn.execute(
                         f"insert into {table} (value) values ('test')"

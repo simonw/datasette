@@ -1,8 +1,10 @@
+import json
+from functools import wraps
+
+import markupsafe
+
 from datasette import hookimpl
 from datasette.utils.asgi import Response
-from functools import wraps
-import markupsafe
-import json
 
 
 @hookimpl
@@ -33,11 +35,7 @@ def render_cell(value, database):
     if set(data.keys()) != {"href", "label"}:
         return None
     href = data["href"]
-    if not (
-        href.startswith("/")
-        or href.startswith("http://")
-        or href.startswith("https://")
-    ):
+    if not (href.startswith(("/", "http://", "https://"))):
         return None
     return markupsafe.Markup(
         '<a data-database="{database}" href="{href}">{label}</a>'.format(
@@ -54,7 +52,7 @@ def extra_template_vars(template, database, table, view_name, request, datasette
     datasette._last_request = request
 
     async def query_database(sql):
-        first_db = list(datasette.databases.keys())[0]
+        first_db = next(iter(datasette.databases.keys()))
         return (await datasette.execute(first_db, sql)).rows[0][0]
 
     async def inner():
@@ -172,10 +170,10 @@ def register_routes(datasette):
     path = config["path"]
 
     def new_table(request):
-        return Response.text("/db/table: {}".format(sorted(request.url_vars.items())))
+        return Response.text(f"/db/table: {sorted(request.url_vars.items())}")
 
     return [
-        (r"/{}/$".format(path), lambda: Response.text(path.upper())),
+        (rf"/{path}/$", lambda: Response.text(path.upper())),
         # Also serves to demonstrate over-ride of default paths:
         (r"/(?P<db_name>[^/]+)/(?P<table_and_format>[^/]+?$)", new_table),
     ]

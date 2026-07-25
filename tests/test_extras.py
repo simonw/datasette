@@ -1,4 +1,5 @@
 import asyncio
+from typing import ClassVar
 
 import pytest
 
@@ -7,7 +8,7 @@ from datasette.extras import Extra, ExtraRegistry, ExtraScope
 
 class SlowValueExtra(Extra):
     description = "Returns context['value'], optionally slowly"
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
 
     async def resolve(self, context):
         if context["slow"]:
@@ -17,7 +18,7 @@ class SlowValueExtra(Extra):
 
 class DependentExtra(Extra):
     description = "Depends on slow_value"
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
 
     async def resolve(self, context, slow_value):
         return slow_value + 1
@@ -25,7 +26,7 @@ class DependentExtra(Extra):
 
 class InternalOnlyExtra(Extra):
     description = "Internal extra for HTML templates only"
-    scopes = {ExtraScope.TABLE}
+    scopes: ClassVar[set[ExtraScope]] = {ExtraScope.TABLE}
     public = False
 
     async def resolve(self, context):
@@ -52,7 +53,7 @@ def _registered_extra_classes():
 @pytest.mark.parametrize("cls", _registered_extra_classes(), ids=lambda cls: cls.key())
 def test_registered_extras_have_descriptions(cls):
     # Every registered extra is part of the documented template/JSON contract
-    assert cls.description, "{} is missing a description".format(cls.__name__)
+    assert cls.description, f"{cls.__name__} is missing a description"
 
 
 def test_registry_is_built_once_per_scope():

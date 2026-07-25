@@ -1,11 +1,14 @@
+import json
+
+import pytest
+
 from datasette.app import Datasette
 from datasette.database import Database
-from datasette.facets import Facet, ColumnFacet, ArrayFacet, DateFacet
-from datasette.utils.asgi import Request
+from datasette.facets import ArrayFacet, ColumnFacet, DateFacet, Facet
 from datasette.utils import detect_json1
+from datasette.utils.asgi import Request
+
 from .fixtures import make_app_client
-import json
-import pytest
 
 
 @pytest.mark.asyncio
@@ -537,7 +540,7 @@ async def test_facet_size():
         for j in range(1, 4):
             await db.execute_write(
                 "insert into neighbourhoods (city, neighbourhood) values (?, ?)",
-                ["City {}".format(i), "Neighbourhood {}".format(j)],
+                [f"City {i}", f"Neighbourhood {j}"],
             )
     response = await ds.client.get(
         "/test_facet_size/neighbourhoods.json?_extra=suggested_facets"

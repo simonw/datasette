@@ -8,34 +8,35 @@ from dataclasses import dataclass, field
 import markupsafe
 import sqlite_utils
 
-from datasette.utils.asgi import NotFound, Forbidden, PayloadTooLarge, Response
 from datasette.database import QueryInterrupted
-from datasette.events import UpdateRowEvent, DeleteRowEvent
+from datasette.events import DeleteRowEvent, UpdateRowEvent
+from datasette.extras import ExtraScope, extra_names_from_request
+from datasette.plugins import pm
 from datasette.resources import TableResource
-from .base import BaseView, DatasetteError, stream_csv
 from datasette.utils import (
+    CustomJSONEncoder,
+    CustomRow,
+    InvalidSql,
+    WriteJsonValueError,
     add_cors_headers,
     await_me_maybe,
     call_with_supported_arguments,
-    CustomJSONEncoder,
-    CustomRow,
     decode_write_json_row,
-    InvalidSql,
+    escape_sqlite,
     make_slot_function,
     path_from_row_pks,
     path_with_format,
     path_with_removed_args,
-    to_css_class,
-    escape_sqlite,
     sqlite3,
-    WriteJsonValueError,
+    to_css_class,
 )
-from datasette.plugins import pm
-from datasette.extras import extra_names_from_request, ExtraScope
+from datasette.utils.asgi import Forbidden, NotFound, PayloadTooLarge, Response
+
 from . import Context, from_extra
+from .base import BaseView, DatasetteError, stream_csv
 from .table import (
-    display_columns_and_rows,
     _table_page_data,
+    display_columns_and_rows,
     row_label_from_label_column,
 )
 from .table_extras import RowExtraContext, resolve_row_extras, table_extra_registry
@@ -187,16 +188,16 @@ class RowView(BaseView):
                 data, extra_template_data, templates = response_or_template_contexts
         except QueryInterrupted as ex:
             raise DatasetteError(
-                textwrap.dedent("""
+                textwrap.dedent(f"""
                 <p>SQL query took too long. The time limit is controlled by the
                 <a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>
                 configuration option.</p>
-                <textarea style="width: 90%">{}</textarea>
+                <textarea style="width: 90%">{markupsafe.escape(ex.sql)}</textarea>
                 <script>
                 let ta = document.querySelector("textarea");
                 ta.style.height = ta.scrollHeight + "px";
                 </script>
-            """.format(markupsafe.escape(ex.sql))).strip(),
+            """).strip(),
                 title="SQL Interrupted",
                 status=400,
                 message_is_html=True,
@@ -207,15 +208,13 @@ class RowView(BaseView):
             )
         except (sqlite3.OperationalError, InvalidSql) as e:
             raise DatasetteError(str(e), title="Invalid SQL", status=400)
-        except sqlite3.OperationalError as e:
-            raise DatasetteError(str(e))
         except DatasetteError:
             raise
 
         end = time.perf_counter()
         data["query_ms"] = (end - start) * 1000
 
-        if format_ in self.ds.renderers.keys():
+        if format_ in self.ds.renderers:
             # Dispatch request to the correct output format renderer
             # (CSV is not handled here due to streaming)
             result = call_with_supported_arguments(
@@ -258,7 +257,7 @@ class RowView(BaseView):
             if status_code is not None:
                 response.status = status_code
         else:
-            raise NotFound("Invalid format: {}".format(format_))
+            raise NotFound(f"Invalid format: {format_}")
 
         ttl = request.args.get("_ttl", None)
         if ttl is None or not ttl.isdigit():
@@ -373,9 +372,7 @@ class RowView(BaseView):
                 view_name=self.name,
             ),
             headers={
-                "Link": '<{}>; rel="alternate"; type="application/json+datasette"'.format(
-                    alternate_url_json
-                )
+                "Link": f'<{alternate_url_json}>; rel="alternate"; type="application/json+datasette"'
             },
         )
 
@@ -500,7 +497,7 @@ class RowView(BaseView):
 
             row_action_label = pk_path
             if row_label and row_label != pk_path:
-                row_action_label = "{} {}".format(pk_path, row_label)
+                row_action_label = f"{pk_path} {row_label}"
 
             row_action_permissions = {}
             if is_table and db.is_mutable:
@@ -513,7 +510,7 @@ class RowView(BaseView):
             row_actions = []
             if row_action_permissions.get("update-row"):
                 attrs = {
-                    "aria-label": "Edit row {}".format(row_action_label),
+                    "aria-label": f"Edit row {row_action_label}",
                     "data-row": row_path,
                     "data-row-action": "edit",
                 }
@@ -529,7 +526,7 @@ class RowView(BaseView):
                 )
             if row_action_permissions.get("delete-row"):
                 attrs = {
-                    "aria-label": "Delete row {}".format(row_action_label),
+                    "aria-label": f"Delete row {row_action_label}",
                     "data-row": row_path,
                     "data-row-action": "delete",
                 }
@@ -679,7 +676,7 @@ class RowView(BaseView):
                 key,
                 ",".join(pk_values),
             )
-            foreign_key_tables.append({**fk, **{"count": count, "link": link}})
+            foreign_key_tables.append({**fk, "count": count, "link": link})
         return foreign_key_tables
 
 
@@ -705,23 +702,21 @@ async def _row_flash_message(db, action, resolved, row=None):
     if label:
         label = _truncated_row_flash_label(label)
     if label and label != pk_label:
-        return "{} row {} ({})".format(action, pk_label, label)
-    return "{} row {}".format(action, pk_label)
+        return f"{action} row {pk_label} ({label})"
+    return f"{action} row {pk_label}"
 
 
 async def _resolve_row_and_check_permission(datasette, request, permission):
-    from datasette.app import DatabaseNotFound, TableNotFound, RowNotFound
+    from datasette.app import DatabaseNotFound, RowNotFound, TableNotFound
 
     try:
         resolved = await datasette.resolve_row(request)
     except DatabaseNotFound as e:
-        return False, Response.error(
-            ["Database not found: {}".format(e.database_name)], 404
-        )
+        return False, Response.error([f"Database not found: {e.database_name}"], 404)
     except TableNotFound as e:
-        return False, Response.error(["Table not found: {}".format(e.table)], 404)
+        return False, Response.error([f"Table not found: {e.table}"], 404)
     except RowNotFound as e:
-        return False, Response.error(["Record not found: {}".format(e.pk_values)], 404)
+        return False, Response.error([f"Record not found: {e.pk_values}"], 404)
 
     # Ensure user has permission to delete this row
     if not await datasette.allowed(
@@ -753,7 +748,8 @@ class RowDeleteView(BaseView):
 
         try:
             await resolved.db.execute_write_fn(delete_row, request=request)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
+            # TODO: narrow to expected write errors so Datasette bugs surface as 500s
             return Response.error([str(e)], 400)
 
         await self.ds.track_event(
@@ -793,7 +789,7 @@ class RowUpdateView(BaseView):
         try:
             data = await request.json()
         except json.JSONDecodeError as e:
-            return Response.error(["Invalid JSON: {}".format(e)])
+            return Response.error([f"Invalid JSON: {e}"])
         except PayloadTooLarge as e:
             return Response.error([str(e)], 413)
 
@@ -836,7 +832,8 @@ class RowUpdateView(BaseView):
 
         try:
             await resolved.db.execute_write_fn(update_row, request=request)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
+            # TODO: narrow to expected write errors so Datasette bugs surface as 500s
             return Response.error([str(e)], 400)
 
         result = {"ok": True}

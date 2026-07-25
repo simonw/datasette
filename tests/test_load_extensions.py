@@ -1,6 +1,8 @@
-from datasette.app import Datasette
-import pytest
 from pathlib import Path
+
+import pytest
+
+from datasette.app import Datasette
 
 # not necessarily a full path - the full compiled path looks like "ext.dylib"
 # or another suffix, but sqlite will, under the hood, decide which file

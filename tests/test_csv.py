@@ -1,7 +1,9 @@
-from datasette.app import Datasette
-from bs4 import BeautifulSoup as Soup
-import pytest
 import urllib.parse
+
+import pytest
+from bs4 import BeautifulSoup as Soup
+
+from datasette.app import Datasette
 
 EXPECTED_TABLE_CSV = """id,content
 1,hello

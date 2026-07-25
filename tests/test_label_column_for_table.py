@@ -1,6 +1,7 @@
 import pytest
-from datasette.database import Database
+
 from datasette.app import Datasette
+from datasette.database import Database
 
 
 @pytest.mark.asyncio

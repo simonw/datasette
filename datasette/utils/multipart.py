@@ -11,15 +11,10 @@ Supports:
 import asyncio
 import shutil
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import (
     Any,
-    Callable,
-    Dict,
-    List,
-    Optional,
-    Tuple,
-    Union,
 )
 from urllib.parse import parse_qsl
 
@@ -29,7 +24,7 @@ DEFAULT_MAX_REQUEST_SIZE = 100 * 1024 * 1024  # 100MB
 DEFAULT_MAX_FIELDS = 1000
 DEFAULT_MAX_FILES = 100
 # If max_parts is not specified, it defaults to max_fields + max_files
-DEFAULT_MAX_PARTS: Optional[int] = None
+DEFAULT_MAX_PARTS: int | None = None
 DEFAULT_MAX_FIELD_SIZE = 100 * 1024  # 100KB
 DEFAULT_MAX_MEMORY_FILE_SIZE = 1024 * 1024  # 1MB
 DEFAULT_MAX_PART_HEADER_BYTES = 16 * 1024  # 16KB
@@ -39,8 +34,6 @@ DEFAULT_MIN_FREE_DISK_BYTES = 50 * 1024 * 1024  # 50MB
 
 class MultipartParseError(Exception):
     """Raised when multipart parsing fails."""
-
-    pass
 
 
 @dataclass
@@ -57,7 +50,7 @@ class UploadedFile:
 
     name: str
     filename: str
-    content_type: Optional[str]
+    content_type: str | None
     size: int
     _file: tempfile.SpooledTemporaryFile = field(repr=False)
 
@@ -86,7 +79,8 @@ class UploadedFile:
     def __del__(self):
         try:
             self._file.close()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
+            # __del__ must never raise
             pass
 
 
@@ -98,27 +92,27 @@ class FormData:
     """
 
     def __init__(self):
-        self._data: List[Tuple[str, Union[str, UploadedFile]]] = []
+        self._data: list[tuple[str, str | UploadedFile]] = []
 
-    def append(self, key: str, value: Union[str, UploadedFile]) -> None:
+    def append(self, key: str, value: str | UploadedFile) -> None:
         """Add a key-value pair."""
         self._data.append((key, value))
 
-    def __getitem__(self, key: str) -> Union[str, UploadedFile]:
+    def __getitem__(self, key: str) -> str | UploadedFile:
         """Get the first value for a key."""
         for k, v in self._data:
             if k == key:
                 return v
         raise KeyError(key)
 
-    def get(self, key: str, default: Any = None) -> Optional[Union[str, UploadedFile]]:
+    def get(self, key: str, default: Any = None) -> str | UploadedFile | None:
         """Get the first value for a key, or default if not found."""
         try:
             return self[key]
         except KeyError:
             return default
 
-    def getlist(self, key: str) -> List[Union[str, UploadedFile]]:
+    def getlist(self, key: str) -> list[str | UploadedFile]:
         """Get all values for a key."""
         return [v for k, v in self._data if k == key]
 
@@ -142,15 +136,15 @@ class FormData:
         """Return unique keys."""
         return list(self)
 
-    def items(self) -> List[Tuple[str, Union[str, UploadedFile]]]:
+    def items(self) -> list[tuple[str, str | UploadedFile]]:
         """Return all key-value pairs."""
         return list(self._data)
 
-    def values(self) -> List[Union[str, UploadedFile]]:
+    def values(self) -> list[str | UploadedFile]:
         """Return all values."""
         return [v for _, v in self._data]
 
-    def _uploaded_files(self) -> List[UploadedFile]:
+    def _uploaded_files(self) -> list[UploadedFile]:
         """Return UploadedFile instances contained in this form."""
         return [v for _, v in self._data if isinstance(v, UploadedFile)]
 
@@ -163,7 +157,7 @@ class FormData:
         for uploaded in self._uploaded_files():
             try:
                 uploaded.close_sync()
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 # Best-effort cleanup; ignore close errors
                 pass
 
@@ -172,7 +166,7 @@ class FormData:
         for uploaded in self._uploaded_files():
             try:
                 await uploaded.close()
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 # Best-effort cleanup; ignore close errors
                 pass
 
@@ -189,13 +183,13 @@ class FormData:
         await self.aclose()
 
 
-def parse_content_disposition(header: str) -> Dict[str, Optional[str]]:
+def parse_content_disposition(header: str) -> dict[str, str | None]:
     """
     Parse Content-Disposition header value.
 
     Returns dict with 'name', 'filename' keys (filename may be None).
     """
-    result: Dict[str, Optional[str]] = {"name": None, "filename": None}
+    result: dict[str, str | None] = {"name": None, "filename": None}
 
     # Split on semicolons, handling quoted strings
     parts = []
@@ -238,7 +232,8 @@ def parse_content_disposition(header: str) -> Dict[str, Optional[str]]:
                         from urllib.parse import unquote
 
                         result["filename"] = unquote(encoded, encoding="utf-8")
-                    except Exception:
+                    except Exception:  # noqa: BLE001, S110
+                        # Malformed RFC 5987 filename* - fall back to the plain filename
                         pass
             continue
 
@@ -250,20 +245,19 @@ def parse_content_disposition(header: str) -> Dict[str, Optional[str]]:
 
         if key == "name":
             result["name"] = value
-        elif key == "filename":
-            # Only set if filename* hasn't already set it
-            if result["filename"] is None:
-                # Strip path components (security)
-                # Handle both Unix and Windows paths
-                value = value.replace("\\", "/")
-                if "/" in value:
-                    value = value.rsplit("/", 1)[-1]
-                result["filename"] = value
+        # Only set filename if filename* hasn't already set it
+        elif key == "filename" and result["filename"] is None:
+            # Strip path components (security)
+            # Handle both Unix and Windows paths
+            value = value.replace("\\", "/")
+            if "/" in value:
+                value = value.rsplit("/", 1)[-1]
+            result["filename"] = value
 
     return result
 
 
-def parse_content_type(header: str) -> Tuple[str, Dict[str, str]]:
+def parse_content_type(header: str) -> tuple[str, dict[str, str]]:
     """
     Parse Content-Type header value.
 
@@ -307,7 +301,7 @@ class MultipartParser:
         max_request_size: int = DEFAULT_MAX_REQUEST_SIZE,
         max_fields: int = DEFAULT_MAX_FIELDS,
         max_files: int = DEFAULT_MAX_FILES,
-        max_parts: Optional[int] = DEFAULT_MAX_PARTS,
+        max_parts: int | None = DEFAULT_MAX_PARTS,
         max_field_size: int = DEFAULT_MAX_FIELD_SIZE,
         max_memory_file_size: int = DEFAULT_MAX_MEMORY_FILE_SIZE,
         max_part_header_bytes: int = DEFAULT_MAX_PART_HEADER_BYTES,
@@ -348,12 +342,12 @@ class MultipartParser:
         self._tempdir = tempfile.gettempdir()
 
         # Current part state
-        self.current_headers: Dict[str, str] = {}
-        self.current_file: Optional[tempfile.SpooledTemporaryFile] = None
+        self.current_headers: dict[str, str] = {}
+        self.current_file: tempfile.SpooledTemporaryFile | None = None
         self.current_body = bytearray()
-        self.current_name: Optional[str] = None
-        self.current_filename: Optional[str] = None
-        self.current_content_type: Optional[str] = None
+        self.current_name: str | None = None
+        self.current_filename: str | None = None
+        self.current_content_type: str | None = None
 
     def feed(self, chunk: bytes) -> None:
         """Feed a chunk of data to the parser."""
@@ -454,7 +448,7 @@ class MultipartParser:
             # Parse header
             try:
                 line_str = line.decode("utf-8", errors="replace")
-            except Exception:
+            except UnicodeDecodeError:
                 line_str = line.decode("latin-1")
 
             if ":" in line_str:
@@ -481,7 +475,9 @@ class MultipartParser:
             if self.file_count > self.max_files:
                 raise MultipartParseError("Too many files")
             if self.handle_files:
-                self.current_file = tempfile.SpooledTemporaryFile(
+                # Outlives this method - it is filled in across parser callbacks
+                # and then handed to the UploadedFile the caller consumes
+                self.current_file = tempfile.SpooledTemporaryFile(  # noqa: SIM115
                     max_size=self.max_memory_file_size
                 )
             else:
@@ -644,7 +640,7 @@ async def parse_form_data(
     max_request_size: int = DEFAULT_MAX_REQUEST_SIZE,
     max_fields: int = DEFAULT_MAX_FIELDS,
     max_files: int = DEFAULT_MAX_FILES,
-    max_parts: Optional[int] = DEFAULT_MAX_PARTS,
+    max_parts: int | None = DEFAULT_MAX_PARTS,
     max_field_size: int = DEFAULT_MAX_FIELD_SIZE,
     max_memory_file_size: int = DEFAULT_MAX_MEMORY_FILE_SIZE,
     max_part_header_bytes: int = DEFAULT_MAX_PART_HEADER_BYTES,

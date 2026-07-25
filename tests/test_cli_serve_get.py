@@ -1,8 +1,10 @@
+import json
+import textwrap
+
+from click.testing import CliRunner
+
 from datasette.cli import cli
 from datasette.plugins import pm
-from click.testing import CliRunner
-import textwrap
-import json
 
 
 def test_serve_with_get(tmp_path_factory):
@@ -44,9 +46,9 @@ def test_serve_with_get(tmp_path_factory):
 
     # Annoyingly that new test plugin stays resident - we need
     # to manually unregister it to avoid conflict with other tests
-    to_unregister = [
+    to_unregister = next(
         p for p in pm.get_plugins() if p.__name__ == "init_for_serve_with_get.py"
-    ][0]
+    )
     pm.unregister(to_unregister)
 
 

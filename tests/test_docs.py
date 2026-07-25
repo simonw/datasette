@@ -2,20 +2,22 @@
 Tests to ensure certain things are documented.
 """
 
-from datasette import app, utils
+import re
+from pathlib import Path
+
+import pytest
+
 import datasette.fixtures  # noqa: F401
+from datasette import app, utils
 from datasette.app import Datasette
 from datasette.filters import Filters
-from pathlib import Path
-import pytest
-import re
 
 docs_path = Path(__file__).parent.parent / "docs"
 label_re = re.compile(r"\.\. _([^\s:]+):")
 
 
 def get_headings(content, underline="-"):
-    heading_re = re.compile(r"(\w+)(\([^)]*\))?\n\{}+\n".format(underline))
+    heading_re = re.compile(rf"(\w+)(\([^)]*\))?\n\{underline}+\n")
     return {h[0] for h in heading_re.findall(content)}
 
 

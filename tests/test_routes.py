@@ -1,7 +1,8 @@
-from datasette.app import Datasette, Database
-from datasette.utils import resolve_routes
 import pytest
 import pytest_asyncio
+
+from datasette.app import Database, Datasette
+from datasette.utils import resolve_routes
 
 
 @pytest.fixture(scope="session")

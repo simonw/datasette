@@ -2,11 +2,11 @@ import json
 
 from datasette.plugins import pm
 from datasette.utils import (
+    UNSTABLE_API_MESSAGE,
+    CustomJSONEncoder,
     add_cors_headers,
     await_me_maybe,
     make_slot_function,
-    CustomJSONEncoder,
-    UNSTABLE_API_MESSAGE,
 )
 from datasette.utils.asgi import Response
 from datasette.version import __version__
@@ -46,15 +46,15 @@ class IndexView(BaseView):
 
         databases = []
         # Iterate over allowed databases instead of all databases
-        for name in allowed_db_dict.keys():
+        for name, allowed_db in allowed_db_dict.items():
             db = self.ds.databases[name]
-            database_private = allowed_db_dict[name].private
+            database_private = allowed_db.private
 
             # Get allowed tables/views for this database
             allowed_for_db = tables_by_db.get(name, {})
 
             # Get table names from allowed set instead of db.table_names()
-            table_names = [child_name for child_name in allowed_for_db.keys()]
+            table_names = [child_name for child_name in allowed_for_db]
 
             hidden_table_names = set(await db.hidden_table_names())
 
@@ -99,7 +99,7 @@ class IndexView(BaseView):
                 # We will be sorting by number of relationships, so populate that field
                 all_foreign_keys = await db.get_all_foreign_keys()
                 for table, foreign_keys in all_foreign_keys.items():
-                    if table in tables.keys():
+                    if table in tables:
                         count = len(foreign_keys["incoming"] + foreign_keys["outgoing"])
                         tables[table]["num_relationships_for_sorting"] = count
 
@@ -121,8 +121,7 @@ class IndexView(BaseView):
             # Only add views if this is less than TRUNCATE_AT
             if len(tables_and_views_truncated) < TRUNCATE_AT:
                 num_views_to_add = TRUNCATE_AT - len(tables_and_views_truncated)
-                for view in views[:num_views_to_add]:
-                    tables_and_views_truncated.append(view)
+                tables_and_views_truncated.extend(views[:num_views_to_add])
 
             databases.append(
                 {

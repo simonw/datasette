@@ -1,6 +1,6 @@
 import inspect
 import types
-from typing import NamedTuple, Any
+from typing import Any, NamedTuple
 
 
 class CallableStatus(NamedTuple):
@@ -19,7 +19,7 @@ def check_callable(obj: Any) -> CallableStatus:
     if isinstance(obj, types.FunctionType):
         return CallableStatus(True, inspect.iscoroutinefunction(obj))
 
-    if hasattr(obj, "__call__"):
+    if callable(obj):
         return CallableStatus(True, inspect.iscoroutinefunction(obj.__call__))
 
-    assert False, "obj {} is somehow callable with no __call__ method".format(repr(obj))
+    assert False, f"obj {obj!r} is somehow callable with no __call__ method"

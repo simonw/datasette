@@ -1,6 +1,8 @@
-from datasette.utils.asgi import PayloadTooLarge, Request
 import json
+
 import pytest
+
+from datasette.utils.asgi import PayloadTooLarge, Request
 
 
 def _post_scope(headers=None):

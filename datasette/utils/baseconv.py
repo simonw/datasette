@@ -13,7 +13,7 @@ Originally shared here: https://www.djangosnippets.org/snippets/1431/
 """
 
 
-class BaseConverter(object):
+class BaseConverter:
     decimal_digits = "0123456789"
 
     def __init__(self, digits):

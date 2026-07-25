@@ -1,4 +1,5 @@
 import pytest
+
 from .fixtures import make_app_client
 
 
@@ -75,10 +76,9 @@ async def test_trace_child_tasks_resets_contextvar_on_exception():
     from datasette import tracer
 
     before = tracer.trace_task_id.get()
-    with pytest.raises(ValueError):
-        with tracer.trace_child_tasks():
-            assert tracer.trace_task_id.get() is not None
-            raise ValueError("simulated error")
+    with pytest.raises(ValueError), tracer.trace_child_tasks():
+        assert tracer.trace_task_id.get() is not None
+        raise ValueError("simulated error")
     # The contextvar must be reset even though the block raised
     assert tracer.trace_task_id.get() == before
 

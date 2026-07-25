@@ -7,7 +7,7 @@ to datasette.verify_token() so all registered handlers are tried.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from datasette.app import Datasette
@@ -17,15 +17,13 @@ from datasette.tokens import SignedTokenHandler
 
 
 @hookimpl
-def register_token_handler(datasette: "Datasette"):
+def register_token_handler(datasette: Datasette):
     """Register the default signed token handler."""
     return SignedTokenHandler()
 
 
 @hookimpl(specname="actor_from_request")
-async def actor_from_signed_api_token(
-    datasette: "Datasette", request
-) -> Optional[dict]:
+async def actor_from_signed_api_token(datasette: Datasette, request) -> dict | None:
     """
     Authenticate requests using API tokens by delegating to all registered
     token handlers via datasette.verify_token().

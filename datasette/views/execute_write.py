@@ -8,8 +8,8 @@ from datasette.utils.asgi import Response
 from .base import BaseView
 from .database import display_rows as display_query_rows
 from .query_helpers import (
-    QueryValidationError,
     SQL_PARAMETER_FORM_PREFIX,
+    QueryValidationError,
     _analysis_is_write,
     _analysis_rows,
     _analysis_rows_with_permissions,
@@ -31,15 +31,7 @@ WRITE_TEMPLATE_LABELS = {
     "delete": "Delete rows",
 }
 WRITE_TEMPLATE_OPERATIONS = tuple(WRITE_TEMPLATE_LABELS)
-CREATE_TABLE_TEMPLATE_SQL = "\n".join(
-    (
-        "create table new_table (",
-        "  id integer primary key,",
-        "  name text",
-        "  -- created text default (datetime('now'))",
-        ")",
-    )
-)
+CREATE_TABLE_TEMPLATE_SQL = "create table new_table (\n  id integer primary key,\n  name text\n  -- created text default (datetime('now'))\n)"
 
 
 def _parameter_names(columns):
@@ -49,11 +41,11 @@ def _parameter_names(columns):
         base = re.sub(r"[^a-z0-9_]+", "_", column.lower())
         base = base.strip("_") or "value"
         if base[0].isdigit():
-            base = "p_{}".format(base)
+            base = f"p_{base}"
         name = base
         index = 2
         while name in seen:
-            name = "{}_{}".format(base, index)
+            name = f"{base}_{index}"
             index += 1
         seen.add(name)
         names[column] = name
@@ -65,7 +57,7 @@ def _quote_identifier(identifier):
 
 
 def _preferred_where_column(table, columns):
-    lower_table_id = "{}_id".format(table.lower())
+    lower_table_id = f"{table.lower()}_id"
     return (
         next((column for column in columns if column.lower() == "id"), None)
         or next(
@@ -90,17 +82,15 @@ def _insert_template_sql(table, columns):
     auto_pk = _auto_incrementing_primary_key(columns)
     insert_columns = [column for column in column_names if column != auto_pk]
     if not insert_columns:
-        return "insert into {}\ndefault values".format(_quote_identifier(table))
+        return f"insert into {_quote_identifier(table)}\ndefault values"
     names = _parameter_names(insert_columns)
     return "\n".join(
         (
-            "insert into {} (".format(_quote_identifier(table)),
-            ",\n".join(
-                "  {}".format(_quote_identifier(column)) for column in insert_columns
-            ),
+            f"insert into {_quote_identifier(table)} (",
+            ",\n".join(f"  {_quote_identifier(column)}" for column in insert_columns),
             ")",
             "values (",
-            ",\n".join("  :{}".format(names[column]) for column in insert_columns),
+            ",\n".join(f"  :{names[column]}" for column in insert_columns),
             ")",
         )
     )
@@ -114,18 +104,14 @@ def _update_template_sql(table, columns):
     if not set_columns:
         return "\n".join(
             (
-                "update {}".format(_quote_identifier(table)),
-                "set {} = :new_{}".format(
-                    _quote_identifier(where_column), names[where_column]
-                ),
-                "where {} = :{}".format(
-                    _quote_identifier(where_column), names[where_column]
-                ),
+                f"update {_quote_identifier(table)}",
+                f"set {_quote_identifier(where_column)} = :new_{names[where_column]}",
+                f"where {_quote_identifier(where_column)} = :{names[where_column]}",
             )
         )
     return "\n".join(
         (
-            "update {}".format(_quote_identifier(table)),
+            f"update {_quote_identifier(table)}",
             "set "
             + ",\n".join(
                 "{}{} = :{}".format(
@@ -135,9 +121,7 @@ def _update_template_sql(table, columns):
                 )
                 for index, column in enumerate(set_columns)
             ),
-            "where {} = :{}".format(
-                _quote_identifier(where_column), names[where_column]
-            ),
+            f"where {_quote_identifier(where_column)} = :{names[where_column]}",
         )
     )
 
@@ -148,10 +132,8 @@ def _delete_template_sql(table, columns):
     where_column = _preferred_where_column(table, column_names)
     return "\n".join(
         (
-            "delete from {}".format(_quote_identifier(table)),
-            "where {} = :{}".format(
-                _quote_identifier(where_column), names[where_column]
-            ),
+            f"delete from {_quote_identifier(table)}",
+            f"where {_quote_identifier(where_column)} = :{names[where_column]}",
         )
     )
 

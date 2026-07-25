@@ -1,5 +1,6 @@
-from .utils import cookie_was_deleted
 import pytest
+
+from .utils import cookie_was_deleted
 
 
 @pytest.mark.asyncio

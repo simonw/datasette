@@ -1,5 +1,6 @@
-from .utils import tilde_encode, path_with_format, PrefixedUrlString
 import urllib
+
+from .utils import PrefixedUrlString, path_with_format, tilde_encode
 
 
 class Urls:
@@ -8,8 +9,7 @@ class Urls:
 
     def path(self, path, format=None):
         if not isinstance(path, PrefixedUrlString):
-            if path.startswith("/"):
-                path = path[1:]
+            path = path.removeprefix("/")
             path = self.ds.setting("base_url") + path
         if format is not None:
             path = path_with_format(path=path, format=format)
@@ -56,6 +56,7 @@ class Urls:
         return PrefixedUrlString(path)
 
     def row_blob(self, database, table, row_path, column):
-        return self.table(database, table) + "/{}.blob?_blob_column={}".format(
-            row_path, urllib.parse.quote_plus(column)
+        return (
+            self.table(database, table)
+            + f"/{row_path}.blob?_blob_column={urllib.parse.quote_plus(column)}"
         )

@@ -1,43 +1,45 @@
 import asyncio
-import uvicorn
-import click
-from click import formatting
-from click.types import CompositeParamType
-from click_default_group import DefaultGroup
 import functools
 import json
 import os
 import pathlib
-from runpy import run_module
 import shutil
-from subprocess import call
 import sys
 import textwrap
 import webbrowser
+from runpy import run_module
+from subprocess import call
+
+import click
+import uvicorn
+from click import formatting
+from click.types import CompositeParamType
+from click_default_group import DefaultGroup
+
 from .app import (
-    Datasette,
     DEFAULT_SETTINGS,
     SETTINGS,
     SQLITE_LIMIT_ATTACHED,
+    Datasette,
     pm,
 )
 from .inspect import inspect_tables
 from .utils import (
+    ConnectionProblem,
     LoadExtension,
+    SpatialiteConnectionProblem,
+    SpatialiteNotFound,
     StartupError,
+    StaticMount,
+    ValueAsBooleanError,
     check_connection,
     deep_dict_update,
     find_spatialite,
-    parse_metadata,
-    ConnectionProblem,
-    SpatialiteConnectionProblem,
     initial_path_for_datasette,
     pairs_to_nested_config,
+    parse_metadata,
     temporary_docker_directory,
     value_as_boolean,
-    SpatialiteNotFound,
-    StaticMount,
-    ValueAsBooleanError,
 )
 from .utils.sqlite import sqlite3
 from .utils.testing import TestClient
@@ -75,7 +77,7 @@ class Setting(CompositeParamType):
             # Datasette 1.0, we turn bare setting names into setting.name
             # Type checking for those older settings
             default = DEFAULT_SETTINGS[name]
-            name = "settings.{}".format(name)
+            name = f"settings.{name}"
             if isinstance(default, bool):
                 try:
                     return name, "true" if value_as_boolean(value) else "false"
@@ -171,7 +173,6 @@ async def inspect_(files, sqlite_extensions):
 @cli.group()
 def publish():
     """Publish specified SQLite database files to the internet along with a Datasette-powered interface and API"""
-    pass
 
 
 # Register publish plugins
@@ -578,27 +579,27 @@ def serve(
         # https://github.com/simonw/datasette/issues/2389
         deep_dict_update(config_data, settings_updates)
 
-    kwargs = dict(
-        immutables=immutable,
-        cache_headers=not reload,
-        cors=cors,
-        inspect_data=inspect_data,
-        config=config_data,
-        metadata=metadata_data,
-        sqlite_extensions=sqlite_extensions,
-        template_dir=template_dir,
-        plugins_dir=plugins_dir,
-        static_mounts=static,
-        settings=None,  # These are passed in config= now
-        memory=memory,
-        secret=secret,
-        version_note=version_note,
-        pdb=pdb,
-        crossdb=crossdb,
-        nolock=nolock,
-        internal=internal,
-        default_deny=default_deny,
-    )
+    kwargs = {
+        "immutables": immutable,
+        "cache_headers": not reload,
+        "cors": cors,
+        "inspect_data": inspect_data,
+        "config": config_data,
+        "metadata": metadata_data,
+        "sqlite_extensions": sqlite_extensions,
+        "template_dir": template_dir,
+        "plugins_dir": plugins_dir,
+        "static_mounts": static,
+        "settings": None,  # These are passed in config= now
+        "memory": memory,
+        "secret": secret,
+        "version_note": version_note,
+        "pdb": pdb,
+        "crossdb": crossdb,
+        "nolock": nolock,
+        "internal": internal,
+        "default_deny": default_deny,
+    }
 
     # Separate directories from files
     directories = [f for f in files if os.path.isdir(f)]
@@ -621,9 +622,7 @@ def serve(
                 conn.close()
             else:
                 raise click.ClickException(
-                    "Invalid value for '[FILES]...': Path '{}' does not exist.".format(
-                        file
-                    )
+                    f"Invalid value for '[FILES]...': Path '{file}' does not exist."
                 )
 
     # Check for duplicate files by resolving all paths to their absolute forms
@@ -684,7 +683,7 @@ def serve(
         client = TestClient(ds)
         request_headers = {}
         if token:
-            request_headers["Authorization"] = "Bearer {}".format(token)
+            request_headers["Authorization"] = f"Bearer {token}"
         cookies = {}
         if actor:
             cookies["ds_actor"] = client.actor_cookie(json.loads(actor))
@@ -719,9 +718,13 @@ def serve(
             path = run_sync(lambda: initial_path_for_datasette(ds))
             url = f"http://{host}:{port}{path}"
         webbrowser.open(url)
-    uvicorn_kwargs = dict(
-        host=host, port=port, log_level="info", lifespan="on", workers=1
-    )
+    uvicorn_kwargs = {
+        "host": host,
+        "port": port,
+        "log_level": "info",
+        "lifespan": "on",
+        "workers": 1,
+    }
     if uds:
         uvicorn_kwargs["uds"] = uds
     if ssl_keyfile:
@@ -885,7 +888,7 @@ async def check_databases(ds):
             )
         except ConnectionProblem as e:
             raise click.UsageError(
-                f"Connection to {database.path} failed check: {str(e.args[0])}"
+                f"Connection to {database.path} failed check: {e.args[0]!s}"
             )
     # If --crossdb and more than SQLITE_LIMIT_ATTACHED show warning
     if (
@@ -893,9 +896,5 @@ async def check_databases(ds):
         and len([db for db in ds.databases.values() if not db.is_memory])
         > SQLITE_LIMIT_ATTACHED
     ):
-        msg = (
-            "Warning: --crossdb only works with the first {} attached databases".format(
-                SQLITE_LIMIT_ATTACHED
-            )
-        )
+        msg = f"Warning: --crossdb only works with the first {SQLITE_LIMIT_ATTACHED} attached databases"
         click.echo(click.style(msg, bold=True, fg="yellow"), err=True)

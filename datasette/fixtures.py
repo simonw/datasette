@@ -1,8 +1,9 @@
-from datasette.utils.sqlite import sqlite3
-from datasette.utils import documented
 import itertools
 import random
 import string
+
+from datasette.utils import documented
+from datasette.utils.sqlite import sqlite3
 
 __all__ = [
     "EXTRA_DATABASE_SQL",
@@ -346,9 +347,7 @@ CREATE VIEW searchable_view_configured_by_metadata AS
     + '\nINSERT INTO no_primary_key VALUES ("RENDER_CELL_DEMO", "a202", "b202", "c202");\n'
     + "\n".join(
         [
-            'INSERT INTO compound_three_primary_keys VALUES ("{a}", "{b}", "{c}", "{content}");'.format(
-                a=a, b=b, c=c, content=content
-            )
+            f'INSERT INTO compound_three_primary_keys VALUES ("{a}", "{b}", "{c}", "{content}");'
             for a, b, c, content in generate_compound_rows(1001)
         ]
     )

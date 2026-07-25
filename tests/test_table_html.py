@@ -398,6 +398,37 @@ async def test_sort_links(ds_client):
 
 
 @pytest.mark.asyncio
+async def test_sort_menu_excludes_unsortable_primary_key():
+    # https://github.com/simonw/datasette/issues/1980
+    ds = Datasette(
+        [],
+        metadata={
+            "databases": {
+                "data": {"tables": {"timezones": {"sortable_columns": ["tzid"]}}}
+            }
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_sort_menu_unsortable_pk"), name="data"
+        )
+        await db.execute_write_script("""
+            create table timezones (
+                id integer primary key,
+                tzid text
+            );
+            insert into timezones (id, tzid) values (133, 'Europe/London');
+        """)
+        response = await ds.client.get("/data/timezones")
+        assert response.status_code == 200
+        select = Soup(response.text, "html.parser").find("select", {"name": "_sort"})
+        options = [option["value"] for option in select.find_all("option")]
+        assert options == ["", "tzid"]
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
 async def test_facet_display(ds_client):
     response = await ds_client.get(
         "/fixtures/facetable?_facet=planet_int&_facet=_city_id&_facet=on_earth"

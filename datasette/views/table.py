@@ -901,7 +901,7 @@ async def display_columns_and_rows(
             columns = [col for col in columns if col["name"] != pks[0]]
             first_column = {
                 "name": pks[0],
-                "sortable": len(pks) == 1,
+                "sortable": pks[0] in sortable_columns,
                 "is_pk": True,
                 "type": column_details[pks[0]].type,
                 "notnull": column_details[pks[0]].notnull,

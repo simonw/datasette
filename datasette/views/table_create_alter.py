@@ -713,7 +713,16 @@ class SetForeignKeysOperation(_StrictPydanticModel):
 
 
 AlterTableOperation = Annotated[
-    AddColumnOperation | RenameColumnOperation | RenameTableOperation | AlterColumnOperation | DropColumnOperation | SetPrimaryKeyOperation | ReorderColumnsOperation | AddForeignKeyOperation | DropForeignKeyOperation | SetForeignKeysOperation,
+    AddColumnOperation
+    | RenameColumnOperation
+    | RenameTableOperation
+    | AlterColumnOperation
+    | DropColumnOperation
+    | SetPrimaryKeyOperation
+    | ReorderColumnsOperation
+    | AddForeignKeyOperation
+    | DropForeignKeyOperation
+    | SetForeignKeysOperation,
     Field(discriminator="op"),
 ]
 
@@ -812,14 +821,13 @@ class TableCreateView(BaseView):
         ignore = create_request.ignore
         replace = create_request.replace
 
-        if replace:
-            # Must have update-row permission
-            if not await self.ds.allowed(
-                action="update-row",
-                resource=DatabaseResource(database=database_name),
-                actor=request.actor,
-            ):
-                return Response.error(["Permission denied: need update-row"], 403)
+        # Replacing rows requires update-row permission
+        if replace and not await self.ds.allowed(
+            action="update-row",
+            resource=DatabaseResource(database=database_name),
+            actor=request.actor,
+        ):
+            return Response.error(["Permission denied: need update-row"], 403)
 
         table_name = create_request.table
         table_exists = await db.table_exists(table_name)
@@ -865,7 +873,14 @@ class TableCreateView(BaseView):
             actual_pks = await db.primary_keys(table_name)
             # if pk passed and table already exists check it does not change
             bad_pks = False
-            if len(actual_pks) == 1 and pk and pk != actual_pks[0] or len(actual_pks) > 1 and pks and set(pks) != set(actual_pks):
+            if (
+                len(actual_pks) == 1
+                and pk
+                and pk != actual_pks[0]
+                or len(actual_pks) > 1
+                and pks
+                and set(pks) != set(actual_pks)
+            ):
                 bad_pks = True
             if bad_pks:
                 return Response.error(["pk cannot be changed for existing table"])
@@ -910,7 +925,8 @@ class TableCreateView(BaseView):
 
         try:
             schema = await db.execute_write_fn(create_table, request=request)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
+            # TODO: narrow to expected write errors so Datasette bugs surface as 500s
             return Response.error([str(e)])
 
         if initial_schema is not None and initial_schema != schema:
@@ -1311,7 +1327,8 @@ class TableAlterView(BaseView):
             before_schema, after_schema, after_table_name = await db.execute_write_fn(
                 alter_table, request=request
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
+            # TODO: narrow to expected write errors so Datasette bugs surface as 500s
             return Response.error([str(e)], 400)
 
         altered = before_schema != after_schema

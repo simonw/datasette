@@ -530,7 +530,9 @@ class Response:
         httponly=False,
         samesite="lax",
     ):
-        assert samesite in SAMESITE_VALUES, f"samesite should be one of {SAMESITE_VALUES}"
+        assert (
+            samesite in SAMESITE_VALUES
+        ), f"samesite should be one of {SAMESITE_VALUES}"
         cookie = SimpleCookie()
         cookie[key] = value
         for prop_name, prop_value in (

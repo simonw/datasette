@@ -56,4 +56,7 @@ class Urls:
         return PrefixedUrlString(path)
 
     def row_blob(self, database, table, row_path, column):
-        return self.table(database, table) + f"/{row_path}.blob?_blob_column={urllib.parse.quote_plus(column)}"
+        return (
+            self.table(database, table)
+            + f"/{row_path}.blob?_blob_column={urllib.parse.quote_plus(column)}"
+        )

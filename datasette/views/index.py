@@ -46,9 +46,9 @@ class IndexView(BaseView):
 
         databases = []
         # Iterate over allowed databases instead of all databases
-        for name in allowed_db_dict:
+        for name, allowed_db in allowed_db_dict.items():
             db = self.ds.databases[name]
-            database_private = allowed_db_dict[name].private
+            database_private = allowed_db.private
 
             # Get allowed tables/views for this database
             allowed_for_db = tables_by_db.get(name, {})
@@ -121,8 +121,7 @@ class IndexView(BaseView):
             # Only add views if this is less than TRUNCATE_AT
             if len(tables_and_views_truncated) < TRUNCATE_AT:
                 num_views_to_add = TRUNCATE_AT - len(tables_and_views_truncated)
-                for view in views[:num_views_to_add]:
-                    tables_and_views_truncated.append(view)
+                tables_and_views_truncated.extend(views[:num_views_to_add])
 
             databases.append(
                 {

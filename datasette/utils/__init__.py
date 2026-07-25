@@ -19,7 +19,6 @@ import urllib
 from collections import Counter, OrderedDict, namedtuple
 from collections.abc import Iterable
 from contextlib import contextmanager
-from typing import List, Tuple
 
 import aiofiles
 import click
@@ -86,7 +85,132 @@ class PaginatedResources:
 
 
 # From https://www.sqlite.org/lang_keywords.html
-reserved_words = {"abort", "action", "add", "after", "all", "alter", "analyze", "and", "as", "asc", "attach", "autoincrement", "before", "begin", "between", "by", "cascade", "case", "cast", "check", "collate", "column", "commit", "conflict", "constraint", "create", "cross", "current_date", "current_time", "current_timestamp", "database", "default", "deferrable", "deferred", "delete", "desc", "detach", "distinct", "drop", "each", "else", "end", "escape", "except", "exclusive", "exists", "explain", "fail", "for", "foreign", "from", "full", "glob", "group", "having", "if", "ignore", "immediate", "in", "index", "indexed", "initially", "inner", "insert", "instead", "intersect", "into", "is", "isnull", "join", "key", "left", "like", "limit", "match", "natural", "no", "not", "notnull", "null", "of", "offset", "on", "or", "order", "outer", "plan", "pragma", "primary", "query", "raise", "recursive", "references", "regexp", "reindex", "release", "rename", "replace", "restrict", "right", "rollback", "row", "savepoint", "select", "set", "table", "temp", "temporary", "then", "to", "transaction", "trigger", "union", "unique", "update", "using", "vacuum", "values", "view", "virtual", "when", "where", "with", "without"}
+reserved_words = {
+    "abort",
+    "action",
+    "add",
+    "after",
+    "all",
+    "alter",
+    "analyze",
+    "and",
+    "as",
+    "asc",
+    "attach",
+    "autoincrement",
+    "before",
+    "begin",
+    "between",
+    "by",
+    "cascade",
+    "case",
+    "cast",
+    "check",
+    "collate",
+    "column",
+    "commit",
+    "conflict",
+    "constraint",
+    "create",
+    "cross",
+    "current_date",
+    "current_time",
+    "current_timestamp",
+    "database",
+    "default",
+    "deferrable",
+    "deferred",
+    "delete",
+    "desc",
+    "detach",
+    "distinct",
+    "drop",
+    "each",
+    "else",
+    "end",
+    "escape",
+    "except",
+    "exclusive",
+    "exists",
+    "explain",
+    "fail",
+    "for",
+    "foreign",
+    "from",
+    "full",
+    "glob",
+    "group",
+    "having",
+    "if",
+    "ignore",
+    "immediate",
+    "in",
+    "index",
+    "indexed",
+    "initially",
+    "inner",
+    "insert",
+    "instead",
+    "intersect",
+    "into",
+    "is",
+    "isnull",
+    "join",
+    "key",
+    "left",
+    "like",
+    "limit",
+    "match",
+    "natural",
+    "no",
+    "not",
+    "notnull",
+    "null",
+    "of",
+    "offset",
+    "on",
+    "or",
+    "order",
+    "outer",
+    "plan",
+    "pragma",
+    "primary",
+    "query",
+    "raise",
+    "recursive",
+    "references",
+    "regexp",
+    "reindex",
+    "release",
+    "rename",
+    "replace",
+    "restrict",
+    "right",
+    "rollback",
+    "row",
+    "savepoint",
+    "select",
+    "set",
+    "table",
+    "temp",
+    "temporary",
+    "then",
+    "to",
+    "transaction",
+    "trigger",
+    "union",
+    "unique",
+    "update",
+    "using",
+    "vacuum",
+    "values",
+    "view",
+    "virtual",
+    "when",
+    "where",
+    "with",
+    "without",
+}
 
 APT_GET_DOCKERFILE_EXTRAS = r"""
 RUN apt-get update && \
@@ -522,10 +646,7 @@ CMD {cmd}""".format(
             else ""
         ),
         environment_variables="\n".join(
-            [
-                f"ENV {key} '{value}'"
-                for key, value in environment_variables.items()
-            ]
+            [f"ENV {key} '{value}'" for key, value in environment_variables.items()]
         ),
         install_from=" ".join(install),
         files=" ".join(files),
@@ -729,7 +850,7 @@ def detect_json1(conn=None):
     try:
         conn.execute("SELECT json('{}')")
         return True
-    except Exception:
+    except sqlite3.Error:
         return False
     finally:
         if close_conn:
@@ -862,7 +983,9 @@ def module_from_path(path, name):
     mod.__file__ = path
     with open(path, "r") as file:
         code = compile(file.read(), path, "exec", dont_inherit=True)
-    exec(code, mod.__dict__)
+    # Executing the file is the whole point - this is how --plugins-dir loads
+    # plugins and how metadata/config .py files are evaluated
+    exec(code, mod.__dict__)  # noqa: S102
     return mod
 
 
@@ -1019,9 +1142,7 @@ def escape_fts(query):
         query += '"'
     bits = _escape_fts_re.split(query)
     bits = [b for b in bits if b and b != '""']
-    return " ".join(
-        f'"{bit}"' if not bit.startswith('"') else bit for bit in bits
-    )
+    return " ".join(f'"{bit}"' if not bit.startswith('"') else bit for bit in bits)
 
 
 class MultiParams:

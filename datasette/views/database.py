@@ -665,7 +665,8 @@ class QueryView(View):
                     ).first()
                     if message_result:
                         message = message_result[0]
-                except Exception as ex:
+                except Exception as ex:  # noqa: BLE001
+                    # Stored-query on_success_message_sql is user-authored
                     message = f"Error running on_success_message_sql: {ex}"
                     message_type = datasette.ERROR
             if not message:
@@ -680,7 +681,8 @@ class QueryView(View):
 
             redirect_url = stored_query.on_success_redirect
             ok = True
-        except Exception as ex:
+        except Exception as ex:  # noqa: BLE001
+            # Stored-query execution is user-authored SQL
             message = stored_query.on_error_message or str(ex)
             message_type = datasette.ERROR
             redirect_url = stored_query.on_error_redirect
@@ -839,8 +841,6 @@ class QueryView(View):
                 columns = []
             except (sqlite3.OperationalError, InvalidSql) as ex:
                 raise DatasetteError(str(ex), title="Invalid SQL", status=400)
-            except sqlite3.OperationalError as ex:
-                raise DatasetteError(str(ex))
             except DatasetteError:
                 raise
 
@@ -1035,9 +1035,7 @@ class QueryView(View):
                         + "?"
                         + urlencode(
                             {
-                                
-                                    "sql": sql
-                                ,
+                                "sql": sql,
                                 **named_parameter_values,
                             }
                         )

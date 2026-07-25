@@ -133,14 +133,14 @@ class AsgiTracer:
                     "num_traces": len(traces),
                     "traces": traces,
                 }
-                try:
-                    content_type = next(
+                content_type = next(
+                    (
                         v.decode("utf8")
                         for k, v in response_headers
                         if k.lower() == b"content-type"
-                    )
-                except IndexError:
-                    content_type = ""
+                    ),
+                    "",
+                )
                 if "text/html" in content_type and b"</body>" in accumulated_body:
                     extra = escape(json.dumps(trace_info, indent=2))
                     extra_html = f"<pre>{extra}</pre></body>".encode()

@@ -10,7 +10,9 @@ from .utils import last_event
 
 
 def assert_schema_contains(fragment, schema):
-    assert fragment in schema, f"Expected schema to contain {fragment!r}, got {schema!r}"
+    assert (
+        fragment in schema
+    ), f"Expected schema to contain {fragment!r}, got {schema!r}"
 
 
 def assert_schema_not_contains(fragment, schema):
@@ -285,11 +287,7 @@ async def test_insert_row_alter(ds_write):
 @pytest.mark.parametrize("return_rows", (True, False))
 async def test_insert_rows(ds_write, return_rows):
     token = write_token(ds_write)
-    data = {
-        "rows": [
-            {"title": f"Test {i}", "score": 1.0, "age": 5} for i in range(20)
-        ]
-    }
+    data = {"rows": [{"title": f"Test {i}", "score": 1.0, "age": 5} for i in range(20)]}
     if return_rows:
         data["return"] = True
     response = await ds_write.client.post(
@@ -313,8 +311,7 @@ async def test_insert_rows(ds_write, return_rows):
     ).dicts()
     assert len(actual_rows) == 20
     assert actual_rows == [
-        {"id": i + 1, "title": f"Test {i}", "score": 1.0, "age": 5}
-        for i in range(20)
+        {"id": i + 1, "title": f"Test {i}", "score": 1.0, "age": 5} for i in range(20)
     ]
     assert response.json()["ok"] is True
     if return_rows:
@@ -1412,7 +1409,8 @@ async def test_foreign_key_targets(ds_write):
     await db.execute_write("create table no_pk (name text)")
     try:
         await db.execute_write("create virtual table search_docs using fts5(body)")
-    except Exception:
+    except Exception:  # noqa: BLE001, S110
+        # FTS5 is not available in every SQLite build
         pass
 
     response = await ds_write.client.get(

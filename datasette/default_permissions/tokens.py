@@ -23,9 +23,7 @@ def register_token_handler(datasette: Datasette):
 
 
 @hookimpl(specname="actor_from_request")
-async def actor_from_signed_api_token(
-    datasette: Datasette, request
-) -> dict | None:
+async def actor_from_signed_api_token(datasette: Datasette, request) -> dict | None:
     """
     Authenticate requests using API tokens by delegating to all registered
     token handlers via datasette.verify_token().

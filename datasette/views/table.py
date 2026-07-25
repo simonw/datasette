@@ -543,7 +543,9 @@ async def _table_insert_ui(
         "maxInsertRows": datasette.setting("max_insert_rows"),
     }
     if can_update:
-        data["upsertPath"] = f"{datasette.urls.table(database_name, table_name)}/-/upsert"
+        data["upsertPath"] = (
+            f"{datasette.urls.table(database_name, table_name)}/-/upsert"
+        )
     return data
 
 
@@ -725,7 +727,9 @@ async def display_columns_and_rows(
             if row_label and row_label != pk_path:
                 row_action_label = f"{pk_path} {row_label}"
             table_path = datasette.urls.table(database_name, table_name)
-            row_link = f'<a href="{table_path}/{row_path}">{markupsafe.escape(pk_path)!s}</a>'
+            row_link = (
+                f'<a href="{table_path}/{row_path}">{markupsafe.escape(pk_path)!s}</a>'
+            )
             edit_icon = (
                 '<svg class="row-inline-action-icon" aria-hidden="true" '
                 'xmlns="http://www.w3.org/2000/svg" width="14" height="14" '
@@ -828,11 +832,7 @@ async def display_columns_and_rows(
                             path_from_row_pks(row, pks, not pks),
                             column,
                         ),
-                        (
-                            f' title="{formatted}"'
-                            if "bytes" not in formatted
-                            else ""
-                        ),
+                        (f' title="{formatted}"' if "bytes" not in formatted else ""),
                         len(value),
                         "" if len(value) == 1 else "s",
                     )
@@ -972,9 +972,7 @@ class TableInsertView(BaseView):
         # Does this exceed max_insert_rows?
         max_insert_rows = self.ds.setting("max_insert_rows")
         if len(rows) > max_insert_rows:
-            return _errors(
-                [f"Too many rows, maximum allowed is {max_insert_rows}"]
-            )
+            return _errors([f"Too many rows, maximum allowed is {max_insert_rows}"])
 
         # Validate other parameters
         extras = {
@@ -1155,7 +1153,8 @@ class TableInsertView(BaseView):
 
         try:
             rows = await db.execute_write_fn(insert_or_upsert_rows, request=request)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
+            # TODO: narrow to expected write errors so Datasette bugs surface as 500s
             return Response.error([str(e)])
         result = {"ok": True}
         if should_return:
@@ -1583,9 +1582,7 @@ class TableAutocompleteView(BaseView):
             if prefix_end:
                 params["prefix_end"] = prefix_end
                 first_pk = escape_sqlite(pks[0])
-                fallback_where = (
-                    f"{first_pk} >= :q and {first_pk} < :prefix_end and {fallback_where}"
-                )
+                fallback_where = f"{first_pk} >= :q and {first_pk} < :prefix_end and {fallback_where}"
             fallback_sql = f"""
                 select {select_sql}
                 from {escape_sqlite(table_name)}
@@ -2168,9 +2165,6 @@ async def table_view_data(
     except (sqlite3.OperationalError, InvalidSql) as e:
         raise DatasetteError(str(e), title="Invalid SQL", status=400)
 
-    except sqlite3.OperationalError as e:
-        raise DatasetteError(str(e))
-
     columns = [r[0] for r in results.description]
     rows = list(results.rows)
 
@@ -2217,7 +2211,8 @@ async def table_view_data(
             new_rows = []
             for row in rows:
                 new_row = CustomRow(columns)
-                for column in row:
+                # CustomRow/sqlite3.Row iterate over values, so .keys() is required
+                for column in row.keys():  # noqa: SIM118
                     value = row[column]
                     if (column, value) in expanded_labels and value is not None:
                         new_row[column] = {
@@ -2441,12 +2436,7 @@ async def _next_value_and_url(
                 prefix = (
                     await db.execute(
                         prefix_lookup_sql,
-                        {
-                            **{
-                                f"pk{i}": rows[-2][pk]
-                                for i, pk in enumerate(pks)
-                            }
-                        },
+                        {**{f"pk{i}": rows[-2][pk] for i, pk in enumerate(pks)}},
                     )
                 ).single_value()
             if isinstance(prefix, dict) and "value" in prefix:

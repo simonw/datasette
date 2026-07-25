@@ -386,9 +386,7 @@ async def test_row_pk_arity_mismatch_returns_400(ds_client, row_path, suffix):
     # because the SQL had one bind placeholder per PK column but params were
     # only bound for the supplied components. It should be a 400 instead,
     # mirroring the existing guard in datasette/views/table.py.
-    response = await ds_client.get(
-        f"/fixtures/compound_primary_key/{row_path}{suffix}"
-    )
+    response = await ds_client.get(f"/fixtures/compound_primary_key/{row_path}{suffix}")
     assert response.status_code == 400
     if suffix == ".json":
         assert response.json()["ok"] is False

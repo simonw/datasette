@@ -1,2 +1,7 @@
 line-length = 160
 target-version = "py310"
+
+[lint.flake8-bugbear]
+# from_extra() returns a dataclasses.field(), so it is safe as a dataclass
+# default - ruff cannot see through the wrapper (RUF009)
+extend-immutable-calls = ["datasette.views.from_extra"]

@@ -100,9 +100,7 @@ class Database:
 
     def _check_not_closed(self):
         if self._closed:
-            raise DatasetteClosedError(
-                f"Database {self.name!r} has been closed"
-            )
+            raise DatasetteClosedError(f"Database {self.name!r} has been closed")
 
     def _remove_pending_execute_future(self, future):
         with self._pending_execute_futures_lock:
@@ -200,13 +198,14 @@ class Database:
         for future in pending_execute_futures:
             try:
                 future.result()
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
+                # Shutdown teardown - a failed pending write must not block close()
                 pass
         # Close anything still tracked in _all_file_connections
         for connection in self._all_file_connections:
             try:
                 connection.close()
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 pass
         self._all_file_connections = []
         # Drop per-thread cached read connections we can reach
@@ -218,13 +217,13 @@ class Database:
         if self._read_connection is not None:
             try:
                 self._read_connection.close()
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 pass
             self._read_connection = None
         if self._write_connection is not None:
             try:
                 self._write_connection.close()
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 pass
             self._write_connection = None
         if self.is_temp_disk:
@@ -370,7 +369,8 @@ class Database:
             async def _dispatch_events_after_write():
                 try:
                     await reply_future
-                except Exception:
+                except Exception:  # noqa: BLE001
+                    # The write failed; skip success events regardless of why
                     # if the write failed, don't emit success events
                     return
                 for event in pending_events:
@@ -444,7 +444,8 @@ class Database:
         try:
             conn = self.connect(write=True)
             self.ds._prepare_connection(conn, self.name)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
+            # Stored and re-raised to whoever queues the next write
             conn_exception = e
         while True:
             task = self._write_queue.get()
@@ -452,7 +453,8 @@ class Database:
                 if conn is not None:
                     try:
                         conn.close()
-                    except Exception:
+                    except Exception:  # noqa: BLE001, S110
+                        # Best-effort close as the write thread exits
                         pass
                 return
             exception = None
@@ -471,7 +473,8 @@ class Database:
                         except ValueError:
                             # Was probably a memory connection
                             pass
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
+                    # Write thread must survive any task failure or the database wedges
                     sys.stderr.write(f"{e}\n")
                     sys.stderr.flush()
                     exception = e
@@ -483,7 +486,7 @@ class Database:
                             result = task.fn(conn)
                     else:
                         result = task.fn(conn)
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     sys.stderr.write(f"{e}\n")
                     sys.stderr.flush()
                     exception = e

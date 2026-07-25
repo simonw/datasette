@@ -518,7 +518,9 @@ def test_weird_database_names(tmpdir, filename):
     result1 = runner.invoke(cli, [db_path, "--get", "/"])
     assert result1.exit_code == 0, result1.output
     filename_no_stem = filename.rsplit(".", 1)[0]
-    expected_link = f'<a href="/{tilde_encode(filename_no_stem)}">{filename_no_stem}</a>'
+    expected_link = (
+        f'<a href="/{tilde_encode(filename_no_stem)}">{filename_no_stem}</a>'
+    )
     assert expected_link in result1.output
     # Now try hitting that database page
     result2 = runner.invoke(

@@ -207,7 +207,8 @@ async def populate_schema_tables(internal_db, db, schema_version):
             columns = table_column_details(conn, table_name)
             columns_to_insert.extend(
                 {
-                    "database_name": database_name, "table_name": table_name,
+                    "database_name": database_name,
+                    "table_name": table_name,
                     **column._asdict(),
                 }
                 for column in columns
@@ -217,7 +218,8 @@ async def populate_schema_tables(internal_db, db, schema_version):
             ).fetchall()
             foreign_keys_to_insert.extend(
                 {
-                    "database_name": database_name, "table_name": table_name,
+                    "database_name": database_name,
+                    "table_name": table_name,
                     **dict(foreign_key),
                 }
                 for foreign_key in foreign_keys
@@ -227,7 +229,8 @@ async def populate_schema_tables(internal_db, db, schema_version):
             ).fetchall()
             indexes_to_insert.extend(
                 {
-                    "database_name": database_name, "table_name": table_name,
+                    "database_name": database_name,
+                    "table_name": table_name,
                     **dict(index),
                 }
                 for index in indexes

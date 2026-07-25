@@ -1,4 +1,5 @@
 import json
+from typing import ClassVar
 
 from datasette import hookimpl
 from datasette.resources import DatabaseResource
@@ -136,11 +137,11 @@ def through_filters(request, database, table, datasette):
                 value = through_data["value"]
                 db = datasette.get_database(database)
                 outgoing_foreign_keys = await db.foreign_keys_for_table(through_table)
-                try:
-                    fk_to_us = next(
-                        fk for fk in outgoing_foreign_keys if fk["other_table"] == table
-                    )
-                except IndexError:
+                fk_to_us = next(
+                    (fk for fk in outgoing_foreign_keys if fk["other_table"] == table),
+                    None,
+                )
+                if fk_to_us is None:
                     raise DatasetteError(
                         "Invalid _through - could not find corresponding foreign key"
                     )
@@ -367,7 +368,7 @@ class Filters:
             ),
         ]
     )
-    _filters_by_key = {f.key: f for f in _filters}
+    _filters_by_key: ClassVar[dict[str, Filter]] = {f.key: f for f in _filters}
 
     def __init__(self, pairs):
         self.pairs = pairs

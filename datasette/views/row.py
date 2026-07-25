@@ -208,8 +208,6 @@ class RowView(BaseView):
             )
         except (sqlite3.OperationalError, InvalidSql) as e:
             raise DatasetteError(str(e), title="Invalid SQL", status=400)
-        except sqlite3.OperationalError as e:
-            raise DatasetteError(str(e))
         except DatasetteError:
             raise
 
@@ -714,9 +712,7 @@ async def _resolve_row_and_check_permission(datasette, request, permission):
     try:
         resolved = await datasette.resolve_row(request)
     except DatabaseNotFound as e:
-        return False, Response.error(
-            [f"Database not found: {e.database_name}"], 404
-        )
+        return False, Response.error([f"Database not found: {e.database_name}"], 404)
     except TableNotFound as e:
         return False, Response.error([f"Table not found: {e.table}"], 404)
     except RowNotFound as e:
@@ -752,7 +748,8 @@ class RowDeleteView(BaseView):
 
         try:
             await resolved.db.execute_write_fn(delete_row, request=request)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
+            # TODO: narrow to expected write errors so Datasette bugs surface as 500s
             return Response.error([str(e)], 400)
 
         await self.ds.track_event(
@@ -835,7 +832,8 @@ class RowUpdateView(BaseView):
 
         try:
             await resolved.db.execute_write_fn(update_row, request=request)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
+            # TODO: narrow to expected write errors so Datasette bugs surface as 500s
             return Response.error([str(e)], 400)
 
         result = {"ok": True}

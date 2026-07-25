@@ -145,9 +145,7 @@ def test_static_mounts_hash_cache_control():
         )
 
         incorrect_hash = hashlib.sha256(b"incorrect").hexdigest()[:12]
-        response = client.get(
-            f"/custom-static/test_html.py?_hash={incorrect_hash}"
-        )
+        response = client.get(f"/custom-static/test_html.py?_hash={incorrect_hash}")
         assert response.status_code == 200
         assert "cache-control" not in response.headers
 
@@ -779,7 +777,9 @@ def test_stored_query_show_hide_metadata_option(
         },
         memory=True,
     ) as client:
-        expected_show_hide_fragment = f'(<a href="{expected_show_hide_link}">{expected_show_hide_text}</a>)'
+        expected_show_hide_fragment = (
+            f'(<a href="{expected_show_hide_link}">{expected_show_hide_text}</a>)'
+        )
         response = client.get("/_memory/one" + querystring)
         html = response.text
         show_hide_fragment = html.split('<span class="show-hide-sql">')[1].split(
@@ -787,10 +787,7 @@ def test_stored_query_show_hide_metadata_option(
         )[0]
         assert show_hide_fragment == expected_show_hide_fragment
         if expected_hidden:
-            assert (
-                f'<input type="hidden" name="{expected_hidden}" value="1">'
-                in html
-            )
+            assert f'<input type="hidden" name="{expected_hidden}" value="1">' in html
         else:
             assert '<input type="hidden" ' not in html
 

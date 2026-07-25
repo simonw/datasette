@@ -35,9 +35,7 @@ def render_cell(value, database):
     if set(data.keys()) != {"href", "label"}:
         return None
     href = data["href"]
-    if not (
-        href.startswith(("/", "http://", "https://"))
-    ):
+    if not (href.startswith(("/", "http://", "https://"))):
         return None
     return markupsafe.Markup(
         '<a data-database="{database}" href="{href}">{label}</a>'.format(

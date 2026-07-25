@@ -719,7 +719,11 @@ def serve(
             url = f"http://{host}:{port}{path}"
         webbrowser.open(url)
     uvicorn_kwargs = {
-        "host": host, "port": port, "log_level": "info", "lifespan": "on", "workers": 1
+        "host": host,
+        "port": port,
+        "log_level": "info",
+        "lifespan": "on",
+        "workers": 1,
     }
     if uds:
         uvicorn_kwargs["uds"] = uds
@@ -892,7 +896,5 @@ async def check_databases(ds):
         and len([db for db in ds.databases.values() if not db.is_memory])
         > SQLITE_LIMIT_ATTACHED
     ):
-        msg = (
-            f"Warning: --crossdb only works with the first {SQLITE_LIMIT_ATTACHED} attached databases"
-        )
+        msg = f"Warning: --crossdb only works with the first {SQLITE_LIMIT_ATTACHED} attached databases"
         click.echo(click.style(msg, bold=True, fg="yellow"), err=True)

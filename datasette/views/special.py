@@ -420,8 +420,11 @@ class AllowedResourcesView(BaseView):
                     row["reason"] = resource.reasons
 
                 allowed_rows.append(row)
-        except Exception:
-            # If catalog tables don't exist yet, return empty results
+        except Exception:  # noqa: BLE001
+            # Returns empty results if the catalog tables don't exist yet, but
+            # also swallows the AttributeError raised for instance-level actions
+            # such as view-instance, which have no resource_class.
+            # TODO: handle that case explicitly and narrow this to sqlite3.Error
             return (
                 {
                     "ok": True,

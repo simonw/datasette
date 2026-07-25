@@ -161,7 +161,8 @@ class CrossOriginProtectionMiddleware:
             try:
                 if self.datasette.setting("force_https_urls"):
                     return "https"
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
+                # Settings may not be readable this early; fall back to the ASGI scheme
                 pass
         return scope.get("scheme") or "http"
 

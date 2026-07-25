@@ -102,9 +102,5 @@ datasette = ["templates/*.html"]
 [tool.setuptools.dynamic]
 version = {attr = "datasette.version.__version__"}
 
-[tool.ruff]
-line-length = 160
-select = ["E", "F", "W"]
-
 [tool.uv]
 package = true

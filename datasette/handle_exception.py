@@ -10,10 +10,12 @@ from .utils.asgi import (
 )
 from .views.base import DatasetteError
 
+# Debugger imports are deliberate - they back the "pdb" setting, which drops
+# into a debugger on unhandled exceptions
 try:
-    import ipdb as pdb
+    import ipdb as pdb  # noqa: T100
 except ImportError:
-    import pdb
+    import pdb  # noqa: T100
 
 try:
     import rich

@@ -16,6 +16,7 @@ import glob
 import importlib.metadata
 import inspect
 import json
+import logging
 import os
 import re
 import secrets
@@ -159,6 +160,8 @@ from .views.table_create_alter import (
 )
 
 app_root = Path(__file__).parent.parent
+
+logger = logging.getLogger(__name__)
 
 
 # Context variable to track when code is executing within a datasette.client request
@@ -673,10 +676,10 @@ class Datasette:
     def get_jinja_environment(self, request: Request = None) -> Environment:
         environment = self._jinja_env
         if request:
-            for environment in pm.hook.jinja2_environment_from_request(
+            for hook_environment in pm.hook.jinja2_environment_from_request(
                 datasette=self, request=request, env=environment
             ):
-                pass
+                environment = hook_environment
         return environment
 
     def get_action(self, name_or_abbr: str):
@@ -790,17 +793,13 @@ class Datasette:
                         action.name in action_names
                         and action != action_names[action.name]
                     ):
-                        raise StartupError(
-                            f"Duplicate action name: {action.name}"
-                        )
+                        raise StartupError(f"Duplicate action name: {action.name}")
                     if (
                         action.abbr
                         and action.abbr in action_abbrs
                         and action != action_abbrs[action.abbr]
                     ):
-                        raise StartupError(
-                            f"Duplicate action abbr: {action.abbr}"
-                        )
+                        raise StartupError(f"Duplicate action abbr: {action.abbr}")
                     action_names[action.name] = action
                     if action.abbr:
                         action_abbrs[action.abbr] = action
@@ -964,13 +963,14 @@ class Datasette:
         for db in dbs:
             try:
                 db.close()
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
+                # Collect the first failure and re-raise after every close() has run
                 if first_exception is None:
                     first_exception = e
         if self.executor is not None:
             try:
                 self.executor.shutdown(wait=True, cancel_futures=True)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 if first_exception is None:
                     first_exception = e
         if first_exception is not None:
@@ -1328,8 +1328,6 @@ class Datasette:
 
     async def _apply_column_types_config(self):
         """Load column_types from datasette.json config into the internal DB."""
-        import logging
-
         for db_name, db_conf in (self.config or {}).get("databases", {}).items():
             for table_name, table_conf in db_conf.get("tables", {}).items():
                 for col_name, ct in table_conf.get("column_types", {}).items():
@@ -1339,7 +1337,7 @@ class Datasette:
                         col_type = ct["type"]
                         config = ct.get("config")
                     if col_type not in self._column_types:
-                        logging.warning(
+                        logger.warning(
                             "column_types config references unknown type %r "
                             "for %s.%s.%s",
                             col_type,
@@ -1352,7 +1350,7 @@ class Datasette:
                             db_name, table_name, col_name, col_type, config
                         )
                     except ValueError as ex:
-                        logging.warning(str(ex))
+                        logger.warning(str(ex))
 
     async def get_column_type(self, database: str, resource: str, column: str):
         """
@@ -1489,9 +1487,7 @@ class Datasette:
             possible_names = {plugin["name"], plugin["name"].replace("-", "_")}
             if plugin_name in possible_names:
                 return _resolve_static_asset_path(plugin["static_path"], path)
-        raise FileNotFoundError(
-            f"No static assets found for plugin {plugin_name}"
-        )
+        raise FileNotFoundError(f"No static assets found for plugin {plugin_name}")
 
     def _static_mounted_asset(self, mount_name, path):
         mount_name = mount_name.strip("/")
@@ -1630,7 +1626,9 @@ class Datasette:
         return result
 
     async def track_event(self, event: Event):
-        assert isinstance(event, self.event_classes), f"Invalid event type: {type(event)}"
+        assert isinstance(
+            event, self.event_classes
+        ), f"Invalid event type: {type(event)}"
         for hook in pm.hook.track_event(datasette=self, event=event):
             await await_me_maybe(hook)
 
@@ -2083,13 +2081,15 @@ class Datasette:
         db = self.databases[database]
         foreign_keys = await db.foreign_keys_for_table(table)
         # Find the foreign_key for this column
-        try:
-            fk = next(
+        fk = next(
+            (
                 foreign_key
                 for foreign_key in foreign_keys
                 if foreign_key["column"] == column
-            )
-        except IndexError:
+            ),
+            None,
+        )
+        if fk is None:
             return {}
         # Ensure user has permission to view the referenced table
         from datasette.resources import TableResource
@@ -2177,7 +2177,8 @@ class Datasette:
                     sqlite_extensions[extension] = result.fetchone()[0]
                 else:
                     sqlite_extensions[extension] = None
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
+                # Probing for optional SQLite extensions - absence is the normal case
                 pass
         # More details on SpatiaLite
         if "spatialite" in sqlite_extensions:
@@ -2186,7 +2187,7 @@ class Datasette:
                 try:
                     result = conn.execute(f"select {fn}()")
                     spatialite_details[fn] = result.fetchone()[0]
-                except Exception as e:
+                except sqlite3.Error as e:
                     spatialite_details[fn] = {"error": str(e)}
             sqlite_extensions["spatialite"] = spatialite_details
 
@@ -2194,9 +2195,7 @@ class Datasette:
         fts_versions = []
         for fts in ("FTS5", "FTS4", "FTS3"):
             try:
-                conn.execute(
-                    f"CREATE VIRTUAL TABLE v{fts} USING {fts} (data)"
-                )
+                conn.execute(f"CREATE VIRTUAL TABLE v{fts} USING {fts} (data)")
                 fts_versions.append(fts)
             except sqlite3.OperationalError:
                 continue
@@ -2337,7 +2336,9 @@ class Datasette:
         view_name: str | None = None,
     ):
         if not self._startup_invoked:
-            raise Exception("render_template() called before await ds.invoke_startup()")
+            raise RuntimeError(
+                "render_template() called before await ds.invoke_startup()"
+            )
         context = context or {}
         if isinstance(templates, Template):
             template = templates
@@ -2383,7 +2384,9 @@ class Datasette:
             datasette=self,
         ):
             extra_vars = await await_me_maybe(extra_vars)
-            assert isinstance(extra_vars, dict), f"extra_vars is of type {type(extra_vars)}"
+            assert isinstance(
+                extra_vars, dict
+            ), f"extra_vars is of type {type(extra_vars)}"
             extra_template_vars.update(extra_vars)
 
         async def menu_links():
@@ -2402,29 +2405,27 @@ class Datasette:
         # the contract tests fail otherwise
         template_context = {
             **context,
-            
-                "request": request,
-                "crumb_items": self._crumb_items,
-                "urls": self.urls,
-                "actor": request.actor if request else None,
-                "menu_links": menu_links,
-                "display_actor": display_actor,
-                "show_logout": request is not None
-                and "ds_actor" in request.cookies
-                and request.actor,
-                "zip": zip,
-                "body_scripts": body_scripts,
-                "format_bytes": format_bytes,
-                "show_messages": lambda: self._show_messages(request),
-                "extra_css_urls": await self._asset_urls(
-                    "extra_css_urls", template, context, request, view_name
-                ),
-                "extra_js_urls": await self._asset_urls(
-                    "extra_js_urls", template, context, request, view_name
-                ),
-                "base_url": self.setting("base_url"),
-                "datasette_version": __version__
-            ,
+            "request": request,
+            "crumb_items": self._crumb_items,
+            "urls": self.urls,
+            "actor": request.actor if request else None,
+            "menu_links": menu_links,
+            "display_actor": display_actor,
+            "show_logout": request is not None
+            and "ds_actor" in request.cookies
+            and request.actor,
+            "zip": zip,
+            "body_scripts": body_scripts,
+            "format_bytes": format_bytes,
+            "show_messages": lambda: self._show_messages(request),
+            "extra_css_urls": await self._asset_urls(
+                "extra_css_urls", template, context, request, view_name
+            ),
+            "extra_js_urls": await self._asset_urls(
+                "extra_js_urls", template, context, request, view_name
+            ),
+            "base_url": self.setting("base_url"),
+            "datasette_version": __version__,
             **extra_template_vars,
         }
         if request and request.args.get("_context") and self.setting("template_debug"):
@@ -2924,7 +2925,8 @@ class DatasetteRouter:
                     custom_response
                 ), "Default forbidden() hook should have been called"
                 return await custom_response.asgi_send(send)
-        except Exception as exception:
+        except Exception as exception:  # noqa: BLE001
+            # This IS the top-level error handler - it must catch everything
             return await self.handle_exception(request, send, exception)
 
     async def handle_401(self, request, send, exception):

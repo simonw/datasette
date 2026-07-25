@@ -320,7 +320,8 @@ async def test_plugin_config_env_from_list(ds_client):
 
 @pytest.mark.asyncio
 async def test_plugin_config_file(ds_client):
-    with open(TEMP_PLUGIN_SECRET_FILE, "w") as fp:
+    # Blocking write is fine here - it is tiny test setup, not request handling
+    with open(TEMP_PLUGIN_SECRET_FILE, "w") as fp:  # noqa: ASYNC230
         fp.write("FROM_FILE")
     assert {"foo": "FROM_FILE"} == ds_client.ds.plugin_config("file-plugin")
     os.remove(TEMP_PLUGIN_SECRET_FILE)

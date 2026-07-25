@@ -2423,9 +2423,7 @@ async def test_execute_write_json_returning_rows_can_be_truncated():
     db = ds.add_memory_database("execute_write_returning_json_truncated", name="data")
     await db.execute_write("create table dogs (id integer primary key, name text)")
     for index in range(1, 12):
-        await db.execute_write(
-            "insert into dogs (name) values (?)", [f"Dog {index}"]
-        )
+        await db.execute_write("insert into dogs (name) values (?)", [f"Dog {index}"])
     await ds.invoke_startup()
 
     response = await ds.client.post(
@@ -2494,9 +2492,7 @@ async def test_execute_write_html_returning_rows_can_be_truncated():
     db = ds.add_memory_database("execute_write_returning_html_truncated", name="data")
     await db.execute_write("create table dogs (id integer primary key, name text)")
     for index in range(1, 12):
-        await db.execute_write(
-            "insert into dogs (name) values (?)", [f"Dog {index}"]
-        )
+        await db.execute_write("insert into dogs (name) values (?)", [f"Dog {index}"])
     await ds.invoke_startup()
 
     response = await ds.client.post(

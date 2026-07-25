@@ -36,7 +36,6 @@ class MultipartParseError(Exception):
     """Raised when multipart parsing fails."""
 
 
-
 @dataclass
 class UploadedFile:
     """
@@ -80,7 +79,8 @@ class UploadedFile:
     def __del__(self):
         try:
             self._file.close()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
+            # __del__ must never raise
             pass
 
 
@@ -157,7 +157,7 @@ class FormData:
         for uploaded in self._uploaded_files():
             try:
                 uploaded.close_sync()
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 # Best-effort cleanup; ignore close errors
                 pass
 
@@ -166,7 +166,7 @@ class FormData:
         for uploaded in self._uploaded_files():
             try:
                 await uploaded.close()
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 # Best-effort cleanup; ignore close errors
                 pass
 
@@ -232,7 +232,8 @@ def parse_content_disposition(header: str) -> dict[str, str | None]:
                         from urllib.parse import unquote
 
                         result["filename"] = unquote(encoded, encoding="utf-8")
-                    except Exception:
+                    except Exception:  # noqa: BLE001, S110
+                        # Malformed RFC 5987 filename* - fall back to the plain filename
                         pass
             continue
 
@@ -244,15 +245,14 @@ def parse_content_disposition(header: str) -> dict[str, str | None]:
 
         if key == "name":
             result["name"] = value
-        elif key == "filename":
-            # Only set if filename* hasn't already set it
-            if result["filename"] is None:
-                # Strip path components (security)
-                # Handle both Unix and Windows paths
-                value = value.replace("\\", "/")
-                if "/" in value:
-                    value = value.rsplit("/", 1)[-1]
-                result["filename"] = value
+        # Only set filename if filename* hasn't already set it
+        elif key == "filename" and result["filename"] is None:
+            # Strip path components (security)
+            # Handle both Unix and Windows paths
+            value = value.replace("\\", "/")
+            if "/" in value:
+                value = value.rsplit("/", 1)[-1]
+            result["filename"] = value
 
     return result
 
@@ -448,7 +448,7 @@ class MultipartParser:
             # Parse header
             try:
                 line_str = line.decode("utf-8", errors="replace")
-            except Exception:
+            except UnicodeDecodeError:
                 line_str = line.decode("latin-1")
 
             if ":" in line_str:
@@ -475,7 +475,9 @@ class MultipartParser:
             if self.file_count > self.max_files:
                 raise MultipartParseError("Too many files")
             if self.handle_files:
-                self.current_file = tempfile.SpooledTemporaryFile(
+                # Outlives this method - it is filled in across parser callbacks
+                # and then handed to the UploadedFile the caller consumes
+                self.current_file = tempfile.SpooledTemporaryFile(  # noqa: SIM115
                     max_size=self.max_memory_file_size
                 )
             else:

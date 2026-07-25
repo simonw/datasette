@@ -129,12 +129,10 @@ class BaseView:
         template = environment.select_template(templates)
         template_context = {
             **context,
-            
-                "select_templates": [
-                    f"{'*' if template_name == template.name else ''}{template_name}"
-                    for template_name in templates
-                ]
-            ,
+            "select_templates": [
+                f"{'*' if template_name == template.name else ''}{template_name}"
+                for template_name in templates
+            ],
         }
         headers = {}
         if self.has_json_alternate:
@@ -182,9 +180,7 @@ async def stream_csv(datasette, fetch_data, request, database):
     stream = request.args.get("_stream")
     # Do not calculate facets or counts:
     extra_parameters = [
-        f"{key}=1"
-        for key in ("_nofacet", "_nocount")
-        if not request.args.get(key)
+        f"{key}=1" for key in ("_nofacet", "_nocount") if not request.args.get(key)
     ]
     if extra_parameters:
         # Replace request object with a new one with modified scope
@@ -213,9 +209,6 @@ async def stream_csv(datasette, fetch_data, request, database):
             data, _, _ = response_or_template_contexts
     except (sqlite3.OperationalError, InvalidSql) as e:
         raise DatasetteError(str(e), title="Invalid SQL", status=400)
-
-    except sqlite3.OperationalError as e:
-        raise DatasetteError(str(e))
 
     except DatasetteError:
         raise
@@ -323,7 +316,8 @@ async def stream_csv(datasette, fetch_data, request, database):
                             else:
                                 new_row.append(cell)
                         await writer.writerow(new_row)
-            except Exception as ex:
+            except Exception as ex:  # noqa: BLE001
+                # Streaming CSV: report the error into the response body and stop
                 sys.stderr.write(f"Caught this error: {ex}\n")
                 sys.stderr.flush()
                 await r.write(str(ex))

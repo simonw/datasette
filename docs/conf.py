@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 #
 # Datasette documentation build configuration file, created by
 # sphinx-quickstart on Thu Nov 16 06:50:13 2017.

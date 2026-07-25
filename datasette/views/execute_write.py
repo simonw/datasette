@@ -87,9 +87,7 @@ def _insert_template_sql(table, columns):
     return "\n".join(
         (
             f"insert into {_quote_identifier(table)} (",
-            ",\n".join(
-                f"  {_quote_identifier(column)}" for column in insert_columns
-            ),
+            ",\n".join(f"  {_quote_identifier(column)}" for column in insert_columns),
             ")",
             "values (",
             ",\n".join(f"  :{names[column]}" for column in insert_columns),

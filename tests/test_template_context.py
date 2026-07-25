@@ -40,13 +40,17 @@ def test_documented_fields():
 @pytest.mark.parametrize("klass", PAGES.values(), ids=lambda klass: klass.__name__)
 def test_context_class_fields_all_have_help(klass):
     for context_field in klass.documented_fields():
-        assert context_field.help, f"{klass.__name__}.{context_field.name} is missing documentation"
+        assert (
+            context_field.help
+        ), f"{klass.__name__}.{context_field.name} is missing documentation"
 
 
 @pytest.mark.parametrize("klass", PAGES.values(), ids=lambda klass: klass.__name__)
 def test_context_class_has_docstring_and_documented_template(klass):
     assert klass.__doc__, f"{klass.__name__} is missing a docstring"
-    assert klass.documented_template, f"{klass.__name__} is missing a documented_template"
+    assert (
+        klass.documented_template
+    ), f"{klass.__name__} is missing a documented_template"
 
 
 def test_from_extra_documentation_comes_from_the_extra_class():
@@ -202,8 +206,9 @@ def test_template_context_docs_cover_every_documented_key():
         title = "{} page".format(klass.__name__.removesuffix("Context"))
         assert title in docs, title
         for context_field in klass.documented_fields():
-            assert f"``{context_field.name}``" in docs, f"{context_field.name} ({page_name} page)"
             assert (
-                f"``{context_field.name}`` - ``{context_field.type_name}``"
-                in docs
+                f"``{context_field.name}``" in docs
+            ), f"{context_field.name} ({page_name} page)"
+            assert (
+                f"``{context_field.name}`` - ``{context_field.type_name}``" in docs
             ), f"{context_field.name} type ({page_name} page)"

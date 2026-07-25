@@ -115,7 +115,8 @@ async def test_write_wrapper_exception_thrown_into_generator(datasette):
             def wrapper(conn):
                 try:
                     yield
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
+                    # Test helper deliberately captures whatever the wrapped write raised
                     caught["error"] = e
 
             return wrapper
@@ -467,7 +468,7 @@ async def test_write_wrapper_set_authorizer(datasette, actor, table, should_deny
     try:
         request = FakeRequest(actor)
         if should_deny:
-            with pytest.raises(Exception):
+            with pytest.raises(sqlite3.DatabaseError, match="not authorized"):
                 await db.execute_write_fn(
                     lambda conn: conn.execute(
                         f"insert into {table} (value) values ('test')"

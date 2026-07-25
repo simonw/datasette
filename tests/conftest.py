@@ -1,15 +1,17 @@
-import httpx
 import importlib.metadata
 import os
 import pathlib
-import pytest
-import pytest_asyncio
 import re
 import subprocess
 import sys
 import tempfile
 import time
 from dataclasses import dataclass
+
+import httpx
+import pytest
+import pytest_asyncio
+
 from datasette import Event, hookimpl
 
 try:
@@ -38,7 +40,7 @@ def wait_until_responds(url, timeout=5.0, client=httpx, **kwargs):
             return
         except httpx.ConnectError:
             time.sleep(0.1)
-    raise AssertionError("Timed out waiting for {} to respond".format(url))
+    raise AssertionError(f"Timed out waiting for {url} to respond")
 
 
 @pytest.fixture
@@ -54,10 +56,12 @@ def bare_ds():
 
 @pytest_asyncio.fixture(scope="session")
 async def ds_client():
+    import secrets
+
     from datasette.app import Datasette
     from datasette.database import Database
+
     from .fixtures import CONFIG, METADATA, PLUGINS_DIR
-    import secrets
 
     ds = Datasette(
         metadata=METADATA,
@@ -96,8 +100,8 @@ def pytest_report_header(config):
     conn.close()
     sqlite_utils_version = importlib.metadata.version("sqlite-utils")
     headers = [
-        "SQLite: {}".format(version),
-        "sqlite-utils: {}".format(sqlite_utils_version),
+        f"SQLite: {version}",
+        f"sqlite-utils: {sqlite_utils_version}",
     ]
     if config.getoption("--playwright"):
         try:
@@ -175,8 +179,8 @@ def restore_working_directory(tmpdir, request):
 
 @pytest.fixture(scope="session", autouse=True)
 def check_actions_are_documented():
-    from datasette.plugins import pm
     from datasette.default_actions import register_actions as default_register_actions
+    from datasette.plugins import pm
 
     content = (
         pathlib.Path(__file__).parent.parent / "docs" / "authentication.rst"
@@ -202,7 +206,7 @@ def check_actions_are_documented():
             if kwargs["action"] in core_actions:
                 assert (
                     action in documented_actions
-                ), "Undocumented permission action: {}".format(action)
+                ), f"Undocumented permission action: {action}"
 
     pm.add_hookcall_monitoring(
         before=before, after=lambda outcome, hook_name, hook_impls, kwargs: None
@@ -298,7 +302,8 @@ def ds_unix_domain_socket_server(tmp_path_factory):
 
 
 # Import fixtures from fixtures.py to make them available
-from .fixtures import (  # noqa: E402, F401
+from .fixtures import (  # noqa: F401
+    TEMP_PLUGIN_SECRET_FILE,
     app_client,
     app_client_base_url_prefix,
     app_client_conflicting_database_names,
@@ -315,5 +320,4 @@ from .fixtures import (  # noqa: E402, F401
     app_client_with_dot,
     app_client_with_trace,
     make_app_client,
-    TEMP_PLUGIN_SECRET_FILE,
 )

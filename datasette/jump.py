@@ -21,7 +21,7 @@ class JumpSQL:
         search_text: str | None = None,
         display_name: str | None = None,
         item_type: str = "menu",
-    ) -> "JumpSQL":
+    ) -> JumpSQL:
         if search_text is None:
             search_text = " ".join(
                 text for text in (label, display_name, description) if text is not None

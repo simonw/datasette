@@ -8,7 +8,7 @@ contains allowlists of resources the actor can access.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from datasette.app import Datasette
@@ -23,12 +23,12 @@ from .helpers import action_in_list, get_action_name_variants
 class ActorRestrictions:
     """Parsed actor restrictions from the _r key."""
 
-    global_actions: List[str]  # _r.a - globally allowed actions
+    global_actions: list[str]  # _r.a - globally allowed actions
     database_actions: dict  # _r.d - {db_name: [actions]}
     table_actions: dict  # _r.r - {db_name: {table: [actions]}}
 
     @classmethod
-    def from_actor(cls, actor: Optional[dict]) -> Optional["ActorRestrictions"]:
+    def from_actor(cls, actor: dict | None) -> ActorRestrictions | None:
         """Parse restrictions from actor dict. Returns None if no restrictions."""
         if not actor:
             return None
@@ -44,11 +44,11 @@ class ActorRestrictions:
             table_actions=restrictions.get("r", {}),
         )
 
-    def is_action_globally_allowed(self, datasette: "Datasette", action: str) -> bool:
+    def is_action_globally_allowed(self, datasette: Datasette, action: str) -> bool:
         """Check if action is in the global allowlist."""
         return action_in_list(datasette, action, self.global_actions)
 
-    def get_allowed_databases(self, datasette: "Datasette", action: str) -> Set[str]:
+    def get_allowed_databases(self, datasette: Datasette, action: str) -> set[str]:
         """Get database names where this action is allowed."""
         allowed = set()
         for db_name, db_actions in self.database_actions.items():
@@ -57,8 +57,8 @@ class ActorRestrictions:
         return allowed
 
     def get_allowed_tables(
-        self, datasette: "Datasette", action: str
-    ) -> Set[Tuple[str, str]]:
+        self, datasette: Datasette, action: str
+    ) -> set[tuple[str, str]]:
         """Get (database, table) pairs where this action is allowed."""
         allowed = set()
         for db_name, tables in self.table_actions.items():
@@ -70,10 +70,10 @@ class ActorRestrictions:
 
 @hookimpl(specname="permission_resources_sql")
 async def actor_restrictions_sql(
-    datasette: "Datasette",
-    actor: Optional[dict],
+    datasette: Datasette,
+    actor: dict | None,
     action: str,
-) -> Optional[List[PermissionSQL]]:
+) -> list[PermissionSQL] | None:
     """
     Handle actor restriction-based permission rules.
 
@@ -140,10 +140,10 @@ async def actor_restrictions_sql(
 
 
 def restrictions_allow_action(
-    datasette: "Datasette",
+    datasette: Datasette,
     restrictions: dict,
     action: str,
-    resource: Optional[str | Tuple[str, str]],
+    resource: str | tuple[str, str] | None,
 ) -> bool:
     """
     Check if restrictions allow the requested action on the requested resource.

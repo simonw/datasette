@@ -15,37 +15,29 @@ from datasette.utils.sqlite import sqlite3, supports_returning
 requires_sqlite_returning = pytest.mark.skipif(
     not supports_returning(), reason="SQLite does not support RETURNING"
 )
-EXPECTED_CREATE_TABLE_TEMPLATE_SQL = "\n".join(
-    (
-        "create table new_table (",
-        "  id integer primary key,",
-        "  name text",
-        "  -- created text default (datetime('now'))",
-        ")",
-    )
-)
+EXPECTED_CREATE_TABLE_TEMPLATE_SQL = "create table new_table (\n  id integer primary key,\n  name text\n  -- created text default (datetime('now'))\n)"
 
 
 def _template_option_attributes(html, table):
-    match = re.search(r'<option value="{}"([^>]*)>'.format(table), html)
-    assert match, "Could not find template option for {}".format(table)
+    match = re.search(rf'<option value="{table}"([^>]*)>', html)
+    assert match, f"Could not find template option for {table}"
     return match.group(1)
 
 
 def _template_sql(html, table, operation):
     attrs = _template_option_attributes(html, table)
-    match = re.search(r'data-template-{}-sql="([^"]*)"'.format(operation), attrs)
-    assert match, "Could not find {} template for {}".format(operation, table)
+    match = re.search(rf'data-template-{operation}-sql="([^"]*)"', attrs)
+    assert match, f"Could not find {operation} template for {table}"
     return unescape(match.group(1))
 
 
 def _template_button_sql(html, operation):
     soup = Soup(html, "html.parser")
-    button = soup.select_one('button[data-sql-template="{}"]'.format(operation))
-    assert button, "Could not find {} template button".format(operation)
+    button = soup.select_one(f'button[data-sql-template="{operation}"]')
+    assert button, f"Could not find {operation} template button"
     assert button.get(
         "data-template-sql"
-    ), "Could not find SQL for {} template button".format(operation)
+    ), f"Could not find SQL for {operation} template button"
     return button["data-template-sql"]
 
 
@@ -53,10 +45,10 @@ async def add_numbered_queries(ds, database, count):
     for i in range(1, count + 1):
         await ds.add_query(
             database,
-            "demo_query_{:02d}".format(i),
-            "select {} as query_number".format(i),
-            title="Demo query {:02d}".format(i),
-            description="Seeded demo query number {:02d}".format(i),
+            f"demo_query_{i:02d}",
+            f"select {i} as query_number",
+            title=f"Demo query {i:02d}",
+            description=f"Seeded demo query number {i:02d}",
             source="user",
             owner_id="root",
         )
@@ -2432,7 +2424,7 @@ async def test_execute_write_json_returning_rows_can_be_truncated():
     await db.execute_write("create table dogs (id integer primary key, name text)")
     for index in range(1, 12):
         await db.execute_write(
-            "insert into dogs (name) values (?)", ["Dog {}".format(index)]
+            "insert into dogs (name) values (?)", [f"Dog {index}"]
         )
     await ds.invoke_startup()
 
@@ -2448,7 +2440,7 @@ async def test_execute_write_json_returning_rows_can_be_truncated():
     assert data["message"] == "Query executed"
     assert data["rowcount"] == -1
     assert data["rows"] == [
-        {"id": index, "name": "Dog {}!".format(index)} for index in range(1, 11)
+        {"id": index, "name": f"Dog {index}!"} for index in range(1, 11)
     ]
     assert data["truncated"] is True
     assert (await db.execute("select count(*) from dogs where name like '%!'")).first()[
@@ -2503,7 +2495,7 @@ async def test_execute_write_html_returning_rows_can_be_truncated():
     await db.execute_write("create table dogs (id integer primary key, name text)")
     for index in range(1, 12):
         await db.execute_write(
-            "insert into dogs (name) values (?)", ["Dog {}".format(index)]
+            "insert into dogs (name) values (?)", [f"Dog {index}"]
         )
     await ds.invoke_startup()
 
@@ -3645,12 +3637,12 @@ async def test_private_query_restricts_broad_update_delete_permissions(
     )
 
     private_response = await ds.client.post(
-        "/data/alice_private/{}".format(path_suffix),
+        f"/data/alice_private/{path_suffix}",
         actor={"id": "bob"},
         json=request_json,
     )
     public_response = await ds.client.post(
-        "/data/alice_public/{}".format(path_suffix),
+        f"/data/alice_public/{path_suffix}",
         actor={"id": "bob"},
         json=request_json,
     )
@@ -3863,6 +3855,6 @@ async def test_stored_query_json_uses_parameters_not_params():
     assert "params" not in definition["query"]
 
     listing = (await ds.client.get("/data/-/queries.json")).json()
-    query = [q for q in listing["queries"] if q["name"] == "with_params"][0]
+    query = next(q for q in listing["queries"] if q["name"] == "with_params")
     assert query["parameters"] == ["name", "age"]
     assert "params" not in query

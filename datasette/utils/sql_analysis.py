@@ -413,12 +413,12 @@ def analyze_sql_tables(
                 database=None,
                 table=None,
                 sqlite_schema=sqlite_schema,
-                target="{} {}".format(arg1, arg2) if arg2 is not None else arg1,
+                target=f"{arg1} {arg2}" if arg2 is not None else arg1,
                 source=source,
             )
             return sqlite3.SQLITE_OK
 
-        action_name = _AUTHORIZER_ACTION_NAMES.get(action, "SQLITE_{}".format(action))
+        action_name = _AUTHORIZER_ACTION_NAMES.get(action, f"SQLITE_{action}")
         record(
             "unknown",
             "unknown",
@@ -521,9 +521,7 @@ def analyze_sql_tables(
             and key.target in _SQLITE_INTERNAL_SCHEMA_FUNCTIONS
         ):
             return True
-        if key_is_drop_table_delete(key):
-            return True
-        return False
+        return bool(key_is_drop_table_delete(key))
 
     def table_kind_for(key: OperationKey) -> SQLiteTableType | None:
         if (

@@ -1,21 +1,22 @@
+import time
+
+import pytest
+
 from datasette.app import Datasette
 from datasette.events import RenameTableEvent
 from datasette.utils import error_body, escape_sqlite, sqlite3
+
 from .utils import last_event
-import pytest
-import time
 
 
 def assert_schema_contains(fragment, schema):
-    assert fragment in schema, "Expected schema to contain {!r}, got {!r}".format(
-        fragment, schema
-    )
+    assert fragment in schema, f"Expected schema to contain {fragment!r}, got {schema!r}"
 
 
 def assert_schema_not_contains(fragment, schema):
     assert (
         fragment not in schema
-    ), "Expected schema not to contain {!r}, got {!r}".format(fragment, schema)
+    ), f"Expected schema not to contain {fragment!r}, got {schema!r}"
 
 
 @pytest.fixture
@@ -47,7 +48,7 @@ def write_token(ds, actor_id="root", permissions=None):
 
 def _headers(token):
     return {
-        "Authorization": "Bearer {}".format(token),
+        "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
 
@@ -55,9 +56,7 @@ def _headers(token):
 def _insert_and_fetch_created(conn, table, insert_sql):
     cursor = conn.execute(insert_sql)
     return conn.execute(
-        "select created, typeof(created) from {} where rowid = ?".format(
-            escape_sqlite(table)
-        ),
+        f"select created, typeof(created) from {escape_sqlite(table)} where rowid = ?",
         (cursor.lastrowid,),
     ).fetchone()
 
@@ -241,7 +240,7 @@ async def test_insert_row(ds_write, content_type):
         "/data/docs/-/insert",
         json={"row": {"title": "Test", "score": 1.2, "age": 5}},
         headers={
-            "Authorization": "Bearer {}".format(token),
+            "Authorization": f"Bearer {token}",
             "Content-Type": content_type,
         },
     )
@@ -288,7 +287,7 @@ async def test_insert_rows(ds_write, return_rows):
     token = write_token(ds_write)
     data = {
         "rows": [
-            {"title": "Test {}".format(i), "score": 1.0, "age": 5} for i in range(20)
+            {"title": f"Test {i}", "score": 1.0, "age": 5} for i in range(20)
         ]
     }
     if return_rows:
@@ -314,7 +313,7 @@ async def test_insert_rows(ds_write, return_rows):
     ).dicts()
     assert len(actual_rows) == 20
     assert actual_rows == [
-        {"id": i + 1, "title": "Test {}".format(i), "score": 1.0, "age": 5}
+        {"id": i + 1, "title": f"Test {i}", "score": 1.0, "age": 5}
         for i in range(20)
     ]
     assert response.json()["ok"] is True
@@ -561,13 +560,13 @@ async def test_insert_or_upsert_row_errors(
         )
     if special_case == "bad_token":
         token += "bad"
-    kwargs = dict(
-        json=input,
-        headers={
-            "Authorization": "Bearer {}".format(token),
+    kwargs = {
+        "json": input,
+        "headers": {
+            "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         },
-    )
+    }
 
     if special_case != "bad_token":
         actor_response = (
@@ -622,7 +621,7 @@ async def test_upsert_permissions_per_table(ds_write, allowed):
         "/data/docs/-/upsert",
         json={"rows": [{"id": 1, "title": "One"}]},
         headers={
-            "Authorization": "Bearer {}".format(token),
+            "Authorization": f"Bearer {token}",
         },
     )
     if allowed:
@@ -859,9 +858,7 @@ async def test_delete_row(ds_write, table, row_for_create, pks, delete_path):
     # Should be a single row
     assert (
         await ds_write.client.get(
-            "/data/-/query.json?_shape=arrayfirst&sql=select+count(*)+from+{}".format(
-                table
-            )
+            f"/data/-/query.json?_shape=arrayfirst&sql=select+count(*)+from+{table}"
         )
     ).json() == [1]
     # Now delete the row
@@ -869,14 +866,12 @@ async def test_delete_row(ds_write, table, row_for_create, pks, delete_path):
         # Special case for that rowid table
         delete_path = (
             await ds_write.client.get(
-                "/data/-/query.json?_shape=arrayfirst&sql=select+rowid+from+{}".format(
-                    table
-                )
+                f"/data/-/query.json?_shape=arrayfirst&sql=select+rowid+from+{table}"
             )
         ).json()[0]
 
     delete_response = await ds_write.client.post(
-        "/data/{}/{}/-/delete".format(table, delete_path),
+        f"/data/{table}/{delete_path}/-/delete",
         headers=_headers(write_token(ds_write)),
     )
     assert delete_response.status_code == 200
@@ -889,9 +884,7 @@ async def test_delete_row(ds_write, table, row_for_create, pks, delete_path):
     assert event.pks == str(delete_path).split(",")
     assert (
         await ds_write.client.get(
-            "/data/-/query.json?_shape=arrayfirst&sql=select+count(*)+from+{}".format(
-                table
-            )
+            f"/data/-/query.json?_shape=arrayfirst&sql=select+count(*)+from+{table}"
         )
     ).json() == [0]
 
@@ -941,7 +934,7 @@ async def test_update_row_invalid_key(ds_write):
 
     pk = await _insert_row(ds_write)
 
-    path = "/data/docs/{}/-/update".format(pk)
+    path = f"/data/docs/{pk}/-/update"
     response = await ds_write.client.post(
         path,
         json={"update": {"title": "New title"}, "bad_key": 1},
@@ -960,7 +953,7 @@ async def test_update_row_invalid_key(ds_write):
 async def test_update_row_alter(ds_write):
     token = write_token(ds_write, permissions=["ur", "at"])
     pk = await _insert_row(ds_write)
-    path = "/data/docs/{}/-/update".format(pk)
+    path = f"/data/docs/{pk}/-/update"
     response = await ds_write.client.post(
         path,
         json={"update": {"title": "New title", "extra": "extra"}, "alter": True},
@@ -1116,9 +1109,9 @@ async def test_alter_table_integer_default_expr(
     assert expected_schema in data["schema"]
 
     columns = await db.execute("select * from pragma_table_info('docs')")
-    created_column = [
+    created_column = next(
         column for column in columns.dicts() if column["name"] == "created"
-    ][0]
+    )
     assert created_column["type"] == "INTEGER"
     assert expected_schema in created_column["dflt_value"]
 
@@ -1625,7 +1618,7 @@ async def test_update_row(ds_write, input, expected_errors, use_return):
     token = write_token(ds_write)
     pk = await _insert_row(ds_write)
 
-    path = "/data/docs/{}/-/update".format(pk)
+    path = f"/data/docs/{pk}/-/update"
 
     data = {"update": input}
     if use_return:
@@ -1660,7 +1653,7 @@ async def test_update_row(ds_write, input, expected_errors, use_return):
 
     # And fetch the row to check it's updated
     response = await ds_write.client.get(
-        "/data/docs/{}.json?_shape=array".format(pk),
+        f"/data/docs/{pk}.json?_shape=array",
     )
     assert response.status_code == 200
     row = response.json()[0]
@@ -2306,7 +2299,7 @@ async def test_create_table_integer_default_expr(
     ds_write, default_expr, minimum_value, expected_schema
 ):
     token = write_token(ds_write)
-    table = "default_{}".format(default_expr)
+    table = f"default_{default_expr}"
     response = await ds_write.client.post(
         "/data/-/create",
         json={
@@ -2334,7 +2327,7 @@ async def test_create_table_integer_default_expr(
 
     row = await db.execute_write_fn(
         lambda conn: _insert_and_fetch_created(
-            conn, table, "insert into {} default values".format(escape_sqlite(table))
+            conn, table, f"insert into {escape_sqlite(table)} default values"
         )
     )
     assert row[0] > minimum_value

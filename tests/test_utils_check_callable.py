@@ -1,5 +1,6 @@
-from datasette.utils.check_callable import check_callable
 import pytest
+
+from datasette.utils.check_callable import check_callable
 
 
 class AsyncClass:

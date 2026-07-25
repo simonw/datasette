@@ -1,14 +1,17 @@
+import time
+
+import pytest
 from bs4 import BeautifulSoup as Soup
-from .utils import cookie_was_deleted, last_event
 from click.testing import CliRunner
-from datasette.utils import baseconv
+
 from datasette.cli import cli
 from datasette.resources import (
     DatabaseResource,
     TableResource,
 )
-import pytest
-import time
+from datasette.utils import baseconv
+
+from .utils import cookie_was_deleted, last_event
 
 
 @pytest.mark.asyncio
@@ -204,7 +207,7 @@ def test_auth_create_token(
     assert response2.status == 200
     if errors:
         for error in errors:
-            assert '<p class="message-error">{}</p>'.format(error) in response2.text
+            assert f'<p class="message-error">{error}</p>' in response2.text
     else:
         # Check create-token event
         event = last_event(app_client.ds)
@@ -228,7 +231,7 @@ def test_auth_create_token(
         # And test that token
         response3 = app_client.get(
             "/-/actor.json",
-            headers={"Authorization": "Bearer {}".format("dstok_{}".format(token))},
+            headers={"Authorization": "Bearer {}".format(f"dstok_{token}")},
         )
         assert response3.status == 200
         assert response3.json["actor"]["id"] == "test"
@@ -241,7 +244,7 @@ async def test_auth_create_token_not_allowed_for_tokens(ds_client):
     )
     response = await ds_client.get(
         "/-/create-token",
-        headers={"Authorization": "Bearer dstok_{}".format(ds_tok)},
+        headers={"Authorization": f"Bearer dstok_{ds_tok}"},
     )
     assert response.status_code == 403
 
@@ -286,12 +289,12 @@ async def test_auth_with_dstok_token(ds_client, scenario, should_work):
     elif scenario == "invalid_token":
         token = "invalid"
     if token:
-        token = "dstok_{}".format(token)
+        token = f"dstok_{token}"
     if scenario == "allow_signed_tokens_off":
         ds_client.ds._settings["allow_signed_tokens"] = False
     headers = {}
     if token:
-        headers["Authorization"] = "Bearer {}".format(token)
+        headers["Authorization"] = f"Bearer {token}"
     response = await ds_client.get("/-/actor.json", headers=headers)
     try:
         if should_work:
@@ -338,7 +341,7 @@ def test_cli_create_token(app_client, expires):
     assert details.keys() == expected_keys
     assert details["a"] == "test"
     response = app_client.get(
-        "/-/actor.json", headers={"Authorization": "Bearer {}".format(token)}
+        "/-/actor.json", headers={"Authorization": f"Bearer {token}"}
     )
     if expires is None or expires > 0:
         expected_actor = {

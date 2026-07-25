@@ -1,20 +1,23 @@
 import collections
+import copy
+import json
+import re
+import time
+import urllib
+from pprint import pprint
+
+import pytest
+import pytest_asyncio
 from asgiref.sync import async_to_sync
+from bs4 import BeautifulSoup as Soup
+from click.testing import CliRunner
+
 from datasette.app import Datasette
 from datasette.cli import cli
 from datasette.default_permissions import restrictions_allow_action
 from datasette.utils import UNSTABLE_API_MESSAGE
+
 from .fixtures import assert_permissions_checked, make_app_client
-from click.testing import CliRunner
-from bs4 import BeautifulSoup as Soup
-import copy
-import json
-from pprint import pprint
-import pytest_asyncio
-import pytest
-import re
-import time
-import urllib
 
 
 @pytest.fixture(scope="module")
@@ -602,9 +605,7 @@ def test_permissions_cascade(cascade_app_client, path, permissions, expected_sta
         )
         assert (
             response.status == expected_status
-        ), "path: {}, permissions: {}, expected_status: {}, status: {}".format(
-            path, permissions, expected_status, response.status
-        )
+        ), f"path: {path}, permissions: {permissions}, expected_status: {expected_status}, status: {response.status}"
     finally:
         cascade_app_client.ds.config = previous_config
 
@@ -2039,7 +2040,7 @@ async def test_databases_json_respects_view_database(tmp_path_factory):
 
     paths = []
     for name in ("public", "private"):
-        path = str(db_directory / "{}.db".format(name))
+        path = str(db_directory / f"{name}.db")
         conn = _sqlite3.connect(path)
         conn.execute("vacuum")
         conn.close()

@@ -1,7 +1,7 @@
+import contextvars
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, NamedTuple
-import contextvars
 
 # Context variable to track when permission checks should be skipped
 _skip_permission_checks = contextvars.ContextVar(
@@ -72,9 +72,7 @@ class Resource(ABC):
         )
 
     def __repr__(self) -> str:
-        return "{}(parent={!r}, child={!r})".format(
-            self.__class__.__name__, self.parent, self.child
-        )
+        return f"{self.__class__.__name__}(parent={self.parent!r}, child={self.child!r})"
 
     @property
     def private(self) -> bool:
@@ -129,7 +127,6 @@ class Resource(ABC):
 
         Must return two columns: parent, child
         """
-        pass
 
 
 class AllowedResource(NamedTuple):

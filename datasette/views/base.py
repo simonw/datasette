@@ -2,20 +2,20 @@ import csv
 import hashlib
 import sys
 
-from datasette.utils.asgi import Request
 from datasette.utils import (
-    add_cors_headers,
     EscapeHtmlWriter,
     InvalidSql,
     LimitedWriter,
+    add_cors_headers,
     path_from_row_pks,
     path_with_format,
     sqlite3,
 )
 from datasette.utils.asgi import (
     AsgiStream,
-    Response,
     BadRequest,
+    Request,
+    Response,
 )
 
 
@@ -129,12 +129,12 @@ class BaseView:
         template = environment.select_template(templates)
         template_context = {
             **context,
-            **{
+            
                 "select_templates": [
                     f"{'*' if template_name == template.name else ''}{template_name}"
                     for template_name in templates
-                ],
-            },
+                ]
+            ,
         }
         headers = {}
         if self.has_json_alternate:
@@ -151,9 +151,7 @@ class BaseView:
             template_context["alternate_url_json"] = alternate_url_json
             headers.update(
                 {
-                    "Link": '<{}>; rel="alternate"; type="application/json+datasette"'.format(
-                        alternate_url_json
-                    )
+                    "Link": f'<{alternate_url_json}>; rel="alternate"; type="application/json+datasette"'
                 }
             )
         return Response.html(
@@ -184,7 +182,7 @@ async def stream_csv(datasette, fetch_data, request, database):
     stream = request.args.get("_stream")
     # Do not calculate facets or counts:
     extra_parameters = [
-        "{}=1".format(key)
+        f"{key}=1"
         for key in ("_nofacet", "_nocount")
         if not request.args.get(key)
     ]
@@ -326,7 +324,7 @@ async def stream_csv(datasette, fetch_data, request, database):
                                 new_row.append(cell)
                         await writer.writerow(new_row)
             except Exception as ex:
-                sys.stderr.write("Caught this error: {}\n".format(ex))
+                sys.stderr.write(f"Caught this error: {ex}\n")
                 sys.stderr.flush()
                 await r.write(str(ex))
                 return

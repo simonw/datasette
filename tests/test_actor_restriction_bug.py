@@ -6,6 +6,7 @@ config allow blocks can bypass table-level restrictions.
 """
 
 import pytest
+
 from datasette.app import Datasette
 from datasette.resources import TableResource
 

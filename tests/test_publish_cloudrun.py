@@ -1,10 +1,12 @@
-from click.testing import CliRunner
-from datasette import cli
-from unittest import mock
 import json
 import os
-import pytest
 import textwrap
+from unittest import mock
+
+import pytest
+from click.testing import CliRunner
+
+from datasette import cli
 
 
 @pytest.mark.serial
@@ -70,9 +72,7 @@ def test_publish_cloudrun_prompts_for_service(
             ),
             mock.call(f"gcloud builds submit --tag {tag}", shell=True),
             mock.call(
-                "gcloud run deploy --allow-unauthenticated --platform=managed --image {} input-service --max-instances 1".format(
-                    tag
-                ),
+                f"gcloud run deploy --allow-unauthenticated --platform=managed --image {tag} input-service --max-instances 1",
                 shell=True,
             ),
         ]
@@ -107,9 +107,7 @@ def test_publish_cloudrun(mock_call, mock_output, mock_which, tmp_path_factory):
             ),
             mock.call(f"gcloud builds submit --tag {tag}", shell=True),
             mock.call(
-                "gcloud run deploy --allow-unauthenticated --platform=managed --image {} test --max-instances 1".format(
-                    tag
-                ),
+                f"gcloud run deploy --allow-unauthenticated --platform=managed --image {tag} test --max-instances 1",
                 shell=True,
             ),
         ]
@@ -186,13 +184,13 @@ def test_publish_cloudrun_memory_cpu(
     tag = f"us-docker.pkg.dev/{mock_output.return_value}/datasette/datasette-test"
     expected_call = (
         "gcloud run deploy --allow-unauthenticated --platform=managed"
-        " --image {} test".format(tag)
+        f" --image {tag} test"
     )
     expected_build_call = f"gcloud builds submit --tag {tag}"
     if memory:
-        expected_call += " --memory {}".format(memory)
+        expected_call += f" --memory {memory}"
     if cpu:
-        expected_call += " --cpu {}".format(cpu)
+        expected_call += f" --cpu {cpu}"
     if timeout:
         expected_build_call += f" --timeout {timeout}"
     # max_instances defaults to 1

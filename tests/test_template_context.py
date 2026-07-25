@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from datasette.app import Datasette, TEMPLATE_BASE_CONTEXT
+from datasette.app import TEMPLATE_BASE_CONTEXT, Datasette
 from datasette.extras import ExtraScope
 from datasette.fixtures import write_fixture_database
 from datasette.template_contexts import PAGES, documented_context_keys
@@ -40,17 +40,13 @@ def test_documented_fields():
 @pytest.mark.parametrize("klass", PAGES.values(), ids=lambda klass: klass.__name__)
 def test_context_class_fields_all_have_help(klass):
     for context_field in klass.documented_fields():
-        assert context_field.help, "{}.{} is missing documentation".format(
-            klass.__name__, context_field.name
-        )
+        assert context_field.help, f"{klass.__name__}.{context_field.name} is missing documentation"
 
 
 @pytest.mark.parametrize("klass", PAGES.values(), ids=lambda klass: klass.__name__)
 def test_context_class_has_docstring_and_documented_template(klass):
-    assert klass.__doc__, "{} is missing a docstring".format(klass.__name__)
-    assert klass.documented_template, "{} is missing a documented_template".format(
-        klass.__name__
-    )
+    assert klass.__doc__, f"{klass.__name__} is missing a docstring"
+    assert klass.documented_template, f"{klass.__name__} is missing a documented_template"
 
 
 def test_from_extra_documentation_comes_from_the_extra_class():
@@ -105,7 +101,7 @@ def isolate_extra_template_vars_plugins():
     # for the rest of the process. The contract documents plugin-free
     # Datasette core, so unregister any non-default plugin that adds
     # template variables via the extra_template_vars hook
-    from datasette.plugins import pm, DEFAULT_PLUGINS
+    from datasette.plugins import DEFAULT_PLUGINS, pm
 
     hook_plugins = {impl.plugin for impl in pm.hook.extra_template_vars.get_hookimpls()}
     removed = []
@@ -182,18 +178,18 @@ async def test_template_context_matches_documented_contract(
     undocumented = actual - documented
     no_longer_present = documented - actual
     assert not undocumented, (
-        "Undocumented keys in {} template context: {} - add them to the "
-        "page's Context class".format(page_name, sorted(undocumented))
+        f"Undocumented keys in {page_name} template context: {sorted(undocumented)} - add them to the "
+        "page's Context class"
     )
     assert not no_longer_present, (
-        "Documented keys missing from {} template context: {} - this would "
-        "break custom templates".format(page_name, sorted(no_longer_present))
+        f"Documented keys missing from {page_name} template context: {sorted(no_longer_present)} - this would "
+        "break custom templates"
     )
 
 
 def test_base_context_keys_all_have_docs():
     for name, doc in TEMPLATE_BASE_CONTEXT.items():
-        assert doc, "Base context key {} is missing docs".format(name)
+        assert doc, f"Base context key {name} is missing docs"
 
 
 def test_template_context_docs_cover_every_documented_key():
@@ -201,15 +197,13 @@ def test_template_context_docs_cover_every_documented_key():
     assert docs_path.exists(), "docs/template_context.rst is missing"
     docs = docs_path.read_text()
     for name in TEMPLATE_BASE_CONTEXT:
-        assert "``{}``".format(name) in docs, name
+        assert f"``{name}``" in docs, name
     for page_name, klass in PAGES.items():
         title = "{} page".format(klass.__name__.removesuffix("Context"))
         assert title in docs, title
         for context_field in klass.documented_fields():
-            assert "``{}``".format(context_field.name) in docs, "{} ({} page)".format(
-                context_field.name, page_name
-            )
+            assert f"``{context_field.name}``" in docs, f"{context_field.name} ({page_name} page)"
             assert (
-                "``{}`` - ``{}``".format(context_field.name, context_field.type_name)
+                f"``{context_field.name}`` - ``{context_field.type_name}``"
                 in docs
-            ), "{} type ({} page)".format(context_field.name, page_name)
+            ), f"{context_field.name} type ({page_name} page)"

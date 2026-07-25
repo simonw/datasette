@@ -1,13 +1,15 @@
+import pathlib
+import urllib
+
+import pytest
+
 from datasette.app import Datasette
 from datasette.plugins import DEFAULT_PLUGINS
 from datasette.utils import UNSTABLE_API_MESSAGE, escape_sqlite, tilde_encode
 from datasette.utils.sqlite import sqlite_version
 from datasette.version import __version__
-from .fixtures import make_app_client, EXPECTED_PLUGINS
-import pathlib
-import pytest
-import sys
-import urllib
+
+from .fixtures import EXPECTED_PLUGINS, make_app_client
 
 
 @pytest.mark.asyncio
@@ -16,7 +18,7 @@ async def test_homepage(ds_client):
     assert response.status_code == 200
     assert "application/json; charset=utf-8" == response.headers["content-type"]
     data = response.json()
-    assert sorted(list(data.get("metadata").keys())) == [
+    assert sorted(data.get("metadata").keys()) == [
         "about",
         "about_url",
         "description_html",
@@ -385,7 +387,7 @@ async def test_row_pk_arity_mismatch_returns_400(ds_client, row_path, suffix):
     # only bound for the supplied components. It should be a 400 instead,
     # mirroring the existing guard in datasette/views/table.py.
     response = await ds_client.get(
-        "/fixtures/compound_primary_key/{}{}".format(row_path, suffix)
+        f"/fixtures/compound_primary_key/{row_path}{suffix}"
     )
     assert response.status_code == 400
     if suffix == ".json":
@@ -600,8 +602,7 @@ async def test_threads_json(ds_client):
     finally:
         ds_client.ds.root_enabled = False
     expected_keys = {"ok", "threads", "num_threads"}
-    if sys.version_info >= (3, 7, 0):
-        expected_keys.update({"tasks", "num_tasks"})
+    expected_keys.update({"tasks", "num_tasks"})
     data = response.json()
     assert set(data.keys()) == expected_keys
     # Should be at least one _execute_writes thread for __INTERNAL__
@@ -939,12 +940,10 @@ async def test_table_with_reserved_characters_in_name(table_name):
     ds = Datasette()
     db = ds.add_memory_database("test_reserved_table_names")
     await db.execute_write(
-        "create table {} (id integer primary key, name text)".format(
-            escape_sqlite(table_name)
-        )
+        f"create table {escape_sqlite(table_name)} (id integer primary key, name text)"
     )
     await db.execute_write(
-        "insert into {} (id, name) values (1, 'one')".format(escape_sqlite(table_name))
+        f"insert into {escape_sqlite(table_name)} (id, name) values (1, 'one')"
     )
     # Schema introspection (populate_schema_tables) must not crash:
     db_response = await ds.client.get("/test_reserved_table_names.json")
@@ -953,9 +952,7 @@ async def test_table_with_reserved_characters_in_name(table_name):
     assert tables[table_name]["count"] == 1
     # And the table page itself must load and return the row:
     table_response = await ds.client.get(
-        "/test_reserved_table_names/{}.json?_shape=array".format(
-            tilde_encode(table_name)
-        )
+        f"/test_reserved_table_names/{tilde_encode(table_name)}.json?_shape=array"
     )
     assert table_response.status_code == 200
     assert table_response.json() == [{"id": 1, "name": "one"}]

@@ -1,29 +1,32 @@
 import asyncio
+import base64
 import binascii
-from contextlib import contextmanager
-import aiofiles
-import click
-from collections import OrderedDict, namedtuple, Counter
 import copy
 import dataclasses
-import base64
 import hashlib
 import inspect
 import json
-import markupsafe
-import mergedeep
 import os
 import re
+import secrets
 import shlex
+import shutil
 import tempfile
-import typing
 import time
 import types
-import secrets
-import shutil
-from typing import Iterable, List, Tuple
+import typing
 import urllib
+from collections import Counter, OrderedDict, namedtuple
+from collections.abc import Iterable
+from contextlib import contextmanager
+from typing import List, Tuple
+
+import aiofiles
+import click
+import markupsafe
+import mergedeep
 import yaml
+
 from .shutil_backport import copytree
 from .sqlite import sqlite3, supports_table_xinfo
 
@@ -36,7 +39,7 @@ if typing.TYPE_CHECKING:
 class PaginatedResources:
     """Paginated results from allowed_resources query."""
 
-    resources: List["Resource"]
+    resources: list["Resource"]
     next: str | None  # Keyset token for next page (None if no more results)
     _datasette: typing.Any = dataclasses.field(default=None, repr=False)
     _action: str = dataclasses.field(default=None, repr=False)
@@ -83,22 +86,7 @@ class PaginatedResources:
 
 
 # From https://www.sqlite.org/lang_keywords.html
-reserved_words = set(
-    (
-        "abort action add after all alter analyze and as asc attach autoincrement "
-        "before begin between by cascade case cast check collate column commit "
-        "conflict constraint create cross current_date current_time "
-        "current_timestamp database default deferrable deferred delete desc detach "
-        "distinct drop each else end escape except exclusive exists explain fail "
-        "for foreign from full glob group having if ignore immediate in index "
-        "indexed initially inner insert instead intersect into is isnull join key "
-        "left like limit match natural no not notnull null of offset on or order "
-        "outer plan pragma primary query raise recursive references regexp reindex "
-        "release rename replace restrict right rollback row savepoint select set "
-        "table temp temporary then to transaction trigger union unique update using "
-        "vacuum values view virtual when where with without"
-    ).split()
-)
+reserved_words = {"abort", "action", "add", "after", "all", "alter", "analyze", "and", "as", "asc", "attach", "autoincrement", "before", "begin", "between", "by", "cascade", "case", "cast", "check", "collate", "column", "commit", "conflict", "constraint", "create", "cross", "current_date", "current_time", "current_timestamp", "database", "default", "deferrable", "deferred", "delete", "desc", "detach", "distinct", "drop", "each", "else", "end", "escape", "except", "exclusive", "exists", "explain", "fail", "for", "foreign", "from", "full", "glob", "group", "having", "if", "ignore", "immediate", "in", "index", "indexed", "initially", "inner", "insert", "instead", "intersect", "into", "is", "isnull", "join", "key", "left", "like", "limit", "match", "natural", "no", "not", "notnull", "null", "of", "offset", "on", "or", "order", "outer", "plan", "pragma", "primary", "query", "raise", "recursive", "references", "regexp", "reindex", "release", "rename", "replace", "restrict", "right", "rollback", "row", "savepoint", "select", "set", "table", "temp", "temporary", "then", "to", "transaction", "trigger", "union", "unique", "update", "using", "vacuum", "values", "view", "virtual", "when", "where", "with", "without"}
 
 APT_GET_DOCKERFILE_EXTRAS = r"""
 RUN apt-get update && \
@@ -158,7 +146,7 @@ functions_marked_as_documented = []
 
 def documented(fn=None, *, label=None):
     def decorate(fn):
-        fn._datasette_docs_label = label or "internals_utils_{}".format(fn.__name__)
+        fn._datasette_docs_label = label or f"internals_utils_{fn.__name__}"
         functions_marked_as_documented.append(fn)
         return fn
 
@@ -360,7 +348,7 @@ disallawed_sql_res = [
     (
         re.compile(f"pragma(?!_({'|'.join(allowed_pragmas)}))"),
         "Statement contained a disallowed PRAGMA. Allowed pragma functions are {}".format(
-            ", ".join("pragma_{}()".format(pragma) for pragma in allowed_pragmas)
+            ", ".join(f"pragma_{pragma}()" for pragma in allowed_pragmas)
         ),
     )
 ]
@@ -535,7 +523,7 @@ CMD {cmd}""".format(
         ),
         environment_variables="\n".join(
             [
-                "ENV {} '{}'".format(key, value)
+                f"ENV {key} '{value}'"
                 for key, value in environment_variables.items()
             ]
         ),
@@ -640,7 +628,7 @@ def get_outbound_foreign_keys(conn, table):
     fks = []
     for info in infos:
         if info is not None:
-            id, seq, table_name, from_, to_, on_update, on_delete, match = info
+            id, seq, table_name, from_, to_, _on_update, _on_delete, _match = info
             fks.append(
                 {
                     "column": from_,
@@ -821,9 +809,7 @@ def is_url(value):
     if not value.startswith("http://") and not value.startswith("https://"):
         return False
     # Any whitespace at all is invalid
-    if whitespace_re.search(value):
-        return False
-    return True
+    return not whitespace_re.search(value)
 
 
 css_class_re = re.compile(r"^[a-zA-Z]+[_a-zA-Z0-9-]*$")
@@ -1034,7 +1020,7 @@ def escape_fts(query):
     bits = _escape_fts_re.split(query)
     bits = [b for b in bits if b and b != '""']
     return " ".join(
-        '"{}"'.format(bit) if not bit.startswith('"') else bit for bit in bits
+        f'"{bit}"' if not bit.startswith('"') else bit for bit in bits
     )
 
 
@@ -1047,7 +1033,7 @@ class MultiParams:
                     data[key], (list, tuple)
                 ), "dictionary data should be a dictionary of key => [list]"
             self._data = data
-        elif isinstance(data, list) or isinstance(data, tuple):
+        elif isinstance(data, (list, tuple)):
             new_data = {}
             for item in data:
                 assert (
@@ -1137,9 +1123,7 @@ def _gather_arguments(fn, kwargs):
     for parameter in parameters:
         if parameter not in kwargs:
             raise TypeError(
-                "{} requires parameters {}, missing: {}".format(
-                    fn, tuple(parameters), set(parameters) - set(kwargs.keys())
-                )
+                f"{fn} requires parameters {tuple(parameters)}, missing: {set(parameters) - set(kwargs.keys())}"
             )
         call_with.append(kwargs[parameter])
     return call_with
@@ -1208,9 +1192,9 @@ def resolve_env_secrets(config, environ):
     """Create copy that recursively replaces {"$env": "NAME"} with values from environ"""
     if isinstance(config, dict):
         if list(config.keys()) == ["$env"]:
-            return environ.get(list(config.values())[0])
+            return environ.get(next(iter(config.values())))
         elif list(config.keys()) == ["$file"]:
-            with open(list(config.values())[0]) as fp:
+            with open(next(iter(config.values()))) as fp:
                 return fp.read()
         else:
             return {
@@ -1306,7 +1290,7 @@ _named_param_re = re.compile(r":(\w+)")
 
 
 @documented
-def named_parameters(sql: str) -> List[str]:
+def named_parameters(sql: str) -> list[str]:
     """
     Given a SQL statement, return a list of named parameters that are used in the statement
 
@@ -1319,7 +1303,7 @@ def named_parameters(sql: str) -> List[str]:
     return _named_param_re.findall(sql)
 
 
-async def derive_named_parameters(db: "Database", sql: str) -> List[str]:
+async def derive_named_parameters(db: "Database", sql: str) -> list[str]:
     """
     This undocumented but stable method exists for backwards compatibility
     with plugins that were using it before it switched to named_parameters()
@@ -1343,9 +1327,9 @@ def parse_size_limit(value, default, maximum, name="_size"):
         if size < 0:
             raise ValueError
     except ValueError:
-        raise ValueError("{} must be a positive integer".format(name))
+        raise ValueError(f"{name} must be a positive integer")
     if size > maximum:
-        raise ValueError("{} must be <= {}".format(name, maximum))
+        raise ValueError(f"{name} must be <= {maximum}")
     return size
 
 
@@ -1403,7 +1387,7 @@ class TildeEncoder(dict):
         elif b == _space:
             res = "+"
         else:
-            res = "~{:02X}".format(b)
+            res = f"~{b:02X}"
         self[b] = res
         return res
 
@@ -1498,7 +1482,7 @@ def _combine(base: dict, update: dict) -> dict:
     return base
 
 
-def pairs_to_nested_config(pairs: typing.List[typing.Tuple[str, typing.Any]]) -> dict:
+def pairs_to_nested_config(pairs: list[tuple[str, typing.Any]]) -> dict:
     """
     Parse a list of key-value pairs into a nested dictionary.
     """
@@ -1513,7 +1497,7 @@ def make_slot_function(name, datasette, request, **kwargs):
     from datasette.plugins import pm
 
     method = getattr(pm.hook, name, None)
-    assert method is not None, "No hook found for {}".format(name)
+    assert method is not None, f"No hook found for {name}"
 
     async def inner():
         html_bits = []
@@ -1537,7 +1521,7 @@ def prune_empty_dicts(d: dict):
                 d.pop(key, None)
 
 
-def move_plugins_and_allow(source: dict, destination: dict) -> Tuple[dict, dict]:
+def move_plugins_and_allow(source: dict, destination: dict) -> tuple[dict, dict]:
     """
     Move 'plugins' and 'allow' keys from source to destination dictionary. Creates
     hierarchy in destination if needed. After moving, recursively remove any keys

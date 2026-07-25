@@ -1,6 +1,7 @@
 import httpx
 import pytest
 import pytest_asyncio
+
 from datasette.app import Datasette
 
 
@@ -238,7 +239,7 @@ async def test_in_client_returns_false_outside_request(datasette):
 @pytest.mark.asyncio
 async def test_in_client_returns_true_inside_request():
     """Test that datasette.in_client() returns True inside a client request"""
-    from datasette import hookimpl, Response
+    from datasette import Response, hookimpl
 
     class TestPlugin:
         __name__ = "test_in_client_plugin"

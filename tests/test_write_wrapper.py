@@ -3,14 +3,16 @@ Tests for the write_wrapper plugin hook.
 """
 
 import asyncio
+import sqlite3
+import time
 from dataclasses import dataclass
+
+import pytest
+
 from datasette.app import Datasette
 from datasette.events import Event
 from datasette.hookspecs import hookimpl
 from datasette.plugins import pm
-import pytest
-import sqlite3
-import time
 
 
 @dataclass
@@ -232,7 +234,6 @@ async def test_write_wrapper_return_none_skips(datasette):
         @hookimpl
         def write_wrapper(datasette, database, request, transaction):
             log.append("hook-called")
-            return None
 
     pm.register(Plugin(), name="test_skip")
     try:
@@ -339,7 +340,7 @@ async def test_write_wrapper_via_api(tmp_path):
             "/test/api_test/-/insert",
             json={"row": {"name": "test"}, "return": True},
             headers={
-                "Authorization": "Bearer {}".format(token),
+                "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json",
             },
         )

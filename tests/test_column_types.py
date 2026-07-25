@@ -1,7 +1,11 @@
 import json
 import logging
+import time
 
+import markupsafe
+import pytest
 from bs4 import BeautifulSoup as Soup
+
 from datasette.app import Datasette
 from datasette.column_types import (
     ColumnType,
@@ -9,11 +13,7 @@ from datasette.column_types import (
 )
 from datasette.hookspecs import hookimpl
 from datasette.plugins import pm
-from datasette.utils import error_body, sqlite3
-from datasette.utils import StartupError
-import markupsafe
-import pytest
-import time
+from datasette.utils import StartupError, error_body, sqlite3
 
 
 @pytest.fixture
@@ -104,7 +104,7 @@ def write_token(ds, actor_id="root", permissions=None):
 
 def _headers(token):
     return {
-        "Authorization": "Bearer {}".format(token),
+        "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
 

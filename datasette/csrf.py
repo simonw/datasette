@@ -40,12 +40,12 @@ def _origin_tuple(value):
     scheme = (parsed.scheme or "").lower()
     host = (parsed.hostname or "").lower()
     if not scheme or not host:
-        raise ValueError("missing scheme or host in {!r}".format(value))
+        raise ValueError(f"missing scheme or host in {value!r}")
     port = parsed.port  # may raise ValueError on bad ports
     if port is None:
         port = DEFAULT_PORTS.get(scheme)
     if port is None:
-        raise ValueError("unknown default port for scheme {!r}".format(scheme))
+        raise ValueError(f"unknown default port for scheme {scheme!r}")
     return scheme, host, port
 
 
@@ -125,9 +125,7 @@ class CrossOriginProtectionMiddleware:
                 return
             await self._forbid(
                 send,
-                "Sec-Fetch-Site was {!r}, expected 'same-origin' or 'none'".format(
-                    sec_fetch_site
-                ),
+                f"Sec-Fetch-Site was {sec_fetch_site!r}, expected 'same-origin' or 'none'",
             )
             return
 
@@ -141,11 +139,11 @@ class CrossOriginProtectionMiddleware:
         request_scheme = self._request_scheme(scope)
         try:
             origin_tuple = _origin_tuple(origin)
-            expected_tuple = _origin_tuple("{}://{}".format(request_scheme, host))
+            expected_tuple = _origin_tuple(f"{request_scheme}://{host}")
         except ValueError:
             await self._forbid(
                 send,
-                "Malformed Origin {!r} or Host {!r}".format(origin, host),
+                f"Malformed Origin {origin!r} or Host {host!r}",
             )
             return
 
@@ -155,7 +153,7 @@ class CrossOriginProtectionMiddleware:
 
         await self._forbid(
             send,
-            "Origin {!r} does not match Host {!r}".format(origin, host),
+            f"Origin {origin!r} does not match Host {host!r}",
         )
 
     def _request_scheme(self, scope):

@@ -1,22 +1,27 @@
-from .fixtures import (
-    make_app_client,
-    TestClient as _TestClient,
-    EXPECTED_PLUGINS,
-)
-from datasette.app import SETTINGS
-from datasette.plugins import DEFAULT_PLUGINS, pm
-from datasette.cli import cli, serve
-from datasette.version import __version__
-from datasette.utils import tilde_encode
-from datasette.utils.sqlite import sqlite3
-from click.testing import CliRunner
 import io
 import json
 import pathlib
-import pytest
 import sys
 import textwrap
 from unittest import mock
+
+import pytest
+from click.testing import CliRunner
+
+from datasette.app import SETTINGS
+from datasette.cli import cli, serve
+from datasette.plugins import DEFAULT_PLUGINS, pm
+from datasette.utils import tilde_encode
+from datasette.utils.sqlite import sqlite3
+from datasette.version import __version__
+
+from .fixtures import (
+    EXPECTED_PLUGINS,
+    make_app_client,
+)
+from .fixtures import (
+    TestClient as _TestClient,
+)
 
 
 def test_inspect_cli(app_client):
@@ -460,7 +465,7 @@ def test_serve_create(tmpdir):
 @pytest.mark.parametrize("argument", ("-c", "--config"))
 @pytest.mark.parametrize("format_", ("json", "yaml"))
 def test_serve_config(tmpdir, argument, format_):
-    config_path = tmpdir / "datasette.{}".format(format_)
+    config_path = tmpdir / f"datasette.{format_}"
     config_path.write_text(
         (
             "settings:\n  default_page_size: 5\n"
@@ -513,13 +518,11 @@ def test_weird_database_names(tmpdir, filename):
     result1 = runner.invoke(cli, [db_path, "--get", "/"])
     assert result1.exit_code == 0, result1.output
     filename_no_stem = filename.rsplit(".", 1)[0]
-    expected_link = '<a href="/{}">{}</a>'.format(
-        tilde_encode(filename_no_stem), filename_no_stem
-    )
+    expected_link = f'<a href="/{tilde_encode(filename_no_stem)}">{filename_no_stem}</a>'
     assert expected_link in result1.output
     # Now try hitting that database page
     result2 = runner.invoke(
-        cli, [db_path, "--get", "/{}".format(tilde_encode(filename_no_stem))]
+        cli, [db_path, "--get", f"/{tilde_encode(filename_no_stem)}"]
     )
     assert result2.exit_code == 0, result2.output
 

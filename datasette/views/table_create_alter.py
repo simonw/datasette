@@ -1,9 +1,9 @@
 import json
 import re
 import time
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Any, Literal
 
-from datasette.database import QueryInterrupted
+import sqlite_utils
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -13,18 +13,18 @@ from pydantic import (
     model_validator,
 )
 from pydantic_core import PydanticCustomError
-import sqlite_utils
 from sqlite_utils.db import DEFAULT as SQLITE_UTILS_DEFAULT
 
 from datasette.column_types import SQLiteType
+from datasette.database import QueryInterrupted
 from datasette.events import AlterTableEvent, CreateTableEvent, InsertRowsEvent
 from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
+    WriteJsonValueError,
     decode_write_json_rows,
     escape_sqlite,
     get_outbound_foreign_keys,
     table_column_details,
-    WriteJsonValueError,
 )
 from datasette.utils.asgi import NotFound, PayloadTooLarge, Response
 from datasette.utils.sqlite import sqlite_hidden_table_names
@@ -136,14 +136,14 @@ def _foreign_key_name_reasons(source_column, target):
     singular_table = _singular(table)
     column = target["fk_column"].lower()
     possible_names = {
-        "{}_{}".format(table, column),
-        "{}_{}".format(singular_table, column),
+        f"{table}_{column}",
+        f"{singular_table}_{column}",
     }
     if column == "id":
         possible_names.update(
             {
-                "{}_id".format(table),
-                "{}_id".format(singular_table),
+                f"{table}_id",
+                f"{singular_table}_id",
             }
         )
     return ["name_match"] if source in possible_names else []
@@ -262,10 +262,8 @@ async def _create_table_ui_context(
     if not database_action_permissions.get("create-table"):
         return None
     data = {
-        "path": "{}/-/create".format(datasette.urls.database(database_name)),
-        "foreignKeyTargetsPath": "{}/-/foreign-key-targets".format(
-            datasette.urls.database(database_name)
-        ),
+        "path": f"{datasette.urls.database(database_name)}/-/create",
+        "foreignKeyTargetsPath": f"{datasette.urls.database(database_name)}/-/foreign-key-targets",
         "databaseName": database_name,
         "columnTypes": CREATE_TABLE_COLUMN_TYPES,
         "defaultExpressions": default_expression_options(),
@@ -398,15 +396,15 @@ def default_expr_for_sql(expression):
 
 def _quoted_options(options):
     if len(options) == 1:
-        return "'{}'".format(options[0])
+        return f"'{options[0]}'"
     return "{} or '{}'".format(
-        ", ".join("'{}'".format(option) for option in options[:-1]),
+        ", ".join(f"'{option}'" for option in options[:-1]),
         options[-1],
     )
 
 
 def _default_expr_error_message():
-    return "Input should be {}".format(_quoted_options(list(DEFAULT_EXPRESSIONS)))
+    return f"Input should be {_quoted_options(list(DEFAULT_EXPRESSIONS))}"
 
 
 def default_expression_options():
@@ -715,18 +713,7 @@ class SetForeignKeysOperation(_StrictPydanticModel):
 
 
 AlterTableOperation = Annotated[
-    Union[
-        AddColumnOperation,
-        RenameColumnOperation,
-        RenameTableOperation,
-        AlterColumnOperation,
-        DropColumnOperation,
-        SetPrimaryKeyOperation,
-        ReorderColumnsOperation,
-        AddForeignKeyOperation,
-        DropForeignKeyOperation,
-        SetForeignKeysOperation,
-    ],
+    AddColumnOperation | RenameColumnOperation | RenameTableOperation | AlterColumnOperation | DropColumnOperation | SetPrimaryKeyOperation | ReorderColumnsOperation | AddForeignKeyOperation | DropForeignKeyOperation | SetForeignKeysOperation,
     Field(discriminator="op"),
 ]
 
@@ -740,7 +727,7 @@ def _pydantic_errors(validation_error):
     for error in validation_error.errors():
         location = ".".join(str(item) for item in error["loc"])
         message = error["msg"]
-        errors.append("{}: {}".format(location, message) if location else message)
+        errors.append(f"{location}: {message}" if location else message)
     return errors
 
 
@@ -761,7 +748,7 @@ def _create_table_pydantic_errors(validation_error):
             output.append(message)
             continue
         location = ".".join(str(item) for item in error["loc"])
-        output.append("{}: {}".format(location, message) if location else message)
+        output.append(f"{location}: {message}" if location else message)
     return output
 
 
@@ -810,7 +797,7 @@ class TableCreateView(BaseView):
         try:
             data = await request.json()
         except json.JSONDecodeError as e:
-            return Response.error(["Invalid JSON: {}".format(e)])
+            return Response.error([f"Invalid JSON: {e}"])
         except PayloadTooLarge as e:
             return Response.error([str(e)], 413)
 
@@ -878,9 +865,7 @@ class TableCreateView(BaseView):
             actual_pks = await db.primary_keys(table_name)
             # if pk passed and table already exists check it does not change
             bad_pks = False
-            if len(actual_pks) == 1 and pk and pk != actual_pks[0]:
-                bad_pks = True
-            elif len(actual_pks) > 1 and pks and set(pks) != set(actual_pks):
+            if len(actual_pks) == 1 and pk and pk != actual_pks[0] or len(actual_pks) > 1 and pks and set(pks) != set(actual_pks):
                 bad_pks = True
             if bad_pks:
                 return Response.error(["pk cannot be changed for existing table"])
@@ -1171,7 +1156,7 @@ class TableAlterView(BaseView):
         try:
             data = await request.json()
         except json.JSONDecodeError as e:
-            return Response.error(["Invalid JSON: {}".format(e)], 400)
+            return Response.error([f"Invalid JSON: {e}"], 400)
         except PayloadTooLarge as e:
             return Response.error([str(e)], 413)
 
@@ -1311,10 +1296,7 @@ class TableAlterView(BaseView):
                         and rename_table_to != current_table_name
                     ):
                         operation_conn.execute(
-                            "alter table {} rename to {}".format(
-                                escape_sqlite(current_table_name),
-                                escape_sqlite(rename_table_to),
-                            )
+                            f"alter table {escape_sqlite(current_table_name)} rename to {escape_sqlite(rename_table_to)}"
                         )
                         current_table_name = rename_table_to
 

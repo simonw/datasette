@@ -1,7 +1,7 @@
 import pytest
 
-from datasette.utils.sqlite import sqlite3
 from datasette.utils.sql_analysis import analyze_sql_tables
+from datasette.utils.sqlite import sqlite3
 
 
 @pytest.fixture

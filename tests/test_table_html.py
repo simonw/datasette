@@ -1,10 +1,13 @@
+import pathlib
+import urllib.parse
+
+import pytest
+from bs4 import BeautifulSoup as Soup
+
 from datasette.app import Datasette
 from datasette.database import Database
-from bs4 import BeautifulSoup as Soup
+
 from .fixtures import make_app_client
-import pathlib
-import pytest
-import urllib.parse
 from .utils import inner_html
 
 
@@ -12,9 +15,9 @@ def table_data_from_soup(soup):
     import json
     import re
 
-    table_script = [
+    table_script = next(
         s for s in soup.find_all("script") if "_datasetteTableData" in (s.string or "")
-    ][0]
+    )
     match = re.search(
         r"window\._datasetteTableData\s*=\s*({.*?});",
         table_script.string,
@@ -27,11 +30,11 @@ def database_data_from_soup(soup):
     import json
     import re
 
-    database_script = [
+    database_script = next(
         s
         for s in soup.find_all("script")
         if "_datasetteDatabaseData" in (s.string or "")
-    ][0]
+    )
     match = re.search(
         r"window\._datasetteDatabaseData\s*=\s*({.*?});",
         database_script.string,
@@ -234,7 +237,7 @@ async def test_existing_filter_redirects(ds_client):
 )
 async def test_reflected_hidden_form_fields(ds_client, qs, expected_hidden):
     # https://github.com/simonw/datasette/issues/1527
-    response = await ds_client.get("/fixtures/facetable?{}".format(qs))
+    response = await ds_client.get(f"/fixtures/facetable?{qs}")
     # In this case we should NOT have a hidden _neighborhood__exact=Downtown field
     form = Soup(response.text, "html.parser").find("form")
     hidden_inputs = {
@@ -664,9 +667,7 @@ async def test_table_html_no_primary_key(ds_client):
     ]
     expected = [
         [
-            '<td class="col-Link type-pk"><a href="/fixtures/no_primary_key/{}">{}</a></td>'.format(
-                i, i
-            ),
+            f'<td class="col-Link type-pk"><a href="/fixtures/no_primary_key/{i}">{i}</a></td>',
             f'<td class="col-rowid type-int">{i}</td>',
             f'<td class="col-content type-str">{i}</td>',
             f'<td class="col-a type-str">a{i}</td>',
@@ -1667,7 +1668,7 @@ async def test_row_update_sets_message():
         assert response.status_code == 200
         assert response.json()["rows"][0]["name"] == long_name
         assert ds.unsign(response.cookies["ds_messages"], "messages") == [
-            ["Updated row 1 ({})".format(truncated_name), ds.INFO]
+            [f"Updated row 1 ({truncated_name})", ds.INFO]
         ]
     finally:
         ds.close()
@@ -1680,9 +1681,9 @@ def test_table_data_uses_base_url(app_client_base_url_prefix):
     import re
 
     soup = Soup(response.text, "html.parser")
-    table_script = [
+    table_script = next(
         s for s in soup.find_all("script") if "_datasetteTableData" in (s.string or "")
-    ][0]
+    )
     match = re.search(
         r"window\._datasetteTableData\s*=\s*({.*?});",
         table_script.string,
@@ -1710,8 +1711,9 @@ def test_table_fragment_custom_table_include():
 
 @pytest.mark.asyncio
 async def test_table_fragment_uses_render_cell_hook():
-    from datasette import hookimpl
     from markupsafe import Markup
+
+    from datasette import hookimpl
 
     class TestRenderCellPlugin:
         __name__ = "TestRenderCellPlugin"
@@ -1719,7 +1721,7 @@ async def test_table_fragment_uses_render_cell_hook():
         @hookimpl
         def render_cell(self, value, column, table, database):
             if database == "data" and table == "items" and column == "name":
-                return Markup("<strong>{}</strong>".format(value))
+                return Markup(f"<strong>{value}</strong>")
             return None
 
     ds = Datasette(memory=True)
@@ -2258,17 +2260,17 @@ def test_allow_facet_off(allow_facet):
 )
 async def test_format_of_binary_links(size, title, length_bytes):
     ds = Datasette()
-    db_name = "binary-links-{}".format(size)
+    db_name = f"binary-links-{size}"
     db = ds.add_memory_database(db_name)
-    sql = "select zeroblob({}) as blob".format(size)
-    await db.execute_write("create table blobs as {}".format(sql))
-    response = await ds.client.get("/{}/blobs".format(db_name))
+    sql = f"select zeroblob({size}) as blob"
+    await db.execute_write(f"create table blobs as {sql}")
+    response = await ds.client.get(f"/{db_name}/blobs")
     assert response.status_code == 200
-    expected = "{}>&lt;Binary:&nbsp;{}&nbsp;bytes&gt;</a>".format(title, length_bytes)
+    expected = f"{title}>&lt;Binary:&nbsp;{length_bytes}&nbsp;bytes&gt;</a>"
     assert expected in response.text
     # And test with arbitrary SQL query too
     sql_response = await ds.client.get(
-        "{}/-/query".format(db_name), params={"sql": sql}
+        f"{db_name}/-/query", params={"sql": sql}
     )
     assert sql_response.status_code == 200
     assert expected in sql_response.text

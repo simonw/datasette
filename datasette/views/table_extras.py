@@ -128,9 +128,7 @@ class CountExtra(Extra):
                 pass
 
         if context.count_sql and count is None and not context.nocount:
-            count_sql_limited = "select count(*) from (select * {} limit {})".format(
-                context.from_sql, context.db.count_limit + 1
-            )
+            count_sql_limited = f"select count(*) from (select * {context.from_sql} limit {context.db.count_limit + 1})"
             try:
                 count_rows = list(
                     await context.db.execute(count_sql_limited, context.from_sql_params)
@@ -846,9 +844,7 @@ class SetColumnTypeUiExtra(Extra):
                 ],
             }
         return {
-            "path": "{}/-/set-column-type".format(
-                context.datasette.urls.table(context.database_name, context.table_name)
-            ),
+            "path": f"{context.datasette.urls.table(context.database_name, context.table_name)}/-/set-column-type",
             "columns": columns,
         }
 
@@ -1029,7 +1025,7 @@ class SortedFacetResultsExtra(Extra):
                 if isinstance(fc, str):
                     metadata_facet_names.append(fc)
                 elif isinstance(fc, dict):
-                    metadata_facet_names.append(list(fc.values())[0])
+                    metadata_facet_names.append(next(iter(fc.values())))
             metadata_order = {name: i for i, name in enumerate(metadata_facet_names)}
             metadata_facets = []
             request_facets = []

@@ -1,8 +1,10 @@
+import json
+
 from datasette import hookimpl
 from datasette.resources import DatabaseResource
-from datasette.views.base import DatasetteError
 from datasette.utils.asgi import BadRequest
-import json
+from datasette.views.base import DatasetteError
+
 from .utils import detect_json1, escape_sqlite, path_with_removed_args
 
 
@@ -99,9 +101,9 @@ def search_filters(request, database, table, datasette):
                             fts_table=escape_sqlite(fts_table),
                             search_col=escape_sqlite(search_col),
                             match_clause=(
-                                ":search_{}".format(i)
+                                f":search_{i}"
                                 if search_mode_raw
-                                else "escape_fts(:search_{})".format(i)
+                                else f"escape_fts(:search_{i})"
                             ),
                         )
                     )
@@ -135,9 +137,9 @@ def through_filters(request, database, table, datasette):
                 db = datasette.get_database(database)
                 outgoing_foreign_keys = await db.foreign_keys_for_table(through_table)
                 try:
-                    fk_to_us = [
+                    fk_to_us = next(
                         fk for fk in outgoing_foreign_keys if fk["other_table"] == table
-                    ][0]
+                    )
                 except IndexError:
                     raise DatasetteError(
                         "Invalid _through - could not find corresponding foreign key"

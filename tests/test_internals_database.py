@@ -3,17 +3,17 @@ Tests for the datasette.database.Database class
 """
 
 import asyncio
-from types import SimpleNamespace
-from datasette.app import Datasette
-from datasette.database import Database, ExecuteWriteResult, Results, MultipleValues
-from datasette.database import DatasetteClosedError
-from datasette.database import _deliver_write_result
-from datasette.utils.sqlite import sqlite3, supports_returning
-from datasette.utils import Column
-import pytest
-import sqlite_utils
 import time
 import uuid
+from types import SimpleNamespace
+
+import pytest
+import sqlite_utils
+
+from datasette.app import Datasette
+from datasette.database import Database, DatasetteClosedError, ExecuteWriteResult, MultipleValues, Results, _deliver_write_result
+from datasette.utils import Column
+from datasette.utils.sqlite import sqlite3, supports_returning
 
 requires_sqlite_returning = pytest.mark.skipif(
     not supports_returning(), reason="SQLite does not support RETURNING"
@@ -44,7 +44,7 @@ async def test_results_first(db):
 @pytest.mark.parametrize("expected", (True, False))
 async def test_results_bool(db, expected):
     where = "" if expected else "where pk = 0"
-    results = await db.execute("select * from facetable {}".format(where))
+    results = await db.execute(f"select * from facetable {where}")
     assert bool(results) is expected
 
 
@@ -761,8 +761,8 @@ async def test_execute_write_fn_accepts_any_single_param_name(db, param_name):
     # positionally, so any parameter name worked. Preserve that contract.
     scope = {}
     exec(
-        "def write_fn({0}):\n"
-        "    return {0}.execute('select 1 + 1').fetchone()[0]".format(param_name),
+        f"def write_fn({param_name}):\n"
+        f"    return {param_name}.execute('select 1 + 1').fetchone()[0]",
         scope,
     )
     write_fn = scope["write_fn"]

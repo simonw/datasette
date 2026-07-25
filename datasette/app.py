@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Sequence
+from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from datasette.permissions import Resource
@@ -12,10 +13,8 @@ import dataclasses
 import datetime
 import functools
 import glob
-import httpx
 import importlib.metadata
 import inspect
-from itsdangerous import BadSignature
 import json
 import os
 import re
@@ -28,90 +27,41 @@ import urllib.parse
 from concurrent import futures
 from pathlib import Path
 
-from markupsafe import Markup, escape
-from itsdangerous import URLSafeSerializer
+import httpx
+from itsdangerous import BadSignature, URLSafeSerializer
 from jinja2 import (
     ChoiceLoader,
     Environment,
     FileSystemLoader,
-    pass_context,
     PrefixLoader,
+    pass_context,
 )
 from jinja2.environment import Template
 from jinja2.exceptions import TemplateNotFound
+from markupsafe import Markup, escape
 
-from .events import Event
-from .column_types import SQLiteType
 from . import stored_queries, write_sql
-from .views import Context
-from .views.database import (
-    database_download,
-    DatabaseView,
-    QueryView,
-)
-from .views.table_create_alter import (
-    DatabaseForeignKeyTargetsView,
-    TableAlterView,
-    TableCreateView,
-    TableForeignKeySuggestionsView,
-)
-from .views.execute_write import ExecuteWriteAnalyzeView, ExecuteWriteView
-from .views.stored_queries import (
-    QueryCreateAnalyzeView,
-    QueryDeleteView,
-    QueryDefinitionView,
-    QueryEditView,
-    GlobalQueryListView,
-    QueryListView,
-    QueryParametersView,
-    QueryStoreView,
-    QueryUpdateView,
-)
-from .views.index import IndexView
-from .views.special import (
-    JsonDataView,
-    PatternPortfolioView,
-    AutocompleteDebugView,
-    AuthTokenView,
-    ApiExplorerView,
-    CreateTokenView,
-    LogoutView,
-    AllowDebugView,
-    PermissionsDebugView,
-    MessagesDebugView,
-    AllowedResourcesView,
-    PermissionRulesView,
-    PermissionCheckView,
-    JumpView,
-    InstanceSchemaView,
-    DatabaseSchemaView,
-    TableSchemaView,
-)
-from .views.table import (
-    TableAutocompleteView,
-    TableInsertView,
-    TableUpsertView,
-    TableSetColumnTypeView,
-    TableDropView,
-    TableFragmentView,
-    table_view,
-)
-from .views.row import RowView, RowDeleteView, RowUpdateView
-from .renderer import json_renderer
-from .url_builder import Urls
+from .column_types import SQLiteType
+from .csrf import CrossOriginProtectionMiddleware
 from .database import Database, QueryInterrupted
-
+from .events import Event
+from .plugins import DEFAULT_PLUGINS, get_plugins, pm
+from .renderer import json_renderer
+from .resources import DatabaseResource, TableResource
+from .tokens import TokenInvalid
+from .tracer import AsgiTracer
+from .url_builder import Urls
 from .utils import (
+    SPATIALITE_FUNCTIONS,
     PaginatedResources,
     PrefixedUrlString,
-    SPATIALITE_FUNCTIONS,
     StartupError,
+    add_cors_headers,
     async_call_with_supported_arguments,
     await_me_maybe,
     baseconv,
     call_with_supported_arguments,
     detect_json1,
-    add_cors_headers,
     display_actor,
     escape_css_string,
     escape_sqlite,
@@ -121,44 +71,92 @@ from .utils import (
     move_plugins_and_allow,
     move_table_config,
     parse_metadata,
+    redact_keys,
     resolve_env_secrets,
     resolve_routes,
+    row_sql_params_pks,
     sha256_file,
     tilde_decode,
     tilde_encode,
     to_css_class,
     urlsafe_components,
-    redact_keys,
-    row_sql_params_pks,
 )
-from .tokens import TokenInvalid
 from .utils.asgi import (
     AsgiLifespan,
+    AsgiRunOnFirstRequest,
     BadRequest,
+    DatabaseNotFound,
     Forbidden,
     NotFound,
-    DatabaseNotFound,
-    TableNotFound,
-    RowNotFound,
     Request,
     Response,
-    AsgiRunOnFirstRequest,
-    asgi_static,
+    RowNotFound,
+    TableNotFound,
     asgi_send,
     asgi_send_file,
     asgi_send_redirect,
+    asgi_static,
 )
-from .csrf import CrossOriginProtectionMiddleware
 from .utils.internal_db import init_internal_db, populate_schema_tables
 from .utils.sqlite import (
     sqlite3,
     using_pysqlite3,
 )
-from .tracer import AsgiTracer
-from .plugins import pm, DEFAULT_PLUGINS, get_plugins
 from .version import __version__
-
-from .resources import DatabaseResource, TableResource
+from .views import Context
+from .views.database import (
+    DatabaseView,
+    QueryView,
+    database_download,
+)
+from .views.execute_write import ExecuteWriteAnalyzeView, ExecuteWriteView
+from .views.index import IndexView
+from .views.row import RowDeleteView, RowUpdateView, RowView
+from .views.special import (
+    AllowDebugView,
+    AllowedResourcesView,
+    ApiExplorerView,
+    AuthTokenView,
+    AutocompleteDebugView,
+    CreateTokenView,
+    DatabaseSchemaView,
+    InstanceSchemaView,
+    JsonDataView,
+    JumpView,
+    LogoutView,
+    MessagesDebugView,
+    PatternPortfolioView,
+    PermissionCheckView,
+    PermissionRulesView,
+    PermissionsDebugView,
+    TableSchemaView,
+)
+from .views.stored_queries import (
+    GlobalQueryListView,
+    QueryCreateAnalyzeView,
+    QueryDefinitionView,
+    QueryDeleteView,
+    QueryEditView,
+    QueryListView,
+    QueryParametersView,
+    QueryStoreView,
+    QueryUpdateView,
+)
+from .views.table import (
+    TableAutocompleteView,
+    TableDropView,
+    TableFragmentView,
+    TableInsertView,
+    TableSetColumnTypeView,
+    TableUpsertView,
+    table_view,
+)
+from .views.table_create_alter import (
+    DatabaseForeignKeyTargetsView,
+    TableAlterView,
+    TableCreateView,
+    TableForeignKeySuggestionsView,
+)
 
 app_root = Path(__file__).parent.parent
 
@@ -184,7 +182,7 @@ class PermissionCheck:
     """Represents a logged permission check for debugging purposes."""
 
     when: str
-    actor: Dict[str, Any] | None
+    actor: dict[str, Any] | None
     action: str
     parent: str | None
     child: str | None
@@ -434,7 +432,7 @@ class Datasette:
         if config_dir:
             db_files = []
             for ext in ("db", "sqlite", "sqlite3"):
-                db_files.extend(config_dir.glob("*.{}".format(ext)))
+                db_files.extend(config_dir.glob(f"*.{ext}"))
             self.files += tuple(str(f) for f in db_files)
         if (
             config_dir
@@ -732,7 +730,7 @@ class Datasette:
             catalog_database_names.update(
                 row["database_name"]
                 for row in await internal_db.execute(
-                    "select distinct database_name from {}".format(table)
+                    f"select distinct database_name from {table}"
                 )
                 if row["database_name"] is not None
             )
@@ -743,7 +741,7 @@ class Datasette:
                 for stale_db_name in stale_databases:
                     for table in catalog_table_names:
                         conn.execute(
-                            "DELETE FROM {} WHERE database_name = ?".format(table),
+                            f"DELETE FROM {table} WHERE database_name = ?",
                             [stale_db_name],
                         )
 
@@ -793,7 +791,7 @@ class Datasette:
                         and action != action_names[action.name]
                     ):
                         raise StartupError(
-                            "Duplicate action name: {}".format(action.name)
+                            f"Duplicate action name: {action.name}"
                         )
                     if (
                         action.abbr
@@ -801,7 +799,7 @@ class Datasette:
                         and action != action_abbrs[action.abbr]
                     ):
                         raise StartupError(
-                            "Duplicate action abbr: {}".format(action.abbr)
+                            f"Duplicate action abbr: {action.abbr}"
                         )
                     action_names[action.name] = action
                     if action.abbr:
@@ -861,7 +859,7 @@ class Datasette:
         actor_id: str,
         *,
         expires_after: int | None = None,
-        restrictions: "TokenRestrictions | None" = None,
+        restrictions: TokenRestrictions | None = None,
         handler: str | None = None,
     ) -> str:
         """
@@ -918,7 +916,7 @@ class Datasette:
                 raise KeyError
             return matches[0]
         if name is None:
-            name = [key for key in self.databases.keys()][0]
+            name = next(iter(self.databases.keys()))
         return self.databases[name]
 
     def add_database(self, db, name=None, route=None):
@@ -931,7 +929,7 @@ class Datasette:
             suggestion = name
         i = 2
         while name in self.databases:
-            name = "{}_{}".format(suggestion, i)
+            name = f"{suggestion}_{i}"
             i += 1
         db.name = name
         db.route = route or name
@@ -1321,18 +1319,11 @@ class Datasette:
         actual = (
             actual_sqlite_type.value
             if actual_sqlite_type is not None
-            else "unrecognized {!r}".format(column_detail.type)
+            else f"unrecognized {column_detail.type!r}"
         )
         raise ValueError(
-            "Column type {!r} is only applicable to SQLite types {} but {}.{}.{} "
-            "has SQLite type {}".format(
-                ct_cls.name,
-                allowed,
-                database,
-                resource,
-                column,
-                actual,
-            )
+            f"Column type {ct_cls.name!r} is only applicable to SQLite types {allowed} but {database}.{resource}.{column} "
+            f"has SQLite type {actual}"
         )
 
     async def _apply_column_types_config(self):
@@ -1414,7 +1405,7 @@ class Datasette:
         resource: str,
         column: str,
         column_type: str,
-        config: dict = None,
+        config: dict | None = None,
     ) -> None:
         """Assign a column type. Overwrites any existing assignment."""
         ct_cls = self._column_types.get(column_type)
@@ -1499,7 +1490,7 @@ class Datasette:
             if plugin_name in possible_names:
                 return _resolve_static_asset_path(plugin["static_path"], path)
         raise FileNotFoundError(
-            "No static assets found for plugin {}".format(plugin_name)
+            f"No static assets found for plugin {plugin_name}"
         )
 
     def _static_mounted_asset(self, mount_name, path):
@@ -1510,7 +1501,7 @@ class Datasette:
                     _resolve_static_asset_path(dirname, path),
                     self.urls.path("/{}/{}".format(mount_name, path.lstrip("/"))),
                 )
-        raise FileNotFoundError("No static mount found for {}".format(mount_name))
+        raise FileNotFoundError(f"No static mount found for {mount_name}")
 
     def _static_asset_hash(self, filepath):
         filepath = Path(filepath)
@@ -1601,18 +1592,17 @@ class Datasette:
         if await self.allowed(action="view-instance", actor=actor):
             crumbs.append({"href": self.urls.instance(), "label": "home"})
         # Database link
-        if database:
-            if await self.allowed(
-                action="view-database",
-                resource=DatabaseResource(database=database),
-                actor=actor,
-            ):
-                crumbs.append(
-                    {
-                        "href": self.urls.database(database),
-                        "label": database,
-                    }
-                )
+        if database and await self.allowed(
+            action="view-database",
+            resource=DatabaseResource(database=database),
+            actor=actor,
+        ):
+            crumbs.append(
+                {
+                    "href": self.urls.database(database),
+                    "label": database,
+                }
+            )
         # Table link
         if table:
             assert database, "table= requires database="
@@ -1631,7 +1621,7 @@ class Datasette:
 
     async def actors_from_ids(
         self, actor_ids: Iterable[str | int]
-    ) -> Dict[int | str, Dict]:
+    ) -> dict[int | str, dict]:
         result = pm.hook.actors_from_ids(datasette=self, actor_ids=actor_ids)
         if result is None:
             # Do the default thing
@@ -1640,9 +1630,7 @@ class Datasette:
         return result
 
     async def track_event(self, event: Event):
-        assert isinstance(event, self.event_classes), "Invalid event type: {}".format(
-            type(event)
-        )
+        assert isinstance(event, self.event_classes), f"Invalid event type: {type(event)}"
         for hook in pm.hook.track_event(datasette=self, event=event):
             await await_me_maybe(hook)
 
@@ -1679,7 +1667,7 @@ class Datasette:
         self,
         actor: dict,
         action: str,
-        resource: "Resource" | None = None,
+        resource: Resource | None = None,
     ):
         """
         Check if actor can see a resource and if it's private.
@@ -1878,10 +1866,7 @@ class Datasette:
         if truncated and resources:
             last_resource = resources[-1]
             # Use tilde-encoding like table pagination
-            next_token = "{},{}".format(
-                tilde_encode(str(last_resource.parent)),
-                tilde_encode(str(last_resource.child)),
-            )
+            next_token = f"{tilde_encode(str(last_resource.parent))},{tilde_encode(str(last_resource.child))}"
 
         return PaginatedResources(
             resources=resources,
@@ -1899,7 +1884,7 @@ class Datasette:
         self,
         *,
         action: str,
-        resource: "Resource" = None,
+        resource: Resource = None,
         actor: dict | None = None,
     ) -> bool:
         """
@@ -1930,7 +1915,7 @@ class Datasette:
         self,
         *,
         actions: Sequence[str],
-        resource: "Resource" = None,
+        resource: Resource = None,
         actor: dict | None = None,
     ) -> dict[str, bool]:
         """
@@ -1951,11 +1936,11 @@ class Datasette:
             )
             # {"edit-schema": True, "drop-table": True, "insert-row": False}
         """
-        from datasette.utils.actions_sql import check_permissions_for_actions
         from datasette.permissions import (
             _permission_check_cache,
             _skip_permission_checks,
         )
+        from datasette.utils.actions_sql import check_permissions_for_actions
 
         # For global actions, resource is None
         parent = resource.parent if resource else None
@@ -2044,7 +2029,7 @@ class Datasette:
         self,
         *,
         action: str,
-        resource: "Resource" = None,
+        resource: Resource = None,
         actor: dict | None = None,
     ):
         """
@@ -2099,11 +2084,11 @@ class Datasette:
         foreign_keys = await db.foreign_keys_for_table(table)
         # Find the foreign_key for this column
         try:
-            fk = [
+            fk = next(
                 foreign_key
                 for foreign_key in foreign_keys
                 if foreign_key["column"] == column
-            ][0]
+            )
         except IndexError:
             return {}
         # Ensure user has permission to view the referenced table
@@ -2199,7 +2184,7 @@ class Datasette:
             spatialite_details = {}
             for fn in SPATIALITE_FUNCTIONS:
                 try:
-                    result = conn.execute("select {}()".format(fn))
+                    result = conn.execute(f"select {fn}()")
                     spatialite_details[fn] = result.fetchone()[0]
                 except Exception as e:
                     spatialite_details[fn] = {"error": str(e)}
@@ -2210,7 +2195,7 @@ class Datasette:
         for fts in ("FTS5", "FTS4", "FTS3"):
             try:
                 conn.execute(
-                    "CREATE VIRTUAL TABLE v{fts} USING {fts} (data)".format(fts=fts)
+                    f"CREATE VIRTUAL TABLE v{fts} USING {fts} (data)"
                 )
                 fts_versions.append(fts)
             except sqlite3.OperationalError:
@@ -2270,7 +2255,7 @@ class Datasette:
                 "static": p["static_path"] is not None,
                 "templates": p["templates_path"] is not None,
                 "version": p.get("version"),
-                "hooks": list(sorted(set(p["hooks"]))),
+                "hooks": sorted(set(p["hooks"])),
             }
             for p in ps
         ]
@@ -2346,8 +2331,8 @@ class Datasette:
 
     async def render_template(
         self,
-        templates: List[str] | str | Template,
-        context: Dict[str, Any] | Context | None = None,
+        templates: list[str] | str | Template,
+        context: dict[str, Any] | Context | None = None,
         request: Request | None = None,
         view_name: str | None = None,
     ):
@@ -2398,9 +2383,7 @@ class Datasette:
             datasette=self,
         ):
             extra_vars = await await_me_maybe(extra_vars)
-            assert isinstance(extra_vars, dict), "extra_vars is of type {}".format(
-                type(extra_vars)
-            )
+            assert isinstance(extra_vars, dict), f"extra_vars is of type {type(extra_vars)}"
             extra_template_vars.update(extra_vars)
 
         async def menu_links():
@@ -2419,7 +2402,7 @@ class Datasette:
         # the contract tests fail otherwise
         template_context = {
             **context,
-            **{
+            
                 "request": request,
                 "crumb_items": self._crumb_items,
                 "urls": self.urls,
@@ -2440,8 +2423,8 @@ class Datasette:
                     "extra_js_urls", template, context, request, view_name
                 ),
                 "base_url": self.setting("base_url"),
-                "datasette_version": __version__,
-            },
+                "datasette_version": __version__
+            ,
             **extra_template_vars,
         }
         if request and request.args.get("_context") and self.setting("template_debug"):
@@ -2963,7 +2946,7 @@ class DatasetteRouter:
                 request.path.replace("~", "~7E").replace("%", "~").replace(".", "~2E")
             )
             if request.query_string:
-                new_path += "?{}".format(request.query_string)
+                new_path += f"?{request.query_string}"
             await asgi_send_redirect(send, new_path)
             return
         # If URL has a trailing slash, redirect to URL without it
@@ -3173,8 +3156,7 @@ _curly_re = re.compile(r"({.*?})")
 
 def route_pattern_from_filepath(filepath):
     # Drop the ".html" suffix
-    if filepath.endswith(".html"):
-        filepath = filepath[: -len(".html")]
+    filepath = filepath.removesuffix(".html")
     re_bits = ["/"]
     for bit in _curly_re.split(filepath):
         if _curly_re.match(bit):

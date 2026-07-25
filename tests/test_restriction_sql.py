@@ -1,4 +1,5 @@
 import pytest
+
 from datasette.app import Datasette
 from datasette.permissions import PermissionSQL
 from datasette.resources import TableResource

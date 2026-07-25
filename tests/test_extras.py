@@ -52,7 +52,7 @@ def _registered_extra_classes():
 @pytest.mark.parametrize("cls", _registered_extra_classes(), ids=lambda cls: cls.key())
 def test_registered_extras_have_descriptions(cls):
     # Every registered extra is part of the documented template/JSON contract
-    assert cls.description, "{} is missing a description".format(cls.__name__)
+    assert cls.description, f"{cls.__name__} is missing a description"
 
 
 def test_registry_is_built_once_per_scope():

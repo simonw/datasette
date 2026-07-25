@@ -10,10 +10,11 @@ These tests verify:
 
 import pytest
 import pytest_asyncio
+
+from datasette import hookimpl
 from datasette.app import Datasette
 from datasette.permissions import PermissionSQL
 from datasette.resources import DatabaseResource, QueryResource, TableResource
-from datasette import hookimpl
 
 
 def test_resource_string_representations():
@@ -90,7 +91,7 @@ async def test_allowed_resources_global_allow(test_ds):
         assert all(isinstance(t, TableResource) for t in tables)
 
         # Check specific tables are present
-        table_set = set((t.parent, t.child) for t in tables)
+        table_set = {(t.parent, t.child) for t in tables}
         assert ("analytics", "events") in table_set
         assert ("analytics", "users") in table_set
         assert ("analytics", "sensitive") in table_set

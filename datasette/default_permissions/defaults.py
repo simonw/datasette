@@ -6,7 +6,7 @@ Provides default allow rules for standard view/execute actions.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from datasette.app import Datasette
@@ -29,29 +29,28 @@ DEFAULT_ALLOW_ACTIONS = frozenset(
 
 @hookimpl(specname="permission_resources_sql")
 async def default_allow_sql_check(
-    datasette: "Datasette",
-    actor: Optional[dict],
+    datasette: Datasette,
+    actor: dict | None,
     action: str,
-) -> Optional[PermissionSQL]:
+) -> PermissionSQL | None:
     """
     Enforce the default_allow_sql setting.
 
     When default_allow_sql is false (the default), execute-sql is denied
     unless explicitly allowed by config or other rules.
     """
-    if action == "execute-sql":
-        if not datasette.setting("default_allow_sql"):
-            return PermissionSQL.deny(reason="default_allow_sql is false")
+    if action == "execute-sql" and not datasette.setting("default_allow_sql"):
+        return PermissionSQL.deny(reason="default_allow_sql is false")
 
     return None
 
 
 @hookimpl(specname="permission_resources_sql")
 async def default_action_permissions_sql(
-    datasette: "Datasette",
-    actor: Optional[dict],
+    datasette: Datasette,
+    actor: dict | None,
     action: str,
-) -> Optional[PermissionSQL]:
+) -> PermissionSQL | None:
     """
     Provide default allow rules for standard view/execute actions.
 
@@ -71,10 +70,10 @@ async def default_action_permissions_sql(
 
 @hookimpl(specname="permission_resources_sql")
 async def default_query_permissions_sql(
-    datasette: "Datasette",
-    actor: Optional[dict],
+    datasette: Datasette,
+    actor: dict | None,
     action: str,
-) -> Optional[PermissionSQL]:
+) -> PermissionSQL | None:
     actor_id = actor.get("id") if isinstance(actor, dict) else None
 
     if action not in {"view-query", "update-query", "delete-query"}:

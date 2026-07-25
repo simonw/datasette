@@ -100,7 +100,7 @@ def sqlite_hidden_table_names(conn, *, schema: str | None = "main") -> list[str]
     schema_table = _sqlite_schema_table(schema)
     try:
         rows = conn.execute(
-            "select name, sql from {} where type = 'table'".format(schema_table)
+            f"select name, sql from {schema_table} where type = 'table'"
         ).fetchall()
     except sqlite3.DatabaseError:
         return []
@@ -127,7 +127,7 @@ def _sqlite_table_type_from_schema(
     schema_table = _sqlite_schema_table(schema)
     try:
         row = conn.execute(
-            "select type, sql from {} where name = ?".format(schema_table),
+            f"select type, sql from {schema_table} where name = ?",
             (table,),
         ).fetchone()
     except sqlite3.DatabaseError:
@@ -155,7 +155,7 @@ def _is_known_shadow_table(
     schema_table = _sqlite_schema_table(schema)
     try:
         rows = conn.execute(
-            "select name, sql from {} where type = 'table'".format(schema_table)
+            f"select name, sql from {schema_table} where type = 'table'"
         ).fetchall()
     except sqlite3.DatabaseError:
         return False
@@ -174,7 +174,7 @@ def _sqlite_schema_table(schema: str | None) -> str:
         return "sqlite_master"
     if schema == "temp":
         return "sqlite_temp_master"
-    return "{}.sqlite_master".format(_quote_identifier(schema))
+    return f"{_quote_identifier(schema)}.sqlite_master"
 
 
 def _quote_identifier(value: str) -> str:

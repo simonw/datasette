@@ -1,16 +1,18 @@
 import asyncio
 import atexit
-from collections import namedtuple
 import inspect
 import os
-from pathlib import Path
 import queue
-import sqlite_utils
 import sys
 import tempfile
 import threading
 import uuid
+from collections import namedtuple
+from pathlib import Path
 
+import sqlite_utils
+
+from .inspect import inspect_hash
 from .tracer import trace
 from .utils import (
     call_with_supported_arguments,
@@ -21,14 +23,13 @@ from .utils import (
     get_all_foreign_keys,
     get_outbound_foreign_keys,
     md5_not_usedforsecurity,
-    sqlite_timelimit,
     sqlite3,
-    table_columns,
+    sqlite_timelimit,
     table_column_details,
+    table_columns,
 )
 from .utils.sql_analysis import SQLAnalysis, analyze_sql_tables
 from .utils.sqlite import sqlite_hidden_table_names
-from .inspect import inspect_hash
 
 connections = threading.local()
 
@@ -100,7 +101,7 @@ class Database:
     def _check_not_closed(self):
         if self._closed:
             raise DatasetteClosedError(
-                "Database {!r} has been closed".format(self.name)
+                f"Database {self.name!r} has been closed"
             )
 
     def _remove_pending_execute_future(self, future):
@@ -140,7 +141,7 @@ class Database:
         if write:
             extra_kwargs["isolation_level"] = "IMMEDIATE"
         if self.memory_name:
-            uri = "file:{}?mode=memory&cache=shared".format(self.memory_name)
+            uri = f"file:{self.memory_name}?mode=memory&cache=shared"
             conn = sqlite3.connect(
                 uri, uri=True, check_same_thread=False, **extra_kwargs
             )
@@ -193,9 +194,7 @@ class Database:
             write_thread.join(timeout=10)
             if write_thread.is_alive():
                 sys.stderr.write(
-                    "Datasette: write thread for {!r} did not exit within 10s\n".format(
-                        self.name
-                    )
+                    f"Datasette: write thread for {self.name!r} did not exit within 10s\n"
                 )
                 sys.stderr.flush()
         for future in pending_execute_futures:
@@ -424,9 +423,7 @@ class Database:
             self._write_thread = threading.Thread(
                 target=self._execute_writes, daemon=True
             )
-            self._write_thread.name = "_execute_writes for database {}".format(
-                self.name
-            )
+            self._write_thread.name = f"_execute_writes for database {self.name}"
             self._write_thread.start()
         task_id = uuid.uuid5(uuid.NAMESPACE_DNS, "datasette.io")
         loop = asyncio.get_running_loop()
@@ -475,7 +472,7 @@ class Database:
                             # Was probably a memory connection
                             pass
                 except Exception as e:
-                    sys.stderr.write("{}\n".format(e))
+                    sys.stderr.write(f"{e}\n")
                     sys.stderr.flush()
                     exception = e
             else:
@@ -487,7 +484,7 @@ class Database:
                     else:
                         result = task.fn(conn)
                 except Exception as e:
-                    sys.stderr.write("{}\n".format(e))
+                    sys.stderr.write(f"{e}\n")
                     sys.stderr.flush()
                     exception = e
             _deliver_write_result(task, result, exception)
@@ -554,9 +551,7 @@ class Database:
                         raise QueryInterrupted(e, sql, params)
                     if log_sql_errors:
                         sys.stderr.write(
-                            "ERROR: conn={}, sql = {}, params = {}: {}\n".format(
-                                conn, repr(sql), params, e
-                            )
+                            f"ERROR: conn={conn}, sql = {sql!r}, params = {params}: {e}\n"
                         )
                         sys.stderr.flush()
                     raise
@@ -713,9 +708,9 @@ class Database:
             column_names
             and len(column_names) == 2
             and ("id" in column_names or "pk" in column_names)
-            and not set(column_names) == {"id", "pk"}
+            and set(column_names) != {"id", "pk"}
         ):
-            return [c for c in column_names if c not in ("id", "pk")][0]
+            return next(c for c in column_names if c not in ("id", "pk"))
         # Couldn't find a label:
         return None
 
@@ -857,10 +852,10 @@ def _apply_write_wrapper(fn, wrapper_factory, track_event):
 class WriteTask:
     __slots__ = (
         "fn",
-        "task_id",
+        "isolated_connection",
         "loop",
         "reply_future",
-        "isolated_connection",
+        "task_id",
         "transaction",
     )
 
@@ -901,7 +896,7 @@ class QueryInterrupted(Exception):
         self.params = params
 
     def __str__(self):
-        return "QueryInterrupted: {}".format(self.e)
+        return f"QueryInterrupted: {self.e}"
 
 
 class MultipleValues(Exception):

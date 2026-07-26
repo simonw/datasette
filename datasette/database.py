@@ -354,6 +354,15 @@ class Database:
                     result = fn(self._write_connection)
             else:
                 result = fn(self._write_connection)
+            if not block:
+                # There is no write thread here, so the write has already
+                # finished. Hand back the same (task_id, reply_future) shape
+                # _send_to_write_thread() returns, with the future already
+                # resolved, so the block=False path below is identical in
+                # both modes.
+                reply_future = asyncio.get_running_loop().create_future()
+                reply_future.set_result(result)
+                result = (uuid.uuid4(), reply_future)
         else:
             result = await self._send_to_write_thread(
                 fn, block=block, transaction=transaction
@@ -425,7 +434,7 @@ class Database:
             )
             self._write_thread.name = f"_execute_writes for database {self.name}"
             self._write_thread.start()
-        task_id = uuid.uuid5(uuid.NAMESPACE_DNS, "datasette.io")
+        task_id = uuid.uuid4()
         loop = asyncio.get_running_loop()
         reply_future = loop.create_future()
         self._write_queue.put(

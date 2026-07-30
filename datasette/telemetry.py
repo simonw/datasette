@@ -2,27 +2,36 @@
 OpenTelemetry integration for Datasette core.
 
 Core depends on `opentelemetry-api` only. It never creates a
-`TracerProvider`, never configures an exporter, and never touches
-sampling - that is the responsibility of whoever is running Datasette
-(an `opentelemetry-instrument` agent, a future plugin, or a test
+`TracerProvider` or a `MeterProvider`, never configures an exporter, and
+never touches sampling - that is the responsibility of whoever is running
+Datasette (an `opentelemetry-instrument` agent, a future plugin, or a test
 harness).
 
 With no provider installed every span produced here is a
 `NonRecordingSpan`. That is not free - a table page emits ~100 spans -
 but end-to-end page benchmarks put the overhead below their own
 run-to-run variation. Installing an SDK provider is what costs
-something measurable.
+something measurable. Every metric instrument is likewise a no-op
+without a provider, and the observable-gauge callbacks are never
+invoked at all.
 """
 
 import contextvars
 import re
+import threading
+import time
+import weakref
+from contextlib import contextmanager
 
+from opentelemetry import metrics as otel_metrics
 from opentelemetry import trace as otel_trace
 from opentelemetry.propagate import extract
 from opentelemetry.propagators.textmap import Getter
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from .telemetry_registry import (
+    DB_NAMESPACE,
+    DB_SYSTEM,
     ERROR_TYPE,
     HTTP_REQUEST_METHOD,
     HTTP_RESPONSE_STATUS_CODE,
@@ -64,6 +73,7 @@ _in_datasette_client = contextvars.ContextVar("in_datasette_client", default=Fal
 SCHEMA_URL = "https://opentelemetry.io/schemas/1.29.0"
 
 tracer = otel_trace.get_tracer("datasette", __version__, schema_url=SCHEMA_URL)
+meter = otel_metrics.get_meter("datasette", __version__, schema_url=SCHEMA_URL)
 
 MAX_SQL_LENGTH = 2048
 
@@ -359,3 +369,249 @@ class TelemetryMiddleware:
                     if status >= 500 and not escaped:
                         span.set_status(Status(StatusCode.ERROR))
                         span.set_attribute(ERROR_TYPE, str(status))
+
+
+# --- Metrics --------------------------------------------------------------
+#
+# Spans answer "what happened during this request". They cannot answer "am I
+# saturating my 3 SQL threads right now", because that is a gauge: a level
+# sampled at collection time, not an event with a duration. It is also the
+# single most useful operational question about a Datasette deployment, since
+# num_sql_threads defaults to 3 and every read query in the process competes
+# for those threads.
+#
+# Two shapes are used here:
+#
+#   Observable gauges - a callback the SDK invokes on its own collection
+#   cycle. Nothing is computed unless something is collecting, so the default
+#   no-provider install pays literally nothing for them.
+#
+#   Synchronous histograms/counters - recorded inline on the query path. These
+#   survive trace sampling, which spans do not: an operator sampling 1% of
+#   traces still gets 100% of the latency distribution and the interrupted
+#   count.
+#
+# Note a real difference from tracing: `_ProxyMeter` and its instruments
+# forward to a provider installed *after* they were created, whereas
+# `ProxyTracer` permanently caches the concrete tracer it first resolves. So
+# module-level instruments here are safe, and tests do not need a provider
+# installed before this module is imported.
+
+
+def _duration_attributes(database_name, operation):
+    return {
+        DB_SYSTEM: "sqlite",
+        DB_NAMESPACE: database_name,
+        "datasette.operation": operation,
+    }
+
+
+sql_operation_duration = meter.create_histogram(
+    "db.client.operation.duration",
+    unit="s",
+    description="Duration of a SQL operation issued by Datasette",
+)
+
+write_queue_wait = meter.create_histogram(
+    "datasette.write.queue_wait",
+    unit="s",
+    description=(
+        "Time a write spent queued behind the single write thread for its database"
+    ),
+)
+
+queries_interrupted = meter.create_counter(
+    "datasette.sql.queries.interrupted",
+    unit="{query}",
+    description=(
+        "Queries cancelled for exceeding sql_time_limit_ms. Not derivable from "
+        "spans under sampling, and the signal that a time limit is too tight"
+    ),
+)
+
+
+@contextmanager
+def record_operation_duration(database_name, operation):
+    """
+    Record `db.client.operation.duration` for one SQL operation.
+
+    `error.type` is set from the exception class on failure, per semconv, so a
+    latency distribution can be split by success and failure. For a
+    `block=False` write this measures the enqueue, not the write - the same
+    caveat that applies to the surrounding span.
+    """
+    attributes = _duration_attributes(database_name, operation)
+    started = time.perf_counter()
+    try:
+        yield
+    except BaseException as exception:
+        attributes[ERROR_TYPE] = type(exception).__qualname__
+        raise
+    finally:
+        sql_operation_duration.record(time.perf_counter() - started, attributes)
+
+
+def record_write_queue_wait(database_name, waited_ns):
+    write_queue_wait.record(waited_ns / 1e9, {DB_NAMESPACE: database_name})
+
+
+def record_query_interrupted(database_name):
+    queries_interrupted.add(1, {DB_NAMESPACE: database_name})
+
+
+# Live Datasette instances, weakly held so that instrumenting an instance
+# never keeps it alive. Guarded by a lock because the gauge callbacks run on
+# the SDK's collection thread while the event loop may be building or closing
+# a Datasette.
+#
+# Known limitation: the pool gauges below carry no attribute identifying which
+# Datasette produced them, so if a single process runs more than one instance
+# their observations collide and last-one-wins. Production runs one instance
+# per process; adding an instance id to make the test suite's hundreds of
+# instances distinguishable would mean unbounded attribute cardinality in
+# exchange for fixing a case that does not occur in production.
+_live_datasettes = weakref.WeakSet()
+_live_datasettes_lock = threading.Lock()
+
+
+def register_datasette(ds):
+    "Start reporting pool/queue gauges for this Datasette instance."
+    with _live_datasettes_lock:
+        _live_datasettes.add(ds)
+
+
+def unregister_datasette(ds):
+    "Stop reporting gauges for an instance that has been closed."
+    with _live_datasettes_lock:
+        _live_datasettes.discard(ds)
+
+
+def _live_instances():
+    with _live_datasettes_lock:
+        return list(_live_datasettes)
+
+
+def _databases_of(ds):
+    """
+    Every Database attached to an instance, including the internal database.
+
+    The internal database is deliberately included: permission checks run SQL
+    against it on essentially every request, so its queue depth and connection
+    count are as operationally interesting as any user database's.
+    """
+    databases = list(ds.databases.values())
+    internal = getattr(ds, "_internal_database", None)
+    if internal is not None:
+        databases.append(internal)
+    return databases
+
+
+# Each callback is a plain generator function so it can be unit-tested
+# directly, without standing up an SDK provider and a metric reader.
+
+
+def observe_sql_thread_limit(options=None):
+    "Size of the shared read-query thread pool (the num_sql_threads setting)."
+    for ds in _live_instances():
+        if ds.executor is None:
+            # num_sql_threads=0 - queries run on the event loop, no pool.
+            continue
+        yield otel_metrics.Observation(ds.setting("num_sql_threads"), {})
+
+
+def observe_sql_thread_queue_depth(options=None):
+    """
+    Read queries waiting for a free thread in the shared pool.
+
+    This is the saturation signal: sustained above zero means requests are
+    queueing on num_sql_threads. `_work_queue` is a private attribute of
+    ThreadPoolExecutor, so its absence is tolerated rather than fatal - a
+    missing gauge is much better than a crashed collection cycle.
+    """
+    for ds in _live_instances():
+        if ds.executor is None:
+            continue
+        work_queue = getattr(ds.executor, "_work_queue", None)
+        if work_queue is None:
+            continue
+        yield otel_metrics.Observation(work_queue.qsize(), {})
+
+
+def observe_pending_queries(options=None):
+    """
+    Read queries submitted to the pool and not yet finished, per database.
+
+    Summed across databases and compared against the thread limit, this is the
+    utilisation half of the saturation picture. `len()` is deliberately taken
+    without `_pending_execute_futures_lock`: it is atomic, and taking a lock
+    held on the request path from the collection thread would let telemetry
+    add latency to queries.
+    """
+    for ds in _live_instances():
+        for db in _databases_of(ds):
+            yield otel_metrics.Observation(
+                len(db._pending_execute_futures), {DB_NAMESPACE: db.name}
+            )
+
+
+def observe_write_queue_depth(options=None):
+    """
+    Writes queued behind the single write thread, per database.
+
+    Every database serialises its writes through one thread, so this is
+    unbounded backpressure that no amount of num_sql_threads will relieve.
+    """
+    for ds in _live_instances():
+        for db in _databases_of(ds):
+            write_queue = db._write_queue
+            if write_queue is None:
+                # No write has ever been queued for this database.
+                continue
+            yield otel_metrics.Observation(
+                write_queue.qsize(), {DB_NAMESPACE: db.name}
+            )
+
+
+def observe_open_connections(options=None):
+    "Open SQLite file connections tracked for closing, per database."
+    for ds in _live_instances():
+        for db in _databases_of(ds):
+            yield otel_metrics.Observation(
+                len(db._all_file_connections), {DB_NAMESPACE: db.name}
+            )
+
+
+sql_thread_limit_gauge = meter.create_observable_gauge(
+    "datasette.sql.threads.limit",
+    callbacks=[observe_sql_thread_limit],
+    unit="{thread}",
+    description="Maximum concurrent read queries (the num_sql_threads setting)",
+)
+
+sql_thread_queue_depth_gauge = meter.create_observable_gauge(
+    "datasette.sql.threads.queue_depth",
+    callbacks=[observe_sql_thread_queue_depth],
+    unit="{query}",
+    description="Read queries waiting for a free thread in the shared SQL pool",
+)
+
+pending_queries_gauge = meter.create_observable_gauge(
+    "datasette.sql.queries.pending",
+    callbacks=[observe_pending_queries],
+    unit="{query}",
+    description="Read queries submitted to the pool and not yet complete",
+)
+
+write_queue_depth_gauge = meter.create_observable_gauge(
+    "datasette.write.queue_depth",
+    callbacks=[observe_write_queue_depth],
+    unit="{write}",
+    description="Writes queued behind a database's single write thread",
+)
+
+open_connections_gauge = meter.create_observable_gauge(
+    "datasette.connections.open",
+    callbacks=[observe_open_connections],
+    unit="{connection}",
+    description="Open SQLite file connections tracked for closing",
+)

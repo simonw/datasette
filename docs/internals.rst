@@ -2526,6 +2526,36 @@ This reference is generated from ``datasette/telemetry_registry.py``, like the s
 
 .. [[[end]]]
 
+Exemplars
+~~~~~~~~~
+
+An OpenTelemetry `exemplar <https://opentelemetry.io/docs/specs/otel/metrics/data-model/#exemplars>`__ attaches a trace ID and span ID to one sample backing a histogram measurement. Where a spike in ``db.client.operation.duration`` alone tells you "queries were slow sometime in this minute", the exemplar attached to one of the samples in that spike gives you the trace ID of an actual slow query to open.
+
+Datasette needs no configuration to produce these. Every histogram measurement on the query path is recorded while a span for that operation is active, and the OpenTelemetry SDK's default exemplar filter attaches the current trace ID and span ID to any measurement recorded inside a sampled span - this is SDK behaviour that Datasette's instrumentation does not need to opt into. Four queries of increasing cost, each inside its own span, produced one exemplar per query on ``db.client.operation.duration``:
+
+.. code-block:: text
+
+    db.client.operation.duration count=4
+      exemplars: 4
+        value=0.001564s trace_id=ddfaf45fd4e14913497d7efeac95f381 span_id=fd5792bdbb01e533
+        value=0.006320s trace_id=34aea775ade11a3c5f716695731000fe span_id=25ed9e29dd84dbee
+        value=0.045253s trace_id=a65cb58d1460a179f0d04046ff51ed0d span_id=7f34d6378c85d062
+        value=0.305240s trace_id=6089f4c515c221c0ca7bb53667b37ac8 span_id=0516f4a6641eaa0b
+
+Exemplars are kept per histogram bucket - the SDK's default reservoir for an explicit-bucket histogram holds one exemplar per bucket - so the bucket boundaries above decide how many distinct traces a metric can point at. The same four queries, run against an earlier set of bucket boundaries under which every one of them fell into a single ``(0, 5]`` second bucket, produced one exemplar instead of four:
+
+.. code-block:: text
+
+    db.client.operation.duration count=4
+      exemplars: 1
+        value=0.305349s trace_id=cd40f9af396ad1e1d71a8832d70ac84a span_id=8a8c288609731fea
+
+Correcting the bucket boundaries had a second effect beyond fixing the quantiles: it also multiplied the number of traces reachable from this metric, one to four for this workload.
+
+Which export path you use matters here. The OTLP exporter carries exemplars through unchanged. The pinned ``opentelemetry-exporter-prometheus`` (``0.65b0``) does not: the string ``exemplar`` does not appear anywhere in its source, and an OpenMetrics scrape of the workload above through that exporter contained zero exemplar markers - even though ``prometheus-client`` (``0.26.0``), the library it depends on for OpenMetrics output, supports the syntax. If exemplars need to reach Prometheus, the path that works is an OTLP collector writing to Prometheus, not Datasette's own Prometheus exporter. On that path, the Prometheus server needs `--enable-feature=exemplar-storage <https://prometheus.io/docs/prometheus/latest/feature_flags/>`__, and the scrape itself must use the OpenMetrics exposition format - Prometheus's default text format has no syntax for exemplars at all. Grafana then needs the Prometheus data source's `exemplar configuration <https://grafana.com/docs/grafana/latest/datasources/prometheus/configure/>`__ (``exemplarTraceIdDestinations``) pointed at a tracing data source before it will draw an exemplar as a clickable point rather than an ordinary sample.
+
+An exemplar can only exist for a trace that was sampled. The SDK's default exemplar filter only records one when the measurement happens inside a sampled span, and produces no exemplar at all rather than a link to a trace that was never kept. Verified: with the tracer provider's sampler set to ``ALWAYS_OFF``, the same four-query workload produced ``exemplars: 0`` on every data point. At 1% head sampling, 99% of measurements contribute no exemplar - but every exemplar you do get is guaranteed to resolve to a trace that exists.
+
 .. _internals_telemetry_requests:
 
 Requests and inbound trace context

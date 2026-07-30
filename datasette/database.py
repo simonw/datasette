@@ -17,7 +17,15 @@ from opentelemetry import context as otel_context_api
 from opentelemetry.trace import Link, Status, StatusCode, get_current_span
 
 from .inspect import inspect_hash
-from .telemetry import callback_name, sql_attribute, sql_operation_name, tracer
+from .telemetry import (
+    callback_name,
+    record_operation_duration,
+    record_query_interrupted,
+    record_write_queue_wait,
+    sql_attribute,
+    sql_operation_name,
+    tracer,
+)
 from .telemetry_registry import (
     CALLBACK,
     DB_NAMESPACE,
@@ -316,9 +324,10 @@ class Database:
                     span.set_attribute(DB_OPERATION_NAME, operation_name)
                 if params:
                     span.set_attribute(PARAM_COUNT, len(params))
-                results = await self._execute_write_fn(
-                    _inner, block=block, request=request, transaction=transaction
-                )
+                with record_operation_duration(self.name, "write"):
+                    results = await self._execute_write_fn(
+                        _inner, block=block, request=request, transaction=transaction
+                    )
         return results
 
     async def execute_write_script(self, sql, block=True, request=None):
@@ -340,9 +349,10 @@ class Database:
                 span.set_attribute(DB_NAMESPACE, self.name)
                 span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
                 span.set_attribute(EXECUTESCRIPT, True)
-                results = await self._execute_write_fn(
-                    _inner, block=block, transaction=False, request=request
-                )
+                with record_operation_duration(self.name, "write"):
+                    results = await self._execute_write_fn(
+                        _inner, block=block, transaction=False, request=request
+                    )
         return results
 
     async def execute_write_many(self, sql, params_seq, block=True, request=None):
@@ -373,9 +383,10 @@ class Database:
                 operation_name = sql_operation_name(sql)
                 if operation_name:
                     span.set_attribute(DB_OPERATION_NAME, operation_name)
-                results, count = await self._execute_write_fn(
-                    _inner, block=block, request=request
-                )
+                with record_operation_duration(self.name, "write"):
+                    results, count = await self._execute_write_fn(
+                        _inner, block=block, request=request
+                    )
                 # count is the number of parameter *sets* consumed by
                 # executemany(), not a row count - executemany returns no rows.
                 span.set_attribute(PARAM_SETS, count)
@@ -665,11 +676,15 @@ class Database:
                 # this span's duration is the time the task actually spent
                 # waiting in the queue (enqueue -> dequeue), not the near-
                 # zero time spent constructing/ending the span object here.
+                dequeued_at_ns = time.time_ns()
                 tracer.start_span(
                     DB_WRITE_QUEUE_WAIT,
                     start_time=task.enqueued_at_ns,
                     **write_span_kwargs,
-                ).end(end_time=time.time_ns())
+                ).end(end_time=dequeued_at_ns)
+                record_write_queue_wait(
+                    self.name, dequeued_at_ns - task.enqueued_at_ns
+                )
                 if conn_exception is not None:
                     # fn never runs in this branch, so there is nothing to
                     # wrap in a db.write.execute span.
@@ -915,7 +930,8 @@ class Database:
                 if params:
                     span.set_attribute(PARAM_COUNT, len(params))
                 try:
-                    results = await self._execute_fn(sql_operation_in_thread)
+                    with record_operation_duration(self.name, "read"):
+                        results = await self._execute_fn(sql_operation_in_thread)
                 except QueryInterrupted as e:
                     # datasette.interrupted is set either way - it is the
                     # signal worth having. Only the ERROR status is
@@ -924,6 +940,14 @@ class Database:
                     if not timeout_expected:
                         span.set_status(Status(StatusCode.ERROR, str(e)))
                         span.record_exception(e)
+                        # A counter rather than only a span, because this is the
+                        # one thing an operator wants a rate and an alert on, and
+                        # spans under a 1% sampler cannot provide either. An
+                        # expected timeout - a caller that opted into a shorter
+                        # budget, like facet suggestion - is not counted, for the
+                        # same reason it is not a span error: it fires routinely
+                        # by design and would drown the signal this exists for.
+                        record_query_interrupted(self.name)
                     raise
                 except Exception as e:
                     # log_sql_errors=False means the caller is probing and

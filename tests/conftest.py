@@ -114,6 +114,106 @@ def otel_spans():
     yield _otel_span_exporter
 
 
+_otel_metric_reader = None
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _otel_meter_provider():
+    """
+    Install a real OTel SDK MeterProvider + InMemoryMetricReader once per
+    process.
+
+    Unlike the tracer, ordering is not load-bearing here: `_ProxyMeter` and
+    the `_ProxyInstrument`s it hands out forward to a provider installed
+    *after* they were created, whereas `ProxyTracer` permanently caches the
+    first concrete tracer it resolves. This fixture is still session-scoped
+    and autouse for symmetry, and so that a single reader collects for the
+    whole run.
+
+    DELTA temporality is chosen for counters and histograms so that each
+    collection reports only what happened since the previous one. With the
+    SDK default of CUMULATIVE, every metrics test would see every query run
+    by every earlier test in the session.
+    """
+    global _otel_metric_reader
+    try:
+        from opentelemetry import metrics as otel_metrics
+        from opentelemetry.sdk.metrics import Counter, Histogram, MeterProvider
+        from opentelemetry.sdk.metrics.export import (
+            AggregationTemporality,
+            InMemoryMetricReader,
+        )
+    except ImportError:
+        return
+    reader = InMemoryMetricReader(
+        preferred_temporality={
+            Counter: AggregationTemporality.DELTA,
+            Histogram: AggregationTemporality.DELTA,
+        }
+    )
+    otel_metrics.set_meter_provider(MeterProvider(metric_readers=[reader]))
+    _otel_metric_reader = reader
+
+
+class MetricsCollector:
+    """
+    Thin reader over an `InMemoryMetricReader`.
+
+    `collect()` runs a collection cycle - which is what invokes the observable
+    gauge callbacks - and snapshots the result. Queries then run against that
+    snapshot rather than re-collecting, so a test that inspects several
+    metrics sees one consistent moment and does not drain delta state twice.
+    """
+
+    def __init__(self, reader):
+        self.reader = reader
+        self.snapshot = {}
+
+    def collect(self):
+        self.snapshot = {}
+        data = self.reader.get_metrics_data()
+        if data is None:
+            return self.snapshot
+        for resource_metrics in data.resource_metrics:
+            for scope_metrics in resource_metrics.scope_metrics:
+                for metric in scope_metrics.metrics:
+                    self.snapshot.setdefault(metric.name, []).extend(
+                        metric.data.data_points
+                    )
+        return self.snapshot
+
+    def points(self, name, attributes=None):
+        "Data points for `name` whose attributes are a superset of `attributes`."
+        found = []
+        for point in self.snapshot.get(name, []):
+            point_attributes = dict(point.attributes or {})
+            if all(point_attributes.get(k) == v for k, v in (attributes or {}).items()):
+                found.append(point)
+        return found
+
+    def point(self, name, attributes=None):
+        "The single matching data point, asserting there is exactly one."
+        found = self.points(name, attributes)
+        assert len(found) == 1, (
+            f"expected exactly one {name} point matching {attributes}, "
+            f"got {len(found)}: {found}"
+        )
+        return found[0]
+
+
+@pytest.fixture
+def otel_metrics():
+    """
+    Function-scoped metrics collector. Drains any delta state accumulated by
+    earlier tests before yielding, so counts start from zero.
+    """
+    pytest.importorskip("opentelemetry.sdk")
+    if _otel_metric_reader is None:
+        pytest.skip("OpenTelemetry SDK meter provider was not installed")
+    _otel_metric_reader.get_metrics_data()
+    yield MetricsCollector(_otel_metric_reader)
+
+
 @pytest.fixture
 def bare_ds():
     """

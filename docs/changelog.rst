@@ -11,6 +11,10 @@ Unreleased
 
 - New :ref:`POST count endpoint <TableCountView>` for counting filtered table rows, now used by the **count all** button. (:issue:`2914`)
 - Datasette now uses `httpx2 <https://httpx2.pydantic.dev/>`__, the Pydantic-maintained continuation of `httpx <https://www.python-httpx.org/>`__, in place of ``httpx``. The public API is the same, but responses returned by :ref:`internals_datasette_client` are now ``httpx2.Response`` objects rather than ``httpx.Response``. Plugins that use ``isinstance()`` checks against ``httpx.Response`` should be updated to use ``httpx2``. **Plugins that use httpx without explicitly depending on it** will need to add an explicit dependency or switch to `httpx2`.
+- Datasette's database layer now emits `OpenTelemetry <https://opentelemetry.io/>`__ spans: one per query, covering the full round trip including time spent waiting for a SQL worker thread, plus separate child spans for the execution itself and for time spent in the write queue. Datasette core depends on ``opentelemetry-api`` only and never installs an SDK provider, an exporter or a sampler, so there is no effect and no measurable overhead unless tracing is switched on externally - normally with the standard ``opentelemetry-instrument`` agent. See :ref:`internals_telemetry`. (:issue:`1730`)
+- :ref:`db.execute(sql, ..., table=None) <database_execute>` has a new optional ``table=`` parameter, naming the table a query is about so it can be recorded on that query's OpenTelemetry span. It has no effect on query execution, and Datasette never derives it from the SQL. (:issue:`1730`)
+
+Nothing is removed by this change: the ``?_trace=1`` query string parameter, the ``trace_debug`` setting and the :ref:`internals_tracer` module all continue to work as before.
 
 Background tasks
 ~~~~~~~~~~~~~~~~

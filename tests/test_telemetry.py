@@ -2,12 +2,15 @@ import json
 import sqlite3
 import subprocess
 import sys
+import time
 
 import pytest
+import sqlite_utils
 from opentelemetry.trace import StatusCode
 
 from datasette.app import Datasette
-from datasette.telemetry import MAX_SQL_LENGTH, sql_attribute
+from datasette.database import Database
+from datasette.telemetry import MAX_SQL_LENGTH, sql_attribute, tracer
 
 SECRET_PARAM_VALUE = "SUPER_SECRET_PARAM_VALUE_XYZ_123"
 
@@ -30,6 +33,26 @@ def _spans_for_namespace(otel_spans, namespace):
         span
         for span in _db_query_spans(otel_spans)
         if span.attributes["db.namespace"] == namespace
+    ]
+
+
+def _children_named(otel_spans, name, parent_span_context):
+    """
+    Finished spans called `name` whose parent really is `parent_span_context`.
+
+    Parentage is matched on span id, not on "a span with this name exists" -
+    a span can exist and still be an unparented root if a thread boundary
+    dropped the otel context, which is the exact failure these tests exist
+    to catch.
+    """
+    return [
+        span
+        for span in otel_spans.get_finished_spans()
+        if span.name == name
+        and span.parent is not None
+        and span.parent.span_id == parent_span_context.span_id
+        and span.parent.trace_id == parent_span_context.trace_id
+        and span.context.trace_id == parent_span_context.trace_id
     ]
 
 
@@ -267,3 +290,170 @@ async def test_execute_write_many_records_param_sets_not_rows_returned(otel_span
     # calling this a row count would be a lie. Asserted explicitly because the
     # attribute really was named datasette.rows_returned at one point.
     assert "datasette.rows_returned" not in span.attributes
+
+
+# --- Context propagation across thread boundaries --------------------------
+#
+# Every assertion below checks parentage (child.parent.span_id ==
+# expected_parent.span_id, in the same trace), not merely that spans exist.
+# Spans can exist and still be wrongly parented - or be unparented roots - if
+# a thread boundary drops the otel context, which is exactly the failure mode
+# these tests exist to prevent.
+
+
+@pytest.mark.asyncio
+async def test_db_query_execute_parents_to_db_query(ds_client, otel_spans):
+    # execute_fn()'s executor.submit() is thread boundary #1. The
+    # db.query.execute span is created inside the worker thread; without the
+    # copy_context() propagation it comes back as an unparented root span
+    # rather than a child of db.query.
+    response = await ds_client.get("/fixtures/-/query.json?sql=select+1")
+    assert response.status_code == 200
+
+    query_spans = [
+        span
+        for span in _spans_for_namespace(otel_spans, "fixtures")
+        if span.attributes["db.query.text"] == "select 1"
+    ]
+    assert query_spans, "expected a db.query span for 'select 1'"
+    query_span = query_spans[-1]
+
+    assert [
+        span
+        for span in otel_spans.get_finished_spans()
+        if span.name == "db.query.execute"
+    ], "expected at least one db.query.execute span"
+    children = _children_named(otel_spans, "db.query.execute", query_span.context)
+    assert len(children) == 1, "expected exactly one db.query.execute child of db.query"
+    # The execute span is strictly contained by the round-trip span, and the
+    # gap between the two is the thread-pool wait.
+    assert query_span.start_time <= children[0].start_time
+    assert children[0].end_time <= query_span.end_time
+
+
+@pytest.mark.asyncio
+async def test_immutable_database_propagates_context(tmp_path, otel_spans):
+    # Thread boundary #3, the easy one to miss: immutable databases route
+    # execute_isolated_fn() through loop.run_in_executor() directly rather
+    # than through the write thread. A span created inside that worker must
+    # still parent to whatever was current when execute_isolated_fn() was
+    # awaited, or every immutable-database operation emits orphan roots.
+    db_path = tmp_path / "t04_immutable.db"
+    sqlite_utils.Database(str(db_path))["t"].insert({"id": 1}, pk="id")
+
+    ds = Datasette()
+    db = Database(ds, path=str(db_path), is_mutable=False)
+    ds.add_database(db, name="t04_immutable")
+
+    def fn(conn):
+        with tracer.start_as_current_span("t04-child-in-isolated-worker"):
+            pass
+
+    try:
+        with tracer.start_as_current_span("t04-parent-on-event-loop") as parent:
+            parent_context = parent.get_span_context()
+            await db.execute_isolated_fn(fn)
+    finally:
+        ds.remove_database("t04_immutable")
+
+    assert [
+        span
+        for span in otel_spans.get_finished_spans()
+        if span.name == "t04-child-in-isolated-worker"
+    ], "expected a span created inside execute_isolated_fn's worker thread"
+    children = _children_named(
+        otel_spans, "t04-child-in-isolated-worker", parent_context
+    )
+    assert len(children) == 1
+
+
+@pytest.mark.asyncio
+async def test_write_spans_parent_to_db_query(otel_spans):
+    # Thread boundary #2: WriteTask -> queue.Queue -> the write thread.
+    # db.write.queue_wait and db.write.execute are both direct children of
+    # the db.query span that was current on the event loop at enqueue time,
+    # so they are siblings rather than nested inside one another.
+    db = Datasette(memory=True).add_memory_database("t04_write_spans")
+    await db.execute_write("create table docs (id integer primary key)")
+
+    query_spans = _spans_for_namespace(otel_spans, "t04_write_spans")
+    assert query_spans, "expected a db.query span from execute_write()"
+    query_span = query_spans[-1]
+
+    queue_wait_children = _children_named(
+        otel_spans, "db.write.queue_wait", query_span.context
+    )
+    execute_children = _children_named(
+        otel_spans, "db.write.execute", query_span.context
+    )
+    assert len(queue_wait_children) == 1
+    assert len(execute_children) == 1
+
+    execute_span = execute_children[0]
+    assert execute_span.attributes["datasette.isolated_connection"] is False
+    assert execute_span.attributes["datasette.transaction"] is True
+    # Siblings, not parent/child: the queue wait is over by the time the
+    # write begins.
+    assert queue_wait_children[0].end_time <= execute_span.start_time
+
+
+@pytest.mark.asyncio
+async def test_write_queue_wait_duration_reflects_real_wait(otel_spans):
+    # db.write.queue_wait is built from explicit start/end timestamps -
+    # task.enqueued_at_ns, captured on the event loop, through to the moment
+    # the write thread dequeued it. If it were a plain `with` block on the
+    # write thread it would instead measure the microseconds spent building
+    # the span object, and this assertion would fail.
+    ds = Datasette(memory=True)
+    db = ds.add_memory_database("t04_queue_wait")
+    await db.execute_write("create table docs (id integer primary key)")
+
+    def slow_write(conn):
+        time.sleep(0.1)
+
+    # Queue a deliberately slow write without waiting for it, then queue a
+    # second write immediately behind it: the second task sits in the queue
+    # for roughly the duration of the first.
+    _, slow_future = await db._send_to_write_thread(slow_write, block=False)
+    await db.execute_write("insert into docs (id) values (1)")
+    await slow_future
+
+    query_spans = [
+        span
+        for span in _spans_for_namespace(otel_spans, "t04_queue_wait")
+        if span.attributes["db.query.text"] == "insert into docs (id) values (1)"
+    ]
+    assert query_spans, "expected a db.query span for the queued-behind insert"
+    queue_wait_children = _children_named(
+        otel_spans, "db.write.queue_wait", query_spans[-1].context
+    )
+    assert len(queue_wait_children) == 1
+    duration_ns = queue_wait_children[0].end_time - queue_wait_children[0].start_time
+    # The slow write sleeps 100ms; anything above 10ms is far beyond the
+    # microseconds a mis-timestamped span would report.
+    assert duration_ns > 10_000_000, f"queue wait was only {duration_ns}ns"
+
+
+@pytest.mark.asyncio
+async def test_suppressed_error_does_not_mark_execute_span(ds_client, otel_spans):
+    """
+    The inner db.query.execute span must honour log_sql_errors too.
+
+    It is created inside the worker thread, so without record_exception /
+    set_status_on_exception being passed through it would mark every facet
+    suggestion probe as failed even though the outer db.query span correctly
+    reports the failure as suppressed.
+    """
+    db = ds_client.ds.get_database("fixtures")
+    with pytest.raises(sqlite3.OperationalError):
+        await db.execute(INVALID_SQL, log_sql_errors=False)
+
+    execute_spans = [
+        span
+        for span in otel_spans.get_finished_spans()
+        if span.name == "db.query.execute"
+    ]
+    assert execute_spans
+    span = execute_spans[-1]
+    assert span.status.status_code == StatusCode.UNSET
+    assert not [event for event in span.events if event.name == "exception"]

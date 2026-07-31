@@ -2313,6 +2313,78 @@ The ``Database`` class also provides properties and methods for introspecting th
           }
         }
 
+.. _internals_telemetry:
+
+OpenTelemetry
+=============
+
+Datasette core depends on `opentelemetry-api <https://pypi.org/project/opentelemetry-api/>`__ only. It never creates a ``TracerProvider``, never configures an exporter and never sets a sampler. With no OpenTelemetry SDK provider installed, every span described below is a no-op ``NonRecordingSpan`` - the overhead is close to zero and nothing is recorded or exported anywhere.
+
+Turning tracing on is entirely an operational decision made outside of Datasette itself: run Datasette under the standard ``opentelemetry-instrument`` agent, or embed Datasette inside a host application that installs its own provider.
+
+Everything Datasette emits carries the instrumentation scope ``datasette``, versioned with the running Datasette version and declaring the `semantic conventions schema <https://opentelemetry.io/docs/specs/otel/schemas/>`__ its attribute names follow.
+
+Span reference
+--------------
+
+Attribute names use the ``datasette.*`` prefix for Datasette-specific data, alongside standard OpenTelemetry attributes such as ``db.system``.
+
+This reference is generated from ``datasette/telemetry_registry.py``, the single source of truth for every span and attribute Datasette emits. A conformance test makes real requests and compares what is actually emitted against that registry in both directions, so nothing here is hand-maintained and nothing can silently drift out of date.
+
+Spans are ``SpanKind.INTERNAL`` unless a kind is listed below. Only ``db.query`` is ``CLIENT``: it is the one span that represents a call to a database rather than Datasette's own work, and trace UIs use the kind to decide whether to render a span as a database call. Its children stay ``INTERNAL`` because they are Datasette's decomposition of that one query - marking them ``CLIENT`` too would make a single query look like several database calls to anything counting by kind.
+
+.. [[[cog
+    from telemetry_doc import spans
+    spans(cog)
+.. ]]]
+
+``db.query``
+    A SQL operation issued by Datasette, covering the full round trip including any time spent queued for a thread.
+
+    Kind: ``CLIENT``.
+
+    Attributes:
+
+    - ``db.system`` - Always ``sqlite``.
+    - ``db.namespace`` - Name of the database being queried.
+    - ``db.query.text`` - The SQL, truncated to 2048 characters. Never the parameter values.
+    - ``db.operation.name`` *(optional)* - The statement's leading keyword - ``SELECT``, ``INSERT``, ``CREATE``, and so on - matched against a small fixed allowlist. Omitted rather than set to an arbitrary value: the allowlist exists because this attribute is a candidate dimension for a query-duration metric in a later phase, and echoing an unrecognised first token from user-supplied SQL would be an unbounded-cardinality hazard. Also omitted for ``execute_write_script()``, which runs multiple statements - per semantic conventions, the operation name should not be extracted from query text that can contain more than one operation. Note that a statement beginning with a CTE reports ``WITH``, not the operation inside it - a substantial share of Datasette's own reads take that form. Resolving it further would mean parsing.
+    - ``db.collection.name`` *(optional)* - The primary table, set only where the view already knows it - the table and row pages. Omitted for arbitrary ``?sql=`` queries, where determining the table would mean parsing the query.
+    - ``datasette.param_count`` *(optional)* - Number of bound parameters. Recorded instead of the values themselves.
+    - ``datasette.param_sets`` *(optional)* - Number of parameter sets consumed by ``execute_write_many()``. Not a row count - ``executemany()`` returns no rows. The parameter values themselves are never recorded: that sequence can hold thousands of rows.
+    - ``datasette.time_limit_ms`` *(optional)* - The :ref:`setting_sql_time_limit_ms` value this query ran under. Set on reads, which are the queries that time limit applies to.
+    - ``datasette.rows_returned`` *(optional)* - Number of rows a read returned. Set on the read path only, and only when the read succeeded.
+    - ``datasette.truncated`` *(optional)* - True if the result was cut short by :ref:`setting_max_returned_rows`.
+    - ``datasette.interrupted`` *(optional)* - True if the query was cancelled for exceeding the time limit. The span status is also set to ``ERROR``.
+    - ``datasette.sql_error_suppressed`` *(optional)* - True when the query failed but the caller passed ``log_sql_errors=False``, meaning it was probing and treats failure as an expected answer. Facet suggestion does this against every column.
+    - ``datasette.executescript`` *(optional)* - True for ``execute_write_script()``, which runs multiple statements.
+    - ``datasette.executemany`` *(optional)* - True for ``execute_write_many()``, which runs one statement against many parameter sets.
+
+``db.query.execute``
+    The read executing inside a SQL worker thread. Child of ``db.query``; the gap between the two is time spent waiting for a thread.
+
+    No attributes.
+
+``db.write.queue_wait``
+    Time a write spent waiting in its database's write queue before the write thread picked it up. Child of ``db.query`` for a ``block=True`` write, where the caller awaits the write and containment is accurate. For a ``block=False`` write the caller does not await it - the enqueueing request *caused* the write without *containing* it, and the write's spans can outlive the request's own - so this is a root span instead, carrying an OpenTelemetry link back to the enqueueing span rather than a parent. A link records causation without asserting containment, which is exactly the distinction here.
+
+    No attributes.
+
+``db.write.execute``
+    The write executing on the write thread. Child of ``db.query`` for a ``block=True`` write; for ``block=False`` a root span with a link back to the enqueueing span instead - see ``db.write.queue_wait`` above.
+
+    Attributes:
+
+    - ``datasette.isolated_connection`` - True if the write ran on its own connection rather than the shared write connection.
+    - ``datasette.transaction`` - False for statements such as ``VACUUM`` that cannot run inside a transaction.
+
+``datasette.startup``
+    ``invoke_startup()`` running: ``register_events``, ``register_actions``, ``register_column_types``, ``prepare_jinja2_environment``, internal-database schema catalog refresh (including the ``prepare_connection`` warm-up this triggers for each database touched for the first time), saved queries, column type config and the ``startup`` hook. Runs once per process, before any request exists, so without this span every child it creates would be its own orphan root trace. A connection warmed later - lazily, the first time a *request* touches a new database or thread - nests under that request's own span instead, not under this one, since this span has already ended by then.
+
+    No attributes.
+
+.. [[[end]]]
+
 .. _internals_csrf:
 
 CSRF protection

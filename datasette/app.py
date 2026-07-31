@@ -50,6 +50,7 @@ from .plugins import DEFAULT_PLUGINS, get_plugins, pm
 from .renderer import json_renderer
 from .resources import DatabaseResource, TableResource
 from .telemetry import tracer
+from .telemetry_registry import STARTUP
 from .tokens import TokenInvalid
 from .tracer import AsgiTracer
 from .url_builder import Urls
@@ -788,7 +789,7 @@ class Datasette:
         # A connection warmed lazily later, by a request touching a new
         # database for the first time, nests under that request instead:
         # this span has already ended by then.
-        with tracer.start_as_current_span("datasette.startup"):
+        with tracer.start_as_current_span(STARTUP):
             # Register event classes
             event_classes = []
             for hook in pm.hook.register_events(datasette=self):

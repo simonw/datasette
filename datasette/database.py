@@ -14,10 +14,32 @@ from pathlib import Path
 
 import sqlite_utils
 from opentelemetry import context as otel_context_api
-from opentelemetry.trace import Link, SpanKind, Status, StatusCode, get_current_span
+from opentelemetry.trace import Link, Status, StatusCode, get_current_span
 
 from .inspect import inspect_hash
 from .telemetry import sql_attribute, sql_operation_name, tracer
+from .telemetry_registry import (
+    DB_COLLECTION_NAME,
+    DB_NAMESPACE,
+    DB_OPERATION_NAME,
+    DB_QUERY,
+    DB_QUERY_EXECUTE,
+    DB_QUERY_TEXT,
+    DB_SYSTEM,
+    DB_WRITE_EXECUTE,
+    DB_WRITE_QUEUE_WAIT,
+    EXECUTEMANY,
+    EXECUTESCRIPT,
+    INTERRUPTED,
+    ISOLATED_CONNECTION,
+    PARAM_COUNT,
+    PARAM_SETS,
+    ROWS_RETURNED,
+    SQL_ERROR_SUPPRESSED,
+    TIME_LIMIT_MS,
+    TRANSACTION,
+    TRUNCATED,
+)
 from .tracer import trace
 from .utils import (
     call_with_supported_arguments,
@@ -268,15 +290,15 @@ class Database:
         with trace(  # noqa: SIM117
             "sql", database=self.name, sql=sql.strip(), params=params
         ):
-            with tracer.start_as_current_span("db.query", kind=SpanKind.CLIENT) as span:
-                span.set_attribute("db.system", "sqlite")
-                span.set_attribute("db.namespace", self.name)
-                span.set_attribute("db.query.text", sql_attribute(sql))
+            with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
+                span.set_attribute(DB_SYSTEM, "sqlite")
+                span.set_attribute(DB_NAMESPACE, self.name)
+                span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
                 operation_name = sql_operation_name(sql)
                 if operation_name:
-                    span.set_attribute("db.operation.name", operation_name)
+                    span.set_attribute(DB_OPERATION_NAME, operation_name)
                 if params:
-                    span.set_attribute("datasette.param_count", len(params))
+                    span.set_attribute(PARAM_COUNT, len(params))
                 results = await self.execute_write_fn(
                     _inner, block=block, request=request, transaction=transaction
                 )
@@ -296,11 +318,11 @@ class Database:
             # several semicolon-separated statements, and semantic conventions
             # say the attribute should not be extracted from query text that
             # can hold more than one operation - see sql_operation_name().
-            with tracer.start_as_current_span("db.query", kind=SpanKind.CLIENT) as span:
-                span.set_attribute("db.system", "sqlite")
-                span.set_attribute("db.namespace", self.name)
-                span.set_attribute("db.query.text", sql_attribute(sql))
-                span.set_attribute("datasette.executescript", True)
+            with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
+                span.set_attribute(DB_SYSTEM, "sqlite")
+                span.set_attribute(DB_NAMESPACE, self.name)
+                span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
+                span.set_attribute(EXECUTESCRIPT, True)
                 results = await self.execute_write_fn(
                     _inner, block=block, transaction=False, request=request
                 )
@@ -324,22 +346,22 @@ class Database:
         with trace(
             "sql", database=self.name, sql=sql.strip(), executemany=True
         ) as kwargs:
-            with tracer.start_as_current_span("db.query", kind=SpanKind.CLIENT) as span:
-                span.set_attribute("db.system", "sqlite")
-                span.set_attribute("db.namespace", self.name)
-                span.set_attribute("db.query.text", sql_attribute(sql))
-                span.set_attribute("datasette.executemany", True)
+            with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
+                span.set_attribute(DB_SYSTEM, "sqlite")
+                span.set_attribute(DB_NAMESPACE, self.name)
+                span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
+                span.set_attribute(EXECUTEMANY, True)
                 # A single statement run with many parameter sets, so unlike
                 # execute_write_script() there is exactly one operation to name.
                 operation_name = sql_operation_name(sql)
                 if operation_name:
-                    span.set_attribute("db.operation.name", operation_name)
+                    span.set_attribute(DB_OPERATION_NAME, operation_name)
                 results, count = await self.execute_write_fn(
                     _inner, block=block, request=request
                 )
                 # count is the number of parameter *sets* consumed by
                 # executemany(), not a row count - executemany returns no rows.
-                span.set_attribute("datasette.param_sets", count)
+                span.set_attribute(PARAM_SETS, count)
             kwargs["count"] = count
         return results
 
@@ -588,7 +610,7 @@ class Database:
                 # waiting in the queue (enqueue -> dequeue), not the near-
                 # zero time spent constructing/ending the span object here.
                 tracer.start_span(
-                    "db.write.queue_wait",
+                    DB_WRITE_QUEUE_WAIT,
                     start_time=task.enqueued_at_ns,
                     **write_span_kwargs,
                 ).end(end_time=time.time_ns())
@@ -599,15 +621,13 @@ class Database:
                 elif task.isolated_connection:
                     try:
                         with tracer.start_as_current_span(
-                            "db.write.execute", **write_span_kwargs
+                            DB_WRITE_EXECUTE, **write_span_kwargs
                         ) as span:
                             span.set_attribute(
-                                "datasette.isolated_connection",
+                                ISOLATED_CONNECTION,
                                 task.isolated_connection,
                             )
-                            span.set_attribute(
-                                "datasette.transaction", task.transaction
-                            )
+                            span.set_attribute(TRANSACTION, task.transaction)
                             isolated_connection = self.connect(write=True)
                             try:
                                 result = task.fn(isolated_connection)
@@ -628,15 +648,13 @@ class Database:
                 else:
                     try:
                         with tracer.start_as_current_span(
-                            "db.write.execute", **write_span_kwargs
+                            DB_WRITE_EXECUTE, **write_span_kwargs
                         ) as span:
                             span.set_attribute(
-                                "datasette.isolated_connection",
+                                ISOLATED_CONNECTION,
                                 task.isolated_connection,
                             )
-                            span.set_attribute(
-                                "datasette.transaction", task.transaction
-                            )
+                            span.set_attribute(TRANSACTION, task.transaction)
                             if task.transaction:
                                 with conn:
                                     conn.execute("BEGIN IMMEDIATE")
@@ -720,7 +738,7 @@ class Database:
             # db.query span in execute(). Without this, facet suggestion marks
             # two spans per text column as failed on every table page.
             with tracer.start_as_current_span(
-                "db.query.execute",
+                DB_QUERY_EXECUTE,
                 record_exception=log_sql_errors,
                 set_status_on_exception=log_sql_errors,
             ):
@@ -764,27 +782,27 @@ class Database:
             # manager's defaults, so that callers passing log_sql_errors=False
             # can be honoured - see the comment on the generic handler below.
             with tracer.start_as_current_span(
-                "db.query",
-                kind=SpanKind.CLIENT,
+                DB_QUERY,
+                kind=DB_QUERY.kind,
                 record_exception=False,
                 set_status_on_exception=False,
             ) as span:
-                span.set_attribute("db.system", "sqlite")
-                span.set_attribute("db.namespace", self.name)
-                span.set_attribute("db.query.text", sql_attribute(sql))
-                span.set_attribute("datasette.time_limit_ms", time_limit_ms)
+                span.set_attribute(DB_SYSTEM, "sqlite")
+                span.set_attribute(DB_NAMESPACE, self.name)
+                span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
+                span.set_attribute(TIME_LIMIT_MS, time_limit_ms)
                 operation_name = sql_operation_name(sql)
                 if operation_name:
-                    span.set_attribute("db.operation.name", operation_name)
+                    span.set_attribute(DB_OPERATION_NAME, operation_name)
                 if table:
-                    span.set_attribute("db.collection.name", table)
+                    span.set_attribute(DB_COLLECTION_NAME, table)
                 if params:
-                    span.set_attribute("datasette.param_count", len(params))
+                    span.set_attribute(PARAM_COUNT, len(params))
                 try:
                     results = await self.execute_fn(sql_operation_in_thread)
                 except QueryInterrupted as e:
                     span.set_status(Status(StatusCode.ERROR, str(e)))
-                    span.set_attribute("datasette.interrupted", True)
+                    span.set_attribute(INTERRUPTED, True)
                     span.record_exception(e)
                     raise
                 except Exception as e:
@@ -799,10 +817,10 @@ class Database:
                         span.record_exception(e)
                         span.set_status(Status(StatusCode.ERROR, str(e)))
                     else:
-                        span.set_attribute("datasette.sql_error_suppressed", True)
+                        span.set_attribute(SQL_ERROR_SUPPRESSED, True)
                     raise
-                span.set_attribute("datasette.truncated", results.truncated)
-                span.set_attribute("datasette.rows_returned", len(results.rows))
+                span.set_attribute(TRUNCATED, results.truncated)
+                span.set_attribute(ROWS_RETURNED, len(results.rows))
         return results
 
     @property

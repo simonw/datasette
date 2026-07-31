@@ -14,7 +14,7 @@ from pathlib import Path
 
 import sqlite_utils
 from opentelemetry import context as otel_context_api
-from opentelemetry.trace import SpanKind, Status, StatusCode
+from opentelemetry.trace import Link, SpanKind, Status, StatusCode, get_current_span
 
 from .inspect import inspect_hash
 from .telemetry import sql_attribute, sql_operation_name, tracer
@@ -482,7 +482,9 @@ class Database:
         # Captured here, on the event loop, at enqueue time: the otel
         # Context (carrying the enclosing db.query span, if any) and the
         # timestamp used to build the db.write.queue_wait span once this
-        # task is dequeued on the write thread.
+        # task is dequeued on the write thread. `block` travels with the
+        # task too, because it decides whether that context is this task's
+        # parent or only a link target - see `_execute_writes`.
         self._write_queue.put(
             WriteTask(
                 fn,
@@ -493,6 +495,7 @@ class Database:
                 transaction,
                 otel_context_api.get_current(),
                 time.time_ns(),
+                block,
             )
         )
         if block:
@@ -531,15 +534,52 @@ class Database:
                         # Best-effort close as the write thread exits
                         pass
                 return
-            # Restore the caller's otel context (captured on the event loop
-            # at enqueue time) so spans created while processing this task
-            # parent correctly to the request that queued it. Must be
-            # detached below in `finally` - a leaked token silently poisons
-            # this thread's ambient context for every write processed after
-            # it, and a *wrong*-token detach only logs a warning rather than
-            # raising, so this pairing is load-bearing and easy to get wrong
-            # silently.
-            token = otel_context_api.attach(task.otel_context)
+            # `task.block` decides how this task's spans relate to the
+            # context captured at enqueue time:
+            #
+            # - block=True: the caller genuinely awaits the reply, so
+            #   containment is accurate. Restore that context as current
+            #   (attach below) so db.write.queue_wait/db.write.execute parent
+            #   normally to the request that queued them. The token must be
+            #   detached below in `finally` - a leaked token silently
+            #   poisons this thread's ambient context for every write
+            #   processed after it, and a *wrong*-token detach only logs a
+            #   warning rather than raising, so this pairing is load-bearing
+            #   and easy to get wrong silently.
+            # - block=False: the caller returned already without awaiting,
+            #   so the enqueueing span may already have closed (and
+            #   exported) before this task's spans even start - parenting to
+            #   it would make a child appear to outlive its already-closed
+            #   parent, which OTel allows but which renders badly in most
+            #   trace UIs. The enqueueing request *caused* this write
+            #   without *containing* it, so nothing is attached here -
+            #   instead each write span is started as its own root (explicit
+            #   empty `context=`, so the write thread's ambient context
+            #   cannot supply a parent either) carrying one `Link` back to
+            #   the enqueueing span's context, built once into
+            #   `write_span_kwargs` and spread into every start_span call
+            #   below.
+            token = None
+            write_span_kwargs = {}
+            if task.block:
+                token = otel_context_api.attach(task.otel_context)
+            else:
+                enqueueing_span_context = get_current_span(
+                    task.otel_context
+                ).get_span_context()
+                # No attributes on the link: there is only one kind of link
+                # here, so naming the relationship would be a constant that
+                # carries no information a consumer does not already have
+                # from the link's existence.
+                links = (
+                    [Link(enqueueing_span_context)]
+                    if enqueueing_span_context.is_valid
+                    else []
+                )
+                write_span_kwargs = {
+                    "context": otel_context_api.Context(),
+                    "links": links,
+                }
             try:
                 exception = None
                 result = None
@@ -548,7 +588,9 @@ class Database:
                 # waiting in the queue (enqueue -> dequeue), not the near-
                 # zero time spent constructing/ending the span object here.
                 tracer.start_span(
-                    "db.write.queue_wait", start_time=task.enqueued_at_ns
+                    "db.write.queue_wait",
+                    start_time=task.enqueued_at_ns,
+                    **write_span_kwargs,
                 ).end(end_time=time.time_ns())
                 if conn_exception is not None:
                     # fn never runs in this branch, so there is nothing to
@@ -556,7 +598,9 @@ class Database:
                     exception = conn_exception
                 elif task.isolated_connection:
                     try:
-                        with tracer.start_as_current_span("db.write.execute") as span:
+                        with tracer.start_as_current_span(
+                            "db.write.execute", **write_span_kwargs
+                        ) as span:
                             span.set_attribute(
                                 "datasette.isolated_connection",
                                 task.isolated_connection,
@@ -583,7 +627,9 @@ class Database:
                         exception = e
                 else:
                     try:
-                        with tracer.start_as_current_span("db.write.execute") as span:
+                        with tracer.start_as_current_span(
+                            "db.write.execute", **write_span_kwargs
+                        ) as span:
                             span.set_attribute(
                                 "datasette.isolated_connection",
                                 task.isolated_connection,
@@ -603,7 +649,8 @@ class Database:
                         exception = e
                 _deliver_write_result(task, result, exception)
             finally:
-                otel_context_api.detach(token)
+                if token is not None:
+                    otel_context_api.detach(token)
 
     async def execute_fn(self, fn):
         self._check_not_closed()
@@ -1043,6 +1090,7 @@ def _apply_write_wrapper(fn, wrapper_factory, track_event):
 
 class WriteTask:
     __slots__ = (
+        "block",
         "enqueued_at_ns",
         "fn",
         "isolated_connection",
@@ -1063,6 +1111,7 @@ class WriteTask:
         transaction,
         otel_context,
         enqueued_at_ns,
+        block,
     ):
         self.fn = fn
         self.task_id = task_id
@@ -1072,6 +1121,12 @@ class WriteTask:
         self.transaction = transaction
         self.otel_context = otel_context
         self.enqueued_at_ns = enqueued_at_ns
+        # Whether the enqueueing caller awaits the reply future. Decides how
+        # `_execute_writes` relates this task's spans to `otel_context`:
+        # parent (block=True) or span-link target (block=False). See the
+        # comment at the WriteTask construction site in
+        # `_send_to_write_thread`.
+        self.block = block
 
 
 def _deliver_write_result(task, result, exception):

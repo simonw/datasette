@@ -2365,16 +2365,33 @@ A few things catch people out the first time:
 Span reference
 --------------
 
-Datasette emits five spans. Four of them describe the database layer - one per query, one for the work that query does inside a SQL worker thread, and two more for the write queue - and the fifth covers startup. Attribute names use the ``datasette.*`` prefix for Datasette-specific data, alongside standard OpenTelemetry attributes such as ``db.system``.
+Datasette emits six spans. One covers the HTTP request, and is the root everything else raised while serving that request hangs from. Four describe the database layer - one per query, one for the work that query does inside a SQL worker thread, and two more for the write queue. The sixth covers startup. Attribute names use the ``datasette.*`` prefix for Datasette-specific data, alongside standard OpenTelemetry attributes such as ``db.system``.
 
 This reference is generated from ``datasette/telemetry_registry.py``, the single source of truth for every span and attribute Datasette emits. A conformance test makes real requests and compares what is actually emitted against that registry in both directions, so nothing here is hand-maintained and nothing can silently drift out of date.
 
-Spans are ``SpanKind.INTERNAL`` unless a kind is listed below. Only ``db.query`` is ``CLIENT``: it is the one span that represents a call to a database rather than Datasette's own work, and trace UIs use the kind to decide whether to render a span as a database call. Its children stay ``INTERNAL`` because they are Datasette's decomposition of that one query - marking them ``CLIENT`` too would make a single query look like several database calls to anything counting by kind.
+Spans are ``SpanKind.INTERNAL`` unless a kind is listed below. Two are not: the request span is ``SERVER``, and ``db.query`` is ``CLIENT`` because it is the one span that represents a call to a database rather than Datasette's own work. Trace UIs use the kind to decide whether to render a span as an inbound request or as a database call. ``db.query``'s children stay ``INTERNAL`` because they are Datasette's decomposition of that one query - marking them ``CLIENT`` too would make a single query look like several database calls to anything counting by kind.
+
+The request span's name is the only one that is not a fixed string - it is composed from the request, so the heading below shows the template rather than a literal you will see in a trace.
 
 .. [[[cog
     from telemetry_doc import spans
     spans(cog)
 .. ]]]
+
+``{http.request.method}``
+    One span per HTTP request, created by the outermost layer of the ASGI stack - so plugin ``asgi_wrapper()`` middleware, CSRF protection and every database span raised while serving the request all nest inside it. Without it each of those would be its own root trace. The span name is not a fixed string: it is the value of ``http.request.method``. W3C ``traceparent`` and ``baggage`` headers are extracted using the global propagator, so a request arriving from an already-traced caller continues that trace; set ``OTEL_PROPAGATORS=none`` to turn that off, and strip those headers at your proxy if your instance is public.
+
+    Kind: ``SERVER``.
+
+    Attributes:
+
+    - ``http.request.method`` - The HTTP method, clamped to the nine methods RFC 9110 and RFC 5789 define. Anything else is reported as ``_OTHER``: the method is a client-controlled string, so echoing it back unbounded would be a cardinality hazard.
+    - ``url.path`` - The path portion of the URL. The query string is deliberately **not** recorded, on this or any other span: Datasette puts user-supplied SQL in ``?sql=`` and canned query parameters in the query string, so exporting it by default would export exactly the data the rest of this instrumentation is careful with.
+    - ``url.scheme`` - ``http`` or ``https``.
+    - ``server.address`` *(optional)* - The ``Host`` header. Client-controlled, so treat it as untrusted input rather than as the identity of the server.
+    - ``user_agent.original`` *(optional)* - The ``User-Agent`` header, verbatim. Omitted if the client sent none. The client's IP address is deliberately not recorded: core records no identifier that would tie a span to a person.
+    - ``http.response.status_code`` *(optional)* - The status of the response, read from the ASGI ``http.response.start`` message rather than from a :ref:`internals_response` object - several views, including static files, file downloads and streaming CSV, send that message themselves and never build one. Omitted if the connection closed before anything was sent.
+    - ``error.type`` *(optional)* - Set when the request failed: the exception class name if one escaped the application, otherwise the status code as a string for a 5xx response. A 4xx does **not** set this and does not set an error status - per semantic conventions a client error is not a server span's failure.
 
 ``db.query``
     A SQL operation issued by Datasette, covering the full round trip including any time spent queued for a thread. Callback-style calls - ``execute_fn()``, ``execute_write_fn()`` and ``execute_isolated_fn()`` - appear here too, distinguished by ``datasette.callback`` in place of ``db.query.text``.

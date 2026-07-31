@@ -30,6 +30,9 @@ import pytest_asyncio
 
 pytest.importorskip("opentelemetry.sdk")
 
+from opentelemetry.trace import SpanKind
+
+from datasette import hookimpl
 from datasette import telemetry_registry as reg
 from datasette.app import Datasette
 from datasette.database import QueryInterrupted
@@ -67,6 +70,31 @@ EXPECTED_ATTRIBUTES = {
 }
 EXPECTED_SPANS = set(EXPECTED_ATTRIBUTES)
 
+# The HTTP request span is handled separately because its name is composed at
+# runtime - it is the request method - so there is no fixed string to pin it
+# to. What can still be pinned, and is what a dashboard depends on, is the
+# shape of the name and the attribute keys. The workload below only issues
+# GETs, so a change that stopped clamping the method, or that started naming
+# the span after the path, fails here.
+EXPECTED_HTTP_SPAN_NAME = "{http.request.method}"
+EXPECTED_HTTP_SPAN_NAMES = {"GET"}
+EXPECTED_HTTP_ATTRIBUTES = {
+    "http.request.method",
+    "url.path",
+    "url.scheme",
+    "server.address",
+    "user_agent.original",
+    "http.response.status_code",
+    "error.type",
+}
+
+# The registry's own name for the request span is that template, not anything
+# that appears on the wire.
+EXPECTED_REGISTRY_ATTRIBUTES = dict(
+    EXPECTED_ATTRIBUTES, **{EXPECTED_HTTP_SPAN_NAME: EXPECTED_HTTP_ATTRIBUTES}
+)
+EXPECTED_REGISTRY_NAMES = set(EXPECTED_REGISTRY_ATTRIBUTES)
+
 # Named in-memory databases are shared-cache, so two Datasette instances using
 # the same name share one SQLite database - and the second `create table`
 # fails. Every workload below therefore gets its own name.
@@ -75,6 +103,23 @@ _names = itertools.count()
 
 def _unique(prefix):
     return f"{prefix}{next(_names)}"
+
+
+class _BoomPlugin:
+    """
+    A route that raises.
+
+    `error.type` on the request span is only ever set by a 5xx, and nothing
+    in Datasette returns one on a healthy instance - `route_path` converts
+    exceptions into a 500 itself, so the workload has to supply the
+    exception.
+    """
+
+    __name__ = "TelemetryRegistryBoomPlugin"
+
+    @hookimpl
+    def register_routes(self):
+        return [(r"^/-/telemetry-registry-boom$", lambda: 1 / 0)]
 
 
 async def exercise():
@@ -140,37 +185,62 @@ async def exercise():
             custom_time_limit=1,
         )
 
-    # db.collection.name - set only by views that already know their table
+    # db.collection.name - set only by views that already know their table.
+    # These requests are also what produces the HTTP request span and its
+    # http.request.method / url.path / url.scheme / server.address /
+    # user_agent.original / http.response.status_code attributes.
     assert (await ds.client.get(f"/{name}/t?_facet=v")).status_code == 200
     assert (await ds.client.get(f"/{name}/t/1.json")).status_code == 200
+
+    # error.type on the request span, which only a 5xx sets
+    ds.pm.register(_BoomPlugin(), name="telemetry-registry-boom")
+    try:
+        response = await ds.client.get("/-/telemetry-registry-boom")
+        assert response.status_code == 500
+    finally:
+        ds.pm.unregister(name="telemetry-registry-boom")
     return ds
 
 
 @pytest_asyncio.fixture
 async def emitted(otel_spans):
-    "Every span name and (span name, attribute key) pair a broad workload emits."
+    """
+    Every (span name, span kind, attribute keys) triple a broad workload emits.
+
+    The kind is carried because the request span's name is composed at
+    runtime, so `span_for()` resolves it by kind instead.
+    """
     # otel_spans has already cleared the exporter, and nothing is cleared
     # after this point: the workload's own startup emits datasette.startup.
     ds = await exercise()
     spans = otel_spans.get_finished_spans()
     assert spans, "no spans captured - the fixture is not exercising anything"
-    names = set()
-    pairs = set()
-    for span in spans:
-        # str() because span.name is the registry's SpanName instance, and a
-        # set of those would compare equal to literals but read confusingly
-        # in a failure message.
-        names.add(str(span.name))
-        for key in span.attributes or {}:
-            pairs.add((str(span.name), str(key)))
+    # str() because span.name is the registry's SpanName instance, and a set
+    # of those would compare equal to literals but read confusingly in a
+    # failure message.
+    collected = tuple(
+        (
+            str(span.name),
+            span.kind,
+            frozenset(str(key) for key in span.attributes or {}),
+        )
+        for span in spans
+    )
     ds.close()
-    return {"names": names, "pairs": pairs}
+    return collected
 
 
-def _keys_by_span(pairs):
+def _partition(emitted):
+    "The statically named spans, and the dynamically named request spans."
+    static = [record for record in emitted if record[1] is not SpanKind.SERVER]
+    server = [record for record in emitted if record[1] is SpanKind.SERVER]
+    return static, server
+
+
+def _keys_by_span(records):
     by_span = {}
-    for span_name, key in pairs:
-        by_span.setdefault(span_name, set()).add(key)
+    for name, _kind, keys in records:
+        by_span.setdefault(name, set()).update(keys)
     return by_span
 
 
@@ -182,27 +252,34 @@ async def test_workload_emits_exactly_the_expected_names(emitted):
     Not derived from the registry, so this is what catches a rename that the
     registry and the call sites make together.
     """
-    assert emitted["names"] == EXPECTED_SPANS
-    by_span = _keys_by_span(emitted["pairs"])
-    assert {name: by_span.get(name, set()) for name in emitted["names"]} == (
-        EXPECTED_ATTRIBUTES
-    )
+    static, server = _partition(emitted)
+    by_span = _keys_by_span(static)
+    assert set(by_span) == EXPECTED_SPANS
+    assert by_span == EXPECTED_ATTRIBUTES
+
+    assert server, "the workload made HTTP requests but no SERVER span was emitted"
+    server_keys = _keys_by_span(server)
+    assert set(server_keys) == EXPECTED_HTTP_SPAN_NAMES
+    union = set()
+    for keys in server_keys.values():
+        union |= keys
+    assert union == EXPECTED_HTTP_ATTRIBUTES
 
 
 def test_registry_matches_the_expected_names():
     "The other half of the rename check: the registry against the same literals."
-    assert {str(span) for span in reg.SPANS} == EXPECTED_SPANS
+    assert {str(span) for span in reg.SPANS} == EXPECTED_REGISTRY_NAMES
     for span in reg.SPANS:
-        assert {str(attribute) for attribute in span.attributes} == EXPECTED_ATTRIBUTES[
-            str(span)
-        ], f"{span} attributes have drifted"
+        assert {
+            str(attribute) for attribute in span.attributes
+        } == EXPECTED_REGISTRY_ATTRIBUTES[str(span)], f"{span} attributes have drifted"
 
 
 @pytest.mark.asyncio
 async def test_every_emitted_span_is_registered(emitted):
     "A span added without a registry entry would be missing from the docs."
     unregistered = sorted(
-        name for name in emitted["names"] if reg.span_for(name) is None
+        {name for name, kind, _ in emitted if reg.span_for(name, kind) is None}
     )
     assert (
         not unregistered
@@ -213,9 +290,12 @@ async def test_every_emitted_span_is_registered(emitted):
 async def test_every_emitted_attribute_is_registered(emitted):
     "An attribute added without a registry entry would be missing from the docs."
     unregistered = sorted(
-        f"{span_name} -> {key}"
-        for span_name, key in emitted["pairs"]
-        if not reg.attribute_allowed(reg.span_for(span_name), key)
+        {
+            f"{name} -> {key}"
+            for name, kind, keys in emitted
+            for key in keys
+            if not reg.attribute_allowed(reg.span_for(name, kind), key)
+        }
     )
     assert (
         not unregistered
@@ -230,11 +310,10 @@ async def test_every_registered_span_is_emitted(emitted):
     The direction nothing else catches: the docs must not describe a span that
     no longer exists.
     """
-    missing = sorted(
-        str(span)
-        for span in reg.SPANS
-        if not any(reg.span_for(name) is span for name in emitted["names"])
-    )
+    # By identity, not by name: a dynamic entry's own string never appears on
+    # the wire, so comparing strings would be comparing the wrong things.
+    resolved = {id(reg.span_for(name, kind)) for name, kind, _ in emitted}
+    missing = sorted(str(span) for span in reg.SPANS if id(span) not in resolved)
     assert not missing, (
         f"these spans are documented but never emitted by the workload: {missing}. "
         "Either the instrumentation was removed, or exercise() no longer reaches it."
@@ -253,10 +332,14 @@ async def test_every_registered_attribute_is_emitted(emitted):
     new attribute only appears in some rare case, extend exercise() to reach
     that case.
     """
-    by_span = _keys_by_span(emitted["pairs"])
+    by_entry = {}
+    for name, kind, keys in emitted:
+        entry = reg.span_for(name, kind)
+        if entry is not None:
+            by_entry.setdefault(id(entry), set()).update(keys)
     missing = []
     for span in reg.SPANS:
-        emitted_keys = by_span.get(str(span), set())
+        emitted_keys = by_entry.get(id(span), set())
         for attribute in span.attributes:
             if attribute not in emitted_keys:
                 missing.append(f"{span} -> {attribute}")
@@ -289,6 +372,25 @@ def test_registry_entries_are_usable_as_plain_strings():
     assert reg.DB_QUERY == "db.query"
     assert reg.DB_NAMESPACE == "db.namespace"
     assert f"{reg.DB_QUERY}.execute" == "db.query.execute"
+
+
+def test_dynamic_span_lookup():
+    """
+    `dynamic=True` matching, which is how the request span resolves.
+
+    The last two assertions are the ones worth having: a dynamic entry must
+    not swallow a span that does have a registered name, and must not match at
+    all when the caller supplies no kind - otherwise every unregistered span
+    in the suite would silently resolve to the request span and the
+    emitted-but-not-registered direction would stop catching anything.
+    """
+    assert reg.span_for("GET", SpanKind.SERVER) is reg.HTTP_REQUEST
+    assert reg.span_for("POST /^/(?P<database>[^/]+)$", SpanKind.SERVER) is (
+        reg.HTTP_REQUEST
+    )
+    assert reg.span_for("GET") is None
+    assert reg.span_for("anything at all", SpanKind.INTERNAL) is None
+    assert reg.span_for("db.query", SpanKind.SERVER) is reg.DB_QUERY
 
 
 def test_span_and_attribute_lookup():

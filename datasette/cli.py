@@ -713,9 +713,12 @@ def serve(
         # now populates internal tables which requires querying each database
         await check_databases(ds)
 
-        # Run the "startup" plugin hooks
+        # Run the full startup sequence (immutable-database table-count
+        # precompute + the "startup" plugin hooks) via the same entry point
+        # AsgiLifespan/AsgiRunOnFirstRequest use, so it's not skipped when
+        # uvicorn's lifespan.startup fires moments later.
         try:
-            await ds.invoke_startup()
+            await ds._startup_sequence()
         except StartupError as e:
             raise click.ClickException(e.args[0])
 

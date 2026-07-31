@@ -13,9 +13,11 @@ import asyncio
 import contextlib
 import httpx
 import pytest
+import sqlite3
 
 from datasette import hookimpl
 from datasette.app import Datasette
+from datasette.database import Database
 from datasette.plugins import pm
 
 
@@ -209,3 +211,48 @@ async def test_concurrent_first_requests_all_wait_for_slow_startup():
     assert all(response.status_code == 200 for response in responses)
     assert call_count["n"] == 1
     assert ds._startup_invoked is True
+
+
+@pytest.mark.asyncio
+async def test_setup_db_still_runs_when_invoke_startup_ran_first(tmp_path, monkeypatch):
+    # Regression test: `datasette serve` (cli.py _serve_async) calls
+    # ds.invoke_startup() directly, before uvicorn ever sends a
+    # lifespan.startup event that drives _startup_sequence(). If
+    # _startup_sequence()'s fast path only checked `_startup_invoked`, it
+    # would see startup already done and skip the immutable-database
+    # table-count precompute (setup_db) entirely - a silent regression
+    # versus main, where AsgiRunOnFirstRequest ran setup_db unconditionally
+    # on request #1.
+    db_path = tmp_path / "immutable.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("create table t (id integer primary key)")
+    conn.commit()
+    conn.close()
+
+    ds = Datasette([], immutables=[str(db_path)])
+
+    call_count = {"n": 0}
+    original_table_counts = Database.table_counts
+
+    async def counting_table_counts(self, *args, **kwargs):
+        call_count["n"] += 1
+        return await original_table_counts(self, *args, **kwargs)
+
+    monkeypatch.setattr(Database, "table_counts", counting_table_counts)
+
+    # Simulate the CLI path: invoke_startup() runs directly and completes
+    # BEFORE _startup_sequence() ever gets a chance to run setup_db.
+    await ds.invoke_startup()
+    assert ds._startup_invoked is True
+    assert call_count["n"] == 0
+
+    # The lifespan/first-request path (or the CLI itself, per the fix)
+    # calling the shared entry point afterwards must still precompute
+    # table counts for immutable databases.
+    await ds._startup_sequence()
+    assert call_count["n"] == 1
+    assert ds._setup_db_done is True
+
+    # Idempotency: a second call must not recompute.
+    await ds._startup_sequence()
+    assert call_count["n"] == 1

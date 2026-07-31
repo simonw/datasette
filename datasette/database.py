@@ -259,10 +259,21 @@ class Database:
                 cursor, return_all=return_all, returning_limit=returning_limit
             )
 
-        with trace("sql", database=self.name, sql=sql.strip(), params=params):
-            results = await self.execute_write_fn(
-                _inner, block=block, request=request, transaction=transaction
-            )
+        # SIM117 wants these two context managers merged. They are kept nested
+        # deliberately: the hand-rolled tracer's wrapper is on its way out, and
+        # nesting makes removing it a single-line deletion.
+        with trace(  # noqa: SIM117
+            "sql", database=self.name, sql=sql.strip(), params=params
+        ):
+            with tracer.start_as_current_span("db.query") as span:
+                span.set_attribute("db.system", "sqlite")
+                span.set_attribute("db.namespace", self.name)
+                span.set_attribute("db.query.text", sql_attribute(sql))
+                if params:
+                    span.set_attribute("datasette.param_count", len(params))
+                results = await self.execute_write_fn(
+                    _inner, block=block, request=request, transaction=transaction
+                )
         return results
 
     async def execute_write_script(self, sql, block=True, request=None):
@@ -271,10 +282,18 @@ class Database:
         def _inner(conn):
             return conn.executescript(sql)
 
-        with trace("sql", database=self.name, sql=sql.strip(), executescript=True):
-            results = await self.execute_write_fn(
-                _inner, block=block, transaction=False, request=request
-            )
+        # Nested on purpose - see the note in execute_write().
+        with trace(  # noqa: SIM117
+            "sql", database=self.name, sql=sql.strip(), executescript=True
+        ):
+            with tracer.start_as_current_span("db.query") as span:
+                span.set_attribute("db.system", "sqlite")
+                span.set_attribute("db.namespace", self.name)
+                span.set_attribute("db.query.text", sql_attribute(sql))
+                span.set_attribute("datasette.executescript", True)
+                results = await self.execute_write_fn(
+                    _inner, block=block, transaction=False, request=request
+                )
         return results
 
     async def execute_write_many(self, sql, params_seq, block=True, request=None):
@@ -291,12 +310,21 @@ class Database:
 
             return conn.executemany(sql, count_params(params_seq)), count
 
+        # Nested on purpose - see the note in execute_write().
         with trace(
             "sql", database=self.name, sql=sql.strip(), executemany=True
         ) as kwargs:
-            results, count = await self.execute_write_fn(
-                _inner, block=block, request=request
-            )
+            with tracer.start_as_current_span("db.query") as span:
+                span.set_attribute("db.system", "sqlite")
+                span.set_attribute("db.namespace", self.name)
+                span.set_attribute("db.query.text", sql_attribute(sql))
+                span.set_attribute("datasette.executemany", True)
+                results, count = await self.execute_write_fn(
+                    _inner, block=block, request=request
+                )
+                # count is the number of parameter *sets* consumed by
+                # executemany(), not a row count - executemany returns no rows.
+                span.set_attribute("datasette.param_sets", count)
             kwargs["count"] = count
         return results
 

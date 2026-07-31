@@ -6,6 +6,7 @@ import sys
 import pytest
 from opentelemetry.trace import StatusCode
 
+from datasette.app import Datasette
 from datasette.telemetry import MAX_SQL_LENGTH, sql_attribute
 
 SECRET_PARAM_VALUE = "SUPER_SECRET_PARAM_VALUE_XYZ_123"
@@ -15,6 +16,21 @@ INVALID_SQL = "select this_is_not_valid_sql from nowhere"
 
 def _db_query_spans(otel_spans):
     return [span for span in otel_spans.get_finished_spans() if span.name == "db.query"]
+
+
+def _spans_for_namespace(otel_spans, namespace):
+    """
+    db.query spans belonging to one database.
+
+    Datasette queries its internal catalog constantly - including while a
+    Datasette instance is being constructed - so a test that just grabbed
+    every db.query span would be reading someone else's traffic.
+    """
+    return [
+        span
+        for span in _db_query_spans(otel_spans)
+        if span.attributes["db.namespace"] == namespace
+    ]
 
 
 def _all_attribute_values(otel_spans):
@@ -192,3 +208,62 @@ async def test_suppressed_sql_error_is_not_a_span_error(ds_client, otel_spans):
     assert span.status.status_code == StatusCode.UNSET
     assert span.attributes["datasette.sql_error_suppressed"] is True
     assert not [event for event in span.events if event.name == "exception"]
+
+
+@pytest.mark.asyncio
+async def test_execute_write_produces_db_query_span(otel_spans):
+    # Named in-memory databases are shared-cache, so every test in this file
+    # needs its own name or the second `create table` hits an existing table.
+    db = Datasette(memory=True).add_memory_database("t03_write_span")
+    await db.execute_write("create table docs (id integer primary key, name text)")
+    await db.execute_write("insert into docs (id, name) values (?, ?)", [1, "one"])
+
+    spans = _spans_for_namespace(otel_spans, "t03_write_span")
+    assert spans, "expected db.query spans from execute_write()"
+    span = spans[-1]
+
+    assert span.attributes["db.system"] == "sqlite"
+    assert span.attributes["db.namespace"] == "t03_write_span"
+    assert span.attributes["db.query.text"] == (
+        "insert into docs (id, name) values (?, ?)"
+    )
+    assert span.attributes["datasette.param_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_execute_write_script_sets_executescript_attribute(otel_spans):
+    db = Datasette(memory=True).add_memory_database("t03_write_script_span")
+    await db.execute_write_script(
+        "create table docs (id integer primary key);\n"
+        "insert into docs (id) values (1);"
+    )
+
+    spans = _spans_for_namespace(otel_spans, "t03_write_script_span")
+    assert spans, "expected a db.query span from execute_write_script()"
+    span = spans[-1]
+
+    assert span.attributes["db.system"] == "sqlite"
+    assert span.attributes["datasette.executescript"] is True
+    assert "insert into docs" in span.attributes["db.query.text"]
+
+
+@pytest.mark.asyncio
+async def test_execute_write_many_records_param_sets_not_rows_returned(otel_spans):
+    db = Datasette(memory=True).add_memory_database("t03_write_many_span")
+    await db.execute_write("create table docs (id integer primary key)")
+    await db.execute_write_many(
+        "insert into docs (id) values (?)", [[i] for i in range(1, 6)]
+    )
+
+    spans = _spans_for_namespace(otel_spans, "t03_write_many_span")
+    many_spans = [
+        span for span in spans if span.attributes.get("datasette.executemany") is True
+    ]
+    assert len(many_spans) == 1
+    span = many_spans[0]
+
+    assert span.attributes["datasette.param_sets"] == 5
+    # executemany() consumes parameter sets and returns no rows at all, so
+    # calling this a row count would be a lie. Asserted explicitly because the
+    # attribute really was named datasette.rows_returned at one point.
+    assert "datasette.rows_returned" not in span.attributes

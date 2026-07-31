@@ -11,8 +11,10 @@ from collections import namedtuple
 from pathlib import Path
 
 import sqlite_utils
+from opentelemetry.trace import Status, StatusCode
 
 from .inspect import inspect_hash
+from .telemetry import sql_attribute, tracer
 from .tracer import trace
 from .utils import (
     call_with_supported_arguments,
@@ -529,12 +531,11 @@ class Database:
         """Executes sql against db_name in a thread"""
         self._check_not_closed()
         page_size = page_size or self.ds.page_size
+        time_limit_ms = self.ds.sql_time_limit_ms
+        if custom_time_limit and custom_time_limit < time_limit_ms:
+            time_limit_ms = custom_time_limit
 
         def sql_operation_in_thread(conn):
-            time_limit_ms = self.ds.sql_time_limit_ms
-            if custom_time_limit and custom_time_limit < time_limit_ms:
-                time_limit_ms = custom_time_limit
-
             with sqlite_timelimit(conn, time_limit_ms):
                 try:
                     cursor = conn.cursor()
@@ -565,8 +566,49 @@ class Database:
             else:
                 return Results(rows, False, cursor.description)
 
-        with trace("sql", database=self.name, sql=sql.strip(), params=params):
-            results = await self.execute_fn(sql_operation_in_thread)
+        # SIM117 wants these two context managers merged. They are kept nested
+        # deliberately: the hand-rolled tracer's wrapper is on its way out, and
+        # nesting makes removing it a single-line deletion.
+        with trace(  # noqa: SIM117
+            "sql", database=self.name, sql=sql.strip(), params=params
+        ):
+            # Exception handling is explicit rather than left to the context
+            # manager's defaults, so that callers passing log_sql_errors=False
+            # can be honoured - see the comment on the generic handler below.
+            with tracer.start_as_current_span(
+                "db.query",
+                record_exception=False,
+                set_status_on_exception=False,
+            ) as span:
+                span.set_attribute("db.system", "sqlite")
+                span.set_attribute("db.namespace", self.name)
+                span.set_attribute("db.query.text", sql_attribute(sql))
+                span.set_attribute("datasette.time_limit_ms", time_limit_ms)
+                if params:
+                    span.set_attribute("datasette.param_count", len(params))
+                try:
+                    results = await self.execute_fn(sql_operation_in_thread)
+                except QueryInterrupted as e:
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
+                    span.set_attribute("datasette.interrupted", True)
+                    span.record_exception(e)
+                    raise
+                except Exception as e:
+                    # log_sql_errors=False means the caller is probing and
+                    # treats failure as an expected answer, not an error.
+                    # Facet suggestion is the big one: it runs json_type()
+                    # against every column precisely to find out which ones
+                    # raise, so a table with N text columns would otherwise
+                    # mark N queries per page as failed - burying real errors
+                    # and setting off any alerting based on span status.
+                    if log_sql_errors:
+                        span.record_exception(e)
+                        span.set_status(Status(StatusCode.ERROR, str(e)))
+                    else:
+                        span.set_attribute("datasette.sql_error_suppressed", True)
+                    raise
+                span.set_attribute("datasette.truncated", results.truncated)
+                span.set_attribute("datasette.rows_returned", len(results.rows))
         return results
 
     @property

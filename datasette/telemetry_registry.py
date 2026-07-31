@@ -47,12 +47,26 @@ class Attribute(str):
 class SpanName(str):
     "A span name, carrying its documentation and the attributes it may set."
 
-    __slots__ = ("attributes", "description", "kind")
+    __slots__ = ("attributes", "description", "dynamic", "kind")
 
-    def __new__(cls, name, description, attributes=(), kind=SpanKind.INTERNAL):
+    def __new__(
+        cls,
+        name,
+        description,
+        attributes=(),
+        dynamic=False,
+        kind=SpanKind.INTERNAL,
+    ):
         self = super().__new__(cls, name)
         self.description = description
         self.attributes = tuple(attributes)
+        # True when the emitted name is composed at runtime and shares no
+        # fixed prefix with the registry entry - the HTTP request span, whose
+        # name is the request method. There is no substring of the entry that
+        # could be matched against the wire, so `span_for()` resolves these by
+        # span kind instead, and the entry's own string is a template written
+        # for a human reading the generated reference.
+        self.dynamic = dynamic
         # SpanKind.INTERNAL by default - every span Datasette emits describes
         # its own internal work. db.query is the one exception: it is a real
         # database call, so semantic conventions (and trace UIs, which key
@@ -68,6 +82,53 @@ class SpanName(str):
 #
 # Shared attributes are defined once and referenced by every span that sets
 # them, so "which spans carry db.namespace?" is answerable by grep.
+
+HTTP_REQUEST_METHOD = Attribute(
+    "http.request.method",
+    "The HTTP method, clamped to the nine methods RFC 9110 and RFC 5789 "
+    "define. Anything else is reported as ``_OTHER``: the method is a "
+    "client-controlled string, so echoing it back unbounded would be a "
+    "cardinality hazard.",
+)
+HTTP_RESPONSE_STATUS_CODE = Attribute(
+    "http.response.status_code",
+    "The status of the response, read from the ASGI ``http.response.start`` "
+    "message rather than from a :ref:`internals_response` object - several "
+    "views, including static files, file downloads and streaming CSV, send "
+    "that message themselves and never build one. Omitted if the connection "
+    "closed before anything was sent.",
+    optional=True,
+)
+URL_PATH = Attribute(
+    "url.path",
+    "The path portion of the URL. The query string is deliberately **not** "
+    "recorded, on this or any other span: Datasette puts user-supplied SQL in "
+    "``?sql=`` and canned query parameters in the query string, so exporting "
+    "it by default would export exactly the data the rest of this "
+    "instrumentation is careful with.",
+)
+URL_SCHEME = Attribute("url.scheme", "``http`` or ``https``.")
+SERVER_ADDRESS = Attribute(
+    "server.address",
+    "The ``Host`` header. Client-controlled, so treat it as untrusted input "
+    "rather than as the identity of the server.",
+    optional=True,
+)
+USER_AGENT_ORIGINAL = Attribute(
+    "user_agent.original",
+    "The ``User-Agent`` header, verbatim. Omitted if the client sent none. "
+    "The client's IP address is deliberately not recorded: core records no "
+    "identifier that would tie a span to a person.",
+    optional=True,
+)
+ERROR_TYPE = Attribute(
+    "error.type",
+    "Set when the request failed: the exception class name if one escaped the "
+    "application, otherwise the status code as a string for a 5xx response. "
+    "A 4xx does **not** set this and does not set an error status - per "
+    "semantic conventions a client error is not a server span's failure.",
+    optional=True,
+)
 
 DB_SYSTEM = Attribute("db.system", "Always ``sqlite``.")
 DB_NAMESPACE = Attribute("db.namespace", "Name of the database being queried.")
@@ -184,6 +245,30 @@ TRANSACTION = Attribute(
 
 # --- Spans ----------------------------------------------------------------
 
+HTTP_REQUEST = SpanName(
+    "{http.request.method}",
+    "One span per HTTP request, created by the outermost layer of the ASGI "
+    "stack - so plugin ``asgi_wrapper()`` middleware, CSRF protection and "
+    "every database span raised while serving the request all nest inside "
+    "it. Without it each of those would be its own root trace. The span name "
+    "is not a fixed string: it is the value of ``http.request.method``. "
+    "W3C ``traceparent`` and ``baggage`` headers are extracted using the "
+    "global propagator, so a request arriving from an already-traced caller "
+    "continues that trace; set ``OTEL_PROPAGATORS=none`` to turn that off, "
+    "and strip those headers at your proxy if your instance is public.",
+    (
+        HTTP_REQUEST_METHOD,
+        URL_PATH,
+        URL_SCHEME,
+        SERVER_ADDRESS,
+        USER_AGENT_ORIGINAL,
+        HTTP_RESPONSE_STATUS_CODE,
+        ERROR_TYPE,
+    ),
+    dynamic=True,
+    kind=SpanKind.SERVER,
+)
+
 DB_QUERY = SpanName(
     "db.query",
     "A SQL operation issued by Datasette, covering the full round trip "
@@ -253,6 +338,7 @@ STARTUP = SpanName(
 )
 
 SPANS = (
+    HTTP_REQUEST,
     DB_QUERY,
     DB_QUERY_EXECUTE,
     DB_WRITE_QUEUE_WAIT,
@@ -261,16 +347,25 @@ SPANS = (
 )
 
 
-def span_for(emitted_name):
+def span_for(emitted_name, kind=None):
     """
     Resolve an emitted span name to its registry entry, or None.
 
-    The lookup is what the conformance test calls, so it lives here rather
-    than in the test.
+    Handles `dynamic=True` entries, whose emitted names are not knowable in
+    advance: the name has no fixed part at all, so it is matched on `kind`
+    instead and the caller has to supply one. Exact entries are tried first,
+    so a dynamic entry can never shadow a span that does have a registered
+    name.
     """
     for span in SPANS:
+        if span.dynamic:
+            continue
         if emitted_name == span:
             return span
+    if kind is not None:
+        for span in SPANS:
+            if span.dynamic and span.kind == kind:
+                return span
     return None
 
 

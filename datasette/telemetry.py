@@ -5,8 +5,14 @@ Core depends on `opentelemetry-api` only. It never creates a
 `TracerProvider`, never configures an exporter, and never touches
 sampling - that is the responsibility of whoever is running Datasette
 (an `opentelemetry-instrument` agent, a future plugin, or a test
-harness). With no provider installed every span produced here is a
-`NonRecordingSpan` and costs approximately nothing.
+harness).
+
+With no provider installed every span produced here is a
+`NonRecordingSpan`. That is not free - a table page emits ~58 spans -
+but it is below what an end-to-end page benchmark can resolve: measured
+across 15 runs of a 5,000-row table page, the median moved 9.80ms to
+9.98ms while run-to-run spread was 1.4ms. Installing an SDK provider is
+what costs something measurable.
 """
 
 import re

@@ -1963,6 +1963,9 @@ Executes a SQL query against the database and returns the resulting rows (see :r
 ``log_sql_errors`` - boolean
     Should any SQL errors be logged to the console in addition to being raised as an error? Defaults to ``True``.
 
+``table`` - string
+    The name of the table this query is about, if the caller already knows it. This has no effect on how the query executes - it is recorded as the ``db.collection.name`` attribute on the :ref:`OpenTelemetry span <internals_telemetry>` for the query. Datasette never derives this from the SQL, so leave it unset for queries that do not have one obvious table.
+
 .. _database_results:
 
 Results
@@ -2318,16 +2321,47 @@ The ``Database`` class also provides properties and methods for introspecting th
 OpenTelemetry
 =============
 
-Datasette core depends on `opentelemetry-api <https://pypi.org/project/opentelemetry-api/>`__ only. It never creates a ``TracerProvider``, never configures an exporter and never sets a sampler. With no OpenTelemetry SDK provider installed, every span described below is a no-op ``NonRecordingSpan`` - the overhead is close to zero and nothing is recorded or exported anywhere.
+Datasette core depends on `opentelemetry-api <https://pypi.org/project/opentelemetry-api/>`__ only. It never creates a ``TracerProvider``, never configures an exporter and never sets a sampler. With no OpenTelemetry SDK provider installed, every span described below is a no-op ``NonRecordingSpan``: nothing is recorded, nothing is exported, and the cost does not show up in page latency. Benchmarking a table page with and without this instrumentation, the median moved by less than the run-to-run variation of the benchmark itself.
 
 Turning tracing on is entirely an operational decision made outside of Datasette itself: run Datasette under the standard ``opentelemetry-instrument`` agent, or embed Datasette inside a host application that installs its own provider.
 
 Everything Datasette emits carries the instrumentation scope ``datasette``, versioned with the running Datasette version and declaring the `semantic conventions schema <https://opentelemetry.io/docs/specs/otel/schemas/>`__ its attribute names follow.
 
+This is separate from, and does not replace, the built-in :ref:`internals_tracer` mechanism behind ``?_trace=1`` and the :ref:`setting_trace_debug` setting. Both continue to work exactly as before.
+
+.. _internals_telemetry_turning_on:
+
+Turning tracing on
+------------------
+
+Install an OpenTelemetry SDK, an exporter and the instrumentation agent, then launch Datasette through ``opentelemetry-instrument``:
+
+.. code-block:: bash
+
+    pip install opentelemetry-distro opentelemetry-exporter-otlp
+    OTEL_SERVICE_NAME=datasette \
+    OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 \
+    OTEL_METRICS_EXPORTER=none \
+    OTEL_LOGS_EXPORTER=none \
+      opentelemetry-instrument datasette mydb.db
+
+Point ``OTEL_EXPORTER_OTLP_ENDPOINT`` at whichever tracing backend you use. To print spans straight to the terminal instead, with no backend at all, drop that variable and set ``OTEL_TRACES_EXPORTER=console`` in its place.
+
+A few things catch people out the first time:
+
+.. warning::
+    ``OTEL_TRACES_EXPORTER=console datasette mydb.db`` produces **nothing**. That environment variable is read by the OpenTelemetry SDK's auto-configuration, which only runs when the ``opentelemetry-instrument`` agent wraps the process. Datasette core installs no provider, so a plain ``datasette`` process emits nothing at all, whatever ``OTEL_`` variables are set.
+
+Spans do not appear immediately. The SDK's default ``BatchSpanProcessor`` flushes on a timer, every 5 seconds. Either wait, or stop the process - shutdown triggers a final flush - or set ``OTEL_BSP_SCHEDULE_DELAY=1000`` while you are experimenting. That last one is for demos, not for production.
+
+Always set ``OTEL_SERVICE_NAME``. Without it the SDK's default resource reports a ``service.name`` of ``unknown_service``, and your traces will be filed under that instead of under a name you can search for.
+
+Setting ``OTEL_METRICS_EXPORTER=none`` and ``OTEL_LOGS_EXPORTER=none`` is worth doing unless your backend accepts those signals too - ``opentelemetry-distro`` defaults every signal to OTLP, and a traces-only backend will reject the other two noisily. Datasette itself emits no metrics and no logs through OpenTelemetry.
+
 Span reference
 --------------
 
-Attribute names use the ``datasette.*`` prefix for Datasette-specific data, alongside standard OpenTelemetry attributes such as ``db.system``.
+Datasette emits five spans. Four of them describe the database layer - one per query, one for the work that query does inside a SQL worker thread, and two more for the write queue - and the fifth covers startup. Attribute names use the ``datasette.*`` prefix for Datasette-specific data, alongside standard OpenTelemetry attributes such as ``db.system``.
 
 This reference is generated from ``datasette/telemetry_registry.py``, the single source of truth for every span and attribute Datasette emits. A conformance test makes real requests and compares what is actually emitted against that registry in both directions, so nothing here is hand-maintained and nothing can silently drift out of date.
 
@@ -2384,6 +2418,30 @@ Spans are ``SpanKind.INTERNAL`` unless a kind is listed below. Only ``db.query``
     No attributes.
 
 .. [[[end]]]
+
+.. _internals_telemetry_privacy:
+
+Privacy and safety
+------------------
+
+Spans leave your infrastructure whenever you configure an exporter, so what goes into them is a security decision. Datasette's rules are:
+
+- **SQL text is truncated to 2048 characters.** On a public instance the SQL is supplied by visitors and is unbounded in length, so ``db.query.text`` is cut off - with a ``…[truncated]`` marker - rather than allowed to set the size of a span.
+- **SQL parameter values are never recorded.** Only ``datasette.param_count``, a count. Parameter values are the part of a query most likely to hold something sensitive, and separating them from the SQL is the reason bound parameters exist.
+- **No actor identifiers are recorded.** No actor ID, no actor JSON, no client IP address. Nothing on a span identifies who made the request.
+- **Table names come only from an explicit** ``table=`` **argument.** ``db.collection.name`` is set by callers that already know which table they are working with, and is never derived from the SQL. Deriving it would mean parsing, and on an instance where visitors can create tables the set of possible values has no ceiling.
+
+The SQL itself, though, *is* recorded, and on a public instance that means anything a visitor types into the query editor or passes as ``?sql=`` will be exported along with the span. That is the trade-off tracing a query engine makes.
+
+.. _internals_telemetry_limitations:
+
+Known limitations
+-----------------
+
+- **Datasette does not create a span for the HTTP request itself.** Every span listed above is therefore a root span unless something above Datasette - an ASGI instrumentation layer, or the web framework embedding it - has already started one for the request, in which case Datasette's spans nest underneath it correctly.
+- **Two plugin hooks run outside the** ``datasette.startup`` **span.** ``register_output_renderer`` is dispatched from ``Datasette.__init__()`` and ``asgi_wrapper`` from ``Datasette.app()``, both of which happen before ``invoke_startup()``. Datasette itself queries no database in either, so a default install emits nothing there - but a plugin that does will produce a root trace. Covering these would mean holding a span open across object construction, which is worse than the orphan.
+- ``db.operation.name`` **reports** ``WITH`` **for a statement that opens with a common table expression**, rather than the operation inside it, and a substantial share of Datasette's own reads take that form. The attribute is a leading-keyword match against a fixed allowlist, deliberately not a parse.
+- **Spans emitted before a provider is installed are not recorded.** If you are embedding Datasette in a host application, install your ``TracerProvider`` before serving traffic. This is ordinary OpenTelemetry behaviour rather than anything Datasette controls; nothing is permanently affected, those particular spans are simply dropped.
 
 .. _internals_csrf:
 

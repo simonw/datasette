@@ -2940,12 +2940,23 @@ class Datasette:
             on_startup=[self._startup_sequence, self._launch_background_tasks],
             on_shutdown=[self.invoke_shutdown],
         )
+        # Plugin asgi_wrapper middleware sits INSIDE AsgiRunOnFirstRequest
+        # (below it, i.e. closer to the app) but OUTSIDE AsgiLifespan (above
+        # it). That gives wrappers a single, simple contract: every http/
+        # websocket scope they see has already been through
+        # AsgiRunOnFirstRequest, so startup (including plugin migrations
+        # against the internal database) is guaranteed to have completed -
+        # even for a wrapper that short-circuits and never calls the inner
+        # app, and even on hosts that never send ASGI lifespan events.
+        # "lifespan" scopes are untouched by this reorder: AsgiRunOnFirstRequest
+        # ignores them and passes them straight through to the wrappers (and
+        # from there down to AsgiLifespan), exactly as before.
+        for wrapper in pm.hook.asgi_wrapper(datasette=self):
+            asgi = wrapper(asgi)
         asgi = AsgiRunOnFirstRequest(
             asgi,
             on_startup=[self._startup_sequence, self._launch_background_tasks],
         )
-        for wrapper in pm.hook.asgi_wrapper(datasette=self):
-            asgi = wrapper(asgi)
         return asgi
 
 

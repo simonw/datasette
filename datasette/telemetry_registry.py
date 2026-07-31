@@ -137,7 +137,11 @@ TRUNCATED = Attribute(
 INTERRUPTED = Attribute(
     "datasette.interrupted",
     "True if the query was cancelled for exceeding the time limit. The span "
-    "status is also set to ``ERROR``.",
+    "status is also set to ``ERROR``, unless the caller asked for a budget "
+    "shorter than :ref:`setting_sql_time_limit_ms` - as table counts, facet "
+    "suggestion and autocomplete all do - in which case running out of time "
+    "is an expected answer rather than a failure and the status is left "
+    "unset.",
     optional=True,
 )
 SQL_ERROR_SUPPRESSED = Attribute(

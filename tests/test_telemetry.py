@@ -12,7 +12,7 @@ from opentelemetry import trace as otel_trace
 from opentelemetry.trace import SpanKind, StatusCode
 
 from datasette.app import Datasette
-from datasette.database import Database
+from datasette.database import Database, QueryInterrupted
 from datasette.telemetry import (
     MAX_SQL_LENGTH,
     SCHEMA_URL,
@@ -25,6 +25,15 @@ from datasette.version import __version__
 SECRET_PARAM_VALUE = "SUPER_SECRET_PARAM_VALUE_XYZ_123"
 
 INVALID_SQL = "select this_is_not_valid_sql from nowhere"
+
+# Bounded so a broken time limit fails the test instead of hanging it, but far
+# too long to finish inside any of the millisecond budgets used below.
+SLOW_SQL = """
+with recursive counter(x) as (
+    select 1 union all select x + 1 from counter where x < 50000000
+)
+select max(x) from counter
+"""
 
 
 def _db_query_spans(otel_spans):
@@ -212,20 +221,115 @@ async def test_no_span_attribute_ever_contains_a_parameter_value(ds_client, otel
 
 
 @pytest.mark.asyncio
-async def test_query_interrupted_sets_error_status(ds_client, otel_spans):
-    response = await ds_client.get(
-        "/fixtures/-/query.json",
-        params={"sql": "select sleep(0.05)", "_timelimit": 5},
-    )
-    assert response.status_code == 400
+async def test_query_interrupted_sets_error_status(otel_spans):
+    """
+    A query that runs out the instance-wide sql_time_limit_ms is an error.
 
-    spans = _db_query_spans(otel_spans)
+    This used to force the timeout with `?_timelimit=5`, but a caller-supplied
+    budget shorter than the instance limit is now the signal that the timeout
+    was expected - see test_expected_timeout_is_not_a_span_error - so the
+    timeout has to come from the setting for this to still test what it was
+    written to test.
+    """
+    ds = Datasette(memory=True, settings={"sql_time_limit_ms": 20})
+    db = ds.add_memory_database("t09_instance_limit_timeout")
+    with pytest.raises(QueryInterrupted):
+        await db.execute(SLOW_SQL)
+
+    spans = _spans_for_namespace(otel_spans, "t09_instance_limit_timeout")
     assert spans
     span = spans[-1]
     assert span.status.status_code == StatusCode.ERROR
     assert span.attributes["datasette.interrupted"] is True
     assert span.events
     assert all(event.name == "exception" for event in span.events)
+
+
+async def _expected_timeout_count_span(otel_spans, database_name):
+    """
+    Drive the real table_counts() path into a timeout; return its db.query span.
+
+    table_counts() is where the headline instance of this lives: the homepage
+    counts every table under a 10ms budget and stores None for any table that
+    does not finish in time. Before this was fixed, a two-table database
+    produced four ERROR spans - two db.query and two db.query.execute - on
+    every single homepage hit.
+    """
+    db = Datasette(memory=True).add_memory_database(database_name)
+    await db.execute_write("create table big (id integer primary key, t text)")
+    await db.execute_write_many(
+        "insert into big (t) values (?)", [["x" * 50] for _ in range(11000)]
+    )
+    # count_limit caps the scan at 10001 rows, and below 20ms sqlite_timelimit()
+    # runs its progress handler on every VM instruction, so 1ms is not a close
+    # call - a scan of that size takes single-digit milliseconds at best.
+    counts = await db.table_counts(1)
+    assert counts == {
+        "big": None
+    }, "the count did not actually time out, so the rest of this test is vacuous"
+
+    spans = [
+        span
+        for span in _spans_for_namespace(otel_spans, database_name)
+        if "count(*)" in span.attributes["db.query.text"]
+    ]
+    assert len(spans) == 1
+    return spans[0]
+
+
+@pytest.mark.asyncio
+async def test_expected_timeout_is_not_a_span_error(otel_spans):
+    span = await _expected_timeout_count_span(otel_spans, "t09_expected_timeout")
+    # The useful signal survives; only the red status goes away.
+    assert span.attributes["datasette.interrupted"] is True
+    assert span.status.status_code != StatusCode.ERROR
+    assert not [event for event in span.events if event.name == "exception"]
+
+
+@pytest.mark.asyncio
+async def test_expected_timeout_does_not_error_the_inner_execute_span(otel_spans):
+    """
+    The same fix has to reach db.query.execute, which sets its own status.
+
+    Half of the original bug lived here: the inner span passed
+    set_status_on_exception=log_sql_errors, and table_counts() leaves
+    log_sql_errors at its True default, so it went ERROR too.
+    """
+    span = await _expected_timeout_count_span(otel_spans, "t09_expected_timeout_inner")
+    children = _children_named(otel_spans, "db.query.execute", span.context)
+    assert len(children) == 1
+    child = children[0]
+    assert child.status.status_code != StatusCode.ERROR
+    assert not [event for event in child.events if event.name == "exception"]
+
+
+@pytest.mark.asyncio
+async def test_unexpected_timeout_is_still_a_span_error(otel_spans):
+    """
+    A custom_time_limit *above* sql_time_limit_ms is not a short budget.
+
+    This is the half of the rule that stops the fix collapsing into "never
+    report timeouts": the caller asked for 5 seconds, the instance overruled it
+    at 20ms, and nobody expected that.
+    """
+    ds = Datasette(memory=True, settings={"sql_time_limit_ms": 20})
+    db = ds.add_memory_database("t09_custom_limit_ignored")
+    with pytest.raises(QueryInterrupted):
+        await db.execute(SLOW_SQL, custom_time_limit=5000)
+
+    spans = _spans_for_namespace(otel_spans, "t09_custom_limit_ignored")
+    assert spans
+    span = spans[-1]
+    # Proves the caller's larger budget really was discarded - otherwise this
+    # would be asserting on a query that ran under a 5s limit.
+    assert span.attributes["datasette.time_limit_ms"] == 20
+    assert span.attributes["datasette.interrupted"] is True
+    assert span.status.status_code == StatusCode.ERROR
+    assert any(event.name == "exception" for event in span.events)
+
+    children = _children_named(otel_spans, "db.query.execute", span.context)
+    assert len(children) == 1
+    assert children[0].status.status_code == StatusCode.ERROR
 
 
 @pytest.mark.asyncio

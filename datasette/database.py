@@ -394,6 +394,9 @@ class Database:
             # Context raises "RuntimeError: cannot enter context ... already
             # entered". This propagates the caller's otel context (e.g. the
             # enclosing db.query span) onto the worker thread.
+            #
+            # It also propagates every *other* ContextVar - see the note in
+            # execute_fn() for why that is safe.
             ctx = contextvars.copy_context()
             return await asyncio.get_running_loop().run_in_executor(
                 self.ds.executor, ctx.run, _run
@@ -695,6 +698,22 @@ class Database:
             # Context raises "RuntimeError: cannot enter context ...
             # already entered". This propagates the caller's otel context
             # (e.g. the enclosing db.query span) onto the worker thread.
+            #
+            # copy_context() is not selective: it also carries Datasette's own
+            # ContextVars - _skip_permission_checks and _permission_check_cache
+            # (datasette/permissions.py), _in_datasette_client (app.py) and,
+            # until the hand-rolled tracer goes, trace_task_id (tracer.py) -
+            # into worker threads, where they previously took their defaults.
+            # That is safe, for two reasons. Nothing reads them on a worker
+            # thread: the permission code that reads the first two is async and
+            # only ever runs on the event loop. And Context.run() restores the
+            # thread's previous context when the callable returns, so a value
+            # cannot outlive the submit that carried it and reach the next task
+            # on this shared pool - "skip permission checks" in particular can
+            # never bleed from one request into another's query. Where a value
+            # would be read - a plugin calling datasette.in_client() or trace()
+            # from inside an execute_fn callable - seeing the submitting
+            # request's value is the more accurate answer, not a leak.
             ctx = contextvars.copy_context()
             future = self.ds.executor.submit(ctx.run, in_thread)
             self._pending_execute_futures.add(future)
@@ -722,7 +741,19 @@ class Database:
         self._check_not_closed()
         page_size = page_size or self.ds.page_size
         time_limit_ms = self.ds.sql_time_limit_ms
-        if custom_time_limit and custom_time_limit < time_limit_ms:
+        # A caller that hands in a budget shorter than the instance-wide
+        # sql_time_limit_ms is saying "this may not finish, and that is an
+        # answer I can use" - and every such caller in core does treat the
+        # timeout as normal: table_counts() stores None per table, facet
+        # suggestion moves on to the next column, autocomplete falls back to a
+        # prefix query. Those timeouts are therefore not span errors. Without
+        # this, the homepage alone emits one red span per table (it counts
+        # every table under a 10ms budget) on every single hit.
+        #
+        # A query that runs out the instance-wide limit is a different event -
+        # nobody asked for a short budget, so it stays an error.
+        timeout_expected = bool(custom_time_limit) and custom_time_limit < time_limit_ms
+        if timeout_expected:
             time_limit_ms = custom_time_limit
 
         def sql_operation_in_thread(conn):
@@ -733,38 +764,53 @@ class Database:
             # databases) - so it parents correctly to the enclosing
             # db.query span despite running on a different thread.
             #
-            # Callers passing log_sql_errors=False are probing and treat a
-            # failure as an expected answer - see the matching handling on the
-            # db.query span in execute(). Without this, facet suggestion marks
-            # two spans per text column as failed on every table page.
+            # Exception handling is explicit rather than left to the context
+            # manager's flags, which apply to every exception type alike. This
+            # span needs to tell two apart: an expected timeout is never an
+            # error, while a genuine SQL failure is one unless the caller
+            # passed log_sql_errors=False, meaning it was probing and treats
+            # failure as an expected answer. Without the latter, facet
+            # suggestion marks two spans per text column as failed on every
+            # table page; without the former, so does every homepage hit.
             with tracer.start_as_current_span(
                 DB_QUERY_EXECUTE,
-                record_exception=log_sql_errors,
-                set_status_on_exception=log_sql_errors,
-            ):
-                with sqlite_timelimit(conn, time_limit_ms):
-                    try:
-                        cursor = conn.cursor()
-                        cursor.execute(sql, params if params is not None else {})
-                        max_returned_rows = self.ds.max_returned_rows
-                        if max_returned_rows == page_size:
-                            max_returned_rows += 1
-                        if max_returned_rows and truncate:
-                            rows = cursor.fetchmany(max_returned_rows + 1)
-                            truncated = len(rows) > max_returned_rows
-                            rows = rows[:max_returned_rows]
-                        else:
-                            rows = cursor.fetchall()
-                            truncated = False
-                    except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
-                        if e.args == ("interrupted",):
-                            raise QueryInterrupted(e, sql, params)
-                        if log_sql_errors:
-                            sys.stderr.write(
-                                f"ERROR: conn={conn}, sql = {sql!r}, params = {params}: {e}\n"
-                            )
-                            sys.stderr.flush()
-                        raise
+                record_exception=False,
+                set_status_on_exception=False,
+            ) as execute_span:
+                try:
+                    with sqlite_timelimit(conn, time_limit_ms):
+                        try:
+                            cursor = conn.cursor()
+                            cursor.execute(sql, params if params is not None else {})
+                            max_returned_rows = self.ds.max_returned_rows
+                            if max_returned_rows == page_size:
+                                max_returned_rows += 1
+                            if max_returned_rows and truncate:
+                                rows = cursor.fetchmany(max_returned_rows + 1)
+                                truncated = len(rows) > max_returned_rows
+                                rows = rows[:max_returned_rows]
+                            else:
+                                rows = cursor.fetchall()
+                                truncated = False
+                        except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+                            if e.args == ("interrupted",):
+                                raise QueryInterrupted(e, sql, params)
+                            if log_sql_errors:
+                                sys.stderr.write(
+                                    f"ERROR: conn={conn}, sql = {sql!r}, params = {params}: {e}\n"
+                                )
+                                sys.stderr.flush()
+                            raise
+                except QueryInterrupted as e:
+                    if not timeout_expected:
+                        execute_span.record_exception(e)
+                        execute_span.set_status(Status(StatusCode.ERROR, str(e)))
+                    raise
+                except Exception as e:
+                    if log_sql_errors:
+                        execute_span.record_exception(e)
+                        execute_span.set_status(Status(StatusCode.ERROR, str(e)))
+                    raise
 
                 if truncate:
                     return Results(rows, truncated, cursor.description)
@@ -801,9 +847,13 @@ class Database:
                 try:
                     results = await self.execute_fn(sql_operation_in_thread)
                 except QueryInterrupted as e:
-                    span.set_status(Status(StatusCode.ERROR, str(e)))
+                    # datasette.interrupted is set either way - it is the
+                    # signal worth having. Only the ERROR status is
+                    # conditional; see the timeout_expected comment above.
                     span.set_attribute(INTERRUPTED, True)
-                    span.record_exception(e)
+                    if not timeout_expected:
+                        span.set_status(Status(StatusCode.ERROR, str(e)))
+                        span.record_exception(e)
                     raise
                 except Exception as e:
                     # log_sql_errors=False means the caller is probing and

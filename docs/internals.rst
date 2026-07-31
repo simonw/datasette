@@ -2355,7 +2355,7 @@ Spans are ``SpanKind.INTERNAL`` unless a kind is listed below. Only ``db.query``
     - ``datasette.time_limit_ms`` *(optional)* - The :ref:`setting_sql_time_limit_ms` value this query ran under. Set on reads, which are the queries that time limit applies to.
     - ``datasette.rows_returned`` *(optional)* - Number of rows a read returned. Set on the read path only, and only when the read succeeded.
     - ``datasette.truncated`` *(optional)* - True if the result was cut short by :ref:`setting_max_returned_rows`.
-    - ``datasette.interrupted`` *(optional)* - True if the query was cancelled for exceeding the time limit. The span status is also set to ``ERROR``.
+    - ``datasette.interrupted`` *(optional)* - True if the query was cancelled for exceeding the time limit. The span status is also set to ``ERROR``, unless the caller asked for a budget shorter than :ref:`setting_sql_time_limit_ms` - as table counts, facet suggestion and autocomplete all do - in which case running out of time is an expected answer rather than a failure and the status is left unset.
     - ``datasette.sql_error_suppressed`` *(optional)* - True when the query failed but the caller passed ``log_sql_errors=False``, meaning it was probing and treats failure as an expected answer. Facet suggestion does this against every column.
     - ``datasette.executescript`` *(optional)* - True for ``execute_write_script()``, which runs multiple statements.
     - ``datasette.executemany`` *(optional)* - True for ``execute_write_many()``, which runs one statement against many parameter sets.

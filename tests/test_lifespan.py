@@ -7,6 +7,13 @@ These exercise Datasette._startup_sequence() via three different callers:
 - AsgiRunOnFirstRequest, the fallback for hosts that never send lifespan
   events (this is what DatasetteClient / plain httpx.ASGITransport uses)
 - Both at once, to prove startup hooks run at most once
+
+Also covers ticket 05 (plans/first-request/04-core-plan.md decision #7):
+plugin asgi_wrapper middleware runs INSIDE AsgiRunOnFirstRequest (below it)
+but OUTSIDE AsgiLifespan (above it), so wrappers only ever see http/
+websocket scopes after startup has completed, in both the lifespan and
+fallback paths - while lifespan scopes still flow through wrappers
+unchanged.
 """
 
 import asyncio
@@ -257,3 +264,145 @@ async def test_setup_db_still_runs_when_invoke_startup_ran_first(tmp_path, monke
     # Idempotency: a second call must not recompute.
     await ds._startup_sequence()
     assert call_count["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_asgi_wrapper_runs_after_startup_fallback_path():
+    # Ticket 05: plugin asgi_wrapper middleware must never see an http scope
+    # before startup has completed - even on the fallback path (no ASGI
+    # lifespan events at all), which is what plain httpx.ASGITransport /
+    # bare app() embedding exercises. Before the app() reorder in this
+    # ticket, the wrapper loop ran OUTSIDE (above) AsgiRunOnFirstRequest, so
+    # this assertion could see _startup_invoked is False on request #1 -
+    # this test fails on the pre-reorder app().
+    class AssertStartupPlugin:
+        __name__ = "AssertStartupPlugin"
+
+        @hookimpl
+        def asgi_wrapper(self, datasette):
+            def wrap(app):
+                async def check_startup(scope, receive, send):
+                    if scope["type"] == "http":
+                        assert datasette._startup_invoked is True, (
+                            "asgi_wrapper saw an http scope before startup "
+                            "completed"
+                        )
+                    await app(scope, receive, send)
+
+                return check_startup
+
+            return wrap
+
+    ds = Datasette(memory=True)
+    pm.register(AssertStartupPlugin(), name="assert_startup_plugin")
+    try:
+        assert ds._startup_invoked is False
+        app = ds.app()
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://localhost"
+        ) as client:
+            response = await client.get("/-/versions.json")
+            assert response.status_code == 200
+    finally:
+        pm.unregister(name="assert_startup_plugin")
+
+    assert ds._startup_invoked is True
+
+
+@pytest.mark.asyncio
+async def test_short_circuit_wrapper_no_longer_defers_startup():
+    # Ticket 05: a wrapper that short-circuits (returns a response without
+    # ever calling the inner app - the shape of a 401/403/CORS-preflight
+    # responder) used to mean startup never ran for that request, because
+    # the wrapper sat OUTSIDE AsgiRunOnFirstRequest. Now that
+    # AsgiRunOnFirstRequest is outermost, it arms startup before the
+    # wrapper (or anything else) ever sees the scope.
+    class ShortCircuitPlugin:
+        __name__ = "ShortCircuitPlugin"
+
+        @hookimpl
+        def asgi_wrapper(self, datasette):
+            def wrap(app):
+                async def forbidden(scope, receive, send):
+                    if scope["type"] != "http":
+                        await app(scope, receive, send)
+                        return
+                    await send(
+                        {
+                            "type": "http.response.start",
+                            "status": 403,
+                            "headers": [[b"content-type", b"text/plain"]],
+                        }
+                    )
+                    await send(
+                        {
+                            "type": "http.response.body",
+                            "body": b"Forbidden",
+                        }
+                    )
+                    # Deliberately never call app(...): this is the
+                    # short-circuiting shape (auth-passwords, auth-tailscale,
+                    # datasette-cors preflight).
+
+                return forbidden
+
+            return wrap
+
+    ds = Datasette(memory=True)
+    pm.register(ShortCircuitPlugin(), name="short_circuit_plugin")
+    try:
+        assert ds._startup_invoked is False
+        app = ds.app()
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://localhost"
+        ) as client:
+            response = await client.get("/-/versions.json")
+            assert response.status_code == 403
+    finally:
+        pm.unregister(name="short_circuit_plugin")
+
+    assert ds._startup_invoked is True
+
+
+@pytest.mark.asyncio
+async def test_asgi_wrapper_still_sees_lifespan_scopes():
+    # Ticket 05: the reorder only moves AsgiRunOnFirstRequest outside the
+    # wrapper loop - AsgiLifespan stays inside it, so a wrapper that
+    # inspects/wraps lifespan scopes still sees identical message flow.
+    # Pin that lifespan scopes keep reaching wrappers alongside http scopes.
+    seen_types = []
+
+    class RecordingPlugin:
+        __name__ = "RecordingPlugin"
+
+        @hookimpl
+        def asgi_wrapper(self, datasette):
+            def wrap(app):
+                async def record(scope, receive, send):
+                    seen_types.append(scope["type"])
+                    await app(scope, receive, send)
+
+                return record
+
+            return wrap
+
+    ds = Datasette(memory=True)
+    pm.register(RecordingPlugin(), name="recording_plugin")
+    try:
+        app = ds.app()
+        messages = await _drive_lifespan_startup(app)
+        assert {"type": "lifespan.startup.complete"} in messages
+
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://localhost"
+        ) as client:
+            response = await client.get("/-/versions.json")
+            assert response.status_code == 200
+    finally:
+        pm.unregister(name="recording_plugin")
+
+    assert "lifespan" in seen_types
+    assert "http" in seen_types

@@ -2,10 +2,12 @@ import json
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 
 import pytest
 import sqlite_utils
+from opentelemetry import context as otel_context_api
 from opentelemetry import trace as otel_trace
 from opentelemetry.trace import SpanKind, StatusCode
 
@@ -461,6 +463,165 @@ async def test_write_queue_wait_duration_reflects_real_wait(otel_spans):
     # The slow write sleeps 100ms; anything above 10ms is far beyond the
     # microseconds a mis-timestamped span would report.
     assert duration_ns > 10_000_000, f"queue wait was only {duration_ns}ns"
+
+
+async def _write_spans_from_one_enqueue(otel_spans, name, block):
+    """
+    Run exactly one write through the write thread from inside a span of our
+    own, and return (enqueueing span context, {span name: span}).
+
+    `_send_to_write_thread` is called directly rather than `execute_write()`
+    because `execute_write()` opens its own db.query span, which would then
+    be the span current at enqueue time - so the parent/link would point at
+    that span rather than at the one this test controls.
+
+    The exporter is cleared immediately before the enqueue so the write spans
+    collected here can only have come from this one write.
+    """
+    db = Datasette(memory=True).add_memory_database(name)
+    await db.execute_write("create table docs (id integer primary key)")
+
+    def insert(conn):
+        conn.execute("insert into docs (id) values (1)")
+
+    otel_spans.clear()
+    with tracer.start_as_current_span("enqueueing-span") as enqueuer:
+        enqueuer_context = enqueuer.get_span_context()
+        queued = await db._send_to_write_thread(insert, block=block)
+    if not block:
+        # The point of block=False is that the write happens after the
+        # caller has returned and the enqueueing span above has closed.
+        # Awaiting the reply future outside that `with` waits for the write
+        # thread deterministically - it is resolved only after both write
+        # spans have ended and been exported.
+        _, reply_future = queued
+        await reply_future
+
+    spans = {}
+    for span in otel_spans.get_finished_spans():
+        if span.name in ("db.write.queue_wait", "db.write.execute"):
+            assert span.name not in spans, f"more than one {span.name} span"
+            spans[span.name] = span
+    assert set(spans) == {"db.write.queue_wait", "db.write.execute"}
+    return enqueuer_context, spans
+
+
+@pytest.mark.asyncio
+async def test_blocking_write_spans_still_parent_normally(otel_spans):
+    # Regression guard for ticket 07: block=True genuinely has containment -
+    # the caller awaits the reply future - so those spans must keep parenting
+    # to the enqueueing span, and must not grow links.
+    enqueuer_context, spans = await _write_spans_from_one_enqueue(
+        otel_spans, "t07_blocking_write", block=True
+    )
+    for name, span in spans.items():
+        assert span.parent is not None, f"{name} lost its parent"
+        assert span.parent.span_id == enqueuer_context.span_id, name
+        assert span.parent.trace_id == enqueuer_context.trace_id, name
+        assert span.context.trace_id == enqueuer_context.trace_id, name
+        assert span.links == (), f"{name} should be parented, not linked"
+
+
+@pytest.mark.asyncio
+async def test_nonblocking_write_spans_are_roots_with_a_link(otel_spans):
+    # block=False returns before the write runs, so the enqueueing span has
+    # already ended (and exported) by the time these spans start. Parenting
+    # them to it would draw a child outliving its closed parent, so they are
+    # roots in their own traces, linked back to the span that caused them.
+    enqueuer_context, spans = await _write_spans_from_one_enqueue(
+        otel_spans, "t07_nonblocking_write", block=False
+    )
+    assert enqueuer_context.is_valid, "test's own enqueueing span was not recorded"
+    for name, span in spans.items():
+        assert span.parent is None, f"{name} is still parented"
+        # A link does not join the linked trace: each of these is its own
+        # root trace, which is the correct shape and not a workaround.
+        assert span.context.trace_id != enqueuer_context.trace_id, name
+        assert len(span.links) == 1, f"{name} has links {span.links}"
+        link_context = span.links[0].context
+        assert link_context.trace_id == enqueuer_context.trace_id, name
+        assert link_context.span_id == enqueuer_context.span_id, name
+    # The two write spans are independent roots, not nested in one another.
+    assert (
+        spans["db.write.queue_wait"].context.trace_id
+        != spans["db.write.execute"].context.trace_id
+    )
+
+
+@pytest.mark.asyncio
+async def test_nonblocking_write_link_has_no_attributes(otel_spans):
+    # There is only one kind of link here, so a relationship-name attribute
+    # would be a constant conveying nothing the link's existence does not.
+    _, spans = await _write_spans_from_one_enqueue(
+        otel_spans, "t07_nonblocking_link_attrs", block=False
+    )
+    for name, span in spans.items():
+        assert len(span.links) == 1, name
+        assert dict(span.links[0].attributes or {}) == {}, name
+
+
+@pytest.mark.asyncio
+async def test_nonblocking_write_spans_ignore_the_write_threads_ambient_context(
+    otel_spans,
+):
+    """
+    block=False spans pass an explicit empty Context, not merely "no attach".
+
+    Nothing is attached for a block=False task, but "nothing attached" is not
+    the same as "no ambient context": the write thread is persistent, and
+    anything running on it - a prepare_connection plugin hook, say - can
+    attach a context and never detach it. Without the explicit `context=`
+    these spans would silently parent to that leftover span instead of being
+    roots, and no other test here would notice, because in every other test
+    the write thread's ambient context happens to be empty.
+
+    So this test leaks exactly such a context on the write thread, the way a
+    careless plugin would, and then checks the write spans are still roots.
+    """
+    ds = Datasette(memory=True)
+    db = ds.add_memory_database("t07_ambient_write_thread")
+    write_thread_name = "_execute_writes for database t07_ambient_write_thread"
+    real_prepare_connection = ds._prepare_connection
+    leaked = {}
+
+    def prepare_connection(conn, database):
+        if threading.current_thread().name == write_thread_name:
+            # Runs once, on the write thread, before any task is dequeued -
+            # and never detaches, which is the whole point.
+            span = tracer.start_span("leaked-write-thread-ambient-span")
+            leaked["span_id"] = span.get_span_context().span_id
+            otel_context_api.attach(otel_trace.set_span_in_context(span))
+        return real_prepare_connection(conn, database)
+
+    ds._prepare_connection = prepare_connection
+    try:
+        await db.execute_write("create table docs (id integer primary key)")
+
+        def insert(conn):
+            conn.execute("insert into docs (id) values (1)")
+
+        otel_spans.clear()
+        with tracer.start_as_current_span("enqueueing-span") as enqueuer:
+            enqueuer_context = enqueuer.get_span_context()
+            _, reply_future = await db._send_to_write_thread(insert, block=False)
+        await reply_future
+    finally:
+        ds._prepare_connection = real_prepare_connection
+        db.close()
+
+    assert "span_id" in leaked, "the ambient context was never leaked - test is vacuous"
+    write_spans = [
+        span
+        for span in otel_spans.get_finished_spans()
+        if span.name in ("db.write.queue_wait", "db.write.execute")
+    ]
+    assert len(write_spans) == 2
+    for span in write_spans:
+        assert span.parent is None, (
+            f"{span.name} parented to the write thread's leftover ambient "
+            "context instead of being a root"
+        )
+        assert span.links[0].context.span_id == enqueuer_context.span_id
 
 
 @pytest.mark.asyncio

@@ -230,6 +230,7 @@ def pytest_collection_modifyitems(config, items):
     # (SIGSEGV/SIGBUS inside _execute_child). Reproduces with any subprocess
     # call placed there, on an unmodified tree - running it first avoids it.
     move_to_front(items, "test_datasette_package_never_imports_the_sdk")
+    move_to_front(items, "test_no_provider_takes_the_fast_path")
 
 
 def move_to_front(items, test_name):

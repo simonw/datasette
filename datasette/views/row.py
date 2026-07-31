@@ -429,7 +429,7 @@ class RowView(BaseView):
         resolved = await self.ds.resolve_row(request)
         pk_values = resolved.pk_values
         results = await resolved.db.execute(
-            resolved.sql, resolved.params, truncate=True
+            resolved.sql, resolved.params, truncate=True, table=table
         )
         columns = [r[0] for r in results.description]
         rows = list(results.rows)
@@ -685,6 +685,9 @@ class RowView(BaseView):
             ]
         )
         try:
+            # No table= here: this counts incoming references across every
+            # foreign key pointing at this row, so it spans many tables and
+            # there is no single value db.collection.name could take.
             rows = list(await db.execute(sql, {"id": pk_values[0]}))
         except QueryInterrupted:
             # Almost certainly hit the timeout
@@ -903,7 +906,7 @@ class RowUpdateView(BaseView):
             actor=request.actor,
         ):
             results = await resolved.db.execute(
-                resolved.sql, resolved.params, truncate=True
+                resolved.sql, resolved.params, truncate=True, table=resolved.table
             )
             returned_row = results.dicts()[0]
             result["rows"] = [returned_row]

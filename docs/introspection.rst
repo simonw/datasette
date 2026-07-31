@@ -9,7 +9,7 @@ Each of these pages can be viewed in your browser. Add ``.json`` to the URL to g
 
 JSON responses that return an object include an ``"ok": true`` key, consistent with the rest of the :ref:`JSON API <json_api>`.
 
-The introspection endpoints documented on this page are covered by the :ref:`JSON API stability promise <json_api_stability>`, with the exception of the debug endpoints ``/-/threads`` and ``/-/actions``, whose shapes may change in future releases.
+The introspection endpoints documented on this page are covered by the :ref:`JSON API stability promise <json_api_stability>`, with the exception of the debug endpoints ``/-/threads``, ``/-/tasks`` and ``/-/actions``, whose shapes may change in future releases.
 
 .. _JsonDataView_metadata:
 
@@ -277,6 +277,54 @@ Shows details of threads and ``asyncio`` tasks. This endpoint requires the ``per
             "<Task pending coro=<LifespanOn.main() running at uvicorn/lifespan/on.py:48> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x10364f050>()]>>"
         ]
     }
+
+.. _JsonDataView_tasks:
+
+/-/tasks
+--------
+
+Shows the state of every supervised background task registered with
+``datasette.add_background_task()``. This endpoint requires
+the ``permissions-debug`` permission, since a crashed task's ``exception``
+field can reveal internals such as file paths or query text:
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "tasks": [
+            {
+                "name": "my_plugin.poll_for_updates",
+                "state": "running",
+                "plugin": "my-plugin",
+                "started_at": "2026-07-30T12:00:00+00:00",
+                "exception": null
+            },
+            {
+                "name": "my_plugin.broken_task",
+                "state": "crashed",
+                "plugin": "my-plugin",
+                "started_at": "2026-07-30T12:00:00+00:00",
+                "exception": "ValueError('something went wrong')"
+            }
+        ],
+        "launched": true
+    }
+
+Each entry's ``state`` is one of ``registered`` (added but not yet
+launched), ``running``, ``completed``, ``crashed`` or ``cancelled``.
+``exception`` is a one-line ``repr()`` of the exception for a ``crashed``
+task, or ``null`` otherwise - the full traceback is written to the
+``datasette.background_tasks`` logger instead, to keep this payload
+skimmable.
+
+The top-level ``launched`` flag reports whether the instance has run its
+one-time background task launch (after ``startup`` hooks finish, or via
+lifespan/first-request/``start_background_tasks()``). It distinguishes "no
+tasks have been registered" (``tasks`` is empty either way) from "tasks are
+registered but nothing has armed the launch yet" (``launched`` is
+``false`` and every task's ``state`` is still ``registered``) - useful when
+debugging a host that never triggers Datasette's lifespan events.
 
 .. _JsonDataView_actor:
 

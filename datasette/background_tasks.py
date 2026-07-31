@@ -240,6 +240,15 @@ class BackgroundTaskSupervisor:
         """
         return list(self._tasks)
 
+    @property
+    def launched(self) -> bool:
+        """Whether :meth:`launch_all` has run yet - lets ``/-/tasks``
+        distinguish "no tasks registered" from "tasks registered but
+        nothing has armed the launch yet" without reaching for the
+        private ``_launched`` attribute.
+        """
+        return self._launched
+
 
 def _on_task_done(handle: BackgroundTask, task: asyncio.Task) -> None:
     if task.cancelled():

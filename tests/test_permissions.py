@@ -520,6 +520,7 @@ def view_instance_client():
         "/-/plugins",
         "/-/settings",
         "/-/threads",
+        "/-/tasks",
         "/-/databases",
         "/-/permissions",
         "/-/messages",

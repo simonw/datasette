@@ -284,7 +284,9 @@ Shows details of threads and ``asyncio`` tasks. This endpoint requires the ``per
 --------
 
 Shows the state of every supervised background task registered with
-``datasette.add_background_task()``. This endpoint requires
+:ref:`datasette.add_background_task() <datasette_add_background_task>`; see also
+:ref:`BackgroundTask <BackgroundTask>` for what each field below means, and
+:ref:`datasette_lifecycle` for when tasks are launched. This endpoint requires
 the ``permissions-debug`` permission, since a crashed task's ``exception``
 field can reveal internals such as file paths or query text:
 
@@ -320,11 +322,12 @@ skimmable.
 
 The top-level ``launched`` flag reports whether the instance has run its
 one-time background task launch (after ``startup`` hooks finish, or via
-lifespan/first-request/``start_background_tasks()``). It distinguishes "no
-tasks have been registered" (``tasks`` is empty either way) from "tasks are
-registered but nothing has armed the launch yet" (``launched`` is
-``false`` and every task's ``state`` is still ``registered``) - useful when
-debugging a host that never triggers Datasette's lifespan events.
+lifespan/first-request/:ref:`start_background_tasks() <datasette_start_background_tasks>`).
+It distinguishes "no tasks have been registered" (``tasks`` is empty either
+way) from "tasks are registered but nothing has armed the launch yet"
+(``launched`` is ``false`` and every task's ``state`` is still
+``registered``) - useful when debugging a host that never triggers
+Datasette's lifespan events.
 
 .. _JsonDataView_actor:
 

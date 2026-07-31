@@ -59,6 +59,7 @@ async def test_success_object_has_ok_true(ds_client, path):
         "/-/rules.json?action=view-instance",
         "/-/check.json?action=view-instance",
         "/-/threads.json",
+        "/-/tasks.json",
     ),
 )
 async def test_permission_debug_success_has_ok_true(ds_envelope, path):

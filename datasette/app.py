@@ -2815,15 +2815,17 @@ class Datasette:
         This is the single entry point used by both AsgiLifespan (so
         real deployments finish startup before accepting requests) and
         AsgiRunOnFirstRequest (the fallback for hosts that never send
-        lifespan events, e.g. DatasetteClient's httpx.ASGITransport). It
-        may also race an explicit `await ds.invoke_startup()` call made by
-        `datasette serve` before the server starts serving - that's fine,
-        `invoke_startup()` has its own `_startup_invoked` guard.
+        lifespan events, e.g. DatasetteClient's httpx.ASGITransport), and
+        `datasette serve` (cli.py) calls it too. The fast path below checks
+        both `_startup_invoked` and `_setup_db_done` - not just the former -
+        so that a bare `await ds.invoke_startup()` made by a caller ahead of
+        `_startup_sequence()` (which only sets `_startup_invoked`) can't
+        make this method skip the immutable-database table-count precompute.
         """
-        if self._startup_invoked:
+        if self._startup_invoked and self._setup_db_done:
             return
         async with self._startup_lock:
-            if self._startup_invoked:
+            if self._startup_invoked and self._setup_db_done:
                 return
             if not self._setup_db_done:
                 # First time server starts up, calculate table counts for

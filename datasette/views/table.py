@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 import markupsafe
 import sqlite_utils
 
-from datasette import tracer
 from datasette.column_types import SQLiteType
 from datasette.database import QueryInterrupted
 from datasette.events import (
@@ -1690,8 +1689,7 @@ async def _sort_order(table_metadata, sortable_columns, request, order_by):
 
 async def table_view(datasette, request):
     await datasette.refresh_schemas()
-    with tracer.trace_child_tasks():
-        response = await table_view_traced(datasette, request)
+    response = await table_view_traced(datasette, request)
 
     # CORS
     if datasette.cors:

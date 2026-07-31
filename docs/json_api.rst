@@ -313,16 +313,6 @@ query string arguments:
     For how many seconds should this response be cached by HTTP proxies? Use
     ``?_ttl=0`` to disable HTTP caching entirely for this request.
 
-``?_trace=1``
-    Turns on tracing for this page: SQL queries executed during the request will
-    be gathered and included in the response, either in a new ``"_traces"`` key
-    for JSON responses or at the bottom of the page if the response is in HTML.
-
-    The structure of the data returned here should be considered highly unstable
-    and very likely to change.
-
-    Only available if the :ref:`setting_trace_debug` setting is enabled.
-
 .. _json_api_extra:
 
 Expanding JSON responses

@@ -461,6 +461,5 @@ from .fixtures import (  # noqa: F401
     app_client_two_attached_databases_one_immutable,
     app_client_with_cors,
     app_client_with_dot,
-    app_client_with_trace,
     make_app_client,
 )

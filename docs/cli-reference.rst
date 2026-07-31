@@ -283,8 +283,6 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
                                    protocol (default=False)
       template_debug               Allow display of template debug information with
                                    ?_context=1 (default=False)
-      trace_debug                  Allow display of SQL trace debug information with
-                                   ?_trace=1 (default=False)
       base_url                     Datasette URLs should use this base path
                                    (default=/)
 

@@ -231,12 +231,6 @@ def app_client_two_attached_databases_one_immutable():
 
 
 @pytest.fixture(scope="session")
-def app_client_with_trace():
-    with make_app_client(settings={"trace_debug": True}, is_immutable=True) as client:
-        yield client
-
-
-@pytest.fixture(scope="session")
 def app_client_shorter_time_limit():
     with make_app_client(20) as client:
         yield client

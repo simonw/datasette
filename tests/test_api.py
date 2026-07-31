@@ -706,7 +706,6 @@ async def test_settings_json(ds_client):
         "truncate_cells_html": 2048,
         "force_https_urls": False,
         "template_debug": False,
-        "trace_debug": False,
         "base_url": "/",
     }
 

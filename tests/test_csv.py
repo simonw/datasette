@@ -1,9 +1,9 @@
 import urllib.parse
 
 import pytest
-from bs4 import BeautifulSoup as Soup
 
 from datasette.app import Datasette
+from datasette.telemetry_registry import DB_QUERY, DB_QUERY_TEXT
 
 EXPECTED_TABLE_CSV = """id,content
 1,hello
@@ -229,24 +229,43 @@ async def test_table_csv_stream(ds_client):
     assert len([b for b in response.content.split(b"\r\n") if b]) == 1002
 
 
-def test_csv_trace(app_client_with_trace):
-    response = app_client_with_trace.get("/fixtures/simple_primary_key.csv?_trace=1")
-    assert response.headers["content-type"] == "text/html; charset=utf-8"
-    soup = Soup(response.text, "html.parser")
-    assert (
-        soup.find("textarea").text
-        == "id,content\r\n1,hello\r\n2,world\r\n3,\r\n4,RENDER_CELL_DEMO\r\n5,RENDER_CELL_ASYNC\r\n"
-    )
-    assert "select id, content from simple_primary_key" in soup.find("pre").text
+def db_query_texts(otel_spans):
+    "Every db.query.text recorded by a db.query span since the exporter was cleared."
+    return [
+        span.attributes.get(DB_QUERY_TEXT, "")
+        for span in otel_spans.get_finished_spans()
+        if span.name == DB_QUERY
+    ]
 
 
-def test_table_csv_stream_does_not_calculate_facets(app_client_with_trace):
-    response = app_client_with_trace.get("/fixtures/simple_primary_key.csv?_trace=1")
-    soup = Soup(response.text, "html.parser")
-    assert "select content, count(*) as n" not in soup.find("pre").text
+# Both faceting and facet suggestion aggregate with a named count: facet
+# results use "count(*) as count", suggestions use "count(*) as n". Matching
+# on those rather than on a whole query string, because the surrounding SQL
+# has been rewritten before - the previous version of this test looked for
+# "select content, count(*) as n", which facet suggestion stopped emitting
+# when it moved to a "with limited as (...)" CTE, leaving the assertion
+# unable to fail.
+FACET_QUERY_MARKERS = ("count(*) as n", "count(*) as count")
 
 
-def test_table_csv_stream_does_not_calculate_counts(app_client_with_trace):
-    response = app_client_with_trace.get("/fixtures/simple_primary_key.csv?_trace=1")
-    soup = Soup(response.text, "html.parser")
-    assert "select count(*)" not in soup.find("pre").text
+@pytest.mark.asyncio
+async def test_table_csv_stream_does_not_calculate_facets(ds_client, otel_spans):
+    response = await ds_client.get("/fixtures/simple_primary_key.csv")
+    assert response.status_code == 200
+    queries = db_query_texts(otel_spans)
+    # Guard: without this, a change that stopped the CSV route running any
+    # query at all - or that broke span capture - would leave the real
+    # assertion below trivially true.
+    assert any("from simple_primary_key" in q for q in queries), queries
+    assert not any(
+        marker in query for query in queries for marker in FACET_QUERY_MARKERS
+    ), queries
+
+
+@pytest.mark.asyncio
+async def test_table_csv_stream_does_not_calculate_counts(ds_client, otel_spans):
+    response = await ds_client.get("/fixtures/simple_primary_key.csv")
+    assert response.status_code == 200
+    queries = db_query_texts(otel_spans)
+    assert any("from simple_primary_key" in q for q in queries), queries
+    assert not any("select count(*)" in q for q in queries), queries

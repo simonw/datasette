@@ -3,7 +3,6 @@ import hashlib
 import sys
 
 from datasette.utils import (
-    EscapeHtmlWriter,
     InvalidSql,
     LimitedWriter,
     add_cors_headers,
@@ -225,26 +224,11 @@ async def stream_csv(datasette, fetch_data, request, database):
                 headings.append(f"{column}_label")
 
     content_type = "text/plain; charset=utf-8"
-    preamble = ""
-    postamble = ""
-
-    trace = request.args.get("_trace")
-    if trace:
-        content_type = "text/html; charset=utf-8"
-        preamble = (
-            "<html><head><title>CSV debug</title></head>"
-            '<body><textarea style="width: 90%; height: 70vh">'
-        )
-        postamble = "</textarea></body></html>"
 
     async def stream_fn(r):
-        nonlocal data, trace
+        nonlocal data
         limited_writer = LimitedWriter(r, datasette.setting("max_csv_mb"))
-        if trace:
-            await limited_writer.write(preamble)
-            writer = csv.writer(EscapeHtmlWriter(limited_writer))
-        else:
-            writer = csv.writer(limited_writer)
+        writer = csv.writer(limited_writer)
         first = True
         next = None
         while first or (next and stream):
@@ -322,14 +306,12 @@ async def stream_csv(datasette, fetch_data, request, database):
                 sys.stderr.flush()
                 await r.write(str(ex))
                 return
-        await limited_writer.write(postamble)
 
     headers = {}
     if datasette.cors:
         add_cors_headers(headers)
     if request.args.get("_dl", None):
-        if not trace:
-            content_type = "text/csv; charset=utf-8"
+        content_type = "text/csv; charset=utf-8"
         disposition = 'attachment; filename="{}.csv"'.format(
             request.url_vars.get("table", database)
         )

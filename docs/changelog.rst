@@ -11,8 +11,7 @@ Unreleased
 
 - Datasette's database layer now emits `OpenTelemetry <https://opentelemetry.io/>`__ spans: one per query, covering the full round trip including time spent waiting for a SQL worker thread, plus separate child spans for the execution itself and for time spent in the write queue. Datasette core depends on ``opentelemetry-api`` only and never installs an SDK provider, an exporter or a sampler, so there is no effect and no measurable overhead unless tracing is switched on externally - normally with the standard ``opentelemetry-instrument`` agent. See :ref:`internals_telemetry`. (:issue:`1730`)
 - :ref:`db.execute(sql, ..., table=None) <database_execute>` has a new optional ``table=`` parameter, naming the table a query is about so it can be recorded on that query's OpenTelemetry span. It has no effect on query execution, and Datasette never derives it from the SQL. (:issue:`1730`)
-
-Nothing is removed by this change: the ``?_trace=1`` query string parameter, the ``trace_debug`` setting and the :ref:`internals_tracer` module all continue to work as before.
+- **Breaking change:** Datasette's hand-rolled tracer has been removed, now that OpenTelemetry covers the same ground. The ``?_trace=1`` query string parameter, the ``trace_debug`` setting and the ``datasette.tracer`` module are all gone. ``datasette.tracer.trace()`` and ``datasette.tracer.trace_child_tasks()`` were documented plugin APIs, so any plugin importing them will now raise ``ModuleNotFoundError`` and needs a new release. `datasette-pretty-traces <https://datasette.io/plugins/datasette-pretty-traces>`__ does not import that module, but it renders ``?_trace=1`` output, so it no longer has anything to display. (:issue:`1730`)
 
 .. _v1_0_a38:
 
@@ -1161,7 +1160,7 @@ Datasette also now requires Python 3.7 or higher.
 - ``sqlite_stat`` tables are now hidden by default. (:issue:`1587`)
 - SpatiaLite tables ``data_licenses``, ``KNN`` and ``KNN2`` are now hidden by default. (:issue:`1601`)
 - SQL query tracing mechanism now works for queries executed in ``asyncio`` sub-tasks, such as those created by ``asyncio.gather()``. (:issue:`1576`)
-- :ref:`internals_tracer` mechanism is now documented.
+- ``datasette.tracer`` mechanism is now documented.
 - Common Datasette symbols can now be imported directly from the top-level ``datasette`` package, see :ref:`internals_shortcuts`. Those symbols are ``Response``, ``Forbidden``, ``NotFound``, ``hookimpl``, ``actor_matches_allow``. (:issue:`957`)
 - ``/-/versions`` page now returns additional details for libraries used by SpatiaLite. (:issue:`1607`)
 - Documentation now links to the `Datasette Tutorials <https://datasette.io/tutorials>`__.
@@ -1327,7 +1326,7 @@ New features
 - ``?_facet_size=max`` sets that to the maximum, which defaults to 1,000 and is controlled by the the :ref:`setting_max_returned_rows` setting. If facet results are truncated the … at the bottom of the facet list now links to this parameter. (:issue:`1337`)
 - ``?_nofacet=1`` option to disable all facet calculations on a page, used as a performance optimization for CSV exports and ``?_shape=array/object``. (:issue:`1349`, :issue:`263`)
 - ``?_nocount=1`` option to disable full query result counts. (:issue:`1353`)
-- ``?_trace=1`` debugging option is now controlled by the new :ref:`setting_trace_debug` setting, which is turned off by default. (:issue:`1359`)
+- ``?_trace=1`` debugging option is now controlled by the new ``trace_debug`` setting, which is turned off by default. (:issue:`1359`)
 
 Bug fixes and other improvements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

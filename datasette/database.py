@@ -40,7 +40,6 @@ from .telemetry_registry import (
     TRANSACTION,
     TRUNCATED,
 )
-from .tracer import trace
 from .utils import (
     call_with_supported_arguments,
     detect_fts,
@@ -284,24 +283,18 @@ class Database:
                 cursor, return_all=return_all, returning_limit=returning_limit
             )
 
-        # SIM117 wants these two context managers merged. They are kept nested
-        # deliberately: the hand-rolled tracer's wrapper is on its way out, and
-        # nesting makes removing it a single-line deletion.
-        with trace(  # noqa: SIM117
-            "sql", database=self.name, sql=sql.strip(), params=params
-        ):
-            with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
-                span.set_attribute(DB_SYSTEM, "sqlite")
-                span.set_attribute(DB_NAMESPACE, self.name)
-                span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
-                operation_name = sql_operation_name(sql)
-                if operation_name:
-                    span.set_attribute(DB_OPERATION_NAME, operation_name)
-                if params:
-                    span.set_attribute(PARAM_COUNT, len(params))
-                results = await self.execute_write_fn(
-                    _inner, block=block, request=request, transaction=transaction
-                )
+        with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
+            span.set_attribute(DB_SYSTEM, "sqlite")
+            span.set_attribute(DB_NAMESPACE, self.name)
+            span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
+            operation_name = sql_operation_name(sql)
+            if operation_name:
+                span.set_attribute(DB_OPERATION_NAME, operation_name)
+            if params:
+                span.set_attribute(PARAM_COUNT, len(params))
+            results = await self.execute_write_fn(
+                _inner, block=block, request=request, transaction=transaction
+            )
         return results
 
     async def execute_write_script(self, sql, block=True, request=None):
@@ -310,22 +303,18 @@ class Database:
         def _inner(conn):
             return conn.executescript(sql)
 
-        # Nested on purpose - see the note in execute_write().
-        with trace(  # noqa: SIM117
-            "sql", database=self.name, sql=sql.strip(), executescript=True
-        ):
-            # No db.operation.name here, deliberately: executescript() runs
-            # several semicolon-separated statements, and semantic conventions
-            # say the attribute should not be extracted from query text that
-            # can hold more than one operation - see sql_operation_name().
-            with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
-                span.set_attribute(DB_SYSTEM, "sqlite")
-                span.set_attribute(DB_NAMESPACE, self.name)
-                span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
-                span.set_attribute(EXECUTESCRIPT, True)
-                results = await self.execute_write_fn(
-                    _inner, block=block, transaction=False, request=request
-                )
+        # No db.operation.name here, deliberately: executescript() runs
+        # several semicolon-separated statements, and semantic conventions
+        # say the attribute should not be extracted from query text that
+        # can hold more than one operation - see sql_operation_name().
+        with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
+            span.set_attribute(DB_SYSTEM, "sqlite")
+            span.set_attribute(DB_NAMESPACE, self.name)
+            span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
+            span.set_attribute(EXECUTESCRIPT, True)
+            results = await self.execute_write_fn(
+                _inner, block=block, transaction=False, request=request
+            )
         return results
 
     async def execute_write_many(self, sql, params_seq, block=True, request=None):
@@ -342,27 +331,22 @@ class Database:
 
             return conn.executemany(sql, count_params(params_seq)), count
 
-        # Nested on purpose - see the note in execute_write().
-        with trace(
-            "sql", database=self.name, sql=sql.strip(), executemany=True
-        ) as kwargs:
-            with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
-                span.set_attribute(DB_SYSTEM, "sqlite")
-                span.set_attribute(DB_NAMESPACE, self.name)
-                span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
-                span.set_attribute(EXECUTEMANY, True)
-                # A single statement run with many parameter sets, so unlike
-                # execute_write_script() there is exactly one operation to name.
-                operation_name = sql_operation_name(sql)
-                if operation_name:
-                    span.set_attribute(DB_OPERATION_NAME, operation_name)
-                results, count = await self.execute_write_fn(
-                    _inner, block=block, request=request
-                )
-                # count is the number of parameter *sets* consumed by
-                # executemany(), not a row count - executemany returns no rows.
-                span.set_attribute(PARAM_SETS, count)
-            kwargs["count"] = count
+        with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
+            span.set_attribute(DB_SYSTEM, "sqlite")
+            span.set_attribute(DB_NAMESPACE, self.name)
+            span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
+            span.set_attribute(EXECUTEMANY, True)
+            # A single statement run with many parameter sets, so unlike
+            # execute_write_script() there is exactly one operation to name.
+            operation_name = sql_operation_name(sql)
+            if operation_name:
+                span.set_attribute(DB_OPERATION_NAME, operation_name)
+            results, count = await self.execute_write_fn(
+                _inner, block=block, request=request
+            )
+            # count is the number of parameter *sets* consumed by
+            # executemany(), not a row count - executemany returns no rows.
+            span.set_attribute(PARAM_SETS, count)
         return results
 
     async def execute_isolated_fn(self, fn):
@@ -701,8 +685,7 @@ class Database:
             #
             # copy_context() is not selective: it also carries Datasette's own
             # ContextVars - _skip_permission_checks and _permission_check_cache
-            # (datasette/permissions.py), _in_datasette_client (app.py) and,
-            # until the hand-rolled tracer goes, trace_task_id (tracer.py) -
+            # (datasette/permissions.py) and _in_datasette_client (app.py) -
             # into worker threads, where they previously took their defaults.
             # That is safe, for two reasons. Nothing reads them on a worker
             # thread: the permission code that reads the first two is async and
@@ -711,9 +694,9 @@ class Database:
             # cannot outlive the submit that carried it and reach the next task
             # on this shared pool - "skip permission checks" in particular can
             # never bleed from one request into another's query. Where a value
-            # would be read - a plugin calling datasette.in_client() or trace()
-            # from inside an execute_fn callable - seeing the submitting
-            # request's value is the more accurate answer, not a leak.
+            # would be read - a plugin calling datasette.in_client() from inside
+            # an execute_fn callable - seeing the submitting request's value is
+            # the more accurate answer, not a leak.
             ctx = contextvars.copy_context()
             future = self.ds.executor.submit(ctx.run, in_thread)
             self._pending_execute_futures.add(future)
@@ -818,59 +801,53 @@ class Database:
                 else:
                     return Results(rows, False, cursor.description)
 
-        # SIM117 wants these two context managers merged. They are kept nested
-        # deliberately: the hand-rolled tracer's wrapper is on its way out, and
-        # nesting makes removing it a single-line deletion.
-        with trace(  # noqa: SIM117
-            "sql", database=self.name, sql=sql.strip(), params=params
-        ):
-            # Exception handling is explicit rather than left to the context
-            # manager's defaults, so that callers passing log_sql_errors=False
-            # can be honoured - see the comment on the generic handler below.
-            with tracer.start_as_current_span(
-                DB_QUERY,
-                kind=DB_QUERY.kind,
-                record_exception=False,
-                set_status_on_exception=False,
-            ) as span:
-                span.set_attribute(DB_SYSTEM, "sqlite")
-                span.set_attribute(DB_NAMESPACE, self.name)
-                span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
-                span.set_attribute(TIME_LIMIT_MS, time_limit_ms)
-                operation_name = sql_operation_name(sql)
-                if operation_name:
-                    span.set_attribute(DB_OPERATION_NAME, operation_name)
-                if table:
-                    span.set_attribute(DB_COLLECTION_NAME, table)
-                if params:
-                    span.set_attribute(PARAM_COUNT, len(params))
-                try:
-                    results = await self.execute_fn(sql_operation_in_thread)
-                except QueryInterrupted as e:
-                    # datasette.interrupted is set either way - it is the
-                    # signal worth having. Only the ERROR status is
-                    # conditional; see the timeout_expected comment above.
-                    span.set_attribute(INTERRUPTED, True)
-                    if not timeout_expected:
-                        span.set_status(Status(StatusCode.ERROR, str(e)))
-                        span.record_exception(e)
-                    raise
-                except Exception as e:
-                    # log_sql_errors=False means the caller is probing and
-                    # treats failure as an expected answer, not an error.
-                    # Facet suggestion is the big one: it runs json_type()
-                    # against every column precisely to find out which ones
-                    # raise, so a table with N text columns would otherwise
-                    # mark N queries per page as failed - burying real errors
-                    # and setting off any alerting based on span status.
-                    if log_sql_errors:
-                        span.record_exception(e)
-                        span.set_status(Status(StatusCode.ERROR, str(e)))
-                    else:
-                        span.set_attribute(SQL_ERROR_SUPPRESSED, True)
-                    raise
-                span.set_attribute(TRUNCATED, results.truncated)
-                span.set_attribute(ROWS_RETURNED, len(results.rows))
+        # Exception handling is explicit rather than left to the context
+        # manager's defaults, so that callers passing log_sql_errors=False
+        # can be honoured - see the comment on the generic handler below.
+        with tracer.start_as_current_span(
+            DB_QUERY,
+            kind=DB_QUERY.kind,
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
+            span.set_attribute(DB_SYSTEM, "sqlite")
+            span.set_attribute(DB_NAMESPACE, self.name)
+            span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
+            span.set_attribute(TIME_LIMIT_MS, time_limit_ms)
+            operation_name = sql_operation_name(sql)
+            if operation_name:
+                span.set_attribute(DB_OPERATION_NAME, operation_name)
+            if table:
+                span.set_attribute(DB_COLLECTION_NAME, table)
+            if params:
+                span.set_attribute(PARAM_COUNT, len(params))
+            try:
+                results = await self.execute_fn(sql_operation_in_thread)
+            except QueryInterrupted as e:
+                # datasette.interrupted is set either way - it is the
+                # signal worth having. Only the ERROR status is
+                # conditional; see the timeout_expected comment above.
+                span.set_attribute(INTERRUPTED, True)
+                if not timeout_expected:
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
+                    span.record_exception(e)
+                raise
+            except Exception as e:
+                # log_sql_errors=False means the caller is probing and
+                # treats failure as an expected answer, not an error.
+                # Facet suggestion is the big one: it runs json_type()
+                # against every column precisely to find out which ones
+                # raise, so a table with N text columns would otherwise
+                # mark N queries per page as failed - burying real errors
+                # and setting off any alerting based on span status.
+                if log_sql_errors:
+                    span.record_exception(e)
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
+                else:
+                    span.set_attribute(SQL_ERROR_SUPPRESSED, True)
+                raise
+            span.set_attribute(TRUNCATED, results.truncated)
+            span.set_attribute(ROWS_RETURNED, len(results.rows))
         return results
 
     @property

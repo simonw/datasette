@@ -62,10 +62,11 @@ class SpanName(str):
         self.attributes = tuple(attributes)
         # True when the emitted name is composed at runtime and shares no
         # fixed prefix with the registry entry - the HTTP request span, whose
-        # name is the request method. There is no substring of the entry that
-        # could be matched against the wire, so `span_for()` resolves these by
-        # span kind instead, and the entry's own string is a template written
-        # for a human reading the generated reference.
+        # name is the request method followed by the matched route. There is
+        # no substring of the entry that could be matched against the wire, so
+        # `span_for()` resolves these by span kind instead, and the entry's own
+        # string is a template written for a human reading the generated
+        # reference.
         self.dynamic = dynamic
         # SpanKind.INTERNAL by default - every span Datasette emits describes
         # its own internal work. db.query is the one exception: it is a real
@@ -97,6 +98,20 @@ HTTP_RESPONSE_STATUS_CODE = Attribute(
     "views, including static files, file downloads and streaming CSV, send "
     "that message themselves and never build one. Omitted if the connection "
     "closed before anything was sent.",
+    optional=True,
+)
+HTTP_ROUTE = Attribute(
+    "http.route",
+    "The route the request matched, as the compiled regular expression "
+    "pattern Datasette routes with - for example "
+    "``/(?P<database>[^\\/\\.]+)/(?P<table>[^\\/\\.]+)(\\.(?P<format>\\w+))?$`` "
+    "for a table page. It is deliberately the pattern rather than a prettified "
+    "``/{database}/{table}`` template: the route table is fixed when the app "
+    "is built, so the pattern is exact, bounded and needs no parsing, whereas "
+    "the transform into something prettier accretes edge cases. Unlike "
+    "``url.path`` this is low cardinality, so it is the attribute to group by. "
+    "Omitted when no route matched - a 404 - which is also when the span name "
+    "falls back to the bare method.",
     optional=True,
 )
 URL_PATH = Attribute(
@@ -246,18 +261,22 @@ TRANSACTION = Attribute(
 # --- Spans ----------------------------------------------------------------
 
 HTTP_REQUEST = SpanName(
-    "{http.request.method}",
+    "{http.request.method} {http.route}",
     "One span per HTTP request, created by the outermost layer of the ASGI "
     "stack - so plugin ``asgi_wrapper()`` middleware, CSRF protection and "
     "every database span raised while serving the request all nest inside "
     "it. Without it each of those would be its own root trace. The span name "
-    "is not a fixed string: it is the value of ``http.request.method``. "
+    "is not a fixed string: it is the method followed by the matched route, "
+    "and just the method for a request that matched no route. The span starts "
+    "at the ASGI edge, before routing has happened, so it is named for the "
+    "method there and renamed once the route is known. "
     "W3C ``traceparent`` and ``baggage`` headers are extracted using the "
     "global propagator, so a request arriving from an already-traced caller "
     "continues that trace; set ``OTEL_PROPAGATORS=none`` to turn that off, "
     "and strip those headers at your proxy if your instance is public.",
     (
         HTTP_REQUEST_METHOD,
+        HTTP_ROUTE,
         URL_PATH,
         URL_SCHEME,
         SERVER_ADDRESS,

@@ -210,6 +210,38 @@ def _url_path(scope):
     return scope.get("path", "")
 
 
+# The request span is handed to `DatasetteRouter.route_path` through the ASGI
+# scope rather than through `get_current_span()`, because by the time routing
+# happens the current span may well be something else: a plugin
+# `asgi_wrapper()` runs *inside* this middleware, and an instrumented one makes
+# its own span current for the whole request. Reading the current span there
+# would set `http.route` on that plugin's span - and rename it - while leaving
+# the actual request span without the one attribute a trace UI groups by. Not
+# hypothetical: an ordinary tracing plugin triggers it.
+#
+# Namespaced per the ASGI spec's rules for extension keys. Absent when the span
+# is not recording, which is exactly when the router should skip the work too.
+REQUEST_SPAN_SCOPE_KEY = "datasette.telemetry.request_span"
+
+
+def request_span(scope):
+    """
+    The recording request span for an ASGI scope, or None.
+
+    Falls back to the current span so that a `DatasetteRouter` running under
+    some other instrumentation - one that started a SERVER span but of course
+    knows nothing about this scope key - still gets enriched.
+    """
+    span = scope.get(REQUEST_SPAN_SCOPE_KEY)
+    if span is None:
+        span = otel_trace.get_current_span()
+    # is_recording(), not `get_span_context().is_valid`: with no provider but
+    # an inbound `traceparent`, the API's NoOpTracer hands back a
+    # NonRecordingSpan carrying the *remote* context, which is perfectly valid
+    # and still records nothing.
+    return span if span.is_recording() else None
+
+
 class TelemetryMiddleware:
     """
     One `SpanKind.SERVER` span per HTTP request.
@@ -273,6 +305,10 @@ class TelemetryMiddleware:
             user_agent = _first_header(headers, b"user-agent")
             if user_agent:
                 span.set_attribute(USER_AGENT_ORIGINAL, user_agent)
+
+            # A copy, not a mutation: the scope belongs to the server, and
+            # every other layer in Datasette extends it the same way.
+            scope = dict(scope, **{REQUEST_SPAN_SCOPE_KEY: span})
 
             # The status cannot be read off a Response object: `asgi_static`,
             # the favicon route, `AsgiStream` and `AsgiFileDownload` all call

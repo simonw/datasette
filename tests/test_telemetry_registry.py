@@ -71,15 +71,22 @@ EXPECTED_ATTRIBUTES = {
 EXPECTED_SPANS = set(EXPECTED_ATTRIBUTES)
 
 # The HTTP request span is handled separately because its name is composed at
-# runtime - it is the request method - so there is no fixed string to pin it
-# to. What can still be pinned, and is what a dashboard depends on, is the
-# shape of the name and the attribute keys. The workload below only issues
-# GETs, so a change that stopped clamping the method, or that started naming
-# the span after the path, fails here.
-EXPECTED_HTTP_SPAN_NAME = "{http.request.method}"
-EXPECTED_HTTP_SPAN_NAMES = {"GET"}
+# runtime - the request method, then the route it matched - so there is no
+# fixed string to pin it to. What can still be pinned, and is what a dashboard
+# depends on, is the shape of that name and the attribute keys.
+#
+# The route half is deliberately not spelled out as a literal: it is a core
+# route regex, and pinning those here would make an unrelated routing change
+# fail the telemetry conformance test. What is pinned instead is that the name
+# is exactly the method, a space, and the span's own `http.route` value - the
+# `{method} {route}` shape semantic conventions specify. The workload below
+# only issues GETs, so a change that stopped clamping the method, or that
+# started naming the span after the path, fails here.
+EXPECTED_HTTP_SPAN_NAME = "{http.request.method} {http.route}"
+EXPECTED_HTTP_METHOD_NAMES = {"GET"}
 EXPECTED_HTTP_ATTRIBUTES = {
     "http.request.method",
+    "http.route",
     "url.path",
     "url.scheme",
     "server.address",
@@ -205,10 +212,12 @@ async def exercise():
 @pytest_asyncio.fixture
 async def emitted(otel_spans):
     """
-    Every (span name, span kind, attribute keys) triple a broad workload emits.
+    Every (span name, span kind, attributes) triple a broad workload emits.
 
     The kind is carried because the request span's name is composed at
-    runtime, so `span_for()` resolves it by kind instead.
+    runtime, so `span_for()` resolves it by kind instead. The attributes are
+    carried as a mapping rather than a set of keys because the request span's
+    name has to be checked against its own `http.route` value.
     """
     # otel_spans has already cleared the exporter, and nothing is cleared
     # after this point: the workload's own startup emits datasette.startup.
@@ -222,7 +231,7 @@ async def emitted(otel_spans):
         (
             str(span.name),
             span.kind,
-            frozenset(str(key) for key in span.attributes or {}),
+            {str(key): value for key, value in (span.attributes or {}).items()},
         )
         for span in spans
     )
@@ -239,8 +248,8 @@ def _partition(emitted):
 
 def _keys_by_span(records):
     by_span = {}
-    for name, _kind, keys in records:
-        by_span.setdefault(name, set()).update(keys)
+    for name, _kind, attributes in records:
+        by_span.setdefault(name, set()).update(attributes)
     return by_span
 
 
@@ -258,11 +267,22 @@ async def test_workload_emits_exactly_the_expected_names(emitted):
     assert by_span == EXPECTED_ATTRIBUTES
 
     assert server, "the workload made HTTP requests but no SERVER span was emitted"
-    server_keys = _keys_by_span(server)
-    assert set(server_keys) == EXPECTED_HTTP_SPAN_NAMES
     union = set()
-    for keys in server_keys.values():
-        union |= keys
+    methods = set()
+    for name, _kind, attributes in server:
+        union |= set(attributes)
+        route = attributes.get("http.route")
+        # Every request in the workload matches a route, so every one of these
+        # names must be `{method} {route}`. A 404 would be a bare method - the
+        # http_route tests cover that case with a real request.
+        assert route, f"the request span {name!r} carries no http.route"
+        method, _, name_route = name.partition(" ")
+        assert name_route == route, (
+            f"the request span is named {name!r}, which is not the "
+            f"`{{method}} {{route}}` of {method!r} and {route!r}"
+        )
+        methods.add(method)
+    assert methods == EXPECTED_HTTP_METHOD_NAMES
     assert union == EXPECTED_HTTP_ATTRIBUTES
 
 

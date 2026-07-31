@@ -49,8 +49,13 @@ from .events import Event
 from .plugins import DEFAULT_PLUGINS, get_plugins, pm
 from .renderer import json_renderer
 from .resources import DatabaseResource, TableResource
-from .telemetry import TelemetryMiddleware, tracer
-from .telemetry_registry import STARTUP
+from .telemetry import (
+    TelemetryMiddleware,
+    clamp_http_method,
+    request_span,
+    tracer,
+)
+from .telemetry_registry import HTTP_ROUTE, STARTUP
 from .tokens import TokenInvalid
 from .tracer import AsgiTracer
 from .url_builder import Urls
@@ -2958,7 +2963,25 @@ class DatasetteRouter:
         match, view = resolve_routes(self.routes, path)
 
         if match is None:
+            # No route matched, so the span keeps the bare method name it was
+            # given at the edge and gets no http.route. That is what semantic
+            # conventions ask for when the route is unknown.
             return await self.handle_404(request, send)
+
+        # The request span was started at the ASGI edge, before routing, so it
+        # carries only the method as a name. Now that the route is known, give
+        # it the `{method} {route}` shape semantic conventions want, and the
+        # http.route attribute - the low-cardinality counterpart to url.path,
+        # and so the one to group by.
+        span = request_span(scope)
+        if span is not None:
+            route = match.re.pattern
+            span.set_attribute(HTTP_ROUTE, route)
+            # Clamped, for the same reason the middleware clamps it: the method
+            # is a client-controlled string, and an unclamped one here would
+            # put attacker-supplied text back into the span name that the
+            # middleware just kept out of it.
+            span.update_name(f"{clamp_http_method(request.method)} {route}")
 
         new_scope = dict(scope, url_route={"kwargs": match.groupdict()})
         request.scope = new_scope

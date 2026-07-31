@@ -40,6 +40,7 @@ dependencies = [
     "setuptools",
     "pip",
     "pydantic>=2",
+    "opentelemetry-api>=1.37",
 ]
 
 [project.urls]
@@ -70,6 +71,7 @@ dev = [
     "cogapp>=3.3.0",
     "multipart-form-data-conformance==0.1a0",
     "ruff>=0.16.0",
+    "opentelemetry-sdk>=1.37",
     # docs
     "Sphinx==7.4.7",
     "furo==2025.9.25",

@@ -496,8 +496,15 @@ class Database:
         try:
             conn = self.connect(write=True)
             # This warm-up runs before any write has ever been queued, so
-            # there is no caller otel context yet to attach - any spans
-            # created by plugin hooks here are orphans (roots).
+            # there is no captured caller context to attach - and a raw
+            # threading.Thread does not inherit the context of whoever started
+            # it. Spans created by plugin hooks here are therefore roots even
+            # when the write thread is started from inside invoke_startup():
+            # its datasette.startup span is current on the event loop but does
+            # not cross this thread boundary. Read connections differ - they
+            # warm up inside executor tasks submitted with copy_context(), so
+            # their prepare_connection spans do nest under whoever triggered
+            # them.
             self.ds._prepare_connection(conn, self.name)
         except Exception as e:  # noqa: BLE001
             # Stored and re-raised to whoever queues the next write

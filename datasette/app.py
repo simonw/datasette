@@ -49,6 +49,7 @@ from .events import Event
 from .plugins import DEFAULT_PLUGINS, get_plugins, pm
 from .renderer import json_renderer
 from .resources import DatabaseResource, TableResource
+from .telemetry import tracer
 from .tokens import TokenInvalid
 from .tracer import AsgiTracer
 from .url_builder import Urls
@@ -778,57 +779,69 @@ class Datasette:
         # This must be called for Datasette to be in a usable state
         if self._startup_invoked:
             return
-        # Register event classes
-        event_classes = []
-        for hook in pm.hook.register_events(datasette=self):
-            extra_classes = await await_me_maybe(hook)
-            if extra_classes:
-                event_classes.extend(extra_classes)
-        self.event_classes = tuple(event_classes)
+        # invoke_startup() runs before any request exists, so every span its
+        # children create - the register_* hook dispatches, the internal
+        # catalog's db.query/db.write spans, and the prepare_connection
+        # warm-up of the read connections those touch - would otherwise be
+        # its own orphan root trace: around twenty of them on a fresh
+        # instance. Bracketing the whole thing gives them somewhere to belong.
+        # A connection warmed lazily later, by a request touching a new
+        # database for the first time, nests under that request instead:
+        # this span has already ended by then.
+        with tracer.start_as_current_span("datasette.startup"):
+            # Register event classes
+            event_classes = []
+            for hook in pm.hook.register_events(datasette=self):
+                extra_classes = await await_me_maybe(hook)
+                if extra_classes:
+                    event_classes.extend(extra_classes)
+            self.event_classes = tuple(event_classes)
 
-        # Register actions, but watch out for duplicate name/abbr
-        action_names = {}
-        action_abbrs = {}
-        for hook in pm.hook.register_actions(datasette=self):
-            if hook:
-                for action in hook:
-                    if (
-                        action.name in action_names
-                        and action != action_names[action.name]
-                    ):
-                        raise StartupError(f"Duplicate action name: {action.name}")
-                    if (
-                        action.abbr
-                        and action.abbr in action_abbrs
-                        and action != action_abbrs[action.abbr]
-                    ):
-                        raise StartupError(f"Duplicate action abbr: {action.abbr}")
-                    action_names[action.name] = action
-                    if action.abbr:
-                        action_abbrs[action.abbr] = action
-                    self.actions[action.name] = action
+            # Register actions, but watch out for duplicate name/abbr
+            action_names = {}
+            action_abbrs = {}
+            for hook in pm.hook.register_actions(datasette=self):
+                if hook:
+                    for action in hook:
+                        if (
+                            action.name in action_names
+                            and action != action_names[action.name]
+                        ):
+                            raise StartupError(f"Duplicate action name: {action.name}")
+                        if (
+                            action.abbr
+                            and action.abbr in action_abbrs
+                            and action != action_abbrs[action.abbr]
+                        ):
+                            raise StartupError(f"Duplicate action abbr: {action.abbr}")
+                        action_names[action.name] = action
+                        if action.abbr:
+                            action_abbrs[action.abbr] = action
+                        self.actions[action.name] = action
 
-        # Register column types (classes, not instances)
-        self._column_types = {}
-        for hook in pm.hook.register_column_types(datasette=self):
-            if hook:
-                for ct_cls in hook:
-                    if ct_cls.name in self._column_types:
-                        raise StartupError(f"Duplicate column type name: {ct_cls.name}")
-                    self._column_types[ct_cls.name] = ct_cls
+            # Register column types (classes, not instances)
+            self._column_types = {}
+            for hook in pm.hook.register_column_types(datasette=self):
+                if hook:
+                    for ct_cls in hook:
+                        if ct_cls.name in self._column_types:
+                            raise StartupError(
+                                f"Duplicate column type name: {ct_cls.name}"
+                            )
+                        self._column_types[ct_cls.name] = ct_cls
 
-        for hook in pm.hook.prepare_jinja2_environment(
-            env=self._jinja_env, datasette=self
-        ):
-            await await_me_maybe(hook)
-        # Ensure internal tables and metadata are populated before startup hooks
-        await self._refresh_schemas()
-        await self._save_queries_from_config()
-        # Load column_types from config into internal DB
-        await self._apply_column_types_config()
-        for hook in pm.hook.startup(datasette=self):
-            await await_me_maybe(hook)
-        self._startup_invoked = True
+            for hook in pm.hook.prepare_jinja2_environment(
+                env=self._jinja_env, datasette=self
+            ):
+                await await_me_maybe(hook)
+            # Ensure internal tables and metadata are populated before startup hooks
+            await self._refresh_schemas()
+            await self._save_queries_from_config()
+            # Load column_types from config into internal DB
+            await self._apply_column_types_config()
+            for hook in pm.hook.startup(datasette=self):
+                await await_me_maybe(hook)
+            self._startup_invoked = True
 
     def sign(self, value, namespace="default"):
         return URLSafeSerializer(self._secret, namespace).dumps(value)

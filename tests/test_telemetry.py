@@ -6,6 +6,7 @@ import time
 
 import pytest
 import sqlite_utils
+from opentelemetry import trace as otel_trace
 from opentelemetry.trace import StatusCode
 
 from datasette.app import Datasette
@@ -54,6 +55,27 @@ def _children_named(otel_spans, name, parent_span_context):
         and span.parent.trace_id == parent_span_context.trace_id
         and span.context.trace_id == parent_span_context.trace_id
     ]
+
+
+def _descends_from(span, ancestor_span_context, by_span_id):
+    """
+    True if `span` reaches `ancestor_span_context` by walking parent links.
+
+    Walks real span ids rather than trusting a shared trace id: a span can
+    carry the right trace id and still hang off the wrong parent.
+    """
+    seen = set()
+    current = span
+    while current.parent is not None:
+        if current.parent.span_id == ancestor_span_context.span_id:
+            return current.parent.trace_id == ancestor_span_context.trace_id
+        if current.parent.span_id in seen:
+            return False
+        seen.add(current.parent.span_id)
+        current = by_span_id.get(current.parent.span_id)
+        if current is None:
+            return False
+    return False
 
 
 def _all_attribute_values(otel_spans):
@@ -457,3 +479,67 @@ async def test_suppressed_error_does_not_mark_execute_span(ds_client, otel_spans
     span = execute_spans[-1]
     assert span.status.status_code == StatusCode.UNSET
     assert not [event for event in span.events if event.name == "exception"]
+
+
+@pytest.mark.asyncio
+async def test_invoke_startup_produces_one_trace_not_dozens_of_orphans(otel_spans):
+    """
+    invoke_startup() runs with no request, so nothing it does has an ambient
+    span to nest under. Without datasette.startup every register_* hook, every
+    internal-catalog read and every catalog write becomes its own single-span
+    root trace - around twenty of them per fresh instance.
+    """
+    ds = Datasette(memory=True)
+    # Named in-memory databases are shared-cache, so this needs its own name.
+    ds.add_memory_database("t05_startup_db")
+    # Constructing a Datasette already touches the internal catalog, and that
+    # work is genuinely outside startup. Clear so the assertions below describe
+    # invoke_startup() alone.
+    otel_spans.clear()
+
+    # Deliberately no ambient span: this mirrors the ASGI lifespan path, where
+    # startup runs before any request exists. If something did wrap this call
+    # the "one root" assertion below would pass for the wrong reason.
+    assert (
+        not otel_trace.get_current_span().get_span_context().is_valid
+    ), "this test must run with no ambient span"
+
+    await ds.invoke_startup()
+
+    spans = otel_spans.get_finished_spans()
+    assert len(spans) > 10, f"expected startup to emit many spans, got {len(spans)}"
+
+    startup_spans = [span for span in spans if span.name == "datasette.startup"]
+    assert len(startup_spans) == 1
+    startup = startup_spans[0]
+    assert startup.parent is None, "datasette.startup should be a root span"
+
+    trace_ids = {span.context.trace_id for span in spans}
+    assert trace_ids == {startup.context.trace_id}, (
+        f"startup produced {len(trace_ids)} distinct traces; every span it "
+        "causes should share the datasette.startup trace"
+    )
+
+    roots = [span for span in spans if span.parent is None]
+    assert [span.name for span in roots] == ["datasette.startup"]
+
+    by_span_id = {span.context.span_id: span for span in spans}
+
+    # The internal catalog reads are what made up the bulk of the orphans.
+    internal_queries = [
+        span
+        for span in spans
+        if span.name == "db.query" and span.attributes["db.namespace"] == "__INTERNAL__"
+    ]
+    assert internal_queries, "expected internal-catalog db.query spans during startup"
+    assert all(
+        _descends_from(span, startup.context, by_span_id) for span in internal_queries
+    )
+
+    # ...and the catalog writes, which reach the span through the write thread,
+    # so they also prove the ticket-04 context capture survives startup.
+    write_spans = [span for span in spans if span.name.startswith("db.write.")]
+    assert write_spans, "expected db.write.* spans during startup"
+    assert all(
+        _descends_from(span, startup.context, by_span_id) for span in write_spans
+    )

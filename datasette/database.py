@@ -14,10 +14,10 @@ from pathlib import Path
 
 import sqlite_utils
 from opentelemetry import context as otel_context_api
-from opentelemetry.trace import Status, StatusCode
+from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from .inspect import inspect_hash
-from .telemetry import sql_attribute, tracer
+from .telemetry import sql_attribute, sql_operation_name, tracer
 from .tracer import trace
 from .utils import (
     call_with_supported_arguments,
@@ -268,10 +268,13 @@ class Database:
         with trace(  # noqa: SIM117
             "sql", database=self.name, sql=sql.strip(), params=params
         ):
-            with tracer.start_as_current_span("db.query") as span:
+            with tracer.start_as_current_span("db.query", kind=SpanKind.CLIENT) as span:
                 span.set_attribute("db.system", "sqlite")
                 span.set_attribute("db.namespace", self.name)
                 span.set_attribute("db.query.text", sql_attribute(sql))
+                operation_name = sql_operation_name(sql)
+                if operation_name:
+                    span.set_attribute("db.operation.name", operation_name)
                 if params:
                     span.set_attribute("datasette.param_count", len(params))
                 results = await self.execute_write_fn(
@@ -289,7 +292,11 @@ class Database:
         with trace(  # noqa: SIM117
             "sql", database=self.name, sql=sql.strip(), executescript=True
         ):
-            with tracer.start_as_current_span("db.query") as span:
+            # No db.operation.name here, deliberately: executescript() runs
+            # several semicolon-separated statements, and semantic conventions
+            # say the attribute should not be extracted from query text that
+            # can hold more than one operation - see sql_operation_name().
+            with tracer.start_as_current_span("db.query", kind=SpanKind.CLIENT) as span:
                 span.set_attribute("db.system", "sqlite")
                 span.set_attribute("db.namespace", self.name)
                 span.set_attribute("db.query.text", sql_attribute(sql))
@@ -317,11 +324,16 @@ class Database:
         with trace(
             "sql", database=self.name, sql=sql.strip(), executemany=True
         ) as kwargs:
-            with tracer.start_as_current_span("db.query") as span:
+            with tracer.start_as_current_span("db.query", kind=SpanKind.CLIENT) as span:
                 span.set_attribute("db.system", "sqlite")
                 span.set_attribute("db.namespace", self.name)
                 span.set_attribute("db.query.text", sql_attribute(sql))
                 span.set_attribute("datasette.executemany", True)
+                # A single statement run with many parameter sets, so unlike
+                # execute_write_script() there is exactly one operation to name.
+                operation_name = sql_operation_name(sql)
+                if operation_name:
+                    span.set_attribute("db.operation.name", operation_name)
                 results, count = await self.execute_write_fn(
                     _inner, block=block, request=request
                 )
@@ -632,8 +644,16 @@ class Database:
         custom_time_limit=None,
         page_size=None,
         log_sql_errors=True,
+        table=None,
     ):
-        """Executes sql against db_name in a thread"""
+        """Executes sql against db_name in a thread
+
+        `table`, if passed, is recorded as the `db.collection.name` span
+        attribute. It exists for callers that already know which table the
+        query targets - the table and row views - and is never derived from
+        `sql` itself: deriving it would be a parse, and on an instance where
+        anyone can create a table the resulting value set has no ceiling.
+        """
         self._check_not_closed()
         page_size = page_size or self.ds.page_size
         time_limit_ms = self.ds.sql_time_limit_ms
@@ -698,6 +718,7 @@ class Database:
             # can be honoured - see the comment on the generic handler below.
             with tracer.start_as_current_span(
                 "db.query",
+                kind=SpanKind.CLIENT,
                 record_exception=False,
                 set_status_on_exception=False,
             ) as span:
@@ -705,6 +726,11 @@ class Database:
                 span.set_attribute("db.namespace", self.name)
                 span.set_attribute("db.query.text", sql_attribute(sql))
                 span.set_attribute("datasette.time_limit_ms", time_limit_ms)
+                operation_name = sql_operation_name(sql)
+                if operation_name:
+                    span.set_attribute("db.operation.name", operation_name)
+                if table:
+                    span.set_attribute("db.collection.name", table)
                 if params:
                     span.set_attribute("datasette.param_count", len(params))
                 try:

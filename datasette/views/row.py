@@ -407,7 +407,7 @@ class RowView(BaseView):
             raise Forbidden("You do not have permission to view this table")
 
         results = await resolved.db.execute(
-            resolved.sql, resolved.params, truncate=True
+            resolved.sql, resolved.params, truncate=True, table=table
         )
         columns = [r[0] for r in results.description]
         rows = list(results.rows)
@@ -652,6 +652,9 @@ class RowView(BaseView):
             ]
         )
         try:
+            # No table= here: this counts incoming references across every
+            # foreign key pointing at this row, so it spans many tables and
+            # there is no single value db.collection.name could take.
             rows = list(await db.execute(sql, {"id": pk_values[0]}))
         except QueryInterrupted:
             # Almost certainly hit the timeout
@@ -840,7 +843,7 @@ class RowUpdateView(BaseView):
         returned_row = None
         if data.get("return"):
             results = await resolved.db.execute(
-                resolved.sql, resolved.params, truncate=True
+                resolved.sql, resolved.params, truncate=True, table=resolved.table
             )
             returned_row = results.dicts()[0]
             result["rows"] = [returned_row]
@@ -858,7 +861,7 @@ class RowUpdateView(BaseView):
             message_row = returned_row
             if message_row is None:
                 results = await resolved.db.execute(
-                    resolved.sql, resolved.params, truncate=True
+                    resolved.sql, resolved.params, truncate=True, table=resolved.table
                 )
                 message_row = results.first()
             self.ds.add_message(

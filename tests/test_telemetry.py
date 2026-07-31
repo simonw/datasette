@@ -7,11 +7,18 @@ import time
 import pytest
 import sqlite_utils
 from opentelemetry import trace as otel_trace
-from opentelemetry.trace import StatusCode
+from opentelemetry.trace import SpanKind, StatusCode
 
 from datasette.app import Datasette
 from datasette.database import Database
-from datasette.telemetry import MAX_SQL_LENGTH, sql_attribute, tracer
+from datasette.telemetry import (
+    MAX_SQL_LENGTH,
+    SCHEMA_URL,
+    sql_attribute,
+    sql_operation_name,
+    tracer,
+)
+from datasette.version import __version__
 
 SECRET_PARAM_VALUE = "SUPER_SECRET_PARAM_VALUE_XYZ_123"
 
@@ -543,3 +550,201 @@ async def test_invoke_startup_produces_one_trace_not_dozens_of_orphans(otel_span
     assert all(
         _descends_from(span, startup.context, by_span_id) for span in write_spans
     )
+
+
+# --- Semantic conventions: span kind, scope, db.operation/collection -------
+
+
+@pytest.mark.asyncio
+async def test_db_query_is_client_kind_and_children_are_internal(otel_spans):
+    """
+    db.query is a database client span; Datasette's decomposition of it is not.
+
+    Trace UIs key their database rendering off the span kind rather than off
+    db.system, so db.query has to be CLIENT. db.query.execute,
+    db.write.execute and db.write.queue_wait deliberately stay INTERNAL: they
+    are parts of one logical query rather than three separate database calls,
+    and queue_wait touches no database at all - marking them CLIENT would
+    make one query look like several to anything counting spans by kind.
+    """
+    # Named in-memory databases are shared-cache, so this needs its own name.
+    db = Datasette(memory=True).add_memory_database("t06_span_kind")
+    # All four db.query entry points, so a missed `kind=` on any one of them
+    # fails here - plus the write path (db.write.queue_wait,
+    # db.write.execute) and the read path (db.query.execute) children.
+    await db.execute_write("create table docs (id integer primary key)")
+    await db.execute_write_many(
+        "insert into docs (id) values (?)", [[i] for i in range(1, 4)]
+    )
+    await db.execute_write_script("insert into docs (id) values (99);")
+    await db.execute("select id from docs")
+
+    query_spans = _spans_for_namespace(otel_spans, "t06_span_kind")
+    assert len(query_spans) == 4, "expected a db.query span per entry point"
+    for span in query_spans:
+        text = span.attributes["db.query.text"]
+        assert span.kind == SpanKind.CLIENT, f"db.query for {text!r} should be CLIENT"
+
+    for name in ("db.query.execute", "db.write.execute", "db.write.queue_wait"):
+        children = [
+            span for span in otel_spans.get_finished_spans() if span.name == name
+        ]
+        assert children, f"expected at least one {name} span"
+        for span in children:
+            assert span.kind == SpanKind.INTERNAL, f"{name} should be INTERNAL"
+
+
+@pytest.mark.asyncio
+async def test_instrumentation_scope_declares_version_and_schema_url(
+    ds_client, otel_spans
+):
+    """
+    Spans say which Datasette produced them and which semconv version their
+    attribute names follow.
+
+    Before get_tracer() was given a version and a schema URL every exported
+    scope was name='datasette' version='' schema_url='', so nothing
+    downstream could tell which Datasette a span came from, or whether
+    `db.system` meant `db.system` or the post-1.30.0 `db.system.name`.
+    """
+    response = await ds_client.get("/fixtures/-/query.json?sql=select+1")
+    assert response.status_code == 200
+
+    spans = _db_query_spans(otel_spans)
+    assert spans, "expected at least one db.query span"
+    scope = spans[-1].instrumentation_scope
+
+    assert scope.name == "datasette"
+    assert scope.version == __version__
+    # The literal URL, not the SCHEMA_URL constant: comparing the span
+    # against the same constant the instrumentation is built from would only
+    # catch a dropped argument, never a wrong value. Bumping this is a claim
+    # about the attribute names on the wire - see SCHEMA_URL in telemetry.py.
+    assert scope.schema_url == "https://opentelemetry.io/schemas/1.29.0"
+    assert SCHEMA_URL == "https://opentelemetry.io/schemas/1.29.0"
+    assert __version__, "the scope version must not be empty"
+
+
+def test_db_operation_name_from_leading_keyword():
+    assert sql_operation_name("select 1") == "SELECT"
+    assert sql_operation_name("  insert into x (a) values (1)") == "INSERT"
+    # A leading CTE reports WITH rather than the operation inside it. That is
+    # the documented limitation, not an accident - see sql_operation_name().
+    assert sql_operation_name("with foo as (select 1) select * from foo") == "WITH"
+    # Unrecognised leading keyword: no attribute rather than a wrong one, and
+    # no unbounded value set derived from attacker-supplied SQL.
+    assert sql_operation_name("gibberish 1") is None
+    # Not a parser: a parenthesised SELECT and a leading comment both yield
+    # nothing rather than a guess.
+    assert sql_operation_name("(select 1) union select 2") is None
+    assert sql_operation_name("-- a comment\nselect 1") is None
+    assert sql_operation_name("") is None
+
+
+@pytest.mark.asyncio
+async def test_db_operation_name_on_real_span(ds_client, otel_spans):
+    response = await ds_client.get("/fixtures/-/query.json?sql=select+1")
+    assert response.status_code == 200
+
+    spans = [
+        span
+        for span in _spans_for_namespace(otel_spans, "fixtures")
+        if span.attributes["db.query.text"] == "select 1"
+    ]
+    assert spans, "expected a db.query span for 'select 1'"
+    assert spans[-1].attributes["db.operation.name"] == "SELECT"
+
+
+@pytest.mark.asyncio
+async def test_execute_write_sets_db_operation_name(otel_spans):
+    db = Datasette(memory=True).add_memory_database("t06_write_operation")
+    await db.execute_write("create table docs (id integer primary key)")
+    await db.execute_write_many(
+        "insert into docs (id) values (?)", [[i] for i in range(1, 4)]
+    )
+
+    spans = _spans_for_namespace(otel_spans, "t06_write_operation")
+    by_operation = {
+        span.attributes["db.query.text"]: span.attributes.get("db.operation.name")
+        for span in spans
+    }
+    assert by_operation["create table docs (id integer primary key)"] == "CREATE"
+    assert by_operation["insert into docs (id) values (?)"] == "INSERT"
+
+
+@pytest.mark.asyncio
+async def test_execute_write_script_has_no_operation_name(otel_spans):
+    """
+    executescript() runs several statements, so naming the operation after
+    the first one would be a lie. Semantic conventions say db.operation.name
+    should not be extracted from query text that can hold more than one
+    operation, so the attribute is absent entirely.
+
+    The script deliberately starts with `create`, which *is* on the
+    allowlist - so this fails if the call site ever starts calling
+    sql_operation_name().
+    """
+    db = Datasette(memory=True).add_memory_database("t06_script_operation")
+    await db.execute_write_script(
+        "create table docs (id integer primary key);\n"
+        "insert into docs (id) values (1);"
+    )
+
+    spans = _spans_for_namespace(otel_spans, "t06_script_operation")
+    script_spans = [
+        span for span in spans if span.attributes.get("datasette.executescript") is True
+    ]
+    assert len(script_spans) == 1
+    assert "db.operation.name" not in script_spans[0].attributes
+
+
+@pytest.mark.asyncio
+async def test_db_collection_name_set_from_table_argument(ds_client, otel_spans):
+    db = ds_client.ds.get_database("fixtures")
+    await db.execute("select pk from facetable limit 1", table="facetable")
+
+    spans = _spans_for_namespace(otel_spans, "fixtures")
+    assert spans
+    assert spans[-1].attributes["db.collection.name"] == "facetable"
+
+
+@pytest.mark.asyncio
+async def test_db_collection_name_absent_without_table_argument(ds_client, otel_spans):
+    """
+    db.collection.name comes only from an explicit table= argument and is
+    never derived from the SQL.
+
+    Deriving it would be a parse, and on an instance where anybody can create
+    a table the value set has no ceiling. Without this test the one above
+    would still pass if the table name were being read out of the query text.
+    """
+    db = ds_client.ds.get_database("fixtures")
+    await db.execute("select pk from facetable limit 1")
+
+    spans = _spans_for_namespace(otel_spans, "fixtures")
+    assert spans
+    span = spans[-1]
+    assert span.attributes["db.query.text"] == "select pk from facetable limit 1"
+    assert "db.collection.name" not in span.attributes
+
+
+@pytest.mark.parametrize(
+    "path,table",
+    (
+        ("/fixtures/facetable.json", "facetable"),
+        ("/fixtures/simple_primary_key/1.json", "simple_primary_key"),
+    ),
+)
+@pytest.mark.asyncio
+async def test_table_and_row_pages_set_db_collection_name(
+    ds_client, otel_spans, path, table
+):
+    "The table and row views know their table, so their queries carry it."
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+
+    spans = _spans_for_namespace(otel_spans, "fixtures")
+    assert spans
+    assert any(
+        span.attributes.get("db.collection.name") == table for span in spans
+    ), f"expected a db.query span from {path} carrying db.collection.name"

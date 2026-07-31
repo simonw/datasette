@@ -1212,6 +1212,31 @@ Potential use-cases:
 
 Examples: `datasette-saved-queries <https://datasette.io/plugins/datasette-saved-queries>`__, `datasette-init <https://datasette.io/plugins/datasette-init>`__
 
+.. _plugin_hook_shutdown:
+
+shutdown(datasette)
+-------------------
+
+This hook fires once, when the Datasette application server is shutting down gracefully - triggered by the ASGI ``lifespan.shutdown`` event, which includes pressing Ctrl-C or sending ``SIGTERM`` to a ``datasette serve`` process. It is not called on a hard kill (``SIGKILL``), since there is no opportunity to run any code in that case.
+
+Like ``startup()``, this can be a regular function or it can return an async function to be awaited.
+
+It runs before Datasette cancels any background tasks it is supervising and before it closes its database connections, so you can use it to tell your plugin's own background work to stop gracefully while a database connection is still available to write out any final state:
+
+.. code-block:: python
+
+    @hookimpl
+    def shutdown(datasette):
+        async def inner():
+            db = datasette.get_database()
+            await db.execute_write(
+                "insert into shutdown_log (at) values (datetime('now'))"
+            )
+
+        return inner
+
+If your ``shutdown()`` hook raises an exception it will be logged but not re-raised, so one plugin's broken shutdown code cannot prevent other plugins - or Datasette itself - from finishing their own teardown.
+
 .. _plugin_hook_actor_from_request:
 
 actor_from_request(datasette, request)

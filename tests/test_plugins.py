@@ -53,6 +53,13 @@ def test_hook_jump_items_sql():
     assert "jump_items_sql" in dir(pm.hook)
 
 
+def test_hook_shutdown():
+    # Detailed behavior (ordering against background-task cancellation and
+    # close(), idempotency, exception handling, sync vs async support) is
+    # covered in tests/test_shutdown.py.
+    assert "shutdown" in dir(pm.hook)
+
+
 @pytest.mark.asyncio
 async def test_hook_plugins_dir_plugin_prepare_connection(ds_client):
     response = await ds_client.get(

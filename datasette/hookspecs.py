@@ -10,6 +10,11 @@ def startup(datasette):
 
 
 @hookspec
+def shutdown(datasette):
+    """Called once when the Datasette server is shutting down"""
+
+
+@hookspec
 def asgi_wrapper(datasette):
     """Returns an ASGI middleware callable to wrap our ASGI application with"""
 

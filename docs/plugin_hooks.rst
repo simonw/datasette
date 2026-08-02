@@ -1419,6 +1419,8 @@ The arguments to the ``FilterArguments`` class constructor are as follows:
 ``extra_context`` - dictionary, optional
     Additional context variables that should be made available to the ``table.html`` template when it is rendered.
 
+The hook can also return an ``async def`` function, which Datasette will await. This is useful if you need to execute SQL queries or perform other asynchronous operations in order to build your filters. Datasette's own default implementations of this hook `use this pattern <https://github.com/simonw/datasette/blob/main/datasette/filters.py>`__.
+
 This example plugin causes 0 results to be returned if ``?_nothing=1`` is added to the URL:
 
 .. code-block:: python

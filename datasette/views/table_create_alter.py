@@ -905,16 +905,21 @@ class TableCreateView(BaseView):
                 # leaves rows that cannot be viewed, edited or deleted (see
                 # #2807). A single integer primary key aliases the rowid and is
                 # never NULL, so it needs no explicit constraint.
-                pk_names = set(pks) if pks else ({pk} if pk else set())
+                # Matched case-insensitively because SQLite resolves identifiers
+                # that way: pk "code" against a column named "Code" still creates
+                # that column as the primary key.
+                pk_names = {
+                    name.lower() for name in (pks if pks else ([pk] if pk else []))
+                }
                 if len(pk_names) == 1 and any(
-                    column.name in pk_names and column.type == "integer"
+                    column.name.lower() in pk_names and column.type == "integer"
                     for column in columns
                 ):
                     pk_names = set()
                 not_null = [
                     column.name
                     for column in columns
-                    if column.not_null or column.name in pk_names
+                    if column.not_null or column.name.lower() in pk_names
                 ]
                 defaults = {}
                 for column in columns:

@@ -2352,6 +2352,56 @@ async def test_create_table_primary_keys_are_not_null(ds_write):
     assert columns["b"]["notnull"] == 1
     assert columns["value"]["notnull"] == 0
 
+    # Primary key named with different casing from the column. SQLite resolves
+    # identifiers case-insensitively, so this still creates "Code" as the primary
+    # key and it must pick up NOT NULL too.
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "pk_mixed_case",
+            "columns": [
+                {"name": "Code", "type": "text"},
+                {"name": "name", "type": "text"},
+            ],
+            "pk": "code",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201, response.text
+    columns = {
+        column["name"]: column
+        for column in (
+            await db.execute("select * from pragma_table_info('pk_mixed_case')")
+        ).dicts()
+    }
+    assert columns["Code"]["pk"] == 1
+    assert columns["Code"]["notnull"] == 1
+    assert columns["name"]["notnull"] == 0
+
+    # The integer-rowid-alias exemption is matched case-insensitively too, so an
+    # integer pk stays a plain rowid alias rather than gaining a constraint.
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "pk_mixed_case_integer",
+            "columns": [
+                {"name": "Id", "type": "integer"},
+                {"name": "name", "type": "text"},
+            ],
+            "pk": "id",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201, response.text
+    columns = {
+        column["name"]: column
+        for column in (
+            await db.execute("select * from pragma_table_info('pk_mixed_case_integer')")
+        ).dicts()
+    }
+    assert columns["Id"]["pk"] == 1
+    assert columns["Id"]["notnull"] == 0
+
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(

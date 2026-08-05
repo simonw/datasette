@@ -349,9 +349,19 @@ class Database:
                 self._write_connection = self.connect(write=True)
                 self.ds._prepare_connection(self._write_connection, self.name)
             if transaction:
-                with self._write_connection:
-                    self._write_connection.execute("BEGIN IMMEDIATE")
+                # Use explicit BEGIN IMMEDIATE so that conn.in_transaction is
+                # True during fn(), allowing sqlite-utils 4.0 to detect the
+                # outer transaction and use savepoints instead of auto-committing
+                # each individual write. Use conn.commit()/conn.rollback() rather
+                # than conn.execute("COMMIT"/"ROLLBACK") so that calls are no-ops
+                # when the inner function has already committed or rolled back.
+                self._write_connection.execute("BEGIN IMMEDIATE")
+                try:
                     result = fn(self._write_connection)
+                    self._write_connection.commit()
+                except BaseException:
+                    self._write_connection.rollback()
+                    raise
             else:
                 result = fn(self._write_connection)
         else:
@@ -481,9 +491,21 @@ class Database:
             else:
                 try:
                     if task.transaction:
-                        with conn:
-                            conn.execute("BEGIN IMMEDIATE")
+                        # Use explicit BEGIN IMMEDIATE so that conn.in_transaction
+                        # is True during task.fn(), allowing sqlite-utils 4.0 to
+                        # detect the outer transaction and use savepoints instead
+                        # of auto-committing each individual write. Use
+                        # conn.commit()/conn.rollback() rather than
+                        # conn.execute("COMMIT"/"ROLLBACK") so that calls are
+                        # no-ops when the inner function has already committed
+                        # or rolled back.
+                        conn.execute("BEGIN IMMEDIATE")
+                        try:
                             result = task.fn(conn)
+                            conn.commit()
+                        except BaseException:
+                            conn.rollback()
+                            raise
                     else:
                         result = task.fn(conn)
                 except Exception as e:  # noqa: BLE001

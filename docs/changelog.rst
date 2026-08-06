@@ -4,6 +4,17 @@
 Changelog
 =========
 
+.. _v1_0_a38:
+
+1.0a38 (2026-08-06)
+-------------------
+
+This release fixes a **SQL injection** security issue that affects Datasette instances that serve a **mixture of public and private tables** in the same database, with access configured using the :ref:`Datasette permissions system <authentication>`.
+
+Site administrators who serve private tables in this way are advised to disable the :ref:`execute-sql permission <actions_execute_sql>` on that database to prevent users from accessing private tables using raw SQL queries. The bug that has been fixed would have allowed users with access to any public table to execute SQL injection attacks despite that restriction, giving them read-only access to data in private tables in the same database.
+
+This fix is also available in Datasette 0.65.3.
+
 .. _v1_0_a37:
 
 1.0a37 (2026-07-14)

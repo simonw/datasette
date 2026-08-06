@@ -293,7 +293,7 @@ This will create the HTML version of the documentation in ``docs/_build/html``. 
 
 Any time you make changes to a ``.rst`` file you can re-run ``make html`` to update the built documents, then refresh them in your browser.
 
-For added productivity, you can use use `sphinx-autobuild <https://pypi.org/project/sphinx-autobuild/>`__ to run Sphinx in auto-build mode. This will run a local webserver serving the docs that automatically rebuilds them and refreshes the page any time you hit save in your editor.
+For added productivity, you can use `sphinx-autobuild <https://pypi.org/project/sphinx-autobuild/>`__ to run Sphinx in auto-build mode. This will run a local webserver serving the docs that automatically rebuilds them and refreshes the page any time you hit save in your editor.
 
 ``sphinx-autobuild`` is included in the development dependency group. In your ``docs/`` directory you can start the server by running the following::
 

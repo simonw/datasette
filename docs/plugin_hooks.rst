@@ -223,7 +223,7 @@ Dictionary
     If you return a dictionary its keys and values will be merged into the template context.
 
 Function that returns a dictionary
-    If you return a function it will be executed. If it returns a dictionary those values will will be merged into the template context.
+    If you return a function it will be executed. If it returns a dictionary those values will be merged into the template context.
 
 Function that returns an awaitable function that returns a dictionary
     You can also return a function which returns an awaitable function which returns a dictionary.
@@ -1739,7 +1739,7 @@ This hook is called any time an unexpected exception is raised. You can use it t
 
 If your handler returns a ``Response`` object it will be returned to the client in place of the default Datasette error page.
 
-The handler can return a response directly, or it can return return an awaitable function that returns a response.
+The handler can return a response directly, or it can return an awaitable function that returns a response.
 
 This example logs an error to `Sentry <https://sentry.io/>`__ and then renders a custom error page:
 

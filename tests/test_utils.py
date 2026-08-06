@@ -212,6 +212,30 @@ def test_detect_fts(open_quote, close_quote):
     assert "Street_Tree_List_fts" == utils.detect_fts(conn, "Street_Tree_List")
 
 
+@pytest.mark.parametrize(
+    "identifier,expected",
+    (
+        ("plain", "plain"),
+        ("select", "[select]"),
+        ("has space", "[has space]"),
+        ("has]bracket", '"has]bracket"'),
+        ('has"quote]', '"has""quote]"'),
+    ),
+)
+def test_escape_sqlite(identifier, expected):
+    assert utils.escape_sqlite(identifier) == expected
+
+
+def test_escape_sqlite_closing_bracket_works_in_query():
+    conn = utils.sqlite3.connect(":memory:")
+    table = "has]bracket"
+    escaped_table = utils.escape_sqlite(table)
+    conn.execute(f"create table {escaped_table} (id integer)")
+    conn.execute(f"insert into {escaped_table} values (1)")
+    assert conn.execute(f"select id from {escaped_table}").fetchall() == [(1,)]
+    conn.close()
+
+
 @pytest.mark.parametrize("table", ("regular", "has'single quote"))
 def test_detect_fts_different_table_names(table):
     sql = """

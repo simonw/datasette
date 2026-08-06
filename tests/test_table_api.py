@@ -522,6 +522,35 @@ def test_table_filter_queries_multiple_of_same_type(app_client):
 
 
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
+def test_table_filters_quote_identifiers():
+    with make_app_client(
+        extra_databases={
+            "demo.db": """
+                create table items (
+                    id integer primary key,
+                    "name""quote" text,
+                    "tags]bracket" text
+                );
+                insert into items values (1, 'Alice', '["red"]');
+            """
+        },
+    ) as client:
+        exact_query = urllib.parse.urlencode(
+            {'name"quote__exact': "Alice", "_shape": "arrays"}
+        )
+        exact_response = client.get(f"/demo/items.json?{exact_query}")
+        assert exact_response.status == 200
+        assert exact_response.json["rows"] == [[1, "Alice", '["red"]']]
+
+        array_query = urllib.parse.urlencode(
+            {"tags]bracket__arraycontains": "red", "_shape": "arrays"}
+        )
+        array_response = client.get(f"/demo/items.json?{array_query}")
+        assert array_response.status == 200
+        assert array_response.json["rows"] == [[1, "Alice", '["red"]']]
+
+
+@pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
 def test_table_filter_json_arraycontains(app_client):
     response = app_client.get("/fixtures/facetable.json?tags__arraycontains=tag1")
     assert response.json["rows"] == [

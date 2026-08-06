@@ -345,6 +345,10 @@ def escape_css_string(s):
 def escape_sqlite(s):
     if _boring_keyword_re.match(s) and (s.lower() not in reserved_words):
         return s
+    elif "]" in s:
+        # SQLite does not support escaping ] inside [bracket] quoting, so fall
+        # back to double-quote quoting, doubling any embedded double quotes
+        return '"{}"'.format(s.replace('"', '""'))
     else:
         return f"[{s}]"
 

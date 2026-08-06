@@ -4,7 +4,7 @@ import urllib
 import pytest
 
 from datasette.fixtures import generate_compound_rows, generate_sortable_rows
-from datasette.utils import detect_json1
+from datasette.utils import detect_json1, tilde_encode
 from datasette.utils.sqlite import sqlite_version
 
 from .fixtures import make_app_client
@@ -687,6 +687,34 @@ async def test_table_filter_queries_multiple_of_same_type(ds_client):
         [4, "RENDER_CELL_DEMO"],
         [5, "RENDER_CELL_ASYNC"],
     ] == response.json()["rows"]
+
+
+@pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
+def test_table_filters_quote_identifiers():
+    with make_app_client(
+        extra_databases={"demo.db": """
+                create table "items]bracket" (
+                    id integer primary key,
+                    "name""quote" text,
+                    "tags]bracket" text
+                );
+                insert into "items]bracket" values (1, 'Alice', '["red"]');
+            """},
+    ) as client:
+        table_path = tilde_encode("items]bracket")
+        exact_query = urllib.parse.urlencode(
+            {'name"quote__exact': "Alice", "_shape": "arrays"}
+        )
+        exact_response = client.get(f"/demo/{table_path}.json?{exact_query}")
+        assert exact_response.status == 200
+        assert exact_response.json["rows"] == [[1, "Alice", '["red"]']]
+
+        array_query = urllib.parse.urlencode(
+            {"tags]bracket__arraycontains": "red", "_shape": "arrays"}
+        )
+        array_response = client.get(f"/demo/{table_path}.json?{array_query}")
+        assert array_response.status == 200
+        assert array_response.json["rows"] == [[1, "Alice", '["red"]']]
 
 
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")

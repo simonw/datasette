@@ -613,6 +613,37 @@ def test_table_html_foreign_key_links(app_client):
     ]
 
 
+def test_row_html_foreign_key_links(app_client):
+    response = app_client.get("/fixtures/foreign_key_references/1")
+    assert response.status == 200
+    table = Soup(response.body, "html.parser").find("table")
+    actual = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
+    assert actual == [
+        [
+            '<td class="col-pk type-str">1</td>',
+            '<td class="col-foreign_key_with_label type-str"><a href="/fixtures/simple_primary_key/1">hello</a>\xa0<em>1</em></td>',
+            '<td class="col-foreign_key_with_blank_label type-str"><a href="/fixtures/simple_primary_key/3">-</a>\xa0<em>3</em></td>',
+            '<td class="col-foreign_key_with_no_label type-str"><a href="/fixtures/primary_key_multiple_columns/1">1</a></td>',
+            '<td class="col-foreign_key_compound_pk1 type-str">a</td>',
+            '<td class="col-foreign_key_compound_pk2 type-str">b</td>',
+        ],
+    ]
+    response = app_client.get("/fixtures/foreign_key_references/2")
+    assert response.status == 200
+    table = Soup(response.body, "html.parser").find("table")
+    actual = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
+    assert actual == [
+        [
+            '<td class="col-pk type-str">2</td>',
+            '<td class="col-foreign_key_with_label type-none">\xa0</td>',
+            '<td class="col-foreign_key_with_blank_label type-none">\xa0</td>',
+            '<td class="col-foreign_key_with_no_label type-none">\xa0</td>',
+            '<td class="col-foreign_key_compound_pk1 type-none">\xa0</td>',
+            '<td class="col-foreign_key_compound_pk2 type-none">\xa0</td>',
+        ],
+    ]
+
+
 def test_table_html_foreign_key_facets(app_client):
     response = app_client.get(
         "/fixtures/foreign_key_references?_facet=foreign_key_with_blank_label"

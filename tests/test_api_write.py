@@ -1,6 +1,7 @@
 import time
 
 import pytest
+import sqlite_utils
 
 from datasette.app import Datasette
 from datasette.events import RenameTableEvent
@@ -1723,6 +1724,42 @@ async def test_drop_table(ds_write, scenario):
         assert event.database == "data"
         # Table should 404
         assert (await ds_write.client.get("/data/docs")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_drop_table_cleans_up_fts(ds_write):
+    db = ds_write.get_database("data")
+
+    def enable_fts(conn):
+        sqlite_utils.Database(conn)["docs"].enable_fts(["title"], create_triggers=True)
+
+    await db.execute_write_fn(enable_fts)
+    assert {
+        row[0]
+        for row in await db.execute(
+            "select name from sqlite_master where type = 'table' and name like 'docs_fts%'"
+        )
+    } == {
+        "docs_fts",
+        "docs_fts_config",
+        "docs_fts_data",
+        "docs_fts_docsize",
+        "docs_fts_idx",
+    }
+
+    response = await ds_write.client.post(
+        "/data/docs/-/drop",
+        json={"confirm": True},
+        headers=_headers(write_token(ds_write)),
+    )
+
+    assert response.json() == {"ok": True}
+    assert [
+        row[0]
+        for row in await db.execute(
+            "select name from sqlite_master where type = 'table' and name like 'docs_fts%'"
+        )
+    ] == []
 
 
 @pytest.mark.asyncio

@@ -1391,7 +1391,9 @@ class TableDropView(BaseView):
 
         # Drop table
         def drop_table(conn):
-            sqlite_utils.Database(conn)[table_name].drop()
+            table = sqlite_utils.Database(conn)[table_name]
+            table.disable_fts()
+            table.drop()
 
         await db.execute_write_fn(drop_table, request=request)
         await self.ds.track_event(

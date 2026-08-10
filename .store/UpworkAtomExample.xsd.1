@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="http://www.w3.org/2005/Atom">
+  <xs:element name="feed">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="id" type="xs:string" />
+        <xs:element name="title" />
+        <xs:element name="author">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="name" type="xs:string" />
+              <xs:element name="email" type="xs:string" />
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="updated" type="xs:string" />
+        <xs:element name="link">
+          <xs:complexType>
+            <xs:attribute name="rel" use="required" />
+            <xs:attribute name="href" use="required" />
+            <xs:attribute name="hreflang" use="required" />
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="subtitle" />
+        <xs:element name="rights" type="xs:string" />
+        <xs:element name="logo" type="xs:string" />
+        <xs:element name="generator" type="xs:string" />
+        <xs:element name="entry" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="id" type="xs:string" />
+              <xs:element name="title">
+                <xs:complexType>
+                  <xs:attribute name="type" use="required" fixed="html" />
+                </xs:complexType>
+              </xs:element>
+              <xs:element name="updated" type="xs:string" />
+              <xs:element name="link">
+                <xs:complexType>
+                  <xs:attribute name="rel" use="required" fixed="alternate" />
+                  <xs:attribute name="href" use="required" />
+                </xs:complexType>
+              </xs:element>
+              <xs:element name="summary">
+                <xs:complexType>
+                  <xs:attribute name="type" use="required" fixed="html" />
+                </xs:complexType>
+              </xs:element>
+              <xs:element name="content">
+                <xs:complexType>
+                  <xs:attribute name="type" use="required" fixed="html" />
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

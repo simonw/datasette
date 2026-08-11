@@ -3,7 +3,7 @@ import re
 from http.cookies import Morsel, SimpleCookie
 from mimetypes import guess_type
 from pathlib import Path
-from urllib.parse import parse_qs, parse_qsl, urlunparse
+from urllib.parse import parse_qs, urlunparse
 
 import aiofiles
 import aiofiles.os
@@ -194,7 +194,7 @@ class Request:
 
     async def post_vars(self):
         body = await self.post_body()
-        return dict(parse_qsl(body.decode("utf-8"), keep_blank_values=True))
+        return MultiParams(parse_qs(qs=body.decode("utf-8"), keep_blank_values=True))
 
     async def json(self):
         body = await self.post_body()

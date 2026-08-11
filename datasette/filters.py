@@ -328,11 +328,11 @@ class Filters:
             ),
             TemplatedFilter("gt", ">", "{c} > :{p}", "{c} > {v}", numeric=True),
             TemplatedFilter(
-                "gte", "≥", "{c} >= :{p}", "{c} ≥ {v}", numeric=True
+                "gte", "\u2265", "{c} >= :{p}", "{c} \u2265 {v}", numeric=True
             ),
             TemplatedFilter("lt", "<", "{c} < :{p}", "{c} < {v}", numeric=True),
             TemplatedFilter(
-                "lte", "≤", "{c} <= :{p}", "{c} ≤ {v}", numeric=True
+                "lte", "\u2264", "{c} <= :{p}", "{c} \u2264 {v}", numeric=True
             ),
             TemplatedFilter("like", "like", "{c} like :{p}", '{c} like "{v}"'),
             TemplatedFilter(

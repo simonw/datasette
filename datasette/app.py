@@ -45,7 +45,7 @@ from . import stored_queries, write_sql
 from .column_types import SQLiteType
 from .csrf import CrossOriginProtectionMiddleware
 from .database import Database, QueryInterrupted
-from .events import Event
+from .events import AddDatabaseEvent, Event, RemoveDatabaseEvent
 from .plugins import DEFAULT_PLUGINS, get_plugins, pm
 from .renderer import json_renderer
 from .resources import DatabaseResource, TableResource
@@ -423,6 +423,9 @@ class Datasette:
     ):
         self._startup_invoked = False
         self._closed = False
+        # Strong references to in-flight fire-and-forget event dispatch
+        # tasks, so they cannot be garbage-collected before completing
+        self._pending_event_tasks = set()
         assert config_dir is None or isinstance(
             config_dir, Path
         ), "config_dir= should be a pathlib.Path"
@@ -935,6 +938,14 @@ class Datasette:
         new_databases[name] = db
         # don't mutate! that causes race conditions with live import
         self.databases = new_databases
+        self._track_event_soon(
+            AddDatabaseEvent(
+                actor=None,
+                database=db.name,
+                path=str(Path(db.path).resolve()) if db.path else None,
+                is_memory=db.is_memory,
+            )
+        )
         return db
 
     def add_memory_database(self, memory_name, name=None, route=None):
@@ -943,10 +954,41 @@ class Datasette:
         )
 
     def remove_database(self, name):
-        self.get_database(name).close()
+        db = self.get_database(name)
+        # Capture event details before close() - is_temp_disk databases
+        # delete their backing file during close()
+        path = str(Path(db.path).resolve()) if db.path else None
+        is_memory = db.is_memory
+        # Fire the event only after close() returns: close() drains any
+        # queued writes, so listeners doing a final read of the file see
+        # everything
+        db.close()
         new_databases = self.databases.copy()
         new_databases.pop(name)
         self.databases = new_databases
+        self._track_event_soon(
+            RemoveDatabaseEvent(
+                actor=None,
+                database=name,
+                path=path,
+                is_memory=is_memory,
+            )
+        )
+
+    def _track_event_soon(self, event):
+        # Best-effort fire-and-forget event dispatch from synchronous code.
+        # If startup has not run (event classes are not yet registered) or
+        # there is no running event loop, the event is intentionally
+        # dropped - lifecycle events are documented as runtime-only
+        if not self._startup_invoked:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        task = loop.create_task(self.track_event(event))
+        self._pending_event_tasks.add(task)
+        task.add_done_callback(self._pending_event_tasks.discard)
 
     def close(self):
         """Release all resources held by this Datasette instance.

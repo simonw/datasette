@@ -89,3 +89,15 @@ See [Publishing data](https://docs.datasette.io/en/stable/publish.html) in the d
 ## Datasette Lite
 
 [Datasette Lite](https://lite.datasette.io/) is Datasette packaged using WebAssembly so that it runs entirely in your browser, no Python web application server required. Read more about that in the [Datasette Lite documentation](https://github.com/simonw/datasette-lite/blob/main/README.md).
+
+
+## Contributing
+
+We welcome contributions of all kinds! Please read [CONTRIBUTING.md](CONTRIBUTING.md)
+for guidelines on how to report bugs, suggest features, and submit pull requests.
+
+By participating in this project, you agree to follow our
+[Code of Conduct](CODE_OF_CONDUCT.md).
+
+---
+*Documentation contributed by [Mukller](https://github.com/Mukller)*

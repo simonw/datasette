@@ -900,7 +900,27 @@ class TableCreateView(BaseView):
                     rows, pk=pks or pk, ignore=ignore, replace=replace, alter=alter
                 )
             else:
-                not_null = [column.name for column in columns if column.not_null]
+                # Force primary key columns NOT NULL so the API cannot create
+                # NULL primary keys, which SQLite otherwise allows and which
+                # leaves rows that cannot be viewed, edited or deleted (see
+                # #2807). A single integer primary key aliases the rowid and is
+                # never NULL, so it needs no explicit constraint.
+                # Matched case-insensitively because SQLite resolves identifiers
+                # that way: pk "code" against a column named "Code" still creates
+                # that column as the primary key.
+                pk_names = {
+                    name.lower() for name in (pks if pks else ([pk] if pk else []))
+                }
+                if len(pk_names) == 1 and any(
+                    column.name.lower() in pk_names and column.type == "integer"
+                    for column in columns
+                ):
+                    pk_names = set()
+                not_null = [
+                    column.name
+                    for column in columns
+                    if column.not_null or column.name.lower() in pk_names
+                ]
                 defaults = {}
                 for column in columns:
                     if "default_expr" in column.model_fields_set:

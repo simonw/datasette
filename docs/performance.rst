@@ -24,6 +24,19 @@ To open a file in immutable mode pass it to the datasette command using the ``-i
 
 When you open a file in immutable mode like this Datasette will also calculate and cache the row counts for each table in that database when it first starts up, further improving performance.
 
+.. _performance_wal_mode:
+
+WAL mode for concurrent writers
+-------------------------------
+
+If a database file is being written to by another process while Datasette serves reads from it, you should enable SQLite's `write-ahead logging <https://www.sqlite.org/wal.html>`__ (WAL) mode on the file. By default SQLite uses rollback journaling, which takes a database-wide lock during writes and can cause Datasette's read queries to fail with ``database is locked`` errors when those writes happen.
+
+You can flip a database into WAL mode once with the ``sqlite3`` CLI::
+
+    sqlite3 data.db 'PRAGMA journal_mode=WAL;'
+
+The setting is persistent: once a database is in WAL mode it stays in WAL mode for any future connection until you explicitly switch it back. See `Simon Willison's TIL <https://til.simonwillison.net/sqlite/enabling-wal-mode>`__ for a fuller writeup.
+
 .. _performance_inspect:
 
 Using "datasette inspect"

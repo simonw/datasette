@@ -136,6 +136,37 @@ You can then install your new plugin into a Datasette virtual environment or Doc
 
 To learn how to upload your plugin to `PyPI <https://pypi.org/>`_ for use by other people, read the PyPA guide to `Packaging and distributing projects <https://packaging.python.org/tutorials/distributing-packages/>`_.
 
+.. _writing_plugins_packaging_poetry:
+
+Packaging a plugin using Poetry
+-------------------------------
+
+Instead of using ``setup.py`` you can package a Datasette plugin using `Poetry <https://python-poetry.org/>`_. You can define your plugin using a ``pyproject.toml`` file such as:
+
+.. code-block:: toml
+
+    [tool.poetry]
+    name = "datasette-plugin-demos"
+    version = "0.1"
+    description = "Examples of plugins for Datasette"
+    repository = "https://github.com/simonw/datasette-plugin-demos"
+    authors = ["Simon Willison"]
+    license = "Apache License, Version 2.0"
+    packages = [{include = "datasette_plugin_demos"}]
+
+    [tool.poetry.dependencies]
+    python = "^3.8.1"
+    datasette = "*"
+
+    [tool.poetry.group.dev.dependencies]
+
+    [tool.poetry.plugins."datasette"]
+    "plugin_demos" = "datasette_plugin_demos"
+
+Having built a plugin in this way you can turn it into an installable package using the following command::
+
+    poetry build
+
 .. _writing_plugins_static_assets:
 
 Static assets

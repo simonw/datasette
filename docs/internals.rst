@@ -966,7 +966,7 @@ await .set_instance_metadata(self, key, value)
 
 Adds a new metadata entry for the entire Datasette instance.
 Any previous instance-level metadata entry with the same ``key`` will be overwritten.
-Internally upserts the value into the  the ``metadata_instance`` table inside the :ref:`internal database <internals_internal>`.
+Internally upserts the value into the ``metadata_instance`` table inside the :ref:`internal database <internals_internal>`.
 
 .. _datasette_set_database_metadata:
 
@@ -982,7 +982,7 @@ await .set_database_metadata(self, database_name, key, value)
 
 Adds a new metadata entry for the specified database.
 Any previous database-level metadata entry with the same ``key`` will be overwritten.
-Internally upserts the value into the  the ``metadata_databases`` table inside the :ref:`internal database <internals_internal>`.
+Internally upserts the value into the ``metadata_databases`` table inside the :ref:`internal database <internals_internal>`.
 
 .. _datasette_set_resource_metadata:
 
@@ -1000,7 +1000,7 @@ await .set_resource_metadata(self, database_name, resource_name, key, value)
 
 Adds a new metadata entry for the specified "resource".
 Any previous resource-level metadata entry with the same ``key`` will be overwritten.
-Internally upserts the value into the  the ``metadata_resources`` table inside the :ref:`internal database <internals_internal>`.
+Internally upserts the value into the ``metadata_resources`` table inside the :ref:`internal database <internals_internal>`.
 
 .. _datasette_set_column_metadata:
 
@@ -1020,7 +1020,7 @@ await .set_column_metadata(self, database_name, resource_name, column_name, key,
 
 Adds a new metadata entry for the specified column.
 Any previous column-level metadata entry with the same ``key`` will be overwritten.
-Internally upserts the value into the  the ``metadata_columns`` table inside the :ref:`internal database <internals_internal>`.
+Internally upserts the value into the ``metadata_columns`` table inside the :ref:`internal database <internals_internal>`.
 
 .. _datasette_stored_queries:
 

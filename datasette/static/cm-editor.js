@@ -14,6 +14,7 @@ const SQLite = SQLDialect.define({
   operatorChars: "*+-%<>!=&|/~",
   identifierQuotes: '`"',
   specialVar: "@:?$",
+  caseInsensitiveIdentifiers: true,
 });
 
 // Utility function from https://codemirror.net/docs/migration/
@@ -48,9 +49,8 @@ export function editorFromTextArea(textarea, conf = {}) {
       sql({
         dialect: SQLite,
         schema: conf.schema,
-        tables: conf.tables,
-        defaultTableName: conf.defaultTableName,
-        defaultSchemaName: conf.defaultSchemaName,
+        defaultTable: conf.defaultTable,
+        defaultSchema: conf.defaultSchema,
       }),
     ],
   });

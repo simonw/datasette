@@ -434,13 +434,10 @@ Datasette bundles `CodeMirror <https://codemirror.net/>`__ for the SQL editing i
 
     npm i codemirror @codemirror/lang-sql
 
-* Build the bundle using the version number from package.json with::
+* Build the bundle with::
 
-    node_modules/.bin/rollup datasette/static/cm-editor-6.0.1.js \
-      -f iife \
-      -n cm \
-      -o datasette/static/cm-editor-6.0.1.bundle.js \
-      -p @rollup/plugin-node-resolve \
-      -p @rollup/plugin-terser
+    npm install && npm run build:codemirror
 
-* Update the version reference in the ``codemirror.html`` template.
+  This runs ``rollup -c`` against the ``rollup.config.mjs`` file at the root of the repository, which reads ``datasette/static/cm-editor.js`` and writes the bundled, minified output to ``datasette/static/cm-editor.bundle.js``. The bundle filename does not include the CodeMirror version number, so no template needs to be updated.
+
+* Commit the rebuilt ``datasette/static/cm-editor.bundle.js`` - the bundle is checked into the repository.

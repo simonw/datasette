@@ -500,6 +500,8 @@ function renderActionLink(itemConfig) {
   var newLink = document.createElement("a");
   newLink.textContent = itemConfig.label;
   newLink.href = itemConfig.href || "#";
+  newLink.setAttribute("role", "menuitem");
+  newLink.tabIndex = -1;
   if (itemConfig.onClick) {
     newLink.addEventListener("click", itemConfig.onClick);
   }
@@ -512,9 +514,36 @@ const initDatasetteTable = function (manager) {
   if (!window.URLSearchParams) {
     return;
   }
-  function closeMenu() {
+  function closeMenu(options) {
     menu.style.display = "none";
     menu.classList.remove("anim-scale-in");
+    if (menu._trigger) {
+      menu._trigger.setAttribute("aria-expanded", "false");
+      if (options && options.restoreFocus) {
+        menu._trigger.focus();
+      }
+      menu._trigger = null;
+    }
+  }
+
+  // Move keyboard focus between the open menu's items (wraps around).
+  function focusMenuItem(index) {
+    var items = menu.querySelectorAll('[role="menuitem"]');
+    if (!items.length) {
+      return;
+    }
+    var i = (index + items.length) % items.length;
+    items[i].focus();
+  }
+
+  // Keyboard support on the column cog trigger: open with Enter/Space/ArrowDown
+  // and move focus onto the first item, per the ARIA menu button pattern.
+  function onTriggerKeydown(ev) {
+    if (ev.key === "Enter" || ev.key === " " || ev.key === "ArrowDown") {
+      ev.preventDefault();
+      onTableHeaderClick(ev);
+      focusMenuItem(0);
+    }
   }
 
   const tableWrapper = document.querySelector(manager.selectors.tableWrapper);
@@ -535,6 +564,7 @@ const initDatasetteTable = function (manager) {
   function onTableHeaderClick(ev) {
     ev.preventDefault();
     ev.stopPropagation();
+    var trigger = ev.currentTarget;
     menu.innerHTML = DROPDOWN_HTML;
     var th = ev.target;
     while (th.nodeName != "TH") {
@@ -560,9 +590,11 @@ const initDatasetteTable = function (manager) {
       },
     });
     var menuList = menu.querySelector("ul.dropdown-actions");
+    menuList.setAttribute("role", "menu");
     menuList.innerHTML = "";
     actionState.actionItems.forEach((itemConfig) => {
       var menuItem = document.createElement("li");
+      menuItem.setAttribute("role", "none");
       menuItem.appendChild(renderActionLink(itemConfig));
       menuList.appendChild(menuItem);
     });
@@ -607,7 +639,34 @@ const initDatasetteTable = function (manager) {
       // And move hook tip as well
       hook.style.left = menuWidth - 13 + "px";
     }
+
+    menu._trigger = trigger;
+    trigger.setAttribute("aria-expanded", "true");
   }
+
+  // Keyboard navigation within the open menu (ARIA menu button pattern).
+  menu.addEventListener("keydown", function (ev) {
+    var items = Array.from(menu.querySelectorAll('[role="menuitem"]'));
+    var currentIndex = items.indexOf(document.activeElement);
+    if (ev.key === "ArrowDown") {
+      ev.preventDefault();
+      focusMenuItem(currentIndex + 1);
+    } else if (ev.key === "ArrowUp") {
+      ev.preventDefault();
+      focusMenuItem(currentIndex - 1);
+    } else if (ev.key === "Home") {
+      ev.preventDefault();
+      focusMenuItem(0);
+    } else if (ev.key === "End") {
+      ev.preventDefault();
+      focusMenuItem(items.length - 1);
+    } else if (ev.key === "Escape") {
+      ev.preventDefault();
+      closeMenu({ restoreFocus: true });
+    } else if (ev.key === "Tab") {
+      closeMenu();
+    }
+  });
 
   var svg = document.createElement("div");
   svg.innerHTML = DROPDOWN_ICON_SVG;
@@ -624,11 +683,21 @@ const initDatasetteTable = function (manager) {
     document.querySelectorAll(manager.selectors.tableHeaders),
   );
   ths.forEach((th) => {
-    if (!th.querySelector("a")) {
+    var columnLink = th.querySelector("a");
+    if (!columnLink) {
       return;
     }
     var icon = svg.cloneNode(true);
+    icon.setAttribute("role", "button");
+    icon.setAttribute("tabindex", "0");
+    icon.setAttribute("aria-haspopup", "menu");
+    icon.setAttribute("aria-expanded", "false");
+    icon.setAttribute(
+      "aria-label",
+      "Column actions for " + columnLink.textContent.trim(),
+    );
     icon.addEventListener("click", onTableHeaderClick);
+    icon.addEventListener("keydown", onTriggerKeydown);
     th.appendChild(icon);
   });
 };

@@ -4,7 +4,7 @@ from urllib.parse import urlencode
 from asgiref.sync import async_to_sync
 
 # These wrapper classes pre-date the introduction of
-# datasette.client and httpx to Datasette. They could
+# datasette.client and HTTPX2 to Datasette. They could
 # be removed if the Datasette tests are modified to
 # call datasette.client directly.
 

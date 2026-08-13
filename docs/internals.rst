@@ -1594,32 +1594,32 @@ datasette.client
 
 Plugins can make internal simulated HTTP requests to the Datasette instance within which they are running. This ensures that all of Datasette's external JSON APIs are also available to plugins, while avoiding the overhead of making an external HTTP call to access those APIs.
 
-The ``datasette.client`` object is a wrapper around the `HTTPX Python library <https://www.python-httpx.org/>`__, providing an async-friendly API that is similar to the widely used `Requests library <https://requests.readthedocs.io/>`__.
+The ``datasette.client`` object is a wrapper around the `HTTPX2 Python library <https://httpx2.pydantic.dev/>`__, providing an async-friendly API that is similar to the widely used `Requests library <https://requests.readthedocs.io/>`__.
 
 It offers the following methods:
 
-``await datasette.client.get(path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.get(path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal GET request against that path.
 
-``await datasette.client.post(path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.post(path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal POST request. Use ``data={"name": "value"}`` to pass form parameters.
 
-``await datasette.client.options(path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.options(path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal OPTIONS request.
 
-``await datasette.client.head(path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.head(path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal HEAD request.
 
-``await datasette.client.put(path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.put(path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal PUT request.
 
-``await datasette.client.patch(path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.patch(path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal PATCH request.
 
-``await datasette.client.delete(path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.delete(path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal DELETE request.
 
-``await datasette.client.request(method, path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.request(method, path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal request with the given HTTP method against that path.
 
 These methods can be used with :ref:`internals_datasette_urls` - for example:
@@ -1636,7 +1636,7 @@ These methods can be used with :ref:`internals_datasette_urls` - for example:
 
 ``datasette.client`` methods automatically take the current :ref:`setting_base_url` setting into account, whether or not you use the ``datasette.urls`` family of methods to construct the path.
 
-For documentation on available ``**kwargs`` options and the shape of the HTTPX Response object refer to the `HTTPX Async documentation <https://www.python-httpx.org/async/>`__.
+For documentation on available ``**kwargs`` options and the shape of the HTTPX2 Response object refer to the `HTTPX2 Async documentation <https://httpx2.pydantic.dev/async/>`__.
 
 .. _internals_datasette_client_actor:
 
@@ -2623,12 +2623,12 @@ This example uses trace to record the start, end and duration of any HTTP GET re
 .. code-block:: python
 
     from datasette.tracer import trace
-    import httpx
+    import httpx2
 
 
     async def fetch_url(url):
         with trace("fetch-url", url=url):
-            async with httpx.AsyncClient() as client:
+            async with httpx2.AsyncClient() as client:
                 return await client.get(url)
 
 .. _internals_tracer_trace_child_tasks:

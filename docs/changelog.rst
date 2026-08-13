@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v1_0_unreleased:
+
+Unreleased
+----------
+
+- Datasette now uses `HTTPX2 <https://httpx2.pydantic.dev/>`__ in place of HTTPX. (:issue:`2879`)
+
 .. _v1_0_a38:
 
 1.0a38 (2026-08-06)

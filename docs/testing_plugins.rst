@@ -271,66 +271,6 @@ If you want to create that test database repeatedly for every individual test fu
         # This fixture will be executed repeatedly for every test
         ...
 
-.. _testing_plugins_pytest_httpx:
-
-Testing outbound HTTP calls with pytest-httpx
----------------------------------------------
-
-If your plugin makes outbound HTTP calls - for example datasette-auth-github or datasette-import-table - you may need to mock those HTTP requests in your tests.
-
-The `pytest-httpx <https://pypi.org/project/pytest-httpx/>`__ package is a useful library for mocking calls made using HTTPX. It does not mock HTTPX2 requests. Datasette's own testing mechanism uses HTTPX2 internally, so ``pytest-httpx`` does not affect requests made using ``datasette.client`` and no ``non_mocked_hosts()`` fixture is needed.
-
-As an example, here's a very simple plugin which executes an HTTP response and returns the resulting content:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-    from datasette.utils.asgi import Response
-    import httpx
-
-
-    @hookimpl
-    def register_routes():
-        return [
-            (r"^/-/fetch-url$", fetch_url),
-        ]
-
-
-    async def fetch_url(datasette, request):
-        if request.method == "GET":
-            return Response.html("""
-                <form action="/-/fetch-url" method="post">
-                <input name="url"><input type="submit">
-            </form>""")
-        vars = await request.post_vars()
-        url = vars["url"]
-        return Response.text(httpx.get(url).text)
-
-Here's a test for that plugin that mocks the HTTPX outbound request:
-
-.. code-block:: python
-
-    from datasette.app import Datasette
-    import pytest
-
-
-    async def test_outbound_http_call(httpx_mock):
-        httpx_mock.add_response(
-            url="https://www.example.com/",
-            text="Hello world",
-        )
-        datasette = Datasette([], memory=True)
-        response = await datasette.client.post(
-            "/-/fetch-url",
-            data={"url": "https://www.example.com/"},
-        )
-        assert response.text == "Hello world"
-
-        outbound_request = httpx_mock.get_request()
-        assert (
-            outbound_request.url == "https://www.example.com/"
-        )
-
 .. _testing_plugins_register_in_test:
 
 Registering a plugin for the duration of a test

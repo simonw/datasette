@@ -1436,7 +1436,7 @@ Other changes
 - The request object now provides a ``request.full_path`` property, which returns the path including any query string. (:issue:`1184`)
 - Better error message for disallowed ``PRAGMA`` clauses in SQL queries. (:issue:`1185`)
 - ``datasette publish heroku`` now deploys using ``python-3.8.7``.
-- New plugin testing documentation on :ref:`testing_plugins_pytest_httpx`. (:issue:`1198`)
+- New plugin testing documentation for mocking outbound HTTP calls. (:issue:`1198`)
 - All ``?_*`` query string parameters passed to the table page are now persisted in hidden form fields, so parameters such as ``?_size=10`` will be correctly passed to the next page when query filters are changed. (:issue:`1194`)
 - Fixed a bug loading a database file called ``test-database (1).sqlite``. (:issue:`1181`)
 

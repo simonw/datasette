@@ -302,6 +302,20 @@ content you can do so by creating a ``row.html`` template like this:
 Note the ``default:row.html`` template name, which ensures Jinja will inherit
 from the default template.
 
+Customizing breadcrumbs
+~~~~~~~~~~~~~~~~~~~~~~~
+
+The default ``base.html`` template provides a ``crumbs`` block inside its
+navigation block. Override ``crumbs`` to customize the breadcrumbs without
+replacing the rest of the navigation. The imported ``crumbs.nav()`` macro
+renders Datasette's permission-aware breadcrumbs:
+
+.. code-block:: jinja
+
+    {% block crumbs %}
+    {{ crumbs.nav(request=request, database=database, table=table) }}
+    {% endblock %}
+
 The ``_table.html`` template is included by both the row and the table pages,
 and a list of rows. The default ``_table.html`` template renders them as an
 HTML template and `can be seen here <https://github.com/simonw/datasette/blob/main/datasette/templates/_table.html>`_.

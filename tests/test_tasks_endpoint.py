@@ -38,15 +38,15 @@ async def test_running_and_crashed_task_states():
     async def long_running(datasette):
         await asyncio.Event().wait()
 
-    async def crasher(datasette):
+    async def crashing_task(datasette):
         raise RuntimeError("kaboom")
 
     long_handle = ds.add_background_task(long_running, name="long-runner")
-    crash_handle = ds.add_background_task(crasher, name="crasher")
+    crash_handle = ds.add_background_task(crashing_task, name="crashing_task")
 
     await ds.start_background_tasks()
 
-    # Let the crasher run to completion and its done-callback (which sets
+    # Let the crashing_task run to completion and its done-callback (which sets
     # handle.state = "crashed") actually fire before we read state back out.
     await asyncio.wait_for(
         asyncio.gather(crash_handle.task, return_exceptions=True), timeout=5
@@ -64,7 +64,7 @@ async def test_running_and_crashed_task_states():
         assert by_name["long-runner"]["exception"] is None
         assert by_name["long-runner"]["started_at"] is not None
 
-        crashed = by_name["crasher"]
+        crashed = by_name["crashing_task"]
         assert crashed["state"] == "crashed"
         assert crashed["exception"] is not None
         assert isinstance(crashed["exception"], str)

@@ -321,6 +321,10 @@ def serve_with_plugins(tmp_path):
     """Factory fixture for starting ``datasette serve`` in a subprocess with
     plugins written to a temporary ``--plugins-dir``.
 
+    For tests that need the real serve path: event-loop wiring, exit codes,
+    signals. The usual in-process ``pm.register`` plugin pattern can't reach
+    a subprocess, so plugin source is written out as importable files instead.
+
     Unlike ``ds_localhost_http_server`` this is function-scoped and takes a
     fresh port each time, because each test needs its own plugins. Call it as::
 

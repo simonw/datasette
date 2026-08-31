@@ -678,8 +678,7 @@ def serve(
         except StartupError as e:
             raise click.ClickException(e.args[0])
 
-        # --get never launches background tasks (decision #3 in
-        # plans/first-request/04-core-plan.md): TestClient's request below
+        # --get never launches background tasks: TestClient's request below
         # flows through the full ASGI stack, including the
         # AsgiRunOnFirstRequest fallback, which would otherwise launch them.
         ds._suppress_background_tasks = True

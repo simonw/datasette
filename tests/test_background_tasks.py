@@ -1,8 +1,7 @@
 """
 Tests for datasette.add_background_task() / start_background_tasks() and the
 BackgroundTask / BackgroundTaskSupervisor machinery in
-datasette/background_tasks.py, per plans/first-request/04-core-plan.md
-(decisions #2-#5) and todos/first-request/03-background-tasks-api.md.
+datasette/background_tasks.py.
 """
 
 import asyncio

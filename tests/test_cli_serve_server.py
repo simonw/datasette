@@ -145,6 +145,8 @@ def test_startup_error_fails_fast_before_port_binds(serve_with_plugins):
     # confirms the socket was not left bound; on its own it cannot prove the
     # failure preceded the bind, since a port nothing ever touched also
     # refuses connections.
-    with pytest.raises(OSError):
-        with socket.create_connection(("127.0.0.1", port), timeout=0.2):
-            pass
+    with (
+        pytest.raises(OSError),
+        socket.create_connection(("127.0.0.1", port), timeout=0.2),
+    ):
+        pass

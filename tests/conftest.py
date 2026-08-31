@@ -341,7 +341,7 @@ def serve_with_plugins(tmp_path):
         plugins_dir = tmp_path / "plugins"
         plugins_dir.mkdir(exist_ok=True)
         for module_name, source in plugins.items():
-            (plugins_dir / "{}.py".format(module_name)).write_text(source, "utf-8")
+            (plugins_dir / f"{module_name}.py").write_text(source, "utf-8")
         port = find_free_port()
         proc = subprocess.Popen(
             [
@@ -365,7 +365,7 @@ def serve_with_plugins(tmp_path):
         processes.append(proc)
         if wait_for_startup:
             wait_until_responds(
-                "http://127.0.0.1:{}/-/versions.json".format(port), process=proc
+                f"http://127.0.0.1:{port}/-/versions.json", process=proc
             )
         return proc, port
 

@@ -64,20 +64,20 @@ def test_serve_with_get_does_not_launch_background_tasks(tmp_path_factory):
     sentinel = plugins_dir / "sentinel.txt"
     (plugins_dir / "bg_task_for_get.py").write_text(
         textwrap.dedent(
-            """
+            f"""
         from datasette import hookimpl
 
         @hookimpl
         def startup(datasette):
             async def inner():
                 async def task(datasette):
-                    with open("{sentinel}", "w") as fp:
+                    with open("{sentinel!s}", "w") as fp:
                         fp.write("ran")
 
                 datasette.add_background_task(task, name="get-sentinel-task")
 
             return inner
-    """.format(sentinel=str(sentinel)),
+    """,
         ),
         "utf-8",
     )
@@ -96,9 +96,9 @@ def test_serve_with_get_does_not_launch_background_tasks(tmp_path_factory):
     assert result.exit_code == 0, result.output
     assert not sentinel.exists()
 
-    to_unregister = [
+    to_unregister = next(
         p for p in pm.get_plugins() if p.__name__ == "bg_task_for_get.py"
-    ][0]
+    )
     pm.unregister(to_unregister)
 
 

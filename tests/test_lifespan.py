@@ -283,10 +283,9 @@ async def test_asgi_wrapper_runs_after_startup_fallback_path():
             def wrap(app):
                 async def check_startup(scope, receive, send):
                     if scope["type"] == "http":
-                        assert datasette._startup_invoked is True, (
-                            "asgi_wrapper saw an http scope before startup "
-                            "completed"
-                        )
+                        assert (
+                            datasette._startup_invoked is True
+                        ), "asgi_wrapper saw an http scope before startup completed"
                     await app(scope, receive, send)
 
                 return check_startup

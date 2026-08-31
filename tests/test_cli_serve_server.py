@@ -31,13 +31,9 @@ def test_serve_unix_domain_socket(ds_unix_domain_socket_server):
     }.items() <= response.json().items()
 
 
-# Shaped after datasette-litestream's (sync) startup hook, which schedules a
+# Shaped after datasette-litestream's startup hook, which schedules a
 # background task with asyncio.get_running_loop().create_task(...):
-# https://github.com/simonw/datasette-litestream/blob/main/datasette_litestream/__init__.py
-# That only has a chance to actually run if invoke_startup() executes on the
-# same event loop that goes on to serve requests - if it runs on a throwaway
-# loop that gets closed straight after (as on unmodified main), the task is
-# scheduled but never gets a turn before the loop is torn down.
+# https://github.com/datasette/datasette-litestream
 MARKER_TASK_PLUGIN = """
 import asyncio
 from datasette import hookimpl
@@ -49,14 +45,9 @@ def startup(datasette):
     datasette._startup_calls = getattr(datasette, "_startup_calls", 0) + 1
 
     async def _mark():
-        # The await is essential to the regression: a task with no
-        # internal await point can complete during the brief window
-        # between run_until_complete()'s coroutine finishing and the
-        # temporary loop actually stopping, masking the bug this test
-        # guards against. Real background tasks (like
-        # datasette-litestream's credential_refresh_loop) always have an
-        # internal await, and never get to resume once their throwaway
-        # loop is closed.
+        # Must await before setting the flag: a task with no internal
+        # await point could finish on the throwaway loop before it
+        # closed, masking the regression this test guards against.
         await asyncio.sleep(0.2)
         datasette._marker_task_ran = True
 

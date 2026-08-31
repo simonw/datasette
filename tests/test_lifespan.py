@@ -1,6 +1,6 @@
 """
 Tests for wiring Datasette startup (setup_db table counts + invoke_startup)
-into the ASGI lifespan protocol, per plans/first-request/02-lifespan-startup.
+into the ASGI lifespan protocol.
 
 These exercise Datasette._startup_sequence() via three different callers:
 - AsgiLifespan, by hand-driving lifespan.startup messages (no HTTP request)

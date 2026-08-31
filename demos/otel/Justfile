@@ -1,0 +1,30 @@
+# OpenTelemetry demo - see README.md in this directory.
+#
+#   just receiver  +  just serve     -> span summary in the terminal
+#   just jaeger    +  just serve     -> real trace UI at http://localhost:16686
+#
+# Both listen for OTLP/HTTP on port 4318, so `just serve` works with either
+# (but not both at once).
+
+otel_env := "OTEL_TRACES_EXPORTER=otlp OTEL_METRICS_EXPORTER=none OTEL_LOGS_EXPORTER=none OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 OTEL_SERVICE_NAME=datasette OTEL_BSP_SCHEDULE_DELAY=1000"
+
+default:
+    @just --list --unsorted
+
+# Terminal 1, option A: the ~150 line pure-Python receiver. Ctrl-C for a summary
+receiver:
+    uv run --with opentelemetry-proto python otlp_receiver.py
+
+# Terminal 1, option B: Jaeger from its own binary - no Docker. UI on :16686
+jaeger:
+    @command -v jaeger >/dev/null || { echo "No jaeger binary on PATH. Grab one from https://www.jaegertracing.io/download/"; exit 1; }
+    jaeger
+
+# Terminal 2: Datasette under the OpenTelemetry agent, exporting to :4318
+serve db="demo.db":
+    @[ "{{ db }}" != "demo.db" ] || [ -e demo.db ] || sqlite3 demo.db "create table plants(id integer primary key, name text, height_cm real); with recursive n(i) as (select 1 union all select i + 1 from n where i < 200) insert into plants select i, 'plant ' || i, abs(random() % 300) from n;"
+    {{ otel_env }} uv run --with opentelemetry-distro --with opentelemetry-exporter-otlp-proto-http opentelemetry-instrument datasette {{ db }} -p 8001
+
+# Terminal 3: make a traced request (defaults to the generated demo table)
+request path="/demo/plants":
+    curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8001{{ path }}

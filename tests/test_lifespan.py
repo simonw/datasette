@@ -11,9 +11,10 @@ These exercise Datasette._startup_sequence() via three different callers:
 
 import asyncio
 import contextlib
+import sqlite3
+
 import httpx
 import pytest
-import sqlite3
 
 from datasette import hookimpl
 from datasette.app import Datasette

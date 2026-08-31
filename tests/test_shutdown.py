@@ -1,7 +1,5 @@
 """
-Tests for the shutdown(datasette) plugin hook and Datasette.invoke_shutdown(),
-per plans/first-request/04-core-plan.md (decision #6) and
-todos/first-request/04-shutdown-hook.md.
+Tests for the shutdown(datasette) plugin hook and Datasette.invoke_shutdown().
 
 Order under test: plugin `shutdown` hooks run first (while background tasks
 are still alive) -> supervised background tasks are cancelled and drained

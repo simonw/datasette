@@ -3075,8 +3075,7 @@ ORDER BY allowed.parent, allowed.child
         ``_suppress_background_tasks`` is set (the ``--get`` CLI path: its
         one-shot TestClient request flows through the full ASGI stack,
         including the first-request fallback, but must never launch
-        long-lived background work per decision #3 in
-        ``plans/first-request/04-core-plan.md``).
+        long-lived background work).
         """
         if self._suppress_background_tasks:
             return

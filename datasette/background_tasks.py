@@ -22,9 +22,6 @@ consumer, a scheduled job runner) register it with
 - **cancellation**: :meth:`BackgroundTaskSupervisor.cancel_all` cancels
   every task still running and waits (with a grace period) for them to
   actually stop.
-
-See ``plans/first-request/04-core-plan.md`` (decisions #2-#5) for the
-design rationale.
 """
 
 from __future__ import annotations

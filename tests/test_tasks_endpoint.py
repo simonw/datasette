@@ -1,5 +1,5 @@
 """
-Tests for the /-/tasks introspection endpoint (todos/first-request/06-tasks-endpoint.md).
+Tests for the /-/tasks introspection endpoint.
 
 /-/tasks exposes datasette._background_tasks (see tests/test_background_tasks.py
 for the supervisor machinery itself) the same way /-/threads exposes threading

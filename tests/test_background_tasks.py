@@ -147,9 +147,7 @@ async def test_launch_waits_for_every_startup_hook_before_running_any_task():
         assert hook_call_order == ["A", "B"]
 
         handles = ds._background_tasks.tasks()
-        await asyncio.wait_for(
-            asyncio.gather(*[h.task for h in handles]), timeout=5
-        )
+        await asyncio.wait_for(asyncio.gather(*[h.task for h in handles]), timeout=5)
         # Yet by the time task-a's own body executed (after launch, which
         # only happens once every startup hook - including B's - has
         # finished), task-b was already registered.

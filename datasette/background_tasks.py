@@ -31,7 +31,7 @@ import datetime
 import functools
 import inspect
 import logging
-from typing import Awaitable, Callable, List, Optional
+from collections.abc import Awaitable, Callable
 
 logger = logging.getLogger("datasette.background_tasks")
 
@@ -40,7 +40,7 @@ def _utcnow_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
-def _resolve_plugin_name(func: Callable) -> Optional[str]:
+def _resolve_plugin_name(func: Callable) -> str | None:
     """Best-effort, cheap attempt to work out which registered plugin a
     background-task function belongs to, for the ``.plugin`` field on
     :class:`BackgroundTask` (used by ``/-/tasks`` and logs).
@@ -76,7 +76,7 @@ def _resolve_plugin_name(func: Callable) -> Optional[str]:
                 plugin_module_name + "."
             ):
                 return pm.get_name(plugin)
-    except Exception:
+    except Exception:  # noqa: BLE001
         # Never let plugin-name resolution break task registration.
         return None
     return None
@@ -95,17 +95,17 @@ class BackgroundTask:
     def __init__(
         self,
         name: str,
-        func: Callable[["object"], Awaitable[None]],
-        plugin: Optional[str] = None,
+        func: Callable[[object], Awaitable[None]],
+        plugin: str | None = None,
     ):
         self.name = name
         self.state = "registered"
-        self.task: Optional[asyncio.Task] = None
-        self.exception: Optional[BaseException] = None
-        self.started_at: Optional[str] = None
+        self.task: asyncio.Task | None = None
+        self.exception: BaseException | None = None
+        self.started_at: str | None = None
         self.plugin = plugin
         self._func = func
-        self._supervisor: Optional["BackgroundTaskSupervisor"] = None
+        self._supervisor: BackgroundTaskSupervisor | None = None
 
     def cancel(self) -> None:
         """Cancel this task.
@@ -152,7 +152,7 @@ class BackgroundTaskSupervisor:
 
     def __init__(self, datasette):
         self._datasette = datasette
-        self._tasks: List[BackgroundTask] = []
+        self._tasks: list[BackgroundTask] = []
         self._names = set()
         self._launched = False
         self._lock = asyncio.Lock()
@@ -233,7 +233,7 @@ class BackgroundTaskSupervisor:
                 ", ".join(names),
             )
 
-    def tasks(self) -> List[BackgroundTask]:
+    def tasks(self) -> list[BackgroundTask]:
         """Return every registered :class:`BackgroundTask`, launched or
         not, in registration order. Used by the ``/-/tasks`` debug
         endpoint.
@@ -249,8 +249,6 @@ def _on_task_done(handle: BackgroundTask, task: asyncio.Task) -> None:
     if exc is not None:
         handle.state = "crashed"
         handle.exception = exc
-        logger.error(
-            "Background task %r crashed", handle.name, exc_info=exc
-        )
+        logger.error("Background task %r crashed", handle.name, exc_info=exc)
         return
     handle.state = "completed"

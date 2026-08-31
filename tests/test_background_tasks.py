@@ -244,14 +244,14 @@ async def test_crashing_task_logs_traceback_and_state_is_crashed(caplog):
 
     survivor_ran = asyncio.Event()
 
-    async def crasher(datasette):
+    async def crashing_task(datasette):
         raise RuntimeError("kaboom")
 
     async def survivor(datasette):
         survivor_ran.set()
 
     with caplog.at_level(logging.ERROR, logger="datasette.background_tasks"):
-        crash_handle = ds.add_background_task(crasher, name="crasher")
+        crash_handle = ds.add_background_task(crashing_task, name="crashing_task")
         survivor_handle = ds.add_background_task(survivor, name="survivor")
         await asyncio.wait_for(
             asyncio.gather(
@@ -268,7 +268,7 @@ async def test_crashing_task_logs_traceback_and_state_is_crashed(caplog):
     assert survivor_ran.is_set()
     assert survivor_handle.state == "completed"
 
-    assert "crasher" in caplog.text
+    assert "crashing_task" in caplog.text
     assert "kaboom" in caplog.text
     assert "Traceback" in caplog.text
     assert "RuntimeError" in caplog.text

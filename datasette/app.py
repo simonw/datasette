@@ -2910,10 +2910,9 @@ class Datasette:
         plugin's cleanup, or skip task cancellation / ``close()``
         altogether.
 
-        Order matters (decision #6, ``plans/first-request/04-core-plan.md``):
-        hooks run first, while background tasks are still alive, so a
-        plugin can coordinate with its own task (e.g. tell a queue
-        consumer to stop pulling new work) before that task gets
+        Order matters: hooks run first, while background tasks are still
+        alive, so a plugin can coordinate with its own task (e.g. tell a
+        queue consumer to stop pulling new work) before that task gets
         cancelled; ``close()`` runs last so both the hooks and the
         cancelled tasks still have working database connections to write
         any final state.

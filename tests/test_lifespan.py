@@ -8,7 +8,7 @@ These exercise Datasette._startup_sequence() via three different callers:
   events (this is what DatasetteClient / plain httpx.ASGITransport uses)
 - Both at once, to prove startup hooks run at most once
 
-Also covers ticket 05 (plans/first-request/04-core-plan.md decision #7):
+Also covers the asgi_wrapper reorder:
 plugin asgi_wrapper middleware runs INSIDE AsgiRunOnFirstRequest (below it)
 but OUTSIDE AsgiLifespan (above it), so wrappers only ever see http/
 websocket scopes after startup has completed, in both the lifespan and

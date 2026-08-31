@@ -1,7 +1,7 @@
 # Release notes draft — ticket 05 (wrapper reorder)
 
-Scratch file: content to be folded into `docs/changelog.rst` by ticket 07
-(`todos/first-request/07-docs-and-changelog.md`). Not part of the shipped
+Scratch file: content to be folded into `docs/changelog.rst` by the final
+docs PR in this stack, which also deletes this file. Not part of the shipped
 docs on its own.
 
 ## Plugin hooks

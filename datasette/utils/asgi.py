@@ -304,7 +304,7 @@ class AsgiLifespan:
                     try:
                         for fn in self.on_startup:
                             await fn()
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001
                         await send(
                             {"type": "lifespan.startup.failed", "message": str(e)}
                         )
@@ -314,7 +314,7 @@ class AsgiLifespan:
                     try:
                         for fn in self.on_shutdown:
                             await fn()
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001
                         await send(
                             {"type": "lifespan.shutdown.failed", "message": str(e)}
                         )

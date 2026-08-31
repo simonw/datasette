@@ -155,7 +155,7 @@ def test_startup_error_fails_fast_before_port_binds(serve_with_plugins):
 # and therefore every plugin's `shutdown` hook. The plugin below writes a
 # sentinel file from inside its shutdown hook so this can be checked from
 # outside the subprocess after it exits.
-SHUTDOWN_SENTINEL_PLUGIN_TEMPLATE = '''
+SHUTDOWN_SENTINEL_PLUGIN_TEMPLATE = """
 import pathlib
 from datasette import hookimpl
 
@@ -165,7 +165,7 @@ SENTINEL_PATH = {sentinel_path!r}
 @hookimpl
 def shutdown(datasette):
     pathlib.Path(SENTINEL_PATH).write_text("shutdown ran", "utf-8")
-'''
+"""
 
 
 def _start_serve_with_shutdown_sentinel(serve_with_plugins, tmp_path):
@@ -196,9 +196,9 @@ def test_sigterm_runs_shutdown_hooks(serve_with_plugins, tmp_path):
             "datasette serve did not exit within 10s of SIGTERM\n"
             + ds_proc.stdout.read().decode("utf-8")
         )
+    output = ds_proc.stdout.read().decode("utf-8")
     assert sentinel_path.exists(), (
-        "shutdown hook never wrote its sentinel file after SIGTERM\n"
-        + ds_proc.stdout.read().decode("utf-8")
+        "shutdown hook never wrote its sentinel file after SIGTERM\n" + output
     )
     assert sentinel_path.read_text("utf-8") == "shutdown ran"
 
@@ -222,8 +222,8 @@ def test_sigint_runs_shutdown_hooks(serve_with_plugins, tmp_path):
             "datasette serve did not exit within 10s of SIGINT\n"
             + ds_proc.stdout.read().decode("utf-8")
         )
+    output = ds_proc.stdout.read().decode("utf-8")
     assert sentinel_path.exists(), (
-        "shutdown hook never wrote its sentinel file after SIGINT\n"
-        + ds_proc.stdout.read().decode("utf-8")
+        "shutdown hook never wrote its sentinel file after SIGINT\n" + output
     )
     assert sentinel_path.read_text("utf-8") == "shutdown ran"

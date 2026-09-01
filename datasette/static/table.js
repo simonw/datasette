@@ -379,7 +379,7 @@ function buildColumnActionItems(manager, th, options) {
   var column = th.dataset.column;
   var columnActions = [];
   var isSortable = !!th.querySelector("a");
-  var isFirstColumn = th.parentElement.querySelector("th:first-of-type") === th;
+  var isLinkColumn = th.dataset.isLinkColumn === "1";
   var isSinglePk =
     th.dataset.isPk === "1" &&
     document.querySelectorAll('th[data-is-pk="1"]').length === 1;
@@ -403,7 +403,7 @@ function buildColumnActionItems(manager, th, options) {
 
   if (
     DATASETTE_ALLOW_FACET &&
-    !isFirstColumn &&
+    !isLinkColumn &&
     !getDisplayedFacets().includes(column) &&
     !isSinglePk
   ) {

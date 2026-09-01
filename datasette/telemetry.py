@@ -36,6 +36,15 @@ from .telemetry_registry import (
     HTTP_REQUEST_METHOD,
     HTTP_RESPONSE_STATUS_CODE,
     INTERNAL_CLIENT,
+    M_CONNECTIONS_OPEN,
+    M_OPERATION_DURATION,
+    M_QUERIES_INTERRUPTED,
+    M_QUERIES_PENDING,
+    M_THREADS_LIMIT,
+    M_THREADS_QUEUE_DEPTH,
+    M_WRITE_QUEUE_DEPTH,
+    M_WRITE_QUEUE_WAIT,
+    OPERATION,
     SERVER_ADDRESS,
     URL_PATH,
     URL_SCHEME,
@@ -402,27 +411,29 @@ def _duration_attributes(database_name, operation):
     return {
         DB_SYSTEM: "sqlite",
         DB_NAMESPACE: database_name,
-        "datasette.operation": operation,
+        OPERATION: operation,
     }
 
 
 sql_operation_duration = meter.create_histogram(
-    "db.client.operation.duration",
-    unit="s",
+    M_OPERATION_DURATION,
+    unit=M_OPERATION_DURATION.unit,
     description="Duration of a SQL operation issued by Datasette",
+    explicit_bucket_boundaries_advisory=M_OPERATION_DURATION.buckets,
 )
 
 write_queue_wait = meter.create_histogram(
-    "datasette.write.queue_wait",
-    unit="s",
+    M_WRITE_QUEUE_WAIT,
+    unit=M_WRITE_QUEUE_WAIT.unit,
     description=(
         "Time a write spent queued behind the single write thread for its database"
     ),
+    explicit_bucket_boundaries_advisory=M_WRITE_QUEUE_WAIT.buckets,
 )
 
 queries_interrupted = meter.create_counter(
-    "datasette.sql.queries.interrupted",
-    unit="{query}",
+    M_QUERIES_INTERRUPTED,
+    unit=M_QUERIES_INTERRUPTED.unit,
     description=(
         "Queries cancelled for exceeding sql_time_limit_ms. Not derivable from "
         "spans under sampling, and the signal that a time limit is too tight"
@@ -582,36 +593,36 @@ def observe_open_connections(options=None):
 
 
 sql_thread_limit_gauge = meter.create_observable_gauge(
-    "datasette.sql.threads.limit",
+    M_THREADS_LIMIT,
     callbacks=[observe_sql_thread_limit],
-    unit="{thread}",
+    unit=M_THREADS_LIMIT.unit,
     description="Maximum concurrent read queries (the num_sql_threads setting)",
 )
 
 sql_thread_queue_depth_gauge = meter.create_observable_gauge(
-    "datasette.sql.threads.queue_depth",
+    M_THREADS_QUEUE_DEPTH,
     callbacks=[observe_sql_thread_queue_depth],
-    unit="{query}",
+    unit=M_THREADS_QUEUE_DEPTH.unit,
     description="Read queries waiting for a free thread in the shared SQL pool",
 )
 
 pending_queries_gauge = meter.create_observable_gauge(
-    "datasette.sql.queries.pending",
+    M_QUERIES_PENDING,
     callbacks=[observe_pending_queries],
-    unit="{query}",
+    unit=M_QUERIES_PENDING.unit,
     description="Read queries submitted to the pool and not yet complete",
 )
 
 write_queue_depth_gauge = meter.create_observable_gauge(
-    "datasette.write.queue_depth",
+    M_WRITE_QUEUE_DEPTH,
     callbacks=[observe_write_queue_depth],
-    unit="{write}",
+    unit=M_WRITE_QUEUE_DEPTH.unit,
     description="Writes queued behind a database's single write thread",
 )
 
 open_connections_gauge = meter.create_observable_gauge(
-    "datasette.connections.open",
+    M_CONNECTIONS_OPEN,
     callbacks=[observe_open_connections],
-    unit="{connection}",
+    unit=M_CONNECTIONS_OPEN.unit,
     description="Open SQLite file connections tracked for closing",
 )

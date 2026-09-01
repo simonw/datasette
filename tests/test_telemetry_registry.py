@@ -395,6 +395,29 @@ def test_registry_entries_are_usable_as_plain_strings():
     assert f"{reg.DB_QUERY}.execute" == "db.query.execute"
 
 
+def test_every_histogram_declares_bucket_boundaries():
+    """
+    Every histogram must carry explicit boundaries, and only histograms may.
+
+    OpenTelemetry's default boundaries start at 5 and are meant for
+    milliseconds, so a seconds-valued histogram that inherits them records
+    everything into one bucket. This is a registry self-consistency check, not
+    a check that the boundaries reached the SDK - for that see
+    `test_histograms_spread_values_across_buckets` in test_telemetry_metrics.py.
+    """
+    for metric in reg.METRICS:
+        if metric.kind == reg.HISTOGRAM:
+            assert metric.buckets, f"{metric} is a histogram with no boundaries"
+            assert list(metric.buckets) == sorted(
+                set(metric.buckets)
+            ), f"{metric} boundaries must be ascending and unique"
+            assert metric.buckets[0] > 0, f"{metric} has a non-positive boundary"
+        else:
+            assert (
+                metric.buckets is None
+            ), f"{metric} is a {metric.kind} and cannot have bucket boundaries"
+
+
 def test_dynamic_span_lookup():
     """
     `dynamic=True` matching, which is how the request span resolves.

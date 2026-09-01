@@ -264,6 +264,10 @@ class ColumnFacet(Facet):
                     column_qs = column
                     if column.startswith("_"):
                         column_qs = f"{column}__exact"
+                    # ?column=x and ?column__exact=x are equivalent filters,
+                    # so check for both, https://github.com/simonw/datasette/issues/2011
+                    if (f"{column}__exact", str(row["value"])) in qs_pairs:
+                        column_qs = f"{column}__exact"
                     selected = (column_qs, str(row["value"])) in qs_pairs
                     if selected:
                         toggle_path = path_with_removed_args(

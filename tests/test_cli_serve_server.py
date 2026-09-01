@@ -127,11 +127,6 @@ def test_startup_error_fails_fast_before_port_binds(serve_with_plugins):
     A "startup" plugin hook that raises StartupError must fail fast: print
     the message, exit non-zero, and never accept a connection on the port -
     the failure must happen before uvicorn.Server binds the socket.
-
-    Note this is a characterization test, not a regression test: it also
-    passes on unmodified main, where startup already ran ahead of
-    uvicorn.run(). It earns its keep once startup moves into the ASGI
-    lifespan, where fail-fast is genuinely at risk.
     """
     proc, port = serve_with_plugins(
         {"startup_error_plugin": STARTUP_ERROR_PLUGIN}, wait_for_startup=False

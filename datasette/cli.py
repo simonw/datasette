@@ -670,11 +670,9 @@ def serve(
         raise click.ClickException("--token can only be used with --get")
 
     if get:
-        # Run async soundness checks before startup hooks, since invoke_startup
-        # now populates internal tables which requires querying each database
+        # --get means we don't run Uvicorn at all
         run_sync(lambda: check_databases(ds))
 
-        # Run the "startup" plugin hooks
         try:
             run_sync(ds.invoke_startup)
         except StartupError as e:
@@ -709,8 +707,7 @@ def serve(
     # on the loop (asyncio.create_task, Lock/Queue/Event objects, ...) is
     # still alive when the server starts handling requests.
     async def _serve_async():
-        # Run async soundness checks before startup hooks, since invoke_startup
-        # now populates internal tables which requires querying each database
+        # Populate internal catalog tables before invoke_startup
         await check_databases(ds)
 
         # Run the "startup" plugin hooks

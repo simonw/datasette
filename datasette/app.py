@@ -453,8 +453,10 @@ class Datasette:
         self.databases = collections.OrderedDict()
         self.actions = {}  # .invoke_startup() will populate this
         self._column_types = {}  # .invoke_startup() will populate this
+        self._setup_db_done = False
         try:
             self._refresh_schemas_lock = asyncio.Lock()
+            self._startup_lock = asyncio.Lock()
         except RuntimeError as rex:
             # Workaround for intermittent test failure, see:
             # https://github.com/simonw/datasette/issues/1802
@@ -462,6 +464,7 @@ class Datasette:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 self._refresh_schemas_lock = asyncio.Lock()
+                self._startup_lock = asyncio.Lock()
             else:
                 raise
         self.crossdb = crossdb
@@ -2803,15 +2806,39 @@ class Datasette:
             raise RowNotFound(db.name, table_name, pk_values)
         return ResolvedRow(db, table_name, sql, params, pks, pk_values, results.first())
 
+    async def _startup_sequence(self):
+        """Idempotently run the full startup sequence: table counts for
+        immutable databases, then invoke_startup(). Safe to call more than
+        once and safe to call concurrently - callers block until whichever
+        call got there first has finished.
+
+        This is the single entry point used by both AsgiLifespan (so
+        real deployments finish startup before accepting requests) and
+        AsgiRunOnFirstRequest (the fallback for hosts that never send
+        lifespan events, e.g. DatasetteClient's httpx.ASGITransport), and
+        `datasette serve` (cli.py) calls it too. The fast path below checks
+        both `_startup_invoked` and `_setup_db_done` - not just the former -
+        so that a bare `await ds.invoke_startup()` made by a caller ahead of
+        `_startup_sequence()` (which only sets `_startup_invoked`) can't
+        make this method skip the immutable-database table-count precompute.
+        """
+        if self._startup_invoked and self._setup_db_done:
+            return
+        async with self._startup_lock:
+            if self._startup_invoked and self._setup_db_done:
+                return
+            if not self._setup_db_done:
+                # First time server starts up, calculate table counts for
+                # immutable databases
+                for database in self.databases.values():
+                    if not database.is_mutable:
+                        await database.table_counts(limit=60 * 60 * 1000)
+                self._setup_db_done = True
+            await self.invoke_startup()
+
     def app(self):
         """Returns an ASGI app function that serves the whole of Datasette"""
         routes = self._routes()
-
-        async def setup_db():
-            # First time server starts up, calculate table counts for immutable databases
-            for database in self.databases.values():
-                if not database.is_mutable:
-                    await database.table_counts(limit=60 * 60 * 1000)
 
         async def _close_on_shutdown():
             self.close()
@@ -2819,8 +2846,12 @@ class Datasette:
         asgi = CrossOriginProtectionMiddleware(DatasetteRouter(self, routes), self)
         if self.setting("trace_debug"):
             asgi = AsgiTracer(asgi)
-        asgi = AsgiLifespan(asgi, on_shutdown=[_close_on_shutdown])
-        asgi = AsgiRunOnFirstRequest(asgi, on_startup=[setup_db, self.invoke_startup])
+        asgi = AsgiLifespan(
+            asgi,
+            on_startup=[self._startup_sequence],
+            on_shutdown=[_close_on_shutdown],
+        )
+        asgi = AsgiRunOnFirstRequest(asgi, on_startup=[self._startup_sequence])
         for wrapper in pm.hook.asgi_wrapper(datasette=self):
             asgi = wrapper(asgi)
         return asgi

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 from http.cookies import Morsel, SimpleCookie
@@ -300,12 +301,24 @@ class AsgiLifespan:
             while True:
                 message = await receive()
                 if message["type"] == "lifespan.startup":
-                    for fn in self.on_startup:
-                        await fn()
+                    try:
+                        for fn in self.on_startup:
+                            await fn()
+                    except Exception as e:  # noqa: BLE001
+                        await send(
+                            {"type": "lifespan.startup.failed", "message": str(e)}
+                        )
+                        return
                     await send({"type": "lifespan.startup.complete"})
                 elif message["type"] == "lifespan.shutdown":
-                    for fn in self.on_shutdown:
-                        await fn()
+                    try:
+                        for fn in self.on_shutdown:
+                            await fn()
+                    except Exception as e:  # noqa: BLE001
+                        await send(
+                            {"type": "lifespan.shutdown.failed", "message": str(e)}
+                        )
+                        return
                     await send({"type": "lifespan.shutdown.complete"})
                     return
         else:
@@ -624,10 +637,23 @@ class AsgiRunOnFirstRequest:
         self.asgi = asgi
         self.on_startup = on_startup
         self._started = False
+        # Guards against concurrent early requests interleaving with startup:
+        # without this, several requests could all observe `_started is
+        # False` and proceed before any of them finish running the hooks.
+        self._lock = asyncio.Lock()
 
     async def __call__(self, scope, receive, send):
-        if not self._started:
-            self._started = True
-            for hook in self.on_startup:
-                await hook()
+        # Leave "lifespan" scope events alone - this shim only exists as a
+        # fallback for hosts that never send them. It wraps AsgiLifespan, so
+        # if it ran on_startup here too, a startup exception would escape
+        # before AsgiLifespan's own try/except got a chance to turn it into
+        # a lifespan.startup.failed message.
+        if scope["type"] != "lifespan" and not self._started:
+            async with self._lock:
+                # Re-check: another request may have finished startup while
+                # we were waiting for the lock.
+                if not self._started:
+                    for hook in self.on_startup:
+                        await hook()
+                    self._started = True
         return await self.asgi(scope, receive, send)

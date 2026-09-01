@@ -2360,7 +2360,7 @@ A few things catch people out the first time:
 
 - **Always set** ``OTEL_SERVICE_NAME``. Without it the SDK's default resource reports a ``service.name`` of ``unknown_service``, and your traces will be filed under that instead of under a name you can search for.
 
-- **Setting** ``OTEL_METRICS_EXPORTER=none`` **and** ``OTEL_LOGS_EXPORTER=none`` is worth doing unless your backend accepts those signals too - ``opentelemetry-distro`` defaults every signal to OTLP, and a traces-only backend will reject the other two noisily. Datasette itself emits no metrics and no logs through OpenTelemetry.
+- **Setting** ``OTEL_LOGS_EXPORTER=none`` is worth doing unless your backend accepts logs too - ``opentelemetry-distro`` defaults every signal to OTLP, and a backend that does not take a signal will reject it noisily. Datasette emits no logs through OpenTelemetry; it does emit metrics (see :ref:`internals_telemetry_metrics`), so set ``OTEL_METRICS_EXPORTER=none`` only if your backend does not accept them.
 
 Span reference
 --------------
@@ -2444,6 +2444,85 @@ That is the route's compiled regular expression, not a prettified ``/{database}/
     ``invoke_startup()`` running: ``register_events``, ``register_actions``, ``register_column_types``, ``prepare_jinja2_environment``, internal-database schema catalog refresh (including the ``prepare_connection`` warm-up this triggers for each database touched for the first time), saved queries, column type config and the ``startup`` hook. Runs once per process, before any request exists, so without this span every child it creates would be its own orphan root trace. A connection warmed later - lazily, the first time a *request* touches a new database or thread - nests under that request's own span instead, not under this one, since this span has already ended by then.
 
     No attributes.
+
+.. [[[end]]]
+
+.. _internals_telemetry_metrics:
+
+Metric reference
+----------------
+
+Spans describe events; metrics describe levels and rates. "Am I saturating my :ref:`setting_num_sql_threads` threads right now?" cannot be answered by any span, because it is a level sampled at collection time - and it is usually the first thing worth knowing about a busy Datasette, since ``num_sql_threads`` defaults to ``3``. Metrics also survive trace sampling: an operator keeping 1% of traces still gets 100% of every histogram and counter below.
+
+As with spans, core emits these through the OpenTelemetry API only. Without a ``MeterProvider`` every instrument is a no-op, and the observable-gauge callbacks are never invoked at all, so an uninstrumented install pays nothing for them.
+
+Every duration histogram is in **seconds**, with explicit bucket boundaries chosen for an in-process database - OpenTelemetry's default boundaries are tuned for milliseconds and would file every SQLite query into a single bucket, making quantile queries meaningless. The boundaries are listed with each histogram because a ``histogram_quantile()`` query is only as good as the buckets underneath it.
+
+This reference is generated from ``datasette/telemetry_registry.py``, like the span reference above.
+
+.. [[[cog
+    from telemetry_doc import metrics
+    metrics(cog)
+.. ]]]
+
+``db.client.operation.duration``
+    Histogram, unit ``s``. Duration of a SQL operation. The standard OpenTelemetry semantic convention metric, and the one that survives trace sampling.
+
+    Bucket boundaries: ``0.0001``, ``0.0005``, ``0.001``, ``0.005``, ``0.01``, ``0.05``, ``0.1``, ``0.5``, ``1``, ``5``, ``10``.
+
+    Attributes:
+
+    - ``db.system`` - Always ``sqlite``.
+    - ``db.namespace`` - Name of the database being queried.
+    - ``datasette.operation`` - ``read`` or ``write``.
+    - ``error.type`` - Set when the request failed: the exception class name if one escaped the application, otherwise the status code as a string for a 5xx response. A 4xx does **not** set this and does not set an error status - per semantic conventions a client error is not a server span's failure.
+
+``datasette.write.queue_wait``
+    Histogram, unit ``s``. Time each write waited in its database's write queue. The metric counterpart of the ``db.write.queue_wait`` span.
+
+    Bucket boundaries: ``0.0001``, ``0.0005``, ``0.001``, ``0.005``, ``0.01``, ``0.05``, ``0.1``, ``0.5``, ``1``, ``5``, ``10``.
+
+    Attributes:
+
+    - ``db.namespace`` - Name of the database being queried.
+
+``datasette.sql.queries.interrupted``
+    Counter, unit ``{query}``. Queries cancelled for exceeding :ref:`setting_sql_time_limit_ms`. Worth alerting on: a rising rate means the limit is too tight or a table has outgrown its queries. A caller that opted into a deliberately shorter budget - facet suggestion, for example - is not counted, for the same reason its timeout is not a span error.
+
+    Attributes:
+
+    - ``db.namespace`` - Name of the database being queried.
+
+``datasette.sql.threads.limit``
+    Observable gauge, unit ``{thread}``. Maximum concurrent read queries - the :ref:`setting_num_sql_threads` value. Not reported when ``num_sql_threads`` is ``0``, since then queries run on the event loop and there is no pool.
+
+    No attributes.
+
+``datasette.sql.threads.queue_depth``
+    Observable gauge, unit ``{query}``. Read queries waiting for a free thread. **This is the saturation signal** - sustained above zero means requests are queueing on ``num_sql_threads``.
+
+    No attributes.
+
+``datasette.sql.queries.pending``
+    Observable gauge, unit ``{query}``. Read queries submitted to the pool and not yet complete. Summed across databases and compared against the thread limit, this is pool utilisation.
+
+    Attributes:
+
+    - ``db.namespace`` - Name of the database being queried.
+
+``datasette.write.queue_depth``
+    Observable gauge, unit ``{write}``. Writes queued behind a database's single write thread. Backpressure that raising ``num_sql_threads`` cannot relieve. Not reported for a database that has never been written to.
+
+    Attributes:
+
+    - ``db.namespace`` - Name of the database being queried.
+
+``datasette.connections.open``
+    Observable gauge, unit ``{connection}``. Open SQLite file connections currently tracked for closing.
+
+    Attributes:
+
+    - ``db.namespace`` - Name of the database being queried.
 
 .. [[[end]]]
 

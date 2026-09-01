@@ -79,6 +79,33 @@ class SpanName(str):
         return f"SpanName({str(self)!r})"
 
 
+class MetricName(str):
+    "A metric name, carrying its instrument kind, unit and attributes."
+
+    __slots__ = ("attributes", "buckets", "description", "kind", "unit")
+
+    def __new__(cls, name, kind, unit, description, attributes=(), buckets=None):
+        self = super().__new__(cls, name)
+        self.kind = kind
+        self.unit = unit
+        self.description = description
+        self.attributes = tuple(attributes)
+        # Explicit histogram bucket boundaries, for histograms only. Passed to
+        # create_histogram() as explicit_bucket_boundaries_advisory and
+        # published in the generated docs, since an operator writing a
+        # histogram_quantile() query needs to know them.
+        self.buckets = tuple(buckets) if buckets is not None else None
+        return self
+
+    def __repr__(self):
+        return f"MetricName({str(self)!r})"
+
+
+COUNTER = "Counter"
+HISTOGRAM = "Histogram"
+GAUGE = "Observable gauge"
+
+
 # --- Attributes -----------------------------------------------------------
 #
 # Shared attributes are defined once and referenced by every span that sets
@@ -157,6 +184,7 @@ ERROR_TYPE = Attribute(
 
 DB_SYSTEM = Attribute("db.system", "Always ``sqlite``.")
 DB_NAMESPACE = Attribute("db.namespace", "Name of the database being queried.")
+OPERATION = Attribute("datasette.operation", "``read`` or ``write``.")
 DB_QUERY_TEXT = Attribute(
     "db.query.text",
     "The SQL, truncated to 2048 characters. Never the parameter values. "
@@ -404,3 +432,113 @@ def attribute_allowed(span, emitted_key):
     if span is None:
         return False
     return emitted_key in span.attributes
+
+
+# --- Metrics --------------------------------------------------------------
+
+# Every duration histogram here is in seconds, and OpenTelemetry's default
+# bucket boundaries are tuned for milliseconds - their first non-zero boundary
+# is 5, so without explicit boundaries every SQLite query lands in the single
+# (0, 5] second bucket and every quantile query returns noise.
+#
+# These are the OpenTelemetry semantic conventions' recommended boundaries for
+# db.client.operation.duration, in seconds, plus 0.0001 and 0.0005 at the
+# bottom. The deviation is deliberate: those boundaries assume a network
+# database client, whereas SQLite is in-process and a large fraction of real
+# queries run in 30-80us, which would otherwise all pile into the first
+# bucket and be indistinguishable from each other.
+#
+# One shared list is used for every duration histogram rather than a tailored
+# list each, so that dashboards stay comparable and a queue wait can be read
+# against the query duration it delays. It already spans 100us to 10s, which
+# covers both a fast in-process read and a write queued behind contention.
+DURATION_BUCKETS = (0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10)
+
+M_OPERATION_DURATION = MetricName(
+    "db.client.operation.duration",
+    HISTOGRAM,
+    "s",
+    "Duration of a SQL operation. The standard OpenTelemetry semantic "
+    "convention metric, and the one that survives trace sampling.",
+    (DB_SYSTEM, DB_NAMESPACE, OPERATION, ERROR_TYPE),
+    buckets=DURATION_BUCKETS,
+)
+
+M_WRITE_QUEUE_WAIT = MetricName(
+    "datasette.write.queue_wait",
+    HISTOGRAM,
+    "s",
+    "Time each write waited in its database's write queue. The metric "
+    "counterpart of the ``db.write.queue_wait`` span.",
+    (DB_NAMESPACE,),
+    buckets=DURATION_BUCKETS,
+)
+
+M_QUERIES_INTERRUPTED = MetricName(
+    "datasette.sql.queries.interrupted",
+    COUNTER,
+    "{query}",
+    "Queries cancelled for exceeding :ref:`setting_sql_time_limit_ms`. Worth "
+    "alerting on: a rising rate means the limit is too tight or a table has "
+    "outgrown its queries. A caller that opted into a deliberately shorter "
+    "budget - facet suggestion, for example - is not counted, for the same "
+    "reason its timeout is not a span error.",
+    (DB_NAMESPACE,),
+)
+
+M_THREADS_LIMIT = MetricName(
+    "datasette.sql.threads.limit",
+    GAUGE,
+    "{thread}",
+    "Maximum concurrent read queries - the :ref:`setting_num_sql_threads` "
+    "value. Not reported when ``num_sql_threads`` is ``0``, since then queries "
+    "run on the event loop and there is no pool.",
+)
+
+M_THREADS_QUEUE_DEPTH = MetricName(
+    "datasette.sql.threads.queue_depth",
+    GAUGE,
+    "{query}",
+    "Read queries waiting for a free thread. **This is the saturation "
+    "signal** - sustained above zero means requests are queueing on "
+    "``num_sql_threads``.",
+)
+
+M_QUERIES_PENDING = MetricName(
+    "datasette.sql.queries.pending",
+    GAUGE,
+    "{query}",
+    "Read queries submitted to the pool and not yet complete. Summed across "
+    "databases and compared against the thread limit, this is pool "
+    "utilisation.",
+    (DB_NAMESPACE,),
+)
+
+M_WRITE_QUEUE_DEPTH = MetricName(
+    "datasette.write.queue_depth",
+    GAUGE,
+    "{write}",
+    "Writes queued behind a database's single write thread. Backpressure that "
+    "raising ``num_sql_threads`` cannot relieve. Not reported for a database "
+    "that has never been written to.",
+    (DB_NAMESPACE,),
+)
+
+M_CONNECTIONS_OPEN = MetricName(
+    "datasette.connections.open",
+    GAUGE,
+    "{connection}",
+    "Open SQLite file connections currently tracked for closing.",
+    (DB_NAMESPACE,),
+)
+
+METRICS = (
+    M_OPERATION_DURATION,
+    M_WRITE_QUEUE_WAIT,
+    M_QUERIES_INTERRUPTED,
+    M_THREADS_LIMIT,
+    M_THREADS_QUEUE_DEPTH,
+    M_QUERIES_PENDING,
+    M_WRITE_QUEUE_DEPTH,
+    M_CONNECTIONS_OPEN,
+)

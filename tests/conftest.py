@@ -2,6 +2,7 @@ import importlib.metadata
 import os
 import pathlib
 import re
+import socket
 import subprocess
 import sys
 import tempfile
@@ -32,15 +33,29 @@ UNDOCUMENTED_PERMISSIONS = {
 }
 
 
-def wait_until_responds(url, timeout=5.0, client=httpx, **kwargs):
+def wait_until_responds(url, timeout=5.0, client=httpx, process=None, **kwargs):
     start = time.time()
     while time.time() - start < timeout:
+        # If the server died there is no point waiting out the timeout - fail
+        # now, with its output, instead of after `timeout` seconds of silence
+        if process is not None and process.poll() is not None:
+            raise AssertionError(
+                "Server exited early with returncode {}\n{}".format(
+                    process.returncode, process.stdout.read().decode("utf-8")
+                )
+            )
         try:
             client.get(url, **kwargs)
             return
-        except httpx.ConnectError:
+        except httpx.TransportError:
             time.sleep(0.1)
     raise AssertionError(f"Timed out waiting for {url} to respond")
+
+
+def find_free_port():
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
 
 
 @pytest.fixture
@@ -299,6 +314,71 @@ def ds_unix_domain_socket_server(tmp_path_factory):
             os.unlink(uds)
         except FileNotFoundError:
             pass
+
+
+@pytest.fixture
+def serve_with_plugins(tmp_path):
+    """Factory fixture for starting ``datasette serve`` in a subprocess with
+    plugins written to a temporary ``--plugins-dir``.
+
+    For tests that need the real serve path: event-loop wiring, exit codes,
+    signals. The usual in-process ``pm.register`` plugin pattern can't reach
+    a subprocess, so plugin source is written out as importable files instead.
+
+    Unlike ``ds_localhost_http_server`` this is function-scoped and takes a
+    fresh port each time, because each test needs its own plugins. Call it as::
+
+        proc, port = serve_with_plugins({"my_plugin": PLUGIN_SOURCE})
+
+    ``plugins`` maps module name to Python source. Pass
+    ``wait_for_startup=False`` when the server is expected to fail during
+    startup rather than begin serving. Extra CLI arguments are passed through.
+    Every process started is terminated when the test ends.
+    """
+    processes = []
+
+    def start(plugins, *extra_args, wait_for_startup=True):
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir(exist_ok=True)
+        for module_name, source in plugins.items():
+            (plugins_dir / f"{module_name}.py").write_text(source, "utf-8")
+        port = find_free_port()
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "datasette",
+                "--memory",
+                "--plugins-dir",
+                str(plugins_dir),
+                "-h",
+                "127.0.0.1",
+                "-p",
+                str(port),
+                *extra_args,
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            # Avoid FileNotFoundError: [Errno 2] No such file or directory:
+            cwd=tempfile.gettempdir(),
+        )
+        processes.append(proc)
+        if wait_for_startup:
+            wait_until_responds(
+                f"http://127.0.0.1:{port}/-/versions.json", process=proc
+            )
+        return proc, port
+
+    yield start
+
+    for proc in processes:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
 
 
 # Import fixtures from fixtures.py to make them available

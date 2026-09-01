@@ -663,16 +663,6 @@ def serve(
         # Private utility mechanism for writing unit tests
         return ds
 
-    # Run async soundness checks before startup hooks, since invoke_startup
-    # now populates internal tables which requires querying each database
-    run_sync(lambda: check_databases(ds))
-
-    # Run the "startup" plugin hooks
-    try:
-        run_sync(ds.invoke_startup)
-    except StartupError as e:
-        raise click.ClickException(e.args[0])
-
     if headers and not get:
         raise click.ClickException("--headers can only be used with --get")
 
@@ -680,6 +670,14 @@ def serve(
         raise click.ClickException("--token can only be used with --get")
 
     if get:
+        # --get means we don't run Uvicorn at all
+        run_sync(lambda: check_databases(ds))
+
+        try:
+            run_sync(ds.invoke_startup)
+        except StartupError as e:
+            raise click.ClickException(e.args[0])
+
         client = TestClient(ds)
         request_headers = {}
         if token:
@@ -704,34 +702,51 @@ def serve(
         sys.exit(exit_code)
         return
 
-    # Start the server
-    url = None
-    if root:
-        ds.root_enabled = True
-        url = "http://{}:{}{}?token={}".format(
-            host, port, ds.urls.path("-/auth-token"), ds._root_token
-        )
-        click.echo(url)
-    if open_browser:
-        if url is None:
-            # Figure out most convenient URL - to table, database or homepage
-            path = run_sync(lambda: initial_path_for_datasette(ds))
-            url = f"http://{host}:{port}{path}"
-        webbrowser.open(url)
-    uvicorn_kwargs = {
-        "host": host,
-        "port": port,
-        "log_level": "info",
-        "lifespan": "on",
-        "workers": 1,
-    }
-    if uds:
-        uvicorn_kwargs["uds"] = uds
-    if ssl_keyfile:
-        uvicorn_kwargs["ssl_keyfile"] = ssl_keyfile
-    if ssl_certfile:
-        uvicorn_kwargs["ssl_certfile"] = ssl_certfile
-    uvicorn.run(ds.app(), **uvicorn_kwargs)
+    # check_databases, invoke_startup() and the uvicorn server all run on a
+    # single event loop, so that anything a plugin's "startup" hook schedules
+    # on the loop (asyncio.create_task, Lock/Queue/Event objects, ...) is
+    # still alive when the server starts handling requests.
+    async def _serve_async():
+        # Populate internal catalog tables before invoke_startup
+        await check_databases(ds)
+
+        # Run the "startup" plugin hooks
+        try:
+            await ds.invoke_startup()
+        except StartupError as e:
+            raise click.ClickException(e.args[0])
+
+        # Start the server
+        url = None
+        if root:
+            ds.root_enabled = True
+            url = "http://{}:{}{}?token={}".format(
+                host, port, ds.urls.path("-/auth-token"), ds._root_token
+            )
+            click.echo(url)
+        if open_browser:
+            if url is None:
+                # Figure out most convenient URL - to table, database or homepage
+                path = await initial_path_for_datasette(ds)
+                url = f"http://{host}:{port}{path}"
+            webbrowser.open(url)
+        uvicorn_kwargs = {
+            "host": host,
+            "port": port,
+            "log_level": "info",
+            "lifespan": "on",
+            "workers": 1,
+        }
+        if uds:
+            uvicorn_kwargs["uds"] = uds
+        if ssl_keyfile:
+            uvicorn_kwargs["ssl_keyfile"] = ssl_keyfile
+        if ssl_certfile:
+            uvicorn_kwargs["ssl_certfile"] = ssl_certfile
+        server = uvicorn.Server(uvicorn.Config(ds.app(), **uvicorn_kwargs))
+        await server.serve()
+
+    asyncio.run(_serve_async())
 
 
 @cli.command()

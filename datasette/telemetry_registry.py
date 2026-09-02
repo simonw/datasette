@@ -47,18 +47,12 @@ class Attribute(str):
 class SpanName(str):
     "A span name, carrying its documentation and the attributes it may set."
 
-    __slots__ = ("attributes", "description", "kind", "prefix")
+    __slots__ = ("attributes", "description", "kind")
 
-    def __new__(
-        cls, name, description, attributes=(), prefix=False, kind=SpanKind.INTERNAL
-    ):
+    def __new__(cls, name, description, attributes=(), kind=SpanKind.INTERNAL):
         self = super().__new__(cls, name)
         self.description = description
         self.attributes = tuple(attributes)
-        # True for a span family whose emitted names carry a variable suffix,
-        # so the conformance test matches by prefix rather than equality.
-        # Nothing sets it yet.
-        self.prefix = prefix
         # SpanKind.INTERNAL by default - every span Datasette emits describes
         # its own internal work. db.query is the one exception: it is a real
         # database call, so semantic conventions (and trace UIs, which key
@@ -85,10 +79,9 @@ DB_OPERATION_NAME = Attribute(
     "db.operation.name",
     "The statement's leading keyword - ``SELECT``, ``INSERT``, ``CREATE``, and "
     "so on - matched against a small fixed allowlist. Omitted rather than set "
-    "to an arbitrary value: the allowlist exists because this attribute is a "
-    "candidate dimension for a query-duration metric in a later phase, and "
-    "echoing an unrecognised first token from user-supplied SQL would be an "
-    "unbounded-cardinality hazard. Also omitted for "
+    "to an arbitrary value: the attribute must stay safe to use as a metric "
+    "dimension, and echoing an unrecognised first token from user-supplied "
+    "SQL would be an unbounded-cardinality hazard. Also omitted for "
     "``execute_write_script()``, which runs multiple statements - per "
     "semantic conventions, the operation name should not be extracted from "
     "query text that can contain more than one operation. Note that a "
@@ -252,16 +245,11 @@ def span_for(emitted_name):
     """
     Resolve an emitted span name to its registry entry, or None.
 
-    Handles span families whose emitted names carry a suffix that is not
-    knowable in advance - `prefix=True` entries. Phase 1 has none, but the
-    lookup is what the conformance test calls, so it lives here rather than
-    in the test.
+    The lookup is what the conformance test calls, so it lives here rather
+    than in the test.
     """
     for span in SPANS:
-        if span.prefix:
-            if emitted_name.startswith(span):
-                return span
-        elif emitted_name == span:
+        if emitted_name == span:
             return span
     return None
 

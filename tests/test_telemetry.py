@@ -148,6 +148,29 @@ async def test_db_query_span_basic_attributes(ds_client, otel_spans):
 
 
 @pytest.mark.asyncio
+async def test_truncated_result_sets_truncated_attribute(otel_spans):
+    """
+    A result actually cut short by max_returned_rows records truncated=True.
+
+    Every other test asserts the attribute is False, so a regression that
+    recorded the flag before the slice (or inverted it) would pass the rest
+    of the suite.
+    """
+    ds = Datasette(memory=True, settings={"max_returned_rows": 5})
+    db = ds.add_memory_database("t04_truncated")
+    results = await db.execute(
+        "select value from json_each('[1,2,3,4,5,6,7,8,9,10]')", truncate=True
+    )
+    assert results.truncated
+
+    spans = _spans_for_namespace(otel_spans, "t04_truncated")
+    assert spans
+    span = spans[-1]
+    assert span.attributes["datasette.truncated"] is True
+    assert span.attributes["datasette.rows_returned"] == 5
+
+
+@pytest.mark.asyncio
 async def test_facetable_request_produces_db_query_spans(ds_client, otel_spans):
     response = await ds_client.get("/fixtures/facetable.json")
     assert response.status_code == 200

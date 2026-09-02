@@ -389,14 +389,9 @@ class Database:
         if not write:
             # Immutable database - no writes can ever occur, so there is no
             # write queue to block; run against a fresh read-only connection.
-            # A fresh copy_context() is required per submit (not one shared
-            # copy reused across calls): concurrent execution of the same
-            # Context raises "RuntimeError: cannot enter context ... already
-            # entered". This propagates the caller's otel context (e.g. the
-            # enclosing db.query span) onto the worker thread.
-            #
-            # It also propagates every *other* ContextVar - see the note in
-            # execute_fn() for why that is safe.
+            # copy_context() carries the caller's otel context onto the worker
+            # thread - see the notes in execute_fn() for why it must be a
+            # fresh copy per submit and why carrying every ContextVar is safe.
             ctx = contextvars.copy_context()
             return await asyncio.get_running_loop().run_in_executor(
                 self.ds.executor, ctx.run, _run
@@ -504,12 +499,9 @@ class Database:
         task_id = uuid.uuid5(uuid.NAMESPACE_DNS, "datasette.io")
         loop = asyncio.get_running_loop()
         reply_future = loop.create_future()
-        # Captured here, on the event loop, at enqueue time: the otel
-        # Context (carrying the enclosing db.query span, if any) and the
-        # timestamp used to build the db.write.queue_wait span once this
-        # task is dequeued on the write thread. `block` travels with the
-        # task too, because it decides whether that context is this task's
-        # parent or only a link target - see `_execute_writes`.
+        # The otel Context and enqueue timestamp are captured here, on the
+        # event loop, for the db.write.queue_wait span built at dequeue time.
+        # `block` travels too - it decides parent vs. link; see `_execute_writes`.
         self._write_queue.put(
             WriteTask(
                 fn,

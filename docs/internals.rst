@@ -2352,11 +2352,11 @@ A few things catch people out the first time:
 .. warning::
     ``OTEL_TRACES_EXPORTER=console datasette mydb.db`` produces **nothing**. That environment variable is read by the OpenTelemetry SDK's auto-configuration, which only runs when the ``opentelemetry-instrument`` agent wraps the process. Datasette core installs no provider, so a plain ``datasette`` process emits nothing at all, whatever ``OTEL_`` variables are set.
 
-Spans do not appear immediately. The SDK's default ``BatchSpanProcessor`` flushes on a timer, every 5 seconds. Either wait, or stop the process - shutdown triggers a final flush - or set ``OTEL_BSP_SCHEDULE_DELAY=1000`` while you are experimenting. That last one is for demos, not for production.
+- **Spans do not appear immediately.** The SDK's default ``BatchSpanProcessor`` flushes on a timer, every 5 seconds. Either wait, or stop the process - shutdown triggers a final flush - or set ``OTEL_BSP_SCHEDULE_DELAY=1000`` while you are experimenting. That last one is for demos, not for production.
 
-Always set ``OTEL_SERVICE_NAME``. Without it the SDK's default resource reports a ``service.name`` of ``unknown_service``, and your traces will be filed under that instead of under a name you can search for.
+- **Always set** ``OTEL_SERVICE_NAME``. Without it the SDK's default resource reports a ``service.name`` of ``unknown_service``, and your traces will be filed under that instead of under a name you can search for.
 
-Setting ``OTEL_METRICS_EXPORTER=none`` and ``OTEL_LOGS_EXPORTER=none`` is worth doing unless your backend accepts those signals too - ``opentelemetry-distro`` defaults every signal to OTLP, and a traces-only backend will reject the other two noisily. Datasette itself emits no metrics and no logs through OpenTelemetry.
+- **Setting** ``OTEL_METRICS_EXPORTER=none`` **and** ``OTEL_LOGS_EXPORTER=none`` is worth doing unless your backend accepts those signals too - ``opentelemetry-distro`` defaults every signal to OTLP, and a traces-only backend will reject the other two noisily. Datasette itself emits no metrics and no logs through OpenTelemetry.
 
 Span reference
 --------------
@@ -2382,7 +2382,7 @@ Spans are ``SpanKind.INTERNAL`` unless a kind is listed below. Only ``db.query``
     - ``db.system`` - Always ``sqlite``.
     - ``db.namespace`` - Name of the database being queried.
     - ``db.query.text`` - The SQL, truncated to 2048 characters. Never the parameter values.
-    - ``db.operation.name`` *(optional)* - The statement's leading keyword - ``SELECT``, ``INSERT``, ``CREATE``, and so on - matched against a small fixed allowlist. Omitted rather than set to an arbitrary value: the allowlist exists because this attribute is a candidate dimension for a query-duration metric in a later phase, and echoing an unrecognised first token from user-supplied SQL would be an unbounded-cardinality hazard. Also omitted for ``execute_write_script()``, which runs multiple statements - per semantic conventions, the operation name should not be extracted from query text that can contain more than one operation. Note that a statement beginning with a CTE reports ``WITH``, not the operation inside it - a substantial share of Datasette's own reads take that form. Resolving it further would mean parsing.
+    - ``db.operation.name`` *(optional)* - The statement's leading keyword - ``SELECT``, ``INSERT``, ``CREATE``, and so on - matched against a small fixed allowlist. Omitted rather than set to an arbitrary value: the attribute must stay safe to use as a metric dimension, and echoing an unrecognised first token from user-supplied SQL would be an unbounded-cardinality hazard. Also omitted for ``execute_write_script()``, which runs multiple statements - per semantic conventions, the operation name should not be extracted from query text that can contain more than one operation. Note that a statement beginning with a CTE reports ``WITH``, not the operation inside it - a substantial share of Datasette's own reads take that form. Resolving it further would mean parsing.
     - ``db.collection.name`` *(optional)* - The primary table, set only where the view already knows it - the table and row pages. Omitted for arbitrary ``?sql=`` queries, where determining the table would mean parsing the query.
     - ``datasette.param_count`` *(optional)* - Number of bound parameters. Recorded instead of the values themselves.
     - ``datasette.param_sets`` *(optional)* - Number of parameter sets consumed by ``execute_write_many()``. Not a row count - ``executemany()`` returns no rows. The parameter values themselves are never recorded: that sequence can hold thousands of rows.

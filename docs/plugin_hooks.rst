@@ -1221,7 +1221,7 @@ This hook fires once, when the Datasette application server is shutting down gra
 
 Like ``startup()``, this can be a regular function or it can return an async function to be awaited.
 
-It runs before Datasette cancels any background tasks it is supervising and before it closes its database connections, so you can use it to tell your plugin's own background work to stop gracefully while a database connection is still available to write out any final state:
+It runs before Datasette cancels any background tasks it is supervising (see :ref:`datasette_add_background_task`) and before it closes its database connections, so you can use it to tell your plugin's own background work to stop gracefully while a database connection is still available to write out any final state. See :ref:`datasette_lifecycle` for exactly where this fits into the full startup-to-shutdown sequence:
 
 .. code-block:: python
 

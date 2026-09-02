@@ -122,6 +122,7 @@ class MetricName(str):
 
 
 COUNTER = "Counter"
+UPDOWN_COUNTER = "UpDownCounter"
 HISTOGRAM = "Histogram"
 GAUGE = "Observable gauge"
 

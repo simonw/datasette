@@ -15,7 +15,7 @@ from datasette import telemetry_registry as reg
 from datasette.telemetry import linked_root_span_kwargs
 from datasette.telemetry_testing import (
     assert_package_never_imports_sdk,
-    assert_registry_covered,
+    assert_spans_covered,
     assert_spans_conform,
 )
 
@@ -56,7 +56,7 @@ def test_conformance_passes_for_a_conforming_workload(otel_spans):
     assert_spans_conform(TOY_SPANS, finished, scope_name=SCOPE)
     # Coverage direction needs prefix families seen too - the chat span
     # resolves to the CHAT entry despite its variable suffix.
-    assert_registry_covered(TOY_SPANS, finished, scope_name=SCOPE)
+    assert_spans_covered(TOY_SPANS, finished, scope_name=SCOPE)
 
 
 def test_conformance_catches_an_unregistered_span(otel_spans):
@@ -92,7 +92,7 @@ def test_coverage_catches_a_never_emitted_span(otel_spans):
         span.set_attribute(JOB_NAME, "nightly")
     # CHAT never emitted
     with pytest.raises(AssertionError, match="never emitted"):
-        assert_registry_covered(
+        assert_spans_covered(
             TOY_SPANS, otel_spans.get_finished_spans(), scope_name=SCOPE
         )
 
@@ -268,3 +268,64 @@ def test_metrics_scope_filter_ignores_other_scopes(otel_metrics):
     stranger.add(1)
     otel_metrics.collect()
     assert_metrics_conform(registry, otel_metrics, scope_name=SCOPE)
+
+
+# --- UpDownCounter kind + privacy walk --------------------------------------
+
+from datasette.telemetry_testing import assert_no_forbidden_values
+
+
+def test_updown_counter_kind_passes(otel_metrics):
+    name = f"toyplugin.active.{next(_metric_ids)}"
+    registry = _toy_metric_registry(name, kind=reg.UPDOWN_COUNTER, unit="{turn}")
+    updown = toy_meter.create_up_down_counter(name, unit="{turn}")
+    updown.add(1, {OUTCOME: "ok"})
+    otel_metrics.collect()
+    assert_metrics_conform(registry, otel_metrics, scope_name=SCOPE)
+
+
+def test_counter_registered_as_updown_fails_on_monotonicity(otel_metrics):
+    name = f"toyplugin.monoclash.{next(_metric_ids)}"
+    registry = _toy_metric_registry(name, kind=reg.UPDOWN_COUNTER, unit="{job}")
+    counter = toy_meter.create_counter(name, unit="{job}")
+    counter.add(1, {OUTCOME: "ok"})
+    otel_metrics.collect()
+    with pytest.raises(AssertionError, match="is_monotonic"):
+        assert_metrics_conform(registry, otel_metrics, scope_name=SCOPE)
+
+
+def test_forbidden_values_walk_catches_a_leak(otel_spans, otel_metrics):
+    secret = "sentinel-token-xyzzy"
+    with toy_tracer.start_as_current_span(JOB) as span:
+        span.set_attribute(OUTCOME, "ok")
+        span.set_attribute(JOB_NAME, f"job for {secret}")
+    with pytest.raises(AssertionError, match="sentinel-token-xyzzy"):
+        assert_no_forbidden_values(
+            {secret},
+            finished_spans=otel_spans.get_finished_spans(),
+            scope_name=SCOPE,
+        )
+
+
+def test_forbidden_values_walk_passes_a_clean_workload(otel_spans, otel_metrics):
+    _run_workload()
+    name = f"toyplugin.clean.{next(_metric_ids)}"
+    counter = toy_meter.create_counter(name, unit="{job}")
+    counter.add(1, {OUTCOME: "ok"})
+    otel_metrics.collect()
+    assert_no_forbidden_values(
+        {"sentinel-token-xyzzy", "alice@example.com", ""},
+        finished_spans=otel_spans.get_finished_spans(),
+        collector=otel_metrics,
+        scope_name=SCOPE,
+    )
+
+
+def test_forbidden_values_walk_checks_metric_attributes(otel_metrics):
+    secret = "leaky-metric-value"
+    name = f"toyplugin.leak.{next(_metric_ids)}"
+    counter = toy_meter.create_counter(name, unit="{job}")
+    counter.add(1, {"toyplugin.note": secret})
+    otel_metrics.collect()
+    with pytest.raises(AssertionError, match="leaky-metric-value"):
+        assert_no_forbidden_values({secret}, collector=otel_metrics, scope_name=SCOPE)

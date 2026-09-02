@@ -65,6 +65,7 @@ from datasette.telemetry_testing import (  # noqa: F401, E402
     otel_metrics,
     otel_meter_provider,
     otel_provider,
+    otel_reset,
     otel_spans,
 )
 

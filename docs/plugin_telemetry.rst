@@ -20,12 +20,17 @@ Never emit through core's tracer or meter. Your plugin's scope name is the machi
 
     from my_plugin import __version__
 
-    tracer = trace.get_tracer("my-plugin", __version__)
-    meter = metrics.get_meter("my-plugin", __version__)
+    tracer = trace.get_tracer("my_plugin", __version__)
+    meter = metrics.get_meter("my_plugin", __version__)
 
 If every attribute you emit follows current semantic conventions you can also pass ``schema_url=``; ``datasette.telemetry.SCHEMA_URL`` is the version core's own spellings track, with a comment explaining how to choose one. When in doubt, omit it - a wrong schema URL is worse than none.
 
-Name your own signals under a prefix you own (``my_plugin.*``). Reuse core's shared attribute spellings where they mean the same thing - ``db.namespace`` for a database name, ``error.type`` for a failure class - rather than minting parallel ones.
+Two naming rules keep the ecosystem's signals tellable-apart:
+
+- **Scope**: use your plugin's *import package* name - ``my_plugin``, underscores and all. Consumers filter on the scope, and one spelling convention means they can guess it.
+- **Signal prefix**: name spans, metrics and custom attributes under a prefix you own - your package name (``my_plugin.*``) or a short product name (``paper.*``). **Never a bare** ``datasette.*`` **prefix**: that namespace belongs to core, an operator could no longer tell core signals from plugin signals, and a future core signal could collide with yours.
+
+Reuse core's shared attribute spellings where they mean the same thing - ``db.namespace`` for a database name, ``error.type`` for a failure class - rather than minting parallel ones. If a span family in your registry shares a prefix with another entry, exact names always win over prefix matches, but two overlapping ``prefix=True`` entries resolve to whichever is listed first - avoid overlapping families rather than relying on order.
 
 .. _plugin_telemetry_registry:
 
@@ -88,6 +93,8 @@ Core's instrumentation records **no data users put into Datasette and no identif
 - If you time user-influenced SQL, follow core: record the SQL via ``datasette.telemetry.sql_attribute()`` (truncated, never parameters) on spans only.
 - When a value is interesting but unbounded, record a bounded proxy instead: a count, a byte size, a truncation flag, or the enum outcome.
 
+These rules are enforceable: see ``assert_no_forbidden_values()`` in :ref:`plugin_telemetry_testing`.
+
 .. _plugin_telemetry_callbacks:
 
 Your database work is already traced
@@ -140,6 +147,17 @@ Two propagation facts worth knowing (details in ``datasette/telemetry.py``):
 - Core's ``tracer`` and yours are proxies. A ``ProxyTracer`` permanently caches the first concrete tracer it resolves *after* a provider exists, so in embedded deployments the provider must be installed before the first span - importing the module is fine, starting spans is not. Meters forward retroactively; tracers do not.
 - ``asyncio.create_task`` copies the ambient context, so a long-running task created during a request will silently parent to that request's span - exactly the bug ``linked_root_span_kwargs()`` exists to avoid.
 
+.. _plugin_telemetry_gauges:
+
+Observable gauges
+-----------------
+
+For a *level* - how many streams are open, how deep is a queue - register an observable gauge whose callback the SDK invokes on its own collection cycle. Three disciplines, all inherited from how core implements its pool gauges in ``datasette/telemetry.py``:
+
+- Hold live objects **weakly** (a ``weakref.WeakSet`` guarded by a lock), so instrumenting an object never keeps it alive, and unregister on close.
+- The callback runs on the SDK's **collection thread**: never take a lock the request path holds, never await, never do I/O. Read cached state and yield ``Observation`` values; if freshness matters, refresh the cache from your own code and expose its staleness as another gauge.
+- With no provider installed the callback is **never invoked at all**, so gauges are free by default.
+
 .. _plugin_telemetry_testing:
 
 Testing your instrumentation
@@ -153,10 +171,11 @@ Testing your instrumentation
         otel_metrics,
         otel_meter_provider,
         otel_provider,
+        otel_reset,
         otel_spans,
     )
 
-``otel_provider`` and ``otel_meter_provider`` are session-scoped and autouse - they install a real SDK provider (in-memory, synchronous export) once per process, and do nothing when the SDK is not installed, so add ``opentelemetry-sdk`` to your test dependencies only. Tests then take ``otel_spans`` (an ``InMemorySpanExporter``) or ``otel_metrics`` (a collector with ``collect()`` / ``point()`` helpers).
+``otel_provider`` and ``otel_meter_provider`` are session-scoped and autouse - they install a real SDK provider (in-memory, synchronous export) once per process, and do nothing when the SDK is not installed, so add ``opentelemetry-sdk`` to your test dependencies only. If a different provider was installed first (an embedding app, ``opentelemetry-instrument``), the fixtures detect that the install did not take and skip with a clear message rather than asserting against an exporter wired to nothing. ``otel_reset`` is autouse too: it drains the exporter and reader after every test, so a large suite does not accumulate recorded spans for its whole lifetime. Tests then take ``otel_spans`` (an ``InMemorySpanExporter``) or ``otel_metrics`` (a collector with ``collect()`` / ``point()`` helpers).
 
 Wire your registry to reality with the conformance helpers - the two directions catch instrumentation added without documentation and documentation describing signals that no longer exist:
 
@@ -166,7 +185,7 @@ Wire your registry to reality with the conformance helpers - the two directions 
         assert_metrics_conform,
         assert_metrics_covered,
         assert_package_never_imports_sdk,
-        assert_registry_covered,
+        assert_spans_covered,
         assert_spans_conform,
     )
 
@@ -177,13 +196,13 @@ Wire your registry to reality with the conformance helpers - the two directions 
         run_a_workload_that_exercises_everything()
         finished = otel_spans.get_finished_spans()
         # Everything emitted is registered (and enum values are legal):
-        assert_spans_conform(SPANS, finished, scope_name="my-plugin")
+        assert_spans_conform(SPANS, finished, scope_name="my_plugin")
         # Everything registered was emitted:
-        assert_registry_covered(SPANS, finished, scope_name="my-plugin")
+        assert_spans_covered(SPANS, finished, scope_name="my_plugin")
         # Same two directions for metrics - one collect() after the workload:
         otel_metrics.collect()
-        assert_metrics_conform(METRICS, otel_metrics, scope_name="my-plugin")
-        assert_metrics_covered(METRICS, otel_metrics, scope_name="my-plugin")
+        assert_metrics_conform(METRICS, otel_metrics, scope_name="my_plugin")
+        assert_metrics_covered(METRICS, otel_metrics, scope_name="my_plugin")
 
 
     def test_api_only_dependency():
@@ -193,6 +212,8 @@ Always pass ``scope_name`` - the exporter and reader also hold core's signals, a
 
 The metric helpers check more than names: ``assert_metrics_conform`` asserts each instrument was created as the **kind** and **unit** its registry entry declares (the registry entry and the ``meter.create_*()`` call are separate statements, and a dashboard built on the registry's word breaks silently if they drift), and that every value on a ``values=`` enum attribute is a member - which is what makes a metric dimension *provably* bounded rather than bounded by intent. Both ``*_covered`` helpers exempt attributes marked ``optional=True`` (an ``error.type`` only present on failures should not force your workload to manufacture errors - pin those with targeted tests instead), and the metrics reader uses delta temporality, so run one broad workload followed by a single ``collect()``.
 
+Finally, enforce the privacy rules with ``assert_no_forbidden_values()``: plant sentinel values in your workload - a fake email your fixtures log in with, a token, a username - and assert they never appear in any span name, attribute, event, status description or metric attribute. Leave ``scope_name`` unset for this one: a secret leaking through *core's* signals (SQL text, say) is still a leak. Schedule the test that calls ``assert_package_never_imports_sdk()`` early in your suite - see its docstring for the macOS threading hazard.
+
 .. _plugin_telemetry_caveats:
 
 Known caveats
@@ -200,4 +221,4 @@ Known caveats
 
 - **Streaming responses hold the request span open.** Core's request span ends when the response body finishes, so for an SSE or long-streaming route its duration is the connection lifetime. If you need per-message timing on a stream, emit your own child spans or span events per message, and use gauges for concurrent-stream counts.
 - **A plugin timing core's work double-measures by design.** See :ref:`plugin_telemetry_callbacks` above.
-- ``datasette.client`` requests made from inside a request currently produce a nested ``SERVER`` span, which can double-count requests in kind-based dashboards.
+- ``datasette.client`` requests made from inside a request produce a nested ``SERVER`` span. Those spans carry ``datasette.internal_client: true`` - filter on it to keep kind-based dashboards from double-counting requests.

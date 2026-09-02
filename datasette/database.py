@@ -413,9 +413,10 @@ class Database:
     async def analyze_sql(self, sql, params=None) -> SQLAnalysis:
         self._check_not_closed()
 
-        return await self.execute_isolated_fn(
-            lambda conn: analyze_sql_tables(conn, sql, params, database_name=self.name)
-        )
+        def _analyze_sql(conn):
+            return analyze_sql_tables(conn, sql, params, database_name=self.name)
+
+        return await self.execute_isolated_fn(_analyze_sql)
 
     async def execute_write_fn(self, fn, block=True, transaction=True, request=None):
         """Run `fn(conn)` on the write connection, traced as one database call.
@@ -1017,17 +1018,34 @@ class Database:
         )
         return [r[0] for r in results.rows]
 
+    # These callbacks are named functions rather than lambdas so that their
+    # db.query spans carry a greppable datasette.callback - exactly the
+    # guidance the plugin telemetry docs give, applied to core's own
+    # highest-frequency introspection calls.
+
     async def table_columns(self, table):
-        return await self.execute_fn(lambda conn: table_columns(conn, table))
+        def _table_columns(conn):
+            return table_columns(conn, table)
+
+        return await self.execute_fn(_table_columns)
 
     async def table_column_details(self, table):
-        return await self.execute_fn(lambda conn: table_column_details(conn, table))
+        def _table_column_details(conn):
+            return table_column_details(conn, table)
+
+        return await self.execute_fn(_table_column_details)
 
     async def primary_keys(self, table):
-        return await self.execute_fn(lambda conn: detect_primary_keys(conn, table))
+        def _primary_keys(conn):
+            return detect_primary_keys(conn, table)
+
+        return await self.execute_fn(_primary_keys)
 
     async def fts_table(self, table):
-        return await self.execute_fn(lambda conn: detect_fts(conn, table))
+        def _fts_table(conn):
+            return detect_fts(conn, table)
+
+        return await self.execute_fn(_fts_table)
 
     async def label_column_for_table(self, table):
         explicit_label_column = (await self.ds.table_config(self.name, table)).get(

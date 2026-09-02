@@ -157,7 +157,11 @@ async def inspect_(files, sqlite_extensions):
     app = Datasette([], immutables=files, sqlite_extensions=sqlite_extensions)
     data = {}
     for name, database in app.databases.items():
-        tables = await database.execute_fn(lambda conn: inspect_tables(conn, {}))
+
+        def _inspect_tables(conn):
+            return inspect_tables(conn, {})
+
+        tables = await database.execute_fn(_inspect_tables)
         data[name] = {
             "hash": database.hash,
             "size": database.size,

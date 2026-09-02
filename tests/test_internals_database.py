@@ -706,6 +706,33 @@ async def test_execute_write_fn_block_false(db):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("disable_threads", (False, True))
+async def test_execute_write_fn_block_false_returns_uuid(tmp_path, disable_threads):
+    # block=False is documented to return "a UUID representing the queued task".
+    # With num_sql_threads=0 there is no write thread, so the non-threaded branch
+    # has to satisfy the same contract as the threaded one.
+    settings = {"num_sql_threads": 0} if disable_threads else {}
+    ds = Datasette([], memory=True, settings=settings)
+    await ds.invoke_startup()
+    db = ds.add_memory_database("test_block_false")
+    await db.execute_write(
+        "create table if not exists t (id integer primary key, v text)"
+    )
+
+    def write_fn(conn):
+        conn.execute("insert into t (v) values ('a')")
+        # Returns None, like most write functions.
+
+    task_id = await db.execute_write_fn(write_fn, block=False)
+
+    assert isinstance(task_id, uuid.UUID)
+    # Distinct per call, so a caller can tell two queued tasks apart.
+    second = await db.execute_write_fn(write_fn, block=False)
+    assert isinstance(second, uuid.UUID)
+    assert second != task_id
+
+
+@pytest.mark.asyncio
 async def test_execute_write_fn_block_true(db):
     def write_fn(conn):
         conn.execute("delete from roadside_attractions where pk = 1;")

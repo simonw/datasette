@@ -42,6 +42,7 @@ from jinja2.exceptions import TemplateNotFound
 from markupsafe import Markup, escape
 
 from . import stored_queries, write_sql
+from .background_tasks import BackgroundTask, BackgroundTaskSupervisor
 from .column_types import SQLiteType
 from .csrf import CrossOriginProtectionMiddleware
 from .database import Database, QueryInterrupted
@@ -454,6 +455,7 @@ class Datasette:
         self.actions = {}  # .invoke_startup() will populate this
         self._column_types = {}  # .invoke_startup() will populate this
         self._setup_db_done = False
+        self._suppress_background_tasks = False
         try:
             self._refresh_schemas_lock = asyncio.Lock()
             self._startup_lock = asyncio.Lock()
@@ -467,6 +469,7 @@ class Datasette:
                 self._startup_lock = asyncio.Lock()
             else:
                 raise
+        self._background_tasks = BackgroundTaskSupervisor(self)
         self.crossdb = crossdb
         self.nolock = nolock
         if memory or crossdb or not self.files:
@@ -2836,6 +2839,63 @@ class Datasette:
                 self._setup_db_done = True
             await self.invoke_startup()
 
+    def add_background_task(self, func, name=None) -> BackgroundTask:
+        """Register a piece of supervised background work, typically from
+        a plugin's ``startup`` hook.
+
+        ``func`` must be a coroutine function taking one positional
+        argument, the ``Datasette`` instance - core calls ``func(self)``.
+        Callable any time after ``__init__``: if background tasks haven't
+        launched yet (the common case - most callers are ``startup`` hooks,
+        which run before launch), this buffers the registration until they
+        do; if they've already launched (e.g. called from a request
+        handler after the server is up), the task starts immediately.
+
+        Returns a :class:`~datasette.background_tasks.BackgroundTask`
+        handle (``.name``, ``.state``, ``.task``, ``.exception``,
+        ``.started_at``, ``.plugin``, ``.cancel()``).
+
+        ``name`` defaults to ``func.__qualname__``; on a name collision a
+        ``-2``, ``-3``, ... suffix is appended, since names are how
+        ``/-/tasks`` and log messages identify work.
+        """
+        return self._background_tasks.add(func, name=name)
+
+    async def start_background_tasks(self):
+        """Run startup (if it hasn't run yet) and launch every registered
+        background task.
+
+        Public entry point for tests, embedders, and headless CLIs (the
+        ``datasette-rss``-style ``fetch --due`` shape) that want supervised
+        background tasks without running a server - equivalent to what
+        happens automatically via ASGI lifespan / the first-request
+        fallback in a served deployment.
+        """
+        await self.invoke_startup()
+        await self._background_tasks.launch_all()
+
+    async def _launch_background_tasks(self):
+        """Idempotently launch every registered background task. Private:
+        this is the entry point wired into the lifecycle trigger lists
+        (the second entry in both ``AsgiLifespan`` and
+        ``AsgiRunOnFirstRequest``'s ``on_startup``, after
+        ``_startup_sequence``) - not something plugins or embedders should
+        call directly; use ``add_background_task`` /
+        ``start_background_tasks`` instead.
+
+        Positioned after ``_startup_sequence`` in both trigger lists so
+        launch always happens once every plugin's ``startup`` hook has had
+        a chance to register work - the ordering guarantee that makes
+        ``add_background_task`` useful. No-ops when
+        ``_suppress_background_tasks`` is set (the ``--get`` CLI path: its
+        one-shot TestClient request flows through the full ASGI stack,
+        including the first-request fallback, but must never launch
+        long-lived background work).
+        """
+        if self._suppress_background_tasks:
+            return
+        await self._background_tasks.launch_all()
+
     def app(self):
         """Returns an ASGI app function that serves the whole of Datasette"""
         routes = self._routes()
@@ -2848,10 +2908,13 @@ class Datasette:
             asgi = AsgiTracer(asgi)
         asgi = AsgiLifespan(
             asgi,
-            on_startup=[self._startup_sequence],
+            on_startup=[self._startup_sequence, self._launch_background_tasks],
             on_shutdown=[_close_on_shutdown],
         )
-        asgi = AsgiRunOnFirstRequest(asgi, on_startup=[self._startup_sequence])
+        asgi = AsgiRunOnFirstRequest(
+            asgi,
+            on_startup=[self._startup_sequence, self._launch_background_tasks],
+        )
         for wrapper in pm.hook.asgi_wrapper(datasette=self):
             asgi = wrapper(asgi)
         return asgi

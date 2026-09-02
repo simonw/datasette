@@ -43,7 +43,9 @@ try:
         ExportTraceServiceResponse,
     )
 except ImportError:
-    sys.exit("This receiver needs the OpenTelemetry protobuf definitions:\n    uv run --with opentelemetry-proto python demos/otel/otlp_receiver.py")
+    sys.exit(
+        "This receiver needs the OpenTelemetry protobuf definitions:\n    uv run --with opentelemetry-proto python demos/otel/otlp_receiver.py"
+    )
 
 HOST = "127.0.0.1"
 PORT = 4318
@@ -97,8 +99,13 @@ class OTLPHandler(BaseHTTPRequestHandler):
                         {
                             "name": span.name,
                             "parent_id": span.parent_span_id.hex() or None,
-                            "duration_ms": (span.end_time_unix_nano - span.start_time_unix_nano) / 1e6,
-                            "attributes": {a.key: attribute_value(a.value) for a in span.attributes},
+                            "duration_ms": (
+                                span.end_time_unix_nano - span.start_time_unix_nano
+                            )
+                            / 1e6,
+                            "attributes": {
+                                a.key: attribute_value(a.value) for a in span.attributes
+                            },
                         }
                     )
         # flush=True so the live feedback survives being piped or redirected

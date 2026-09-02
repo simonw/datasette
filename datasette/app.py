@@ -2285,6 +2285,21 @@ class Datasette:
         )
         return d
 
+    def _tasks(self):
+        return {
+            "tasks": [
+                {
+                    "name": t.name,
+                    "state": t.state,
+                    "plugin": t.plugin,
+                    "started_at": t.started_at,
+                    "exception": repr(t.exception) if t.exception else None,
+                }
+                for t in self._background_tasks.tasks()
+            ],
+            "launched": self._background_tasks.launched,
+        }
+
     def _actor(self, request):
         return {"actor": request.actor}
 
@@ -2572,6 +2587,12 @@ class Datasette:
                 self, "threads.json", self._threads, permission="permissions-debug"
             ),
             r"/-/threads(\.(?P<format>json))?$",
+        )
+        add_route(
+            JsonDataView.as_view(
+                self, "tasks.json", self._tasks, permission="permissions-debug"
+            ),
+            r"/-/tasks(\.(?P<format>json))?$",
         )
         add_route(
             JsonDataView.as_view(

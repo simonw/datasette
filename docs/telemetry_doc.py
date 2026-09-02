@@ -50,10 +50,4 @@ def metrics(cog):
         if metric.buckets:
             boundaries = ", ".join(f"``{boundary}``" for boundary in metric.buckets)
             cog.out(f"    Bucket boundaries: {boundaries}.\n\n")
-        if metric.attributes:
-            cog.out("    Attributes:\n\n")
-            for attribute in metric.attributes:
-                cog.out(f"    - ``{attribute}`` - {attribute.description}\n")
-            cog.out("\n")
-        else:
-            cog.out("    No attributes.\n\n")
+        _attribute_lines(cog, metric.attributes)

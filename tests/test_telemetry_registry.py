@@ -34,6 +34,7 @@ from opentelemetry.trace import SpanKind
 
 from datasette import hookimpl
 from datasette import telemetry_registry as reg
+from datasette.telemetry_testing import assert_metrics_conform, assert_metrics_covered
 from datasette.app import Datasette
 from datasette.database import QueryInterrupted
 from datasette.utils.sqlite import sqlite3
@@ -497,43 +498,28 @@ async def emitted_metrics(otel_metrics):
                 pairs.add((metric_name, key))
     ds.close()
     slow.close()
-    return {"names": set(snapshot), "pairs": pairs}
+    return {"names": set(snapshot), "pairs": pairs, "collector": otel_metrics}
+
+
+@pytest.mark.asyncio
+async def test_metrics_conform_to_the_registry(emitted_metrics):
+    """
+    Emitted-but-unregistered, via the plugin kit's helper - consumed here
+    exactly the way a plugin's suite would. Beyond names and attribute keys,
+    this also asserts each instrument was created as the kind and unit its
+    registry entry declares, and that `datasette.operation` only ever takes
+    its declared enum values.
+    """
+    assert_metrics_conform(
+        reg.METRICS, emitted_metrics["collector"], scope_name="datasette"
+    )
 
 
 @pytest.mark.asyncio
 async def test_every_registered_metric_is_emitted(emitted_metrics):
-    "The both-ways name check for metrics."
-    names = emitted_metrics["names"]
-    missing = sorted(str(m) for m in reg.METRICS if m not in names)
-    assert not missing, f"documented but never emitted: {missing}"
-
-    unregistered = sorted(
-        name for name in names if name not in {str(m) for m in reg.METRICS}
-    )
-    assert not unregistered, f"emitted but not registered: {unregistered}"
-
-
-@pytest.mark.asyncio
-async def test_every_emitted_metric_attribute_is_registered(emitted_metrics):
-    """
-    An attribute added to a metric without a registry entry would be missing
-    from the docs - the metric-side counterpart of
-    `test_every_emitted_attribute_is_registered`.
-    """
-    metric_for = {str(m): m for m in reg.METRICS}
-    unregistered = sorted(
-        f"{metric_name} -> {key}"
-        for metric_name, key in emitted_metrics["pairs"]
-        # A metric name with no registry entry at all is already reported by
-        # test_every_registered_metric_is_emitted; do not double-report it
-        # here, and do not crash attribute_allowed() on a None metric.
-        if metric_name in metric_for
-        and not reg.attribute_allowed(metric_for[metric_name], key)
-    )
-    assert (
-        not unregistered
-    ), "these metric attributes are emitted but not registered: " + "\n".join(
-        unregistered
+    "Registered-but-never-collected, via the plugin kit's helper."
+    assert_metrics_covered(
+        reg.METRICS, emitted_metrics["collector"], scope_name="datasette"
     )
 
 

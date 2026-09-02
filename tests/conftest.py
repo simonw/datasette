@@ -123,12 +123,10 @@ def _otel_meter_provider():
     Install a real OTel SDK MeterProvider + InMemoryMetricReader once per
     process.
 
-    Unlike the tracer, ordering is not load-bearing here: `_ProxyMeter` and
-    the `_ProxyInstrument`s it hands out forward to a provider installed
-    *after* they were created, whereas `ProxyTracer` permanently caches the
-    first concrete tracer it resolves. This fixture is still session-scoped
-    and autouse for symmetry, and so that a single reader collects for the
-    whole run.
+    Unlike the tracer, ordering is not load-bearing here - see the metrics
+    banner in `datasette/telemetry.py` for the `_ProxyMeter`-vs-`ProxyTracer`
+    difference. This fixture is still session-scoped and autouse for
+    symmetry, and so that a single reader collects for the whole run.
 
     DELTA temporality is chosen for counters and histograms so that each
     collection reports only what happened since the previous one. With the

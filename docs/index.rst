@@ -64,6 +64,7 @@ Contents
    javascript_plugins
    plugin_hooks
    testing_plugins
+   plugin_telemetry
    internals
    events
    upgrade_guide

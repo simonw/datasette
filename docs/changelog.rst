@@ -14,6 +14,8 @@ Unreleased
 - Every HTTP request now gets an OpenTelemetry ``SERVER`` span, named after the request method and matched route, carrying ``http.route``, the response status and W3C trace context extracted from inbound headers - so every database span has a request to belong to, and Datasette joins distributed traces started by a proxy or calling service. The query string is never recorded. See :ref:`internals_telemetry_requests`. (:issue:`1730`)
 - Datasette core now also emits OpenTelemetry **metrics** covering SQL thread pool saturation, per-database write queue depth, open connections, query latency and time-limit interruptions. These answer operational questions that spans structurally cannot - "am I saturating my :ref:`setting_num_sql_threads` threads?" is a level, not an event - and they survive trace sampling. As with spans, core installs no ``MeterProvider``, so there is no cost unless metrics are collected externally. See :ref:`internals_telemetry`. (:issue:`1730`)
 
+- New :ref:`plugin telemetry kit <plugin_telemetry>` for plugins that emit their own OpenTelemetry signals: the registry classes (``Attribute`` with closed-enum ``values=``, ``SpanName`` with prefix-matched families, ``MetricName``) are now documented public API, ``datasette.telemetry.linked_root_span_kwargs()`` provides the root-span-with-link shape for background work, ``datasette.telemetry.request_span()`` is documented, and ``datasette.telemetry_testing`` ships the pytest fixtures and two-way conformance checks core's own suite uses. (:issue:`1730`)
+
 Nothing is removed by the OpenTelemetry work: the ``?_trace=1`` query string parameter, the ``trace_debug`` setting and the :ref:`internals_tracer` module all continue to work as before.
 
 .. _v1_0_a38:

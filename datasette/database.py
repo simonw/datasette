@@ -14,11 +14,12 @@ from pathlib import Path
 
 import sqlite_utils
 from opentelemetry import context as otel_context_api
-from opentelemetry.trace import Link, Status, StatusCode, get_current_span
+from opentelemetry.trace import Status, StatusCode
 
 from .inspect import inspect_hash
 from .telemetry import (
     callback_name,
+    linked_root_span_kwargs,
     record_operation_duration,
     record_query_interrupted,
     record_write_queue_wait,
@@ -615,39 +616,19 @@ class Database:
             #   warning rather than raising, so this pairing is load-bearing
             #   and easy to get wrong silently.
             # - block=False: the caller returned already without awaiting,
-            #   so the enqueueing span may already have closed (and
-            #   exported) before this task's spans even start - parenting to
-            #   it would make a child appear to outlive its already-closed
-            #   parent, which OTel allows but which renders badly in most
-            #   trace UIs. The enqueueing request *caused* this write
+            #   so the enqueueing span may have closed before this task's
+            #   spans even start. The enqueueing request *caused* this write
             #   without *containing* it, so nothing is attached here -
-            #   instead each write span is started as its own root (explicit
-            #   empty `context=`, so the write thread's ambient context
-            #   cannot supply a parent either) carrying one `Link` back to
-            #   the enqueueing span's context, built once into
-            #   `write_span_kwargs` and spread into every start_span call
-            #   below.
+            #   linked_root_span_kwargs() makes each write span a root with
+            #   a Link back to the enqueueing span (see its docstring for
+            #   the full rationale), built once into `write_span_kwargs`
+            #   and spread into every start_span call below.
             token = None
             write_span_kwargs = {}
             if task.block:
                 token = otel_context_api.attach(task.otel_context)
             else:
-                enqueueing_span_context = get_current_span(
-                    task.otel_context
-                ).get_span_context()
-                # No attributes on the link: there is only one kind of link
-                # here, so naming the relationship would be a constant that
-                # carries no information a consumer does not already have
-                # from the link's existence.
-                links = (
-                    [Link(enqueueing_span_context)]
-                    if enqueueing_span_context.is_valid
-                    else []
-                )
-                write_span_kwargs = {
-                    "context": otel_context_api.Context(),
-                    "links": links,
-                }
+                write_span_kwargs = linked_root_span_kwargs(task.otel_context)
             try:
                 exception = None
                 result = None

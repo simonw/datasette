@@ -825,7 +825,7 @@ def test_no_provider_takes_the_fast_path():
     install should pay essentially nothing for instrumentation it is not
     using.
 
-    This has to run in a subprocess. The suite's `_otel_provider` fixture is
+    This has to run in a subprocess. The suite's `otel_provider` fixture is
     session-scoped and autouse, and `set_tracer_provider()` is effectively
     once-per-process, so in-process every span is recording and the fast path
     is unreachable.

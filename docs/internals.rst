@@ -2329,6 +2329,8 @@ Datasette core depends on `opentelemetry-api <https://pypi.org/project/opentelem
 
 Turning tracing on is entirely an operational decision made outside of Datasette itself: run Datasette under the standard ``opentelemetry-instrument`` agent, or embed Datasette inside a host application that installs its own provider.
 
+Plugins can emit their own spans and metrics alongside these, using the same registry classes and test helpers core uses - see :ref:`plugin_telemetry`.
+
 Everything Datasette emits carries the instrumentation scope ``datasette``, versioned with the running Datasette version and declaring the `semantic conventions schema <https://opentelemetry.io/docs/specs/otel/schemas/>`__ its attribute names follow.
 
 This is separate from, and does not replace, the built-in :ref:`internals_tracer` mechanism behind ``?_trace=1`` and the :ref:`setting_trace_debug` setting. Both continue to work exactly as before.

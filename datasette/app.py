@@ -51,6 +51,7 @@ from .renderer import json_renderer
 from .resources import DatabaseResource, TableResource
 from .telemetry import (
     TelemetryMiddleware,
+    _in_datasette_client,
     clamp_http_method,
     request_span,
     tracer,
@@ -171,8 +172,9 @@ app_root = Path(__file__).parent.parent
 logger = logging.getLogger(__name__)
 
 
-# Context variable to track when code is executing within a datasette.client request
-_in_datasette_client = contextvars.ContextVar("in_datasette_client", default=False)
+# _in_datasette_client itself lives in telemetry.py so the request span
+# middleware can read it without a circular import; its writers
+# (_DatasetteClientContext) and reader (in_client()) both live here.
 
 
 class _DatasetteClientContext:

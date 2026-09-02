@@ -856,3 +856,34 @@ def test_no_provider_takes_the_fast_path():
     )
     # Same fast path, other observable: nothing is stashed in the scope either.
     assert report["scope_keys"] == [False, False]
+
+
+@pytest.mark.asyncio
+async def test_internal_client_requests_are_marked(ds, otel_spans):
+    """
+    An in-process `datasette.client` request runs the full ASGI stack, so it
+    emits its own SERVER span - `datasette.internal_client` marks those so
+    kind-based dashboards can filter the double-count out. A request that
+    arrives through the raw ASGI app (the shape of a real inbound request,
+    without the DatasetteClient wrapper setting the ContextVar) must not
+    carry the attribute.
+    """
+    otel_spans.clear()
+    assert (await ds.client.get("/")).status_code == 200
+    server = _server_spans(otel_spans)
+    assert server
+    assert all(
+        span.attributes.get("datasette.internal_client") is True for span in server
+    )
+
+    import httpx
+
+    transport = httpx.ASGITransport(app=ds.app())
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://localhost"
+    ) as client:
+        otel_spans.clear()
+        assert (await client.get("/")).status_code == 200
+    server = _server_spans(otel_spans)
+    assert server
+    assert all("datasette.internal_client" not in span.attributes for span in server)

@@ -93,6 +93,7 @@ EXPECTED_HTTP_ATTRIBUTES = {
     "user_agent.original",
     "http.response.status_code",
     "error.type",
+    "datasette.internal_client",
 }
 
 # The registry's own name for the request span is that template, not anything

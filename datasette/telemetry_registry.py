@@ -136,6 +136,16 @@ USER_AGENT_ORIGINAL = Attribute(
     "The ``User-Agent`` header, verbatim. Omitted if the client sent none.",
     optional=True,
 )
+INTERNAL_CLIENT = Attribute(
+    "datasette.internal_client",
+    "``True`` when the request was made in-process through "
+    "``datasette.client`` rather than arriving over the network. Such a "
+    "sub-request runs the full ASGI stack, so it emits its own nested "
+    "``SERVER`` span inside the outer request's - filter on this attribute "
+    "to keep kind-based dashboards from double-counting requests. Omitted "
+    "for real inbound requests.",
+    optional=True,
+)
 ERROR_TYPE = Attribute(
     "error.type",
     "Set when the request failed: the exception class name if one escaped the "
@@ -283,6 +293,7 @@ HTTP_REQUEST = SpanName(
         USER_AGENT_ORIGINAL,
         HTTP_RESPONSE_STATUS_CODE,
         ERROR_TYPE,
+        INTERNAL_CLIENT,
     ),
     dynamic=True,
     kind=SpanKind.SERVER,

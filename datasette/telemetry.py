@@ -14,6 +14,7 @@ run-to-run variation. Installing an SDK provider is what costs
 something measurable.
 """
 
+import contextvars
 import re
 
 from opentelemetry import trace as otel_trace
@@ -25,12 +26,21 @@ from .telemetry_registry import (
     ERROR_TYPE,
     HTTP_REQUEST_METHOD,
     HTTP_RESPONSE_STATUS_CODE,
+    INTERNAL_CLIENT,
     SERVER_ADDRESS,
     URL_PATH,
     URL_SCHEME,
     USER_AGENT_ORIGINAL,
 )
 from .version import __version__
+
+# True while code is executing within a datasette.client request. Defined
+# here rather than in app.py (which owns its writers and the in_client()
+# accessor) so TelemetryMiddleware can read it without a circular import:
+# an in-process sub-request runs the full ASGI stack, so it emits a second,
+# nested SERVER span - datasette.internal_client marks those so kind-based
+# dashboards can filter the double-count out.
+_in_datasette_client = contextvars.ContextVar("in_datasette_client", default=False)
 
 # The semantic-convention version whose spellings this instrumentation
 # actually emits. Deliberately NOT the latest release.
@@ -301,6 +311,8 @@ class TelemetryMiddleware:
             user_agent = _first_header(headers, b"user-agent")
             if user_agent:
                 span.set_attribute(USER_AGENT_ORIGINAL, user_agent)
+            if _in_datasette_client.get():
+                span.set_attribute(INTERNAL_CLIENT, True)
 
             # A copy, not a mutation: the scope belongs to the server, and
             # every other layer in Datasette extends it the same way.

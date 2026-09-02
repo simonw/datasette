@@ -133,8 +133,16 @@ def test_linked_root_span_kwargs_with_no_current_span(otel_spans):
 
 
 def test_kit_module_itself_never_imports_the_sdk():
-    # The kit imports the SDK lazily, so a plugin importing it at module
-    # level does not violate the api-only dependency rule.
+    """
+    The kit imports the SDK lazily, so a plugin importing it at module
+    level does not violate the api-only dependency rule.
+
+    conftest.py's pytest_collection_modifyitems() moves this test to the
+    front of the run by name - if you rename it, rename it there too. Like
+    every subprocess-spawning test in this suite, running it late crashes
+    the interpreter on macOS/CPython 3.13 (SIGBUS in fork+exec once the
+    process holds enough threads) - see the comment there.
+    """
     assert_package_never_imports_sdk("datasette.telemetry_testing")
 
 

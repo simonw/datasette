@@ -385,6 +385,11 @@ def assert_package_never_imports_sdk(*module_names):
     rather than by grepping, so a lazy `import opentelemetry.sdk` inside a
     function body cannot slip past. A plugin should depend on
     `opentelemetry-api` only, exactly as Datasette core does.
+
+    Run the test that calls this early in your suite: on macOS/CPython 3.13
+    a process that has accumulated many threads can crash (SIGBUS) in
+    subprocess's fork+exec - Datasette's own conftest front-loads its
+    equivalent tests by name for exactly this reason.
     """
     imports = "; ".join(f"import {name}" for name in module_names)
     code = (

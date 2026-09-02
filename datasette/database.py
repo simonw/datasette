@@ -925,13 +925,9 @@ class Database:
                     if not timeout_expected:
                         span.set_status(Status(StatusCode.ERROR, str(e)))
                         span.record_exception(e)
-                        # A counter rather than only a span, because this is the
-                        # one thing an operator wants a rate and an alert on, and
-                        # spans under a 1% sampler cannot provide either. An
-                        # expected timeout - a caller that opted into a shorter
-                        # budget, like facet suggestion - is not counted, for the
-                        # same reason it is not a span error: it fires routinely
-                        # by design and would drown the signal this exists for.
+                        # Expected timeouts (a caller that opted into a shorter
+                        # budget, like facet suggestion) are not counted - see
+                        # the M_QUERIES_INTERRUPTED registry entry for why.
                         record_query_interrupted(self.name)
                     raise
                 except Exception as e:

@@ -9,10 +9,9 @@ harness).
 
 With no provider installed every span produced here is a
 `NonRecordingSpan`. That is not free - a table page emits ~58 spans -
-but it is below what an end-to-end page benchmark can resolve: measured
-across 15 runs of a 5,000-row table page, the median moved 9.80ms to
-9.98ms while run-to-run spread was 1.4ms. Installing an SDK provider is
-what costs something measurable.
+but end-to-end page benchmarks put the overhead below their own
+run-to-run variation. Installing an SDK provider is what costs
+something measurable.
 """
 
 import re

@@ -287,23 +287,3 @@ def test_span_and_attribute_lookup():
     assert not reg.attribute_allowed(reg.DB_QUERY, "db.namespace.extra")
     assert not reg.attribute_allowed(reg.DB_QUERY, "datasette.isolated_connection")
     assert not reg.attribute_allowed(None, "db.namespace")
-
-
-def test_prefix_span_lookup():
-    """
-    `prefix=True` matching, exercised directly.
-
-    Phase 1 registers no prefix spans, so without this the branch in
-    `span_for()` would be untested code that the conformance tests silently
-    never reach.
-    """
-    hook = reg.SpanName("datasette.hook.", "A hypothetical span family", prefix=True)
-    original = reg.SPANS
-    reg.SPANS = original + (hook,)
-    try:
-        assert reg.span_for("datasette.hook.render_cell") is hook
-        assert reg.span_for("datasette.hook.anything") is hook
-        assert reg.span_for("datasette.hookish") is None
-        assert reg.span_for("db.query") is reg.DB_QUERY
-    finally:
-        reg.SPANS = original

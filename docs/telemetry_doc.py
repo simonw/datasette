@@ -26,8 +26,7 @@ def spans(cog):
 
     cog.out("\n")
     for span in SPANS:
-        title = f"{span}*" if span.prefix else str(span)
-        cog.out(f"``{title}``\n")
+        cog.out(f"``{span}``\n")
         cog.out(f"    {span.description}\n\n")
         # INTERNAL is the default and the overwhelming majority of spans -
         # printing it on every one would be noise. Only the exceptional case,

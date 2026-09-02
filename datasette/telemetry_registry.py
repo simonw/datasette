@@ -204,7 +204,11 @@ ERROR_TYPE = Attribute(
 
 DB_SYSTEM = Attribute("db.system", "Always ``sqlite``.")
 DB_NAMESPACE = Attribute("db.namespace", "Name of the database being queried.")
-OPERATION = Attribute("datasette.operation", "``read`` or ``write``.")
+OPERATION = Attribute(
+    "datasette.operation",
+    "Whether the operation was a read or a write.",
+    values={"read", "write"},
+)
 DB_QUERY_TEXT = Attribute(
     "db.query.text",
     "The SQL, truncated to 2048 characters. Never the parameter values. "
@@ -461,24 +465,47 @@ def span_for(emitted_name, kind=None, spans=None):
     return None
 
 
-def attribute_allowed(span, emitted_key):
-    "Whether `emitted_key` is a registered attribute of `span`."
-    if span is None:
-        return False
-    return emitted_key in span.attributes
-
-
-def attribute_value_allowed(span, emitted_key, value):
+def metric_for(emitted_name, metrics=None):
     """
-    Whether `value` is permitted for `emitted_key` on `span`.
+    Resolve an emitted metric name to its registry entry, or None.
+
+    The `span_for()` analogue - simpler, because metric names are always
+    static strings. `metrics` defaults to core's own registry; the plugin
+    testing kit passes a plugin's tuple instead.
+    """
+    if metrics is None:
+        metrics = METRICS
+    for metric in metrics:
+        if emitted_name == metric:
+            return metric
+    return None
+
+
+def attribute_allowed(entry, emitted_key):
+    """
+    Whether `emitted_key` is a registered attribute of `entry`.
+
+    `entry` is a `SpanName` or a `MetricName` - both carry `.attributes`.
+    """
+    if entry is None:
+        return False
+    return emitted_key in entry.attributes
+
+
+def attribute_value_allowed(entry, emitted_key, value):
+    """
+    Whether `value` is permitted for `emitted_key` on `entry` (a `SpanName`
+    or a `MetricName`).
 
     True for any value when the attribute declares no `values=` enum; when it
     does, membership is enforced - that is what makes a declared enum a real
-    cardinality bound rather than documentation.
+    cardinality bound rather than documentation. On a metric entry this is
+    where the bound matters most: a metric series is keyed by its attribute
+    values.
     """
-    if span is None:
+    if entry is None:
         return False
-    for attribute in span.attributes:
+    for attribute in entry.attributes:
         if attribute == emitted_key:
             return attribute.values is None or value in attribute.values
     return False

@@ -34,6 +34,7 @@ import pytest
 from .telemetry_registry import (
     attribute_allowed,
     attribute_value_allowed,
+    metric_for,
     span_for,
 )
 
@@ -162,18 +163,25 @@ class MetricsCollector:
     def __init__(self, reader):
         self.reader = reader
         self.snapshot = {}
+        # (instrumentation scope name, sdk Metric) pairs from the last
+        # collect() - the metric conformance helpers read this, because the
+        # name-keyed snapshot deliberately flattens the scope away.
+        self.collected = []
 
     def collect(self):
         self.snapshot = {}
+        self.collected = []
         data = self.reader.get_metrics_data()
         if data is None:
             return self.snapshot
         for resource_metrics in data.resource_metrics:
             for scope_metrics in resource_metrics.scope_metrics:
+                scope_name = scope_metrics.scope.name if scope_metrics.scope else None
                 for metric in scope_metrics.metrics:
                     self.snapshot.setdefault(metric.name, []).extend(
                         metric.data.data_points
                     )
+                    self.collected.append((scope_name, metric))
         return self.snapshot
 
     def points(self, name, attributes=None):
@@ -246,11 +254,13 @@ def assert_spans_conform(registry_spans, finished_spans, scope_name=None):
 def assert_registry_covered(registry_spans, finished_spans, scope_name=None):
     """
     Every entry in `registry_spans` was emitted at least once, and every one
-    of its registered attributes appeared on it at least once. This is the
-    registered-but-never-emitted direction - documentation describing a
-    signal that no longer exists, which is worse than omitting it because a
-    reader will build a dashboard on it. Run it against a workload broad
-    enough to exercise everything the registry claims.
+    of its registered non-`optional` attributes appeared on it at least
+    once. This is the registered-but-never-emitted direction - documentation
+    describing a signal that no longer exists, which is worse than omitting
+    it because a reader will build a dashboard on it. Run it against a
+    workload broad enough to exercise everything the registry claims;
+    `optional=True` attributes are exempt so a workload is not forced to
+    manufacture every error path (pin those with targeted tests instead).
     """
     spans = _scoped(finished_spans, scope_name)
     seen_attributes = {}
@@ -264,10 +274,106 @@ def assert_registry_covered(registry_spans, finished_spans, scope_name=None):
         if str(entry) not in seen_attributes:
             problems.append(f"registered span never emitted: {entry!r}")
             continue
-        missing = set(map(str, entry.attributes)) - seen_attributes[str(entry)]
+        required = {
+            str(attribute) for attribute in entry.attributes if not attribute.optional
+        }
+        missing = required - seen_attributes[str(entry)]
         if missing:
             problems.append(
                 f"{entry}: registered attributes never emitted: {sorted(missing)}"
+            )
+    assert not problems, "\n".join(problems)
+
+
+# Registry instrument kinds mapped to the SDK data type collected for them.
+# A registry kind outside this table (a plugin's own vocabulary) is not
+# kind-checked. "Counter" maps to Sum; monotonicity is not asserted, so
+# UpDownCounters registered as "Counter" pass too.
+_KIND_TO_DATA_TYPE = {
+    "Counter": "Sum",
+    "Histogram": "Histogram",
+    "Observable gauge": "Gauge",
+}
+
+
+def _scoped_metrics(collector, scope_name):
+    for scope, metric in collector.collected:
+        if scope_name is None or scope == scope_name:
+            yield metric
+
+
+def assert_metrics_conform(registry_metrics, collector, scope_name=None):
+    """
+    Every metric in the collector's last `collect()` (optionally: only those
+    from `scope_name`, which is what a plugin should pass - its own meter's
+    name) is registered in `registry_metrics`, was created as the instrument
+    kind and unit the registry declares, sets only registered attributes,
+    and respects any declared `values=` enums.
+
+    The kind and unit checks catch a drift nothing else does: the registry
+    entry and the `meter.create_*()` call are separate statements, and a
+    dashboard built on the registry's word breaks silently if they disagree.
+    """
+    problems = set()
+    for metric in _scoped_metrics(collector, scope_name):
+        entry = metric_for(metric.name, metrics=registry_metrics)
+        if entry is None:
+            problems.add(f"unregistered metric: {metric.name!r}")
+            continue
+        expected_data_type = _KIND_TO_DATA_TYPE.get(entry.kind)
+        actual_data_type = type(metric.data).__name__
+        if expected_data_type is not None and actual_data_type != expected_data_type:
+            problems.add(
+                f"{metric.name}: registry declares {entry.kind}, "
+                f"SDK collected {actual_data_type}"
+            )
+        if (metric.unit or "") != (entry.unit or ""):
+            problems.add(
+                f"{metric.name}: instrument unit {metric.unit!r} != "
+                f"registry unit {entry.unit!r}"
+            )
+        for point in metric.data.data_points:
+            for key, value in dict(point.attributes or {}).items():
+                if not attribute_allowed(entry, str(key)):
+                    problems.add(f"{metric.name}: unregistered attribute {key!r}")
+                elif not attribute_value_allowed(entry, str(key), value):
+                    problems.add(
+                        f"{metric.name}: {key}={value!r} not in the declared enum"
+                    )
+    assert not problems, "\n".join(sorted(problems))
+
+
+def assert_metrics_covered(registry_metrics, collector, scope_name=None):
+    """
+    Every entry in `registry_metrics` was collected at least once, and every
+    registered non-`optional` attribute appeared on it at least once - the
+    registered-but-never-emitted direction for metrics.
+
+    Run one broad workload, then a single `collect()`, then this: the reader
+    uses delta temporality, so measurements drained by an earlier collect()
+    are gone. `optional=True` attributes (e.g. an `error.type` only present
+    on failures) are exempt, same as the span-side helper.
+    """
+    seen_attributes = {}
+    for metric in _scoped_metrics(collector, scope_name):
+        entry = metric_for(metric.name, metrics=registry_metrics)
+        if entry is None:
+            continue
+        seen = seen_attributes.setdefault(str(entry), set())
+        for point in metric.data.data_points:
+            seen.update(str(key) for key in dict(point.attributes or {}))
+    problems = []
+    for entry in registry_metrics:
+        if str(entry) not in seen_attributes:
+            problems.append(f"registered metric never collected: {entry!r}")
+            continue
+        required = {
+            str(attribute) for attribute in entry.attributes if not attribute.optional
+        }
+        missing = required - seen_attributes[str(entry)]
+        if missing:
+            problems.append(
+                f"{entry}: registered attributes never collected: {sorted(missing)}"
             )
     assert not problems, "\n".join(problems)
 

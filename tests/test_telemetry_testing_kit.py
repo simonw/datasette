@@ -136,3 +136,127 @@ def test_kit_module_itself_never_imports_the_sdk():
     # The kit imports the SDK lazily, so a plugin importing it at module
     # level does not violate the api-only dependency rule.
     assert_package_never_imports_sdk("datasette.telemetry_testing")
+
+
+# --- Metric conformance helpers --------------------------------------------
+
+import itertools
+
+from opentelemetry import metrics as otel_metrics_api
+
+from datasette.telemetry_testing import (
+    assert_metrics_conform,
+    assert_metrics_covered,
+)
+
+toy_meter = otel_metrics_api.get_meter(SCOPE, "0.1")
+
+# Instrument names must be unique per meter for the SDK, so each test mints
+# its own via this counter rather than re-registering one name.
+_metric_ids = itertools.count()
+
+
+def _toy_metric_registry(name, kind="Counter", unit="{job}", attributes=None):
+    return (
+        reg.MetricName(
+            name,
+            kind,
+            unit,
+            "A toy metric.",
+            attributes if attributes is not None else (OUTCOME,),
+        ),
+    )
+
+
+def test_metrics_conform_passes_and_covers(otel_metrics):
+    name = f"toyplugin.jobs.{next(_metric_ids)}"
+    registry = _toy_metric_registry(name)
+    counter = toy_meter.create_counter(name, unit="{job}", description="Jobs run")
+    counter.add(1, {OUTCOME: "ok"})
+    otel_metrics.collect()
+    assert_metrics_conform(registry, otel_metrics, scope_name=SCOPE)
+    assert_metrics_covered(registry, otel_metrics, scope_name=SCOPE)
+
+
+def test_metrics_conform_catches_unregistered_metric(otel_metrics):
+    name = f"toyplugin.stealth.{next(_metric_ids)}"
+    counter = toy_meter.create_counter(name, unit="{job}")
+    counter.add(1)
+    otel_metrics.collect()
+    with pytest.raises(AssertionError, match="unregistered metric"):
+        assert_metrics_conform((), otel_metrics, scope_name=SCOPE)
+
+
+def test_metrics_conform_catches_kind_mismatch(otel_metrics):
+    name = f"toyplugin.kindclash.{next(_metric_ids)}"
+    registry = _toy_metric_registry(name, kind="Histogram", unit="{job}")
+    counter = toy_meter.create_counter(name, unit="{job}")
+    counter.add(1, {OUTCOME: "ok"})
+    otel_metrics.collect()
+    with pytest.raises(AssertionError, match="registry declares Histogram"):
+        assert_metrics_conform(registry, otel_metrics, scope_name=SCOPE)
+
+
+def test_metrics_conform_catches_unit_mismatch(otel_metrics):
+    name = f"toyplugin.unitclash.{next(_metric_ids)}"
+    registry = _toy_metric_registry(name, unit="s")
+    counter = toy_meter.create_counter(name, unit="ms")
+    counter.add(1, {OUTCOME: "ok"})
+    otel_metrics.collect()
+    with pytest.raises(AssertionError, match="unit"):
+        assert_metrics_conform(registry, otel_metrics, scope_name=SCOPE)
+
+
+def test_metrics_conform_catches_unregistered_attribute(otel_metrics):
+    name = f"toyplugin.attrclash.{next(_metric_ids)}"
+    registry = _toy_metric_registry(name)
+    counter = toy_meter.create_counter(name, unit="{job}")
+    counter.add(1, {"toyplugin.stealth": "x"})
+    otel_metrics.collect()
+    with pytest.raises(AssertionError, match="unregistered attribute"):
+        assert_metrics_conform(registry, otel_metrics, scope_name=SCOPE)
+
+
+def test_metrics_conform_enforces_declared_enums(otel_metrics):
+    name = f"toyplugin.enumclash.{next(_metric_ids)}"
+    registry = _toy_metric_registry(name)
+    counter = toy_meter.create_counter(name, unit="{job}")
+    counter.add(1, {OUTCOME: "surprise"})
+    otel_metrics.collect()
+    with pytest.raises(AssertionError, match="not in the declared enum"):
+        assert_metrics_conform(registry, otel_metrics, scope_name=SCOPE)
+
+
+def test_metrics_covered_catches_never_collected(otel_metrics):
+    registered_but_never_created = _toy_metric_registry(
+        f"toyplugin.ghost.{next(_metric_ids)}"
+    )
+    otel_metrics.collect()
+    with pytest.raises(AssertionError, match="never collected"):
+        assert_metrics_covered(
+            registered_but_never_created, otel_metrics, scope_name=SCOPE
+        )
+
+
+def test_metrics_covered_skips_optional_attributes(otel_metrics):
+    name = f"toyplugin.optattr.{next(_metric_ids)}"
+    error_type = reg.Attribute("toyplugin.error", "Only on failure.", optional=True)
+    registry = _toy_metric_registry(name, attributes=(OUTCOME, error_type))
+    counter = toy_meter.create_counter(name, unit="{job}")
+    counter.add(1, {OUTCOME: "ok"})  # no error attribute - and that is fine
+    otel_metrics.collect()
+    assert_metrics_covered(registry, otel_metrics, scope_name=SCOPE)
+
+
+def test_metrics_scope_filter_ignores_other_scopes(otel_metrics):
+    # Core's own metrics are in the reader too; a plugin's conformance run
+    # must not fail because of them.
+    name = f"toyplugin.scoped.{next(_metric_ids)}"
+    registry = _toy_metric_registry(name)
+    counter = toy_meter.create_counter(name, unit="{job}")
+    counter.add(1, {OUTCOME: "ok"})
+    other_meter = otel_metrics_api.get_meter("someone-else-metrics", "1.0")
+    stranger = other_meter.create_counter(f"stranger.{next(_metric_ids)}", unit="x")
+    stranger.add(1)
+    otel_metrics.collect()
+    assert_metrics_conform(registry, otel_metrics, scope_name=SCOPE)

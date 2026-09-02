@@ -2476,8 +2476,8 @@ This reference is generated from ``datasette/telemetry_registry.py``, like the s
 
     - ``db.system`` - Always ``sqlite``.
     - ``db.namespace`` - Name of the database being queried.
-    - ``datasette.operation`` - ``read`` or ``write``.
-    - ``error.type`` - Set when the request failed: the exception class name if one escaped the application, otherwise the status code as a string for a 5xx response. A 4xx does **not** set this and does not set an error status - per semantic conventions a client error is not a server span's failure.
+    - ``datasette.operation`` - Whether the operation was a read or a write. One of: ``read``, ``write``.
+    - ``error.type`` *(optional)* - Set when the request failed: the exception class name if one escaped the application, otherwise the status code as a string for a 5xx response. A 4xx does **not** set this and does not set an error status - per semantic conventions a client error is not a server span's failure.
 
 ``datasette.write.queue_wait``
     Histogram, unit ``s``. Time each write waited in its database's write queue. The metric counterpart of the ``db.write.queue_wait`` span.

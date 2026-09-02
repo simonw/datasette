@@ -4,6 +4,46 @@
 Changelog
 =========
 
+.. _v1_0_a39:
+
+1.0a39 (unreleased)
+-------------------
+
+This alpha gives plugins a real process lifecycle. Previously, ``datasette serve`` ran ``invoke_startup()`` on a temporary event loop that was closed before the server's own loop was created, so anything a ``startup`` hook scheduled with ``asyncio.create_task()`` - or any loop-bound primitive it created - could silently die before it ever ran. Every non-CLI deployment was worse off still: startup, including populating the internal database's table catalog, didn't run at all until the *first* HTTP request arrived, so plugins compensated with ``asgi_wrapper`` bootstrap shims, ``tryfirst=True`` ordering hacks and hand-rolled "has this started yet" flags. This release fixes all three problems together: one event loop for the whole process, startup wired into ASGI lifespan, and a new supervised background-task API plus a ``shutdown`` hook, so plugins no longer need to build any of that scaffolding themselves. See :ref:`datasette_lifecycle` for the full guarantee.
+
+- ``datasette serve`` now runs startup and the server on a single ``asyncio`` event loop, instead of a temporary loop that was discarded before ``uvicorn.run()`` created the loop that actually serves requests. A ``startup`` hook can now safely call ``asyncio.create_task()``, or create loop-bound primitives such as ``asyncio.Lock``, ``asyncio.Queue`` or ``asyncio.Event``, and expect them to still be alive once the server starts handling requests.
+- Startup - the internal database's table catalog, canned queries and column type configuration, and every :ref:`plugin_hook_startup` hook - is now wired into the ASGI ``lifespan.startup`` event via ``Datasette.app()``. A spec-compliant ASGI server (uvicorn, hypercorn, and others) completes ``lifespan.startup`` before delivering any request, so startup is now guaranteed to have finished before the first request in every deployment, not only ``datasette serve``; previously the table catalog in particular only populated on the first request, even when running under ``datasette serve``. A failing ``startup`` hook now surfaces as ``lifespan.startup.failed`` with the exception message, instead of leaving the ASGI host to hang or crash ambiguously.
+- The pre-existing first-request fallback is preserved as a safety net for hosts that never send ASGI lifespan events at all - some ASGI mounts, bare ``app()`` embedding, ``datasette.client``/test clients - and is idempotent alongside the lifespan path, so it's safe for both to fire.
+- New :ref:`datasette_add_background_task` API: plugins register supervised, long-lived background work - typically from a ``startup`` hook - and core owns launching it, once every ``startup`` hook has run. Core keeps a strong reference for the life of the process (no more silently garbage-collected fire-and-forget tasks), logs crashes with a full traceback to the ``datasette.background_tasks`` logger instead of a silent "Task exception was never retrieved", and cancels every task with a five-second grace period on shutdown. There is no automatic restart of a crashed task in this release. Registration returns a :ref:`BackgroundTask <BackgroundTask>` handle (``.name``, ``.state``, ``.task``, ``.exception``, ``.cancel()``). New :ref:`await datasette.start_background_tasks() <datasette_start_background_tasks>` method lets tests and headless embedders launch registered tasks explicitly, without running a server.
+- New ``/-/tasks`` JSON debug endpoint lists every supervised background task and its state, in the style of ``/-/threads``. See :ref:`JsonDataView_tasks`. It requires the ``permissions-debug`` permission, since a crashed task's recorded exception can reveal internal details such as file paths.
+- New :ref:`plugin_hook_shutdown` plugin hook, called during graceful shutdown (Ctrl-C, ``SIGTERM``) before background tasks are cancelled and before database connections are closed, so a plugin can tell its own background work to stop gracefully while a database connection is still available to write out final state. Exceptions raised by a ``shutdown`` hook are logged, not raised, so one plugin's broken teardown code cannot block another plugin's cleanup or Datasette's own database close. It is not called on a hard kill (``SIGKILL``).
+- Plugin ``asgi_wrapper`` middleware now always runs *after* startup has completed, on every deployment path including the first-request fallback - a wrapper that short-circuits and never calls the wrapped app (an auth check returning a 401, a CORS preflight response) can no longer defer startup indefinitely. ``lifespan`` scopes are unaffected by this change and continue to flow through plugin wrappers exactly as before.
+- The ``uvicorn`` dependency floor is now ``uvicorn>=0.29``, up from ``uvicorn>=0.11``.
+- ``datasette serve --headers`` and ``--token`` are only valid alongside ``--get``; that usage error is now raised immediately after the ``Datasette`` instance is constructed and before startup runs, instead of after ``invoke_startup()`` - and therefore every plugin's ``startup`` hook - had already executed.
+
+Migrating away from ``asgi_wrapper`` bootstrap hacks
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If your plugin uses ``asgi_wrapper`` purely to detect "is this the first request" so that it can lazily start some background work, you can delete that code:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Before
+     - After
+   * - An ``asgi_wrapper`` that checks a module-level flag and calls ``asyncio.create_task()`` (or awaits an ``async def`` closure) the first time it sees a request scope
+     - Call ``datasette.add_background_task()`` from a :ref:`plugin_hook_startup` hook
+   * - A hand-rolled ``_ensure_started`` / ``_started`` flag guarded by a lock, to avoid starting the work twice
+     - Not needed - registration and launch are both idempotent and safe to call from multiple places
+   * - An ``asgi_wrapper`` that sniffs the ``lifespan.shutdown`` message in its receive callable to run cleanup
+     - Implement the :ref:`plugin_hook_shutdown` hook instead
+   * - A fire-and-forget ``asyncio.create_task()`` with no reference kept, plus a README caveat like "no traffic, no runs" or "ping the server to keep the scheduler alive"
+     - ``datasette.add_background_task()`` - core keeps a strong reference and launches the task once, as soon as startup finishes, whether or not any request ever arrives
+   * - ``tryfirst=True`` on a ``startup`` hook, to make sure it runs before another plugin's task-starting code
+     - Not needed - ``add_background_task()`` launch happens only after *every* ``startup`` hook across every plugin has completed, so registration order between plugins doesn't matter
+
+`datasette-cron <https://datasette.io/plugins/datasette-cron>`__ and `datasette-enrichments <https://datasette.io/plugins/datasette-enrichments>`__ are being migrated to this pattern as worked examples of the mapping above.
+
 .. _v1_0_a38:
 
 1.0a38 (2026-08-06)

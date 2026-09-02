@@ -1440,7 +1440,7 @@ All three paths call the same idempotent internal methods, so it is safe for mor
     A coroutine function taking one positional argument, the ``Datasette`` instance. Core calls ``await func(datasette)``.
 
 ``name`` - string, optional
-    A name for the task, used to identify it in log messages. Defaults to ``func.__qualname__``. If the resulting name collides with an already-registered task, a ``-2``, ``-3``, ... suffix is appended.
+    A name for the task, used to identify it in the ``/-/tasks`` introspection endpoint (:ref:`JsonDataView_tasks`) and in log messages. Defaults to ``func.__qualname__``. If the resulting name collides with an already-registered task, a ``-2``, ``-3``, ... suffix is appended.
 
 Registers a piece of supervised, long-lived background work — typically called from a :ref:`plugin_hook_startup` hook, though it can be called at any point after the instance exists, including from a request handler. Returns a :ref:`BackgroundTask <BackgroundTask>` handle.
 
@@ -1470,7 +1470,7 @@ Core owns the task for the rest of the process's life:
 - **A crash is logged, not swallowed.** If ``func`` raises anything other than ``asyncio.CancelledError``, the exception (with its traceback) is logged to the ``datasette.background_tasks`` logger and recorded on the handle's ``.exception``, and the task's ``.state`` becomes ``crashed``. **There is no automatic restart in v1** — a long-running loop should catch and log its own transient errors internally if it wants to keep running after one.
 - **Cancellation is coordinated.** On shutdown, every task that is still running is cancelled and given a grace period to stop — see :ref:`datasette_lifecycle`.
 
-Raw ``asyncio.create_task()`` inside a ``startup`` hook now works correctly, because ``startup`` hooks run on the serving event loop (see the admonition in :ref:`datasette_lifecycle`) — the bug that made this unsafe is fixed. But a task created that way is unsupervised: nothing keeps a reference to it, nothing logs its exceptions, and nothing cancels it on shutdown. Prefer ``add_background_task()`` for anything long-lived.
+Raw ``asyncio.create_task()`` inside a ``startup`` hook now works correctly, because ``startup`` hooks run on the serving event loop (see the admonition in :ref:`datasette_lifecycle`) — the bug that made this unsafe is fixed. But a task created that way is unsupervised: nothing keeps a reference to it, nothing logs its exceptions, nothing cancels it on shutdown, and it will not show up in ``/-/tasks``. Prefer ``add_background_task()`` for anything long-lived.
 
 Launch matrix
 ~~~~~~~~~~~~~
@@ -1516,10 +1516,12 @@ BackgroundTask objects
     ISO 8601 UTC timestamp of when the task was launched.
 
 ``.plugin`` - string or ``None``
-    Best-effort name of the plugin that registered the task, resolved from the module ``func`` was defined in. Used in log messages; ``None`` if it cannot be determined.
+    Best-effort name of the plugin that registered the task, resolved from the module ``func`` was defined in. Used by ``/-/tasks`` and log messages; ``None`` if it cannot be determined.
 
 ``.cancel()``
     Cancel the task. If it has already launched, this cancels the underlying ``asyncio.Task`` — ``.state`` becomes ``cancelled`` once the cancellation is observed. If it has not launched yet, it is removed from the queue so it never runs.
+
+This is also the shape of each entry returned by the ``/-/tasks`` JSON introspection endpoint — see :ref:`JsonDataView_tasks`.
 
 .. _datasette_start_background_tasks:
 

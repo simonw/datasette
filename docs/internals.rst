@@ -1963,6 +1963,9 @@ Executes a SQL query against the database and returns the resulting rows (see :r
 ``log_sql_errors`` - boolean
     Should any SQL errors be logged to the console in addition to being raised as an error? Defaults to ``True``.
 
+``table`` - string
+    The name of the table this query is about, if the caller already knows it. This has no effect on how the query executes - it is recorded as the ``db.collection.name`` attribute on the :ref:`OpenTelemetry span <internals_telemetry>` for the query. Datasette never derives this from the SQL, so leave it unset for queries that do not have one obvious table.
+
 .. _database_results:
 
 Results
@@ -2020,6 +2023,8 @@ Example usage:
 
 
     version = await db.execute_fn(get_version)
+
+The call is traced as a ``db.query`` OpenTelemetry span carrying ``datasette.callback`` (the function's qualified name) rather than ``db.query.text``, since the SQL is whatever the function chooses to run - see :ref:`internals_telemetry`. Passing a named function gives the span a readable identity; a lambda reports ``<lambda>``.
 
 .. _database_execute_write:
 
@@ -2096,6 +2101,8 @@ await db.execute_write_fn(fn, block=True, transaction=True)
 This method works like ``.execute_write()``, but instead of a SQL statement you give it a callable Python function. Your function will be queued up and then called when the write connection is available, passing that connection as the argument to the function.
 
 The function can then perform multiple actions, safe in the knowledge that it has exclusive access to the single writable connection for as long as it is executing.
+
+Like ``execute_fn()``, the call is traced as a ``db.query`` OpenTelemetry span carrying ``datasette.callback`` rather than ``db.query.text``, above the write-queue spans - see :ref:`internals_telemetry`. A named function gives the span a readable identity; a lambda reports ``<lambda>``.
 
 .. warning::
 
@@ -2312,6 +2319,134 @@ The ``Database`` class also provides properties and methods for introspecting th
             ]
           }
         }
+
+.. _internals_telemetry:
+
+OpenTelemetry
+=============
+
+Datasette core depends on `opentelemetry-api <https://pypi.org/project/opentelemetry-api/>`__ only. It never creates a ``TracerProvider``, never configures an exporter and never sets a sampler. With no OpenTelemetry SDK provider installed, every span described below is a no-op ``NonRecordingSpan``: nothing is recorded, nothing is exported, and the cost does not show up in page latency. Benchmarking a table page with and without this instrumentation, the median moved by less than the run-to-run variation of the benchmark itself.
+
+Turning tracing on is entirely an operational decision made outside of Datasette itself: run Datasette under the standard ``opentelemetry-instrument`` agent, or embed Datasette inside a host application that installs its own provider.
+
+Everything Datasette emits carries the instrumentation scope ``datasette``, versioned with the running Datasette version and declaring the `semantic conventions schema <https://opentelemetry.io/docs/specs/otel/schemas/>`__ its attribute names follow.
+
+This is separate from, and does not replace, the built-in :ref:`internals_tracer` mechanism behind ``?_trace=1`` and the :ref:`setting_trace_debug` setting. Both continue to work exactly as before.
+
+.. _internals_telemetry_turning_on:
+
+Turning tracing on
+------------------
+
+Install an OpenTelemetry SDK, an exporter and the instrumentation agent, then launch Datasette through ``opentelemetry-instrument``:
+
+.. code-block:: bash
+
+    pip install opentelemetry-distro opentelemetry-exporter-otlp
+    OTEL_SERVICE_NAME=datasette \
+    OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 \
+    OTEL_METRICS_EXPORTER=none \
+    OTEL_LOGS_EXPORTER=none \
+      opentelemetry-instrument datasette mydb.db
+
+Point ``OTEL_EXPORTER_OTLP_ENDPOINT`` at whichever tracing backend you use. To print spans straight to the terminal instead, with no backend at all, drop that variable and set ``OTEL_TRACES_EXPORTER=console`` in its place.
+
+A few things catch people out the first time:
+
+.. warning::
+    ``OTEL_TRACES_EXPORTER=console datasette mydb.db`` produces **nothing**. That environment variable is read by the OpenTelemetry SDK's auto-configuration, which only runs when the ``opentelemetry-instrument`` agent wraps the process. Datasette core installs no provider, so a plain ``datasette`` process emits nothing at all, whatever ``OTEL_`` variables are set.
+
+- **Spans do not appear immediately.** The SDK's default ``BatchSpanProcessor`` flushes on a timer, every 5 seconds. Either wait, or stop the process - shutdown triggers a final flush - or set ``OTEL_BSP_SCHEDULE_DELAY=1000`` while you are experimenting. That last one is for demos, not for production.
+
+- **Always set** ``OTEL_SERVICE_NAME``. Without it the SDK's default resource reports a ``service.name`` of ``unknown_service``, and your traces will be filed under that instead of under a name you can search for.
+
+- **Setting** ``OTEL_METRICS_EXPORTER=none`` **and** ``OTEL_LOGS_EXPORTER=none`` is worth doing unless your backend accepts those signals too - ``opentelemetry-distro`` defaults every signal to OTLP, and a traces-only backend will reject the other two noisily. Datasette itself emits no metrics and no logs through OpenTelemetry.
+
+Span reference
+--------------
+
+Datasette emits five spans. Four of them describe the database layer - one per query, one for the work that query does inside a SQL worker thread, and two more for the write queue - and the fifth covers startup. Attribute names use the ``datasette.*`` prefix for Datasette-specific data, alongside standard OpenTelemetry attributes such as ``db.system``.
+
+This reference is generated from ``datasette/telemetry_registry.py``, the single source of truth for every span and attribute Datasette emits. A conformance test makes real requests and compares what is actually emitted against that registry in both directions, so nothing here is hand-maintained and nothing can silently drift out of date.
+
+Spans are ``SpanKind.INTERNAL`` unless a kind is listed below. Only ``db.query`` is ``CLIENT``: it is the one span that represents a call to a database rather than Datasette's own work, and trace UIs use the kind to decide whether to render a span as a database call. Its children stay ``INTERNAL`` because they are Datasette's decomposition of that one query - marking them ``CLIENT`` too would make a single query look like several database calls to anything counting by kind.
+
+.. [[[cog
+    from telemetry_doc import spans
+    spans(cog)
+.. ]]]
+
+``db.query``
+    A SQL operation issued by Datasette, covering the full round trip including any time spent queued for a thread. Callback-style calls - ``execute_fn()``, ``execute_write_fn()`` and ``execute_isolated_fn()`` - appear here too, distinguished by ``datasette.callback`` in place of ``db.query.text``.
+
+    Kind: ``CLIENT``.
+
+    Attributes:
+
+    - ``db.system`` - Always ``sqlite``.
+    - ``db.namespace`` - Name of the database being queried.
+    - ``db.query.text`` *(optional)* - The SQL, truncated to 2048 characters. Never the parameter values. Absent for a callback-style call (``execute_fn()`` and friends), where there is no SQL string to record - ``datasette.callback`` is set instead.
+    - ``datasette.callback`` *(optional)* - The qualified name of the Python callable passed to ``execute_fn()``, ``execute_write_fn()`` or ``execute_isolated_fn()`` - for example ``TableInsertView.post.<locals>.insert_or_upsert_rows``. Set instead of ``db.query.text``, which does not exist for a callback: the SQL is whatever the function chooses to run. A lambda reports ``<lambda>``, which is why callers wanting a recognisable span should pass a named function. Bounded cardinality: the set of callables is fixed by the installed code, not by request input.
+    - ``db.operation.name`` *(optional)* - The statement's leading keyword - ``SELECT``, ``INSERT``, ``CREATE``, and so on - matched against a small fixed allowlist. Omitted rather than set to an arbitrary value: the attribute must stay safe to use as a metric dimension, and echoing an unrecognised first token from user-supplied SQL would be an unbounded-cardinality hazard. Also omitted for ``execute_write_script()``, which runs multiple statements - per semantic conventions, the operation name should not be extracted from query text that can contain more than one operation. Note that a statement beginning with a CTE reports ``WITH``, not the operation inside it - a substantial share of Datasette's own reads take that form. Resolving it further would mean parsing.
+    - ``db.collection.name`` *(optional)* - The primary table, set only where the view already knows it - the table and row pages. Omitted for arbitrary ``?sql=`` queries, where determining the table would mean parsing the query.
+    - ``datasette.param_count`` *(optional)* - Number of bound parameters. Recorded instead of the values themselves.
+    - ``datasette.param_sets`` *(optional)* - Number of parameter sets consumed by ``execute_write_many()``. Not a row count - ``executemany()`` returns no rows. The parameter values themselves are never recorded: that sequence can hold thousands of rows.
+    - ``datasette.time_limit_ms`` *(optional)* - The :ref:`setting_sql_time_limit_ms` value this query ran under. Set on reads, which are the queries that time limit applies to.
+    - ``datasette.rows_returned`` *(optional)* - Number of rows a read returned. Set on the read path only, and only when the read succeeded.
+    - ``datasette.truncated`` *(optional)* - True if the result was cut short by :ref:`setting_max_returned_rows`.
+    - ``datasette.interrupted`` *(optional)* - True if the query was cancelled for exceeding the time limit. The span status is also set to ``ERROR``, unless the caller asked for a budget shorter than :ref:`setting_sql_time_limit_ms` - as table counts, facet suggestion and autocomplete all do - in which case running out of time is an expected answer rather than a failure and the status is left unset.
+    - ``datasette.sql_error_suppressed`` *(optional)* - True when the query failed but the caller passed ``log_sql_errors=False``, meaning it was probing and treats failure as an expected answer. Facet suggestion does this against every column.
+    - ``datasette.executescript`` *(optional)* - True for ``execute_write_script()``, which runs multiple statements.
+    - ``datasette.executemany`` *(optional)* - True for ``execute_write_many()``, which runs one statement against many parameter sets.
+
+``db.query.execute``
+    The read executing inside a SQL worker thread. Child of ``db.query``; the gap between the two is time spent waiting for a thread.
+
+    No attributes.
+
+``db.write.queue_wait``
+    Time a write spent waiting in its database's write queue before the write thread picked it up. Child of ``db.query`` for a ``block=True`` write, where the caller awaits the write and containment is accurate. For a ``block=False`` write the caller does not await it - the enqueueing request *caused* the write without *containing* it, and the write's spans can outlive the request's own - so this is a root span instead, carrying an OpenTelemetry link back to the enqueueing span rather than a parent. A link records causation without asserting containment, which is exactly the distinction here.
+
+    No attributes.
+
+``db.write.execute``
+    The write executing on the write thread. Child of ``db.query`` for a ``block=True`` write; for ``block=False`` a root span with a link back to the enqueueing span instead - see ``db.write.queue_wait`` above.
+
+    Attributes:
+
+    - ``datasette.isolated_connection`` - True if the write ran on its own connection rather than the shared write connection.
+    - ``datasette.transaction`` - False for statements such as ``VACUUM`` that cannot run inside a transaction.
+
+``datasette.startup``
+    ``invoke_startup()`` running: ``register_events``, ``register_actions``, ``register_column_types``, ``prepare_jinja2_environment``, internal-database schema catalog refresh (including the ``prepare_connection`` warm-up this triggers for each database touched for the first time), saved queries, column type config and the ``startup`` hook. Runs once per process, before any request exists, so without this span every child it creates would be its own orphan root trace. A connection warmed later - lazily, the first time a *request* touches a new database or thread - nests under that request's own span instead, not under this one, since this span has already ended by then.
+
+    No attributes.
+
+.. [[[end]]]
+
+.. _internals_telemetry_privacy:
+
+Privacy and safety
+------------------
+
+Spans leave your infrastructure whenever you configure an exporter, so what goes into them is a security decision. Datasette's rules are:
+
+- **SQL text is truncated to 2048 characters.** On a public instance the SQL is supplied by visitors and is unbounded in length, so ``db.query.text`` is cut off - with a ``…[truncated]`` marker - rather than allowed to set the size of a span.
+- **SQL parameter values are never recorded.** Only ``datasette.param_count``, a count. Parameter values are the part of a query most likely to hold something sensitive, and separating them from the SQL is the reason bound parameters exist.
+- **No actor identifiers are recorded.** No actor ID, no actor JSON, no client IP address. Nothing on a span identifies who made the request.
+- **Table names come only from an explicit** ``table=`` **argument.** ``db.collection.name`` is set by callers that already know which table they are working with, and is never derived from the SQL. Deriving it would mean parsing, and on an instance where visitors can create tables the set of possible values has no ceiling.
+
+The SQL itself, though, *is* recorded, and on a public instance that means anything a visitor types into the query editor or passes as ``?sql=`` will be exported along with the span. That is the trade-off tracing a query engine makes.
+
+.. _internals_telemetry_limitations:
+
+Known limitations
+-----------------
+
+- **Datasette does not create a span for the HTTP request itself.** Every span listed above is therefore a root span unless something above Datasette - an ASGI instrumentation layer, or the web framework embedding it - has already started one for the request, in which case Datasette's spans nest underneath it correctly.
+- **Two plugin hooks run outside the** ``datasette.startup`` **span.** ``register_output_renderer`` is dispatched from ``Datasette.__init__()`` and ``asgi_wrapper`` from ``Datasette.app()``, both of which happen before ``invoke_startup()``. Datasette itself queries no database in either, so a default install emits nothing there - but a plugin that does will produce a root trace. Covering these would mean holding a span open across object construction, which is worse than the orphan.
+- ``db.operation.name`` **reports** ``WITH`` **for a statement that opens with a common table expression**, rather than the operation inside it, and a substantial share of Datasette's own reads take that form. The attribute is a leading-keyword match against a fixed allowlist, deliberately not a parse.
+- **Spans emitted before a provider is installed are not recorded.** If you are embedding Datasette in a host application, install your ``TracerProvider`` before serving traffic. This is ordinary OpenTelemetry behaviour rather than anything Datasette controls; nothing is permanently affected, those particular spans are simply dropped.
 
 .. _internals_csrf:
 

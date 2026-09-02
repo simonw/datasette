@@ -1170,6 +1170,7 @@ class TableInsertView(BaseView):
                         "rowid, " if pks == ["rowid"] else "", table_name, where_clause
                     ),
                     args,
+                    table=table_name,
                 )
                 result["rows"] = fetched_rows.dicts()
             else:
@@ -1382,7 +1383,9 @@ class TableDropView(BaseView):
                     "database": database_name,
                     "table": table_name,
                     "row_count": (
-                        await db.execute(f"select count(*) from [{table_name}]")
+                        await db.execute(
+                            f"select count(*) from [{table_name}]", table=table_name
+                        )
                     ).single_value(),
                     "message": 'Pass "confirm": true to confirm',
                 },
@@ -1576,7 +1579,10 @@ class TableAutocompleteView(BaseView):
 
         try:
             results = await db.execute(
-                sql, params, custom_time_limit=AUTOCOMPLETE_TIME_LIMIT_MS
+                sql,
+                params,
+                custom_time_limit=AUTOCOMPLETE_TIME_LIMIT_MS,
+                table=table_name,
             )
         except QueryInterrupted:
             fallback_where = _autocomplete_prefix_like(pks[0])
@@ -1597,6 +1603,7 @@ class TableAutocompleteView(BaseView):
                     fallback_sql,
                     params,
                     custom_time_limit=AUTOCOMPLETE_TIME_LIMIT_MS,
+                    table=table_name,
                 )
             except QueryInterrupted:
                 return Response.json({"ok": True, "rows": []})
@@ -2163,7 +2170,9 @@ async def table_view_data(
 
     # Execute the main query!
     try:
-        results = await db.execute(sql, params, truncate=True, **extra_args)
+        results = await db.execute(
+            sql, params, truncate=True, table=table_name, **extra_args
+        )
     except (sqlite3.OperationalError, InvalidSql) as e:
         raise DatasetteError(str(e), title="Invalid SQL", status=400)
 
@@ -2439,6 +2448,7 @@ async def _next_value_and_url(
                     await db.execute(
                         prefix_lookup_sql,
                         {**{f"pk{i}": rows[-2][pk] for i, pk in enumerate(pks)}},
+                        table=table_name,
                     )
                 ).single_value()
             if isinstance(prefix, dict) and "value" in prefix:

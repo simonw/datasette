@@ -3,11 +3,13 @@ Tests for the datasette.database.Database class
 """
 
 import asyncio
+import threading
 import uuid
 from types import SimpleNamespace
 
 import pytest
 import sqlite_utils
+from opentelemetry import context as otel_context_api
 
 from datasette.app import Datasette
 from datasette.database import (
@@ -1223,3 +1225,110 @@ async def test_database_close_is_idempotent(tmpdir):
     # Second call should be a no-op, not raise
     db.close()
     ds._internal_database.close()
+
+
+_CONTEXT_LEAK_MARKER_KEY = "otel-context-leak-marker"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("num_sql_threads", (0, 1))
+async def test_write_thread_context_is_detached_between_tasks(
+    tmp_path, monkeypatch, num_sql_threads
+):
+    """
+    The write thread attaches each task's otel Context and must detach it
+    again before picking up the next task. The thread is persistent and
+    shared, so a leaked token would grow that thread's context stack for the
+    rest of the process - and a *wrong*-token detach only logs a warning
+    rather than raising, so "does it throw" cannot catch either mistake.
+
+    Two things are asserted, because neither alone is sufficient:
+
+    1. Each task observes the context value that was current on the event
+       loop when it was queued. This is what fails if the Context is not
+       carried on WriteTask, or is never attached. It does *not* catch a
+       missing detach: attach() replaces the current Context wholesale, so a
+       leftover one from a previous task is simply overwritten.
+    2. The write thread's attach depth is identical at the same point in
+       every task. This is what fails if detach is missing - the stack grows
+       by one per task - and it holds across a task that raises, because the
+       detach lives in a `finally`.
+
+    An otel context value is used rather than a plain contextvars.ContextVar:
+    a plain var set on the event loop never crosses into the write thread, so
+    the probe would read None every time and the test could not fail.
+    """
+    name = f"context_leak_test_{num_sql_threads}"
+    db_path = tmp_path / f"{name}.db"
+    sqlite3.connect(db_path).close()
+    ds = Datasette([str(db_path)], settings={"num_sql_threads": num_sql_threads})
+    db = ds.get_database(name)
+    await db.execute_write("create table t (id integer primary key)")
+
+    write_thread_name = f"_execute_writes for database {name}"
+    depth = {"value": 0}
+    real_attach = otel_context_api.attach
+    real_detach = otel_context_api.detach
+
+    def counting_attach(context):
+        token = real_attach(context)
+        if threading.current_thread().name == write_thread_name:
+            depth["value"] += 1
+        return token
+
+    def counting_detach(token):
+        real_detach(token)
+        if threading.current_thread().name == write_thread_name:
+            depth["value"] -= 1
+
+    # Patched on the opentelemetry.context module itself, which is what both
+    # database.py and opentelemetry.trace.use_span() look the functions up on.
+    monkeypatch.setattr(otel_context_api, "attach", counting_attach)
+    monkeypatch.setattr(otel_context_api, "detach", counting_detach)
+
+    seen_markers = []
+    seen_depths = []
+
+    def probe(conn):
+        seen_markers.append(otel_context_api.get_value(_CONTEXT_LEAK_MARKER_KEY))
+        seen_depths.append(depth["value"])
+
+    def failing_probe(conn):
+        probe(conn)
+        # Exercises the write thread's exception path: the detach still has
+        # to happen, which is why it lives in a `finally`.
+        raise ValueError("deliberate failure inside a write task")
+
+    try:
+        for i in range(5):
+            ctx = otel_context_api.set_value(_CONTEXT_LEAK_MARKER_KEY, f"marker-{i}")
+            token = real_attach(ctx)
+            try:
+                if i == 2:
+                    with pytest.raises(ValueError):
+                        await db.execute_write_fn(failing_probe)
+                else:
+                    await db.execute_write_fn(probe)
+            finally:
+                real_detach(token)
+
+        # Sanity check: no marker is active in *this* (event loop) context
+        # right now, so the final probe is a fair test of the write thread's
+        # own state rather than something this test forgot to clean up.
+        assert otel_context_api.get_value(_CONTEXT_LEAK_MARKER_KEY) is None
+        await db.execute_write_fn(probe)
+    finally:
+        db.close()
+
+    assert seen_markers == [
+        "marker-0",
+        "marker-1",
+        "marker-2",
+        "marker-3",
+        "marker-4",
+        None,
+    ]
+    assert len(set(seen_depths)) == 1, (
+        f"write thread context stack grew across tasks: {seen_depths} - "
+        "a token was attached without being detached"
+    )

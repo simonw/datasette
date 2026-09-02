@@ -109,11 +109,11 @@ def callback_name(fn) -> str:
 # fixed allowlist - deliberately not a parse.
 #
 # This runs against arbitrary user-supplied SQL (the `?sql=` query string,
-# canned queries, anything typed into the query editor), and the attribute is
-# a candidate dimension on a query-duration metric in a later phase. A metric
-# series is keyed by its attribute values, so echoing back an arbitrary first
-# token would let one visitor's typo mint a new, permanent series. The
-# allowlist bounds that at a fixed, small set regardless of what anyone sends.
+# canned queries, anything typed into the query editor), and the attribute
+# has to stay safe to use as a metric dimension. A metric series is keyed by
+# its attribute values, so echoing back an arbitrary first token would let
+# one visitor's typo mint a new, permanent series. The allowlist bounds that
+# at a fixed, small set regardless of what anyone sends.
 DB_OPERATION_ALLOWLIST = frozenset(
     {
         "SELECT",
@@ -382,23 +382,12 @@ class TelemetryMiddleware:
 
 # --- Metrics --------------------------------------------------------------
 #
-# Spans answer "what happened during this request". They cannot answer "am I
-# saturating my 3 SQL threads right now", because that is a gauge: a level
-# sampled at collection time, not an event with a duration. It is also the
-# single most useful operational question about a Datasette deployment, since
-# num_sql_threads defaults to 3 and every read query in the process competes
-# for those threads.
-#
-# Two shapes are used here:
-#
-#   Observable gauges - a callback the SDK invokes on its own collection
-#   cycle. Nothing is computed unless something is collecting, so the default
-#   no-provider install pays literally nothing for them.
-#
-#   Synchronous histograms/counters - recorded inline on the query path. These
-#   survive trace sampling, which spans do not: an operator sampling 1% of
-#   traces still gets 100% of the latency distribution and the interrupted
-#   count.
+# Two shapes. Observable gauges - a callback the SDK invokes on its own
+# collection cycle, so a no-provider install never runs them - answer level
+# questions no span can, like "am I saturating my SQL threads right now".
+# Synchronous histograms/counters are recorded inline on the query path and
+# survive trace sampling: 1% of traces still means 100% of the latency
+# distribution. Why each metric exists is documented on its registry entry.
 #
 # Note a real difference from tracing: `_ProxyMeter` and its instruments
 # forward to a provider installed *after* they were created, whereas
@@ -414,6 +403,10 @@ def _duration_attributes(database_name, operation):
         OPERATION: operation,
     }
 
+
+# Each instrument passes the SDK a short plain-text description; the registry
+# entry for the same metric carries a longer RST one for the generated docs
+# (it can use `:ref:` roles, which an exported description string cannot).
 
 sql_operation_duration = meter.create_histogram(
     M_OPERATION_DURATION,

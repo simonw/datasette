@@ -17,6 +17,8 @@ Two layers are tested separately and deliberately:
 """
 
 import asyncio
+import threading
+import weakref
 
 import pytest
 
@@ -74,19 +76,68 @@ async def test_no_thread_gauges_in_non_threaded_mode():
     num_sql_threads=0 means there is no pool at all, so the pool gauges must
     skip the instance rather than report a bogus limit of 0.
 
-    The pool gauges carry no attributes, so the assertion is that adding this
-    instance produces no *additional* observations.
+    The pool gauges carry no attributes, so the live-instance registry is
+    narrowed to just this instance for the assertion - counting global
+    observations instead would let an unrelated instance being garbage
+    collected mid-test shift the baseline.
     """
-    before_limits = len(list(telemetry.observe_sql_thread_limit()))
-    before_depths = len(list(telemetry.observe_sql_thread_queue_depth()))
     ds = Datasette(memory=True, settings={"num_sql_threads": 0})
     try:
         assert ds.executor is None
-        assert len(list(telemetry.observe_sql_thread_limit())) == before_limits
-        assert len(list(telemetry.observe_sql_thread_queue_depth())) == before_depths
+        original = telemetry._live_datasettes
+        telemetry._live_datasettes = weakref.WeakSet([ds])
+        try:
+            assert list(telemetry.observe_sql_thread_limit()) == []
+            assert list(telemetry.observe_sql_thread_queue_depth()) == []
+        finally:
+            telemetry._live_datasettes = original
         # Per-database gauges are unaffected - they do not depend on the pool.
         assert observations(telemetry.observe_pending_queries, ds)
     finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_thread_queue_depth_gauge_reports_saturation():
+    """
+    The headline alerting metric must actually read above zero when reads
+    queue behind num_sql_threads. This also pins the private
+    `ThreadPoolExecutor._work_queue` attribute the callback depends on: if a
+    stdlib rename ever removes it, this fails instead of the metric silently
+    vanishing (the callback tolerates its absence at collection time).
+    """
+    ds = Datasette(memory=True, settings={"num_sql_threads": 1})
+    db = ds.add_memory_database("metrics_saturation_db")
+    entered = threading.Event()
+    release = threading.Event()
+
+    def blocker(conn):
+        entered.set()
+        assert release.wait(timeout=10)
+        return 1
+
+    try:
+        first = asyncio.ensure_future(db.execute_fn(blocker))
+        # Wait until the blocker owns the pool's only thread.
+        await asyncio.get_running_loop().run_in_executor(None, entered.wait, 10)
+        second = asyncio.ensure_future(db.execute_fn(lambda conn: 2))
+        # The second submission lands in the executor's queue on the next
+        # event-loop turn; poll briefly rather than assume the timing.
+        depths = []
+        for _ in range(500):
+            depths = [
+                value
+                for _, value in observations(telemetry.observe_sql_thread_queue_depth)
+            ]
+            if any(value >= 1 for value in depths):
+                break
+            await asyncio.sleep(0.01)
+        assert any(value >= 1 for value in depths), depths
+        release.set()
+        assert await first == 1
+        assert await second == 2
+    finally:
+        release.set()
         ds.close()
 
 
@@ -217,6 +268,30 @@ async def test_operation_duration_records_error_type(otel_metrics):
         point = otel_metrics.point(
             "db.client.operation.duration",
             {"db.namespace": "duration_error_db", "datasette.operation": "read"},
+        )
+        assert point.count == 1
+        assert dict(point.attributes)["error.type"] == "OperationalError"
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_operation_duration_records_write_error_type(otel_metrics):
+    """
+    Same as the read-path error test, but the write wrappers time a different
+    code path - `execute_write_fn`, the write thread and its reply future -
+    so error propagation through them is pinned separately.
+    """
+    ds = Datasette(memory=True)
+    ds.add_memory_database("duration_write_error_db")
+    try:
+        db = ds.get_database("duration_write_error_db")
+        with pytest.raises(sqlite3.OperationalError):
+            await db.execute_write("insert into nope values (1)")
+        otel_metrics.collect()
+        point = otel_metrics.point(
+            "db.client.operation.duration",
+            {"db.namespace": "duration_write_error_db", "datasette.operation": "write"},
         )
         assert point.count == 1
         assert dict(point.attributes)["error.type"] == "OperationalError"

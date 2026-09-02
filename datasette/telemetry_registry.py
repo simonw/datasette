@@ -73,7 +73,23 @@ DB_SYSTEM = Attribute("db.system", "Always ``sqlite``.")
 DB_NAMESPACE = Attribute("db.namespace", "Name of the database being queried.")
 DB_QUERY_TEXT = Attribute(
     "db.query.text",
-    "The SQL, truncated to 2048 characters. Never the parameter values.",
+    "The SQL, truncated to 2048 characters. Never the parameter values. "
+    "Absent for a callback-style call (``execute_fn()`` and friends), where "
+    "there is no SQL string to record - ``datasette.callback`` is set "
+    "instead.",
+    optional=True,
+)
+CALLBACK = Attribute(
+    "datasette.callback",
+    "The qualified name of the Python callable passed to ``execute_fn()``, "
+    "``execute_write_fn()`` or ``execute_isolated_fn()`` - for example "
+    "``TableInsertView.post.<locals>.insert_or_upsert_rows``. Set instead of "
+    "``db.query.text``, which does not exist for a callback: the SQL is "
+    "whatever the function chooses to run. A lambda reports ``<lambda>``, "
+    "which is why callers wanting a recognisable span should pass a named "
+    "function. Bounded cardinality: the set of callables is fixed by the "
+    "installed code, not by request input.",
+    optional=True,
 )
 DB_OPERATION_NAME = Attribute(
     "db.operation.name",
@@ -171,11 +187,15 @@ TRANSACTION = Attribute(
 DB_QUERY = SpanName(
     "db.query",
     "A SQL operation issued by Datasette, covering the full round trip "
-    "including any time spent queued for a thread.",
+    "including any time spent queued for a thread. Callback-style calls - "
+    "``execute_fn()``, ``execute_write_fn()`` and ``execute_isolated_fn()`` - "
+    "appear here too, distinguished by ``datasette.callback`` in place of "
+    "``db.query.text``.",
     (
         DB_SYSTEM,
         DB_NAMESPACE,
         DB_QUERY_TEXT,
+        CALLBACK,
         DB_OPERATION_NAME,
         DB_COLLECTION_NAME,
         PARAM_COUNT,

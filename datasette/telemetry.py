@@ -8,7 +8,7 @@ sampling - that is the responsibility of whoever is running Datasette
 harness).
 
 With no provider installed every span produced here is a
-`NonRecordingSpan`. That is not free - a table page emits ~58 spans -
+`NonRecordingSpan`. That is not free - a table page emits ~100 spans -
 but end-to-end page benchmarks put the overhead below their own
 run-to-run variation. Installing an SDK provider is what costs
 something measurable.
@@ -52,6 +52,16 @@ def sql_attribute(sql: str) -> str:
     if len(sql) <= MAX_SQL_LENGTH:
         return sql
     return sql[:MAX_SQL_LENGTH] + "…[truncated]"
+
+
+def callback_name(fn) -> str:
+    """
+    The name recorded as `datasette.callback` for a callback-style call.
+
+    `functools.partial` objects (and other callables) have no `__qualname__`,
+    so fall back to the type's name rather than fail the query over telemetry.
+    """
+    return getattr(fn, "__qualname__", type(fn).__name__)
 
 
 # db.operation.name is the leading keyword of a statement matched against a

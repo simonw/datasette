@@ -457,7 +457,7 @@ async def emitted_metrics(otel_metrics):
     plus the raw set of metric names - the metric-side counterpart of the
     `emitted` span fixture above.
 
-    Metrics use DELTA temporality (see `_otel_meter_provider`), and the
+    Metrics use DELTA temporality (see `otel_meter_provider` in datasette.telemetry_testing), and the
     function-scoped `otel_metrics` fixture drains any state left by an
     earlier test before yielding, so this collection is not polluted by
     other tests in the session - only by other *instances*, which is why the
@@ -574,3 +574,38 @@ async def test_every_registered_metric_attribute_is_emitted(emitted_metrics):
         "these metric attributes are documented but never emitted by the "
         "test workload: " + ", ".join(sorted(missing))
     )
+
+
+def test_prefix_span_lookup():
+    """
+    `prefix=True` matching, exercised directly.
+
+    Core registers no prefix spans - the flag exists for plugin registries
+    (e.g. a `chat {model}` span family) - so without this the branch in
+    `span_for()` would be untested code the conformance tests never reach.
+    """
+    hook = reg.SpanName("myplugin.hook.", "A hypothetical span family", prefix=True)
+    spans = reg.SPANS + (hook,)
+    assert reg.span_for("myplugin.hook.render_cell", spans=spans) is hook
+    assert reg.span_for("myplugin.hook.anything", spans=spans) is hook
+    assert reg.span_for("myplugin.hookish", spans=spans) is None
+    assert reg.span_for("db.query", spans=spans) is reg.DB_QUERY
+
+
+def test_exact_match_wins_over_prefix():
+    "A prefix family can never shadow a span with a registered exact name."
+    family = reg.SpanName("db.", "Greedy prefix", prefix=True)
+    spans = (family,) + reg.SPANS
+    assert reg.span_for("db.query", spans=spans) is reg.DB_QUERY
+    assert reg.span_for("db.anything-else", spans=spans) is family
+
+
+def test_attribute_values_enum_enforced():
+    outcome = reg.Attribute("myplugin.outcome", "Enum.", values={"ok", "error"})
+    open_attr = reg.Attribute("myplugin.note", "Open value set.")
+    span = reg.SpanName("myplugin.job", "Test span", (outcome, open_attr))
+    assert reg.attribute_value_allowed(span, "myplugin.outcome", "ok")
+    assert not reg.attribute_value_allowed(span, "myplugin.outcome", "surprise")
+    assert reg.attribute_value_allowed(span, "myplugin.note", "anything at all")
+    assert not reg.attribute_value_allowed(span, "not.registered", "x")
+    assert not reg.attribute_value_allowed(None, "myplugin.outcome", "ok")

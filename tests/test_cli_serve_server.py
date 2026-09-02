@@ -1,4 +1,6 @@
+import signal
 import socket
+import subprocess
 import time
 
 import httpx
@@ -145,3 +147,83 @@ def test_startup_error_fails_fast_before_port_binds(serve_with_plugins):
         socket.create_connection(("127.0.0.1", port), timeout=0.2),
     ):
         pass
+
+
+# Proves the ticket-01 serve path (asyncio.run(_serve_async()) wrapping
+# uvicorn.Server.serve()) actually delivers a graceful signal through to
+# uvicorn's lifespan.shutdown, which now runs Datasette.invoke_shutdown()
+# and therefore every plugin's `shutdown` hook. The plugin below writes a
+# sentinel file from inside its shutdown hook so this can be checked from
+# outside the subprocess after it exits.
+SHUTDOWN_SENTINEL_PLUGIN_TEMPLATE = """
+import pathlib
+from datasette import hookimpl
+
+SENTINEL_PATH = {sentinel_path!r}
+
+
+@hookimpl
+def shutdown(datasette):
+    pathlib.Path(SENTINEL_PATH).write_text("shutdown ran", "utf-8")
+"""
+
+
+def _start_serve_with_shutdown_sentinel(serve_with_plugins, tmp_path):
+    sentinel_path = tmp_path / "shutdown-sentinel.txt"
+    proc, _ = serve_with_plugins(
+        {
+            "shutdown_sentinel_plugin": SHUTDOWN_SENTINEL_PLUGIN_TEMPLATE.format(
+                sentinel_path=str(sentinel_path)
+            )
+        }
+    )
+    return proc, sentinel_path
+
+
+@pytest.mark.serial
+def test_sigterm_runs_shutdown_hooks(serve_with_plugins, tmp_path):
+    ds_proc, sentinel_path = _start_serve_with_shutdown_sentinel(
+        serve_with_plugins, tmp_path
+    )
+    assert not sentinel_path.exists()
+    ds_proc.send_signal(signal.SIGTERM)
+    try:
+        ds_proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        ds_proc.kill()
+        ds_proc.wait()
+        raise AssertionError(
+            "datasette serve did not exit within 10s of SIGTERM\n"
+            + ds_proc.stdout.read().decode("utf-8")
+        )
+    output = ds_proc.stdout.read().decode("utf-8")
+    assert sentinel_path.exists(), (
+        "shutdown hook never wrote its sentinel file after SIGTERM\n" + output
+    )
+    assert sentinel_path.read_text("utf-8") == "shutdown ran"
+
+
+@pytest.mark.serial
+@pytest.mark.skipif(
+    not hasattr(signal, "SIGINT"), reason="Requires signal.SIGINT support"
+)
+def test_sigint_runs_shutdown_hooks(serve_with_plugins, tmp_path):
+    ds_proc, sentinel_path = _start_serve_with_shutdown_sentinel(
+        serve_with_plugins, tmp_path
+    )
+    assert not sentinel_path.exists()
+    ds_proc.send_signal(signal.SIGINT)
+    try:
+        ds_proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        ds_proc.kill()
+        ds_proc.wait()
+        raise AssertionError(
+            "datasette serve did not exit within 10s of SIGINT\n"
+            + ds_proc.stdout.read().decode("utf-8")
+        )
+    output = ds_proc.stdout.read().decode("utf-8")
+    assert sentinel_path.exists(), (
+        "shutdown hook never wrote its sentinel file after SIGINT\n" + output
+    )
+    assert sentinel_path.read_text("utf-8") == "shutdown ran"

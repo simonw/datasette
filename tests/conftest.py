@@ -60,11 +60,12 @@ def find_free_port():
 
 # The otel fixtures moved to datasette.telemetry_testing, which is public
 # plugin API - core's suite consumes it exactly the way a plugin's would.
-from datasette.telemetry_testing import (  # noqa: F401, E402
+from datasette.telemetry_testing import (  # noqa: F401
     MetricsCollector,
-    otel_metrics,
     otel_meter_provider,
+    otel_metrics,
     otel_provider,
+    otel_reset,
     otel_spans,
 )
 

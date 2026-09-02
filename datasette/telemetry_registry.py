@@ -125,15 +125,15 @@ URL_PATH = Attribute(
 URL_SCHEME = Attribute("url.scheme", "``http`` or ``https``.")
 SERVER_ADDRESS = Attribute(
     "server.address",
-    "The ``Host`` header. Client-controlled, so treat it as untrusted input "
+    "The ``Host`` header, verbatim - including any ``:port`` suffix, a "
+    "deliberate deviation from semantic conventions' ``server.address`` / "
+    "``server.port`` split. Client-controlled, so treat it as untrusted input "
     "rather than as the identity of the server.",
     optional=True,
 )
 USER_AGENT_ORIGINAL = Attribute(
     "user_agent.original",
-    "The ``User-Agent`` header, verbatim. Omitted if the client sent none. "
-    "The client's IP address is deliberately not recorded: core records no "
-    "identifier that would tie a span to a person.",
+    "The ``User-Agent`` header, verbatim. Omitted if the client sent none.",
     optional=True,
 )
 ERROR_TYPE = Attribute(

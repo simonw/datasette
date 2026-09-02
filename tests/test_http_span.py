@@ -354,6 +354,9 @@ async def test_a_404_is_not_an_error(ds, otel_spans):
     assert server[0].attributes["http.response.status_code"] == 404
     assert "error.type" not in server[0].attributes
     assert server[0].status.status_code is StatusCode.UNSET
+    # Route enrichment must not be gated on a successful response.
+    assert "http.route" in server[0].attributes
+    assert server[0].name != "GET"
 
 
 @pytest.mark.asyncio

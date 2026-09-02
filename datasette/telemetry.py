@@ -194,13 +194,11 @@ def _url_path(scope):
     contain encoded slashes, which `scope["path"]` has already collapsed.
 
     The split on "?" is not decoration. The ASGI spec's `raw_path` excludes
-    the query string, and uvicorn honours that, but the name is used the
-    other way round elsewhere in this same dependency tree: httpx's
-    `URL.raw_path` is documented as "raw bytes of both the path and query".
-    A server that followed that reading would hand us `?sql=...` here, and
-    Datasette's query strings carry user-supplied SQL, which core never
-    records. A literal "?" cannot appear unencoded in a path, so the split
-    costs nothing when the server is well behaved.
+    the query string, but the name is read both ways in the wild - httpx's
+    own `raw_path` includes the query - and Datasette's query strings carry
+    user-supplied SQL, which core never records. A literal "?" cannot appear
+    unencoded in a path, so the defensive split costs nothing when the server
+    is well behaved.
     """
     raw_path = scope.get("raw_path")
     if raw_path:
@@ -235,10 +233,8 @@ def request_span(scope):
     span = scope.get(REQUEST_SPAN_SCOPE_KEY)
     if span is None:
         span = otel_trace.get_current_span()
-    # is_recording(), not `get_span_context().is_valid`: with no provider but
-    # an inbound `traceparent`, the API's NoOpTracer hands back a
-    # NonRecordingSpan carrying the *remote* context, which is perfectly valid
-    # and still records nothing.
+    # is_recording(), not `get_span_context().is_valid` - see the fast-path
+    # comment in TelemetryMiddleware for why valid is not the same as recording.
     return span if span.is_recording() else None
 
 
@@ -327,9 +323,6 @@ class TelemetryMiddleware:
 
             escaped = False
             try:
-                # Positional (scope, receive, send) throughout this codebase -
-                # `wrapped_send` is the third argument. `receive` is passed
-                # through unwrapped.
                 await self.app(scope, receive, wrapped_send)
             except BaseException as exception:
                 # BaseException, not Exception: `route_path` turns almost

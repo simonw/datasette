@@ -163,27 +163,35 @@ Wire your registry to reality with the conformance helpers - the two directions 
 .. code-block:: python
 
     from datasette.telemetry_testing import (
+        assert_metrics_conform,
+        assert_metrics_covered,
         assert_package_never_imports_sdk,
         assert_registry_covered,
         assert_spans_conform,
     )
 
-    from my_plugin.telemetry import SPANS
+    from my_plugin.telemetry import METRICS, SPANS
 
 
-    def test_conformance(otel_spans):
+    def test_conformance(otel_spans, otel_metrics):
         run_a_workload_that_exercises_everything()
         finished = otel_spans.get_finished_spans()
         # Everything emitted is registered (and enum values are legal):
         assert_spans_conform(SPANS, finished, scope_name="my-plugin")
         # Everything registered was emitted:
         assert_registry_covered(SPANS, finished, scope_name="my-plugin")
+        # Same two directions for metrics - one collect() after the workload:
+        otel_metrics.collect()
+        assert_metrics_conform(METRICS, otel_metrics, scope_name="my-plugin")
+        assert_metrics_covered(METRICS, otel_metrics, scope_name="my-plugin")
 
 
     def test_api_only_dependency():
         assert_package_never_imports_sdk("my_plugin")
 
-Always pass ``scope_name`` - the exporter also holds core's spans, and your registry should only be judged against your own.
+Always pass ``scope_name`` - the exporter and reader also hold core's signals, and your registry should only be judged against your own.
+
+The metric helpers check more than names: ``assert_metrics_conform`` asserts each instrument was created as the **kind** and **unit** its registry entry declares (the registry entry and the ``meter.create_*()`` call are separate statements, and a dashboard built on the registry's word breaks silently if they drift), and that every value on a ``values=`` enum attribute is a member - which is what makes a metric dimension *provably* bounded rather than bounded by intent. Both ``*_covered`` helpers exempt attributes marked ``optional=True`` (an ``error.type`` only present on failures should not force your workload to manufacture errors - pin those with targeted tests instead), and the metrics reader uses delta temporality, so run one broad workload followed by a single ``collect()``.
 
 .. _plugin_telemetry_caveats:
 

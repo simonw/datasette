@@ -2375,7 +2375,7 @@ The request span's name is the only one that is not a fixed string - it is compo
 
     GET /(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)(\.(?P<format>\w+))?$
 
-That is the route's compiled regular expression, not a prettified ``/{database}/{table}`` template. It is deliberate: Datasette routes with compiled patterns and the route table is fixed when the app is built, so the pattern is exact, bounded and needs no parsing, while transforming it into something prettier accretes edge cases. Django's own instrumentation ships regex-flavoured routes for the same reason.
+That is the route's compiled regular expression, not a prettified ``/{database}/{table}`` template - see the ``http.route`` attribute below for why. Django's own instrumentation ships regex-flavoured routes for the same reason.
 
 .. [[[cog
     from telemetry_doc import spans
@@ -2393,8 +2393,8 @@ That is the route's compiled regular expression, not a prettified ``/{database}/
     - ``http.route`` *(optional)* - The route the request matched, as the compiled regular expression pattern Datasette routes with - for example ``/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)(\.(?P<format>\w+))?$`` for a table page. It is deliberately the pattern rather than a prettified ``/{database}/{table}`` template: the route table is fixed when the app is built, so the pattern is exact, bounded and needs no parsing, whereas the transform into something prettier accretes edge cases. Unlike ``url.path`` this is low cardinality, so it is the attribute to group by. Omitted when no route matched - a 404 - which is also when the span name falls back to the bare method.
     - ``url.path`` - The path portion of the URL. The query string is deliberately **not** recorded, on this or any other span: Datasette puts user-supplied SQL in ``?sql=`` and canned query parameters in the query string, so exporting it by default would export exactly the data the rest of this instrumentation is careful with.
     - ``url.scheme`` - ``http`` or ``https``.
-    - ``server.address`` *(optional)* - The ``Host`` header. Client-controlled, so treat it as untrusted input rather than as the identity of the server.
-    - ``user_agent.original`` *(optional)* - The ``User-Agent`` header, verbatim. Omitted if the client sent none. The client's IP address is deliberately not recorded: core records no identifier that would tie a span to a person.
+    - ``server.address`` *(optional)* - The ``Host`` header, verbatim - including any ``:port`` suffix, a deliberate deviation from semantic conventions' ``server.address`` / ``server.port`` split. Client-controlled, so treat it as untrusted input rather than as the identity of the server.
+    - ``user_agent.original`` *(optional)* - The ``User-Agent`` header, verbatim. Omitted if the client sent none.
     - ``http.response.status_code`` *(optional)* - The status of the response, read from the ASGI ``http.response.start`` message rather than from a :ref:`internals_response` object - several views, including static files, file downloads and streaming CSV, send that message themselves and never build one. Omitted if the connection closed before anything was sent.
     - ``error.type`` *(optional)* - Set when the request failed: the exception class name if one escaped the application, otherwise the status code as a string for a 5xx response. A 4xx does **not** set this and does not set an error status - per semantic conventions a client error is not a server span's failure.
 

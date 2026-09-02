@@ -30,14 +30,24 @@ class Attribute(str):
     A span attribute key, carrying its own documentation.
 
     Subclasses `str` so it can be handed straight to `set_attribute()`.
+
+    Part of Datasette's public plugin API - plugins declare their own
+    telemetry registries with these classes. See the "Telemetry for plugin
+    authors" documentation.
     """
 
-    __slots__ = ("description", "optional")
+    __slots__ = ("description", "optional", "values")
 
-    def __new__(cls, name, description, optional=False):
+    def __new__(cls, name, description, optional=False, values=None):
         self = super().__new__(cls, name)
         self.description = description
         self.optional = optional
+        # A closed enum vocabulary for the attribute's values, or None for
+        # an open value set. Declaring one does two things: the conformance
+        # helpers assert every emitted value is a member, and it marks the
+        # attribute as bounded - safe to use as a metric dimension, where an
+        # open value set would be a cardinality hazard.
+        self.values = frozenset(values) if values is not None else None
         return self
 
     def __repr__(self):
@@ -45,21 +55,31 @@ class Attribute(str):
 
 
 class SpanName(str):
-    "A span name, carrying its documentation and the attributes it may set."
+    """A span name, carrying its documentation and the attributes it may set.
 
-    __slots__ = ("attributes", "description", "dynamic", "kind")
+    Part of Datasette's public plugin API, like `Attribute`.
+    """
+
+    __slots__ = ("attributes", "description", "dynamic", "kind", "prefix")
 
     def __new__(
         cls,
         name,
         description,
         attributes=(),
+        prefix=False,
         dynamic=False,
         kind=SpanKind.INTERNAL,
     ):
         self = super().__new__(cls, name)
         self.description = description
         self.attributes = tuple(attributes)
+        # True for a span family whose emitted names carry a variable suffix
+        # after a fixed prefix - e.g. a plugin's `chat {model}` registered as
+        # SpanName("chat ", ..., prefix=True) - so `span_for()` matches by
+        # prefix rather than equality. Core registers none itself; the flag
+        # exists for plugin registries.
+        self.prefix = prefix
         # True when the emitted name is composed at runtime and shares no
         # fixed prefix with the registry entry - the HTTP request span, whose
         # name is the request method followed by the matched route. There is
@@ -102,6 +122,7 @@ class MetricName(str):
 
 
 COUNTER = "Counter"
+UPDOWN_COUNTER = "UpDownCounter"
 HISTOGRAM = "Histogram"
 GAUGE = "Observable gauge"
 
@@ -184,7 +205,11 @@ ERROR_TYPE = Attribute(
 
 DB_SYSTEM = Attribute("db.system", "Always ``sqlite``.")
 DB_NAMESPACE = Attribute("db.namespace", "Name of the database being queried.")
-OPERATION = Attribute("datasette.operation", "``read`` or ``write``.")
+OPERATION = Attribute(
+    "datasette.operation",
+    "Whether the operation was a read or a write.",
+    values={"read", "write"},
+)
 DB_QUERY_TEXT = Attribute(
     "db.query.text",
     "The SQL, truncated to 2048 characters. Never the parameter values. "
@@ -405,33 +430,86 @@ SPANS = (
 )
 
 
-def span_for(emitted_name, kind=None):
+def span_for(emitted_name, kind=None, spans=None):
     """
     Resolve an emitted span name to its registry entry, or None.
 
-    Handles `dynamic=True` entries, whose emitted names are not knowable in
-    advance: the name has no fixed part at all, so it is matched on `kind`
-    instead and the caller has to supply one. Exact entries are tried first,
-    so a dynamic entry can never shadow a span that does have a registered
-    name.
+    Handles the two entry kinds whose emitted names are not knowable in
+    advance:
+
+    - `prefix=True` - the name carries a variable suffix after a fixed
+      prefix, matched by prefix. Core registers none; plugin registries use
+      it for names like ``chat {model}``.
+    - `dynamic=True` - the name has no fixed part at all, so it is matched
+      on `kind` instead and the caller has to supply one.
+
+    Exact matches win over prefix matches, and both win over dynamic, so a
+    looser entry can never shadow a span with a registered name.
+
+    `spans` defaults to core's own registry; the plugin testing kit passes a
+    plugin's tuple instead.
     """
-    for span in SPANS:
+    if spans is None:
+        spans = SPANS
+    for span in spans:
         if span.dynamic:
             continue
         if emitted_name == span:
             return span
+    for span in spans:
+        if span.prefix and emitted_name.startswith(span):
+            return span
     if kind is not None:
-        for span in SPANS:
+        for span in spans:
             if span.dynamic and span.kind == kind:
                 return span
     return None
 
 
-def attribute_allowed(span, emitted_key):
-    "Whether `emitted_key` is a registered attribute of `span`."
-    if span is None:
+def metric_for(emitted_name, metrics=None):
+    """
+    Resolve an emitted metric name to its registry entry, or None.
+
+    The `span_for()` analogue - simpler, because metric names are always
+    static strings. `metrics` defaults to core's own registry; the plugin
+    testing kit passes a plugin's tuple instead.
+    """
+    if metrics is None:
+        metrics = METRICS
+    for metric in metrics:
+        if emitted_name == metric:
+            return metric
+    return None
+
+
+def attribute_allowed(entry, emitted_key):
+    """
+    Whether `emitted_key` is a registered attribute of `entry`.
+
+    `entry` is a `SpanName` or a `MetricName` - both carry `.attributes`.
+    """
+    if entry is None:
         return False
-    return emitted_key in span.attributes
+    return emitted_key in entry.attributes
+
+
+def attribute_value_allowed(entry, emitted_key, value):
+    """
+    Whether `value` is permitted for `emitted_key` on `entry` (a `SpanName`
+    or a `MetricName`).
+
+    True for any value when the attribute declares no `values=` enum; when it
+    does, membership is enforced - that is what makes a declared enum a real
+    cardinality bound rather than documentation. On a metric entry this is
+    where the bound matters most: a metric series is keyed by its attribute
+    values.
+    """
+    if entry is None:
+        return False
+    for attribute in entry.attributes:
+        if attribute == emitted_key:
+            return attribute.values is None or value in attribute.values
+    return False
 
 
 # --- Metrics --------------------------------------------------------------

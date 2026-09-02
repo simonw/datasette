@@ -58,158 +58,16 @@ def find_free_port():
         return sock.getsockname()[1]
 
 
-_otel_span_exporter = None
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _otel_provider():
-    """
-    Install a real OTel SDK TracerProvider + InMemorySpanExporter exactly
-    once, before any span is ever created in this process.
-
-    This has to be session-scoped and autouse because
-    `opentelemetry.trace.set_tracer_provider()` is effectively
-    once-per-process: a second call logs a warning and is ignored. So the
-    install must happen exactly once, before anything asserts on spans.
-
-    `datasette.telemetry.tracer` is a module-level `ProxyTracer`. Once a
-    provider exists, the first span it starts resolves a concrete tracer
-    and caches it permanently. It does *not* cache the no-op tracer, so
-    any span started before this fixture runs is merely lost rather than
-    poisoning the tracer for the rest of the process. If the SDK isn't
-    installed, do nothing: core spans stay no-op `NonRecordingSpan`s and
-    the rest of the suite is unaffected.
-    """
-    global _otel_span_exporter
-    try:
-        from opentelemetry import trace as otel_trace
-        from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-        from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
-            InMemorySpanExporter,
-        )
-    except ImportError:
-        return
-    exporter = InMemorySpanExporter()
-    provider = TracerProvider()
-    # SimpleSpanProcessor exports synchronously on span end - no background
-    # batching thread, so assertions immediately after a request never race.
-    provider.add_span_processor(SimpleSpanProcessor(exporter))
-    otel_trace.set_tracer_provider(provider)
-    _otel_span_exporter = exporter
-
-
-@pytest.fixture
-def otel_spans():
-    """
-    Function-scoped access to the finished-spans exporter: clears any spans
-    left over from previous tests, then yields the exporter so a test can
-    call `.get_finished_spans()` after making requests. Skips (rather than
-    fails) if the OTel SDK is not installed.
-    """
-    pytest.importorskip("opentelemetry.sdk")
-    if _otel_span_exporter is None:
-        pytest.skip("OpenTelemetry SDK provider was not installed")
-    _otel_span_exporter.clear()
-    yield _otel_span_exporter
-
-
-_otel_metric_reader = None
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _otel_meter_provider():
-    """
-    Install a real OTel SDK MeterProvider + InMemoryMetricReader once per
-    process.
-
-    Unlike the tracer, ordering is not load-bearing here - see the metrics
-    banner in `datasette/telemetry.py` for the `_ProxyMeter`-vs-`ProxyTracer`
-    difference. This fixture is still session-scoped and autouse for
-    symmetry, and so that a single reader collects for the whole run.
-
-    DELTA temporality is chosen for counters and histograms so that each
-    collection reports only what happened since the previous one. With the
-    SDK default of CUMULATIVE, every metrics test would see every query run
-    by every earlier test in the session.
-    """
-    global _otel_metric_reader
-    try:
-        from opentelemetry import metrics as otel_metrics
-        from opentelemetry.sdk.metrics import Counter, Histogram, MeterProvider
-        from opentelemetry.sdk.metrics.export import (
-            AggregationTemporality,
-            InMemoryMetricReader,
-        )
-    except ImportError:
-        return
-    reader = InMemoryMetricReader(
-        preferred_temporality={
-            Counter: AggregationTemporality.DELTA,
-            Histogram: AggregationTemporality.DELTA,
-        }
-    )
-    otel_metrics.set_meter_provider(MeterProvider(metric_readers=[reader]))
-    _otel_metric_reader = reader
-
-
-class MetricsCollector:
-    """
-    Thin reader over an `InMemoryMetricReader`.
-
-    `collect()` runs a collection cycle - which is what invokes the observable
-    gauge callbacks - and snapshots the result. Queries then run against that
-    snapshot rather than re-collecting, so a test that inspects several
-    metrics sees one consistent moment and does not drain delta state twice.
-    """
-
-    def __init__(self, reader):
-        self.reader = reader
-        self.snapshot = {}
-
-    def collect(self):
-        self.snapshot = {}
-        data = self.reader.get_metrics_data()
-        if data is None:
-            return self.snapshot
-        for resource_metrics in data.resource_metrics:
-            for scope_metrics in resource_metrics.scope_metrics:
-                for metric in scope_metrics.metrics:
-                    self.snapshot.setdefault(metric.name, []).extend(
-                        metric.data.data_points
-                    )
-        return self.snapshot
-
-    def points(self, name, attributes=None):
-        "Data points for `name` whose attributes are a superset of `attributes`."
-        found = []
-        for point in self.snapshot.get(name, []):
-            point_attributes = dict(point.attributes or {})
-            if all(point_attributes.get(k) == v for k, v in (attributes or {}).items()):
-                found.append(point)
-        return found
-
-    def point(self, name, attributes=None):
-        "The single matching data point, asserting there is exactly one."
-        found = self.points(name, attributes)
-        assert len(found) == 1, (
-            f"expected exactly one {name} point matching {attributes}, "
-            f"got {len(found)}: {found}"
-        )
-        return found[0]
-
-
-@pytest.fixture
-def otel_metrics():
-    """
-    Function-scoped metrics collector. Drains any delta state accumulated by
-    earlier tests before yielding, so counts start from zero.
-    """
-    pytest.importorskip("opentelemetry.sdk")
-    if _otel_metric_reader is None:
-        pytest.skip("OpenTelemetry SDK meter provider was not installed")
-    _otel_metric_reader.get_metrics_data()
-    yield MetricsCollector(_otel_metric_reader)
+# The otel fixtures moved to datasette.telemetry_testing, which is public
+# plugin API - core's suite consumes it exactly the way a plugin's would.
+from datasette.telemetry_testing import (  # noqa: F401, E402
+    MetricsCollector,
+    otel_metrics,
+    otel_meter_provider,
+    otel_provider,
+    otel_reset,
+    otel_spans,
+)
 
 
 @pytest.fixture
@@ -328,6 +186,7 @@ def pytest_collection_modifyitems(config, items):
     # (SIGSEGV/SIGBUS inside _execute_child). Reproduces with any subprocess
     # call placed there, on an unmodified tree - running it first avoids it.
     move_to_front(items, "test_datasette_package_never_imports_the_sdk")
+    move_to_front(items, "test_kit_module_itself_never_imports_the_sdk")
     move_to_front(items, "test_no_provider_takes_the_fast_path")
 
 

@@ -2329,6 +2329,8 @@ Datasette core depends on `opentelemetry-api <https://pypi.org/project/opentelem
 
 Turning tracing on is entirely an operational decision made outside of Datasette itself: run Datasette under the standard ``opentelemetry-instrument`` agent, or embed Datasette inside a host application that installs its own provider.
 
+Plugins can emit their own spans and metrics alongside these, using the same registry classes and test helpers core uses - see :ref:`plugin_telemetry`.
+
 Everything Datasette emits carries the instrumentation scope ``datasette``, versioned with the running Datasette version and declaring the `semantic conventions schema <https://opentelemetry.io/docs/specs/otel/schemas/>`__ its attribute names follow.
 
 This is separate from, and does not replace, the built-in :ref:`internals_tracer` mechanism behind ``?_trace=1`` and the :ref:`setting_trace_debug` setting. Both continue to work exactly as before.
@@ -2474,8 +2476,8 @@ This reference is generated from ``datasette/telemetry_registry.py``, like the s
 
     - ``db.system`` - Always ``sqlite``.
     - ``db.namespace`` - Name of the database being queried.
-    - ``datasette.operation`` - ``read`` or ``write``.
-    - ``error.type`` - Set when the request failed: the exception class name if one escaped the application, otherwise the status code as a string for a 5xx response. A 4xx does **not** set this and does not set an error status - per semantic conventions a client error is not a server span's failure.
+    - ``datasette.operation`` - Whether the operation was a read or a write. One of: ``read``, ``write``.
+    - ``error.type`` *(optional)* - Set when the request failed: the exception class name if one escaped the application, otherwise the status code as a string for a 5xx response. A 4xx does **not** set this and does not set an error status - per semantic conventions a client error is not a server span's failure.
 
 ``datasette.write.queue_wait``
     Histogram, unit ``s``. Time each write waited in its database's write queue. The metric counterpart of the ``db.write.queue_wait`` span.

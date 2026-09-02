@@ -178,7 +178,14 @@ async def test_facetable_request_produces_db_query_spans(ds_client, otel_spans):
     spans = _db_query_spans(otel_spans)
     assert spans, "expected at least one db.query span"
     assert all(span.attributes["db.system"] == "sqlite" for span in spans)
-    assert all(span.attributes["db.query.text"] for span in spans)
+    # Every db.query names what ran: SQL text for the string methods,
+    # datasette.callback for callback-style calls (schema introspection here).
+    assert all(
+        span.attributes.get("db.query.text")
+        or span.attributes.get("datasette.callback")
+        for span in spans
+    )
+    assert any(span.attributes.get("db.query.text") for span in spans)
     # Rendering the page also queries the internal database, so only some of
     # these spans belong to "fixtures".
     assert any(span.attributes["db.namespace"] == "fixtures" for span in spans)
@@ -519,8 +526,14 @@ async def test_immutable_database_propagates_context(tmp_path, otel_spans):
         for span in otel_spans.get_finished_spans()
         if span.name == "t04-child-in-isolated-worker"
     ], "expected a span created inside execute_isolated_fn's worker thread"
+    # execute_isolated_fn() now opens its own db.query span, so the chain is
+    # event-loop parent -> db.query -> worker child. The worker child
+    # parenting to that db.query span, across the thread, is the propagation
+    # this test exists to prove.
+    query_spans = _children_named(otel_spans, "db.query", parent_context)
+    assert len(query_spans) == 1
     children = _children_named(
-        otel_spans, "t04-child-in-isolated-worker", parent_context
+        otel_spans, "t04-child-in-isolated-worker", query_spans[0].context
     )
     assert len(children) == 1
 
@@ -1036,3 +1049,192 @@ async def test_table_and_row_pages_set_db_collection_name(
     assert any(
         span.attributes.get("db.collection.name") == table for span in spans
     ), f"expected a db.query span from {path} carrying db.collection.name"
+
+
+# --- Callback-style calls: execute_fn / execute_write_fn / execute_isolated_fn
+
+
+@pytest.mark.asyncio
+async def test_execute_fn_produces_db_query_span(otel_spans):
+    db = Datasette(memory=True).add_memory_database("t16_execute_fn")
+    await db.execute_write("create table t (id integer primary key)")
+
+    def count_rows(conn):
+        return conn.execute("select count(*) from t").fetchone()[0]
+
+    otel_spans.clear()
+    assert await db.execute_fn(count_rows) == 0
+
+    spans = _spans_for_namespace(otel_spans, "t16_execute_fn")
+    assert len(spans) == 1
+    span = spans[0]
+    assert span.kind == SpanKind.CLIENT
+    assert span.attributes["db.system"] == "sqlite"
+    assert (
+        span.attributes["datasette.callback"]
+        == "test_execute_fn_produces_db_query_span.<locals>.count_rows"
+    )
+    # There is no SQL string for a callback, and no statement to take a
+    # leading keyword from - absent beats guessed.
+    assert "db.query.text" not in span.attributes
+    assert "db.operation.name" not in span.attributes
+    children = _children_named(otel_spans, "db.query.execute", span.context)
+    assert len(children) == 1
+
+
+@pytest.mark.asyncio
+async def test_execute_fn_lambda_reports_lambda(otel_spans):
+    # Pins the documented behaviour rather than pretending lambdas have names.
+    db = Datasette(memory=True).add_memory_database("t16_lambda")
+    otel_spans.clear()
+    await db.execute_fn(lambda conn: conn.execute("select 1").fetchone())
+    spans = _spans_for_namespace(otel_spans, "t16_lambda")
+    assert len(spans) == 1
+    assert spans[0].attributes["datasette.callback"].endswith("<lambda>")
+
+
+@pytest.mark.asyncio
+async def test_execute_write_fn_produces_db_query_span(otel_spans):
+    db = Datasette(memory=True).add_memory_database("t16_write_fn")
+
+    def create_table(conn):
+        conn.execute("create table t (id integer primary key)")
+
+    otel_spans.clear()
+    await db.execute_write_fn(create_table)
+
+    spans = _spans_for_namespace(otel_spans, "t16_write_fn")
+    assert len(spans) == 1
+    span = spans[0]
+    assert span.kind == SpanKind.CLIENT
+    assert (
+        span.attributes["datasette.callback"]
+        == "test_execute_write_fn_produces_db_query_span.<locals>.create_table"
+    )
+    assert "db.query.text" not in span.attributes
+    # The write-thread spans are this span's children, same as execute_write()
+    for name in ("db.write.queue_wait", "db.write.execute"):
+        assert len(_children_named(otel_spans, name, span.context)) == 1, name
+
+
+@pytest.mark.asyncio
+async def test_execute_write_fn_callback_name_is_not_the_hook_wrapper(otel_spans):
+    # A callback that declares track_event is the case where
+    # _wrap_fn_with_hooks() actually replaces fn with a wrapper - the span
+    # must still report the caller's function, not the wrapper's name.
+    db = Datasette(memory=True).add_memory_database("t16_wrapper_name")
+
+    def create_with_events(conn, track_event):
+        conn.execute("create table t (id integer primary key)")
+
+    otel_spans.clear()
+    await db.execute_write_fn(create_with_events)
+    spans = _spans_for_namespace(otel_spans, "t16_wrapper_name")
+    assert len(spans) == 1
+    assert spans[0].attributes["datasette.callback"] == (
+        "test_execute_write_fn_callback_name_is_not_the_hook_wrapper"
+        ".<locals>.create_with_events"
+    )
+
+
+@pytest.mark.asyncio
+async def test_execute_write_fn_nonblocking_spans_link_to_the_new_span(otel_spans):
+    # For block=False the public db.query span ends at enqueue and the
+    # write-thread spans become roots. Their link must target that new span,
+    # not whatever was current around the execute_write_fn() call.
+    db = Datasette(memory=True).add_memory_database("t16_nonblocking")
+    await db.execute_write("create table docs (id integer primary key)")
+
+    def insert(conn):
+        conn.execute("insert into docs (id) values (1)")
+
+    otel_spans.clear()
+    with tracer.start_as_current_span("t16-enqueueing-span") as enqueuer:
+        enqueuer_context = enqueuer.get_span_context()
+        await db.execute_write_fn(insert, block=False)
+    # Writes are serialized on the write thread, so a blocking write behind
+    # the non-blocking one waits for it deterministically.
+    await db.execute_write("insert into docs (id) values (2)")
+
+    query_spans = [
+        span
+        for span in _spans_for_namespace(otel_spans, "t16_nonblocking")
+        if span.attributes.get("datasette.callback")
+    ]
+    assert len(query_spans) == 1
+    fn_span_context = query_spans[0].context
+    linked = [
+        span
+        for span in otel_spans.get_finished_spans()
+        if span.name in ("db.write.queue_wait", "db.write.execute") and span.links
+    ]
+    assert len(linked) == 2
+    for span in linked:
+        assert span.parent is None, f"{span.name} is still parented"
+        assert span.links[0].context.span_id == fn_span_context.span_id, span.name
+        assert span.links[0].context.span_id != enqueuer_context.span_id, span.name
+
+
+@pytest.mark.asyncio
+async def test_execute_does_not_double_wrap(otel_spans):
+    # The regression guard for the refactor: execute() and the SQL-string
+    # write methods call the private _execute_fn/_execute_write_fn, so they
+    # must not gain a second db.query span from the public wrappers.
+    db = Datasette(memory=True).add_memory_database("t16_no_double_wrap")
+    otel_spans.clear()
+    await db.execute_write("create table t (id integer primary key)")
+    assert len(_spans_for_namespace(otel_spans, "t16_no_double_wrap")) == 1
+    otel_spans.clear()
+    await db.execute("select * from t")
+    spans = _spans_for_namespace(otel_spans, "t16_no_double_wrap")
+    assert len(spans) == 1
+    assert len(_children_named(otel_spans, "db.query.execute", spans[0].context)) == 1
+
+
+@pytest.mark.asyncio
+async def test_execute_isolated_fn_span_on_mutable_and_immutable(tmp_path, otel_spans):
+    def read_one(conn):
+        return conn.execute("select 1").fetchone()[0]
+
+    mutable = Datasette(memory=True).add_memory_database("t16_isolated_mutable")
+    otel_spans.clear()
+    assert await mutable.execute_isolated_fn(read_one) == 1
+    spans = _spans_for_namespace(otel_spans, "t16_isolated_mutable")
+    assert len(spans) == 1
+    assert spans[0].attributes["datasette.callback"].endswith("read_one")
+    # Mutable databases route through the write thread, so the write spans
+    # appear as children; immutable ones run on the pool and get none.
+    assert _children_named(otel_spans, "db.write.execute", spans[0].context)
+
+    db_path = tmp_path / "t16_isolated_immutable.db"
+    sqlite_utils.Database(str(db_path))["t"].insert({"id": 1})
+    ds = Datasette()
+    immutable = Database(ds, path=str(db_path), is_mutable=False)
+    ds.add_database(immutable, name="t16_isolated_immutable")
+    try:
+        otel_spans.clear()
+        assert await immutable.execute_isolated_fn(read_one) == 1
+    finally:
+        ds.remove_database("t16_isolated_immutable")
+    spans = _spans_for_namespace(otel_spans, "t16_isolated_immutable")
+    assert len(spans) == 1
+    assert spans[0].attributes["datasette.callback"].endswith("read_one")
+    assert not _children_named(otel_spans, "db.write.execute", spans[0].context)
+
+
+@pytest.mark.asyncio
+async def test_execute_fn_exception_marks_span_error(otel_spans):
+    # Unlike execute(), there is no probing caller on this path - a callback
+    # that raises is an error, with the default record_exception behaviour.
+    db = Datasette(memory=True).add_memory_database("t16_fn_error")
+
+    def boom(conn):
+        raise ValueError("callback failed")
+
+    otel_spans.clear()
+    with pytest.raises(ValueError):
+        await db.execute_fn(boom)
+    spans = _spans_for_namespace(otel_spans, "t16_fn_error")
+    assert len(spans) == 1
+    assert spans[0].status.status_code == StatusCode.ERROR
+    assert any(event.name == "exception" for event in spans[0].events)

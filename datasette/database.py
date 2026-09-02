@@ -17,8 +17,9 @@ from opentelemetry import context as otel_context_api
 from opentelemetry.trace import Link, Status, StatusCode, get_current_span
 
 from .inspect import inspect_hash
-from .telemetry import sql_attribute, sql_operation_name, tracer
+from .telemetry import callback_name, sql_attribute, sql_operation_name, tracer
 from .telemetry_registry import (
+    CALLBACK,
     DB_COLLECTION_NAME,
     DB_NAMESPACE,
     DB_OPERATION_NAME,
@@ -299,7 +300,7 @@ class Database:
                     span.set_attribute(DB_OPERATION_NAME, operation_name)
                 if params:
                     span.set_attribute(PARAM_COUNT, len(params))
-                results = await self.execute_write_fn(
+                results = await self._execute_write_fn(
                     _inner, block=block, request=request, transaction=transaction
                 )
         return results
@@ -323,7 +324,7 @@ class Database:
                 span.set_attribute(DB_NAMESPACE, self.name)
                 span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
                 span.set_attribute(EXECUTESCRIPT, True)
-                results = await self.execute_write_fn(
+                results = await self._execute_write_fn(
                     _inner, block=block, transaction=False, request=request
                 )
         return results
@@ -356,7 +357,7 @@ class Database:
                 operation_name = sql_operation_name(sql)
                 if operation_name:
                     span.set_attribute(DB_OPERATION_NAME, operation_name)
-                results, count = await self.execute_write_fn(
+                results, count = await self._execute_write_fn(
                     _inner, block=block, request=request
                 )
                 # count is the number of parameter *sets* consumed by
@@ -383,21 +384,31 @@ class Database:
                     # Was probably a memory connection
                     pass
 
-        if self.ds.executor is None:
-            # non-threaded mode
-            return _run()
-        if not write:
-            # Immutable database - no writes can ever occur, so there is no
-            # write queue to block; run against a fresh read-only connection.
-            # copy_context() carries the caller's otel context onto the worker
-            # thread - see the notes in execute_fn() for why it must be a
-            # fresh copy per submit and why carrying every ContextVar is safe.
-            ctx = contextvars.copy_context()
-            return await asyncio.get_running_loop().run_in_executor(
-                self.ds.executor, ctx.run, _run
-            )
-        # Threaded mode - send to write thread
-        return await self._send_to_write_thread(fn, isolated_connection=True)
+        # One db.query span here, like execute_fn() / execute_write_fn().
+        # The wrap must NOT move into _send_to_write_thread(): that is the
+        # shared tail for every write, and for block=False it is where the
+        # link back to this span is captured - a span opened there would be
+        # the link target for its own children.
+        with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
+            span.set_attribute(DB_SYSTEM, "sqlite")
+            span.set_attribute(DB_NAMESPACE, self.name)
+            span.set_attribute(CALLBACK, callback_name(fn))
+            if self.ds.executor is None:
+                # non-threaded mode
+                return _run()
+            if not write:
+                # Immutable database - no writes can ever occur, so there is
+                # no write queue to block; run against a fresh read-only
+                # connection. copy_context() carries the caller's otel context
+                # onto the worker thread - see the notes in _execute_fn() for
+                # why it must be a fresh copy per submit and why carrying
+                # every ContextVar is safe.
+                ctx = contextvars.copy_context()
+                return await asyncio.get_running_loop().run_in_executor(
+                    self.ds.executor, ctx.run, _run
+                )
+            # Threaded mode - send to write thread
+            return await self._send_to_write_thread(fn, isolated_connection=True)
 
     async def analyze_sql(self, sql, params=None) -> SQLAnalysis:
         self._check_not_closed()
@@ -407,6 +418,30 @@ class Database:
         )
 
     async def execute_write_fn(self, fn, block=True, transaction=True, request=None):
+        """Run `fn(conn)` on the write connection, traced as one database call.
+
+        The public entry point for callback-style writes. Instrumented like
+        `execute_write()`: one `db.query` span (with `datasette.callback` in
+        place of `db.query.text`) above the `db.write.queue_wait` and
+        `db.write.execute` spans the write thread emits. The SQL-string write
+        methods call `_execute_write_fn()` directly, so they never get a
+        second span. For `block=False` this span ends at enqueue and the
+        write-thread spans become roots carrying a link back to it, exactly
+        as for `execute_write(block=False)`.
+        """
+        self._check_not_closed()
+        # The raw fn's name, before _wrap_fn_with_hooks() replaces it with a
+        # wrapper - otherwise every write would report the wrapper's name.
+        name = callback_name(fn)
+        with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
+            span.set_attribute(DB_SYSTEM, "sqlite")
+            span.set_attribute(DB_NAMESPACE, self.name)
+            span.set_attribute(CALLBACK, name)
+            return await self._execute_write_fn(
+                fn, block=block, transaction=transaction, request=request
+            )
+
+    async def _execute_write_fn(self, fn, block=True, transaction=True, request=None):
         self._check_not_closed()
         pending_events = []
 
@@ -666,6 +701,35 @@ class Database:
                     otel_context_api.detach(token)
 
     async def execute_fn(self, fn):
+        """Run `fn(conn)` on a read connection, traced as one database call.
+
+        The public entry point for callback-style reads - plugins and core
+        both use it to run arbitrary Python against a connection. It is
+        instrumented exactly like `execute()`: one `db.query` span (with
+        `datasette.callback` in place of `db.query.text`, since there is no
+        SQL string to record) and a `db.query.execute` child covering the
+        time actually spent on the worker thread. `execute()` itself calls
+        `_execute_fn()` directly, so a SQL read never gets a second span.
+        """
+        self._check_not_closed()
+
+        def fn_in_execute_span(conn):
+            # Created on the worker thread; parents to the db.query span via
+            # the copy_context() propagation in _execute_fn(). The gap
+            # between the two spans is time spent waiting for a free thread.
+            with tracer.start_as_current_span(DB_QUERY_EXECUTE):
+                return fn(conn)
+
+        with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
+            span.set_attribute(DB_SYSTEM, "sqlite")
+            span.set_attribute(DB_NAMESPACE, self.name)
+            span.set_attribute(CALLBACK, callback_name(fn))
+            # Default exception handling applies, unlike execute(): there is
+            # no log_sql_errors=False probing caller and no expected-timeout
+            # budget on this path, so a raised exception is an error.
+            return await self._execute_fn(fn_in_execute_span)
+
+    async def _execute_fn(self, fn):
         self._check_not_closed()
         if self.ds.executor is None:
             # non-threaded mode
@@ -752,7 +816,7 @@ class Database:
             # This span is created inside the worker thread. Its parent is
             # resolved from the ambient otel context, which was propagated
             # onto this thread via copy_context() at the executor.submit()
-            # boundary in execute_fn() (or run_in_executor() for immutable
+            # boundary in _execute_fn() (or run_in_executor() for immutable
             # databases) - so it parents correctly to the enclosing
             # db.query span despite running on a different thread.
             #
@@ -837,7 +901,7 @@ class Database:
                 if params:
                     span.set_attribute(PARAM_COUNT, len(params))
                 try:
-                    results = await self.execute_fn(sql_operation_in_thread)
+                    results = await self._execute_fn(sql_operation_in_thread)
                 except QueryInterrupted as e:
                     # datasette.interrupted is set either way - it is the
                     # signal worth having. Only the ERROR status is

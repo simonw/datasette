@@ -2024,6 +2024,8 @@ Example usage:
 
     version = await db.execute_fn(get_version)
 
+The call is traced as a ``db.query`` OpenTelemetry span carrying ``datasette.callback`` (the function's qualified name) rather than ``db.query.text``, since the SQL is whatever the function chooses to run - see :ref:`internals_telemetry`. Passing a named function gives the span a readable identity; a lambda reports ``<lambda>``.
+
 .. _database_execute_write:
 
 await db.execute_write(sql, params=None, block=True, request=None, return_all=False, returning_limit=10, transaction=True)
@@ -2099,6 +2101,8 @@ await db.execute_write_fn(fn, block=True, transaction=True)
 This method works like ``.execute_write()``, but instead of a SQL statement you give it a callable Python function. Your function will be queued up and then called when the write connection is available, passing that connection as the argument to the function.
 
 The function can then perform multiple actions, safe in the knowledge that it has exclusive access to the single writable connection for as long as it is executing.
+
+Like ``execute_fn()``, the call is traced as a ``db.query`` OpenTelemetry span carrying ``datasette.callback`` rather than ``db.query.text``, above the write-queue spans - see :ref:`internals_telemetry`. A named function gives the span a readable identity; a lambda reports ``<lambda>``.
 
 .. warning::
 
@@ -2373,7 +2377,7 @@ Spans are ``SpanKind.INTERNAL`` unless a kind is listed below. Only ``db.query``
 .. ]]]
 
 ``db.query``
-    A SQL operation issued by Datasette, covering the full round trip including any time spent queued for a thread.
+    A SQL operation issued by Datasette, covering the full round trip including any time spent queued for a thread. Callback-style calls - ``execute_fn()``, ``execute_write_fn()`` and ``execute_isolated_fn()`` - appear here too, distinguished by ``datasette.callback`` in place of ``db.query.text``.
 
     Kind: ``CLIENT``.
 
@@ -2381,7 +2385,8 @@ Spans are ``SpanKind.INTERNAL`` unless a kind is listed below. Only ``db.query``
 
     - ``db.system`` - Always ``sqlite``.
     - ``db.namespace`` - Name of the database being queried.
-    - ``db.query.text`` - The SQL, truncated to 2048 characters. Never the parameter values.
+    - ``db.query.text`` *(optional)* - The SQL, truncated to 2048 characters. Never the parameter values. Absent for a callback-style call (``execute_fn()`` and friends), where there is no SQL string to record - ``datasette.callback`` is set instead.
+    - ``datasette.callback`` *(optional)* - The qualified name of the Python callable passed to ``execute_fn()``, ``execute_write_fn()`` or ``execute_isolated_fn()`` - for example ``TableInsertView.post.<locals>.insert_or_upsert_rows``. Set instead of ``db.query.text``, which does not exist for a callback: the SQL is whatever the function chooses to run. A lambda reports ``<lambda>``, which is why callers wanting a recognisable span should pass a named function. Bounded cardinality: the set of callables is fixed by the installed code, not by request input.
     - ``db.operation.name`` *(optional)* - The statement's leading keyword - ``SELECT``, ``INSERT``, ``CREATE``, and so on - matched against a small fixed allowlist. Omitted rather than set to an arbitrary value: the attribute must stay safe to use as a metric dimension, and echoing an unrecognised first token from user-supplied SQL would be an unbounded-cardinality hazard. Also omitted for ``execute_write_script()``, which runs multiple statements - per semantic conventions, the operation name should not be extracted from query text that can contain more than one operation. Note that a statement beginning with a CTE reports ``WITH``, not the operation inside it - a substantial share of Datasette's own reads take that form. Resolving it further would mean parsing.
     - ``db.collection.name`` *(optional)* - The primary table, set only where the view already knows it - the table and row pages. Omitted for arbitrary ``?sql=`` queries, where determining the table would mean parsing the query.
     - ``datasette.param_count`` *(optional)* - Number of bound parameters. Recorded instead of the values themselves.

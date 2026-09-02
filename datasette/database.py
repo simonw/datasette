@@ -404,22 +404,25 @@ class Database:
             span.set_attribute(DB_SYSTEM, "sqlite")
             span.set_attribute(DB_NAMESPACE, self.name)
             span.set_attribute(CALLBACK, callback_name(fn))
-            if self.ds.executor is None:
-                # non-threaded mode
-                return _run()
-            if not write:
-                # Immutable database - no writes can ever occur, so there is
-                # no write queue to block; run against a fresh read-only
-                # connection. copy_context() carries the caller's otel context
-                # onto the worker thread - see the notes in _execute_fn() for
-                # why it must be a fresh copy per submit and why carrying
-                # every ContextVar is safe.
-                ctx = contextvars.copy_context()
-                return await asyncio.get_running_loop().run_in_executor(
-                    self.ds.executor, ctx.run, _run
-                )
-            # Threaded mode - send to write thread
-            return await self._send_to_write_thread(fn, isolated_connection=True)
+            # "write" when mutable because the call blocks the write queue;
+            # "read" when immutable, where it runs on the read pool.
+            with record_operation_duration(self.name, "write" if write else "read"):
+                if self.ds.executor is None:
+                    # non-threaded mode
+                    return _run()
+                if not write:
+                    # Immutable database - no writes can ever occur, so there
+                    # is no write queue to block; run against a fresh
+                    # read-only connection. copy_context() carries the
+                    # caller's otel context onto the worker thread - see the
+                    # notes in _execute_fn() for why it must be a fresh copy
+                    # per submit and why carrying every ContextVar is safe.
+                    ctx = contextvars.copy_context()
+                    return await asyncio.get_running_loop().run_in_executor(
+                        self.ds.executor, ctx.run, _run
+                    )
+                # Threaded mode - send to write thread
+                return await self._send_to_write_thread(fn, isolated_connection=True)
 
     async def analyze_sql(self, sql, params=None) -> SQLAnalysis:
         self._check_not_closed()
@@ -449,9 +452,10 @@ class Database:
             span.set_attribute(DB_SYSTEM, "sqlite")
             span.set_attribute(DB_NAMESPACE, self.name)
             span.set_attribute(CALLBACK, name)
-            return await self._execute_write_fn(
-                fn, block=block, transaction=transaction, request=request
-            )
+            with record_operation_duration(self.name, "write"):
+                return await self._execute_write_fn(
+                    fn, block=block, transaction=transaction, request=request
+                )
 
     async def _execute_write_fn(self, fn, block=True, transaction=True, request=None):
         self._check_not_closed()
@@ -741,7 +745,8 @@ class Database:
             # Default exception handling applies, unlike execute(): there is
             # no log_sql_errors=False probing caller and no expected-timeout
             # budget on this path, so a raised exception is an error.
-            return await self._execute_fn(fn_in_execute_span)
+            with record_operation_duration(self.name, "read"):
+                return await self._execute_fn(fn_in_execute_span)
 
     async def _execute_fn(self, fn):
         self._check_not_closed()

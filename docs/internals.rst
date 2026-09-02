@@ -2466,7 +2466,7 @@ This reference is generated from ``datasette/telemetry_registry.py``, like the s
 .. ]]]
 
 ``db.client.operation.duration``
-    Histogram, unit ``s``. Duration of a SQL operation. The standard OpenTelemetry semantic convention metric, and the one that survives trace sampling.
+    Histogram, unit ``s``. Duration of a SQL operation. The standard OpenTelemetry semantic convention metric, and the one that survives trace sampling. Callback-style calls (``execute_fn()`` and friends) are counted alongside the SQL-string methods.
 
     Bucket boundaries: ``0.0001``, ``0.0005``, ``0.001``, ``0.005``, ``0.01``, ``0.05``, ``0.1``, ``0.5``, ``1``, ``5``, ``10``.
 

@@ -459,7 +459,9 @@ M_OPERATION_DURATION = MetricName(
     HISTOGRAM,
     "s",
     "Duration of a SQL operation. The standard OpenTelemetry semantic "
-    "convention metric, and the one that survives trace sampling.",
+    "convention metric, and the one that survives trace sampling. "
+    "Callback-style calls (``execute_fn()`` and friends) are counted "
+    "alongside the SQL-string methods.",
     (DB_SYSTEM, DB_NAMESPACE, OPERATION, ERROR_TYPE),
     buckets=DURATION_BUCKETS,
 )

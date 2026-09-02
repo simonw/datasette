@@ -460,3 +460,73 @@ def test_histograms_spread_values_across_buckets(
         f"expected each of {SPREAD} in its own bucket, got bucket counts "
         f"{list(point.bucket_counts)} for bounds {list(point.explicit_bounds)}"
     )
+
+
+@pytest.mark.asyncio
+async def test_operation_duration_histogram_records_execute_fn(otel_metrics):
+    "Callback-style reads land in the same histogram as SQL-string reads."
+    ds = Datasette(memory=True)
+    ds.add_memory_database("duration_fn_db")
+    try:
+        db = ds.get_database("duration_fn_db")
+
+        def read_one(conn):
+            return conn.execute("select 1").fetchone()[0]
+
+        assert await db.execute_fn(read_one) == 1
+        otel_metrics.collect()
+        point = otel_metrics.point(
+            "db.client.operation.duration",
+            {"db.namespace": "duration_fn_db", "datasette.operation": "read"},
+        )
+        assert point.count == 1
+        assert point.sum > 0
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_operation_duration_histogram_records_execute_write_fn(otel_metrics):
+    "Callback-style writes - the JSON write API's whole diet - are counted too."
+    ds = Datasette(memory=True)
+    ds.add_memory_database("duration_write_fn_db")
+    try:
+        db = ds.get_database("duration_write_fn_db")
+
+        def create_table(conn):
+            conn.execute("create table t (id integer primary key)")
+
+        await db.execute_write_fn(create_table)
+        otel_metrics.collect()
+        point = otel_metrics.point(
+            "db.client.operation.duration",
+            {"db.namespace": "duration_write_fn_db", "datasette.operation": "write"},
+        )
+        assert point.count == 1
+        assert point.sum > 0
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_operation_duration_records_callback_error_type(otel_metrics):
+    "A callback that raises is still timed, with error.type from the exception."
+    ds = Datasette(memory=True)
+    ds.add_memory_database("duration_fn_error_db")
+    try:
+        db = ds.get_database("duration_fn_error_db")
+
+        def boom(conn):
+            raise ValueError("callback failed")
+
+        with pytest.raises(ValueError):
+            await db.execute_fn(boom)
+        otel_metrics.collect()
+        point = otel_metrics.point(
+            "db.client.operation.duration",
+            {"db.namespace": "duration_fn_error_db", "datasette.operation": "read"},
+        )
+        assert point.count == 1
+        assert dict(point.attributes)["error.type"] == "ValueError"
+    finally:
+        ds.close()

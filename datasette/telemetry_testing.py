@@ -20,7 +20,7 @@ signal. Tests then take ``otel_spans`` / ``otel_metrics``. Everything here
 imports the OpenTelemetry SDK lazily: with no SDK installed the fixtures
 skip rather than fail, and importing this module costs nothing.
 
-The conformance helpers (`assert_spans_conform`, `assert_registry_covered`)
+The conformance helpers (`assert_spans_conform`, `assert_spans_covered`)
 check a registry of `SpanName` entries against actually-finished spans in
 both directions - emitted-but-unregistered and registered-but-never-emitted,
 the two drift modes documented in `tests/test_telemetry_registry.py`.
@@ -69,6 +69,14 @@ def install_span_exporter():
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     otel_trace.set_tracer_provider(provider)
+    # set_tracer_provider() is once-per-process: if something else installed
+    # a provider first (another conftest, opentelemetry-instrument, an
+    # embedding app), the call above was silently ignored - and an exporter
+    # wired to nothing would make every span assertion fail confusingly, or
+    # pass vacuously on empty input. Leave the global unset in that case so
+    # the fixtures skip with a clear message instead.
+    if otel_trace.get_tracer_provider() is not provider:
+        return None
     _span_exporter = exporter
     return exporter
 
@@ -101,7 +109,12 @@ def install_metric_reader():
             Histogram: AggregationTemporality.DELTA,
         }
     )
-    otel_metrics_api.set_meter_provider(MeterProvider(metric_readers=[reader]))
+    provider = MeterProvider(metric_readers=[reader])
+    otel_metrics_api.set_meter_provider(provider)
+    # Same once-per-process guard as the tracer side: a provider that did
+    # not take must not leave a reader that collects nothing.
+    if otel_metrics_api.get_meter_provider() is not provider:
+        return None
     _metric_reader = reader
     return reader
 
@@ -132,6 +145,25 @@ def otel_meter_provider():
     Still autouse for symmetry, and so a single reader collects all run.
     """
     install_metric_reader()
+
+
+@pytest.fixture(autouse=True)
+def otel_reset():
+    """
+    Autouse, function-scoped: drain the span exporter and metric reader
+    after every test - including the ones that never look at telemetry.
+
+    Without this, every test that exercises the app leaves its recorded
+    spans in the session-scoped exporter's list forever: a large suite
+    accumulates hundreds of thousands of ReadableSpans, degrading memory
+    and per-span export cost as the run goes on. Draining the metric reader
+    likewise stops delta state piling up between metric tests.
+    """
+    yield
+    if _span_exporter is not None:
+        _span_exporter.clear()
+    if _metric_reader is not None:
+        _metric_reader.get_metrics_data()
 
 
 @pytest.fixture
@@ -251,7 +283,7 @@ def assert_spans_conform(registry_spans, finished_spans, scope_name=None):
     assert not problems, "\n".join(problems)
 
 
-def assert_registry_covered(registry_spans, finished_spans, scope_name=None):
+def assert_spans_covered(registry_spans, finished_spans, scope_name=None):
     """
     Every entry in `registry_spans` was emitted at least once, and every one
     of its registered non-`optional` attributes appeared on it at least
@@ -287,13 +319,15 @@ def assert_registry_covered(registry_spans, finished_spans, scope_name=None):
 
 # Registry instrument kinds mapped to the SDK data type collected for them.
 # A registry kind outside this table (a plugin's own vocabulary) is not
-# kind-checked. "Counter" maps to Sum; monotonicity is not asserted, so
-# UpDownCounters registered as "Counter" pass too.
+# kind-checked. Both counter kinds collect as Sum; monotonicity is what
+# tells them apart, checked separately below.
 _KIND_TO_DATA_TYPE = {
     "Counter": "Sum",
+    "UpDownCounter": "Sum",
     "Histogram": "Histogram",
     "Observable gauge": "Gauge",
 }
+_KIND_IS_MONOTONIC = {"Counter": True, "UpDownCounter": False}
 
 
 def _scoped_metrics(collector, scope_name):
@@ -326,6 +360,17 @@ def assert_metrics_conform(registry_metrics, collector, scope_name=None):
             problems.add(
                 f"{metric.name}: registry declares {entry.kind}, "
                 f"SDK collected {actual_data_type}"
+            )
+        expected_monotonic = _KIND_IS_MONOTONIC.get(entry.kind)
+        actual_monotonic = getattr(metric.data, "is_monotonic", None)
+        if (
+            expected_monotonic is not None
+            and actual_monotonic is not None
+            and actual_monotonic != expected_monotonic
+        ):
+            problems.add(
+                f"{metric.name}: registry declares {entry.kind}, but the "
+                f"collected Sum is_monotonic={actual_monotonic}"
             )
         if (metric.unit or "") != (entry.unit or ""):
             problems.add(
@@ -376,6 +421,65 @@ def assert_metrics_covered(registry_metrics, collector, scope_name=None):
                 f"{entry}: registered attributes never collected: {sorted(missing)}"
             )
     assert not problems, "\n".join(problems)
+
+
+def assert_no_forbidden_values(
+    forbidden, finished_spans=None, collector=None, scope_name=None
+):
+    """
+    Assert that none of the `forbidden` strings appear anywhere in the
+    emitted telemetry: span names, span attribute values, span event names
+    and attributes, span status descriptions, or metric point attributes.
+
+    This is the enforcement half of the privacy rules in the plugin
+    telemetry documentation. The strongest way to use it is to *plant*
+    sentinel values in your test workload - a fake email address, a token,
+    a username your fixtures log in with - and assert they never leak into
+    a signal:
+
+        FORBIDDEN = {"secret-token-123", "alice@example.com"}
+        run_workload_using_those_values()
+        assert_no_forbidden_values(
+            FORBIDDEN,
+            finished_spans=otel_spans.get_finished_spans(),
+            collector=otel_metrics,
+            scope_name="my_plugin",
+        )
+
+    Matching is plain substring on the string form of each value; empty
+    strings in `forbidden` are ignored. Pass `finished_spans` and/or a
+    collected `MetricsCollector`; `scope_name=None` checks every scope,
+    which is the right default here - a leak through *core's* signals (e.g.
+    SQL text carrying a secret) is still a leak.
+    """
+    needles = [needle for needle in forbidden if needle]
+    leaks = set()
+
+    def check(value, where):
+        text = str(value)
+        for needle in needles:
+            if needle in text:
+                leaks.add(f"{where} contains {needle!r}")
+
+    if finished_spans is not None:
+        for span in _scoped(finished_spans, scope_name):
+            check(span.name, f"span name {str(span.name)!r}")
+            for key, value in (span.attributes or {}).items():
+                check(value, f"{span.name} attribute {key}")
+            for event in span.events or ():
+                check(event.name, f"{span.name} event name")
+                for key, value in (event.attributes or {}).items():
+                    check(value, f"{span.name} event {event.name} attribute {key}")
+            if span.status is not None and span.status.description:
+                check(span.status.description, f"{span.name} status description")
+    if collector is not None:
+        for metric in _scoped_metrics(collector, scope_name):
+            for point in metric.data.data_points:
+                for key, value in dict(point.attributes or {}).items():
+                    check(value, f"metric {metric.name} attribute {key}")
+    assert not leaks, "forbidden values leaked into telemetry:\n" + "\n".join(
+        sorted(leaks)
+    )
 
 
 def assert_package_never_imports_sdk(*module_names):

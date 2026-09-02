@@ -657,9 +657,7 @@ class Database:
                     start_time=task.enqueued_at_ns,
                     **write_span_kwargs,
                 ).end(end_time=dequeued_at_ns)
-                record_write_queue_wait(
-                    self.name, dequeued_at_ns - task.enqueued_at_ns
-                )
+                record_write_queue_wait(self.name, dequeued_at_ns - task.enqueued_at_ns)
                 if conn_exception is not None:
                     # fn never runs in this branch, so there is nothing to
                     # wrap in a db.write.execute span.

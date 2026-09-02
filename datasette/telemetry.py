@@ -578,9 +578,7 @@ def observe_write_queue_depth(options=None):
             if write_queue is None:
                 # No write has ever been queued for this database.
                 continue
-            yield otel_metrics.Observation(
-                write_queue.qsize(), {DB_NAMESPACE: db.name}
-            )
+            yield otel_metrics.Observation(write_queue.qsize(), {DB_NAMESPACE: db.name})
 
 
 def observe_open_connections(options=None):

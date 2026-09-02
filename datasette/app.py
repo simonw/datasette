@@ -53,8 +53,10 @@ from .telemetry import (
     TelemetryMiddleware,
     _in_datasette_client,
     clamp_http_method,
+    register_datasette,
     request_span,
     tracer,
+    unregister_datasette,
 )
 from .telemetry_registry import HTTP_ROUTE, STARTUP
 from .tokens import TokenInvalid
@@ -647,6 +649,10 @@ class Datasette:
         self.root_enabled = False
         self.default_deny = default_deny
         self.client = DatasetteClient(self)
+        # Last, so that the observable-gauge callbacks - which may fire on the
+        # SDK's collection thread the instant this returns - never see a
+        # half-built instance.
+        register_datasette(self)
 
     async def apply_metadata_json(self):
         # Apply any metadata entries from metadata.json to the internal tables
@@ -986,6 +992,10 @@ class Datasette:
         if self._closed:
             return
         self._closed = True
+        # Stop reporting gauges before tearing anything down, so a collection
+        # cycle landing mid-close cannot observe a half-closed instance. The
+        # WeakSet would drop it eventually anyway; this makes it immediate.
+        unregister_datasette(self)
         first_exception = None
         dbs = list(self.databases.values()) + [self._internal_database]
         for db in dbs:

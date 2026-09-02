@@ -17,7 +17,15 @@ from opentelemetry import context as otel_context_api
 from opentelemetry.trace import Link, Status, StatusCode, get_current_span
 
 from .inspect import inspect_hash
-from .telemetry import callback_name, sql_attribute, sql_operation_name, tracer
+from .telemetry import (
+    callback_name,
+    record_operation_duration,
+    record_query_interrupted,
+    record_write_queue_wait,
+    sql_attribute,
+    sql_operation_name,
+    tracer,
+)
 from .telemetry_registry import (
     CALLBACK,
     DB_COLLECTION_NAME,
@@ -300,9 +308,10 @@ class Database:
                     span.set_attribute(DB_OPERATION_NAME, operation_name)
                 if params:
                     span.set_attribute(PARAM_COUNT, len(params))
-                results = await self._execute_write_fn(
-                    _inner, block=block, request=request, transaction=transaction
-                )
+                with record_operation_duration(self.name, "write"):
+                    results = await self._execute_write_fn(
+                        _inner, block=block, request=request, transaction=transaction
+                    )
         return results
 
     async def execute_write_script(self, sql, block=True, request=None):
@@ -324,9 +333,10 @@ class Database:
                 span.set_attribute(DB_NAMESPACE, self.name)
                 span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
                 span.set_attribute(EXECUTESCRIPT, True)
-                results = await self._execute_write_fn(
-                    _inner, block=block, transaction=False, request=request
-                )
+                with record_operation_duration(self.name, "write"):
+                    results = await self._execute_write_fn(
+                        _inner, block=block, transaction=False, request=request
+                    )
         return results
 
     async def execute_write_many(self, sql, params_seq, block=True, request=None):
@@ -357,9 +367,10 @@ class Database:
                 operation_name = sql_operation_name(sql)
                 if operation_name:
                     span.set_attribute(DB_OPERATION_NAME, operation_name)
-                results, count = await self._execute_write_fn(
-                    _inner, block=block, request=request
-                )
+                with record_operation_duration(self.name, "write"):
+                    results, count = await self._execute_write_fn(
+                        _inner, block=block, request=request
+                    )
                 # count is the number of parameter *sets* consumed by
                 # executemany(), not a row count - executemany returns no rows.
                 span.set_attribute(PARAM_SETS, count)
@@ -393,22 +404,25 @@ class Database:
             span.set_attribute(DB_SYSTEM, "sqlite")
             span.set_attribute(DB_NAMESPACE, self.name)
             span.set_attribute(CALLBACK, callback_name(fn))
-            if self.ds.executor is None:
-                # non-threaded mode
-                return _run()
-            if not write:
-                # Immutable database - no writes can ever occur, so there is
-                # no write queue to block; run against a fresh read-only
-                # connection. copy_context() carries the caller's otel context
-                # onto the worker thread - see the notes in _execute_fn() for
-                # why it must be a fresh copy per submit and why carrying
-                # every ContextVar is safe.
-                ctx = contextvars.copy_context()
-                return await asyncio.get_running_loop().run_in_executor(
-                    self.ds.executor, ctx.run, _run
-                )
-            # Threaded mode - send to write thread
-            return await self._send_to_write_thread(fn, isolated_connection=True)
+            # "write" when mutable because the call blocks the write queue;
+            # "read" when immutable, where it runs on the read pool.
+            with record_operation_duration(self.name, "write" if write else "read"):
+                if self.ds.executor is None:
+                    # non-threaded mode
+                    return _run()
+                if not write:
+                    # Immutable database - no writes can ever occur, so there
+                    # is no write queue to block; run against a fresh
+                    # read-only connection. copy_context() carries the
+                    # caller's otel context onto the worker thread - see the
+                    # notes in _execute_fn() for why it must be a fresh copy
+                    # per submit and why carrying every ContextVar is safe.
+                    ctx = contextvars.copy_context()
+                    return await asyncio.get_running_loop().run_in_executor(
+                        self.ds.executor, ctx.run, _run
+                    )
+                # Threaded mode - send to write thread
+                return await self._send_to_write_thread(fn, isolated_connection=True)
 
     async def analyze_sql(self, sql, params=None) -> SQLAnalysis:
         self._check_not_closed()
@@ -438,9 +452,10 @@ class Database:
             span.set_attribute(DB_SYSTEM, "sqlite")
             span.set_attribute(DB_NAMESPACE, self.name)
             span.set_attribute(CALLBACK, name)
-            return await self._execute_write_fn(
-                fn, block=block, transaction=transaction, request=request
-            )
+            with record_operation_duration(self.name, "write"):
+                return await self._execute_write_fn(
+                    fn, block=block, transaction=transaction, request=request
+                )
 
     async def _execute_write_fn(self, fn, block=True, transaction=True, request=None):
         self._check_not_closed()
@@ -640,11 +655,13 @@ class Database:
                 # this span's duration is the time the task actually spent
                 # waiting in the queue (enqueue -> dequeue), not the near-
                 # zero time spent constructing/ending the span object here.
+                dequeued_at_ns = time.time_ns()
                 tracer.start_span(
                     DB_WRITE_QUEUE_WAIT,
                     start_time=task.enqueued_at_ns,
                     **write_span_kwargs,
-                ).end(end_time=time.time_ns())
+                ).end(end_time=dequeued_at_ns)
+                record_write_queue_wait(self.name, dequeued_at_ns - task.enqueued_at_ns)
                 if conn_exception is not None:
                     # fn never runs in this branch, so there is nothing to
                     # wrap in a db.write.execute span.
@@ -728,7 +745,8 @@ class Database:
             # Default exception handling applies, unlike execute(): there is
             # no log_sql_errors=False probing caller and no expected-timeout
             # budget on this path, so a raised exception is an error.
-            return await self._execute_fn(fn_in_execute_span)
+            with record_operation_duration(self.name, "read"):
+                return await self._execute_fn(fn_in_execute_span)
 
     async def _execute_fn(self, fn):
         self._check_not_closed()
@@ -902,7 +920,8 @@ class Database:
                 if params:
                     span.set_attribute(PARAM_COUNT, len(params))
                 try:
-                    results = await self._execute_fn(sql_operation_in_thread)
+                    with record_operation_duration(self.name, "read"):
+                        results = await self._execute_fn(sql_operation_in_thread)
                 except QueryInterrupted as e:
                     # datasette.interrupted is set either way - it is the
                     # signal worth having. Only the ERROR status is
@@ -911,6 +930,10 @@ class Database:
                     if not timeout_expected:
                         span.set_status(Status(StatusCode.ERROR, str(e)))
                         span.record_exception(e)
+                        # Expected timeouts (a caller that opted into a shorter
+                        # budget, like facet suggestion) are not counted - see
+                        # the M_QUERIES_INTERRUPTED registry entry for why.
+                        record_query_interrupted(self.name)
                     raise
                 except Exception as e:
                     # log_sql_errors=False means the caller is probing and

@@ -395,6 +395,29 @@ def test_registry_entries_are_usable_as_plain_strings():
     assert f"{reg.DB_QUERY}.execute" == "db.query.execute"
 
 
+def test_every_histogram_declares_bucket_boundaries():
+    """
+    Every histogram must carry explicit boundaries, and only histograms may.
+
+    OpenTelemetry's default boundaries start at 5 and are meant for
+    milliseconds, so a seconds-valued histogram that inherits them records
+    everything into one bucket. This is a registry self-consistency check, not
+    a check that the boundaries reached the SDK - for that see
+    `test_histograms_spread_values_across_buckets` in test_telemetry_metrics.py.
+    """
+    for metric in reg.METRICS:
+        if metric.kind == reg.HISTOGRAM:
+            assert metric.buckets, f"{metric} is a histogram with no boundaries"
+            assert list(metric.buckets) == sorted(
+                set(metric.buckets)
+            ), f"{metric} boundaries must be ascending and unique"
+            assert metric.buckets[0] > 0, f"{metric} has a non-positive boundary"
+        else:
+            assert (
+                metric.buckets is None
+            ), f"{metric} is a {metric.kind} and cannot have bucket boundaries"
+
+
 def test_dynamic_span_lookup():
     """
     `dynamic=True` matching, which is how the request span resolves.
@@ -422,3 +445,132 @@ def test_span_and_attribute_lookup():
     assert not reg.attribute_allowed(reg.DB_QUERY, "db.namespace.extra")
     assert not reg.attribute_allowed(reg.DB_QUERY, "datasette.isolated_connection")
     assert not reg.attribute_allowed(None, "db.namespace")
+
+
+# --- Metric conformance ----------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def emitted_metrics(otel_metrics):
+    """
+    Every (metric name, attribute key) pair produced by a broad workload,
+    plus the raw set of metric names - the metric-side counterpart of the
+    `emitted` span fixture above.
+
+    Metrics use DELTA temporality (see `_otel_meter_provider`), and the
+    function-scoped `otel_metrics` fixture drains any state left by an
+    earlier test before yielding, so this collection is not polluted by
+    other tests in the session - only by other *instances*, which is why the
+    checks below key everything off attribute names rather than values.
+    """
+    # The span workload already reaches every synchronous metric except the
+    # interrupted counter: reads and writes drive db.client.operation.duration
+    # and datasette.write.queue_wait, and both the suppressed-error probe and
+    # the custom_time_limit interrupt raise through record_operation_duration,
+    # setting error.type.
+    ds = await exercise()
+
+    # datasette.sql.queries.interrupted counts only queries that exceed the
+    # *configured* limit - a caller opting into a deliberately short budget
+    # via custom_time_limit (as exercise() does) is excluded by design. So a
+    # second instance whose configured limit is tiny provides the real thing.
+    slow_name = _unique("registry_metrics_slow")
+    slow = Datasette(memory=True, settings={"sql_time_limit_ms": 5})
+    slow.add_memory_database(slow_name)
+    await slow.invoke_startup()
+    slow_db = slow.get_database(slow_name)
+    with pytest.raises(QueryInterrupted):
+        await slow_db.execute(
+            "with recursive c(x) as (select 0 union all select x+1 from c) "
+            "select * from c"
+        )
+
+    # Collect while both instances are still registered, so the observable
+    # gauges - which observe live instances at collection time - report.
+    otel_metrics.collect()
+    snapshot = otel_metrics.snapshot
+    assert snapshot, "no metrics captured - the fixture is not exercising anything"
+    pairs = set()
+    for metric_name, points in snapshot.items():
+        for point in points:
+            for key in point.attributes or {}:
+                pairs.add((metric_name, key))
+    ds.close()
+    slow.close()
+    return {"names": set(snapshot), "pairs": pairs}
+
+
+@pytest.mark.asyncio
+async def test_every_registered_metric_is_emitted(emitted_metrics):
+    "The both-ways name check for metrics."
+    names = emitted_metrics["names"]
+    missing = sorted(str(m) for m in reg.METRICS if m not in names)
+    assert not missing, f"documented but never emitted: {missing}"
+
+    unregistered = sorted(
+        name for name in names if name not in {str(m) for m in reg.METRICS}
+    )
+    assert not unregistered, f"emitted but not registered: {unregistered}"
+
+
+@pytest.mark.asyncio
+async def test_every_emitted_metric_attribute_is_registered(emitted_metrics):
+    """
+    An attribute added to a metric without a registry entry would be missing
+    from the docs - the metric-side counterpart of
+    `test_every_emitted_attribute_is_registered`.
+    """
+    metric_for = {str(m): m for m in reg.METRICS}
+    unregistered = sorted(
+        f"{metric_name} -> {key}"
+        for metric_name, key in emitted_metrics["pairs"]
+        # A metric name with no registry entry at all is already reported by
+        # test_every_registered_metric_is_emitted; do not double-report it
+        # here, and do not crash attribute_allowed() on a None metric.
+        if metric_name in metric_for
+        and not reg.attribute_allowed(metric_for[metric_name], key)
+    )
+    assert (
+        not unregistered
+    ), "these metric attributes are emitted but not registered: " + "\n".join(
+        unregistered
+    )
+
+
+@pytest.mark.asyncio
+async def test_every_registered_metric_attribute_is_emitted(emitted_metrics):
+    """
+    The direction nothing else catches: the docs must not describe a metric
+    attribute that no longer exists.
+
+    Unlike the span-side attribute check, this does not skip `optional`
+    attributes. The only optional metric attribute is `error.type` on
+    `db.client.operation.duration`, and the workload reaches it from two
+    independent directions: the suppressed-error probe and the
+    custom_time_limit interrupt in `exercise()`, both of which raise through
+    `record_operation_duration`. So it is checked like any other attribute
+    rather than exempted; marking something optional here would opt it out of
+    verification entirely.
+
+    Gauges with no registered attributes (`datasette.sql.threads.limit` and
+    `.queue_depth`) fall out correctly with no special case: their
+    `metric.attributes` is empty, so the inner loop makes no assertion.
+    """
+    emitted_keys_by_metric = {}
+    for metric_name, key in emitted_metrics["pairs"]:
+        emitted_keys_by_metric.setdefault(metric_name, set()).add(key)
+
+    missing = []
+    for metric in reg.METRICS:
+        if str(metric) not in emitted_metrics["names"]:
+            # Not emitted at all - already reported by
+            # test_every_registered_metric_is_emitted; do not double-report.
+            continue
+        emitted_keys = emitted_keys_by_metric.get(str(metric), set())
+        for attribute in metric.attributes:
+            if attribute not in emitted_keys:
+                missing.append(f"{metric} -> {attribute}")
+    assert not missing, (
+        "these metric attributes are documented but never emitted by the "
+        "test workload: " + ", ".join(sorted(missing))
+    )

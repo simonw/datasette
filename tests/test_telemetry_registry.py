@@ -44,6 +44,7 @@ EXPECTED_ATTRIBUTES = {
         "db.system",
         "db.namespace",
         "db.query.text",
+        "datasette.callback",
         "db.operation.name",
         "db.collection.name",
         "datasette.param_count",
@@ -107,6 +108,17 @@ async def exercise():
     await db.execute_write("vacuum", transaction=False)
     # datasette.isolated_connection=True
     await db.execute_isolated_fn(lambda conn: conn.execute("select 1").fetchone())
+
+    # datasette.callback, with named functions so the conformance run sees the
+    # attribute's documented value shape (a qualname, not just "<lambda>")
+    def registry_read_callback(conn):
+        return conn.execute("select count(*) from t").fetchone()
+
+    def registry_write_callback(conn):
+        conn.execute("insert into t (id, v) values (100, 'callback')")
+
+    await db.execute_fn(registry_read_callback)
+    await db.execute_write_fn(registry_write_callback)
 
     # Reads: db.query.execute, datasette.rows_returned, datasette.truncated,
     # datasette.param_count, datasette.time_limit_ms

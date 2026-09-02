@@ -2365,16 +2365,39 @@ A few things catch people out the first time:
 Span reference
 --------------
 
-Datasette emits five spans. Four of them describe the database layer - one per query, one for the work that query does inside a SQL worker thread, and two more for the write queue - and the fifth covers startup. Attribute names use the ``datasette.*`` prefix for Datasette-specific data, alongside standard OpenTelemetry attributes such as ``db.system``.
+Datasette emits six spans. One covers the HTTP request, and is the root everything else raised while serving that request hangs from. Four describe the database layer - one per query, one for the work that query does inside a SQL worker thread, and two more for the write queue. The sixth covers startup. Attribute names use the ``datasette.*`` prefix for Datasette-specific data, alongside standard OpenTelemetry attributes such as ``db.system``.
 
 This reference is generated from ``datasette/telemetry_registry.py``, the single source of truth for every span and attribute Datasette emits. A conformance test makes real requests and compares what is actually emitted against that registry in both directions, so nothing here is hand-maintained and nothing can silently drift out of date.
 
-Spans are ``SpanKind.INTERNAL`` unless a kind is listed below. Only ``db.query`` is ``CLIENT``: it is the one span that represents a call to a database rather than Datasette's own work, and trace UIs use the kind to decide whether to render a span as a database call. Its children stay ``INTERNAL`` because they are Datasette's decomposition of that one query - marking them ``CLIENT`` too would make a single query look like several database calls to anything counting by kind.
+Spans are ``SpanKind.INTERNAL`` unless a kind is listed below. Two are not: the request span is ``SERVER``, and ``db.query`` is ``CLIENT`` because it is the one span that represents a call to a database rather than Datasette's own work. Trace UIs use the kind to decide whether to render a span as an inbound request or as a database call. ``db.query``'s children stay ``INTERNAL`` because they are Datasette's decomposition of that one query - marking them ``CLIENT`` too would make a single query look like several database calls to anything counting by kind.
+
+The request span's name is the only one that is not a fixed string - it is composed from the request, so the heading below shows the template rather than a literal you will see in a trace. A request to a table page produces a span named, in full::
+
+    GET /(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)(\.(?P<format>\w+))?$
+
+That is the route's compiled regular expression, not a prettified ``/{database}/{table}`` template - see the ``http.route`` attribute below for why. Django's own instrumentation ships regex-flavoured routes for the same reason.
 
 .. [[[cog
     from telemetry_doc import spans
     spans(cog)
 .. ]]]
+
+``{http.request.method} {http.route}``
+    One span per HTTP request, created by the outermost layer of the ASGI stack - so plugin ``asgi_wrapper()`` middleware, CSRF protection and every database span raised while serving the request all nest inside it. Without it each of those would be its own root trace. The span name is not a fixed string: it is the method followed by the matched route, and just the method for a request that matched no route. The span starts at the ASGI edge, before routing has happened, so it is named for the method there and renamed once the route is known. W3C ``traceparent`` and ``baggage`` headers are extracted using the global propagator, so a request arriving from an already-traced caller continues that trace; set ``OTEL_PROPAGATORS=none`` to turn that off, and strip those headers at your proxy if your instance is public.
+
+    Kind: ``SERVER``.
+
+    Attributes:
+
+    - ``http.request.method`` - The HTTP method, clamped to the nine methods RFC 9110 and RFC 5789 define. Anything else is reported as ``_OTHER``: the method is a client-controlled string, so echoing it back unbounded would be a cardinality hazard.
+    - ``http.route`` *(optional)* - The route the request matched, as the compiled regular expression pattern Datasette routes with - for example ``/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)(\.(?P<format>\w+))?$`` for a table page. It is deliberately the pattern rather than a prettified ``/{database}/{table}`` template: the route table is fixed when the app is built, so the pattern is exact, bounded and needs no parsing, whereas the transform into something prettier accretes edge cases. Unlike ``url.path`` this is low cardinality, so it is the attribute to group by. Omitted when no route matched - a 404 - which is also when the span name falls back to the bare method.
+    - ``url.path`` - The path portion of the URL. The query string is deliberately **not** recorded, on this or any other span: Datasette puts user-supplied SQL in ``?sql=`` and canned query parameters in the query string, so exporting it by default would export exactly the data the rest of this instrumentation is careful with.
+    - ``url.scheme`` - ``http`` or ``https``.
+    - ``server.address`` *(optional)* - The ``Host`` header, verbatim - including any ``:port`` suffix, a deliberate deviation from semantic conventions' ``server.address`` / ``server.port`` split. Client-controlled, so treat it as untrusted input rather than as the identity of the server.
+    - ``user_agent.original`` *(optional)* - The ``User-Agent`` header, verbatim. Omitted if the client sent none.
+    - ``http.response.status_code`` *(optional)* - The status of the response, read from the ASGI ``http.response.start`` message rather than from a :ref:`internals_response` object - several views, including static files, file downloads and streaming CSV, send that message themselves and never build one. Omitted if the connection closed before anything was sent.
+    - ``error.type`` *(optional)* - Set when the request failed: the exception class name if one escaped the application, otherwise the status code as a string for a 5xx response. A 4xx does **not** set this and does not set an error status - per semantic conventions a client error is not a server span's failure.
+    - ``datasette.internal_client`` *(optional)* - ``True`` when the request was made in-process through ``datasette.client`` rather than arriving over the network. Such a sub-request runs the full ASGI stack, so it emits its own nested ``SERVER`` span inside the outer request's - filter on this attribute to keep kind-based dashboards from double-counting requests. Omitted for real inbound requests.
 
 ``db.query``
     A SQL operation issued by Datasette, covering the full round trip including any time spent queued for a thread. Callback-style calls - ``execute_fn()``, ``execute_write_fn()`` and ``execute_isolated_fn()`` - appear here too, distinguished by ``datasette.callback`` in place of ``db.query.text``.
@@ -2424,6 +2447,29 @@ Spans are ``SpanKind.INTERNAL`` unless a kind is listed below. Only ``db.query``
 
 .. [[[end]]]
 
+.. _internals_telemetry_requests:
+
+Requests and inbound trace context
+----------------------------------
+
+Datasette creates the request span itself, at the outermost layer of the ASGI stack, so a trace is complete out of the box with no plugin and no extra instrumentation package. Everything raised while serving the request - plugin ``asgi_wrapper()`` middleware, CSRF protection, every database query - nests inside it.
+
+**Inbound trace context is trusted by default.** W3C ``traceparent`` and ``baggage`` headers are extracted from every request using the global propagator, so a request arriving from an already-traced caller continues that trace instead of starting a new one. That is what every other framework instrumentation does - Flask, Django, FastAPI and ``opentelemetry-instrumentation-asgi`` all extract unconditionally - but on an instance open to the internet it means an arbitrary client can influence your traces:
+
+- **Trace-ID pollution.** The client chooses the trace ID its request is filed under.
+- **Sampling control.** The SDK's default sampler is ``parentbased_always_on``, so under any parent-based sampler a client's sampled flag can force recording - a telemetry-cost denial of service - or suppress it.
+- **Baggage injection**, through the default composite propagator.
+
+Because extraction goes through the *global* propagator there is no Datasette setting to configure, and the remedies are the standard OpenTelemetry ones:
+
+- Strip ``traceparent``, ``tracestate`` and ``baggage`` at your reverse proxy, which is the right answer for a public instance fronted by one.
+- Set ``OTEL_PROPAGATORS=none`` to disable extraction entirely, or ``OTEL_PROPAGATORS=tracecontext`` to keep trace continuation and drop baggage.
+- Use a sampler that is not parent-based, which neutralises the sampling concern on its own.
+
+**Installing an ASGI instrumentation as well is harmless.** If you wire up ``opentelemetry-instrumentation-asgi`` through an ``asgi_wrapper()`` plugin, its middleware lands *inside* Datasette's own, so its span becomes a redundant child ``SERVER`` span in the same trace. Nothing is re-orphaned. There is no setting to turn Datasette's request span off, because "turn it off" is already covered by installing no provider, or by ``OTEL_SDK_DISABLED=true``.
+
+**Where** ``datasette.startup`` **lands depends on how you run Datasette.** ``datasette serve`` calls ``invoke_startup()`` before the server starts accepting connections, so the startup span is its own trace. An ASGI-hosted or programmatic deployment reaches startup lazily, on the first request, so there the startup span nests under that first request - which is honest, since it genuinely is that request's latency.
+
 .. _internals_telemetry_privacy:
 
 Privacy and safety
@@ -2435,6 +2481,7 @@ Spans leave your infrastructure whenever you configure an exporter, so what goes
 - **SQL parameter values are never recorded.** Only ``datasette.param_count``, a count. Parameter values are the part of a query most likely to hold something sensitive, and separating them from the SQL is the reason bound parameters exist.
 - **No actor identifiers are recorded.** No actor ID, no actor JSON, no client IP address. Nothing on a span identifies who made the request.
 - **Table names come only from an explicit** ``table=`` **argument.** ``db.collection.name`` is set by callers that already know which table they are working with, and is never derived from the SQL. Deriving it would mean parsing, and on an instance where visitors can create tables the set of possible values has no ceiling.
+- **The query string is never recorded.** There is no ``url.query`` attribute on the request span or on any other span. Datasette puts user-supplied SQL in ``?sql=`` and canned query parameters in the query string, so recording it by default would export exactly the class of data the rules above are careful with. Only ``url.path`` and ``http.route`` are recorded.
 
 The SQL itself, though, *is* recorded, and on a public instance that means anything a visitor types into the query editor or passes as ``?sql=`` will be exported along with the span. That is the trade-off tracing a query engine makes.
 
@@ -2443,7 +2490,8 @@ The SQL itself, though, *is* recorded, and on a public instance that means anyth
 Known limitations
 -----------------
 
-- **Datasette does not create a span for the HTTP request itself.** Every span listed above is therefore a root span unless something above Datasette - an ASGI instrumentation layer, or the web framework embedding it - has already started one for the request, in which case Datasette's spans nest underneath it correctly.
+- ``http.route`` **is a compiled regular expression, not a pretty route template.** See :ref:`internals_telemetry_requests` above for why.
+- **Inbound trace context is trusted by default**, which on a public instance means a client can influence your trace IDs, your sampling and your baggage. :ref:`internals_telemetry_requests` lists the remedies.
 - **Two plugin hooks run outside the** ``datasette.startup`` **span.** ``register_output_renderer`` is dispatched from ``Datasette.__init__()`` and ``asgi_wrapper`` from ``Datasette.app()``, both of which happen before ``invoke_startup()``. Datasette itself queries no database in either, so a default install emits nothing there - but a plugin that does will produce a root trace. Covering these would mean holding a span open across object construction, which is worse than the orphan.
 - ``db.operation.name`` **reports** ``WITH`` **for a statement that opens with a common table expression**, rather than the operation inside it, and a substantial share of Datasette's own reads take that form. The attribute is a leading-keyword match against a fixed allowlist, deliberately not a parse.
 - **Spans emitted before a provider is installed are not recorded.** If you are embedding Datasette in a host application, install your ``TracerProvider`` before serving traffic. This is ordinary OpenTelemetry behaviour rather than anything Datasette controls; nothing is permanently affected, those particular spans are simply dropped.

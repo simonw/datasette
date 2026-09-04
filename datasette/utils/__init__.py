@@ -937,6 +937,7 @@ css_class_re = re.compile(r"^[a-zA-Z]+[_a-zA-Z0-9-]*$")
 css_invalid_chars_re = re.compile(r"[^a-zA-Z0-9_\-]")
 
 
+@documented
 def to_css_class(s):
     """
     Given a string (e.g. a table name) returns a valid unique CSS class.

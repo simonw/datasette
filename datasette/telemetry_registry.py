@@ -50,6 +50,20 @@ class Attribute(str):
         self.values = frozenset(values) if values is not None else None
         return self
 
+    def __reduce__(self):
+        # Copies and pickles collapse to a plain str. Without this, `copy` has
+        # to reconstruct a str subclass through `cls.__new__(cls)`, which these
+        # classes reject - their `__new__` requires the metadata arguments. It
+        # is not a theoretical problem: the SDK's ConsoleMetricExporter renders
+        # data points with `dataclasses.asdict()`, which deepcopies mappings,
+        # and registry entries are used as metric attribute keys - so every
+        # console metrics dump would crash. Collapsing is also the honest
+        # answer, not a workaround. On the wire and in a copy an entry *is*
+        # its string; the description, values and buckets describe the single
+        # registered instance in this module, and nothing reads them off a
+        # copy.
+        return (str, (str(self),))
+
     def __repr__(self):
         return f"Attribute({str(self)!r})"
 
@@ -95,6 +109,10 @@ class SpanName(str):
         self.kind = kind
         return self
 
+    def __reduce__(self):
+        # See Attribute.__reduce__.
+        return (str, (str(self),))
+
     def __repr__(self):
         return f"SpanName({str(self)!r})"
 
@@ -116,6 +134,10 @@ class MetricName(str):
         # histogram_quantile() query needs to know them.
         self.buckets = tuple(buckets) if buckets is not None else None
         return self
+
+    def __reduce__(self):
+        # See Attribute.__reduce__.
+        return (str, (str(self),))
 
     def __repr__(self):
         return f"MetricName({str(self)!r})"

@@ -5,6 +5,7 @@ import markupsafe
 
 from datasette import hookimpl
 from datasette.column_types import ColumnType, SQLiteType
+from datasette.utils import truncate_url
 
 
 class UrlColumnType(ColumnType):
@@ -15,8 +16,12 @@ class UrlColumnType(ColumnType):
     async def render_cell(self, value, column, table, database, datasette, request):
         if not value or not isinstance(value, str):
             return None
-        escaped = markupsafe.escape(value.strip())
-        return markupsafe.Markup(f'<a href="{escaped}">{escaped}</a>')
+        url = value.strip()
+        escaped = markupsafe.escape(url)
+        truncated = markupsafe.escape(
+            truncate_url(url, datasette.setting("truncate_cells_html"))
+        )
+        return markupsafe.Markup(f'<a href="{escaped}">{truncated}</a>')
 
     async def validate(self, value, datasette):
         if value is None or value == "":

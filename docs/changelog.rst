@@ -4,6 +4,11 @@
 Changelog
 =========
 
+0.65.x (unreleased)
+-------------------
+
+* Backported the non-blocking write task ID fixes from :issue:`2861` by `Zain Dana Harper (HarperZ9) <https://github.com/HarperZ9>`__. ``execute_write_fn(block=False)`` now returns a unique UUID for each call, including when ``num_sql_threads=0``.
+
 .. _v0_65_3:
 
 0.65.3 (2026-08-06)

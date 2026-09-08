@@ -2,6 +2,7 @@
 Tests for the datasette.database.Database class
 """
 
+from datasette.app import Datasette
 from datasette.database import Database, Results, MultipleValues
 from datasette.utils.sqlite import sqlite3
 from datasette.utils import Column
@@ -456,6 +457,29 @@ async def test_execute_write_fn_block_false(db):
 
     task_id = await db.execute_write_fn(write_fn, block=False)
     assert isinstance(task_id, uuid.UUID)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("num_sql_threads", (0, 3))
+async def test_execute_write_fn_block_false_returns_unique_uuid(num_sql_threads):
+    ds = Datasette([], memory=True, settings={"num_sql_threads": num_sql_threads})
+    db = ds.add_memory_database("test_block_false_{}".format(num_sql_threads))
+    await db.execute_write("create table t (id integer primary key)")
+
+    def write_fn(conn):
+        with conn:
+            conn.execute("insert into t default values")
+
+    first = await db.execute_write_fn(write_fn, block=False)
+    second = await db.execute_write_fn(write_fn, block=False)
+    assert isinstance(first, uuid.UUID)
+    assert isinstance(second, uuid.UUID)
+    assert first != second
+    # A blocking write runs after both queued writes on the same connection.
+    count = await db.execute_write_fn(
+        lambda conn: conn.execute("select count(*) from t").fetchone()[0]
+    )
+    assert count == 2
 
 
 @pytest.mark.asyncio

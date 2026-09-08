@@ -148,10 +148,11 @@ class Database:
             if self._write_connection is None:
                 self._write_connection = self.connect(write=True)
                 self.ds._prepare_connection(self._write_connection, self.name)
-            return fn(self._write_connection)
+            result = fn(self._write_connection)
+            return result if block else uuid.uuid4()
 
         # threaded mode
-        task_id = uuid.uuid5(uuid.NAMESPACE_DNS, "datasette.io")
+        task_id = uuid.uuid4()
         if self._write_queue is None:
             self._write_queue = queue.Queue()
         if self._write_thread is None:

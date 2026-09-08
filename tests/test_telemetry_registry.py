@@ -23,7 +23,10 @@ registry and the wire. That is the one comparison in this file that is not
 made against a value derived from the registry itself.
 """
 
+import copy
+import io
 import itertools
+import pickle
 
 import pytest
 import pytest_asyncio
@@ -34,9 +37,9 @@ from opentelemetry.trace import SpanKind
 
 from datasette import hookimpl
 from datasette import telemetry_registry as reg
-from datasette.telemetry_testing import assert_metrics_conform, assert_metrics_covered
 from datasette.app import Datasette
 from datasette.database import QueryInterrupted
+from datasette.telemetry_testing import assert_metrics_conform, assert_metrics_covered
 from datasette.utils.sqlite import sqlite3
 
 # The names as they appear on the wire, written out rather than read from the
@@ -392,6 +395,52 @@ def test_registry_entries_are_usable_as_plain_strings():
     assert reg.DB_QUERY == "db.query"
     assert reg.DB_NAMESPACE == "db.namespace"
     assert f"{reg.DB_QUERY}.execute" == "db.query.execute"
+
+
+def test_registry_entries_survive_deepcopy_and_pickle():
+    """
+    A copy of an entry is a plain `str`.
+
+    These are `str` subclasses whose `__new__` requires the metadata
+    arguments, so without `__reduce__` `copy` cannot reconstruct one and
+    raises. That is not academic: the SDK's `ConsoleMetricExporter` renders
+    data points with `dataclasses.asdict()`, which deepcopies mappings, and
+    core passes registry entries as metric attribute keys - see
+    `test_console_metric_exporter_renders_core_metric_points`.
+    """
+    for entry in (reg.DB_NAMESPACE, reg.DB_QUERY, reg.M_OPERATION_DURATION):
+        assert copy.deepcopy({entry: 1}) == {str(entry): 1}
+        assert type(copy.deepcopy(entry)) is str
+        assert pickle.loads(pickle.dumps(entry)) == str(entry)
+        # The metadata still lives on the registered instance itself, which
+        # is the only place anything reads it.
+        assert entry.description.strip()
+
+
+@pytest.mark.asyncio
+async def test_console_metric_exporter_renders_core_metric_points(otel_metrics):
+    """
+    The end-to-end shape of the bug above: a console metrics dump of
+    Datasette's own points has to survive `dataclasses.asdict()`.
+    """
+    from opentelemetry.sdk.metrics.export import (
+        ConsoleMetricExporter,
+        MetricExportResult,
+    )
+
+    name = _unique("registry_console_export")
+    ds = Datasette(memory=True)
+    ds.add_memory_database(name)
+    await ds.invoke_startup()
+    # One real query, so the dump contains a db.client.operation.duration
+    # point keyed by the DB_NAMESPACE registry entry.
+    await ds.get_database(name).execute("select 1")
+
+    data = otel_metrics.reader.get_metrics_data()
+    assert data is not None, "no metrics captured - nothing to export"
+    exporter = ConsoleMetricExporter(out=io.StringIO())
+    assert exporter.export(data) is MetricExportResult.SUCCESS
+    ds.close()
 
 
 def test_every_histogram_declares_bucket_boundaries():

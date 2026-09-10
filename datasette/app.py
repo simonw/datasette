@@ -1279,7 +1279,7 @@ class Datasette:
                 if not database.is_mutable:
                     await database.table_counts(limit=60 * 60 * 1000)
 
-        asgi = asgi_csrf.asgi_csrf(
+        csrf_app = asgi_csrf.asgi_csrf(
             DatasetteRouter(self, routes),
             signing_secret=self._secret,
             cookie_name="ds_csrftoken",
@@ -1287,6 +1287,25 @@ class Datasette:
                 pm.hook.skip_csrf(datasette=self, scope=scope)
             ),
         )
+
+        async def asgi(scope, receive, send):
+            async def send_with_cookie_privacy(message):
+                # CSRF cookies are added outside the router's response wrapper.
+                # Apply their privacy policy after that middleware has run.
+                if message["type"] == "http.response.start":
+                    headers = message.get("headers", [])
+                    if any(key.lower() == b"set-cookie" for key, _ in headers):
+                        headers = [
+                            (key, value)
+                            for key, value in headers
+                            if key.lower() != b"cache-control"
+                        ]
+                        headers.append((b"cache-control", b"private, no-store"))
+                        message = dict(message, headers=headers)
+                await send(message)
+
+            await csrf_app(scope, receive, send_with_cookie_privacy)
+
         if self.setting("trace_debug"):
             asgi = AsgiTracer(asgi)
         asgi = AsgiLifespan(asgi)
@@ -1327,6 +1346,49 @@ class DatasetteRouter:
             path = "/" + path[len(base_url) :]
             scope = dict(scope, route_path=path)
         request = Request(scope, receive)
+        match, view = resolve_routes(self.routes, path)
+        is_static = view is favicon or getattr(view, "_datasette_static", False)
+        original_send = send
+
+        async def send(message):
+            if message["type"] == "http.response.start" and not (
+                is_static and message["status"] in (200, 304)
+            ):
+                # Apply privacy after rendering, including streaming responses
+                # and errors. Even a public resource can have actor-specific content.
+                headers = list(message.get("headers", []))
+                personalized = (
+                    request.actor is not None
+                    or "cookie" in request.headers
+                    or "authorization" in request.headers
+                    or any(key.lower() == b"set-cookie" for key, _ in headers)
+                )
+                if personalized:
+                    headers = [
+                        (key, value)
+                        for key, value in headers
+                        if key.lower() != b"cache-control"
+                    ]
+                    headers.append((b"cache-control", b"private, no-store"))
+
+                # Preserve variation specified by views and plugins, and ensure
+                # anonymous responses are not reused for credentialed requests.
+                vary = [
+                    part.strip()
+                    for key, value in headers
+                    if key.lower() == b"vary"
+                    for part in value.split(b",")
+                    if part.strip()
+                ]
+                if b"*" not in vary:
+                    for name in (b"Cookie", b"Authorization"):
+                        if name.lower() not in {part.lower() for part in vary}:
+                            vary.append(name)
+                headers = [(k, v) for k, v in headers if k.lower() != b"vary"]
+                headers.append((b"vary", b", ".join(vary)))
+                message = dict(message, headers=headers)
+            await original_send(message)
+
         # Populate request_messages if ds_messages cookie is present
         try:
             request._messages = self.ds.unsign(
@@ -1352,8 +1414,7 @@ class DatasetteRouter:
                 break
         scope_modifications["actor"] = actor or default_actor
         scope = dict(scope, **scope_modifications)
-
-        match, view = resolve_routes(self.routes, path)
+        request.scope = scope
 
         if match is None:
             return await self.handle_404(request, send)

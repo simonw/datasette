@@ -182,9 +182,12 @@ def test_custom_params(canned_write_client):
 
 
 def test_vary_header(canned_write_client):
-    # These forms embed a csrftoken so they should be served with Vary: Cookie
-    assert "vary" not in canned_write_client.get("/data").headers
-    assert "Cookie" == canned_write_client.get("/data/update_name").headers["vary"]
+    # Dynamic pages vary by credentials, including forms with CSRF cookies.
+    for path in ("/data", "/data/update_name"):
+        response = canned_write_client.get(path)
+        assert {
+            value.strip().lower() for value in response.headers["vary"].split(",")
+        } == {"cookie", "authorization"}
 
 
 def test_json_post_body(canned_write_client):

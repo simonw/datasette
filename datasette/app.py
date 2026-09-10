@@ -2,6 +2,7 @@ import asyncio
 from typing import Sequence, Union, Tuple, Optional
 import asgi_csrf
 import collections
+import copy
 import datetime
 import functools
 import glob
@@ -87,6 +88,9 @@ app_root = Path(__file__).parent.parent
 
 # https://github.com/simonw/datasette/issues/283#issuecomment-781591015
 SQLITE_LIMIT_ATTACHED = 10
+_SQLITE_IDENTIFIER_CASE = str.maketrans(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"
+)
 
 Setting = collections.namedtuple("Setting", ("name", "default", "help"))
 SETTINGS = (
@@ -474,6 +478,65 @@ class Datasette:
                 orig[key] = upd_value
         return orig
 
+    def _metadata_sources(self, key, database, table):
+        yield from pm.hook.get_metadata(
+            datasette=self, key=key, database=database, table=table
+        )
+        # Local configuration takes precedence over plugin metadata.
+        yield self._metadata_local
+
+    def _table_permission_allows(self, database, table):
+        def normalize_tables(source, inherited):
+            if not isinstance(source, dict):
+                return source
+            source = dict(source)
+            if isinstance(source.get("tables"), dict):
+                tables = {}
+                for name, config in source["tables"].items():
+                    name = name.translate(_SQLITE_IDENTIFIER_CASE)
+                    previous = ((inherited or {}).get("tables") or {}).get(name)
+                    previous_configs = previous["configs"] if previous else [{}]
+                    # Keep source aliases separate so none can overwrite a denial.
+                    configs = tables.setdefault(name, {"configs": []})["configs"]
+                    for previous_config in previous_configs:
+                        if isinstance(previous_config, dict) and isinstance(
+                            config, dict
+                        ):
+                            merged = self._metadata_recursive_update(
+                                copy.deepcopy(previous_config), config
+                            )
+                        else:
+                            merged = config
+                        if merged not in configs:
+                            configs.append(merged)
+                source["tables"] = tables
+            return source
+
+        metadata = {}
+        for source in self._metadata_sources("tables", database, None):
+            source = normalize_tables(copy.deepcopy(source), metadata)
+            if isinstance(source, dict) and isinstance(source.get("databases"), dict):
+                databases = dict(source["databases"])
+                if database in databases:
+                    databases[database] = normalize_tables(
+                        databases[database],
+                        (metadata.get("databases") or {}).get(database),
+                    )
+                source["databases"] = databases
+            metadata = self._metadata_recursive_update(metadata, source)
+
+        database_metadata = (metadata.get("databases") or {}).get(database) or {}
+        tables = database_metadata.get("tables", metadata.get("tables")) or {}
+        configs = (tables.get(table.translate(_SQLITE_IDENTIFIER_CASE)) or {}).get(
+            "configs", []
+        )
+        # Same-source aliases are rules for one resource: an explicit denial wins.
+        return [
+            config["allow"]
+            for config in configs
+            if config and config.get("allow") is not None
+        ]
+
     def metadata(self, key=None, database=None, table=None, fallback=True):
         """
         Looks up metadata, cascading backwards from specified level.
@@ -484,16 +547,8 @@ class Datasette:
         ), "Cannot call metadata() with table= specified but not database="
         metadata = {}
 
-        for hook_dbs in pm.hook.get_metadata(
-            datasette=self, key=key, database=database, table=table
-        ):
+        for hook_dbs in self._metadata_sources(key, database, table):
             metadata = self._metadata_recursive_update(metadata, hook_dbs)
-
-        # security precaution!! don't allow anything in the local config
-        # to be overwritten. this is a temporary measure, not sure if this
-        # is a good idea long term or maybe if it should just be a concern
-        # of the plugin's implemtnation
-        metadata = self._metadata_recursive_update(metadata, self._metadata_local)
 
         databases = metadata.get("databases") or {}
 
@@ -689,6 +744,19 @@ class Datasette:
 
     async def permission_allowed(self, actor, action, resource=None, default=False):
         """Check permissions using the permissions_allowed plugin hook"""
+        if action == "view-table" and resource is not None:
+            database, table = resource
+            db = self.databases.get(database)
+            if db is not None:
+                # Use SQLite's spelling for both table and view permission hooks.
+                # NOCASE folds ASCII only, unlike str.lower() or str.casefold().
+                result = await db.execute(
+                    "select name from sqlite_master "
+                    "where type in ('table', 'view') and name = ? collate nocase",
+                    (table,),
+                )
+                if result.rows:
+                    resource = (database, result.rows[0][0])
         result = None
         for check in pm.hook.permission_allowed(
             datasette=self,

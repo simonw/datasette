@@ -2226,8 +2226,6 @@ async def table_view_data(
                 new_rows.append(new_row)
             rows = new_rows
 
-    _next = request.args.get("_next")
-
     # Pagination next link
     next_value, next_url = await _next_value_and_url(
         datasette,

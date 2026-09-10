@@ -229,6 +229,20 @@ async def test_table_csv_stream(ds_client):
     assert len([b for b in response.content.split(b"\r\n") if b]) == 1002
 
 
+@pytest.mark.asyncio
+async def test_view_csv_stream(ds_client):
+    # Without _stream should return header + 100 rows:
+    response = await ds_client.get("/fixtures/paginated_view.csv?_size=max")
+    assert len([b for b in response.content.split(b"\r\n") if b]) == 101
+    # With _stream=1 should paginate through all pages and return header + 202 rows
+    response = await ds_client.get("/fixtures/paginated_view.csv?_stream=1")
+    lines = [b for b in response.content.split(b"\r\n") if b]
+    assert len(lines) == 203
+    # Ensure there are no duplicate rows from looping
+    assert len(set(lines[1:])) == 202
+    assert lines[0] == b"content,content_extra"
+
+
 def test_csv_trace(app_client_with_trace):
     response = app_client_with_trace.get("/fixtures/simple_primary_key.csv?_trace=1")
     assert response.headers["content-type"] == "text/html; charset=utf-8"

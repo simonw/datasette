@@ -600,13 +600,14 @@ def detect_fts(conn, table):
 
 
 def detect_fts_sql(table):
+    escaped_table = table.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return (
         r"""
             select name from sqlite_master
                 where rootpage = 0
                 and (
-                    sql like :fts_double_quoted
-                    or sql like :fts_bracket_quoted
+                    sql like :fts_double_quoted escape char(92)
+                    or sql like :fts_bracket_quoted escape char(92)
                     or (
                         tbl_name = :table
                         and sql like '%VIRTUAL TABLE%USING FTS%'
@@ -614,8 +615,8 @@ def detect_fts_sql(table):
                 )
         """,
         {
-            "fts_double_quoted": f'%VIRTUAL TABLE%USING FTS%content="{table}"%',
-            "fts_bracket_quoted": f"%VIRTUAL TABLE%USING FTS%content=[{table}]%",
+            "fts_double_quoted": f'%VIRTUAL TABLE%USING FTS%content="{escaped_table}"%',
+            "fts_bracket_quoted": f"%VIRTUAL TABLE%USING FTS%content=[{escaped_table}]%",
             "table": table,
         },
     )

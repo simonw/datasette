@@ -587,15 +587,25 @@ class Datasette:
         conn.row_factory = sqlite3.Row
         conn.text_factory = lambda x: str(x, "utf-8", "replace")
         if self.sqlite_extensions:
+            # Only enable extension loading while loading configured extensions.
             conn.enable_load_extension(True)
-            for extension in self.sqlite_extensions:
-                # "extension" is either a string path to the extension
-                # or a 2-item tuple that specifies which entrypoint to load.
-                if isinstance(extension, tuple):
-                    path, entrypoint = extension
-                    conn.execute("SELECT load_extension(?, ?)", [path, entrypoint])
-                else:
-                    conn.execute("SELECT load_extension(?)", [extension])
+            try:
+                for extension in self.sqlite_extensions:
+                    # "extension" is either a string path to the extension
+                    # or a 2-item tuple that specifies which entrypoint to load.
+                    if isinstance(extension, tuple):
+                        path, entrypoint = extension
+                        if sys.version_info >= (3, 12):
+                            conn.load_extension(path, entrypoint=entrypoint)
+                        else:
+                            # The entrypoint argument was added in Python 3.12.
+                            conn.execute(
+                                "SELECT load_extension(?, ?)", [path, entrypoint]
+                            )
+                    else:
+                        conn.load_extension(extension)
+            finally:
+                conn.enable_load_extension(False)
         if self.setting("cache_size_kb"):
             conn.execute(f"PRAGMA cache_size=-{self.setting('cache_size_kb')}")
         # pylint: disable=no-member

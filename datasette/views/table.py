@@ -634,10 +634,11 @@ class TableView(DataView):
                 except IndexError:
                     # sort/sort_desc column missing from SELECT - look up value by PK instead
                     prefix_where_clause = " and ".join(
-                        "[{}] = :pk{}".format(pk, i) for i, pk in enumerate(pks)
+                        f"{escape_sqlite(pk)} = :pk{i}" for i, pk in enumerate(pks)
                     )
-                    prefix_lookup_sql = "select [{}] from [{}] where {}".format(
-                        sort or sort_desc, table_name, prefix_where_clause
+                    prefix_lookup_sql = (
+                        f"select {escape_sqlite(sort or sort_desc)} "
+                        f"from {escape_sqlite(table_name)} where {prefix_where_clause}"
                     )
                     prefix = (
                         await db.execute(

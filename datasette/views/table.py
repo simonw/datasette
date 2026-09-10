@@ -823,7 +823,13 @@ async def _sql_params_pks(db, table, pk_values):
     if use_rowid:
         select = "rowid, *"
         pks = ["rowid"]
-    wheres = [f'"{pk}"=:p{i}' for i, pk in enumerate(pks)]
+    wheres = []
+    for i, pk in enumerate(pks):
+        escaped_pk = escape_sqlite(pk)
+        # Preserve the historic always-quoted SQL exposed in row queries.
+        if escaped_pk == pk:
+            escaped_pk = f'"{pk}"'
+        wheres.append(f"{escaped_pk}=:p{i}")
     sql = f"select {select} from {escape_sqlite(table)} where {' AND '.join(wheres)}"
     params = {}
     for i, pk_value in enumerate(pk_values):

@@ -133,6 +133,14 @@ def through_filters(request, database, table, datasette):
                 through_table = through_data["table"]
                 other_column = through_data["column"]
                 value = through_data["value"]
+                await datasette.ensure_permissions(
+                    request.actor,
+                    [
+                        ("view-table", (database, through_table)),
+                        ("view-database", database),
+                        "view-instance",
+                    ],
+                )
                 db = datasette.get_database(database)
                 outgoing_foreign_keys = await db.foreign_keys_for_table(through_table)
                 try:

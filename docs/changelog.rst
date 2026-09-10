@@ -4,10 +4,30 @@
 Changelog
 =========
 
-0.65.x (unreleased)
+.. _v0_65_4:
+
+0.65.4 (2026-09-10)
 -------------------
 
-* Backported the non-blocking write task ID fixes from :issue:`2861` by `Zain Dana Harper (HarperZ9) <https://github.com/HarperZ9>`__. ``execute_write_fn(block=False)`` now returns a unique UUID for each call, including when ``num_sql_threads=0``.
+This release includes security fixes for permissions, SQL construction and caching, backported to the stable 0.65.x branch.
+
+See `1.0a39 <https://docs.datasette.io/en/latest/changelog.html#v1-0-a39>`__ for the full set of security fixes and other improvements in the 1.0 alpha series.
+
+The Datasette blog `has more details on these releases <https://datasette.io/blog/2026/september-security-releases/>`__.
+
+Some of the security fixes include:
+
+- Table and view permission checks now take SQLite's case-insensitive names into account. See :ref:`authentication_permissions_table`.
+- Table filters using ``?_through=`` require permission to view the intermediate table.
+- Fixed SQL identifier escaping for primary-key column names from untrusted database schemas, including row lookups and pagination.
+- Full-text search index detection now uses parameterized SQL and treats wildcard characters in table names literally.
+- Private and personalized dynamic responses now use ``Cache-Control: private, no-store``. Anonymous dynamic responses vary by ``Cookie`` and ``Authorization``.
+- SQLite extension loading is disabled after extensions supplied using ``--load-extension`` have been loaded.
+
+Other improvements and fixes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Backported the non-blocking write task ID fixes from :issue:`2861` by `Zain Dana Harper (HarperZ9) <https://github.com/HarperZ9>`__. ``execute_write_fn(block=False)`` now returns a unique UUID for each call, including when ``num_sql_threads=0``.
 
 .. _v0_65_3:
 

@@ -274,6 +274,10 @@ You can generate the list of issue references for a specific release by copying 
 
 To create the tag for the release, create `a new release <https://github.com/simonw/datasette/releases/new>`__ on GitHub matching the new version number. You can convert the release notes to Markdown by copying and pasting the rendered HTML into this `Paste to Markdown tool <https://euangoddard.github.io/clipboard2markdown/>`__.
 
+Publishing a non-prerelease also runs ``.github/workflows/stable-docs.yml``, which resets the ``stable`` branch to the release tag. Read the Docs then rebuilds the documentation at ``/en/stable/``. This workflow must be present in the release tag, including releases from maintenance branches such as ``0.65.x``. Verify that the workflow and the subsequent Read the Docs build both succeed.
+
+Between releases, include ``!stable-docs`` in a commit message on ``main`` or ``0.65.x`` to copy the documentation files changed by that commit to ``stable``. This copies whole files, so those pages must describe the stable release. Changes made only on ``stable`` are replaced by the next release; keep documentation and build configuration fixes in the release source branch too.
+
 Finally, post a news item about the release on `datasette.io <https://datasette.io/>`__ by editing the `news.yaml <https://github.com/simonw/datasette.io/blob/main/news.yaml>`__ file in that site's repository.
 
 .. _contributing_alpha_beta:

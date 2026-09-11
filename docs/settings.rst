@@ -195,6 +195,8 @@ Default HTTP caching max-age header in seconds, used for ``Cache-Control: max-ag
 
     datasette mydatabase.db --setting default_cache_ttl 60
 
+Dynamic responses for authenticated actors, requests with cookies or an ``Authorization`` header, and responses that set cookies use ``Cache-Control: private, no-store``. This takes precedence over ``default_cache_ttl`` and ``?_ttl=``, even when cache headers are otherwise disabled. Anonymous dynamic responses vary by ``Cookie`` and ``Authorization``. Static assets retain their own cache policy.
+
 .. _setting_cache_size_kb:
 
 cache_size_kb

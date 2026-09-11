@@ -331,7 +331,7 @@ Here's a test for that plugin that mocks the HTTPX2 outbound request:
             outbound_request.url == "https://www.example.com/"
         )
 
-If your plugin still makes its outbound calls using the original ``httpx`` library you can continue to mock those using `pytest-httpx <https://pypi.org/project/pytest-httpx/>`__. Since ``datasette.client`` no longer uses ``httpx`` there is no need for the ``non_mocked_hosts`` fixture that earlier versions of this documentation recommended.
+If your plugin still makes its outbound calls using the original ``httpx`` library you can continue to mock those using `pytest-httpx <https://pypi.org/project/pytest-httpx/>`__.
 
 .. _testing_plugins_register_in_test:
 

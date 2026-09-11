@@ -4,7 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       version_tag:
-        description: Tag to build and push
+        description: Datasette release tag to build (e.g. 0.65.4); Dockerfile comes from the selected branch
+        required: true
+        type: string
+      push_latest:
+        description: Also update the latest Docker tag
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -12,17 +18,38 @@ permissions:
 jobs:
   deploy_docker:
     runs-on: ubuntu-latest
+    env:
+      REPO: datasetteproject/datasette
+      VERSION_TAG: ${{ inputs.version_tag }}
     steps:
     - uses: actions/checkout@v7
-    - name: Build and push to Docker Hub
+    - name: Validate version tag
+      run: |-
+        if [[ ! "$VERSION_TAG" =~ ^[0-9][A-Za-z0-9_.-]{0,127}$ ]]; then
+          echo "Expected a release tag such as 0.65.4"
+          exit 1
+        fi
+        git ls-remote --exit-code --tags origin "refs/tags/$VERSION_TAG"
+    - name: Build image
+      run: |-
+        docker build --pull -f Dockerfile \
+          -t "$REPO:$VERSION_TAG" \
+          --build-arg "VERSION=$VERSION_TAG" .
+    - name: Check image before publishing
+      run: |-
+        docker run --rm "$REPO:$VERSION_TAG" datasette --version
+        docker run --rm "$REPO:$VERSION_TAG" pip check
+        docker run --rm "$REPO:$VERSION_TAG" python -c 'import sqlite3; conn = sqlite3.connect(":memory:"); conn.enable_load_extension(True); conn.load_extension("/usr/lib/x86_64-linux-gnu/mod_spatialite.so"); print(conn.execute("select spatialite_version()").fetchone()[0])'
+    - name: Log in to Docker Hub
       env:
         DOCKER_USER: ${{ secrets.DOCKER_USER }}
         DOCKER_PASS: ${{ secrets.DOCKER_PASS }}
-        VERSION_TAG: ${{ github.event.inputs.version_tag }}
       run: |-
-        docker login -u $DOCKER_USER -p $DOCKER_PASS
-        export REPO=datasetteproject/datasette
-        docker build -f Dockerfile \
-          -t $REPO:${VERSION_TAG} \
-          --build-arg VERSION=${VERSION_TAG} .
-        docker push $REPO:${VERSION_TAG}
+        printf '%s' "$DOCKER_PASS" | docker login --username "$DOCKER_USER" --password-stdin
+    - name: Push release tag
+      run: docker push "$REPO:$VERSION_TAG"
+    - name: Push latest tag
+      if: ${{ inputs.push_latest }}
+      run: |-
+        docker tag "$REPO:$VERSION_TAG" "$REPO:latest"
+        docker push "$REPO:latest"

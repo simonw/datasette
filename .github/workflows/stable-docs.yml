@@ -48,6 +48,9 @@ jobs:
           git commit -m "Populate docs/ from $LATEST_RELEASE" || echo "No changes"
           git push -u origin stable
         fi
+    # After the first non-prerelease 1.0 release, disable this workflow on 0.65.x
+    # (both release resets and !stable-docs updates), along with the docs.db
+    # upload in publish.yml. Later 0.65 releases must not replace the 1.0 docs.
     - name: Handle Release
       if: github.event_name == 'release' && !github.event.release.prerelease
       run: |

@@ -1,4 +1,4 @@
-import httpx
+import httpx2
 import pytest
 import pytest_asyncio
 
@@ -43,7 +43,7 @@ async def datasette_with_permissions():
 async def test_client_methods(datasette, method, path, expected_status):
     client_method = getattr(datasette.client, method)
     response = await client_method(path)
-    assert isinstance(response, httpx.Response)
+    assert isinstance(response, httpx2.Response)
     assert response.status_code == expected_status
     # Try that again using datasette.client.request
     response2 = await datasette.client.request(method, path)
@@ -63,7 +63,7 @@ async def test_client_post(datasette, prefix):
                 "message": "A message",
             },
         )
-        assert isinstance(response, httpx.Response)
+        assert isinstance(response, httpx2.Response)
         assert response.status_code == 302
         assert "ds_messages" in response.cookies
     finally:
@@ -135,7 +135,7 @@ async def test_skip_permission_checks_all_methods(datasette_with_permissions, me
     response = await client_method("/test_db.json", skip_permission_checks=True)
     # We don't check status code since some methods might not be allowed,
     # but we verify the request doesn't fail due to permissions
-    assert isinstance(response, httpx.Response)
+    assert isinstance(response, httpx2.Response)
 
 
 @pytest.mark.asyncio
@@ -340,7 +340,7 @@ async def test_actor_parameter_all_http_methods(datasette, method):
     client_method = getattr(datasette.client, method)
     # Just verify no TypeError about unexpected 'actor' kwarg
     response = await client_method("/", actor={"id": "root"})
-    assert isinstance(response, httpx.Response)
+    assert isinstance(response, httpx2.Response)
 
 
 @pytest.mark.asyncio

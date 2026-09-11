@@ -9,7 +9,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 
-import httpx
+import httpx2
 import pytest
 import pytest_asyncio
 
@@ -33,7 +33,7 @@ UNDOCUMENTED_PERMISSIONS = {
 }
 
 
-def wait_until_responds(url, timeout=5.0, client=httpx, process=None, **kwargs):
+def wait_until_responds(url, timeout=5.0, client=httpx2, process=None, **kwargs):
     start = time.time()
     while time.time() - start < timeout:
         # If the server died there is no point waiting out the timeout - fail
@@ -47,7 +47,7 @@ def wait_until_responds(url, timeout=5.0, client=httpx, process=None, **kwargs):
         try:
             client.get(url, **kwargs)
             return
-        except httpx.TransportError:
+        except httpx2.TransportError:
             time.sleep(0.1)
     raise AssertionError(f"Timed out waiting for {url} to respond")
 
@@ -292,8 +292,8 @@ def ds_unix_domain_socket_server(tmp_path_factory):
         cwd=tempfile.gettempdir(),
     )
     # Poll until available
-    transport = httpx.HTTPTransport(uds=uds)
-    client = httpx.Client(transport=transport)
+    transport = httpx2.HTTPTransport(uds=uds)
+    client = httpx2.Client(transport=transport)
     try:
         wait_until_responds(
             "http://localhost/_memory.json", timeout=30.0, client=client

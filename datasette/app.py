@@ -28,7 +28,7 @@ import urllib.parse
 from concurrent import futures
 from pathlib import Path
 
-import httpx
+import httpx2
 from itsdangerous import BadSignature, URLSafeSerializer
 from jinja2 import (
     ChoiceLoader,
@@ -2995,7 +2995,7 @@ ORDER BY allowed.parent, allowed.child
         This is the single entry point used by both AsgiLifespan (so
         real deployments finish startup before accepting requests) and
         AsgiRunOnFirstRequest (the fallback for hosts that never send
-        lifespan events, e.g. DatasetteClient's httpx.ASGITransport), and
+        lifespan events, e.g. DatasetteClient's httpx2.ASGITransport), and
         `datasette serve` (cli.py) calls it too. The fast path below checks
         both `_startup_invoked` and `_setup_db_done` - not just the former -
         so that a bare `await ds.invoke_startup()` made by a caller ahead of
@@ -3469,14 +3469,14 @@ class DatasetteClient:
         with _DatasetteClientContext():
             if skip_permission_checks:
                 with SkipPermissions():
-                    async with httpx.AsyncClient(
-                        transport=httpx.ASGITransport(app=self.app),
+                    async with httpx2.AsyncClient(
+                        transport=httpx2.ASGITransport(app=self.app),
                         cookies=kwargs.pop("cookies", None),
                     ) as client:
                         return await getattr(client, method)(self._fix(path), **kwargs)
             else:
-                async with httpx.AsyncClient(
-                    transport=httpx.ASGITransport(app=self.app),
+                async with httpx2.AsyncClient(
+                    transport=httpx2.ASGITransport(app=self.app),
                     cookies=kwargs.pop("cookies", None),
                 ) as client:
                     return await getattr(client, method)(self._fix(path), **kwargs)
@@ -3523,10 +3523,10 @@ class DatasetteClient:
             method: HTTP method (e.g., "GET", "POST", "PUT")
             path: The path to request
             skip_permission_checks: If True, bypass all permission checks for this request
-            **kwargs: Additional arguments to pass to httpx
+            **kwargs: Additional arguments to pass to httpx2
 
         Returns:
-            httpx.Response: The response from the request
+            httpx2.Response: The response from the request
         """
         from datasette.permissions import SkipPermissions
 
@@ -3535,16 +3535,16 @@ class DatasetteClient:
         with _DatasetteClientContext():
             if skip_permission_checks:
                 with SkipPermissions():
-                    async with httpx.AsyncClient(
-                        transport=httpx.ASGITransport(app=self.app),
+                    async with httpx2.AsyncClient(
+                        transport=httpx2.ASGITransport(app=self.app),
                         cookies=kwargs.pop("cookies", None),
                     ) as client:
                         return await client.request(
                             method, self._fix(path, avoid_path_rewrites), **kwargs
                         )
             else:
-                async with httpx.AsyncClient(
-                    transport=httpx.ASGITransport(app=self.app),
+                async with httpx2.AsyncClient(
+                    transport=httpx2.ASGITransport(app=self.app),
                     cookies=kwargs.pop("cookies", None),
                 ) as client:
                     return await client.request(

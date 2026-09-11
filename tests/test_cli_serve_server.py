@@ -1,13 +1,13 @@
 import socket
 import time
 
-import httpx
+import httpx2
 import pytest
 
 
 @pytest.mark.serial
 def test_serve_localhost_http(ds_localhost_http_server):
-    response = httpx.get("http://localhost:8041/_memory.json")
+    response = httpx2.get("http://localhost:8041/_memory.json")
     assert {
         "database": "_memory",
         "path": "/_memory",
@@ -21,8 +21,8 @@ def test_serve_localhost_http(ds_localhost_http_server):
 )
 def test_serve_unix_domain_socket(ds_unix_domain_socket_server):
     _, uds = ds_unix_domain_socket_server
-    transport = httpx.HTTPTransport(uds=uds)
-    client = httpx.Client(transport=transport)
+    transport = httpx2.HTTPTransport(uds=uds)
+    client = httpx2.Client(transport=transport)
     response = client.get("http://localhost/_memory.json")
     assert {
         "database": "_memory",
@@ -97,7 +97,7 @@ def test_startup_hook_background_task_runs_on_serving_loop(serve_with_plugins):
     deadline = time.time() + 3.0
     payload = {}
     while time.time() < deadline:
-        payload = httpx.get(
+        payload = httpx2.get(
             f"http://127.0.0.1:{port}/-/marker-task-ran", timeout=1.0
         ).json()
         if payload["marker_task_ran"]:

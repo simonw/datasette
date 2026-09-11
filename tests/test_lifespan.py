@@ -5,7 +5,7 @@ into the ASGI lifespan protocol.
 These exercise Datasette._startup_sequence() via three different callers:
 - AsgiLifespan, by hand-driving lifespan.startup messages (no HTTP request)
 - AsgiRunOnFirstRequest, the fallback for hosts that never send lifespan
-  events (this is what DatasetteClient / plain httpx.ASGITransport uses)
+  events (this is what DatasetteClient / plain httpx2.ASGITransport uses)
 - Both at once, to prove startup hooks run at most once
 """
 
@@ -13,7 +13,7 @@ import asyncio
 import contextlib
 import sqlite3
 
-import httpx
+import httpx2
 import pytest
 
 from datasette import hookimpl
@@ -131,8 +131,8 @@ async def test_startup_runs_exactly_once_across_lifespan_and_first_request():
 
         # A first HTTP request (as if the host never sent lifespan events,
         # or lifespan already ran) should not run the hook again.
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(
+        transport = httpx2.ASGITransport(app=app)
+        async with httpx2.AsyncClient(
             transport=transport, base_url="http://localhost"
         ) as client:
             response1 = await client.get("/-/versions.json")
@@ -149,13 +149,13 @@ async def test_startup_runs_exactly_once_across_lifespan_and_first_request():
 @pytest.mark.asyncio
 async def test_no_lifespan_first_request_still_triggers_startup():
     # Pin today's behavior: a client that never drives ASGI lifespan events
-    # at all (like httpx.ASGITransport, which DatasetteClient uses) still
+    # at all (like httpx2.ASGITransport, which DatasetteClient uses) still
     # gets startup armed by the AsgiRunOnFirstRequest fallback.
     ds = Datasette(memory=True)
     assert ds._startup_invoked is False
     app = ds.app()
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(
         transport=transport, base_url="http://localhost"
     ) as client:
         response = await client.get("/-/versions.json")
@@ -197,8 +197,8 @@ async def test_concurrent_first_requests_all_wait_for_slow_startup():
     pm.register(SlowStartupPlugin(), name="slow_startup_plugin")
     try:
         app = ds.app()
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(
+        transport = httpx2.ASGITransport(app=app)
+        async with httpx2.AsyncClient(
             transport=transport, base_url="http://localhost"
         ) as client:
             responses = await asyncio.gather(

@@ -5,7 +5,7 @@ import subprocess
 import sys
 import time
 
-import httpx
+import httpx2
 import pytest
 
 from datasette.fixtures import write_fixture_database
@@ -34,11 +34,11 @@ def wait_for_server(process, url, timeout=30):
                 f"stderr:\n{stderr}"
             )
         try:
-            response = httpx.get(url, timeout=1.0)
+            response = httpx2.get(url, timeout=1.0)
             if response.status_code < 500:
                 return
             last_error = f"HTTP {response.status_code}: {response.text[:200]}"
-        except httpx.HTTPError as ex:
+        except httpx2.HTTPError as ex:
             last_error = repr(ex)
         time.sleep(0.1)
     if process.poll() is None:
@@ -336,7 +336,7 @@ def project_rows(datasette_server, **filters):
         "_shape": "objects",
         **{key: str(value) for key, value in filters.items()},
     }
-    response = httpx.get(f"{datasette_server}data/projects.json", params=params)
+    response = httpx2.get(f"{datasette_server}data/projects.json", params=params)
     response.raise_for_status()
     return response.json()["rows"]
 
@@ -348,7 +348,7 @@ def project_row(datasette_server, pk):
 
 
 def binary_file_blob(datasette_server, pk):
-    response = httpx.get(
+    response = httpx2.get(
         f"{datasette_server}data/binary_files/{pk}.blob",
         params={"_blob_column": "data"},
     )
@@ -369,7 +369,7 @@ def bulk_default_rows(datasette_server, **filters):
         "_shape": "objects",
         **{key: str(value) for key, value in filters.items()},
     }
-    response = httpx.get(f"{datasette_server}data/bulk_defaults.json", params=params)
+    response = httpx2.get(f"{datasette_server}data/bulk_defaults.json", params=params)
     response.raise_for_status()
     return response.json()["rows"]
 
@@ -379,7 +379,7 @@ def upsert_item_rows(datasette_server, **filters):
         "_shape": "objects",
         **{key: str(value) for key, value in filters.items()},
     }
-    response = httpx.get(f"{datasette_server}data/upsert_items.json", params=params)
+    response = httpx2.get(f"{datasette_server}data/upsert_items.json", params=params)
     response.raise_for_status()
     return response.json()["rows"]
 
@@ -473,7 +473,7 @@ def test_create_table_flow(page, datasette_server):
     page.wait_for_url("**/data/playwright_created")
     assert "playwright_created" in page.locator("h1").inner_text()
 
-    response = httpx.get(
+    response = httpx2.get(
         f"{datasette_server}data/playwright_created.json?_extra=columns,column_types"
     )
     response.raise_for_status()
@@ -487,7 +487,7 @@ def test_create_table_flow(page, datasette_server):
     assert data["column_types"] == {
         "metadata": {"type": "json", "config": None},
     }
-    schema_response = httpx.get(
+    schema_response = httpx2.get(
         f"{datasette_server}data/-/query.json",
         params={
             "sql": (
@@ -603,7 +603,7 @@ def test_create_table_from_data_flow(page, datasette_server):
     dialog.locator(".table-create-save").click()
     page.wait_for_url("**/data/playwright_from_data")
 
-    response = httpx.get(
+    response = httpx2.get(
         f"{datasette_server}data/playwright_from_data.json?_shape=objects"
     )
     response.raise_for_status()
@@ -639,7 +639,7 @@ def test_create_table_from_csv_keeps_numeric_type_when_values_are_blank(
     dialog.locator(".table-create-save").click()
     page.wait_for_url("**/data/playwright_numeric_blanks")
 
-    response = httpx.get(
+    response = httpx2.get(
         f"{datasette_server}data/playwright_numeric_blanks.json?_shape=objects"
     )
     response.raise_for_status()
@@ -648,7 +648,7 @@ def test_create_table_from_csv_keeps_numeric_type_when_values_are_blank(
         {"name": "B", "score": None},
     ]
 
-    schema_response = httpx.get(
+    schema_response = httpx2.get(
         f"{datasette_server}data/-/query.json",
         params={
             "sql": (
@@ -856,7 +856,7 @@ def test_alter_table_flow(page, datasette_server):
 
     columns = []
     for _ in range(20):
-        response = httpx.get(f"{datasette_server}data/projects.json?_extra=columns")
+        response = httpx2.get(f"{datasette_server}data/projects.json?_extra=columns")
         response.raise_for_status()
         columns = response.json()["columns"]
         if "status" in columns:

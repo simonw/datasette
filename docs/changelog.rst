@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _unreleased:
+
+Unreleased
+----------
+
+- Datasette now uses `httpx2 <https://httpx2.pydantic.dev/>`__, the Pydantic-maintained continuation of `httpx <https://www.python-httpx.org/>`__, in place of ``httpx``. The public API is the same, but responses returned by :ref:`internals_datasette_client` are now ``httpx2.Response`` objects rather than ``httpx.Response``. Plugins that use ``isinstance()`` checks against ``httpx.Response`` should be updated to use ``httpx2``. Plugin tests that mock outbound HTTP calls with ``pytest-httpx`` no longer need the ``non_mocked_hosts`` fixture, since Datasette no longer makes its own requests through ``httpx`` - see :ref:`testing_plugins_pytest_httpx` for details of the equivalent ``pytest-httpx2`` package.
+
 .. _v1_0_a39:
 
 1.0a39 (2026-09-10)

@@ -155,7 +155,7 @@ def through_filters(request, database, table, datasette):
                 db = datasette.get_database(database)
                 outgoing_foreign_keys = await db.foreign_keys_for_table(through_table)
                 fk_to_us = next(
-                    (fk for fk in outgoing_fore_keys if fk["other_table"] == table),
+                    (fk for fk in outgoing_foreign_keys if fk["other_table"] == table),
                     None,
                 )
                 if fk_to_us is None:

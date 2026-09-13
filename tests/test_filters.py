@@ -29,6 +29,11 @@ from datasette.utils.asgi import Request
             [2, 4, 3, 1],
         ),
         (
+            (("foo__lt", "0.1"), ("bar__gt", "-2.5")),
+            ['"bar" > :p0', '"foo" < :p1'],
+            [-2.5, 0.1],
+        ),
+        (
             (("foo__like", "2%2"), ("zax__glob", "3*")),
             ['"foo" like :p0', '"zax" glob :p1'],
             ["2%2", "3*"],

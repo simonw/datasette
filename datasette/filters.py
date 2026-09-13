@@ -155,7 +155,7 @@ def through_filters(request, database, table, datasette):
                 db = datasette.get_database(database)
                 outgoing_foreign_keys = await db.foreign_keys_for_table(through_table)
                 fk_to_us = next(
-                    (fk for fk in outgoing_foreign_keys if fk["other_table"] == table),
+                    (fk for fk in outgoing_fore_keys if fk["other_table"] == table),
                     None,
                 )
                 if fk_to_us is None:
@@ -223,8 +223,14 @@ class TemplatedFilter(Filter):
 
     def where_clause(self, table, column, value, param_counter):
         converted = self.format.format(value)
-        if self.numeric and converted.isdigit():
-            converted = int(converted)
+        if self.numeric:
+            try:
+                converted = int(converted)
+            except ValueError:
+                try:
+                    converted = float(converted)
+                except ValueError:
+                    pass
         if self.no_argument:
             kwargs = {"c": _quote_sqlite_identifier(column)}
             converted = None
@@ -335,11 +341,11 @@ class Filters:
             ),
             TemplatedFilter("gt", ">", "{c} > :{p}", "{c} > {v}", numeric=True),
             TemplatedFilter(
-                "gte", "\u2265", "{c} >= :{p}", "{c} \u2265 {v}", numeric=True
+                "gte", "≥", "{c} >= :{p}", "{c} ≥ {v}", numeric=True
             ),
             TemplatedFilter("lt", "<", "{c} < :{p}", "{c} < {v}", numeric=True),
             TemplatedFilter(
-                "lte", "\u2264", "{c} <= :{p}", "{c} \u2264 {v}", numeric=True
+                "lte", "≤", "{c} <= :{p}", "{c} ≤ {v}", numeric=True
             ),
             TemplatedFilter("like", "like", "{c} like :{p}", '{c} like "{v}"'),
             TemplatedFilter(

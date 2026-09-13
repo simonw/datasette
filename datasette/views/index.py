@@ -172,7 +172,7 @@ class IndexView(BaseView):
                 if extra_links:
                     homepage_actions.extend(extra_links)
             alternative_homepage = request.path == "/-/"
-            return await self.render(
+            response = await self.render(
                 ["default:index.html" if alternative_homepage else "index.html"],
                 request=request,
                 context={
@@ -189,3 +189,6 @@ class IndexView(BaseView):
                     "noindex": request.path == "/-/",
                 },
             )
+            if self.ds.cors:
+                add_cors_headers(response.headers)
+            return response

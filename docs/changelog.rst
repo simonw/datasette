@@ -1141,7 +1141,7 @@ Features
 - New ``--nolock`` option for ignoring file locks when opening read-only databases. (:issue:`1744`)
 - Spaces in the database names in URLs are now encoded as ``+`` rather than ``~20``. (:issue:`1701`)
 - ``<Binary: 2427344 bytes>`` is now displayed as ``<Binary: 2,427,344 bytes>`` and is accompanied by tooltip showing "2.3MB". (:issue:`1712`)
-- The base Docker image used by ``datasette publish cloudrun``, ``datasette package`` and the `official Datasette image <https://hub.docker.com/datasetteproject/datasette>`__ has been upgraded to ``3.10.6-slim-bullseye``.  (:issue:`1768`)
+- The base Docker image used by ``datasette publish cloudrun``, ``datasette package`` and the `official Datasette image <https://hub.docker.com/r/datasetteproject/datasette>`__ has been upgraded to ``3.10.6-slim-bullseye``.  (:issue:`1768`)
 - Canned writable queries against immutable databases now show a warning message. (:issue:`1728`)
 - ``datasette publish cloudrun`` has a new ``--timeout`` option which can be used to increase the time limit applied by the Google Cloud build environment. Thanks, Tim Sherratt. (:pr:`1717`)
 - ``datasette publish cloudrun`` has new ``--min-instances`` and ``--max-instances`` options. (:issue:`1779`)
@@ -2170,7 +2170,7 @@ If you are still running Python 3.5 you should stick with ``0.30.2``, which you 
 - Removed obsolete ``?_group_count=col`` feature (:issue:`504`)
 - Improved user interface and documentation for ``datasette publish cloudrun`` (:issue:`608`)
 - Tables with indexes now show the ``CREATE INDEX`` statements on the table page (:issue:`618`)
-- Current version of `uvicorn <https://www.uvicorn.org/>`__ is now shown on ``/-/versions``
+- Current version of `uvicorn <https://uvicorn.dev/>`__ is now shown on ``/-/versions``
 - Python 3.8 is now supported! (:issue:`622`)
 - Python 3.5 is no longer supported.
 
@@ -2221,7 +2221,7 @@ If you are still running Python 3.5 you should stick with ``0.30.2``, which you 
 0.29.2 (2019-07-13)
 -------------------
 
-- Bumped `Uvicorn <https://www.uvicorn.org/>`__ to 0.8.4, fixing a bug where the query string was not included in the server logs. (:issue:`559`)
+- Bumped `Uvicorn <https://uvicorn.dev/>`__ to 0.8.4, fixing a bug where the query string was not included in the server logs. (:issue:`559`)
 - Fixed bug where the navigation breadcrumbs were not displayed correctly on the page for a custom query. (:issue:`558`)
 - Fixed bug where custom query names containing unicode characters caused errors.
 
@@ -2243,7 +2243,7 @@ ASGI, new plugin hooks, facet by date and much, much more...
 ASGI
 ~~~~
 
-`ASGI <https://asgi.readthedocs.io/>`__ is the Asynchronous Server Gateway Interface standard. I've been wanting to convert Datasette into an ASGI application for over a year - `Port Datasette to ASGI #272 <https://github.com/simonw/datasette/issues/272>`__ tracks thirteen months of intermittent development - but with Datasette 0.29 the change is finally released. This also means Datasette now runs on top of `Uvicorn <https://www.uvicorn.org/>`__ and no longer depends on `Sanic <https://github.com/huge-success/sanic>`__.
+`ASGI <https://asgi.readthedocs.io/>`__ is the Asynchronous Server Gateway Interface standard. I've been wanting to convert Datasette into an ASGI application for over a year - `Port Datasette to ASGI #272 <https://github.com/simonw/datasette/issues/272>`__ tracks thirteen months of intermittent development - but with Datasette 0.29 the change is finally released. This also means Datasette now runs on top of `Uvicorn <https://uvicorn.dev/>`__ and no longer depends on `Sanic <https://github.com/huge-success/sanic>`__.
 
 I wrote about the significance of this change in `Porting Datasette to ASGI, and Turtles all the way down <https://simonwillison.net/2019/Jun/23/datasette-asgi/>`__.
 

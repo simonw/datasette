@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 
 from datasette.filters import Filters
@@ -22,3 +24,22 @@ def test_numeric_filter_parameters(value, expected):
 
     assert sql_bits == ['"score" > :p0']
     assert params == {"p0": expected}
+
+
+def test_numeric_filter_parameters_against_calculated_view():
+    conn = sqlite3.connect(":memory:")
+    conn.execute("create table searchable(pk integer)")
+    conn.executemany("insert into searchable(pk) values (?)", [(0,), (1,), (2,)])
+    conn.execute(
+        "create view calculated as "
+        "select pk + 1 as pk_plus_one, pk / 2.0 as score from searchable"
+    )
+
+    sql_bits, params = Filters((("score__gt", "0.1"),)).build_where_clauses(
+        "calculated"
+    )
+    rows = conn.execute(
+        "select score from calculated where {}".format(" and ".join(sql_bits)), params
+    ).fetchall()
+
+    assert rows == [(0.5,), (1.0,)]

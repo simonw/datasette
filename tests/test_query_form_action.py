@@ -19,3 +19,17 @@ def test_ad_hoc_query_form_action_preserves_base_url(app_client_base_url_prefix)
     form = Soup(response.text, "html.parser").select_one("form.sql.core")
     assert form is not None
     assert form["action"] == "/prefix/fixtures/-/query"
+
+
+@pytest.mark.asyncio
+async def test_stored_query_form_action_encodes_query_name(ds_client):
+    query_name = "query with spaces"
+    await ds_client.ds.update_query("fixtures", query_name, sql="select 1")
+    query_url = ds_client.ds.urls.query("fixtures", query_name)
+
+    response = await ds_client.get(query_url)
+    assert response.status_code == 200
+
+    form = Soup(response.text, "html.parser").select_one("form.sql.core")
+    assert form is not None
+    assert form["action"] == query_url

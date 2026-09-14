@@ -1,4 +1,5 @@
 import json
+import math
 from typing import ClassVar
 
 from datasette import hookimpl
@@ -190,9 +191,10 @@ def _coerce_numeric_filter_value(value):
         return int(value)
     except ValueError:
         try:
-            return float(value)
+            converted = float(value)
         except ValueError:
             return value
+        return converted if math.isfinite(converted) else value
 
 
 class TemplatedFilter(Filter):
@@ -328,11 +330,11 @@ class Filters:
             ),
             TemplatedFilter("gt", ">", "{c} > :{p}", "{c} > {v}", numeric=True),
             TemplatedFilter(
-                "gte", "\u2265", "{c} >= :{p}", "{c} \u2265 {v}", numeric=True
+                "gte", "≥", "{c} >= :{p}", "{c} ≥ {v}", numeric=True
             ),
             TemplatedFilter("lt", "<", "{c} < :{p}", "{c} < {v}", numeric=True),
             TemplatedFilter(
-                "lte", "\u2264", "{c} <= :{p}", "{c} \u2264 {v}", numeric=True
+                "lte", "≤", "{c} <= :{p}", "{c} ≤ {v}", numeric=True
             ),
             TemplatedFilter("like", "like", "{c} like :{p}", '{c} like "{v}"'),
             TemplatedFilter(

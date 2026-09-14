@@ -11,6 +11,9 @@ from datasette.filters import Filters
         ("-2.5", -2.5),
         ("1e3", 1000.0),
         ("not-a-number", "not-a-number"),
+        ("nan", "nan"),
+        ("inf", "inf"),
+        ("-inf", "-inf"),
     ),
 )
 def test_numeric_filter_parameters(value, expected):

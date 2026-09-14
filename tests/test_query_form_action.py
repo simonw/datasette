@@ -10,3 +10,12 @@ async def test_ad_hoc_query_form_targets_query_route(ds_client):
     form = Soup(response.text, "html.parser").select_one("form.sql.core")
     assert form is not None
     assert form["action"] == "/fixtures/-/query"
+
+
+def test_ad_hoc_query_form_action_preserves_base_url(app_client_base_url_prefix):
+    response = app_client_base_url_prefix.get("/prefix/fixtures/-/query?sql=select+1")
+    assert response.status_code == 200
+
+    form = Soup(response.text, "html.parser").select_one("form.sql.core")
+    assert form is not None
+    assert form["action"] == "/prefix/fixtures/-/query"

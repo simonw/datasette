@@ -64,7 +64,9 @@ from .telemetry_registry import (
     PERMISSION_ALLOWED,
     PERMISSION_CHECK,
     PERMISSION_RESOURCES,
+    RENDER_TEMPLATE,
     STARTUP,
+    TEMPLATE_NAME,
 )
 from .tokens import TokenInvalid
 from .tracer import AsgiTracer
@@ -2614,13 +2616,24 @@ ORDER BY allowed.parent, allowed.child
             raise RuntimeError(
                 "render_template() called before await ds.invoke_startup()"
             )
+        # The span covers building the context as well as the Jinja render:
+        # context building awaits extra_template_vars, extra_body_script and
+        # the asset URL hooks, whose datasette.hook spans nest under this one.
+        with tracer.start_as_current_span(RENDER_TEMPLATE) as span:
+            if isinstance(templates, Template):
+                template = templates
+            else:
+                if isinstance(templates, str):
+                    templates = [templates]
+                environment = self.get_jinja_environment(request)
+                template = environment.select_template(templates)
+            # A Template built with from_string() has no name
+            if template.name and span.is_recording():
+                span.set_attribute(TEMPLATE_NAME, template.name)
+            return await self._render_template(template, context, request, view_name)
+
+    async def _render_template(self, template, context, request, view_name):
         context = context or {}
-        if isinstance(templates, Template):
-            template = templates
-        else:
-            if isinstance(templates, str):
-                templates = [templates]
-            template = self.get_jinja_environment(request).select_template(templates)
         if dataclasses.is_dataclass(context):
             # Shallow conversion - asdict() would deep-copy values, which
             # is wasteful and fails on values like sqlite3.Row

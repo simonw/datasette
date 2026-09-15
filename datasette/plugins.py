@@ -8,6 +8,7 @@ from pprint import pprint
 import pluggy
 
 from . import hookspecs
+from .telemetry import instrument_hookimpls
 
 DEFAULT_PLUGINS = (
     "datasette.publish.heroku",
@@ -33,7 +34,21 @@ DEFAULT_PLUGINS = (
     "datasette.events",
 )
 
-pm = pluggy.PluginManager("datasette")
+
+class DatasettePluginManager(pluggy.PluginManager):
+    "Wraps each hookimpl at registration so every call emits a span."
+
+    def register(self, plugin, name=None):
+        canonical_name = super().register(plugin, name)
+        if canonical_name is not None:
+            plugin_name = (
+                name or getattr(plugin, "__name__", None) or type(plugin).__name__
+            )
+            instrument_hookimpls(self, plugin, plugin_name)
+        return canonical_name
+
+
+pm = DatasettePluginManager("datasette")
 pm.add_hookspecs(hookspecs)
 
 DATASETTE_TRACE_PLUGINS = os.environ.get("DATASETTE_TRACE_PLUGINS", None)

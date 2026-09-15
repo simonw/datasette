@@ -58,6 +58,62 @@ def find_free_port():
         return sock.getsockname()[1]
 
 
+_otel_span_exporter = None
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _otel_provider():
+    """
+    Install a real OTel SDK TracerProvider + InMemorySpanExporter exactly
+    once, before any span is ever created in this process.
+
+    This has to be session-scoped and autouse because
+    `opentelemetry.trace.set_tracer_provider()` is effectively
+    once-per-process: a second call logs a warning and is ignored. So the
+    install must happen exactly once, before anything asserts on spans.
+
+    `datasette.telemetry.tracer` is a module-level `ProxyTracer`. Once a
+    provider exists, the first span it starts resolves a concrete tracer
+    and caches it permanently. It does *not* cache the no-op tracer, so
+    any span started before this fixture runs is merely lost rather than
+    poisoning the tracer for the rest of the process. If the SDK isn't
+    installed, do nothing: core spans stay no-op `NonRecordingSpan`s and
+    the rest of the suite is unaffected.
+    """
+    global _otel_span_exporter
+    try:
+        from opentelemetry import trace as otel_trace
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+        from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+            InMemorySpanExporter,
+        )
+    except ImportError:
+        return
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    # SimpleSpanProcessor exports synchronously on span end - no background
+    # batching thread, so assertions immediately after a request never race.
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    otel_trace.set_tracer_provider(provider)
+    _otel_span_exporter = exporter
+
+
+@pytest.fixture
+def otel_spans():
+    """
+    Function-scoped access to the finished-spans exporter: clears any spans
+    left over from previous tests, then yields the exporter so a test can
+    call `.get_finished_spans()` after making requests. Skips (rather than
+    fails) if the OTel SDK is not installed.
+    """
+    pytest.importorskip("opentelemetry.sdk")
+    if _otel_span_exporter is None:
+        pytest.skip("OpenTelemetry SDK provider was not installed")
+    _otel_span_exporter.clear()
+    yield _otel_span_exporter
+
+
 @pytest.fixture
 def bare_ds():
     """
@@ -168,6 +224,12 @@ def pytest_collection_modifyitems(config, items):
     move_to_front(items, "test_spatialite_error_if_attempt_to_open_spatialite")
     move_to_front(items, "test_package")
     move_to_front(items, "test_package_with_port")
+    # Same reason: this one shells out to a fresh interpreter. Late in a serial
+    # run the pytest process holds enough threads that the fork half of
+    # subprocess' fork+exec crashes the interpreter on macOS/CPython 3.13
+    # (SIGSEGV/SIGBUS inside _execute_child). Reproduces with any subprocess
+    # call placed there, on an unmodified tree - running it first avoids it.
+    move_to_front(items, "test_datasette_package_never_imports_the_sdk")
 
 
 def move_to_front(items, test_name):

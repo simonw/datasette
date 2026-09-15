@@ -1,4 +1,5 @@
 import json
+import math
 from typing import ClassVar
 
 from datasette import hookimpl
@@ -202,6 +203,17 @@ class Filter:
         raise NotImplementedError
 
 
+def _coerce_numeric_filter_value(value):
+    try:
+        return int(value)
+    except ValueError:
+        try:
+            converted = float(value)
+        except ValueError:
+            return value
+        return converted if math.isfinite(converted) else value
+
+
 class TemplatedFilter(Filter):
     def __init__(
         self,
@@ -223,8 +235,8 @@ class TemplatedFilter(Filter):
 
     def where_clause(self, table, column, value, param_counter):
         converted = self.format.format(value)
-        if self.numeric and converted.isdigit():
-            converted = int(converted)
+        if self.numeric:
+            converted = _coerce_numeric_filter_value(converted)
         if self.no_argument:
             kwargs = {"c": _quote_sqlite_identifier(column)}
             converted = None

@@ -41,10 +41,11 @@ class Urls:
         params = dict(params or {})
         replacements = {}
         for name, value in params.items():
-            # Query-string parameters arrive as text. Restore the SQLite types
-            # supplied by filter plugins, including for expressions without
-            # column affinity (e.g. julianday()). Unary + removes CAST's affinity
-            # so comparisons behave like comparisons with the original binding.
+            # A numeric parameter such as 42 becomes the string "42" in a URL.
+            # CAST turns it back into a number, but also tells SQLite to try converting
+            # the other side of a comparison to a number. Wrapping CAST in unary +
+            # keeps the number while removing that extra conversion rule, so the
+            # comparison behaves as it did before.
             if isinstance(value, float) and not math.isfinite(value):
                 if math.isnan(value):
                     replacements[name] = "NULL"

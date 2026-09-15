@@ -81,6 +81,7 @@ EXPECTED_ATTRIBUTES = {
         "datasette.permission.action",
         "datasette.resource.parent",
     },
+    "datasette.render_template": {"datasette.template.name"},
 }
 EXPECTED_SPANS = set(EXPECTED_ATTRIBUTES)
 

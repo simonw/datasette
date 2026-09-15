@@ -371,6 +371,14 @@ PERMISSION_ALLOWED = Attribute(
     "when the check raised.",
     optional=True,
 )
+TEMPLATE_NAME = Attribute(
+    "datasette.template.name",
+    "The template that was rendered - the one Jinja selected from the "
+    "candidate list, for example ``table-fixtures-facetable.html`` when a "
+    "custom template overrides ``table.html``. Omitted for a template built "
+    "from a string, which has no name.",
+    optional=True,
+)
 
 
 # --- Spans ----------------------------------------------------------------
@@ -510,6 +518,18 @@ PERMISSION_RESOURCES = SpanName(
     (PERMISSION_ACTION, RESOURCE_PARENT),
 )
 
+RENDER_TEMPLATE = SpanName(
+    "datasette.render_template",
+    "Rendering one HTML page template: a call to "
+    "``datasette.render_template()``, or an error page. The span covers "
+    "selecting the template, building its context - including awaiting the "
+    "``extra_template_vars``, ``extra_body_script``, ``extra_css_urls`` and "
+    "``extra_js_urls`` hooks, whose ``datasette.hook`` spans are its "
+    "children - and the Jinja render itself. Context values are never "
+    "recorded.",
+    (TEMPLATE_NAME,),
+)
+
 SPANS = (
     HTTP_REQUEST,
     DB_QUERY,
@@ -520,6 +540,7 @@ SPANS = (
     HOOK,
     PERMISSION_CHECK,
     PERMISSION_RESOURCES,
+    RENDER_TEMPLATE,
 )
 
 

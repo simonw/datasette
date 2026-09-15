@@ -149,12 +149,10 @@ def test_startup_error_fails_fast_before_port_binds(serve_with_plugins):
         pass
 
 
-# Proves the ticket-01 serve path (asyncio.run(_serve_async()) wrapping
-# uvicorn.Server.serve()) actually delivers a graceful signal through to
-# uvicorn's lifespan.shutdown, which now runs Datasette.invoke_shutdown()
-# and therefore every plugin's `shutdown` hook. The plugin below writes a
-# sentinel file from inside its shutdown hook so this can be checked from
-# outside the subprocess after it exits.
+# Verify that SIGTERM and SIGINT sent to `datasette serve` trigger uvicorn's
+# lifespan.shutdown event and run the plugin shutdown hooks. The plugin below
+# writes a sentinel file from its shutdown hook so the tests can check that
+# cleanup ran after the server subprocess exits.
 SHUTDOWN_SENTINEL_PLUGIN_TEMPLATE = """
 import pathlib
 from datasette import hookimpl

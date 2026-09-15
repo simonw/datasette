@@ -3086,21 +3086,6 @@ ORDER BY allowed.parent, allowed.child
         """Run the graceful teardown sequence: plugin ``shutdown`` hooks,
         then cancel and drain supervised background tasks, then close
         every database.
-
-        Idempotent (guarded by ``_shutdown_invoked``) and safe to call more
-        than once - a second ``lifespan.shutdown`` message from a
-        misbehaving ASGI host, or any future caller, must not re-run
-        teardown. A ``shutdown`` hook that raises is logged and swallowed
-        rather than propagated, so one broken plugin can't skip another
-        plugin's cleanup, or skip task cancellation / ``close()``
-        altogether.
-
-        Order matters: hooks run first, while background tasks are still
-        alive, so a plugin can coordinate with its own task (e.g. tell a
-        queue consumer to stop pulling new work) before that task gets
-        cancelled; ``close()`` runs last so both the hooks and the
-        cancelled tasks still have working database connections to write
-        any final state.
         """
         if self._shutdown_invoked:
             return

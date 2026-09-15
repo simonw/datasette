@@ -305,10 +305,7 @@ from the default template.
 Customizing breadcrumbs
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-The default ``base.html`` template provides a ``crumbs`` block inside its
-navigation block. Override ``crumbs`` to customize the breadcrumbs without
-replacing the rest of the navigation. The imported ``crumbs.nav()`` macro
-renders Datasette's permission-aware breadcrumbs:
+The default ``base.html`` template provides a ``crumbs`` block inside its navigation block. Override ``crumbs`` to customize the breadcrumbs without replacing the rest of the navigation. The imported ``crumbs.nav()`` macro renders Datasette's permission-aware breadcrumbs:
 
 .. code-block:: jinja
 

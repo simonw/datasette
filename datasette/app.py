@@ -2466,6 +2466,21 @@ ORDER BY allowed.parent, allowed.child
         )
         return d
 
+    def _tasks(self):
+        return {
+            "tasks": [
+                {
+                    "name": t.name,
+                    "state": t.state,
+                    "function": t.function,
+                    "started_at": t.started_at,
+                    "exception": repr(t.exception) if t.exception else None,
+                }
+                for t in self._background_tasks.tasks()
+            ],
+            "launched": self._background_tasks.launched,
+        }
+
     def _actor(self, request):
         return {"actor": request.actor}
 
@@ -2756,6 +2771,12 @@ ORDER BY allowed.parent, allowed.child
         )
         add_route(
             JsonDataView.as_view(
+                self, "tasks.json", self._tasks, permission="permissions-debug"
+            ),
+            r"/-/tasks(\.(?P<format>json))?$",
+        )
+        add_route(
+            JsonDataView.as_view(
                 self,
                 "databases.json",
                 self._databases_data,
@@ -3039,7 +3060,7 @@ ORDER BY allowed.parent, allowed.child
 
         Returns a :class:`~datasette.background_tasks.BackgroundTask`
         handle (``.name``, ``.state``, ``.task``, ``.exception``,
-        ``.started_at``, ``.plugin``, ``.cancel()``).
+        ``.started_at``, ``.function``, ``.cancel()``).
 
         ``name`` defaults to ``func.__qualname__``; on a name collision a
         ``-2``, ``-3``, ... suffix is appended, since names are how

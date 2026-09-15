@@ -12,6 +12,17 @@ Unreleased
 - Fixed incorrect counts when clicking **count all** on filtered table pages. The button now uses a new :ref:`POST count endpoint <TableCountView>`. (:issue:`2914`)
 - Datasette now uses `httpx2 <https://httpx2.pydantic.dev/>`__, the Pydantic-maintained continuation of `httpx <https://www.python-httpx.org/>`__, in place of ``httpx``. The public API is the same, but responses returned by :ref:`internals_datasette_client` are now ``httpx2.Response`` objects rather than ``httpx.Response``. Plugins that use ``isinstance()`` checks against ``httpx.Response`` should be updated to use ``httpx2``. **Plugins that use httpx without explicitly depending on it** will need to add an explicit dependency or switch to `httpx2`.
 
+Background tasks
+~~~~~~~~~~~~~~~~
+
+Datasette plugins can now use **background tasks** to run code independent of the Datasette request/response cycle.
+
+- New :ref:`datasette_add_background_task` API: plugins register supervised, long-lived background work - typically from a ``startup`` hook - and these will be launched after every ``startup`` hook has run. Tasks are cancelled (with a five-second grace period) on shutdown.
+- New ``/-/tasks`` JSON debug endpoint lists every supervised background task and its state, in the style of ``/-/threads``. See :ref:`JsonDataView_tasks`. It requires the ``permissions-debug`` permission.
+- New :ref:`plugin_hook_shutdown` plugin hook, called during graceful shutdown (Ctrl-C, ``SIGTERM``) before background tasks are cancelled and before database connections are closed. It is not called on a hard kill (``SIGKILL``).
+- Plugin ``asgi_wrapper`` middleware now always runs *after* startup has completed.
+- If your plugin uses ``asgi_wrapper`` to start background tasks on the first incoming request, you should migrate to ``datasette.add_background_task()`` instead. `datasette-cron <https://datasette.io/plugins/datasette-cron>`__ and `datasette-enrichments <https://datasette.io/plugins/datasette-enrichments>`__ are being migrated to this pattern.
+
 .. _v1_0_a39:
 
 1.0a39 (2026-09-10)

@@ -15,7 +15,11 @@ def _attribute_lines(cog, attributes):
     cog.out("    Attributes:\n\n")
     for attribute in attributes:
         suffix = " *(optional)*" if attribute.optional else ""
-        cog.out(f"    - ``{attribute}``{suffix} - {attribute.description}\n")
+        line = f"    - ``{attribute}``{suffix} - {attribute.description}"
+        if attribute.values is not None:
+            rendered = ", ".join(f"``{value}``" for value in sorted(attribute.values))
+            line += f" One of: {rendered}."
+        cog.out(line + "\n")
     cog.out("\n")
 
 
@@ -46,10 +50,4 @@ def metrics(cog):
         if metric.buckets:
             boundaries = ", ".join(f"``{boundary}``" for boundary in metric.buckets)
             cog.out(f"    Bucket boundaries: {boundaries}.\n\n")
-        if metric.attributes:
-            cog.out("    Attributes:\n\n")
-            for attribute in metric.attributes:
-                cog.out(f"    - ``{attribute}`` - {attribute.description}\n")
-            cog.out("\n")
-        else:
-            cog.out("    No attributes.\n\n")
+        _attribute_lines(cog, metric.attributes)

@@ -23,7 +23,10 @@ registry and the wire. That is the one comparison in this file that is not
 made against a value derived from the registry itself.
 """
 
+import copy
+import io
 import itertools
+import pickle
 
 import pytest
 import pytest_asyncio
@@ -36,6 +39,7 @@ from datasette import hookimpl
 from datasette import telemetry_registry as reg
 from datasette.app import Datasette
 from datasette.database import QueryInterrupted
+from datasette.telemetry_testing import assert_metrics_conform, assert_metrics_covered
 from datasette.utils.sqlite import sqlite3
 
 # The names as they appear on the wire, written out rather than read from the
@@ -395,6 +399,52 @@ def test_registry_entries_are_usable_as_plain_strings():
     assert f"{reg.DB_QUERY}.execute" == "db.query.execute"
 
 
+def test_registry_entries_survive_deepcopy_and_pickle():
+    """
+    A copy of an entry is a plain `str`.
+
+    These are `str` subclasses whose `__new__` requires the metadata
+    arguments, so without `__reduce__` `copy` cannot reconstruct one and
+    raises. That is not academic: the SDK's `ConsoleMetricExporter` renders
+    data points with `dataclasses.asdict()`, which deepcopies mappings, and
+    core passes registry entries as metric attribute keys - see
+    `test_console_metric_exporter_renders_core_metric_points`.
+    """
+    for entry in (reg.DB_NAMESPACE, reg.DB_QUERY, reg.M_OPERATION_DURATION):
+        assert copy.deepcopy({entry: 1}) == {str(entry): 1}
+        assert type(copy.deepcopy(entry)) is str
+        assert pickle.loads(pickle.dumps(entry)) == str(entry)
+        # The metadata still lives on the registered instance itself, which
+        # is the only place anything reads it.
+        assert entry.description.strip()
+
+
+@pytest.mark.asyncio
+async def test_console_metric_exporter_renders_core_metric_points(otel_metrics):
+    """
+    The end-to-end shape of the bug above: a console metrics dump of
+    Datasette's own points has to survive `dataclasses.asdict()`.
+    """
+    from opentelemetry.sdk.metrics.export import (
+        ConsoleMetricExporter,
+        MetricExportResult,
+    )
+
+    name = _unique("registry_console_export")
+    ds = Datasette(memory=True)
+    ds.add_memory_database(name)
+    await ds.invoke_startup()
+    # One real query, so the dump contains a db.client.operation.duration
+    # point keyed by the DB_NAMESPACE registry entry.
+    await ds.get_database(name).execute("select 1")
+
+    data = otel_metrics.reader.get_metrics_data()
+    assert data is not None, "no metrics captured - nothing to export"
+    exporter = ConsoleMetricExporter(out=io.StringIO())
+    assert exporter.export(data) is MetricExportResult.SUCCESS
+    ds.close()
+
+
 def test_every_histogram_declares_bucket_boundaries():
     """
     Every histogram must carry explicit boundaries, and only histograms may.
@@ -457,7 +507,7 @@ async def emitted_metrics(otel_metrics):
     plus the raw set of metric names - the metric-side counterpart of the
     `emitted` span fixture above.
 
-    Metrics use DELTA temporality (see `_otel_meter_provider`), and the
+    Metrics use DELTA temporality (see `otel_meter_provider` in datasette.telemetry_testing), and the
     function-scoped `otel_metrics` fixture drains any state left by an
     earlier test before yielding, so this collection is not polluted by
     other tests in the session - only by other *instances*, which is why the
@@ -497,43 +547,28 @@ async def emitted_metrics(otel_metrics):
                 pairs.add((metric_name, key))
     ds.close()
     slow.close()
-    return {"names": set(snapshot), "pairs": pairs}
+    return {"names": set(snapshot), "pairs": pairs, "collector": otel_metrics}
+
+
+@pytest.mark.asyncio
+async def test_metrics_conform_to_the_registry(emitted_metrics):
+    """
+    Emitted-but-unregistered, via the plugin kit's helper - consumed here
+    exactly the way a plugin's suite would. Beyond names and attribute keys,
+    this also asserts each instrument was created as the kind and unit its
+    registry entry declares, and that `datasette.operation` only ever takes
+    its declared enum values.
+    """
+    assert_metrics_conform(
+        reg.METRICS, emitted_metrics["collector"], scope_name="datasette"
+    )
 
 
 @pytest.mark.asyncio
 async def test_every_registered_metric_is_emitted(emitted_metrics):
-    "The both-ways name check for metrics."
-    names = emitted_metrics["names"]
-    missing = sorted(str(m) for m in reg.METRICS if m not in names)
-    assert not missing, f"documented but never emitted: {missing}"
-
-    unregistered = sorted(
-        name for name in names if name not in {str(m) for m in reg.METRICS}
-    )
-    assert not unregistered, f"emitted but not registered: {unregistered}"
-
-
-@pytest.mark.asyncio
-async def test_every_emitted_metric_attribute_is_registered(emitted_metrics):
-    """
-    An attribute added to a metric without a registry entry would be missing
-    from the docs - the metric-side counterpart of
-    `test_every_emitted_attribute_is_registered`.
-    """
-    metric_for = {str(m): m for m in reg.METRICS}
-    unregistered = sorted(
-        f"{metric_name} -> {key}"
-        for metric_name, key in emitted_metrics["pairs"]
-        # A metric name with no registry entry at all is already reported by
-        # test_every_registered_metric_is_emitted; do not double-report it
-        # here, and do not crash attribute_allowed() on a None metric.
-        if metric_name in metric_for
-        and not reg.attribute_allowed(metric_for[metric_name], key)
-    )
-    assert (
-        not unregistered
-    ), "these metric attributes are emitted but not registered: " + "\n".join(
-        unregistered
+    "Registered-but-never-collected, via the plugin kit's helper."
+    assert_metrics_covered(
+        reg.METRICS, emitted_metrics["collector"], scope_name="datasette"
     )
 
 
@@ -574,3 +609,38 @@ async def test_every_registered_metric_attribute_is_emitted(emitted_metrics):
         "these metric attributes are documented but never emitted by the "
         "test workload: " + ", ".join(sorted(missing))
     )
+
+
+def test_prefix_span_lookup():
+    """
+    `prefix=True` matching, exercised directly.
+
+    Core registers no prefix spans - the flag exists for plugin registries
+    (e.g. a `chat {model}` span family) - so without this the branch in
+    `span_for()` would be untested code the conformance tests never reach.
+    """
+    hook = reg.SpanName("myplugin.hook.", "A hypothetical span family", prefix=True)
+    spans = reg.SPANS + (hook,)
+    assert reg.span_for("myplugin.hook.render_cell", spans=spans) is hook
+    assert reg.span_for("myplugin.hook.anything", spans=spans) is hook
+    assert reg.span_for("myplugin.hookish", spans=spans) is None
+    assert reg.span_for("db.query", spans=spans) is reg.DB_QUERY
+
+
+def test_exact_match_wins_over_prefix():
+    "A prefix family can never shadow a span with a registered exact name."
+    family = reg.SpanName("db.", "Greedy prefix", prefix=True)
+    spans = (family,) + reg.SPANS
+    assert reg.span_for("db.query", spans=spans) is reg.DB_QUERY
+    assert reg.span_for("db.anything-else", spans=spans) is family
+
+
+def test_attribute_values_enum_enforced():
+    outcome = reg.Attribute("myplugin.outcome", "Enum.", values={"ok", "error"})
+    open_attr = reg.Attribute("myplugin.note", "Open value set.")
+    span = reg.SpanName("myplugin.job", "Test span", (outcome, open_attr))
+    assert reg.attribute_value_allowed(span, "myplugin.outcome", "ok")
+    assert not reg.attribute_value_allowed(span, "myplugin.outcome", "surprise")
+    assert reg.attribute_value_allowed(span, "myplugin.note", "anything at all")
+    assert not reg.attribute_value_allowed(span, "not.registered", "x")
+    assert not reg.attribute_value_allowed(None, "myplugin.outcome", "ok")

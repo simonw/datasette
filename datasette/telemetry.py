@@ -49,7 +49,10 @@ from .telemetry_registry import (
     M_WRITE_QUEUE_DEPTH,
     M_WRITE_QUEUE_WAIT,
     OPERATION,
+    PERMISSION_ACTION,
     PLUGIN_NAME,
+    RESOURCE_CHILD,
+    RESOURCE_PARENT,
     SERVER_ADDRESS,
     URL_PATH,
     URL_SCHEME,
@@ -518,6 +521,40 @@ async def _await_in_hook_span(coroutine, attributes):
     # the rest unawaited, and a span started for those would never end.
     with tracer.start_as_current_span(HOOK, attributes=attributes):
         return await coroutine
+
+
+# --- Permission checks --------------------------------------------------
+
+# True inside a permission span, so an API that delegates to another -
+# check_visibility() calling allowed() twice, allowed_resources() calling
+# allowed_resources_sql() - gets one span, not one nested inside another.
+_in_permission_span = contextvars.ContextVar(
+    "datasette_in_permission_span", default=False
+)
+
+
+@contextmanager
+def permission_span(name, action, parent=None, child=None):
+    """
+    Start a permission span unless one is already open, yielding the span -
+    or a non-recording span when it is nested, so callers can always set
+    attributes on what they get. The actor is never recorded.
+    """
+    if _in_permission_span.get():
+        yield otel_trace.INVALID_SPAN
+        return
+    token = _in_permission_span.set(True)
+    try:
+        with tracer.start_as_current_span(name) as span:
+            if span.is_recording():
+                span.set_attribute(PERMISSION_ACTION, action)
+                if parent is not None:
+                    span.set_attribute(RESOURCE_PARENT, str(parent))
+                if child is not None:
+                    span.set_attribute(RESOURCE_CHILD, str(child))
+            yield span
+    finally:
+        _in_permission_span.reset(token)
 
 
 # --- Metrics --------------------------------------------------------------

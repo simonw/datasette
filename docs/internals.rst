@@ -2629,6 +2629,24 @@ That is the route's compiled regular expression, not a prettified ``/{database}/
     - ``datasette.hook.name`` - The plugin hook being called - for example ``extra_template_vars``.
     - ``datasette.plugin.name`` - The plugin providing the implementation: the name it was registered under - its entry point name, or a module path such as ``datasette.default_permissions`` for Datasette's built-in plugins - falling back to the plugin object's ``__name__`` or class name.
 
+``datasette.permission.check``
+    One permission check for a single resource: a call to ``datasette.allowed()``, ``allowed_many()``, ``ensure_permission()`` or ``check_visibility()``. Checks those make internally - ``check_visibility()`` asks twice, once for the actor and once for an anonymous user - do not get spans of their own. The actor is never recorded.
+
+    Attributes:
+
+    - ``datasette.permission.action`` - The action being checked - for example ``view-table``. When ``allowed_many()`` checks several actions at once they are joined with ``", "``.
+    - ``datasette.resource.parent`` *(optional)* - The parent of the resource being checked - usually a database name. For a resource listing, the ``parent=`` filter. Omitted when there is none.
+    - ``datasette.resource.child`` *(optional)* - The child of the resource being checked - usually a table or query name. Omitted when there is none.
+    - ``datasette.permission.allowed`` *(optional)* - The verdict. For ``check_visibility()``, whether the actor can see the resource. Omitted when ``allowed_many()`` checks several actions, or when the check raised.
+
+``datasette.permission.resources``
+    Working out every resource an actor can access for an action: a call to ``datasette.allowed_resources()`` or ``allowed_resources_sql()``. For ``allowed_resources()`` the span covers running the query too. The actor is never recorded.
+
+    Attributes:
+
+    - ``datasette.permission.action`` - The action being checked - for example ``view-table``. When ``allowed_many()`` checks several actions at once they are joined with ``", "``.
+    - ``datasette.resource.parent`` *(optional)* - The parent of the resource being checked - usually a database name. For a resource listing, the ``parent=`` filter. Omitted when there is none.
+
 .. [[[end]]]
 
 .. _internals_telemetry_metrics:

@@ -257,3 +257,88 @@ async def test_setup_db_still_runs_when_invoke_startup_ran_first(tmp_path, monke
     # Idempotency: a second call must not recompute.
     await ds._startup_sequence()
     assert call_count["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_asgi_wrapper_runs_after_startup_fallback_path():
+    class AssertStartupPlugin:
+        __name__ = "AssertStartupPlugin"
+
+        @hookimpl
+        def asgi_wrapper(self, datasette):
+            def wrap(app):
+                async def check_startup(scope, receive, send):
+                    if scope["type"] == "http":
+                        assert (
+                            datasette._startup_invoked is True
+                        ), "asgi_wrapper saw an http scope before startup completed"
+                    await app(scope, receive, send)
+
+                return check_startup
+
+            return wrap
+
+    ds = Datasette(memory=True)
+    pm.register(AssertStartupPlugin(), name="assert_startup_plugin")
+    try:
+        assert ds._startup_invoked is False
+        app = ds.app()
+        transport = httpx2.ASGITransport(app=app)
+        async with httpx2.AsyncClient(
+            transport=transport, base_url="http://localhost"
+        ) as client:
+            response = await client.get("/-/versions.json")
+            assert response.status_code == 200
+    finally:
+        pm.unregister(name="assert_startup_plugin")
+
+    assert ds._startup_invoked is True
+
+
+@pytest.mark.asyncio
+async def test_short_circuit_wrapper_no_longer_defers_startup():
+    # Middleware that returns a response before getting to the rest of
+    # Datasette should still cause _startup_invoked=True
+    class ShortCircuitPlugin:
+        __name__ = "ShortCircuitPlugin"
+
+        @hookimpl
+        def asgi_wrapper(self, datasette):
+            def wrap(app):
+                async def forbidden(scope, receive, send):
+                    if scope["type"] != "http":
+                        await app(scope, receive, send)
+                        return
+                    await send(
+                        {
+                            "type": "http.response.start",
+                            "status": 403,
+                            "headers": [[b"content-type", b"text/plain"]],
+                        }
+                    )
+                    await send(
+                        {
+                            "type": "http.response.body",
+                            "body": b"Forbidden",
+                        }
+                    )
+
+                return forbidden
+
+            return wrap
+
+    ds = Datasette(memory=True)
+    pm.register(ShortCircuitPlugin(), name="short_circuit_plugin")
+    try:
+        assert ds._startup_invoked is False
+        app = ds.app()
+        transport = httpx2.ASGITransport(app=app)
+        async with httpx2.AsyncClient(
+            transport=transport, base_url="http://localhost"
+        ) as client:
+            response = await client.get("/-/versions.json")
+            assert response.status_code == 403
+    finally:
+        pm.unregister(name="short_circuit_plugin")
+
+    assert ds._startup_invoked is True

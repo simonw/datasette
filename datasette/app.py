@@ -3110,12 +3110,12 @@ ORDER BY allowed.parent, allowed.child
             on_startup=[self._startup_sequence, self._launch_background_tasks],
             on_shutdown=[self.invoke_shutdown],
         )
+        for wrapper in pm.hook.asgi_wrapper(datasette=self):
+            asgi = wrapper(asgi)
         asgi = AsgiRunOnFirstRequest(
             asgi,
             on_startup=[self._startup_sequence, self._launch_background_tasks],
         )
-        for wrapper in pm.hook.asgi_wrapper(datasette=self):
-            asgi = wrapper(asgi)
         return asgi
 
 

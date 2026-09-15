@@ -76,6 +76,8 @@ Or since this is the default command you can run this instead::
 
 Once started you can access it at ``http://localhost:8001``
 
+Use ``--internal PATH`` or the ``DATASETTE_INTERNAL`` environment variable to persist :ref:`Datasette's internal database <internals_internal>` to a SQLite file.
+
 .. [[[cog
     help(["serve", "--help"])
 .. ]]]

@@ -17,6 +17,7 @@ invoked at all.
 """
 
 import contextvars
+import inspect
 import re
 import threading
 import time
@@ -34,6 +35,8 @@ from .telemetry_registry import (
     DB_NAMESPACE,
     DB_SYSTEM,
     ERROR_TYPE,
+    HOOK,
+    HOOK_NAME,
     HTTP_REQUEST_METHOD,
     HTTP_RESPONSE_STATUS_CODE,
     INTERNAL_CLIENT,
@@ -46,6 +49,7 @@ from .telemetry_registry import (
     M_WRITE_QUEUE_DEPTH,
     M_WRITE_QUEUE_WAIT,
     OPERATION,
+    PLUGIN_NAME,
     SERVER_ADDRESS,
     URL_PATH,
     URL_SCHEME,
@@ -444,6 +448,76 @@ class TelemetryMiddleware:
                     if status >= 500 and not escaped:
                         span.set_status(Status(StatusCode.ERROR))
                         span.set_attribute(ERROR_TYPE, str(status))
+
+
+# --- Plugin hooks ---------------------------------------------------------
+
+# Hooks that get no span at all:
+#
+# - render_cell and permission_resources_sql fire per cell or per permission
+#   check - hundreds to thousands of times on one table page, enough to
+#   overflow BatchSpanProcessor's default 2048-span queue on their own. No
+#   aggregate span is built for them either.
+# - register_routes and asgi_wrapper run while Datasette.app() builds the ASGI
+#   app, outside any request - and datasette.client rebuilds it on every call,
+#   so each call would add stray single-span root traces for trivial work.
+UNTRACED_HOOKS = frozenset(
+    {"render_cell", "permission_resources_sql", "register_routes", "asgi_wrapper"}
+)
+
+
+def instrument_hookimpls(pm, plugin, plugin_name):
+    """
+    Wrap every hookimpl `plugin` just registered so each call emits a
+    `datasette.hook` span.
+
+    This replaces `hookimpl.function` after `PluginManager.register()`, by
+    which point pluggy has already read the function's argument names, so a
+    `*args, **kwargs` wrapper does not change which arguments get passed.
+    """
+    for hook_caller in pm.get_hookcallers(plugin) or ():
+        if hook_caller.name in UNTRACED_HOOKS:
+            continue
+        for hookimpl in hook_caller.get_hookimpls():
+            if hookimpl.plugin is not plugin:
+                continue
+            # Old- and new-style wrappers are generators with their own protocol
+            if hookimpl.hookwrapper or hookimpl.wrapper:
+                continue
+            hookimpl.function = _traced_hookimpl(
+                hookimpl.function,
+                {HOOK_NAME: hook_caller.name, PLUGIN_NAME: plugin_name},
+            )
+
+
+def _traced_hookimpl(function, attributes):
+    def wrapper(*args, **kwargs):
+        # pluggy dispatches synchronously, and an `async def` hookimpl only
+        # returns a coroutine here - the work happens when Datasette awaits
+        # it. So the call is timed and its span created afterwards, once it
+        # is known whether there is a coroutine still to run.
+        start = time.time_ns()
+        try:
+            result = function(*args, **kwargs)
+        except BaseException:
+            with tracer.start_as_current_span(
+                HOOK, start_time=start, attributes=attributes
+            ):
+                raise
+        if inspect.iscoroutine(result):
+            return _await_in_hook_span(result, attributes)
+        tracer.start_span(HOOK, start_time=start, attributes=attributes).end()
+        return result
+
+    return wrapper
+
+
+async def _await_in_hook_span(coroutine, attributes):
+    # The span starts here, when the coroutine is actually awaited, not at
+    # dispatch: a caller that stops after the first non-None result discards
+    # the rest unawaited, and a span started for those would never end.
+    with tracer.start_as_current_span(HOOK, attributes=attributes):
+        return await coroutine
 
 
 # --- Metrics --------------------------------------------------------------

@@ -71,6 +71,7 @@ EXPECTED_ATTRIBUTES = {
         "datasette.transaction",
     },
     "datasette.startup": set(),
+    "datasette.hook": {"datasette.hook.name", "datasette.plugin.name"},
 }
 EXPECTED_SPANS = set(EXPECTED_ATTRIBUTES)
 

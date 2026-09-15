@@ -908,6 +908,65 @@ async def test_hook_startup(ds_client):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("return_style", ["async_def", "async_function", "coroutine"])
+async def test_hook_startup_async(return_style, tmp_path):
+    db_path = tmp_path / "startup.db"
+    sqlite3.connect(db_path).close()
+    ds = Datasette([db_path])
+
+    async def initialize(datasette):
+        await datasette.get_database().execute_write(
+            "create table startup_test (id integer)"
+        )
+
+    class AsyncStartupPlugin:
+        __name__ = "AsyncStartupPlugin"
+
+        if return_style == "async_def":
+
+            @hookimpl
+            async def startup(self, datasette):
+                await initialize(datasette)
+
+        else:
+
+            @hookimpl
+            def startup(self, datasette):
+                async def inner():
+                    await initialize(datasette)
+
+                return inner if return_style == "async_function" else inner()
+
+    ds.pm.register(AsyncStartupPlugin(), name="async_startup_plugin")
+    try:
+        await ds.invoke_startup()
+        result = await ds.get_database().execute("select count(*) from startup_test")
+        assert result.first()[0] == 0
+    finally:
+        ds.pm.unregister(name="async_startup_plugin")
+
+
+@pytest.mark.asyncio
+async def test_hook_startup_async_error():
+    ds = Datasette(memory=True)
+
+    class FailingStartupPlugin:
+        __name__ = "FailingStartupPlugin"
+
+        @hookimpl
+        async def startup(self, datasette):
+            await datasette.get_database().execute("select 1")
+            raise StartupError("Invalid plugin configuration")
+
+    ds.pm.register(FailingStartupPlugin(), name="failing_startup_plugin")
+    try:
+        with pytest.raises(StartupError, match="Invalid plugin configuration"):
+            await ds.invoke_startup()
+    finally:
+        ds.pm.unregister(name="failing_startup_plugin")
+
+
+@pytest.mark.asyncio
 async def test_hook_startup_metadata_available(ds_client):
     # Metadata from metadata.yaml should be populated before startup() fires
     assert "title" in ds_client.ds._startup_metadata_keys

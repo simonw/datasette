@@ -216,6 +216,37 @@ a:active  {
 	text-decoration: underline;
 }
 
+button.count-all {
+    background: none;
+    border: none;
+    padding: 3px 0;
+    margin-left: 0.25rem;
+    color: #276890;
+    font-family: inherit;
+    font-size: 0.8125rem;
+    font-weight: 400;
+    line-height: 1.5;
+    cursor: pointer;
+}
+
+button.count-all:hover,
+button.count-all:focus-visible {
+    text-decoration: underline;
+}
+
+button.count-all:disabled {
+    color: #596478;
+    cursor: wait;
+}
+
+@media (pointer: coarse) {
+    button.count-all {
+        min-height: 44px;
+        padding-left: 7px;
+        padding-right: 7px;
+    }
+}
+
 button.button-as-link {
     background: none;
     border: none;

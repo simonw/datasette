@@ -145,6 +145,7 @@ from .views.stored_queries import (
 )
 from .views.table import (
     TableAutocompleteView,
+    TableCountView,
     TableDropView,
     TableFragmentView,
     TableInsertView,
@@ -2922,6 +2923,10 @@ ORDER BY allowed.parent, allowed.child
         add_route(
             TableSetColumnTypeView.as_view(self),
             r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/set-column-type$",
+        )
+        add_route(
+            TableCountView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/count$",
         )
         add_route(
             TableFragmentView.as_view(self),

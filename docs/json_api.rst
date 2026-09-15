@@ -1326,6 +1326,23 @@ The following extras are available for arbitrary SQL query responses and stored,
 
 .. [[[end]]]
 
+.. _TableCountView:
+
+Counting all matching rows
+--------------------------
+
+``POST /<database>/<table>/-/count`` returns an exact count of the rows matching the table's query string filters::
+
+    POST /fixtures/facetable/-/count?state=CA
+
+    {"ok": true, "count": 10}
+
+The endpoint supports the same column, search and plugin filters as the table page. Pagination and display options such as ``_next``, ``_size`` and ``_sort`` do not affect the count.
+
+This requires ``view-table`` permission. ``execute-sql`` permission is only needed if using ``_where`` filters.
+
+Unlike the ``count`` extra, this count is not capped by the row count limit. The usual SQL time limit still applies; a timed-out count returns a 400 JSON error.
+
 .. _TableAutocompleteView:
 
 Table autocomplete

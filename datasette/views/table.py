@@ -1428,6 +1428,42 @@ class TableDropView(BaseView):
         return Response.json({"ok": True}, status=200)
 
 
+class TableCountView(BaseView):
+    name = "table-count"
+
+    async def post(self, request):
+        try:
+            return await self.count(request)
+        except (NotFound, Forbidden, BadRequest, DatasetteError) as ex:
+            return Response.error(str(ex), status=ex.status)
+
+    async def count(self, request):
+        resolved = await self.ds.resolve_table(request)
+        visible, _private = await self.ds.check_visibility(
+            request.actor,
+            action="view-table",
+            resource=TableResource(database=resolved.db.name, table=resolved.table),
+        )
+        if not visible:
+            raise Forbidden("You do not have permission to view this table")
+        _, where_clauses, params, _, _ = await _table_filters(
+            self.ds, request, resolved.db.name, resolved.table
+        )
+        sql = f"select count(*) from {escape_sqlite(resolved.table)}"
+        if where_clauses:
+            sql += " where " + " and ".join(where_clauses)
+        try:
+            results = await resolved.db.execute(sql, params)
+        except QueryInterrupted:
+            return Response.error("Count query timed out", status=400)
+        except (sqlite3.OperationalError, InvalidSql) as ex:
+            return Response.error(str(ex), status=400)
+        return Response.json(
+            {"ok": True, "count": results.single_value()},
+            headers={"Cache-Control": "no-store"},
+        )
+
+
 class TableFragmentView(BaseView):
     name = "table-fragment"
 
@@ -1953,6 +1989,47 @@ async def table_view_traced(datasette, request):
     return r
 
 
+async def _table_filters(datasette, request, database_name, table_name):
+    # Arguments that start with _ and don't contain a __ are
+    # special - things like ?_search= - and should not be
+    # treated as filters.
+    filter_args = []
+    for key in request.args:
+        if not (key.startswith("_") and "__" not in key):
+            for v in request.args.getlist(key):
+                filter_args.append((key, v))
+
+    # Build where clauses from query string arguments
+    filters = Filters(sorted(filter_args))
+    where_clauses, params = filters.build_where_clauses(table_name)
+
+    # Execute filters_from_request plugin hooks - including the default
+    # ones that live in datasette/filters.py
+    extra_context_from_filters = {}
+    extra_human_descriptions = []
+
+    for hook in pm.hook.filters_from_request(
+        request=request,
+        table=table_name,
+        database=database_name,
+        datasette=datasette,
+    ):
+        filter_arguments = await await_me_maybe(hook)
+        if filter_arguments:
+            where_clauses.extend(filter_arguments.where_clauses)
+            params.update(filter_arguments.params)
+            extra_human_descriptions.extend(filter_arguments.human_descriptions)
+            extra_context_from_filters.update(filter_arguments.extra_context)
+
+    return (
+        filters,
+        where_clauses,
+        params,
+        extra_human_descriptions,
+        extra_context_from_filters,
+    )
+
+
 async def table_view_data(
     datasette,
     request,
@@ -2031,36 +2108,13 @@ async def table_view_data(
 
     table_metadata = await datasette.table_config(database_name, table_name)
 
-    # Arguments that start with _ and don't contain a __ are
-    # special - things like ?_search= - and should not be
-    # treated as filters.
-    filter_args = []
-    for key in request.args:
-        if not (key.startswith("_") and "__" not in key):
-            for v in request.args.getlist(key):
-                filter_args.append((key, v))
-
-    # Build where clauses from query string arguments
-    filters = Filters(sorted(filter_args))
-    where_clauses, params = filters.build_where_clauses(table_name)
-
-    # Execute filters_from_request plugin hooks - including the default
-    # ones that live in datasette/filters.py
-    extra_context_from_filters = {}
-    extra_human_descriptions = []
-
-    for hook in pm.hook.filters_from_request(
-        request=request,
-        table=table_name,
-        database=database_name,
-        datasette=datasette,
-    ):
-        filter_arguments = await await_me_maybe(hook)
-        if filter_arguments:
-            where_clauses.extend(filter_arguments.where_clauses)
-            params.update(filter_arguments.params)
-            extra_human_descriptions.extend(filter_arguments.human_descriptions)
-            extra_context_from_filters.update(filter_arguments.extra_context)
+    (
+        filters,
+        where_clauses,
+        params,
+        extra_human_descriptions,
+        extra_context_from_filters,
+    ) = await _table_filters(datasette, request, database_name, table_name)
 
     # Deal with custom sort orders
     sortable_columns = await _sortable_columns_for_table(

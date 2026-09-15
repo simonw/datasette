@@ -108,6 +108,11 @@ def write_playwright_database(db_path):
     conn = sqlite3.connect(db_path)
     try:
         conn.executescript("""
+        create table count_numbers (id integer primary key);
+        with recursive sequence(id) as (
+            select 1 union all select id + 1 from sequence where id < 10002
+        )
+        insert into count_numbers select id from sequence;
         create table projects (
             id integer primary key,
             title text not null,
@@ -1604,3 +1609,45 @@ def test_delete_row_flow_removes_row(page, datasette_server):
     page.locator(".row-mutation-status", has_text="Deleted row 1").wait_for()
     page.locator('tr[data-row="1"]').wait_for(state="detached")
     assert project_rows(datasette_server, id=1) == []
+
+
+@pytest.mark.playwright
+def test_count_all(page, datasette_server):
+    page.goto(datasette_server + "data/count_numbers?id__gt=1&_sort=id")
+    assert page.locator(".table-count").inner_text() == "10,000+ rows"
+    with page.expect_response("**/count_numbers/-/count?*") as response:
+        page.get_by_role("button", name="count all", exact=True).click()
+    assert response.value.request.method == "POST"
+    assert response.value.request.post_data is None
+    assert "content-type" not in response.value.request.headers
+    assert response.value.json() == {"ok": True, "count": 10001}
+    page.wait_for_function(
+        'document.querySelector(".table-count").textContent === "10,001 rows"'
+    )
+    assert page.locator(".count-all").count() == 0
+    assert "id" in page.locator("h3").first.inner_text()
+
+
+@pytest.mark.playwright
+def test_count_all_error_retry(page, datasette_server):
+    page.goto(datasette_server + "data/count_numbers?id__gt=1")
+    page.route(
+        "**/count_numbers/-/count?*",
+        lambda route: route.fulfill(
+            status=400,
+            content_type="application/json",
+            body=json.dumps({"ok": False, "errors": ["Count query timed out"]}),
+        ),
+    )
+    button = page.get_by_role("button", name="count all", exact=True)
+    button.click()
+    page.wait_for_function(
+        'document.querySelector(".count-error").textContent === "Count query timed out"'
+    )
+    assert button.is_enabled()
+    page.unroute("**/count_numbers/-/count?*")
+    button.click()
+    page.wait_for_function(
+        'document.querySelector(".table-count").textContent === "10,001 rows"'
+    )
+    assert page.locator(".count-error").inner_text() == ""

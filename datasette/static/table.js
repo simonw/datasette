@@ -860,10 +860,45 @@ function openColumnChooser() {
   });
 }
 
+function initCountAll() {
+  var button = document.querySelector(".count-all");
+  if (!button) {
+    return;
+  }
+  button.addEventListener("click", async function () {
+    var count = document.querySelector(".table-count");
+    var error = document.querySelector(".count-error");
+    button.disabled = true;
+    button.textContent = "Counting…";
+    error.textContent = "";
+    try {
+      var response = await fetch(button.dataset.countUrl + location.search, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+        },
+      });
+      var data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error((data.errors || ["Count failed"]).join(" "));
+      }
+      count.textContent =
+        data.count.toLocaleString("en-US") +
+        (data.count === 1 ? " row" : " rows");
+      button.remove();
+    } catch (ex) {
+      error.textContent = ex.message || "Count failed";
+      button.disabled = false;
+      button.textContent = "count all";
+    }
+  });
+}
+
 // Ensures Table UI is initialized only after the Manager is ready.
 document.addEventListener("datasette_init", function (evt) {
   const { detail: manager } = evt;
 
+  initCountAll();
   initializeColumnActions(manager);
 
   // Main table

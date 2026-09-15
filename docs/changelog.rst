@@ -9,6 +9,7 @@ Changelog
 Unreleased
 ----------
 
+- Fixed incorrect counts when clicking **count all** on filtered table pages. The button now uses a new :ref:`POST count endpoint <TableCountView>`. (:issue:`2914`)
 - Datasette now uses `httpx2 <https://httpx2.pydantic.dev/>`__, the Pydantic-maintained continuation of `httpx <https://www.python-httpx.org/>`__, in place of ``httpx``. The public API is the same, but responses returned by :ref:`internals_datasette_client` are now ``httpx2.Response`` objects rather than ``httpx.Response``. Plugins that use ``isinstance()`` checks against ``httpx.Response`` should be updated to use ``httpx2``. **Plugins that use httpx without explicitly depending on it** will need to add an explicit dependency or switch to `httpx2`.
 
 .. _v1_0_a39:

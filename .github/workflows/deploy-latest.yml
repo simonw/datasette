@@ -61,6 +61,9 @@ jobs:
           fixtures-metadata.json \
           plugins \
           --extra-db-filename extra_database.db
+        # Package the config with the plugins, excluding test-only plugin secrets
+        # that reference temporary files outside the deployed container.
+        jq 'del(.plugins)' fixtures-config.json > plugins/fixtures-config.json
     - name: Build docs.db
       if: ${{ steps.deployment-prerequisites.outputs.available == 'true' && github.ref == 'refs/heads/main' }}
       run: |-
@@ -144,7 +147,7 @@ jobs:
             --plugins-dir=plugins \
             --branch=$GITHUB_SHA \
             --version-note=$GITHUB_SHA \
-            --extra-options="--setting template_debug 1 --setting trace_debug 1 --crossdb --root" \
+            --extra-options="--config plugins/fixtures-config.json --setting template_debug 1 --setting trace_debug 1 --crossdb --root" \
             --install 'datasette-ephemeral-tables>=0.2.2' \
             --service "datasette-latest$SUFFIX" \
             --secret $LATEST_DATASETTE_SECRET

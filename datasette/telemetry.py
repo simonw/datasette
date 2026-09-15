@@ -267,6 +267,38 @@ def _url_path(scope):
     return scope.get("path", "")
 
 
+def _add_trace_response_headers(headers, span_context):
+    """
+    Append `traceresponse` and `Server-Timing: traceparent` for a span context.
+
+    Hand-rolled rather than using `TraceResponsePropagator`, because that
+    lives in `opentelemetry-instrumentation` (opentelemetry-python-contrib),
+    not `opentelemetry-api` - the same reason this module hand-rolls the ASGI
+    span. See
+    https://github.com/open-telemetry/opentelemetry-python-contrib/blob/main/opentelemetry-instrumentation/src/opentelemetry/instrumentation/propagators.py
+
+    `traceresponse` is the W3C Trace Context Level 2 response header;
+    `Server-Timing` is the only channel page-load JavaScript can read, via
+    `performance.getEntriesByType("navigation")[0].serverTiming`.
+    """
+    value = "00-{}-{}-{:02x}".format(
+        otel_trace.format_trace_id(span_context.trace_id),
+        otel_trace.format_span_id(span_context.span_id),
+        span_context.trace_flags,
+    ).encode("latin-1")
+    headers.append((b"traceresponse", value))
+    headers.append((b"server-timing", b'traceparent;desc="' + value + b'"'))
+    # Append to an existing Access-Control-Expose-Headers, never overwrite
+    # and never add one: without CORS (`--cors` or a CORS plugin) it means
+    # nothing. Server-Timing does not need it - the Performance API is
+    # governed by Timing-Allow-Origin, an operator decision core leaves alone.
+    for i, (key, existing) in enumerate(headers):
+        if key.lower() == b"access-control-expose-headers":
+            if existing.strip() != b"*":
+                headers[i] = (key, existing + b", traceresponse")
+            return
+
+
 # The request span is handed to `DatasetteRouter.route_path` through the ASGI
 # scope rather than through `get_current_span()`, because by the time routing
 # happens the current span may well be something else: a plugin
@@ -380,6 +412,12 @@ class TelemetryMiddleware:
                     and "status" not in status_holder
                 ):
                     status_holder["status"] = message["status"]
+                    # A copy, so the app's own message and header list are
+                    # left untouched. Headers are optional in ASGI.
+                    message = dict(message, headers=list(message.get("headers") or []))
+                    _add_trace_response_headers(
+                        message["headers"], span.get_span_context()
+                    )
                 await send(message)
 
             escaped = False

@@ -2472,7 +2472,7 @@ ORDER BY allowed.parent, allowed.child
                 {
                     "name": t.name,
                     "state": t.state,
-                    "plugin": t.plugin,
+                    "function": t.function,
                     "started_at": t.started_at,
                     "exception": repr(t.exception) if t.exception else None,
                 }
@@ -3060,7 +3060,7 @@ ORDER BY allowed.parent, allowed.child
 
         Returns a :class:`~datasette.background_tasks.BackgroundTask`
         handle (``.name``, ``.state``, ``.task``, ``.exception``,
-        ``.started_at``, ``.plugin``, ``.cancel()``).
+        ``.started_at``, ``.function``, ``.cancel()``).
 
         ``name`` defaults to ``func.__qualname__``; on a name collision a
         ``-2``, ``-3``, ... suffix is appended, since names are how

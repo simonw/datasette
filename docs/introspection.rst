@@ -298,20 +298,23 @@ field can reveal internals such as file paths or query text:
             {
                 "name": "my_plugin.poll_for_updates",
                 "state": "running",
-                "plugin": "my-plugin",
+                "function": "my_plugin.poll_for_updates",
                 "started_at": "2026-07-30T12:00:00+00:00",
                 "exception": null
             },
             {
                 "name": "my_plugin.broken_task",
                 "state": "crashed",
-                "plugin": "my-plugin",
+                "function": "my_plugin.broken_task",
                 "started_at": "2026-07-30T12:00:00+00:00",
                 "exception": "ValueError('something went wrong')"
             }
         ],
         "launched": true
     }
+
+Each entry's ``function`` identifies the callable by its dotted module and
+qualified name.
 
 Each entry's ``state`` is one of ``registered`` (added but not yet
 launched), ``running``, ``completed``, ``crashed`` or ``cancelled``.

@@ -1515,8 +1515,8 @@ BackgroundTask objects
 ``.started_at`` - string or ``None``
     ISO 8601 UTC timestamp of when the task was launched.
 
-``.plugin`` - string or ``None``
-    Best-effort name of the plugin that registered the task, resolved from the module ``func`` was defined in. Used by ``/-/tasks`` and log messages; ``None`` if it cannot be determined.
+``.function`` - string
+    The callable's dotted module and qualified name, for example ``my_plugin.jobs.poll_for_updates``.
 
 ``.cancel()``
     Cancel the task. If it has already launched, this cancels the underlying ``asyncio.Task`` — ``.state`` becomes ``cancelled`` once the cancellation is observed. If it has not launched yet, it is removed from the queue so it never runs.

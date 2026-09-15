@@ -29,7 +29,6 @@ from __future__ import annotations
 import asyncio
 import datetime
 import functools
-import inspect
 import logging
 from collections.abc import Awaitable, Callable
 
@@ -40,46 +39,13 @@ def _utcnow_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
-def _resolve_plugin_name(func: Callable) -> str | None:
-    """Best-effort, cheap attempt to work out which registered plugin a
-    background-task function belongs to, for the ``.plugin`` field on
-    :class:`BackgroundTask` (used by ``/-/tasks`` and logs).
-
-    This matches ``func``'s module against every currently-registered
-    pluggy plugin's module - the same module a plugin's ``startup`` hook
-    implementation lives in, in the overwhelmingly common case where
-    ``add_background_task`` is called directly from (or a couple of
-    frames below) that hook. It deliberately does *not* walk the call
-    stack or otherwise try harder: this is a nice-to-have for
-    introspection, not something worth building heavy machinery for, and
-    returning ``None`` when it can't tell is a fine fallback.
-    """
-    try:
-        from .plugins import pm
-
-        module = inspect.getmodule(func)
-        if module is None:
-            return None
-        module_name = getattr(module, "__name__", None)
-        if not module_name:
-            return None
-        for plugin in pm.get_plugins():
-            plugin_module = (
-                plugin if inspect.ismodule(plugin) else inspect.getmodule(plugin)
-            )
-            if plugin_module is None:
-                continue
-            plugin_module_name = getattr(plugin_module, "__name__", None)
-            if not plugin_module_name:
-                continue
-            if module_name == plugin_module_name or module_name.startswith(
-                plugin_module_name + "."
-            ):
-                return pm.get_name(plugin)
-    except Exception:  # noqa: BLE001
-        # Never let plugin-name resolution break task registration.
-        return None
-    return None
+def _function_path(func: Callable) -> str:
+    """Describe the callable without guessing which plugin registered it."""
+    while isinstance(func, functools.partial):
+        func = func.func
+    if not hasattr(func, "__qualname__"):
+        func = type(func).__call__
+    return f"{func.__module__}.{func.__qualname__}"
 
 
 class BackgroundTask:
@@ -96,14 +62,13 @@ class BackgroundTask:
         self,
         name: str,
         func: Callable[[object], Awaitable[None]],
-        plugin: str | None = None,
     ):
         self.name = name
         self.state = "registered"
         self.task: asyncio.Task | None = None
         self.exception: BaseException | None = None
         self.started_at: str | None = None
-        self.plugin = plugin
+        self.function = _function_path(func)
         self._func = func
         self._supervisor: BackgroundTaskSupervisor | None = None
 
@@ -160,8 +125,7 @@ class BackgroundTaskSupervisor:
     def add(self, func, name=None) -> BackgroundTask:
         base_name = name or getattr(func, "__qualname__", None) or repr(func)
         actual_name = self._unique_name(base_name)
-        plugin = _resolve_plugin_name(func)
-        handle = BackgroundTask(actual_name, func, plugin=plugin)
+        handle = BackgroundTask(actual_name, func)
         handle._supervisor = self
         self._tasks.append(handle)
         self._names.add(actual_name)

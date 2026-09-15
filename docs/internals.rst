@@ -2644,6 +2644,20 @@ A request to a table page produces a span named, in full::
 
 .. [[[end]]]
 
+.. _internals_telemetry_response_headers:
+
+Trace context in responses
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+While the request span is recording, every response includes that span's trace context in two headers::
+
+    traceresponse: 00-<trace-id>-<span-id>-<flags>
+    Server-Timing: traceparent;desc="00-<trace-id>-<span-id>-<flags>"
+
+``traceresponse`` is the W3C Trace Context Level 2 response header. If CORS is enabled, ``traceresponse`` is added to the existing ``Access-Control-Expose-Headers`` value so cross-origin ``fetch()`` calls can read it. ``Server-Timing`` lets page JavaScript read the trace context through ``performance.getEntriesByType("navigation")[0].serverTiming``. Datasette does not set ``Timing-Allow-Origin``.
+
+Neither header is sent if no tracer provider is installed. If the sampler dropped the trace, the flags are ``00`` and the IDs will not be found in your tracing backend.
+
 .. _internals_telemetry_metrics:
 
 Metric reference

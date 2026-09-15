@@ -192,6 +192,26 @@ def _url_path(scope):
     return scope.get("path", "")
 
 
+def _add_trace_response_headers(headers, span_context):
+    """
+    Append W3C `traceresponse` and `Server-Timing: traceparent` headers.
+
+    Hand-rolled because `TraceResponsePropagator` is not in `opentelemetry-api`.
+    """
+    trace_id = otel_trace.format_trace_id(span_context.trace_id)
+    span_id = otel_trace.format_span_id(span_context.span_id)
+    value = f"00-{trace_id}-{span_id}-{span_context.trace_flags:02x}".encode("latin-1")
+    headers.append((b"traceresponse", value))
+    headers.append((b"server-timing", b'traceparent;desc="' + value + b'"'))
+    # Only extend an existing Access-Control-Expose-Headers, which is only
+    # present if CORS is enabled.
+    for i, (key, existing) in enumerate(headers):
+        if key.lower() == b"access-control-expose-headers":
+            if existing.strip() != b"*":
+                headers[i] = (key, existing + b", traceresponse")
+            return
+
+
 # The request span is passed to the router in the ASGI scope, because a
 # plugin's asgi_wrapper() middleware may have made its own span current.
 # Absent if the span is not recording.
@@ -265,6 +285,11 @@ class TelemetryMiddleware:
                     and "status" not in status_holder
                 ):
                     status_holder["status"] = message["status"]
+                    # Copy so the app's message and headers are not mutated
+                    message = dict(message, headers=list(message.get("headers") or []))
+                    _add_trace_response_headers(
+                        message["headers"], span.get_span_context()
+                    )
                 await send(message)
 
             escaped = False

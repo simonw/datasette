@@ -76,7 +76,7 @@ Shows the version of Datasette, Python and SQLite. `Versions example <https://la
 /-/plugins
 ----------
 
-Shows a list of currently installed plugins and their versions. `Plugins example <https://san-francisco.datasettes.com/-/plugins>`_:
+Shows a list of currently installed plugins and their versions. `Plugins example <https://datasette.io/-/plugins>`_:
 
 .. code-block:: json
 

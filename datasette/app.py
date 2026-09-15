@@ -424,6 +424,7 @@ class Datasette:
         default_deny=False,
     ):
         self._startup_invoked = False
+        self._shutdown_invoked = False
         self._closed = False
         assert config_dir is None or isinstance(
             config_dir, Path
@@ -3081,12 +3082,25 @@ ORDER BY allowed.parent, allowed.child
             return
         await self._background_tasks.launch_all()
 
+    async def invoke_shutdown(self):
+        """Run the graceful teardown sequence: plugin ``shutdown`` hooks,
+        then cancel and drain supervised background tasks, then close
+        every database.
+        """
+        if self._shutdown_invoked:
+            return
+        self._shutdown_invoked = True
+        for hook in pm.hook.shutdown(datasette=self):
+            try:
+                await await_me_maybe(hook)
+            except Exception:
+                logging.getLogger("datasette").exception("shutdown hook failed")
+        await self._background_tasks.cancel_all(grace=5.0)
+        self.close()
+
     def app(self):
         """Returns an ASGI app function that serves the whole of Datasette"""
         routes = self._routes()
-
-        async def _close_on_shutdown():
-            self.close()
 
         asgi = CrossOriginProtectionMiddleware(DatasetteRouter(self, routes), self)
         if self.setting("trace_debug"):
@@ -3094,7 +3108,7 @@ ORDER BY allowed.parent, allowed.child
         asgi = AsgiLifespan(
             asgi,
             on_startup=[self._startup_sequence, self._launch_background_tasks],
-            on_shutdown=[_close_on_shutdown],
+            on_shutdown=[self.invoke_shutdown],
         )
         asgi = AsgiRunOnFirstRequest(
             asgi,

@@ -495,10 +495,10 @@ Lets you customize the display of values within table cells in the HTML table vi
     The name of the column being rendered
 
 ``table`` - string or None
-    The name of the table - or ``None`` if this is a custom SQL query
+    The name of the table or view - or ``None`` if this is a custom SQL query
 
 ``pks`` - list of strings
-    The primary key column names for the table being rendered. For tables without an explicitly defined primary key, this will be ``["rowid"]``. For custom SQL queries and views (where ``table`` is ``None``), this will be an empty list ``[]``.
+    The primary key column names for the table being rendered. For tables without an explicitly defined primary key, this will be ``["rowid"]``. For custom SQL queries and views, this will be an empty list ``[]``.
 
 ``database`` - string
     The name of the database

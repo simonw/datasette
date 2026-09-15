@@ -671,7 +671,7 @@ async def display_columns_and_rows(
     }
     pks = await db.primary_keys(table_name)
     pks_for_display = pks
-    if not pks_for_display:
+    if not pks_for_display and not await db.view_exists(table_name):
         pks_for_display = ["rowid"]
     label_column = None
     if link_column:

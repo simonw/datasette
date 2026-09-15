@@ -410,6 +410,20 @@ FACET_SUGGESTION_COUNT = Attribute(
     "datasette.facet.suggestion_count",
     "The number of facets suggested.",
 )
+CSV_STREAM = Attribute(
+    "datasette.csv.stream",
+    "True if ``?_stream=on`` was used, so every page of results was exported "
+    "rather than just the first.",
+)
+CSV_ROWS_WRITTEN = Attribute(
+    "datasette.csv.rows_written",
+    "The number of data rows written to the CSV, not counting the header row. "
+    "Row contents are never recorded.",
+)
+CSV_TRUNCATED = Attribute(
+    "datasette.csv.truncated",
+    "True if the export was cut short by :ref:`setting_max_csv_mb`.",
+)
 
 
 # --- Spans ----------------------------------------------------------------
@@ -581,6 +595,18 @@ FACET_SUGGEST = SpanName(
     (FACET_SUGGESTION_COUNT,),
 )
 
+CSV = SpanName(
+    "datasette.csv",
+    "Writing a CSV response body, for a table, view or query exported as "
+    "``.csv``. It runs while the response is being sent, after the view has "
+    "returned, and covers every page of a ``?_stream=on`` export - the "
+    "``db.query`` spans for the second and later pages are its children. The "
+    "first page is fetched before it starts, by the view. A failure part way "
+    "through, other than hitting :ref:`setting_max_csv_mb`, sets the status to "
+    "``ERROR``.",
+    (CSV_STREAM, CSV_ROWS_WRITTEN, CSV_TRUNCATED),
+)
+
 SPANS = (
     HTTP_REQUEST,
     DB_QUERY,
@@ -594,6 +620,7 @@ SPANS = (
     RENDER_TEMPLATE,
     FACET,
     FACET_SUGGEST,
+    CSV,
 )
 
 

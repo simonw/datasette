@@ -2,10 +2,20 @@ import csv
 import hashlib
 import sys
 
+from opentelemetry.trace import StatusCode
+
+from datasette.telemetry import tracer
+from datasette.telemetry_registry import (
+    CSV,
+    CSV_ROWS_WRITTEN,
+    CSV_STREAM,
+    CSV_TRUNCATED,
+)
 from datasette.utils import (
     EscapeHtmlWriter,
     InvalidSql,
     LimitedWriter,
+    WriteLimitExceeded,
     add_cors_headers,
     path_from_row_pks,
     path_with_format,
@@ -238,6 +248,21 @@ async def stream_csv(datasette, fetch_data, request, database):
         postamble = "</textarea></body></html>"
 
     async def stream_fn(r):
+        # AsgiStream.asgi_send runs this inline while sending the response, so
+        # the span is still a child of the request span. `with` ends it even
+        # if the client disconnects and the write raises or is cancelled.
+        # Deliberately one span for the whole body, not one per page or row.
+        with tracer.start_as_current_span(CSV) as span:
+            counts = {"rows": 0, "truncated": False}
+            try:
+                await write_csv(r, span, counts)
+            finally:
+                if span.is_recording():
+                    span.set_attribute(CSV_STREAM, bool(stream))
+                    span.set_attribute(CSV_ROWS_WRITTEN, counts["rows"])
+                    span.set_attribute(CSV_TRUNCATED, counts["truncated"])
+
+    async def write_csv(r, span, counts):
         nonlocal data, trace
         limited_writer = LimitedWriter(r, datasette.setting("max_csv_mb"))
         if trace:
@@ -316,7 +341,12 @@ async def stream_csv(datasette, fetch_data, request, database):
                             else:
                                 new_row.append(cell)
                         await writer.writerow(new_row)
+                    counts["rows"] += 1
             except Exception as ex:  # noqa: BLE001
+                if isinstance(ex, WriteLimitExceeded):
+                    counts["truncated"] = True
+                else:
+                    span.set_status(StatusCode.ERROR, type(ex).__name__)
                 # Streaming CSV: report the error into the response body and stop
                 sys.stderr.write(f"Caught this error: {ex}\n")
                 sys.stderr.flush()

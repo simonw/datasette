@@ -58,6 +58,8 @@ async def test_tasks_registered_in_startup_hook_run_after_lifespan_startup():
 
     async def task_one(datasette):
         events.append("task_one")
+        # Wait indefinitely to simulate long-lived background work, keeping
+        # the task "running" for the assertions below until cleanup cancels it.
         await asyncio.Event().wait()
 
     async def task_two(datasette):

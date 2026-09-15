@@ -387,6 +387,29 @@ TEMPLATE_NAME = Attribute(
     "from a string, which has no name.",
     optional=True,
 )
+FACET_TYPE = Attribute(
+    "datasette.facet.type",
+    "The facet class's ``type`` - ``column``, ``array`` and ``date`` in "
+    "core, or whatever a plugin's ``register_facet_classes()`` class declares.",
+)
+FACET_COLUMNS = Attribute(
+    "datasette.facet.columns",
+    "The columns being faceted by this facet type, in the order they were "
+    "requested - from ``?_facet=``-style query string arguments and table "
+    "configuration. Column names only, never the values being counted.",
+)
+FACET_TIMED_OUT_COLUMNS = Attribute(
+    "datasette.facet.timed_out_columns",
+    "The columns whose facet query exceeded "
+    ":ref:`setting_facet_time_limit_ms`. Omitted when none did. A facet "
+    "timing out is an expected answer rather than a failure, so the span "
+    "status is not set to ``ERROR``.",
+    optional=True,
+)
+FACET_SUGGESTION_COUNT = Attribute(
+    "datasette.facet.suggestion_count",
+    "The number of facets suggested.",
+)
 
 
 # --- Spans ----------------------------------------------------------------
@@ -539,6 +562,25 @@ RENDER_TEMPLATE = SpanName(
     (TEMPLATE_NAME,),
 )
 
+FACET = SpanName(
+    "datasette.facet",
+    "Calculating the requested facets of one facet type on a table page: a "
+    "call to that facet class's ``facet_results()``. The facet SQL runs "
+    "inside it, so its ``db.query`` spans are children. A facet type with "
+    "nothing requested emits no span.",
+    (FACET_TYPE, FACET_COLUMNS, FACET_TIMED_OUT_COLUMNS),
+)
+
+FACET_SUGGEST = SpanName(
+    "datasette.facet.suggest",
+    "Discovering suggested facets for a table page, across every facet type "
+    "and column - one span in total, not one per candidate column, which "
+    "would be high volume on a wide table. The probing queries, run under "
+    ":ref:`setting_facet_suggest_time_limit_ms`, are its children. Controlled "
+    "by the :ref:`setting_suggest_facets` setting.",
+    (FACET_SUGGESTION_COUNT,),
+)
+
 SPANS = (
     HTTP_REQUEST,
     DB_QUERY,
@@ -550,6 +592,8 @@ SPANS = (
     PERMISSION_CHECK,
     PERMISSION_RESOURCES,
     RENDER_TEMPLATE,
+    FACET,
+    FACET_SUGGEST,
 )
 
 

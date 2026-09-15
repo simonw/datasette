@@ -35,7 +35,7 @@ class DatasetteError(Exception):
         self.error_dict = error_dict or {}
         self.status = status
         self.message_is_html = message_is_html
-        # Plain text used for JSON error responses when message is HTML
+        # Plain text used for JSON and CSV error responses when message is HTML
         self.plain_message = plain_message
 
 

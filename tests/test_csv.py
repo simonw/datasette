@@ -167,6 +167,66 @@ async def test_custom_sql_csv(ds_client):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("download", (False, True))
+@pytest.mark.parametrize(
+    "query_string,expected_error",
+    (
+        ("sql=select+blah", "no such column: blah"),
+        ("sql=select+*+from+missing", "no such table: missing"),
+        ("sql=select+from", 'near "from": syntax error'),
+        (
+            "sql=delete+from+simple_primary_key",
+            "Statement must be a SELECT",
+        ),
+        ("", "?sql= is required"),
+        (
+            "sql=select+sleep(0.01)&_timelimit=5",
+            (
+                "SQL query took too long. The time limit is"
+                " controlled by the sql_time_limit_ms setting."
+            ),
+        ),
+    ),
+)
+async def test_custom_sql_csv_errors(ds_client, query_string, expected_error, download):
+    if download:
+        query_string += "&_dl=1"
+    response = await ds_client.get(f"/fixtures/-/query.csv?{query_string}")
+    assert response.status_code == 400
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert "content-disposition" not in response.headers
+    assert response.text == expected_error
+
+
+@pytest.mark.asyncio
+async def test_custom_sql_csv_error_head(ds_client):
+    response = await ds_client.head("/fixtures/-/query.csv?sql=select+blah")
+    assert response.status_code == 400
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.content == b""
+
+
+@pytest.mark.asyncio
+async def test_custom_sql_csv_error_cors():
+    ds = Datasette(cors=True)
+    response = await ds.client.get("/_memory/-/query.csv?sql=select+blah")
+    assert response.status_code == 400
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.headers["access-control-allow-origin"] == "*"
+    assert response.text == "no such column: blah"
+
+
+@pytest.mark.asyncio
+async def test_table_csv_error(ds_client):
+    response = await ds_client.get(
+        "/fixtures/simple_primary_key.csv?_where=blah&_stream=1"
+    )
+    assert response.status_code == 400
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.text == "no such column: blah"
+
+
+@pytest.mark.asyncio
 async def test_table_csv_download(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key.csv?_dl=1")
     assert response.status_code == 200

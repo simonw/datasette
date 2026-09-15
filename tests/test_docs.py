@@ -59,6 +59,13 @@ def test_plugin_hooks_are_documented(plugin_hooks_content, subtests):
             ), f"Missing from plugin hook documentation: {expected}"
 
 
+def test_filters_from_request_async_function_documented(plugin_hooks_content):
+    section = plugin_hooks_content.split(".. _plugin_hook_filters_from_request:")[
+        -1
+    ].split(".. _plugin_hook_")[0]
+    assert "async def" in section
+
+
 @pytest.fixture(scope="session")
 def documented_views():
     view_labels = set()

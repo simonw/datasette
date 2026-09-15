@@ -1470,8 +1470,6 @@ Core owns the task for the rest of the process's life:
 - **A crash is logged, not swallowed.** If ``func`` raises anything other than ``asyncio.CancelledError``, the exception (with its traceback) is logged to the ``datasette.background_tasks`` logger and recorded on the handle's ``.exception``, and the task's ``.state`` becomes ``crashed``.
 - **Cancellation is coordinated.** On shutdown, every task that is still running is cancelled and given a grace period to stop — see :ref:`datasette_lifecycle`.
 
-Raw ``asyncio.create_task()`` inside a ``startup`` hook now works correctly, because ``startup`` hooks run on the serving event loop (see the admonition in :ref:`datasette_lifecycle`) — the bug that made this unsafe is fixed. But a task created that way is unsupervised: nothing keeps a reference to it, nothing logs its exceptions, nothing cancels it on shutdown, and it will not show up in ``/-/tasks``. Prefer ``add_background_task()`` for anything long-lived.
-
 Launch matrix
 ~~~~~~~~~~~~~
 

@@ -26,6 +26,7 @@ Datasette plugins can now use **background tasks** to run code independent of th
 Bug fixes
 ~~~~~~~~~
 
+- Numeric comparison filters now correctly handle decimal values, negative numbers and scientific notation when filtering computed columns and SQL views. Thanks, `Rami Abdelrazzaq <https://github.com/RamiNoodle733>`__. (:issue:`1681`, :pr:`2876`)
 - Fixed CSV streaming with ``?_stream=on`` on SQL views repeating the second page of results until the CSV size limit was reached. Thanks, `Ankita Advitot <https://github.com/AnkitaAdvitot>`__. (:issue:`2902`, :pr:`2903`)
 
 .. _v1_0_a39:

@@ -88,6 +88,11 @@ EXPECTED_ATTRIBUTES = {
         "datasette.facet.timed_out_columns",
     },
     "datasette.facet.suggest": {"datasette.facet.suggestion_count"},
+    "datasette.csv": {
+        "datasette.csv.stream",
+        "datasette.csv.rows_written",
+        "datasette.csv.truncated",
+    },
 }
 EXPECTED_SPANS = set(EXPECTED_ATTRIBUTES)
 
@@ -219,6 +224,8 @@ async def exercise():
     # user_agent.original / http.response.status_code attributes.
     assert (await ds.client.get(f"/{name}/t?_facet=v")).status_code == 200
     assert (await ds.client.get(f"/{name}/t/1.json")).status_code == 200
+    # datasette.csv
+    assert (await ds.client.get(f"/{name}/t.csv?_stream=on")).status_code == 200
 
     # datasette.facet.timed_out_columns - a facet over a view that can never
     # finish always exceeds facet_time_limit_ms

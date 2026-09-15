@@ -2669,7 +2669,7 @@ Miscellaneous
   as a string.
 * If you just want an array of the first value of each row, use the new
   ``?_shape=arrayfirst`` option - `example
-  <https://latest.datasette.io/fixtures.json?sql=select+neighborhood+from+facetable+order+by+pk+limit+101&_shape=arrayfirst>`_.
+  <https://latest.datasette.io/fixtures.json?sql=select+_neighborhood+from+facetable+order+by+pk+limit+101&_shape=arrayfirst>`_.
 
 0.22.1 (2018-05-23)
 -------------------

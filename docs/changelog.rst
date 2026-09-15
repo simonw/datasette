@@ -9,7 +9,7 @@ Changelog
 Unreleased
 ----------
 
-- Fixed incorrect counts when clicking **count all** on filtered table pages. The button now uses a new :ref:`POST count endpoint <TableCountView>`. (:issue:`2914`)
+- New :ref:`POST count endpoint <TableCountView>` for counting filtered table rows, now used by the **count all** button. (:issue:`2914`)
 - Datasette now uses `httpx2 <https://httpx2.pydantic.dev/>`__, the Pydantic-maintained continuation of `httpx <https://www.python-httpx.org/>`__, in place of ``httpx``. The public API is the same, but responses returned by :ref:`internals_datasette_client` are now ``httpx2.Response`` objects rather than ``httpx.Response``. Plugins that use ``isinstance()`` checks against ``httpx.Response`` should be updated to use ``httpx2``. **Plugins that use httpx without explicitly depending on it** will need to add an explicit dependency or switch to `httpx2`.
 
 Background tasks
@@ -22,6 +22,11 @@ Datasette plugins can now use **background tasks** to run code independent of th
 - New :ref:`plugin_hook_shutdown` plugin hook, called during graceful shutdown (Ctrl-C, ``SIGTERM``) before background tasks are cancelled and before database connections are closed. It is not called on a hard kill (``SIGKILL``).
 - Plugin ``asgi_wrapper`` middleware now always runs *after* startup has completed.
 - If your plugin uses ``asgi_wrapper`` to start background tasks on the first incoming request, you should migrate to ``datasette.add_background_task()`` instead. `datasette-cron <https://datasette.io/plugins/datasette-cron>`__ and `datasette-enrichments <https://datasette.io/plugins/datasette-enrichments>`__ are being migrated to this pattern.
+
+Bug fixes
+~~~~~~~~~
+
+- Fixed CSV streaming with ``?_stream=on`` on SQL views repeating the second page of results until the CSV size limit was reached. Thanks, `Ankita Advitot <https://github.com/AnkitaAdvitot>`__. (:issue:`2902`, :pr:`2903`)
 
 .. _v1_0_a39:
 

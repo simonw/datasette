@@ -72,6 +72,16 @@ EXPECTED_ATTRIBUTES = {
     },
     "datasette.startup": set(),
     "datasette.hook": {"datasette.hook.name", "datasette.plugin.name"},
+    "datasette.permission.check": {
+        "datasette.permission.action",
+        "datasette.resource.parent",
+        "datasette.resource.child",
+        "datasette.permission.allowed",
+    },
+    "datasette.permission.resources": {
+        "datasette.permission.action",
+        "datasette.resource.parent",
+    },
 }
 EXPECTED_SPANS = set(EXPECTED_ATTRIBUTES)
 
@@ -204,6 +214,10 @@ async def exercise():
     # user_agent.original / http.response.status_code attributes.
     assert (await ds.client.get(f"/{name}/t?_facet=v")).status_code == 200
     assert (await ds.client.get(f"/{name}/t/1.json")).status_code == 200
+
+    # datasette.permission.resources with datasette.resource.parent - the
+    # table pages above only check single resources
+    await ds.allowed_resources("view-table", None, parent=name)
 
     # error.type on the request span, which only a 5xx sets
     ds.pm.register(_BoomPlugin(), name="telemetry-registry-boom")

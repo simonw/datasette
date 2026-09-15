@@ -354,6 +354,32 @@ PLUGIN_NAME = Attribute(
     "falling back to the plugin object's ``__name__`` or class name.",
 )
 
+PERMISSION_ACTION = Attribute(
+    "datasette.permission.action",
+    "The action being checked - for example ``view-table``. When "
+    "``allowed_many()`` checks several actions at once they are joined "
+    "with ``, ``.",
+)
+RESOURCE_PARENT = Attribute(
+    "datasette.resource.parent",
+    "The parent of the resource being checked - usually a database name. "
+    "For a resource listing, the ``parent=`` filter. Omitted when there is none.",
+    optional=True,
+)
+RESOURCE_CHILD = Attribute(
+    "datasette.resource.child",
+    "The child of the resource being checked - usually a table or query "
+    "name. Omitted when there is none.",
+    optional=True,
+)
+PERMISSION_ALLOWED = Attribute(
+    "datasette.permission.allowed",
+    "The verdict. For ``check_visibility()``, whether the actor can see the "
+    "resource. Omitted when ``allowed_many()`` checks several actions, or "
+    "when the check raised.",
+    optional=True,
+)
+
 
 # --- Spans ----------------------------------------------------------------
 
@@ -473,6 +499,26 @@ HOOK = SpanName(
     (HOOK_NAME, PLUGIN_NAME),
 )
 
+PERMISSION_CHECK = SpanName(
+    "datasette.permission.check",
+    "One permission check for a single resource: a call to "
+    "``datasette.allowed()``, ``allowed_many()``, ``ensure_permission()`` or "
+    "``check_visibility()``. Checks those make internally - "
+    "``check_visibility()`` asks twice, once for the actor and once for an "
+    "anonymous user - do not get spans of their own. The actor is never "
+    "recorded.",
+    (PERMISSION_ACTION, RESOURCE_PARENT, RESOURCE_CHILD, PERMISSION_ALLOWED),
+)
+
+PERMISSION_RESOURCES = SpanName(
+    "datasette.permission.resources",
+    "Working out every resource an actor can access for an action: a call to "
+    "``datasette.allowed_resources()`` or ``allowed_resources_sql()``. For "
+    "``allowed_resources()`` the span covers running the query too. The "
+    "actor is never recorded.",
+    (PERMISSION_ACTION, RESOURCE_PARENT),
+)
+
 SPANS = (
     HTTP_REQUEST,
     DB_QUERY,
@@ -481,6 +527,8 @@ SPANS = (
     DB_WRITE_EXECUTE,
     STARTUP,
     HOOK,
+    PERMISSION_CHECK,
+    PERMISSION_RESOURCES,
 )
 
 

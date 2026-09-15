@@ -1467,7 +1467,7 @@ Registration is separate from launch. Calling this from a ``startup`` hook — t
 Core owns the task for the rest of the process's life:
 
 - **A strong reference is kept forever**, so the task can never be silently garbage collected the way an unreferenced ``asyncio.create_task()`` call can be.
-- **A crash is logged, not swallowed.** If ``func`` raises anything other than ``asyncio.CancelledError``, the exception (with its traceback) is logged to the ``datasette.background_tasks`` logger and recorded on the handle's ``.exception``, and the task's ``.state`` becomes ``crashed``. **There is no automatic restart in v1** — a long-running loop should catch and log its own transient errors internally if it wants to keep running after one.
+- **A crash is logged, not swallowed.** If ``func`` raises anything other than ``asyncio.CancelledError``, the exception (with its traceback) is logged to the ``datasette.background_tasks`` logger and recorded on the handle's ``.exception``, and the task's ``.state`` becomes ``crashed``.
 - **Cancellation is coordinated.** On shutdown, every task that is still running is cancelled and given a grace period to stop — see :ref:`datasette_lifecycle`.
 
 Raw ``asyncio.create_task()`` inside a ``startup`` hook now works correctly, because ``startup`` hooks run on the serving event loop (see the admonition in :ref:`datasette_lifecycle`) — the bug that made this unsafe is fixed. But a task created that way is unsupervised: nothing keeps a reference to it, nothing logs its exceptions, and nothing cancels it on shutdown. Prefer ``add_background_task()`` for anything long-lived.

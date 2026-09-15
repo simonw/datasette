@@ -1157,7 +1157,7 @@ Examples: `datasette-cors <https://datasette.io/plugins/datasette-cors>`__, `dat
 startup(datasette)
 ------------------
 
-This hook fires when the Datasette application server first starts up.
+This hook fires when the Datasette application server first starts up. It runs on the same event loop that goes on to serve requests, so it is safe to create loop-bound primitives and register background work here — see :ref:`datasette_lifecycle` for the full guarantee and the three ways startup can be triggered.
 
 Here is an example that validates required plugin configuration. The server will fail to start and show an error if the validation check fails:
 
@@ -1195,6 +1195,7 @@ Potential use-cases:
 * Create database tables that a plugin needs on startup
 * Validate the configuration for a plugin on startup, and raise an error if it is invalid
 * Raise a ``datasette.utils.StartupError("message")`` exception to prevent Datasette from starting and display that message to the user.
+* Register supervised long-lived background work using :ref:`datasette_add_background_task`, which core launches once every plugin's ``startup()`` hook has finished.
 
 .. note::
 

@@ -1419,6 +1419,17 @@ _comments_and_strings_re = re.compile(
 _named_param_re = re.compile(r":(\w+)")
 
 
+def replace_named_parameters(sql, replacements):
+    """Replace parameter tokens without changing SQL literals or comments."""
+    tokens = re.compile(
+        _comments_and_strings_re.pattern + r"|:(?P<parameter>\w+)",
+        re.DOTALL | re.VERBOSE,
+    )
+    return tokens.sub(
+        lambda match: replacements.get(match.group("parameter"), match.group(0)), sql
+    )
+
+
 @documented
 def named_parameters(sql: str) -> list[str]:
     """

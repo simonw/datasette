@@ -1746,6 +1746,12 @@ The ``datasette.urls`` object contains methods for building URLs to pages within
 ``datasette.urls.database(database_name, format=None)``
     Returns the URL to a database page, for example ``"/fixtures"``
 
+``datasette.urls.database_query(database_name, sql, format=None, *, params=None)``
+    Returns the URL to an ad-hoc SQL query. Pass a dictionary of named parameter
+    values using ``params`` to include them in the URL. Numeric values retain
+    their SQLite types when the query runs, including parameters provided by
+    filter plugins. SQL literals, quoted identifiers and comments are preserved.
+
 ``datasette.urls.table(database_name, table_name, format=None)``
     Returns the URL to a table page, for example ``"/fixtures/facetable"``
 

@@ -1,6 +1,12 @@
+import math
 import urllib
 
-from .utils import PrefixedUrlString, path_with_format, tilde_encode
+from .utils import (
+    PrefixedUrlString,
+    path_with_format,
+    replace_named_parameters,
+    tilde_encode,
+)
 
 
 class Urls:
@@ -31,11 +37,35 @@ class Urls:
         db = self.ds.get_database(database)
         return self.path(tilde_encode(db.route), format=format)
 
-    def database_query(self, database, sql, format=None):
-        path = f"{self.database(database)}/-/query?" + urllib.parse.urlencode(
-            {"sql": sql}
+    def database_query(self, database, sql, format=None, *, params=None):
+        params = dict(params or {})
+        replacements = {}
+        for name, value in params.items():
+            # Query-string parameters arrive as text. Restore the SQLite types
+            # supplied by filter plugins, including for expressions without
+            # column affinity (e.g. julianday()). Unary + removes CAST's affinity
+            # so comparisons behave like comparisons with the original binding.
+            if isinstance(value, float) and not math.isfinite(value):
+                if math.isnan(value):
+                    replacements[name] = "NULL"
+                else:
+                    replacements[name] = "1e999" if value > 0 else "(-1e999)"
+            elif isinstance(value, (int, float)):
+                sql_type = "integer" if isinstance(value, int) else "real"
+                replacements[name] = f"(+cast(:{name} as {sql_type}))"
+                if isinstance(value, bool):
+                    params[name] = int(value)
+            elif value is None:
+                replacements[name] = "NULL"
+            elif isinstance(value, bytes):
+                replacements[name] = f"X'{value.hex()}'"
+        sql = replace_named_parameters(sql, replacements)
+        path = self.database(database) + "/-/query"
+        return (
+            self.path(path, format=format)
+            + "?"
+            + urllib.parse.urlencode({**params, "sql": sql})
         )
-        return self.path(path, format=format)
 
     def table(self, database, table, format=None):
         path = f"{self.database(database)}/{tilde_encode(table)}"

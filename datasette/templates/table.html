@@ -49,7 +49,7 @@
 {% if count or human_description_en %}
     <h3>
         {% if count_truncated %}&gt;{{ "{:,}".format(count - 1) }} rows
-        {% if allow_execute_sql and query.sql %} <a class="count-sql" style="font-size: 0.8em;" href="{{ urls.database_query(database, count_sql) }}">count all</a>{% endif %}
+        {% if allow_execute_sql and query.sql %} <a class="count-sql" style="font-size: 0.8em;" href="{{ urls.database_query(database, count_sql, params=query.params) }}">count all</a>{% endif %}
         {% elif count or count == 0 %}{{ "{:,}".format(count) }} row{% if count == 1 %}{% else %}s{% endif %}{% endif %}
         {% if human_description_en %}{{ human_description_en }}{% endif %}
     </h3>

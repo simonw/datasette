@@ -11,6 +11,78 @@ from .fixtures import make_app_client
 from .utils import inner_html
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("date_type", [None, int, float])
+@pytest.mark.parametrize("filtered", [False, True])
+async def test_count_all_preserves_filters(date_type, filtered, tmp_path):
+    from datasette import hookimpl
+    from datasette.filters import FilterArguments
+
+    class DateFilterPlugin:
+        @hookimpl
+        def filters_from_request(self, request):
+            if request.args.get("_date"):
+                return FilterArguments(
+                    [
+                        (
+                            "round((julianday(observed_at) - 2440587.5) * 86400000) "
+                            ">= :lower and round((julianday(observed_at) - 2440587.5) "
+                            "* 86400000) <= :upper"
+                        )
+                    ],
+                    {
+                        "lower": date_type(1624147200000),
+                        "upper": date_type(1656374399999),
+                    },
+                )
+
+    ds = Datasette()
+    ds.pm.register(DateFilterPlugin(), name="count_all_date_filter")
+    db_path = tmp_path / "counts.db"
+    db_path.touch()
+    db = ds.add_database(Database(ds, path=str(db_path)), name="counts")
+    db.count_limit = 2
+    try:
+        await db.execute_write(
+            "create table observations (id integer primary key, observed_at text, "
+            "value real, category text)"
+        )
+        await db.execute_write_many(
+            "insert into observations (observed_at, value, category) values (?, ?, ?)",
+            [("2021-07-09", 86.12, "O'Reilly & :lower")] * 5
+            + [("2020-01-01", 86.12, "O'Reilly & :lower")] * 3
+            + [("2021-07-09", 20, "other")] * 4,
+        )
+        params = {"_size": "2"}
+        if date_type:
+            params["_date"] = "1"
+        if filtered:
+            params.update(
+                value__gte="77.841433",
+                value__lte="87.272811",
+                category="O'Reilly & :lower",
+            )
+        expected = (5 if date_type else 8) if filtered else (9 if date_type else 12)
+        response = await ds.client.get("/counts/observations", params=params)
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        link = soup.select_one("a.count-sql")
+        assert link is not None
+        # Follow the same URL as the browser's count-all fetch.
+        result = await ds.client.get(link["href"].replace("?", ".json?", 1))
+        assert result.status_code == 200
+        assert result.json()["rows"] == [{"count(*)": expected}]
+        # The non-JavaScript link must work as well.
+        result_html = await ds.client.get(link["href"])
+        assert result_html.status_code == 200
+        assert Soup(result_html.text, "html.parser").select_one(
+            "tbody td"
+        ).text.strip() == str(expected)
+    finally:
+        ds.pm.unregister(name="count_all_date_filter")
+        ds.close()
+
+
 def table_data_from_soup(soup):
     import json
     import re

@@ -1300,7 +1300,8 @@ async def test_hook_filters_from_request(ds_client):
 
     ds_client.ds.pm.register(ReturnNothingPlugin(), name="ReturnNothingPlugin")
     response = await ds_client.get("/fixtures/facetable?_nothing=1")
-    assert "0 rows\n        where NOTHING" in response.text
+    summary = Soup(response.text, "html.parser").select_one(".table-summary")
+    assert summary.get_text(" ", strip=True) == "0 rows where NOTHING"
     json_response = await ds_client.get("/fixtures/facetable.json?_nothing=1")
     assert json_response.json()["rows"] == []
     ds_client.ds.pm.unregister(name="ReturnNothingPlugin")

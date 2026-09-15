@@ -47,12 +47,12 @@
 {% endif %}
 
 {% if count or human_description_en %}
-    <h3>
+    <h3 class="table-summary">
         {% if count_truncated %}<span class="table-count" aria-live="polite">{{ "{:,}".format(count - 1) }}+ rows</span>
         <button type="button" class="count-all" data-count-url="{{ urls.table(database, table) }}/-/count">count all</button>
         <span class="count-error" role="alert"></span>
         {% elif count or count == 0 %}{{ "{:,}".format(count) }} row{% if count == 1 %}{% else %}s{% endif %}{% endif %}
-        {% if human_description_en %}{{ human_description_en }}{% endif %}
+        {% if human_description_en %}<span class="table-summary-description">{{ human_description_en }}</span>{% endif %}
     </h3>
 {% endif %}
 

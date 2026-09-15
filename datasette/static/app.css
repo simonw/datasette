@@ -216,6 +216,18 @@ a:active  {
 	text-decoration: underline;
 }
 
+.table-summary .count-all ~ .table-summary-description {
+    margin-left: 0.5rem;
+}
+
+.table-summary .count-error:not(:empty) {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.875rem;
+    font-weight: 400;
+    line-height: 1.5;
+}
+
 button.count-all {
     background: none;
     border: none;

@@ -51,14 +51,14 @@ def test_request_headers_mapping():
         {
             "headers": [
                 (b"Content-Type", b"application/json"),
-                (b"X-Title", b"caf\xe9"),
+                (b"X-Title", "café".encode("latin-1")),
                 (b"CONTENT-TYPE", b"text/plain"),
             ]
         },
         None,
     )
     headers = request.headers
-    expected = {"content-type": "text/plain", "x-title": "caf\u00e9"}
+    expected = {"content-type": "text/plain", "x-title": "café"}
     assert headers == expected
     assert dict(headers) == expected
     assert list(headers) == list(expected)
@@ -66,7 +66,7 @@ def test_request_headers_mapping():
     assert list(headers.items()) == list(expected.items())
     assert json.loads(json.dumps(headers)) == expected
     assert headers["Content-Type"] == "text/plain"
-    assert headers["X-Title"] == "caf\u00e9"
+    assert headers["X-Title"] == "café"
 
 
 @pytest.mark.parametrize("scope", [{}, {"headers": None}, {"headers": []}])

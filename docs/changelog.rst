@@ -26,6 +26,7 @@ Datasette plugins can now use **background tasks** to run code independent of th
 Bug fixes
 ~~~~~~~~~
 
+- The :ref:`extra_template_vars() <plugin_hook_extra_template_vars>` plugin hook can now return a function or awaitable that resolves to ``None`` when no extra variables are needed. (:issue:`2005`)
 - CSV endpoints now return plain-text error messages for SQL errors. (:issue:`2129`)
 - The :ref:`render_cell() <plugin_hook_render_cell>` plugin hook now receives an empty ``pks`` list when rendering SQL views in HTML, matching the JSON ``?_extra=render_cell`` behavior. (:issue:`2639`)
 - Numeric comparison filters now correctly handle decimal values, negative numbers and scientific notation when filtering computed columns and SQL views. Thanks, `Rami Abdelrazzaq <https://github.com/RamiNoodle733>`__. (:issue:`1681`, :pr:`2876`)

@@ -2587,6 +2587,8 @@ ORDER BY allowed.parent, allowed.child
             datasette=self,
         ):
             extra_vars = await await_me_maybe(extra_vars)
+            if extra_vars is None:
+                continue
             assert isinstance(
                 extra_vars, dict
             ), f"extra_vars is of type {type(extra_vars)}"

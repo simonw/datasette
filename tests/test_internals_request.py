@@ -35,6 +35,51 @@ def _receive_chunks(chunks):
     return receive
 
 
+@pytest.mark.parametrize(
+    "header_name", [b"content-type", b"Content-Type", b"CONTENT-TYPE"]
+)
+@pytest.mark.parametrize("lookup", ["content-type", "Content-Type", "CONTENT-TYPE"])
+def test_request_headers_case_insensitive(header_name, lookup):
+    request = Request({"headers": [(header_name, b"application/json")]}, None)
+    assert request.headers.get(lookup) == "application/json"
+    assert request.headers[lookup] == "application/json"
+    assert lookup in request.headers
+
+
+def test_request_headers_mapping():
+    request = Request(
+        {
+            "headers": [
+                (b"Content-Type", b"application/json"),
+                (b"X-Title", "café".encode("latin-1")),
+                (b"CONTENT-TYPE", b"text/plain"),
+            ]
+        },
+        None,
+    )
+    headers = request.headers
+    expected = {"content-type": "text/plain", "x-title": "café"}
+    assert headers == expected
+    assert dict(headers) == expected
+    assert list(headers) == list(expected)
+    assert list(headers.keys()) == list(expected.keys())
+    assert list(headers.items()) == list(expected.items())
+    assert json.loads(json.dumps(headers)) == expected
+    assert headers["Content-Type"] == "text/plain"
+    assert headers["X-Title"] == "café"
+
+
+@pytest.mark.parametrize("scope", [{}, {"headers": None}, {"headers": []}])
+def test_request_headers_missing(scope):
+    headers = Request(scope, None).headers
+    assert headers == {}
+    assert headers.get("Content-Type") is None
+    assert headers.get("Content-Type", "default") == "default"
+    assert "Content-Type" not in headers
+    with pytest.raises(KeyError):
+        headers["Content-Type"]
+
+
 @pytest.mark.asyncio
 async def test_request_post_vars():
     scope = {

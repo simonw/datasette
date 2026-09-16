@@ -4,13 +4,12 @@
 Changelog
 =========
 
-.. _unreleased:
+.. _v1_0_a40:
 
-Unreleased
-----------
+1.0a40 (2026-09-16)
+-------------------
 
-- New :ref:`POST count endpoint <TableCountView>` for counting filtered table rows, now used by the **count all** button. (:issue:`2914`)
-- Datasette now uses `httpx2 <https://httpx2.pydantic.dev/>`__, the Pydantic-maintained continuation of `httpx <https://www.python-httpx.org/>`__, in place of ``httpx``. The public API is the same, but responses returned by :ref:`internals_datasette_client` are now ``httpx2.Response`` objects rather than ``httpx.Response``. Plugins that use ``isinstance()`` checks against ``httpx.Response`` should be updated to use ``httpx2``. **Plugins that use httpx without explicitly depending on it** will need to add an explicit dependency or switch to `httpx2`.
+- Fixed a security issue where a trailing newline in a requested table name could bypass table permissions and expose private rows. Thanks for the report, `dpfkdlemtp <https://github.com/dpfkdlemtp>`__. `GHSA-h547-rmjf-5m2m <https://github.com/simonw/datasette/security/advisories/GHSA-h547-rmjf-5m2m>`__
 
 Background tasks
 ~~~~~~~~~~~~~~~~
@@ -23,10 +22,15 @@ Datasette plugins can now use **background tasks** to run code independent of th
 - Plugin ``asgi_wrapper`` middleware now always runs *after* startup has completed.
 - If your plugin uses ``asgi_wrapper`` to start background tasks on the first incoming request, you should migrate to ``datasette.add_background_task()`` instead. `datasette-cron <https://datasette.io/plugins/datasette-cron>`__ and `datasette-enrichments <https://datasette.io/plugins/datasette-enrichments>`__ are being migrated to this pattern.
 
+Other features
+~~~~~~~~~~~~~~
+
+- New :ref:`POST count endpoint <TableCountView>` for counting filtered table rows, now used by the **count all** button. (:issue:`2914`)
+- Datasette now uses `httpx2 <https://httpx2.pydantic.dev/>`__, the Pydantic-maintained continuation of `httpx <https://www.python-httpx.org/>`__, in place of ``httpx``. The public API is the same, but responses returned by :ref:`internals_datasette_client` are now ``httpx2.Response`` objects rather than ``httpx.Response``. Plugins that use ``isinstance()`` checks against ``httpx.Response`` should be updated to use ``httpx2``. **Plugins that use httpx without explicitly depending on it** will need to add an explicit dependency or switch to `httpx2`.
+
 Bug fixes
 ~~~~~~~~~
 
-- Fixed a security issue where a trailing newline in a requested table name could bypass table permissions and expose private rows. Thanks for the report, `dpfkdlemtp <https://github.com/dpfkdlemtp>`__. `GHSA-h547-rmjf-5m2m <https://github.com/simonw/datasette/security/advisories/GHSA-h547-rmjf-5m2m>`__
 - Column facets now show the remove-filter link for filters using ``column__exact=value``, as well as ``column=value``. (:issue:`1695`)
 - The :ref:`alter-table API <TableAlterView>` now rolls back schema changes when a :ref:`write_wrapper <plugin_hook_write_wrapper>` raises after the write. (:issue:`2924`, :pr:`2925`)
 - The :ref:`extra_template_vars() <plugin_hook_extra_template_vars>` plugin hook can now return a function or awaitable that resolves to ``None`` when no extra variables are needed. (:issue:`2005`)

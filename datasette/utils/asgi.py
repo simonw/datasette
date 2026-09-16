@@ -83,6 +83,19 @@ SAMESITE_VALUES = ("strict", "lax", "none")
 DEFAULT_MAX_POST_BODY_BYTES = 2 * 1024 * 1024  # 2MB
 
 
+class _RequestHeaders(dict):
+    """Incoming headers with lowercase keys and case-insensitive lookups."""
+
+    def __getitem__(self, key):
+        return super().__getitem__(key.lower())
+
+    def get(self, key, default=None):
+        return super().get(key.lower(), default)
+
+    def __contains__(self, key):
+        return super().__contains__(key.lower())
+
+
 class Request:
     def __init__(self, scope, receive, max_post_body_bytes=DEFAULT_MAX_POST_BODY_BYTES):
         self.scope = scope
@@ -112,10 +125,10 @@ class Request:
 
     @property
     def headers(self):
-        return {
-            k.decode("latin-1").lower(): v.decode("latin-1")
+        return _RequestHeaders(
+            (k.decode("latin-1").lower(), v.decode("latin-1"))
             for k, v in self.scope.get("headers") or []
-        }
+        )
 
     @property
     def host(self):

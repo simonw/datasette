@@ -485,6 +485,31 @@ async def test_facet_display(ds_client):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "filters", ["state=CA", "state__exact=CA", "state=CA&state__exact=CA"]
+)
+async def test_facet_remove_exact_filter(ds_client, filters):
+    response = await ds_client.get(
+        f"/fixtures/facetable?_facet=state&{filters}&on_earth=1"
+    )
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    remove_link = soup.select_one('.facet-info[data-column="state"] li a.cross')
+    assert remove_link is not None
+    url = urllib.parse.urlsplit(remove_link["href"])
+    assert urllib.parse.parse_qsl(url.query) == [
+        ("_facet", "state"),
+        ("on_earth", "1"),
+    ]
+    unfiltered = await ds_client.get(f"{url.path}.json?{url.query}")
+    assert unfiltered.status_code == 200
+    rows = unfiltered.json()["rows"]
+    assert len(rows) == 14
+    assert all(row["on_earth"] == 1 for row in rows)
+    assert {row["state"] for row in rows} == {"CA", "MI"}
+
+
+@pytest.mark.asyncio
 async def test_facets_persist_through_filter_form(ds_client):
     response = await ds_client.get(
         "/fixtures/facetable?_facet=planet_int&_facet=_city_id&_facet_array=tags"

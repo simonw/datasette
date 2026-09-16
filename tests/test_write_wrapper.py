@@ -352,6 +352,73 @@ async def test_write_wrapper_via_api(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("num_sql_threads", (0, 1))
+@pytest.mark.parametrize("in_memory", (True, False))
+@pytest.mark.parametrize(
+    "operations",
+    (
+        [{"op": "add_column", "args": {"name": "extra", "type": "text"}}],
+        [{"op": "rename_column", "args": {"name": "id", "to": "renamed_id"}}],
+        [{"op": "rename_table", "args": {"to": "renamed_t"}}],
+        [
+            {"op": "add_column", "args": {"name": "extra", "type": "text"}},
+            {"op": "rename_column", "args": {"name": "id", "to": "renamed_id"}},
+            {"op": "rename_table", "args": {"to": "renamed_t"}},
+        ],
+    ),
+    ids=["add-column", "transform", "rename-table", "combined"],
+)
+async def test_write_wrapper_can_reject_alter_table_after_write(
+    tmp_path, num_sql_threads, in_memory, operations
+):
+    """Raising after yield should roll back the schema change."""
+    db_path = str(tmp_path / "demo.db")
+    ds = Datasette(
+        [] if in_memory else [db_path],
+        config={"permissions": {"alter-table": True}},
+        settings={"num_sql_threads": num_sql_threads},
+    )
+    db = (
+        ds.add_memory_database(db_path, name="demo")
+        if in_memory
+        else ds.get_database("demo")
+    )
+    await db.execute_write("CREATE TABLE t (id)")
+    await db.execute_write("INSERT INTO t (id) VALUES (1)")
+    before = await db.execute_fn(lambda conn: list(conn.iterdump()))
+
+    class Plugin:
+        __name__ = "Plugin"
+
+        @staticmethod
+        @hookimpl
+        def write_wrapper(database):
+            def wrapper(conn):
+                yield
+                raise ValueError("Rejected after write")
+
+            return wrapper if database == "demo" else None
+
+    pm.register(Plugin(), name="test_reject_alter_table")
+    try:
+        response = await ds.client.post(
+            "/demo/t/-/alter",
+            json={"operations": operations},
+        )
+        assert response.status_code == 400
+        assert response.json()["errors"] == ["Rejected after write"]
+        assert await db.execute_fn(lambda conn: list(conn.iterdump())) == before
+        assert not [
+            event
+            for event in getattr(ds, "_tracked_events", [])
+            if event.name in ("alter-table", "rename-table")
+        ]
+    finally:
+        pm.unregister(name="test_reject_alter_table")
+        ds.close()
+
+
+@pytest.mark.asyncio
 async def test_write_wrapper_change_group_pattern(datasette):
     """Test the motivating use case: activating a change group around a write."""
     db = datasette.get_database("test")

@@ -26,6 +26,7 @@ Datasette plugins can now use **background tasks** to run code independent of th
 Bug fixes
 ~~~~~~~~~
 
+- The :ref:`alter-table API <TableAlterView>` now rolls back schema changes when a :ref:`write_wrapper <plugin_hook_write_wrapper>` raises after the write. (:issue:`2924`, :pr:`2925`)
 - CSV endpoints now return plain-text error messages for SQL errors. (:issue:`2129`)
 - The :ref:`render_cell() <plugin_hook_render_cell>` plugin hook now receives an empty ``pks`` list when rendering SQL views in HTML, matching the JSON ``?_extra=render_cell`` behavior. (:issue:`2639`)
 - Numeric comparison filters now correctly handle decimal values, negative numbers and scientific notation when filtering computed columns and SQL views. Thanks, `Rami Abdelrazzaq <https://github.com/RamiNoodle733>`__. (:issue:`1681`, :pr:`2876`)

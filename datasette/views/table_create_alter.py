@@ -1309,7 +1309,9 @@ class TableAlterView(BaseView):
                     elif operation.op == "set_foreign_keys":
                         foreign_keys = [fk.tuple for fk in args.foreign_keys]
 
-                with operation_conn:
+                # Use a savepoint inside execute_write_fn's transaction so
+                # write_wrapper hooks can still reject and roll back the write.
+                with db_for_write.atomic():
                     for column in add_columns:
                         not_null_default = None
                         if column.not_null:

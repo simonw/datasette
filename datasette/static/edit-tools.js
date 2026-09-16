@@ -2511,6 +2511,29 @@ function tildeEncode(value) {
   return encoded;
 }
 
+function encodeRowValue(value, columnType) {
+  if (value && value.$base64 === true && typeof value.encoded === "string") {
+    var binary = atob(value.encoded);
+    var hex = "";
+    for (var i = 0; i < binary.length; i += 1) {
+      hex += binary.charCodeAt(i).toString(16).padStart(2, "0");
+    }
+    return "$blob:" + hex;
+  }
+  if (typeof value === "number" && typeof columnType === "string") {
+    var type = columnType.trim().toUpperCase();
+    if (
+      !/INT|CHAR|CLOB|TEXT/.test(type) &&
+      (!type || /BLOB/.test(type) || type === "ANY")
+    ) {
+      return (
+        (Number.isInteger(value) ? "$int:" : "$float:") + tildeEncode(value)
+      );
+    }
+  }
+  return tildeEncode(value);
+}
+
 function rowDisplayLabel(row) {
   return tildeDecode(row.getAttribute("data-row") || "");
 }
@@ -4194,7 +4217,10 @@ function foreignKeyRowUrl(autocompleteUrl, pk) {
     return null;
   }
   url.pathname =
-    url.pathname.replace(/\/-\/autocomplete\/?$/, "") + "/" + tildeEncode(pk);
+    // Autocomplete has the value's type, but not the target column's affinity.
+    url.pathname.replace(/\/-\/autocomplete\/?$/, "") +
+    "/" +
+    encodeRowValue(pk, "");
   url.search = "";
   url.hash = "";
   return url.toString();
@@ -6804,10 +6830,17 @@ async function fetchUpdatedRowElement(state) {
     throw new Error("Could not refresh row: HTTP " + response.status);
   }
   var doc = new DOMParser().parseFromString(html, "text/html");
-  return findDataRowElement(doc, state.currentRowId);
+  var row = findDataRowElement(doc, state.currentRowId);
+  if (row) {
+    return row;
+  }
+  // Equivalent typed identifiers can have different spellings, e.g. 1e-7 and
+  // 1e-07. The _row filter selects one row with the server's canonical path.
+  var rows = doc.querySelectorAll("tr[data-row]");
+  return rows.length === 1 ? rows[0] : null;
 }
 
-function rowPathFromRowData(row, primaryKeys) {
+function rowPathFromRowData(row, primaryKeys, columnTypes) {
   if (!row) {
     return null;
   }
@@ -6818,7 +6851,7 @@ function rowPathFromRowData(row, primaryKeys) {
     if (typeof row[key] === "undefined") {
       return null;
     }
-    bits.push(tildeEncode(row[key]));
+    bits.push(encodeRowValue(row[key], (columnTypes || {})[key]));
   }
   return bits.join(",");
 }
@@ -6903,6 +6936,7 @@ async function saveRowEditDialog(state) {
       var insertedRowId = rowPathFromRowData(
         insertedRowData,
         insertData.primaryKeys || [],
+        insertData.primaryKeyTypes || {},
       );
       state.shouldRestoreFocus = false;
       if (!insertedRowId) {

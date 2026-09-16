@@ -215,6 +215,14 @@ async def stream_csv(datasette, fetch_data, request, database):
 
     # Convert rows and columns to CSV
     headings = data["columns"]
+    column_types = {}
+    pks = data.get("primary_keys") or []
+    if data.get("table"):
+        db = datasette.get_database(database)
+        pks = await db.primary_keys(data["table"])
+        column_types = {
+            col.name: col.type for col in await db.table_column_details(data["table"])
+        }
     # if there are expanded_columns we need to add additional headings
     expanded_columns = set(data.get("expanded_columns") or [])
     if expanded_columns:
@@ -266,13 +274,17 @@ async def stream_csv(datasette, fetch_data, request, database):
                             if isinstance(cell, bytes):
                                 # If this is a table page, use .urls.row_blob()
                                 if data.get("table"):
-                                    pks = data.get("primary_keys") or []
                                     cell = datasette.absolute_url(
                                         request,
                                         datasette.urls.row_blob(
                                             database,
                                             data["table"],
-                                            path_from_row_pks(row, pks, not pks),
+                                            path_from_row_pks(
+                                                row,
+                                                pks,
+                                                not pks,
+                                                column_types=column_types,
+                                            ),
                                             column,
                                         ),
                                     )

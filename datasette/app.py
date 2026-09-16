@@ -63,6 +63,7 @@ from .utils import (
     await_me_maybe,
     baseconv,
     call_with_supported_arguments,
+    decode_row_pks,
     detect_json1,
     display_actor,
     escape_css_string,
@@ -3004,7 +3005,7 @@ ORDER BY allowed.parent, allowed.child
 
     async def resolve_row(self, request):
         db, table_name, _ = await self.resolve_table(request)
-        pk_values = urlsafe_components(request.url_vars["pks"])
+        pk_values = decode_row_pks(request.url_vars["pks"])
         sql, params, pks = await row_sql_params_pks(db, table_name, pk_values)
         if len(pk_values) != len(pks):
             raise BadRequest(

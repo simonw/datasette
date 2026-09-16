@@ -505,7 +505,8 @@ async def _inserted_row_url(datasette, db, analysis, cursor):
     row = result.first()
     if row is None:
         return None
-    row_path = path_from_row_pks(row, pks, use_rowid)
+    column_types = {col.name: col.type for col in await db.table_column_details(table)}
+    row_path = path_from_row_pks(row, pks, use_rowid, column_types=column_types)
     return datasette.urls.row(db.name, table, row_path)
 
 

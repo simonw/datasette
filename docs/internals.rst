@@ -1708,7 +1708,10 @@ It returns a ``ResolvedRow`` named tuple instance with the following fields:
     List of primary key column names
 
 ``pk_values`` - list
-    List of primary key values decoded from the URL
+    List of primary key values decoded from the URL. Unmarked values are strings;
+    :ref:`typed row identifiers <internals_typed_row_identifiers>` decode to
+    ``bytes``, ``int`` or ``float``. These values can be bound directly to SQLite
+    query parameters.
 
 ``row`` - ``sqlite3.Row``
     The row itself
@@ -2710,6 +2713,31 @@ Note that the space character is a special case: it will be replaced with a ``+`
 .. _internals_utils_tilde_decode:
 
 .. autofunction:: datasette.utils.tilde_decode
+
+.. _internals_typed_row_identifiers:
+
+Typed row identifiers
+~~~~~~~~~~~~~~~~~~~~~
+
+Row URLs join primary key components with commas. Text components use tilde
+encoding. Binary components use ``$blob:`` followed by hexadecimal bytes:
+``b"hello"`` becomes ``$blob:68656c6c6f`` and an empty BLOB becomes ``$blob:``.
+This works regardless of the column's declared type.
+
+For numeric values in columns with BLOB affinity (including columns without a
+declared type), or declared ``ANY``, Datasette uses ``$int:`` or ``$float:``
+followed by the tilde-encoded number. These columns can store both a number and
+its text representation as distinct keys. For example, integer ``3`` becomes
+``$int:3``, float ``3.5`` becomes ``$float:3~2E5``, and text ``"3"`` remains ``3``.
+Ordinary integer primary key URLs, such as ``/database/table/3``, are unchanged.
+
+The dollar sign in text is escaped as ``~24``, so literal text ``"$blob:61"``
+has the distinct identifier ``~24blob~3A61``. Markers are recognized before
+tilde decoding. Invalid typed identifiers return HTTP 400.
+
+For the composite key ``(3, b"0thei")`` in a table with no declared column
+types, the row identifier is ``$int:3,$blob:3074686569``. The same encoding is
+used for table pagination tokens and keys in ``?_shape=object`` responses.
 
 .. _internals_utils_call_with_supported_arguments:
 

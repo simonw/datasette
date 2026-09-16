@@ -7,7 +7,7 @@ from datasette.resources import DatabaseResource, TableResource
 from datasette.utils.asgi import BadRequest
 from datasette.views.base import DatasetteError
 
-from .utils import detect_json1, escape_sqlite, path_with_removed_args
+from .utils import decode_row_pks, detect_json1, escape_sqlite, path_with_removed_args
 
 
 @hookimpl(specname="filters_from_request")
@@ -203,6 +203,20 @@ class Filter:
         raise NotImplementedError
 
 
+class TypedExactFilter(Filter):
+    key = "exact_typed"
+    display = "= (typed value)"
+
+    def where_clause(self, table, column, value, param_counter):
+        values = decode_row_pks(value)
+        if len(values) != 1:
+            raise BadRequest("Expected a single typed filter value")
+        return f"{_quote_sqlite_identifier(column)} = :p{param_counter}", values[0]
+
+    def human_clause(self, column, value):
+        return f"{column} = {decode_row_pks(value)[0]!r}"
+
+
 def _coerce_numeric_filter_value(value):
     try:
         return int(value)
@@ -317,6 +331,7 @@ class Filters:
                 "{c} != :{p}",
                 lambda c, v: "{c} != {v}" if v.isdigit() else '{c} != "{v}"',
             ),
+            TypedExactFilter(),
             TemplatedFilter(
                 "contains",
                 "contains",

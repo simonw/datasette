@@ -30,7 +30,16 @@ def convert_specific_columns_to_json(rows, columns, json_cols):
     return new_rows
 
 
-def json_renderer(request, args, data, error, truncated=None):
+async def json_renderer(
+    request,
+    args,
+    data,
+    error,
+    truncated=None,
+    datasette=None,
+    database=None,
+    table=None,
+):
     """Render a response as JSON"""
     status_code = 200
 
@@ -82,9 +91,19 @@ def json_renderer(request, args, data, error, truncated=None):
                         "_shape=object not available for tables with no primary keys"
                     )
                 else:
+                    column_types = {}
+                    if datasette is not None and table is not None:
+                        column_types = {
+                            col.name: col.type
+                            for col in await datasette.get_database(
+                                database
+                            ).table_column_details(table)
+                        }
                     object_rows = {}
                     for row in data["rows"]:
-                        pk_string = path_from_row_pks(row, pks, not pks)
+                        pk_string = path_from_row_pks(
+                            row, pks, not pks, column_types=column_types
+                        )
                         object_rows[pk_string] = row
                     data = object_rows
             if shape_error:

@@ -31,7 +31,9 @@ from datasette.utils import (
     await_me_maybe,
     call_with_supported_arguments,
     compound_keys_after_sql,
+    decode_row_pks,
     decode_write_json_rows,
+    encode_row_value,
     escape_sqlite,
     filters_should_redirect,
     format_bytes,
@@ -46,7 +48,6 @@ from datasette.utils import (
     tilde_encode,
     to_css_class,
     truncate_url,
-    urlsafe_components,
     value_as_boolean,
 )
 from datasette.utils.asgi import (
@@ -220,7 +221,7 @@ class TableContext(Context):
     )
     table_insert_ui: dict = field(
         metadata={
-            "help": "Information needed to enable the row insertion UI, or ``None`` if row insertion is not available to the current actor. When present it has ``path``, ``tableName``, ``columns``, ``bulkColumns``, ``primaryKeys`` and ``maxInsertRows`` keys, plus optional ``upsertPath`` if the current actor has permission to update rows. ``columns`` lists columns for the single-row insert form, while ``bulkColumns`` lists columns for the bulk insert form. Each column includes ``name``, ``sqlite_type``, ``notnull``, ``default``, ``has_default``, ``is_pk``, ``is_auto_pk``, ``value_kind`` and ``column_type`` keys."
+            "help": "Information needed to enable the row insertion UI, or ``None`` if row insertion is not available to the current actor. When present it has ``path``, ``tableName``, ``columns``, ``bulkColumns``, ``primaryKeys``, ``primaryKeyTypes`` and ``maxInsertRows`` keys, plus optional ``upsertPath`` if the current actor has permission to update rows. ``columns`` lists columns for the single-row insert form, while ``bulkColumns`` lists columns for the bulk insert form. ``primaryKeyTypes`` maps primary key column names to their declared SQLite types. Each column includes ``name``, ``sqlite_type``, ``notnull``, ``default``, ``has_default``, ``is_pk``, ``is_auto_pk``, ``value_kind`` and ``column_type`` keys."
         }
     )
     table_alter_ui: dict = field(
@@ -319,7 +320,7 @@ async def _fragment_request_for_row(request, resolved):
 
     pks = await resolved.db.primary_keys(resolved.table)
     row_pks = pks or ["rowid"]
-    pk_values = urlsafe_components(row_path)
+    pk_values = decode_row_pks(row_path)
     if len(pk_values) != len(row_pks):
         raise BadRequest("_row does not match the primary key for this table")
 
@@ -329,6 +330,7 @@ async def _fragment_request_for_row(request, resolved):
         for key in {
             _exact_filter_key(pk),
             f"{pk}__exact",
+            f"{pk}__exact_typed",
         }
     }
     args = [
@@ -346,7 +348,10 @@ async def _fragment_request_for_row(request, resolved):
         }.union(row_pk_filter_keys)
     ]
     args.extend(
-        [(_exact_filter_key(pk), value) for pk, value in zip(row_pks, pk_values)]
+        [
+            (f"{pk}__exact_typed", encode_row_value(value, ""))
+            for pk, value in zip(row_pks, pk_values)
+        ]
     )
     args.extend(
         [
@@ -541,6 +546,9 @@ async def _table_insert_ui(
         "columns": columns,
         "bulkColumns": bulk_columns,
         "primaryKeys": pks,
+        "primaryKeyTypes": {
+            col.name: col.type for col in column_details if col.name in pks
+        },
         "maxInsertRows": datasette.setting("max_insert_rows"),
     }
     if can_update:
@@ -669,6 +677,7 @@ async def display_columns_and_rows(
     column_details = {
         col.name: col for col in await db.table_column_details(table_name)
     }
+    column_types = {name: col.type for name, col in column_details.items()}
     pks = await db.primary_keys(table_name)
     pks_for_display = pks
     if not pks_for_display and not await db.view_exists(table_name):
@@ -708,10 +717,10 @@ async def display_columns_and_rows(
             col_dict["column_type_config"] = ct.config
         columns.append(col_dict)
 
-    column_to_foreign_key_table = {
-        fk["column"]: fk["other_table"]
-        for fk in await db.foreign_keys_for_table(table_name)
+    column_to_foreign_key = {
+        fk["column"]: fk for fk in await db.foreign_keys_for_table(table_name)
     }
+    foreign_key_column_types = {}
 
     cell_rows = []
     base_url = datasette.setting("base_url")
@@ -722,7 +731,7 @@ async def display_columns_and_rows(
         if link_column:
             is_special_link_column = len(pks) != 1
             pk_path = path_from_row_pks(row, pks, not pks, False)
-            row_path = path_from_row_pks(row, pks, not pks)
+            row_path = path_from_row_pks(row, pks, not pks, column_types=column_types)
             row_label = row_label_from_label_column(row, label_column)
             row_action_label = pk_path
             if row_label and row_label != pk_path:
@@ -830,7 +839,9 @@ async def display_columns_and_rows(
                         datasette.urls.row_blob(
                             database_name,
                             table_name,
-                            path_from_row_pks(row, pks, not pks),
+                            path_from_row_pks(
+                                row, pks, not pks, column_types=column_types
+                            ),
                             column,
                         ),
                         (f' title="{formatted}"' if "bytes" not in formatted else ""),
@@ -843,14 +854,27 @@ async def display_columns_and_rows(
                 label = value["label"]
                 value = value["value"]
                 # The table we link to depends on the column
-                other_table = column_to_foreign_key_table[column]
+                fk = column_to_foreign_key[column]
+                other_table = fk["other_table"]
+                if other_table not in foreign_key_column_types:
+                    foreign_key_column_types[other_table] = {
+                        col.name: col.type
+                        for col in await db.table_column_details(other_table)
+                    }
+                other_column = fk["other_column"]
+                if other_column is None:
+                    other_pks = await db.primary_keys(other_table)
+                    other_column = other_pks[0] if len(other_pks) == 1 else None
                 link_template = LINK_WITH_LABEL if (label != value) else LINK_WITH_VALUE
                 display_value = markupsafe.Markup(
                     link_template.format(
                         database=tilde_encode(database_name),
                         base_url=base_url,
                         table=tilde_encode(other_table),
-                        link_id=tilde_encode(str(value)),
+                        link_id=encode_row_value(
+                            value,
+                            foreign_key_column_types[other_table].get(other_column),
+                        ),
                         id=str(markupsafe.escape(value)),
                         label=str(markupsafe.escape(label)) or "-",
                     )
@@ -2146,7 +2170,7 @@ async def table_view_data(
             # _next is an offset
             offset = f" offset {int(_next)}"
         else:
-            components = urlsafe_components(_next)
+            components = decode_row_pks(_next)
             # If a sort order is applied and there are multiple components,
             # the first of these is the sort value
             if (sort or sort_desc) and (len(components) > 1):
@@ -2505,10 +2529,15 @@ async def _next_value_and_url(
     next_value = None
     next_url = None
     if 0 < page_size < len(rows):
+        column_types = {
+            col.name: col.type for col in await db.table_column_details(table_name)
+        }
         if is_view:
             next_value = int(_next or 0) + page_size
         else:
-            next_value = path_from_row_pks(rows[-2], pks, use_rowid)
+            next_value = path_from_row_pks(
+                rows[-2], pks, use_rowid, column_types=column_types
+            )
         # If there's a sort or sort_desc, add that value as a prefix
         if (sort or sort_desc) and not is_view:
             try:
@@ -2533,7 +2562,7 @@ async def _next_value_and_url(
             if prefix is None:
                 prefix = "$null"
             else:
-                prefix = tilde_encode(str(prefix))
+                prefix = encode_row_value(prefix, column_types.get(sort or sort_desc))
             next_value = f"{prefix},{next_value}"
             added_args = {"_next": next_value}
             if sort:

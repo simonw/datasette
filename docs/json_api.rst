@@ -1401,6 +1401,16 @@ You can filter the data returned by the table based on column values using a que
 ``?column__exact=value`` or ``?_column=value``
     Returns rows where the specified column exactly matches the value.
 
+``?column__exact_typed=value``
+    Matches using a SQLite parameter decoded from a :ref:`typed row identifier
+    <internals_typed_row_identifiers>`. For example,
+    ``?id__exact_typed=$blob:68656c6c6f`` matches the bytes ``b"hello"`` and
+    ``?id__exact_typed=$int:3`` supplies integer ``3``. Text values use tilde
+    encoding, so ``?id__exact_typed=~24blob~3A61`` matches literal text
+    ``"$blob:61"``. Each filter accepts one value; commas inside text must be
+    encoded as ``~2C``. When constructing query strings, URL-encode the whole
+    value as usual (in particular, encode tilde encoding's ``+`` as ``%2B``).
+
 ``?column__not=value``
     Returns rows where the column does not match the value.
 

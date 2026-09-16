@@ -6,6 +6,7 @@ import dataclasses
 import hashlib
 import inspect
 import json
+import math
 import os
 import re
 import secrets
@@ -25,6 +26,8 @@ import click
 import markupsafe
 import mergedeep
 import yaml
+
+from datasette.column_types import SQLiteType
 
 from .shutil_backport import copytree
 from .sqlite import sqlite3, supports_table_xinfo
@@ -294,9 +297,63 @@ def urlsafe_components(token):
     return [tilde_decode(b) for b in token.split(",")]
 
 
-def path_from_row_pks(row, pks, use_rowid, quote=True):
-    """Generate an optionally tilde-encoded unique identifier
-    for a row from its primary keys."""
+def encode_row_value(value, column_type=None):
+    """Encode a row key or pagination value without losing its SQLite storage type.
+
+    Text cannot collide with the markers: tilde_encode() escapes the dollar sign.
+    Numeric markers are only needed where column affinity does not convert text
+    parameters to numbers. None means the caller has no column type information.
+    """
+    if isinstance(value, bytes):
+        return "$blob:" + value.hex()
+    if (
+        column_type is not None
+        and isinstance(value, (int, float))
+        and (
+            SQLiteType.from_declared_type(column_type) == SQLiteType.BLOB
+            or column_type.strip().upper() == "ANY"
+        )
+    ):
+        marker = "$int:" if isinstance(value, int) else "$float:"
+        return marker + tilde_encode(str(value))
+    return tilde_encode(str(value))
+
+
+def decode_row_pks(token):
+    """Decode typed row keys (also used by table pagination), leaving text as text."""
+    from .asgi import BadRequest
+
+    values = []
+    for component in token.split(","):
+        try:
+            if component.startswith("$blob:"):
+                # Unlike bytes.fromhex(), do not accept whitespace.
+                value = binascii.unhexlify(component[6:])
+            elif component.startswith("$int:"):
+                raw = component[5:]
+                if not re.fullmatch(r"-?[0-9]+", raw):
+                    raise ValueError
+                value = int(raw)
+                if not -(2**63) <= value < 2**63:
+                    raise ValueError
+            elif component.startswith("$float:"):
+                value = float(tilde_decode(component[7:]))
+                if math.isnan(value):
+                    raise ValueError
+            else:
+                value = tilde_decode(component)
+        except (ValueError, OverflowError) as ex:
+            raise BadRequest("Invalid typed row identifier") from ex
+        values.append(value)
+    return values
+
+
+def path_from_row_pks(row, pks, use_rowid, quote=True, *, column_types=None):
+    """Generate a row identifier, or a display label with quote=False.
+
+    Pass declared column types by name to distinguish numeric and text values
+    in columns without numeric affinity. Bytes always use a typed marker.
+    """
     if use_rowid:
         bits = [row["rowid"]]
     else:
@@ -304,7 +361,8 @@ def path_from_row_pks(row, pks, use_rowid, quote=True):
             row[pk]["value"] if isinstance(row[pk], dict) else row[pk] for pk in pks
         ]
     if quote:
-        bits = [tilde_encode(str(bit)) for bit in bits]
+        types = [None] if use_rowid else [(column_types or {}).get(pk) for pk in pks]
+        bits = [encode_row_value(bit, type_) for bit, type_ in zip(bits, types)]
     else:
         bits = [str(bit) for bit in bits]
 

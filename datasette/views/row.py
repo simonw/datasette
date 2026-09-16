@@ -22,6 +22,7 @@ from datasette.utils import (
     await_me_maybe,
     call_with_supported_arguments,
     decode_write_json_row,
+    encode_row_value,
     escape_sqlite,
     make_slot_function,
     path_from_row_pks,
@@ -509,7 +510,10 @@ class RowView(BaseView):
                         )
 
             label_column = await db.label_column_for_table(table) if is_table else None
-            row_path = path_from_row_pks(rows[0], pks, False)
+            column_types = {
+                col.name: col.type for col in await db.table_column_details(table)
+            }
+            row_path = path_from_row_pks(rows[0], pks, False, column_types=column_types)
             pk_path = path_from_row_pks(rows[0], pks, False, False)
             row_label = row_label_from_label_column(expanded_rows[0], label_column)
             for display_row in display_rows:
@@ -702,12 +706,16 @@ class RowView(BaseView):
                 foreign_table_counts.get((fk["other_table"], fk["other_column"])) or 0
             )
             key = fk["other_column"]
-            if key.startswith("_"):
+            value = pk_values[0]
+            if isinstance(value, (bytes, int, float)):
+                key += "__exact_typed"
+                value = encode_row_value(value, "")
+            elif key.startswith("_"):
                 key += "__exact"
             link = "{}?{}={}".format(
                 self.ds.urls.table(database, fk["other_table"]),
                 key,
-                ",".join(pk_values),
+                urllib.parse.quote_plus(value),
             )
             foreign_key_tables.append({**fk, "count": count, "link": link})
         return foreign_key_tables
@@ -731,7 +739,7 @@ def _truncated_row_flash_label(label):
 async def _row_flash_message(
     datasette, request, action, resolved, row=None, *, refresh_row=False
 ):
-    pk_label = ", ".join(resolved.pk_values)
+    pk_label = ", ".join(str(value) for value in resolved.pk_values)
     # Mutation permission does not grant access to stored row labels.
     if not await datasette.allowed(
         action="view-table",

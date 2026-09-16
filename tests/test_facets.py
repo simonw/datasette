@@ -152,6 +152,54 @@ async def test_column_facet_results(ds_client):
 
 
 @pytest.mark.asyncio
+async def test_column_facet_results_selected_by_exact_filter(ds_client):
+    # The filter form produces ?column__exact=x rather than ?column=x -
+    # both should mark the matching facet value as selected
+    # https://github.com/simonw/datasette/issues/2011
+    facet = ColumnFacet(
+        ds_client.ds,
+        Request.fake("/?_facet=state&state__exact=MI"),
+        database="fixtures",
+        sql="select * from facetable",
+        table="facetable",
+    )
+    buckets, timed_out = await facet.facet_results()
+    assert [] == timed_out
+    assert buckets == [
+        {
+            "name": "state",
+            "type": "column",
+            "hideable": True,
+            "toggle_url": "/?state__exact=MI",
+            "results": [
+                {
+                    "value": "CA",
+                    "label": "CA",
+                    "count": 10,
+                    "toggle_url": "http://localhost/?_facet=state&state__exact=MI&state=CA",
+                    "selected": False,
+                },
+                {
+                    "value": "MI",
+                    "label": "MI",
+                    "count": 4,
+                    "toggle_url": "http://localhost/?_facet=state",
+                    "selected": True,
+                },
+                {
+                    "value": "MC",
+                    "label": "MC",
+                    "count": 1,
+                    "toggle_url": "http://localhost/?_facet=state&state__exact=MI&state=MC",
+                    "selected": False,
+                },
+            ],
+            "truncated": False,
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_column_facet_results_column_starts_with_underscore(ds_client):
     facet = ColumnFacet(
         ds_client.ds,

@@ -429,6 +429,72 @@ def test_hook_extra_template_vars(restore_working_directory):
         } == extra_template_vars_from_awaitable
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "return_style", ["direct", "callable", "async_callable", "awaitable"]
+)
+async def test_hook_extra_template_vars_none(ds_client, return_style):
+    class OtherPlugin:
+        @hookimpl
+        def extra_template_vars(self):
+            return {"other": "present"}
+
+    class ConditionalPlugin:
+        @hookimpl
+        def extra_template_vars(self, view_name):
+            def inner():
+                if view_name == "database":
+                    return {"conditional": "database"}
+
+            async def async_inner():
+                return inner()
+
+            if return_style == "direct":
+                return inner()
+            elif return_style == "callable":
+                return inner
+            elif return_style == "async_callable":
+                return async_inner
+            else:
+                return async_inner()
+
+    other_plugin = OtherPlugin()
+    conditional_plugin = ConditionalPlugin()
+    pm.register(other_plugin)
+    pm.register(conditional_plugin)
+    try:
+        template = ds_client.ds.get_jinja_environment().from_string(
+            "{{ other }}:{{ conditional|default('missing') }}"
+        )
+        for view_name, expected in (
+            ("database", "present:database"),
+            ("index", "present:missing"),
+        ):
+            rendered = await ds_client.ds.render_template(template, view_name=view_name)
+            assert rendered == expected
+    finally:
+        pm.unregister(conditional_plugin)
+        pm.unregister(other_plugin)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid_value", [False, 0, "", [], ()])
+async def test_hook_extra_template_vars_invalid(ds_client, invalid_value):
+    class InvalidPlugin:
+        @hookimpl
+        def extra_template_vars(self):
+            return lambda: invalid_value
+
+    plugin = InvalidPlugin()
+    pm.register(plugin)
+    try:
+        template = ds_client.ds.get_jinja_environment().from_string("test")
+        with pytest.raises(AssertionError, match="extra_vars is of type"):
+            await ds_client.ds.render_template(template)
+    finally:
+        pm.unregister(plugin)
+
+
 def test_plugins_async_template_function(restore_working_directory):
     with make_app_client(
         template_dir=str(pathlib.Path(__file__).parent / "test_templates")

@@ -217,7 +217,7 @@ Extra template variables that should be made available in the rendered template 
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
 
-This hook can return one of three different types:
+This hook supports the following return values:
 
 Dictionary
     If you return a dictionary its keys and values will be merged into the template context.
@@ -227,6 +227,9 @@ Function that returns a dictionary
 
 Function that returns an awaitable function that returns a dictionary
     You can also return a function which returns an awaitable function which returns a dictionary.
+
+``None``
+    The hook itself, or a function or awaitable it returns, can return ``None`` when no extra variables are needed. Variables returned by other plugins are still included.
 
 Datasette runs Jinja2 in `async mode <https://jinja.palletsprojects.com/en/2.10.x/api/#async-support>`__, which means you can add awaitable functions to the template scope and they will be automatically awaited when they are rendered by the template.
 
@@ -254,8 +257,6 @@ This example returns an awaitable function which adds a list of ``hidden_table_n
                 return {
                     "hidden_table_names": await db.hidden_table_names()
                 }
-            else:
-                return {}
 
         return hidden_table_names
 

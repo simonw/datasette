@@ -50,7 +50,7 @@ def extra_body_script(
 def extra_template_vars(
     template, database, table, columns, view_name, request, datasette
 ):
-    """Extra template variables to be made available to the template - can return dict or callable or awaitable"""
+    """Extra template variables to be made available to the template - can return dict, None, callable or awaitable"""
 
 
 @hookspec

@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_65_5:
+
+0.65.5 (2026-09-16)
+-------------------
+
+- Fixed a security issue where a trailing newline in a requested table name could bypass table permissions and expose private rows. Thanks for the report, `dpfkdlemtp <https://github.com/dpfkdlemtp>`__. `GHSA-h547-rmjf-5m2m <https://github.com/simonw/datasette/security/advisories/GHSA-h547-rmjf-5m2m>`__
+
 .. _v0_65_4:
 
 0.65.4 (2026-09-10)

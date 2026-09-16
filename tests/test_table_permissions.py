@@ -8,6 +8,48 @@ from datasette.app import Datasette
 from datasette.plugins import pm
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("create_decoy", [False, True])
+@pytest.mark.parametrize("path", [".json", "/1.json"])
+async def test_trailing_lf_table_permissions(tmp_path, create_decoy, path):
+    db_path = tmp_path / "data.db"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        "create table secret (id integer primary key, value text);"
+        "insert into secret values (1, 'private');"
+    )
+    if create_decoy:
+        conn.executescript(
+            'create table "secret\n" (id integer primary key, value text);'
+            "insert into \"secret\n\" values (1, 'decoy');"
+        )
+    conn.close()
+    ds = Datasette(
+        [db_path],
+        settings={"default_allow_sql": False},
+        metadata={"databases": {"data": {"tables": {"secret": {"allow": False}}}}},
+    )
+    try:
+        response = await ds.client.get("/data.json?sql=select+*+from+secret")
+        assert response.status_code == 403
+        response = await ds.client.get("/data/secret" + path)
+        assert response.status_code == 403
+
+        # A trailing line feed must not bypass the protected table's permissions.
+        # Row URLs must also be safe when the suffixed table does not exist.
+        response = await ds.client.get("/data/secret~0A" + path + "?_shape=array")
+        if create_decoy:
+            assert response.status_code == 200, response.text
+            assert response.json() == [{"id": 1, "value": "decoy"}]
+        elif path == ".json":
+            assert response.status_code == 404
+        else:
+            assert response.status_code == 400
+            assert response.json()["error"] == "no such table: secret\n"
+    finally:
+        ds.executor.shutdown(wait=True)
+
+
 @pytest.fixture
 def ds(tmp_path):
     path = tmp_path / "catalog.db"

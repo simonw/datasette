@@ -4,14 +4,145 @@ Tests for request.form() multipart form data parsing.
 Uses TDD approach - these tests are written first, then implementation follows.
 """
 
+import asyncio
 import base64
 import json
+import threading
 from collections import namedtuple
 
 import pytest
 from multipart_form_data_conformance import get_tests_dir
 
 from datasette.utils.asgi import BadRequest, Request
+from datasette.utils.multipart import MultipartParseError, parse_form_data
+
+
+@pytest.fixture
+def upload_files(monkeypatch):
+    from datasette.utils import multipart
+
+    files = []
+    original = multipart.tempfile.SpooledTemporaryFile
+
+    def create_file(*args, **kwargs):
+        file = original(*args, **kwargs)
+        files.append(file)
+        return file
+
+    monkeypatch.setattr(multipart.tempfile, "SpooledTemporaryFile", create_file)
+    yield files
+    for file in files:
+        file.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "file_limit",
+        "request_limit",
+        "truncated",
+        "disconnect",
+        "receive_error",
+        "cancel",
+    ],
+)
+async def test_failed_upload_closes_completed_and_partial_files(upload_files, failure):
+    # Complete one file and begin another, flushing the parser's 64 KiB batch.
+    body = (
+        b'--boundary\r\nContent-Disposition: form-data; name="one"; filename="one"\r\n\r\n'
+        b'first\r\n--boundary\r\nContent-Disposition: form-data; name="two"; filename="two"\r\n\r\n'
+        + b"x" * (64 * 1024)
+    )
+    calls = 0
+
+    async def receive():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return {"type": "http.request", "body": body, "more_body": True}
+        if failure == "disconnect":
+            return {"type": "http.disconnect"}
+        if failure == "receive_error":
+            raise OSError("receive failed")
+        if failure == "cancel":
+            raise asyncio.CancelledError
+        return {"type": "http.request", "body": b"x" * 100, "more_body": False}
+
+    kwargs = {}
+    if failure == "file_limit":
+        kwargs["max_file_size"] = 1024
+    if failure == "request_limit":
+        kwargs["max_request_size"] = len(body)
+    error = {
+        "receive_error": OSError,
+        "cancel": asyncio.CancelledError,
+    }.get(failure, MultipartParseError)
+    with pytest.raises(error):
+        await parse_form_data(
+            receive, "multipart/form-data; boundary=boundary", files=True, **kwargs
+        )
+    assert len(upload_files) == 2
+    assert all(file.closed for file in upload_files)
+
+
+@pytest.mark.asyncio
+async def test_unnamed_upload_is_closed(upload_files):
+    body = (
+        b'--boundary\r\nContent-Disposition: form-data; filename="ignored"\r\n\r\n'
+        b"content\r\n--boundary--\r\n"
+    )
+    form = await parse_form_data(
+        make_receive(body), "multipart/form-data; boundary=boundary", files=True
+    )
+    assert len(form) == 0
+    assert len(upload_files) == 1
+    assert upload_files[0].closed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("worker_error", [False, True])
+async def test_cancelled_upload_waits_for_worker(
+    upload_files, monkeypatch, worker_error
+):
+    from datasette.utils.multipart import MultipartParser
+
+    loop = asyncio.get_running_loop()
+    started = asyncio.Event()
+    release = threading.Event()
+    original_feed = MultipartParser.feed
+
+    def blocking_feed(self, chunk):
+        original_feed(self, chunk)
+        loop.call_soon_threadsafe(started.set)
+        assert release.wait(5)
+        if worker_error:
+            raise MultipartParseError("worker failed")
+
+    monkeypatch.setattr(MultipartParser, "feed", blocking_feed)
+    body = (
+        b'--boundary\r\nContent-Disposition: form-data; name="file"; filename="file"\r\n\r\n'
+        + b"x" * (64 * 1024)
+    )
+    task = asyncio.create_task(
+        parse_form_data(
+            make_receive(body), "multipart/form-data; boundary=boundary", files=True
+        )
+    )
+    try:
+        await asyncio.wait_for(started.wait(), timeout=5)
+        # A second cancellation must also leave cleanup waiting for the worker.
+        for _ in range(2):
+            task.cancel()
+            await asyncio.sleep(0)
+        assert not task.done()
+        assert len(upload_files) == 1
+        assert not upload_files[0].closed
+    finally:
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    assert upload_files[0].closed
 
 
 def make_receive(body: bytes):
@@ -1078,75 +1209,73 @@ async def test_conformance(test_spec, headers, body):
             await request.form(files=True)
         return
 
-    # Parse form data
-    form = await request.form(files=True)
+    async with await request.form(files=True) as form:
+        # Verify each expected part
+        for i, expected_part in enumerate(expected["parts"]):
+            name = expected_part["name"]
 
-    # Verify each expected part
-    for i, expected_part in enumerate(expected["parts"]):
-        name = expected_part["name"]
+            # Get value(s) for this name
+            values = form.getlist(name)
 
-        # Get value(s) for this name
-        values = form.getlist(name)
+            # Find the value at the correct index for this name
+            # (handles multiple values with same name)
+            same_name_count = sum(1 for p in expected["parts"][:i] if p["name"] == name)
 
-        # Find the value at the correct index for this name
-        # (handles multiple values with same name)
-        same_name_count = sum(1 for p in expected["parts"][:i] if p["name"] == name)
+            if same_name_count >= len(values):
+                pytest.fail(
+                    f"Expected part {name} at index {same_name_count} but only {len(values)} found"
+                )
 
-        if same_name_count >= len(values):
-            pytest.fail(
-                f"Expected part {name} at index {same_name_count} but only {len(values)} found"
+            value = values[same_name_count]
+
+            # Determine expected content
+            if "body_base64" in expected_part:
+                expected_content = base64.b64decode(expected_part["body_base64"])
+            elif "body_text" in expected_part:
+                expected_content = expected_part["body_text"].encode("utf-8")
+            else:
+                expected_content = None
+
+            # Check for file vs field
+            # A part is a file if it has a filename OR filename_star
+            is_file = (
+                expected_part.get("filename") is not None
+                or expected_part.get("filename_star") is not None
             )
 
-        value = values[same_name_count]
+            if is_file:
+                # It's a file
+                assert hasattr(value, "filename"), f"Expected file for {name}"
 
-        # Determine expected content
-        if "body_base64" in expected_part:
-            expected_content = base64.b64decode(expected_part["body_base64"])
-        elif "body_text" in expected_part:
-            expected_content = expected_part["body_text"].encode("utf-8")
-        else:
-            expected_content = None
+                # Check filename - use filename_star if present, else filename
+                expected_filename = expected_part.get(
+                    "filename_star"
+                ) or expected_part.get("filename")
+                if expected_filename:
+                    assert (
+                        value.filename == expected_filename
+                    ), f"Filename mismatch: expected {expected_filename!r}, got {value.filename!r}"
 
-        # Check for file vs field
-        # A part is a file if it has a filename OR filename_star
-        is_file = (
-            expected_part.get("filename") is not None
-            or expected_part.get("filename_star") is not None
-        )
+                if expected_part.get("content_type"):
+                    assert value.content_type == expected_part["content_type"]
 
-        if is_file:
-            # It's a file
-            assert hasattr(value, "filename"), f"Expected file for {name}"
-
-            # Check filename - use filename_star if present, else filename
-            expected_filename = expected_part.get("filename_star") or expected_part.get(
-                "filename"
-            )
-            if expected_filename:
+                content = await value.read()
                 assert (
-                    value.filename == expected_filename
-                ), f"Filename mismatch: expected {expected_filename!r}, got {value.filename!r}"
+                    len(content) == expected_part["body_size"]
+                ), f"Size mismatch: expected {expected_part['body_size']}, got {len(content)}"
+                if expected_content is not None:
+                    assert content == expected_content
+            else:
+                # It's a text field
+                if hasattr(value, "filename"):
+                    pytest.fail(f"Expected text field for {name}, got file")
 
-            if expected_part.get("content_type"):
-                assert value.content_type == expected_part["content_type"]
-
-            content = await value.read()
-            assert (
-                len(content) == expected_part["body_size"]
-            ), f"Size mismatch: expected {expected_part['body_size']}, got {len(content)}"
-            if expected_content is not None:
-                assert content == expected_content
-        else:
-            # It's a text field
-            if hasattr(value, "filename"):
-                pytest.fail(f"Expected text field for {name}, got file")
-
-            if expected_content is not None:
-                # For text fields, value is a string
-                try:
-                    expected_text = expected_content.decode("utf-8")
-                except UnicodeDecodeError:
-                    expected_text = expected_content.decode("latin-1")
-                assert (
-                    value == expected_text
-                ), f"Value mismatch: expected {expected_text!r}, got {value!r}"
+                if expected_content is not None:
+                    # For text fields, value is a string
+                    try:
+                        expected_text = expected_content.decode("utf-8")
+                    except UnicodeDecodeError:
+                        expected_text = expected_content.decode("latin-1")
+                    assert (
+                        value == expected_text
+                    ), f"Value mismatch: expected {expected_text!r}, got {value!r}"

@@ -2292,7 +2292,25 @@ The value returned from ``await database.execute_write_fn(...)`` will be the ret
 
 If your function raises an exception that exception will be propagated up to the ``await`` line.
 
-By default your function will be executed inside a transaction. You can pass ``transaction=False`` to disable this behavior, though if you do that you should be careful to manually apply transactions - ideally using the ``with conn:`` pattern, or you may see ``OperationalError: database table is locked`` errors.
+By default Datasette manages the transaction. For nested transactions, use `sqlite_utils.Database(conn).atomic() <https://sqlite-utils.datasette.io/en/stable/python-api.html#grouping-changes-with-db-atomic>`__. Pass ``transaction=False`` to manage transactions yourself.
+
+For example, archive an article and record the change in an audit log:
+
+.. code-block:: python
+
+    import sqlite_utils
+
+
+    def archive_article(conn):
+        db = sqlite_utils.Database(conn)
+        with db.atomic():
+            db["articles"].update(1, {"archived": True})
+            db["audit_log"].insert(
+                {"article_id": 1, "action": "archive"}
+            )
+
+
+    await database.execute_write_fn(archive_article)
 
 If you specify ``block=False`` the method becomes fire-and-forget, queueing your function to be executed and then allowing your code after the call to ``.execute_write_fn()`` to continue running while the underlying thread waits for an opportunity to run your function. A UUID representing the queued task will be returned. Any exceptions in your code will be silently swallowed.
 

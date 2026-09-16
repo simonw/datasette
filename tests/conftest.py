@@ -106,7 +106,10 @@ async def ds_client():
 
     await db.execute_write_fn(prepare)
     await ds.invoke_startup()
-    return ds.client
+    try:
+        yield ds.client
+    finally:
+        ds.close()
 
 
 def pytest_report_header(config):
@@ -266,12 +269,24 @@ def ds_localhost_http_server():
         # Avoid FileNotFoundError: [Errno 2] No such file or directory:
         cwd=tempfile.gettempdir(),
     )
-    wait_until_responds("http://localhost:8041/")
-    # Check it started successfully
-    assert not ds_proc.poll(), ds_proc.stdout.read().decode("utf-8")
-    yield ds_proc
-    # Shut it down at the end of the pytest session
-    ds_proc.terminate()
+    try:
+        wait_until_responds("http://localhost:8041/", process=ds_proc)
+        yield ds_proc
+    finally:
+        stop_process(ds_proc)
+
+
+def stop_process(proc):
+    try:
+        if proc.poll() is None:
+            proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+    finally:
+        proc.stdout.close()
 
 
 @pytest.fixture(scope="session")
@@ -295,8 +310,24 @@ def ds_unix_domain_socket_server(tmp_path_factory):
     transport = httpx2.HTTPTransport(uds=uds)
     client = httpx2.Client(transport=transport)
     try:
+        # Probe with a socket we own: the HTTP transport can leak a socket
+        # when connect() fails before the UDS server has started listening.
+        start = time.monotonic()
+        while True:
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+                    probe.settimeout(0.1)
+                    probe.connect(uds)
+                break
+            except OSError:
+                if ds_proc.poll() is not None or time.monotonic() - start > 30:
+                    raise
+                time.sleep(0.1)
         wait_until_responds(
-            "http://localhost/_memory.json", timeout=30.0, client=client
+            "http://localhost/_memory.json",
+            timeout=30.0,
+            client=client,
+            process=ds_proc,
         )
         # Check it started successfully
         assert not ds_proc.poll(), ds_proc.stdout.read().decode("utf-8")
@@ -304,12 +335,7 @@ def ds_unix_domain_socket_server(tmp_path_factory):
     finally:
         client.close()
         # Shut it down at the end of the pytest session
-        ds_proc.terminate()
-        try:
-            ds_proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            ds_proc.kill()
-            ds_proc.wait()
+        stop_process(ds_proc)
         try:
             os.unlink(uds)
         except FileNotFoundError:
@@ -372,13 +398,7 @@ def serve_with_plugins(tmp_path):
     yield start
 
     for proc in processes:
-        if proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
+        stop_process(proc)
 
 
 # Import fixtures from fixtures.py to make them available

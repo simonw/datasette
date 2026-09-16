@@ -1305,3 +1305,17 @@ async def test_database_close_is_idempotent(tmpdir):
     # Second call should be a no-op, not raise
     db.close()
     ds._internal_database.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("num_sql_threads", [0, 2])
+@pytest.mark.parametrize("named", [False, True])
+async def test_close_releases_memory_connections(num_sql_threads, named):
+    ds = Datasette(memory=True, settings={"num_sql_threads": num_sql_threads})
+    db = ds.add_memory_database(uuid.uuid4().hex) if named else ds.get_database()
+    read_connection = await db.execute_fn(lambda conn: conn)
+    write_connection = await db.execute_write_fn(lambda conn: conn)
+    ds.close()
+    for conn in (read_connection, write_connection):
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            conn.execute("select 1")

@@ -24,8 +24,8 @@ def test_serve_localhost_http(ds_localhost_http_server):
 def test_serve_unix_domain_socket(ds_unix_domain_socket_server):
     _, uds = ds_unix_domain_socket_server
     transport = httpx2.HTTPTransport(uds=uds)
-    client = httpx2.Client(transport=transport)
-    response = client.get("http://localhost/_memory.json")
+    with httpx2.Client(transport=transport) as client:
+        response = client.get("http://localhost/_memory.json")
     assert {
         "database": "_memory",
         "path": "/_memory",

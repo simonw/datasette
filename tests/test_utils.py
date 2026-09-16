@@ -228,6 +228,8 @@ def test_detect_fts(open_quote, close_quote):
     "identifier,expected",
     (
         ("plain", "plain"),
+        ("plain\n", '"plain\n"'),
+        ("select\n", '"select\n"'),
         ("select", '"select"'),
         ("has space", '"has space"'),
         ("has'quote", '"has\'quote"'),

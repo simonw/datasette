@@ -56,6 +56,105 @@ def _headers(token):
     }
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["read", "read_row", "rename"])
+async def test_trailing_lf_table_permissions(tmp_path, operation):
+    # SQLite treats "secret" and "secret\n" as different table names. Permission
+    # checks and SQL execution must agree on which table a request targets.
+    db_path = tmp_path / "data.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.executescript(
+        "create table secret (id integer primary key, value text);"
+        "insert into secret values (1, 'private');"
+    )
+    conn.close()
+    # Allow builder to create and use tables generally, but explicitly deny
+    # access to the existing secret table below. Disable arbitrary SQL access.
+    grants = {
+        action: {"id": "builder"}
+        for action in (
+            "view-database",
+            "create-table",
+            "view-table",
+            "insert-row",
+            "alter-table",
+        )
+    }
+    ds = Datasette(
+        [str(db_path)],
+        default_deny=True,
+        settings={"default_allow_sql": False},
+        config={
+            "permissions": {"view-instance": {"id": "builder"}},
+            "databases": {
+                "data": {
+                    "permissions": grants,
+                    "tables": {
+                        "secret": {
+                            "permissions": {
+                                "view-table": False,
+                                "insert-row": False,
+                                "alter-table": False,
+                            }
+                        }
+                    },
+                }
+            },
+        },
+    )
+    headers = _headers(write_token(ds, actor_id="builder"))
+    try:
+        # Establish that the protected table is inaccessible before creating
+        # a second table whose name differs only by a trailing line feed.
+        response = await ds.client.get("/data/secret.json", headers=headers)
+        assert response.status_code == 403
+        response = await ds.client.get(
+            "/data/-/query.json?sql=select+*+from+secret", headers=headers
+        )
+        assert response.status_code == 403
+        # Distinct values let us detect if an operation targets secret
+        # instead of the newly created secret\n table.
+        response = await ds.client.post(
+            "/data/-/create",
+            json={"table": "secret\n", "row": {"id": 1, "value": "decoy"}, "pk": "id"},
+            headers=headers,
+        )
+        assert response.status_code == 201, response.text
+        # ~0A is Datasette's URL encoding for the line feed in the table name.
+        if operation in ("read", "read_row"):
+            # Both table and row endpoints must return only the permitted row.
+            path = "/1.json" if operation == "read_row" else ".json"
+            response = await ds.client.get(
+                "/data/secret~0A" + path + "?_shape=array", headers=headers
+            )
+            assert response.status_code == 200, response.text
+            assert response.json() == [{"id": 1, "value": "decoy"}]
+        else:
+            # Renaming must move the permitted table, preserving its contents
+            # and removing its old name from the database.
+            response = await ds.client.post(
+                "/data/secret~0A/-/alter",
+                json={"operations": [{"op": "rename_table", "args": {"to": "moved"}}]},
+                headers=headers,
+            )
+            assert response.status_code == 200, response.text
+            db = ds.get_database("data")
+            assert (
+                await db.execute('select value from "moved"')
+            ).single_value() == "decoy"
+            assert "secret\n" not in await db.table_names()
+        # Verify that the protected table and its data are unchanged, and that
+        # the API still denies access to it.
+        db = ds.get_database("data")
+        assert (
+            await db.execute('select value from "secret"')
+        ).single_value() == "private"
+        response = await ds.client.get("/data/secret.json", headers=headers)
+        assert response.status_code == 403
+    finally:
+        ds.close()
+
+
 def _insert_and_fetch_created(conn, table, insert_sql):
     cursor = conn.execute(insert_sql)
     return conn.execute(

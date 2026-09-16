@@ -568,7 +568,7 @@ def escape_css_string(s):
 
 
 def escape_sqlite(s):
-    if _boring_keyword_re.match(s) and (s.lower() not in reserved_words):
+    if _boring_keyword_re.fullmatch(s) and (s.lower() not in reserved_words):
         return s
     return '"{}"'.format(s.replace('"', '""'))
 

@@ -26,6 +26,7 @@ Datasette plugins can now use **background tasks** to run code independent of th
 Bug fixes
 ~~~~~~~~~
 
+- The :ref:`alter-table API <TableAlterView>` now rolls back schema changes when a :ref:`write_wrapper <plugin_hook_write_wrapper>` raises after the write. (:issue:`2924`, :pr:`2925`)
 - The :ref:`extra_template_vars() <plugin_hook_extra_template_vars>` plugin hook can now return a function or awaitable that resolves to ``None`` when no extra variables are needed. (:issue:`2005`)
 - :ref:`request.headers <internals_request>` now supports case-insensitive header lookups, so ``request.headers.get("Content-Type")`` works as well as ``request.headers.get("content-type")``. (:issue:`1861`)
 - CSV endpoints now return plain-text error messages for SQL errors. (:issue:`2129`)

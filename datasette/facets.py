@@ -264,10 +264,15 @@ class ColumnFacet(Facet):
                     column_qs = column
                     if column.startswith("_"):
                         column_qs = f"{column}__exact"
-                    selected = (column_qs, str(row["value"])) in qs_pairs
+                    selected_args = {
+                        key: str(row["value"])
+                        for key in (column_qs, f"{column}__exact")
+                        if (key, str(row["value"])) in qs_pairs
+                    }
+                    selected = bool(selected_args)
                     if selected:
                         toggle_path = path_with_removed_args(
-                            self.request, {column_qs: str(row["value"])}
+                            self.request, selected_args
                         )
                     else:
                         toggle_path = path_with_added_args(

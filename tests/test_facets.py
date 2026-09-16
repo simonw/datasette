@@ -1,4 +1,5 @@
 import json
+from urllib.parse import parse_qsl, urlsplit
 
 import pytest
 
@@ -149,6 +150,63 @@ async def test_column_facet_results(ds_client):
             "truncated": False,
         }
     ] == buckets
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "column,filters,remaining",
+    [
+        ("COUNTY", "COUNTY=Lee", []),
+        ("COUNTY", "COUNTY__exact=Lee", []),
+        ("COUNTY", "COUNTY=Lee&COUNTY__exact=Lee", []),
+        ("COUNTY", "COUNTY__exact=Lee&COUNTY__exact=Lee", []),
+        (
+            "COUNTY",
+            "COUNTY__exact=Lee&COUNTY__exact=Polk",
+            [("COUNTY__exact", "Polk")],
+        ),
+        ("_county", "_county__exact=Lee", []),
+        ("_county", "_county__exact=Lee&_county=Lee", [("_county", "Lee")]),
+    ],
+)
+async def test_column_facet_selected_exact_filters(
+    ds_client, column, filters, remaining
+):
+    facet = ColumnFacet(
+        ds_client.ds,
+        Request.fake(f"/?_facet={column}&{filters}&other=keep&_sort={column}"),
+        database="fixtures",
+        sql=f"select 'Lee' as {column}",
+    )
+    buckets, timed_out = await facet.facet_results()
+    assert not timed_out
+    result = buckets[0]["results"][0]
+    assert result["selected"] is True
+    assert parse_qsl(urlsplit(result["toggle_url"]).query) == [
+        ("_facet", column),
+        *remaining,
+        ("other", "keep"),
+        ("_sort", column),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_column_facet_underscore_argument_is_not_a_filter(ds_client):
+    facet = ColumnFacet(
+        ds_client.ds,
+        Request.fake("/?_facet=_county&_county=Lee"),
+        database="fixtures",
+        sql="select 'Lee' as _county",
+    )
+    buckets, timed_out = await facet.facet_results()
+    assert not timed_out
+    result = buckets[0]["results"][0]
+    assert result["selected"] is False
+    assert parse_qsl(urlsplit(result["toggle_url"]).query) == [
+        ("_facet", "_county"),
+        ("_county", "Lee"),
+        ("_county__exact", "Lee"),
+    ]
 
 
 @pytest.mark.asyncio

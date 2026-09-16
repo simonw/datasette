@@ -31,6 +31,7 @@ def ds_ct(tmp_path_factory):
         "'https://example.com', '{\"key\": \"value\"}')"
     )
     db.commit()
+    db.close()
     ds = Datasette(
         [db_path],
         config={
@@ -70,6 +71,7 @@ def ds_ct_editor_permission(tmp_path_factory):
         "'https://example.com', '{\"key\": \"value\"}')"
     )
     db.commit()
+    db.close()
     ds = Datasette(
         [db_path],
         config={

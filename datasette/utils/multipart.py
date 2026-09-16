@@ -358,6 +358,13 @@ class MultipartParser:
         self.buffer.extend(chunk)
         self._process()
 
+    def close(self) -> None:
+        """Discard completed uploads and any file still being received."""
+        if self.current_file is not None:
+            self.current_file.close()
+            self.current_file = None
+        self.form_data.close()
+
     def _process(self) -> None:
         """Process buffered data."""
         while True:
@@ -577,6 +584,9 @@ class MultipartParser:
     def _finish_part(self) -> None:
         """Finalize current part and add to form data."""
         if self.current_name is None:
+            if self.current_file is not None:
+                self.current_file.close()
+                self.current_file = None
             return
 
         if self.current_filename is not None:
@@ -722,29 +732,50 @@ async def parse_form_data(
         batch_target = 64 * 1024
         batch = bytearray()
 
+        async def run_parser(fn, *args):
+            # Cancellation must not close files while a worker is using them.
+            task = asyncio.create_task(asyncio.to_thread(fn, *args))
+            try:
+                return await asyncio.shield(task)
+            except asyncio.CancelledError as cancelled:
+                try:
+                    while not task.done():
+                        try:
+                            await asyncio.shield(task)
+                        except asyncio.CancelledError:
+                            continue
+                    task.result()
+                finally:
+                    raise cancelled
+
         async def flush_batch() -> None:
             if batch:
                 data = bytes(batch)
                 batch.clear()
-                await asyncio.to_thread(parser.feed, data)
+                await run_parser(parser.feed, data)
 
-        while True:
-            message = await receive()
-            message_type = message.get("type")
-            if message_type == "http.disconnect":
-                raise MultipartParseError("Client disconnected during request body")
-            if message_type is not None and message_type != "http.request":
-                continue
-            chunk = message.get("body", b"")
-            if chunk:
-                batch.extend(chunk)
-                if len(batch) >= batch_target:
-                    await flush_batch()
-            if not message.get("more_body", False):
-                break
+        try:
+            while True:
+                message = await receive()
+                message_type = message.get("type")
+                if message_type == "http.disconnect":
+                    raise MultipartParseError("Client disconnected during request body")
+                if message_type is not None and message_type != "http.request":
+                    continue
+                chunk = message.get("body", b"")
+                if chunk:
+                    batch.extend(chunk)
+                    if len(batch) >= batch_target:
+                        await flush_batch()
+                if not message.get("more_body", False):
+                    break
 
-        await flush_batch()
-        return await asyncio.to_thread(parser.finalize)
+            await flush_batch()
+            return await run_parser(parser.finalize)
+        except BaseException:
+            # No FormData is returned to the caller to take ownership on failure.
+            await asyncio.to_thread(parser.close)
+            raise
 
     else:
         raise MultipartParseError(

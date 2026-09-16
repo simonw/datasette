@@ -94,8 +94,9 @@ class Database:
         # These are used when in non-threaded mode:
         self._read_connection = None
         self._write_connection = None
-        # This is used to track all file connections so they can be closed
-        self._all_file_connections = []
+        # Track file and memory connections, including reads on worker threads,
+        # so close() can release all of them from the calling thread.
+        self._all_connections = []
         if not is_temp_disk:
             self.mode = mode
 
@@ -146,9 +147,12 @@ class Database:
             )
             if not write:
                 conn.execute("PRAGMA query_only=1")
+            self._all_connections.append(conn)
             return conn
         if self.is_memory:
-            return sqlite3.connect(":memory:", uri=True)
+            conn = sqlite3.connect(":memory:", uri=True, check_same_thread=False)
+            self._all_connections.append(conn)
+            return conn
 
         # mode=ro or immutable=1?
         if self.is_mutable:
@@ -165,7 +169,7 @@ class Database:
         conn = sqlite3.connect(
             f"file:{self.path}{qs}", uri=True, check_same_thread=False, **extra_kwargs
         )
-        self._all_file_connections.append(conn)
+        self._all_connections.append(conn)
         if self.is_temp_disk and not self._wal_enabled:
             conn.execute("PRAGMA journal_mode=WAL")
             self._wal_enabled = True
@@ -202,13 +206,13 @@ class Database:
             except Exception:  # noqa: BLE001, S110
                 # Shutdown teardown - a failed pending write must not block close()
                 pass
-        # Close anything still tracked in _all_file_connections
-        for connection in self._all_file_connections:
+        # Close anything still tracked in _all_connections
+        for connection in self._all_connections:
             try:
                 connection.close()
             except Exception:  # noqa: BLE001, S110
                 pass
-        self._all_file_connections = []
+        self._all_connections = []
         # Drop per-thread cached read connections we can reach
         try:
             delattr(connections, self._thread_local_id)
@@ -324,9 +328,9 @@ class Database:
             finally:
                 isolated_connection.close()
                 try:
-                    self._all_file_connections.remove(isolated_connection)
+                    self._all_connections.remove(isolated_connection)
                 except ValueError:
-                    # Was probably a memory connection
+                    # May already have been cleared by close().
                     pass
 
         if self.ds.executor is None:
@@ -491,9 +495,9 @@ class Database:
                     finally:
                         isolated_connection.close()
                         try:
-                            self._all_file_connections.remove(isolated_connection)
+                            self._all_connections.remove(isolated_connection)
                         except ValueError:
-                            # Was probably a memory connection
+                            # May already have been cleared by close().
                             pass
                 except Exception as e:  # noqa: BLE001
                     # Write thread must survive any task failure or the database wedges

@@ -1405,32 +1405,6 @@ If a call to ``Database.close()`` on one of the attached databases raises an exc
 
 When Datasette is being served over ASGI the ``close()`` method is wired up to the lifespan shutdown event, so resources are released cleanly on ``SIGTERM`` / ``SIGINT``. See :ref:`datasette_lifecycle` for where ``close()`` fits into the full startup-to-shutdown sequence.
 
-.. _datasette_lifecycle:
-
-Application lifecycle
----------------------
-
-Datasette guarantees a fixed sequence of events between the moment a ``Datasette`` instance is constructed and the moment its resources are released:
-
-1. ``Datasette(...)`` — the constructor runs synchronously and does not run plugin hooks.
-2. **Startup** — ``await datasette.invoke_startup()`` runs once: it populates the internal database's catalog of table schemas (:ref:`internals_internal`), loads canned queries and column type configuration, then calls every registered :ref:`plugin_hook_startup` hook, in plugin registration order. When Datasette is being served, table-count precomputation for immutable databases runs immediately before this, as part of the same startup sequence.
-3. **Background-task launch** — once *every* ``startup`` hook has finished (not before), every task registered with :ref:`datasette_add_background_task` — by any plugin — is launched. A task registered by one plugin's ``startup`` hook can safely depend on state set up by another plugin's ``startup`` hook, because launch only happens after the whole round of hooks completes.
-4. **Serving** — the instance handles requests (or, for headless or CLI use, does whatever the embedding program does with it).
-5. **Shutdown** — triggered by the ASGI ``lifespan.shutdown`` event (Ctrl-C, ``SIGTERM``) or the end of a ``datasette serve`` process: every :ref:`plugin_hook_shutdown` hook runs first, while background tasks are still alive, so a plugin can tell its own task to wind down gracefully; every still-running background task is then cancelled and given a five-second grace period to actually stop; finally every database connection is released via :ref:`datasette_close`.
-
-.. admonition:: Startup hooks run on the event loop that serves requests
-
-   In every trigger path below, ``startup`` hooks run on the same ``asyncio`` event loop that goes on to accept connections. It is safe to create loop-bound primitives — ``asyncio.Lock``, ``asyncio.Queue``, ``asyncio.Event``, a raw ``asyncio.create_task()`` call — inside a ``startup`` hook, and to register long-lived background work with :ref:`datasette_add_background_task` there. This was not always true: older Datasette versions ran startup on a temporary event loop in the CLI that was closed before the server's own loop was created, which could silently kill anything scheduled on it.
-
-Three trigger paths
-~~~~~~~~~~~~~~~~~~~
-
-- **``datasette serve`` (CLI)** — startup and ``uvicorn.Server.serve()`` both run inside a single ``asyncio.run()`` call, so there is exactly one event loop for the whole life of the process.
-- **ASGI lifespan** — ``Datasette.app()`` wires startup and background-task launch into the ``on_startup`` list, and shutdown into the ``on_shutdown`` list, of an internal ``AsgiLifespan`` wrapper. A spec-compliant ASGI server (uvicorn, hypercorn, and others) sends the ``lifespan.startup`` message and waits for ``lifespan.startup.complete`` before delivering any ``http`` or ``websocket`` scope, so startup — including every plugin's own internal-database migrations — is guaranteed to have finished before any request reaches Datasette, including requests seen by plugin :ref:`asgi_wrapper <plugin_asgi_wrapper>` middleware. If a ``startup`` hook raises, ``AsgiLifespan`` sends ``lifespan.startup.failed`` with the exception message instead of hanging or crashing ambiguously, so the host can abort the boot cleanly.
-- **First-request fallback** — an internal ``AsgiRunOnFirstRequest`` wrapper runs the same startup work as a safety net for hosts that never send ASGI lifespan events at all: some ASGI mounts, a bare ``app()`` embedded inside another framework, and :ref:`datasette.client <internals_datasette_client>` / test clients, which drive requests directly over ``httpx2.ASGITransport`` without ever emitting ``lifespan.startup``. It runs startup exactly once, the first time any non-lifespan scope arrives, guarded by a lock so that concurrent early requests can't run it twice.
-
-All three paths call the same idempotent internal methods, so it is safe for more than one of them to fire — lifespan startup completing and then a first request arriving afterwards is a no-op the second time. A host that never sends lifespan events and never goes through the CLI degrades to first-request timing: startup runs on the first request instead of before it, exactly as Datasette always worked prior to this lifecycle guarantee. This is a deliberate fallback rather than a regression — see :ref:`datasette_add_background_task` for how to opt out of launching background tasks (the ``--get`` CLI path) or drive startup and launch explicitly (tests, headless embedders).
-
 .. _datasette_add_background_task:
 
 .add_background_task(func, name=None)
@@ -1442,100 +1416,18 @@ All three paths call the same idempotent internal methods, so it is safe for mor
 ``name`` - string, optional
     A name for the task, used to identify it in the ``/-/tasks`` introspection endpoint (:ref:`JsonDataView_tasks`) and in log messages. Defaults to ``func.__qualname__``. If the resulting name collides with an already-registered task, a ``-2``, ``-3``, ... suffix is appended.
 
-Registers a piece of supervised, long-lived background work — typically called from a :ref:`plugin_hook_startup` hook, though it can be called at any point after the instance exists, including from a request handler. Returns a :ref:`BackgroundTask <BackgroundTask>` handle.
+Registers supervised background work and returns a :ref:`BackgroundTask <BackgroundTask>` handle. Tasks registered during startup launch after all startup hooks finish; tasks registered after launch start immediately.
 
-Registration is separate from launch. Calling this from a ``startup`` hook — the common case — buffers the task; core launches every registered task once *all* ``startup`` hooks have completed, as described in :ref:`datasette_lifecycle`. Calling it after launch has already happened — for example from a request handler, to start a per-job task dynamically — starts the task immediately instead.
-
-.. code-block:: python
-
-    import asyncio
-    from datasette import hookimpl
-
-
-    async def poll_for_updates(datasette):
-        while True:
-            await do_one_poll(datasette)
-            await asyncio.sleep(60)
-
-
-    @hookimpl
-    def startup(datasette):
-        datasette.add_background_task(
-            poll_for_updates, name="my-plugin-poller"
-        )
-
-Core owns the task for the rest of the process's life:
-
-- **A strong reference is kept forever**, so the task can never be silently garbage collected the way an unreferenced ``asyncio.create_task()`` call can be.
-- **A crash is logged, not swallowed.** If ``func`` raises anything other than ``asyncio.CancelledError``, the exception (with its traceback) is logged to the ``datasette.background_tasks`` logger and recorded on the handle's ``.exception``, and the task's ``.state`` becomes ``crashed``.
-- **Cancellation is coordinated.** On shutdown, every task that is still running is cancelled and given a grace period to stop — see :ref:`datasette_lifecycle`.
-
-Launch matrix
-~~~~~~~~~~~~~
-
-Whether registered tasks actually launch depends on how the instance is being run:
-
-.. list-table::
-   :header-rows: 1
-
-   * - Trigger
-     - Launches registered tasks?
-   * - ASGI lifespan (real server deployments)
-     - Yes, after ``lifespan.startup`` completes
-   * - First-request fallback (lifespan-less hosts)
-     - Yes, on the first request — parity with the lifespan case
-   * - ``datasette serve --get``
-     - Never
-   * - Tests / headless embedders
-     - Only if you call :ref:`datasette_start_background_tasks` explicitly
-
-``datasette --get`` never launches background tasks, even though its one-shot request flows through the same first-request fallback as everything else: it sets an internal flag before making that request specifically to suppress the launch, since a one-shot CLI invocation has no server loop left running afterwards to keep any launched tasks alive.
-
-.. _BackgroundTask:
-
-BackgroundTask objects
-~~~~~~~~~~~~~~~~~~~~~~
-
-``add_background_task()`` returns a ``BackgroundTask`` handle with the following attributes:
-
-``.name`` - string
-    The task's (unique) name.
-
-``.state`` - string
-    One of ``registered`` (added but not yet launched), ``running``, ``completed`` (returned cleanly), ``crashed`` (raised an exception) or ``cancelled``.
-
-``.task`` - ``asyncio.Task`` or ``None``
-    The underlying ``asyncio.Task``, once launched. ``None`` while still ``registered``.
-
-``.exception`` - ``BaseException`` or ``None``
-    The exception that crashed the task, if ``.state`` is ``crashed``.
-
-``.started_at`` - string or ``None``
-    ISO 8601 UTC timestamp of when the task was launched.
-
-``.function`` - string
-    The callable's dotted module and qualified name, for example ``my_plugin.jobs.poll_for_updates``.
-
-``.cancel()``
-    Cancel the task. If it has already launched, this cancels the underlying ``asyncio.Task`` — ``.state`` becomes ``cancelled`` once the cancellation is observed. If it has not launched yet, it is removed from the queue so it never runs.
-
-This is also the shape of each entry returned by the ``/-/tasks`` JSON introspection endpoint — see :ref:`JsonDataView_tasks`.
+See :ref:`internals_background_tasks` for examples, launch behavior, task supervision and cancellation.
 
 .. _datasette_start_background_tasks:
 
 await .start_background_tasks()
 -------------------------------
 
-Runs startup (if it has not already run) and launches every task registered with :ref:`datasette_add_background_task`. This is the explicit equivalent of what happens automatically via ASGI lifespan or the first-request fallback in a served deployment — the entry point for tests and headless embedders (a cron-style CLI command that wants supervised background work without running a server) that need background tasks without going through either of those paths.
+Runs startup (if it has not already run) and launches every task registered with :ref:`datasette_add_background_task`.
 
-.. code-block:: python
-
-    datasette = Datasette(memory=True)
-    await datasette.start_background_tasks()
-
-.. note::
-
-   ``start_background_tasks()`` calls ``invoke_startup()`` internally, **not** the fuller startup sequence a served instance uses — so calling it directly, without a prior request through ``datasette.client``, skips the immutable-database table-count precompute that a real server performs as part of startup. This only matters if your code inspects table counts before any request has been made; if you also exercise the instance via ``datasette.client`` (which arms the first-request fallback, and therefore the full startup sequence including table counts), or don't care about table counts up front, there is nothing to worry about.
+See :ref:`internals_background_tasks` for when tasks launch automatically, and :ref:`internals_background_tasks_explicit` for examples and startup considerations in tests and headless programs.
 
 .. _datasette_track_event:
 
@@ -1896,6 +1788,135 @@ These functions can be accessed via the ``{{ urls }}`` object in Datasette templ
 Use the ``format="json"`` (or ``"csv"`` or other formats supported by plugins) arguments to get back URLs to the JSON representation. This is the path with ``.json`` added on the end.
 
 These methods each return a ``datasette.utils.PrefixedUrlString`` object, which is a subclass of the Python ``str`` type. This allows the logic that considers the ``base_url`` setting to detect if that prefix has already been applied to the path.
+
+.. _datasette_lifecycle:
+
+Application lifecycle
+=====================
+
+Datasette guarantees a fixed sequence of events between the moment a ``Datasette`` instance is constructed and the moment its resources are released:
+
+1. ``Datasette(...)`` — the constructor runs synchronously and does not run plugin hooks.
+2. **Startup** — ``await datasette.invoke_startup()`` runs once: it populates the internal database's catalog of table schemas (:ref:`internals_internal`), loads canned queries and column type configuration, then calls every registered :ref:`plugin_hook_startup` hook, in plugin registration order. When Datasette is being served, table-count precomputation for immutable databases runs immediately before this, as part of the same startup sequence.
+3. **Background-task launch** — once *every* ``startup`` hook has finished (not before), every task registered with :ref:`datasette_add_background_task` — by any plugin — is launched. A task registered by one plugin's ``startup`` hook can safely depend on state set up by another plugin's ``startup`` hook, because launch only happens after the whole round of hooks completes.
+4. **Serving** — the instance handles requests (or, for headless or CLI use, does whatever the embedding program does with it).
+5. **Shutdown** — triggered by the ASGI ``lifespan.shutdown`` event (Ctrl-C, ``SIGTERM``) or the end of a ``datasette serve`` process: every :ref:`plugin_hook_shutdown` hook runs first, while background tasks are still alive, so a plugin can tell its own task to wind down gracefully; every still-running background task is then cancelled and given a five-second grace period to actually stop; finally every database connection is released via :ref:`datasette_close`.
+
+.. admonition:: Startup hooks run on the event loop that serves requests
+
+   In every trigger path below, ``startup`` hooks run on the same ``asyncio`` event loop that goes on to accept connections. It is safe to create loop-bound primitives — ``asyncio.Lock``, ``asyncio.Queue``, ``asyncio.Event``, a raw ``asyncio.create_task()`` call — inside a ``startup`` hook, and to register long-lived background work with :ref:`datasette_add_background_task` there. This was not always true: older Datasette versions ran startup on a temporary event loop in the CLI that was closed before the server's own loop was created, which could silently kill anything scheduled on it.
+
+Three trigger paths
+-------------------
+
+- ``datasette serve`` (CLI) — startup and ``uvicorn.Server.serve()`` both run inside a single ``asyncio.run()`` call, so there is exactly one event loop for the whole life of the process.
+- **ASGI lifespan** — ``Datasette.app()`` wires startup and background-task launch into the ``on_startup`` list, and shutdown into the ``on_shutdown`` list, of an internal ``AsgiLifespan`` wrapper. A spec-compliant ASGI server (uvicorn, hypercorn, and others) sends the ``lifespan.startup`` message and waits for ``lifespan.startup.complete`` before delivering any ``http`` or ``websocket`` scope, so startup — including every plugin's own internal-database migrations — is guaranteed to have finished before any request reaches Datasette, including requests seen by plugin :ref:`asgi_wrapper <plugin_asgi_wrapper>` middleware. If a ``startup`` hook raises, ``AsgiLifespan`` sends ``lifespan.startup.failed`` with the exception message instead of hanging or crashing ambiguously, so the host can abort the boot cleanly.
+- **First-request fallback** — an internal ``AsgiRunOnFirstRequest`` wrapper runs the same startup work as a safety net for hosts that never send ASGI lifespan events at all: some ASGI mounts, a bare ``app()`` embedded inside another framework, and :ref:`datasette.client <internals_datasette_client>` / test clients, which drive requests directly over ``httpx2.ASGITransport`` without ever emitting ``lifespan.startup``. It runs startup exactly once, the first time any non-lifespan scope arrives, guarded by a lock so that concurrent early requests can't run it twice.
+
+All three paths call the same idempotent internal methods, so it is safe for more than one of them to fire — lifespan startup completing and then a first request arriving afterwards is a no-op the second time. A host that never sends lifespan events and never goes through the CLI degrades to first-request timing: startup runs on the first request instead of before it, exactly as Datasette always worked prior to this lifecycle guarantee. This is a deliberate fallback rather than a regression — see :ref:`internals_background_tasks` for how to opt out of launching background tasks (the ``--get`` CLI path) or drive startup and launch explicitly (tests, headless embedders).
+
+.. _internals_background_tasks:
+
+Background tasks
+================
+
+Datasette can supervise long-lived background work for plugins, such as polling for updates. Register work using :ref:`datasette_add_background_task` and use the returned :ref:`BackgroundTask <BackgroundTask>` handle to inspect or cancel it. See :ref:`datasette_lifecycle` for how background tasks fit into the application's startup and shutdown sequence.
+
+Registering tasks
+-----------------
+
+Use :ref:`datasette_add_background_task` to register an async callable, typically from a :ref:`plugin_hook_startup` hook. The callable takes one argument, the ``Datasette`` instance. Tasks can also be registered later, including from a request handler.
+
+Registration is separate from launch. Calling this from a ``startup`` hook — the common case — buffers the task; core launches every registered task once *all* ``startup`` hooks have completed, as described in :ref:`datasette_lifecycle`. Calling it after launch has already happened — for example from a request handler, to start a per-job task dynamically — starts the task immediately instead.
+
+.. code-block:: python
+
+    import asyncio
+    from datasette import hookimpl
+
+
+    async def poll_for_updates(datasette):
+        while True:
+            await do_one_poll(datasette)
+            await asyncio.sleep(60)
+
+
+    @hookimpl
+    def startup(datasette):
+        datasette.add_background_task(
+            poll_for_updates, name="my-plugin-poller"
+        )
+
+Core owns the task for the rest of the process's life:
+
+- **A strong reference is kept forever**, so the task can never be silently garbage collected the way an unreferenced ``asyncio.create_task()`` call can be.
+- **A crash is logged, not swallowed.** If the task's callable raises anything other than ``asyncio.CancelledError``, the exception (with its traceback) is logged to the ``datasette.background_tasks`` logger and recorded on the handle's ``.exception``, and the task's ``.state`` becomes ``crashed``.
+- **Cancellation is coordinated.** On shutdown, every task that is still running is cancelled and given a grace period to stop — see :ref:`datasette_lifecycle`.
+
+.. _internals_background_tasks_launch:
+
+Launch matrix
+-------------
+
+Whether registered tasks actually launch depends on how the instance is being run:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Trigger
+     - Launches registered tasks?
+   * - ASGI lifespan (real server deployments)
+     - Yes, after ``lifespan.startup`` completes
+   * - First-request fallback (lifespan-less hosts)
+     - Yes, on the first request — parity with the lifespan case
+   * - ``datasette serve --get``
+     - Never
+   * - Tests / headless embedders
+     - Only if you call :ref:`datasette_start_background_tasks` explicitly
+
+``datasette --get`` never launches background tasks, even though its one-shot request flows through the same first-request fallback as everything else: it sets an internal flag before making that request specifically to suppress the launch, since a one-shot CLI invocation has no server loop left running afterwards to keep any launched tasks alive.
+
+.. _internals_background_tasks_explicit:
+
+Starting tasks explicitly
+-------------------------
+
+Call :ref:`datasette_start_background_tasks` to run startup (if it has not already run) and launch every task registered with :ref:`datasette_add_background_task`. This is the explicit equivalent of what happens automatically via ASGI lifespan or the first-request fallback in a served deployment — the entry point for tests and headless embedders (a cron-style CLI command that wants supervised background work without running a server) that need background tasks without going through either of those paths.
+
+.. code-block:: python
+
+    datasette = Datasette(memory=True)
+    await datasette.start_background_tasks()
+
+.. _BackgroundTask:
+
+BackgroundTask objects
+----------------------
+
+:ref:`datasette_add_background_task` returns a ``BackgroundTask`` handle with the following attributes:
+
+``.name`` - string
+    The task's (unique) name.
+
+``.state`` - string
+    One of ``registered`` (added but not yet launched), ``running``, ``completed`` (returned cleanly), ``crashed`` (raised an exception) or ``cancelled``.
+
+``.task`` - ``asyncio.Task`` or ``None``
+    The underlying ``asyncio.Task``, once launched. ``None`` while still ``registered``.
+
+``.exception`` - ``BaseException`` or ``None``
+    The exception that crashed the task, if ``.state`` is ``crashed``.
+
+``.started_at`` - string or ``None``
+    ISO 8601 UTC timestamp of when the task was launched.
+
+``.function`` - string
+    The callable's dotted module and qualified name, for example ``my_plugin.jobs.poll_for_updates``.
+
+``.cancel()``
+    Cancel the task. If it has already launched, this cancels the underlying ``asyncio.Task`` — ``.state`` becomes ``cancelled`` once the cancellation is observed. If it has not launched yet, it is removed from the queue so it never runs.
+
+This is also the shape of each entry returned by the ``/-/tasks`` JSON introspection endpoint — see :ref:`JsonDataView_tasks`.
 
 .. _internals_permission_classes:
 

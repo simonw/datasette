@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 import json
+import time
 import urllib
 import urllib.parse
 from dataclasses import dataclass, field
@@ -1801,6 +1802,7 @@ async def table_view_traced(datasette, request):
         context_for_html_hack = True
         default_labels = True
 
+    start = time.perf_counter()
     view_data = await table_view_data(
         datasette,
         request,
@@ -1811,6 +1813,7 @@ async def table_view_traced(datasette, request):
     )
     if isinstance(view_data, Response):
         return view_data
+    query_ms = (time.perf_counter() - start) * 1000
     data, rows, columns, _expanded_columns, sql, next_url = view_data
 
     # Handle formats from plugins
@@ -1957,7 +1960,7 @@ async def table_view_traced(datasette, request):
                 resource=DatabaseResource(database=resolved.db.name),
                 actor=request.actor,
             ),
-            query_ms=1.2,
+            query_ms=query_ms,
             select_templates=[
                 f"{'*' if template_name == template.name else ''}{template_name}"
                 for template_name in templates

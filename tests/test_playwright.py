@@ -1763,6 +1763,51 @@ def test_modal_lifecycle(page, datasette_server, shadow):
 
 
 @pytest.mark.playwright
+@pytest.mark.parametrize("name", ["jump"])
+def test_modal_consumers_dismiss_and_restore_focus(page, datasette_server, name):
+    from playwright.sync_api import expect
+
+    page_errors = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    if name == "mobile":
+        page.set_viewport_size({"width": 390, "height": 844})
+    page.emulate_media(reduced_motion="reduce")
+    page.goto(datasette_server + "data/projects")
+    if name == "jump":
+        trigger = page.locator("details.nav-menu summary")
+        trigger.click()
+        page.locator("[data-navigation-search-open]").click()
+        dialog = page.locator("navigation-search dialog")
+    elif name == "columns":
+        # Open through its public API with a real, focused page control.
+        trigger = page.locator("details.actions-menu-links summary")
+        trigger.focus()
+        page.evaluate(
+            "document.querySelector('column-chooser').open({columns: ['id', 'title'], selected: ['id']})"
+        )
+        dialog = page.locator("column-chooser dialog")
+    elif name == "type":
+        trigger = page.locator("details.actions-menu-links summary")
+        trigger.focus()
+        page.evaluate(
+            "openSetColumnTypeDialog(document.querySelector('th[data-column=title]'))"
+        )
+        dialog = page.locator("#set-column-type-dialog")
+    else:
+        trigger = page.locator(".column-actions-mobile")
+        trigger.click()
+        dialog = page.locator("#mobile-column-actions-dialog")
+    expect(dialog).to_be_visible()
+    expect(dialog).to_have_css("border-radius", "8px" if name == "mobile" else "12px")
+    expect(dialog).to_have_css("animation-name", "none")
+    assert dialog.evaluate("node => node.parentElement.localName") == "datasette-modal"
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+    assert page_errors == []
+
+
+@pytest.mark.playwright
 def test_modal_disconnect_cleans_up_pending_escape(page, datasette_server):
     from playwright.sync_api import expect
 

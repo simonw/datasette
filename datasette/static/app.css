@@ -2542,46 +2542,8 @@ select.table-create-input {
 }
 
 dialog.table-alter-dialog {
-    --ink: #0f0f0f;
-    --paper: #eef6ff;
-    --muted: #6b6b6b;
-    --rule: #d8e6f5;
-    --accent: #1a56db;
-    --card: #ffffff;
-    border: none;
-    border-radius: var(--modal-border-radius, 0.75rem);
-    padding: 0;
-    margin: auto;
     width: min(980px, calc(100vw - 32px));
-    max-width: 95vw;
     max-height: min(780px, calc(100vh - 32px));
-    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
-    animation: datasette-modal-slide-in var(--modal-animation-duration, 0.2s) ease-out;
-    overflow: hidden;
-    font-family: system-ui, -apple-system, sans-serif;
-    background: var(--card);
-}
-
-dialog.table-alter-dialog[open] {
-    display: flex;
-    flex-direction: column;
-}
-
-dialog.table-alter-dialog::backdrop {
-    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
-    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    animation: datasette-modal-fade-in var(--modal-animation-duration, 0.2s) ease-out;
-}
-
-.table-alter-dialog .modal-header {
-    padding: 20px 24px 12px;
-    border-bottom: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-shrink: 0;
-    min-width: 0;
 }
 
 .table-alter-dialog .modal-title {
@@ -2589,9 +2551,6 @@ dialog.table-alter-dialog::backdrop {
     align-items: center;
     min-width: 0;
     max-width: 100%;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--ink);
 }
 
 .table-alter-form {
@@ -2949,72 +2908,29 @@ select.table-alter-input {
     outline-offset: 1px;
 }
 
-.table-alter-dialog .modal-footer {
-    padding: 14px 20px;
-    border-top: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 10px;
-    flex-shrink: 0;
-    background: var(--paper);
-}
-
-.table-alter-dialog .btn {
-    border: none;
-    border-radius: 5px;
-    padding: 9px 20px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    touch-action: manipulation;
-    font-family: inherit;
-    transition: background 0.12s;
-}
-
-.table-alter-dialog .btn-ghost {
-    background: transparent;
-    color: var(--muted);
-    border: 1px solid var(--rule);
-}
-
-.table-alter-dialog .btn-ghost:hover {
-    background: var(--rule);
-    color: var(--ink);
-}
-
-.table-alter-dialog .btn-danger {
+.table-alter-dialog .modal-btn-danger {
     background: #b91c1c;
     color: #fff;
     margin-right: auto;
 }
 
-.table-alter-dialog .btn-danger:hover {
+.table-alter-dialog .modal-btn-danger:hover {
     background: #991b1b;
 }
 
-.table-alter-dialog .btn-danger:disabled,
-.table-alter-dialog .btn-danger:disabled:hover {
+.table-alter-dialog .modal-btn-danger:disabled,
+.table-alter-dialog .modal-btn-danger:disabled:hover {
     background: #d98c8c;
     color: #fff;
 }
 
-.table-alter-dialog .btn-primary {
-    background: var(--accent);
-    color: #fff;
-}
-
-.table-alter-dialog .btn-primary:hover {
-    background: #1949b8;
-}
-
-.table-alter-dialog .btn-primary:disabled,
-.table-alter-dialog .btn-primary:disabled:hover {
+.table-alter-dialog .modal-btn-primary:disabled,
+.table-alter-dialog .modal-btn-primary:disabled:hover {
     background: #a0aec0;
     color: #fff;
 }
 
-.table-alter-dialog .btn:disabled,
+.table-alter-dialog .modal-btn:disabled,
 .table-alter-add-column:disabled,
 .table-alter-icon-button:disabled {
     opacity: 0.55;

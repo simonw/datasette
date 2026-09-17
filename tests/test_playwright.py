@@ -1033,15 +1033,14 @@ def test_alter_table_cancel_skips_discard_prompt(page, datasette_server):
     dialog.locator(".table-alter-add-column").click()
     dialog.locator(".table-alter-column-name").last.fill("escape_me")
     page.keyboard.press("Escape")
+    page.wait_for_function("window.__discardConfirmMessages.length === 1")
     assert page.evaluate("() => window.__discardConfirmMessages") == [
         "Discard table changes?"
     ]
     assert dialog.evaluate("node => node.open") is True
 
     page.evaluate("() => window.__discardConfirmMessages = []")
-    dialog.evaluate(
-        """node => node.dispatchEvent(new MouseEvent("click", {bubbles: true}))"""
-    )
+    page.mouse.click(2, 2)
     assert page.evaluate("() => window.__discardConfirmMessages") == [
         "Discard table changes?"
     ]
@@ -1835,7 +1834,7 @@ def test_modal_disconnect_cleans_up_pending_escape(page, datasette_server):
 
 
 @pytest.mark.playwright
-@pytest.mark.parametrize("kind", ["create"])
+@pytest.mark.parametrize("kind", ["create", "alter"])
 def test_schema_modal_escape_confirmation_and_focus(page, datasette_server, kind):
     from playwright.sync_api import expect
 

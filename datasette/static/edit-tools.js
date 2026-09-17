@@ -2656,6 +2656,7 @@ function showTableAlterDialogError(state, message) {
 
 function setTableAlterDialogSaving(state, isSaving) {
   state.isSaving = isSaving;
+  state.modal.busy = isSaving;
   state.cancelButton.disabled = isSaving;
   state.addColumnButton.disabled = isSaving;
   state.backButton.disabled = isSaving;
@@ -3791,8 +3792,7 @@ async function applyTableAlterChanges(state, result) {
       result.columnTypeAssignments || [],
       tableUrl,
     );
-    state.shouldRestoreFocus = false;
-    state.dialog.close();
+    state.modal.close({ restoreFocus: false });
     if (tableAlterResultRenamesTable(result) && tableUrl) {
       window.location.href = tableUrl;
     } else {
@@ -3853,8 +3853,7 @@ async function dropTableFromAlterDialog(state) {
     if (!response.ok || (responseData && responseData.ok === false)) {
       throw rowMutationRequestError(response, responseData);
     }
-    state.shouldRestoreFocus = false;
-    state.dialog.close();
+    state.modal.close({ restoreFocus: false });
     window.location.href = tableAlterDatabaseUrl() || "/";
   } catch (error) {
     setTableAlterDialogSaving(state, false);
@@ -3890,27 +3889,6 @@ function confirmDiscardTableAlterChanges(state) {
   return window.confirm("Discard table changes?");
 }
 
-function closeTableAlterDialogIfConfirmed(state) {
-  if (!state || state.isSaving) {
-    return false;
-  }
-  if (!confirmDiscardTableAlterChanges(state)) {
-    return false;
-  }
-  state.shouldRestoreFocus = true;
-  state.dialog.close();
-  return true;
-}
-
-function closeTableAlterDialog(state) {
-  if (!state || state.isSaving) {
-    return false;
-  }
-  state.shouldRestoreFocus = true;
-  state.dialog.close();
-  return true;
-}
-
 function ensureTableAlterDialog(manager) {
   if (tableAlterDialogState) {
     return tableAlterDialogState;
@@ -3919,7 +3897,8 @@ function ensureTableAlterDialog(manager) {
     return null;
   }
 
-  var dialog = document.createElement("dialog");
+  var modal = DatasetteModal.create();
+  var dialog = modal.dialog;
   dialog.id = TABLE_ALTER_DIALOG_ID;
   dialog.className = "table-alter-dialog";
   dialog.setAttribute("aria-labelledby", "table-alter-title");
@@ -3950,16 +3929,17 @@ function ensureTableAlterDialog(manager) {
       </div>
       <div class="table-alter-review" hidden></div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-danger table-alter-drop" hidden>Drop table</button>
-        <button type="button" class="btn btn-ghost table-alter-back" hidden>Back</button>
-        <button type="button" class="btn btn-ghost table-alter-cancel">Cancel</button>
-        <button type="submit" class="btn btn-primary table-alter-save">Review changes</button>
+        <button type="button" class="modal-btn modal-btn-danger table-alter-drop" hidden>Drop table</button>
+        <button type="button" class="modal-btn modal-btn-ghost table-alter-back" hidden>Back</button>
+        <button type="button" class="modal-btn modal-btn-ghost table-alter-cancel">Cancel</button>
+        <button type="submit" class="modal-btn modal-btn-primary table-alter-save">Review changes</button>
       </div>
     </form>
   `;
-  document.body.appendChild(dialog);
+  document.body.appendChild(modal);
 
   tableAlterDialogState = {
+    modal: modal,
     dialog: dialog,
     form: dialog.querySelector(".table-alter-form"),
     title: dialog.querySelector(".modal-title"),
@@ -3974,8 +3954,6 @@ function ensureTableAlterDialog(manager) {
     dropButton: dialog.querySelector(".table-alter-drop"),
     cancelButton: dialog.querySelector(".table-alter-cancel"),
     saveButton: dialog.querySelector(".table-alter-save"),
-    currentButton: null,
-    shouldRestoreFocus: true,
     isSaving: false,
     initialSignature: "",
     originalTableName: "",
@@ -4017,7 +3995,7 @@ function ensureTableAlterDialog(manager) {
   });
 
   tableAlterDialogState.cancelButton.addEventListener("click", function () {
-    closeTableAlterDialog(tableAlterDialogState);
+    modal.requestClose("cancel");
   });
 
   tableAlterDialogState.dropButton.addEventListener("click", function () {
@@ -4038,36 +4016,17 @@ function ensureTableAlterDialog(manager) {
     }
   });
 
-  dialog.addEventListener("click", function (ev) {
-    if (ev.target === dialog) {
-      closeTableAlterDialogIfConfirmed(tableAlterDialogState);
-    }
-  });
-
-  dialog.addEventListener("keydown", function (ev) {
-    if (ev.key !== "Escape") {
-      return;
-    }
-    ev.preventDefault();
-    closeTableAlterDialogIfConfirmed(tableAlterDialogState);
-  });
-
-  dialog.addEventListener("cancel", function (ev) {
-    ev.preventDefault();
-    closeTableAlterDialogIfConfirmed(tableAlterDialogState);
-  });
+  modal.beforeClose = function (reason) {
+    return (
+      reason === "cancel" ||
+      confirmDiscardTableAlterChanges(tableAlterDialogState)
+    );
+  };
 
   dialog.addEventListener("close", function () {
     var state = tableAlterDialogState;
     clearTableAlterDialogError(state);
     setTableAlterDialogSaving(state, false);
-    if (
-      state.shouldRestoreFocus &&
-      state.currentButton &&
-      document.contains(state.currentButton)
-    ) {
-      state.currentButton.focus();
-    }
   });
 
   return tableAlterDialogState;
@@ -4088,8 +4047,7 @@ function openTableAlterDialog(button, manager) {
     menu.open = false;
   }
   state.manager = manager;
-  state.currentButton = button;
-  state.shouldRestoreFocus = true;
+
   state.title.textContent = "Alter table " + data.tableName;
   clearTableAlterDialogError(state);
   resetTableAlterDialog(state, data);
@@ -4099,9 +4057,7 @@ function openTableAlterDialog(button, manager) {
     tableAlterForeignKeyTargetsUrl(),
     { filterByType: false },
   );
-  if (!state.dialog.open) {
-    state.dialog.showModal();
-  }
+  state.modal.show({ trigger: button });
   var firstName = state.columnList.querySelector(".table-alter-column-name");
   if (firstName) {
     firstName.focus();

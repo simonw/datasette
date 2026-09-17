@@ -538,8 +538,10 @@ Opening and closing
 ``modal.show({trigger, initialFocus})``
     Opens the native dialog using ``showModal()``. Both options are optional. ``trigger`` is the element to return focus to when the dialog closes; it defaults to the currently focused element. ``initialFocus`` can be an element to focus or a function that focuses a custom control. Without it, the browser chooses initial focus. Calling ``show()`` again while the dialog is open does not change where focus returns when it closes. For example, if an Edit button opened the dialog, focus will still return to that button.
 
-``modal.requestClose(reason = "cancel")``
+``modal.requestClose(source)``
     Requests dismissal through the busy-state and ``beforeClose`` guards described below. Returns ``true`` if it closes the dialog, or ``false`` if the dialog is already closed or a guard prevents dismissal. Close and Cancel buttons should use this method.
+
+    ``source`` is an optional string identifying what requested dismissal. It is passed to ``beforeClose`` and is never displayed to the user. Datasette supplies ``"escape"`` for the Escape key or a native cancel event and ``"backdrop"`` for a click outside the dialog. Calls to ``requestClose()`` default to ``"cancel"``; callers can supply any other string as their own identifier.
 
 ``modal.close({restoreFocus = true})``
     Closes the dialog directly, bypassing the guards. Use this after successfully completing an operation. Pass ``restoreFocus: false`` when your code will navigate away or move focus to another element, such as a newly inserted row.
@@ -559,7 +561,14 @@ If the dialog is no longer needed, remove the wrapper with ``modal.remove()``. T
 Dismissal guards and busy state
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Set ``modal.beforeClose`` to a synchronous function that receives a dismissal reason and returns ``false`` to keep the dialog open. The built-in dismissal reasons are ``"escape"`` for Escape or a native cancel event and ``"backdrop"`` for a click outside the dialog. Buttons can pass ``"cancel"`` to ``requestClose()``. Your callback can apply different policies to each reason, such as prompting before discarding edits on Escape while allowing an explicit Cancel button to close immediately.
+Set ``modal.beforeClose`` to a synchronous function that receives the ``source`` string described above and returns ``false`` to keep the dialog open. Your callback can apply different policies to each source, such as prompting before discarding edits on Escape while allowing an explicit Cancel button to close immediately. Any message shown to the user is supplied by your callback, separately from the source identifier:
+
+.. code-block:: javascript
+
+    modal.beforeClose = (source) => {
+        if (source === "cancel") return true;
+        return confirm("Discard unsaved changes?");
+    };
 
 The callback must return synchronously: returning a Promise does not delay dismissal. For an asynchronous confirmation, return ``false`` immediately and call ``modal.close()`` yourself if the user later confirms.
 

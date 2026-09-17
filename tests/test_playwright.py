@@ -1761,9 +1761,9 @@ def test_modal_lifecycle(page, datasette_server):
             // Padding is part of the dialog, never a backdrop dismissal.
             dialog.style.padding = '30px';
             document.body.append(testModal);
-            window.closeReasons = [];
-            testModal.beforeClose = reason => {
-                closeReasons.push(reason);
+            window.closeSources = [];
+            testModal.beforeClose = source => {
+                closeSources.push(source);
                 return window.allowClose;
             };
             window.allowClose = false;
@@ -1788,23 +1788,23 @@ def test_modal_lifecycle(page, datasette_server):
     expect(dialog.get_by_role("textbox", name="First field")).to_be_focused()
 
     page.keyboard.down("Escape")
-    assert page.evaluate("closeReasons") == []
+    assert page.evaluate("closeSources") == []
     page.keyboard.up("Escape")
-    page.wait_for_function("closeReasons.length === 1")
-    assert page.evaluate("closeReasons") == ["escape"]
+    page.wait_for_function("closeSources.length === 1")
+    assert page.evaluate("closeSources") == ["escape"]
     expect(dialog).to_be_visible()
 
     dialog.click(position={"x": 3, "y": 3})
-    assert page.evaluate("closeReasons") == ["escape"]
+    assert page.evaluate("closeSources") == ["escape"]
     # A drag which starts inside and ends on the backdrop must not dismiss.
     box = dialog.bounding_box()
     page.mouse.move(box["x"] + 3, box["y"] + 3)
     page.mouse.down()
     page.mouse.move(2, 2)
     page.mouse.up()
-    assert page.evaluate("closeReasons") == ["escape"]
+    assert page.evaluate("closeSources") == ["escape"]
     page.mouse.click(2, 2)
-    assert page.evaluate("closeReasons") == ["escape", "backdrop"]
+    assert page.evaluate("closeSources") == ["escape", "backdrop"]
 
     page.evaluate("testModal.busy = true; allowClose = true")
     expect(dialog).to_have_attribute("aria-busy", "true")
@@ -1812,12 +1812,12 @@ def test_modal_lifecycle(page, datasette_server):
     page.mouse.click(2, 2)
     dialog.get_by_role("button", name="Cancel").click()
     expect(dialog).to_be_visible()
-    assert page.evaluate("closeReasons") == ["escape", "backdrop"]
+    assert page.evaluate("closeSources") == ["escape", "backdrop"]
     page.evaluate("testModal.busy = false")
     dialog.get_by_role("button", name="Cancel").click()
     expect(dialog).not_to_be_visible()
     expect(trigger).to_be_focused()
-    assert page.evaluate("closeReasons") == ["escape", "backdrop", "cancel"]
+    assert page.evaluate("closeSources") == ["escape", "backdrop", "cancel"]
 
     # Reopening, including an extra show() call, preserves the original trigger.
     trigger.click()

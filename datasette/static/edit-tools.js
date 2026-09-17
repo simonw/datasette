@@ -2351,7 +2351,7 @@ function ensureTableCreateDialog(manager) {
     updateTableCreateDialogButtons(tableCreateDialogState);
   });
 
-  modal.beforeClose = function (reason) {
+  modal.beforeClose = function (source) {
     return confirmDiscardTableCreateChanges(tableCreateDialogState);
   };
 
@@ -4017,9 +4017,9 @@ function ensureTableAlterDialog(manager) {
     }
   });
 
-  modal.beforeClose = function (reason) {
+  modal.beforeClose = function (source) {
     return (
-      reason === "cancel" ||
+      source === "cancel" ||
       confirmDiscardTableAlterChanges(tableAlterDialogState)
     );
   };
@@ -7220,9 +7220,9 @@ function ensureRowEditDialog(manager) {
     },
   );
 
-  modal.beforeClose = function (reason) {
+  modal.beforeClose = function (source) {
     return (
-      reason === "cancel" || confirmDiscardRowEditChanges(rowEditDialogState)
+      source === "cancel" || confirmDiscardRowEditChanges(rowEditDialogState)
     );
   };
 

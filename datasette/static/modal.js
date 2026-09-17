@@ -147,9 +147,9 @@
       else initialFocus?.focus();
     }
 
-    requestClose(reason = "cancel") {
+    requestClose(source = "cancel") {
       if (!this.dialog.open || this.busy) return false;
-      if (this.beforeClose && this.beforeClose(reason) === false) return false;
+      if (this.beforeClose && this.beforeClose(source) === false) return false;
       this.close();
       return true;
     }

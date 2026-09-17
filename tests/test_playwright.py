@@ -1832,3 +1832,38 @@ def test_modal_disconnect_cleans_up_pending_escape(page, datasette_server):
     page.keyboard.press("Escape")
     page.wait_for_function("closeAttempts === 1")
     expect(dialog).to_be_visible()
+
+
+@pytest.mark.playwright
+@pytest.mark.parametrize("kind", ["create"])
+def test_schema_modal_escape_confirmation_and_focus(page, datasette_server, kind):
+    from playwright.sync_api import expect
+
+    path = "data" if kind == "create" else "data/projects"
+    page.goto(datasette_server + path)
+    menu = page.locator("details.actions-menu-links")
+    menu.locator("summary").click()
+    selector = "data-database-action" if kind == "create" else "data-table-action"
+    menu.locator(f'button[{selector}="{kind}-table"]').click()
+    dialog = page.locator(f"#table-{kind}-dialog")
+    if kind == "create":
+        dialog.locator('input[name="table"]').fill("unsaved_table")
+    else:
+        dialog.locator(".table-alter-add-column").click()
+    # Real browser confirms, including WebKit, should appear once and stay usable.
+    confirmations = []
+
+    def reject(prompt):
+        confirmations.append(prompt.message)
+        prompt.dismiss()
+
+    page.on("dialog", reject)
+    with page.expect_event("dialog"):
+        page.keyboard.press("Escape")
+    expect(dialog).to_be_visible()
+    assert len(confirmations) == 1
+    page.remove_listener("dialog", reject)
+    page.on("dialog", lambda prompt: prompt.accept())
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    expect(menu.locator("summary")).to_be_focused()

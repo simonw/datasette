@@ -915,6 +915,7 @@ function showTableCreateDialogError(state, message) {
 
 function setTableCreateDialogSaving(state, isSaving) {
   state.isSaving = isSaving;
+  state.modal.busy = isSaving;
   state.columnList
     .querySelectorAll("input, select, button")
     .forEach(function (control) {
@@ -2043,8 +2044,7 @@ async function createTableFromDataPreview(state) {
     var tableUrl =
       responseData.table_url ||
       fallbackTableUrl(responseData.table || payload.table);
-    state.shouldRestoreFocus = false;
-    state.dialog.close();
+    state.modal.close({ restoreFocus: false });
     if (tableUrl) {
       location.href = tableUrl;
     } else {
@@ -2118,8 +2118,7 @@ async function saveTableCreateDialog(state) {
     var tableUrl =
       responseData.table_url ||
       fallbackTableUrl(responseData.table || payload.table);
-    state.shouldRestoreFocus = false;
-    state.dialog.close();
+    state.modal.close({ restoreFocus: false });
     if (tableUrl) {
       location.href = tableUrl;
     } else {
@@ -2141,18 +2140,6 @@ function confirmDiscardTableCreateChanges(state) {
   return window.confirm("Discard this new table?");
 }
 
-function closeTableCreateDialogIfConfirmed(state) {
-  if (!state || state.isSaving) {
-    return false;
-  }
-  if (!confirmDiscardTableCreateChanges(state)) {
-    return false;
-  }
-  state.shouldRestoreFocus = true;
-  state.dialog.close();
-  return true;
-}
-
 function ensureTableCreateDialog(manager) {
   if (tableCreateDialogState) {
     return tableCreateDialogState;
@@ -2161,7 +2148,8 @@ function ensureTableCreateDialog(manager) {
     return null;
   }
 
-  var dialog = document.createElement("dialog");
+  var modal = DatasetteModal.create();
+  var dialog = modal.dialog;
   dialog.id = TABLE_CREATE_DIALOG_ID;
   dialog.className = "table-create-dialog";
   dialog.setAttribute("aria-labelledby", "table-create-title");
@@ -2198,14 +2186,15 @@ function ensureTableCreateDialog(manager) {
       <div class="modal-footer">
         <a href="#" class="table-create-mode-link table-create-from-data">Create table from data</a>
         <a href="#" class="table-create-mode-link table-create-manual" hidden>Create table manually</a>
-        <button type="button" class="btn btn-ghost table-create-cancel">Cancel</button>
-        <button type="submit" class="btn btn-primary table-create-save">Create table</button>
+        <button type="button" class="modal-btn modal-btn-ghost table-create-cancel">Cancel</button>
+        <button type="submit" class="modal-btn modal-btn-primary table-create-save">Create table</button>
       </div>
     </form>
   `;
-  document.body.appendChild(dialog);
+  document.body.appendChild(modal);
 
   tableCreateDialogState = {
+    modal: modal,
     dialog: dialog,
     form: dialog.querySelector(".table-create-form"),
     title: dialog.querySelector(".modal-title"),
@@ -2225,8 +2214,6 @@ function ensureTableCreateDialog(manager) {
     manualCreateLink: dialog.querySelector(".table-create-manual"),
     cancelButton: dialog.querySelector(".table-create-cancel"),
     saveButton: dialog.querySelector(".table-create-save"),
-    currentButton: null,
-    shouldRestoreFocus: true,
     isSaving: false,
     mode: "manual",
     dataPreviewRows: null,
@@ -2266,7 +2253,7 @@ function ensureTableCreateDialog(manager) {
       tableCreateDialogState.dataTextarea.focus();
       return;
     }
-    closeTableCreateDialogIfConfirmed(tableCreateDialogState);
+    modal.requestClose("cancel");
   });
 
   tableCreateDialogState.createFromDataLink.addEventListener(
@@ -2364,36 +2351,14 @@ function ensureTableCreateDialog(manager) {
     updateTableCreateDialogButtons(tableCreateDialogState);
   });
 
-  dialog.addEventListener("click", function (ev) {
-    if (ev.target === dialog) {
-      closeTableCreateDialogIfConfirmed(tableCreateDialogState);
-    }
-  });
-
-  dialog.addEventListener("keydown", function (ev) {
-    if (ev.key !== "Escape") {
-      return;
-    }
-    ev.preventDefault();
-    closeTableCreateDialogIfConfirmed(tableCreateDialogState);
-  });
-
-  dialog.addEventListener("cancel", function (ev) {
-    ev.preventDefault();
-    closeTableCreateDialogIfConfirmed(tableCreateDialogState);
-  });
+  modal.beforeClose = function (reason) {
+    return confirmDiscardTableCreateChanges(tableCreateDialogState);
+  };
 
   dialog.addEventListener("close", function () {
     var state = tableCreateDialogState;
     clearTableCreateDialogError(state);
     setTableCreateDialogSaving(state, false);
-    if (
-      state.shouldRestoreFocus &&
-      state.currentButton &&
-      document.contains(state.currentButton)
-    ) {
-      state.currentButton.focus();
-    }
   });
 
   return tableCreateDialogState;
@@ -2414,15 +2379,12 @@ function openTableCreateDialog(button, manager) {
     menu.open = false;
   }
   state.manager = manager;
-  state.currentButton = button;
-  state.shouldRestoreFocus = true;
+
   state.title.textContent = "Create a table in " + data.databaseName;
   clearTableCreateDialogError(state);
   resetTableCreateDialog(state);
   loadTableCreateForeignKeyTargets(state);
-  if (!state.dialog.open) {
-    state.dialog.showModal();
-  }
+  state.modal.show({ trigger: button });
   state.tableName.focus();
 }
 

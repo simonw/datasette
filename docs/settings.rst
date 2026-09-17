@@ -67,6 +67,15 @@ The following options can be set using ``--setting name value``, or by storing t
 default_allow_sql
 ~~~~~~~~~~~~~~~~~
 
+.. [[[cog
+    from settings_doc import setting_default
+    setting_default(cog, "default_allow_sql")
+.. ]]]
+
+Default: ``on``
+
+.. [[[end]]]
+
 Should users be able to execute arbitrary SQL queries by default?
 
 Setting this to ``off`` causes permission checks for :ref:`actions_execute_sql` to fail by default.
@@ -84,6 +93,14 @@ Another way to achieve this is to add ``"allow_sql": false`` to your ``datasette
 default_page_size
 ~~~~~~~~~~~~~~~~~
 
+.. [[[cog
+    setting_default(cog, "default_page_size")
+.. ]]]
+
+Default: ``100``
+
+.. [[[end]]]
+
 The default number of rows returned by the table page. You can over-ride this on a per-page basis using the ``?_size=80`` query string parameter, provided you do not specify a value higher than the ``max_returned_rows`` setting. You can set this default using ``--setting`` like so::
 
     datasette mydatabase.db --setting default_page_size 50
@@ -93,7 +110,15 @@ The default number of rows returned by the table page. You can over-ride this on
 sql_time_limit_ms
 ~~~~~~~~~~~~~~~~~
 
-By default, queries have a time limit of one second. If a query takes longer than this to run Datasette will terminate the query and return an error.
+.. [[[cog
+    setting_default(cog, "sql_time_limit_ms")
+.. ]]]
+
+Default: ``1000``
+
+.. [[[end]]]
+
+Time limit for SQL queries, in milliseconds. If a query takes longer than this to run Datasette will terminate the query and return an error.
 
 If this time limit is too short for you, you can customize it using the ``sql_time_limit_ms`` limit - for example, to increase it to 3.5 seconds::
 
@@ -110,7 +135,15 @@ This would set the time limit to 100ms for that specific query. This feature is 
 max_returned_rows
 ~~~~~~~~~~~~~~~~~
 
-Datasette returns a maximum of 1,000 rows of data at a time. If you execute a query that returns more than 1,000 rows, Datasette will return the first 1,000 and include a warning that the result set has been truncated. You can use OFFSET/LIMIT or other methods in your SQL to implement pagination if you need to return more than 1,000 rows.
+.. [[[cog
+    setting_default(cog, "max_returned_rows")
+.. ]]]
+
+Default: ``1000``
+
+.. [[[end]]]
+
+The maximum number of rows Datasette returns at a time. If you execute a query that exceeds this limit, Datasette will truncate the result set and include a warning. You can use OFFSET/LIMIT or other methods in your SQL to implement pagination if you need to return more rows.
 
 You can increase or decrease this limit like so::
 
@@ -121,7 +154,15 @@ You can increase or decrease this limit like so::
 max_insert_rows
 ~~~~~~~~~~~~~~~
 
-Maximum rows that can be inserted at a time using the bulk insert API, see :ref:`TableInsertView`. Defaults to 100.
+.. [[[cog
+    setting_default(cog, "max_insert_rows")
+.. ]]]
+
+Default: ``100``
+
+.. [[[end]]]
+
+Maximum rows that can be inserted at a time using the bulk insert API, see :ref:`TableInsertView`.
 
 You can increase or decrease this limit like so::
 
@@ -132,7 +173,15 @@ You can increase or decrease this limit like so::
 max_post_body_bytes
 ~~~~~~~~~~~~~~~~~~~
 
-Maximum size in bytes for a POST body that Datasette reads fully into memory, such as JSON submitted to the :ref:`write API <json_api_write>`. Requests with larger bodies are rejected with an HTTP 413 error. Defaults to 2,097,152 (2MB).
+.. [[[cog
+    setting_default(cog, "max_post_body_bytes")
+.. ]]]
+
+Default: ``2097152``
+
+.. [[[end]]]
+
+Maximum size in bytes for a POST body that Datasette reads fully into memory, such as JSON submitted to the :ref:`write API <json_api_write>`. Requests with larger bodies are rejected with an HTTP 413 error.
 
 This limit exists to protect against memory exhaustion: unlike file uploads handled by ``request.form()``, which stream to disk, these bodies are held entirely in memory and parsing them as JSON can multiply their memory footprint several times over.
 
@@ -149,7 +198,15 @@ Set it to 0 to disable the limit entirely::
 num_sql_threads
 ~~~~~~~~~~~~~~~
 
-Maximum number of threads in the thread pool Datasette uses to execute SQLite queries. Defaults to 3.
+.. [[[cog
+    setting_default(cog, "num_sql_threads")
+.. ]]]
+
+Default: ``3``
+
+.. [[[end]]]
+
+Maximum number of threads in the thread pool Datasette uses to execute SQLite queries.
 
 ::
 
@@ -162,9 +219,17 @@ Setting this to 0 turns off threaded SQL queries entirely - useful for environme
 allow_facet
 ~~~~~~~~~~~
 
+.. [[[cog
+    setting_default(cog, "allow_facet")
+.. ]]]
+
+Default: ``on``
+
+.. [[[end]]]
+
 Allow users to specify columns they would like to facet on using the ``?_facet=COLNAME`` URL parameter to the table view.
 
-This is enabled by default. If disabled, facets will still be displayed if they have been specifically enabled in ``metadata.json`` configuration for the table.
+If disabled, facets will still be displayed if they have been specifically enabled in ``metadata.json`` configuration for the table.
 
 Here's how to disable this feature::
 
@@ -175,7 +240,15 @@ Here's how to disable this feature::
 default_facet_size
 ~~~~~~~~~~~~~~~~~~
 
-The default number of unique rows returned by :ref:`facets` is 30. You can customize it like this::
+.. [[[cog
+    setting_default(cog, "default_facet_size")
+.. ]]]
+
+Default: ``30``
+
+.. [[[end]]]
+
+The default number of unique rows returned by :ref:`facets`. You can customize it like this::
 
     datasette mydatabase.db --setting default_facet_size 50
 
@@ -184,7 +257,15 @@ The default number of unique rows returned by :ref:`facets` is 30. You can custo
 facet_time_limit_ms
 ~~~~~~~~~~~~~~~~~~~
 
-This is the time limit Datasette allows for calculating a facet, which defaults to 200ms::
+.. [[[cog
+    setting_default(cog, "facet_time_limit_ms")
+.. ]]]
+
+Default: ``200``
+
+.. [[[end]]]
+
+The time limit in milliseconds Datasette allows for calculating a facet. You can customize it like this::
 
     datasette mydatabase.db --setting facet_time_limit_ms 1000
 
@@ -193,7 +274,15 @@ This is the time limit Datasette allows for calculating a facet, which defaults 
 facet_suggest_time_limit_ms
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When Datasette calculates suggested facets it needs to run a SQL query for every column in your table. The default for this time limit is 50ms to account for the fact that it needs to run once for every column. If the time limit is exceeded the column will not be suggested as a facet.
+.. [[[cog
+    setting_default(cog, "facet_suggest_time_limit_ms")
+.. ]]]
+
+Default: ``50``
+
+.. [[[end]]]
+
+When Datasette calculates suggested facets it needs to run a SQL query for every column in your table. This time limit, in milliseconds, applies separately to each query. If the time limit is exceeded the column will not be suggested as a facet.
 
 You can increase this time limit like so::
 
@@ -204,7 +293,15 @@ You can increase this time limit like so::
 suggest_facets
 ~~~~~~~~~~~~~~
 
-Should Datasette calculate suggested facets? On by default, turn this off like so::
+.. [[[cog
+    setting_default(cog, "suggest_facets")
+.. ]]]
+
+Default: ``on``
+
+.. [[[end]]]
+
+Should Datasette calculate suggested facets? Turn this off like so::
 
     datasette mydatabase.db --setting suggest_facets off
 
@@ -213,7 +310,15 @@ Should Datasette calculate suggested facets? On by default, turn this off like s
 allow_download
 ~~~~~~~~~~~~~~
 
-Should users be able to download the original SQLite database using a link on the database index page? This is turned on by default. However, databases can only be downloaded if they are served in immutable mode and not in-memory. If downloading is unavailable for either of these reasons, the download link is hidden even if ``allow_download`` is on. To disable database downloads, use the following::
+.. [[[cog
+    setting_default(cog, "allow_download")
+.. ]]]
+
+Default: ``on``
+
+.. [[[end]]]
+
+Should users be able to download the original SQLite database using a link on the database index page? Databases can only be downloaded if they are served in immutable mode and not in-memory. If downloading is unavailable for either of these reasons, the download link is hidden even if ``allow_download`` is on. To disable database downloads, use the following::
 
     datasette mydatabase.db --setting allow_download off
 
@@ -222,9 +327,17 @@ Should users be able to download the original SQLite database using a link on th
 allow_signed_tokens
 ~~~~~~~~~~~~~~~~~~~
 
+.. [[[cog
+    setting_default(cog, "allow_signed_tokens")
+.. ]]]
+
+Default: ``on``
+
+.. [[[end]]]
+
 Should users be able to create signed API tokens to access Datasette?
 
-This is turned on by default. Use the following to turn it off::
+Use the following to turn it off::
 
     datasette mydatabase.db --setting allow_signed_tokens off
 
@@ -235,9 +348,17 @@ Turning this setting off will disable the ``/-/create-token`` page, :ref:`descri
 max_signed_tokens_ttl
 ~~~~~~~~~~~~~~~~~~~~~
 
+.. [[[cog
+    setting_default(cog, "max_signed_tokens_ttl")
+.. ]]]
+
+Default: ``0``
+
+.. [[[end]]]
+
 Maximum allowed expiry time for signed API tokens created by users.
 
-Defaults to ``0`` which means no limit - tokens can be created that will never expire.
+A value of ``0`` means no limit - tokens can be created that will never expire.
 
 Set this to a value in seconds to limit the maximum expiry time. For example, to set that limit to 24 hours you would use::
 
@@ -250,7 +371,15 @@ This setting is enforced when incoming tokens are processed.
 default_cache_ttl
 ~~~~~~~~~~~~~~~~~
 
-Default HTTP caching max-age header in seconds, used for ``Cache-Control: max-age=X``. Can be over-ridden on a per-request basis using the ``?_ttl=`` query string parameter. Set this to ``0`` to disable HTTP caching entirely. Defaults to 5 seconds.
+.. [[[cog
+    setting_default(cog, "default_cache_ttl")
+.. ]]]
+
+Default: ``5``
+
+.. [[[end]]]
+
+Default HTTP caching max-age header in seconds, used for ``Cache-Control: max-age=X``. Can be over-ridden on a per-request basis using the ``?_ttl=`` query string parameter. Set this to ``0`` to disable HTTP caching entirely.
 
 ::
 
@@ -263,7 +392,15 @@ Dynamic responses for authenticated actors, requests with cookies or an ``Author
 cache_size_kb
 ~~~~~~~~~~~~~
 
-Sets the amount of memory SQLite uses for its `per-connection cache <https://www.sqlite.org/pragma.html#pragma_cache_size>`_, in KB.
+.. [[[cog
+    setting_default(cog, "cache_size_kb")
+.. ]]]
+
+Default: ``0``
+
+.. [[[end]]]
+
+Sets the amount of memory SQLite uses for its `per-connection cache <https://www.sqlite.org/pragma.html#pragma_cache_size>`_, in KB. Set this to ``0`` to use SQLite's default cache size.
 
 ::
 
@@ -274,9 +411,17 @@ Sets the amount of memory SQLite uses for its `per-connection cache <https://www
 allow_csv_stream
 ~~~~~~~~~~~~~~~~
 
+.. [[[cog
+    setting_default(cog, "allow_csv_stream")
+.. ]]]
+
+Default: ``on``
+
+.. [[[end]]]
+
 Enables :ref:`the CSV export feature <csv_export>` where an entire table
 (potentially hundreds of thousands of rows) can be exported as a single CSV
-file. This is turned on by default - you can turn it off like this:
+file. You can turn it off like this:
 
 ::
 
@@ -287,8 +432,16 @@ file. This is turned on by default - you can turn it off like this:
 max_csv_mb
 ~~~~~~~~~~
 
-The maximum size of CSV that can be exported, in megabytes. Defaults to 100MB.
-You can disable the limit entirely by settings this to 0:
+.. [[[cog
+    setting_default(cog, "max_csv_mb")
+.. ]]]
+
+Default: ``100``
+
+.. [[[end]]]
+
+The maximum size of CSV that can be exported, in megabytes.
+You can disable the limit entirely by setting this to 0:
 
 ::
 
@@ -298,6 +451,14 @@ You can disable the limit entirely by settings this to 0:
 
 truncate_cells_html
 ~~~~~~~~~~~~~~~~~~~
+
+.. [[[cog
+    setting_default(cog, "truncate_cells_html")
+.. ]]]
+
+Default: ``2048``
+
+.. [[[end]]]
 
 In the HTML table view, truncate any strings that are longer than this value.
 The full value will still be available in CSV, JSON and on the individual row
@@ -312,6 +473,14 @@ HTML page. Set this to 0 to disable truncation.
 force_https_urls
 ~~~~~~~~~~~~~~~~
 
+.. [[[cog
+    setting_default(cog, "force_https_urls")
+.. ]]]
+
+Default: ``off``
+
+.. [[[end]]]
+
 Forces self-referential URLs in the JSON output to always use the ``https://``
 protocol. This is useful for cases where the application itself is hosted using
 HTTP but is served to the outside world via a proxy that enables HTTPS.
@@ -324,6 +493,14 @@ HTTP but is served to the outside world via a proxy that enables HTTPS.
 
 template_debug
 ~~~~~~~~~~~~~~
+
+.. [[[cog
+    setting_default(cog, "template_debug")
+.. ]]]
+
+Default: ``off``
+
+.. [[[end]]]
 
 This setting enables template context debug mode, which is useful to help understand what variables are available to custom templates when you are writing them.
 
@@ -344,6 +521,14 @@ Some examples:
 trace_debug
 ~~~~~~~~~~~
 
+.. [[[cog
+    setting_default(cog, "trace_debug")
+.. ]]]
+
+Default: ``off``
+
+.. [[[end]]]
+
 This setting enables appending ``?_trace=1`` to any page in order to see the SQL queries and other trace information that was used to generate that page.
 
 Enable it like this::
@@ -361,6 +546,14 @@ See :ref:`internals_tracer` for details on how to hook into this mechanism as a 
 
 base_url
 ~~~~~~~~
+
+.. [[[cog
+    setting_default(cog, "base_url")
+.. ]]]
+
+Default: ``/``
+
+.. [[[end]]]
 
 If you are running Datasette behind a proxy, it may be useful to change the root path used for the Datasette instance.
 

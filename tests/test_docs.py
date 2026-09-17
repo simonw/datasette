@@ -27,14 +27,20 @@ def get_labels(filename):
 
 
 @pytest.fixture(scope="session")
-def settings_headings():
-    return get_headings((docs_path / "settings.rst").read_text(), "~")
+def settings_sections():
+    content = (docs_path / "settings.rst").read_text()
+    sections = re.split(r"^(\w+)\n~+\n", content, flags=re.MULTILINE)
+    return dict(zip(sections[1::2], sections[2::2]))
 
 
-def test_settings_are_documented(settings_headings, subtests):
+def test_settings_are_documented(settings_sections, subtests):
     for setting in app.SETTINGS:
         with subtests.test(setting=setting.name):
-            assert setting.name in settings_headings
+            assert setting.name in settings_sections
+            assert (
+                f'setting_default(cog, "{setting.name}")'
+                in settings_sections[setting.name]
+            )
 
 
 @pytest.fixture(scope="session")

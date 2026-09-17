@@ -1603,7 +1603,7 @@ def test_delete_row_flow_removes_row(page, datasette_server):
     dialog = page.locator("#row-delete-dialog")
     dialog.wait_for()
     assert "Delete row 1" in dialog.inner_text()
-    dialog.locator(".row-delete-confirm").click()
+    dialog.locator(".row-delete-confirm").press("Enter")
 
     page.locator(".row-mutation-status", has_text="Deleted row 1").wait_for()
     page.locator('tr[data-row="1"]').wait_for(state="detached")

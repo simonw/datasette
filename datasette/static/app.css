@@ -1224,46 +1224,11 @@ button.table-insert-row svg {
 }
 
 dialog.row-delete-dialog {
-    --ink: #0f0f0f;
-    --paper: #eef6ff;
-    --muted: #6b6b6b;
-    --rule: #d8e6f5;
-    --accent: #1a56db;
-    --card: #ffffff;
-    border: none;
-    border-radius: var(--modal-border-radius, 0.75rem);
-    padding: 0;
-    margin: auto;
     width: min(440px, calc(100vw - 32px));
-    max-width: 95vw;
-    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
-    animation: datasette-modal-slide-in var(--modal-animation-duration, 0.2s) ease-out;
-    overflow: hidden;
-    font-family: system-ui, -apple-system, sans-serif;
-    background: var(--card);
-}
-
-dialog.row-delete-dialog[open] {
-    display: flex;
-    flex-direction: column;
-}
-
-dialog.row-delete-dialog::backdrop {
-    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
-    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    animation: datasette-modal-fade-in var(--modal-animation-duration, 0.2s) ease-out;
 }
 
 .row-delete-dialog .modal-header {
-    padding: 20px 24px 12px;
-    border-bottom: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
     justify-content: flex-start;
-    gap: 12px;
-    flex-shrink: 0;
-    min-width: 0;
 }
 
 .row-delete-dialog .modal-title {
@@ -1272,9 +1237,6 @@ dialog.row-delete-dialog::backdrop {
     gap: 0.35rem;
     min-width: 0;
     max-width: 100%;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--ink);
 }
 
 .row-delete-message,
@@ -1306,51 +1268,7 @@ dialog.row-delete-dialog::backdrop {
 
 .row-delete-dialog .modal-footer {
     padding: 18px 20px 14px;
-    border-top: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 10px;
-    flex-shrink: 0;
-    background: var(--paper);
     margin-top: 18px;
-}
-
-.row-delete-dialog .btn {
-    border: none;
-    border-radius: 5px;
-    padding: 9px 20px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    touch-action: manipulation;
-    font-family: inherit;
-    transition: background 0.12s;
-}
-
-.row-delete-dialog .btn-ghost {
-    background: transparent;
-    color: var(--muted);
-    border: 1px solid var(--rule);
-}
-
-.row-delete-dialog .btn-ghost:hover {
-    background: var(--rule);
-    color: var(--ink);
-}
-
-.row-delete-dialog .btn-primary {
-    background: var(--accent);
-    color: #fff;
-}
-
-.row-delete-dialog .btn-primary:hover {
-    background: #1949b8;
-}
-
-.row-delete-dialog .btn:disabled {
-    opacity: 0.65;
-    cursor: wait;
 }
 
 dialog.row-edit-dialog {

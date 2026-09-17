@@ -2410,6 +2410,7 @@ function initTableCreateActions(manager) {
 
 function setRowDeleteDialogBusy(state, isBusy) {
   state.isBusy = isBusy;
+  state.modal.busy = isBusy;
   state.confirmButton.disabled = isBusy;
   state.cancelButton.disabled = isBusy;
   state.confirmButton.textContent = isBusy ? "Deleting..." : "Delete row";
@@ -4360,7 +4361,8 @@ function ensureRowDeleteDialog(manager) {
     return null;
   }
 
-  var dialog = document.createElement("dialog");
+  var modal = DatasetteModal.create();
+  var dialog = modal.dialog;
   dialog.id = ROW_DELETE_DIALOG_ID;
   dialog.className = "row-delete-dialog";
   dialog.setAttribute("aria-labelledby", "row-delete-title");
@@ -4372,13 +4374,14 @@ function ensureRowDeleteDialog(manager) {
     <p class="row-delete-message" id="row-delete-message">Delete row <span class="row-delete-id"></span>?</p>
     <p class="row-delete-error" role="alert" hidden></p>
     <div class="modal-footer">
-      <button type="button" class="btn btn-ghost row-delete-cancel">Cancel</button>
-      <button type="button" class="btn btn-primary row-delete-confirm">Delete row</button>
+      <button type="button" class="modal-btn modal-btn-ghost row-delete-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-primary row-delete-confirm">Delete row</button>
     </div>
   `;
-  document.body.appendChild(dialog);
+  document.body.appendChild(modal);
 
   rowDeleteDialogState = {
+    modal: modal,
     dialog: dialog,
     title: dialog.querySelector(".modal-title"),
     message: dialog.querySelector(".row-delete-message"),
@@ -4391,21 +4394,10 @@ function ensureRowDeleteDialog(manager) {
     currentPkPath: null,
     manager: manager,
     isBusy: false,
-    shouldRestoreFocus: true,
   };
 
   rowDeleteDialogState.cancelButton.addEventListener("click", function () {
-    if (!rowDeleteDialogState.isBusy) {
-      rowDeleteDialogState.shouldRestoreFocus = true;
-      dialog.close();
-    }
-  });
-
-  dialog.addEventListener("click", function (ev) {
-    if (ev.target === dialog && !rowDeleteDialogState.isBusy) {
-      rowDeleteDialogState.shouldRestoreFocus = true;
-      dialog.close();
-    }
+    modal.requestClose("cancel");
   });
 
   dialog.addEventListener("keydown", function (ev) {
@@ -4417,25 +4409,6 @@ function ensureRowDeleteDialog(manager) {
       if (!rowDeleteDialogState.isBusy) {
         rowDeleteDialogState.confirmButton.click();
       }
-      return;
-    }
-    if (ev.key !== "Escape") {
-      return;
-    }
-    if (rowDeleteDialogState.isBusy) {
-      ev.preventDefault();
-      return;
-    }
-    ev.preventDefault();
-    rowDeleteDialogState.shouldRestoreFocus = true;
-    dialog.close();
-  });
-
-  dialog.addEventListener("cancel", function (ev) {
-    if (rowDeleteDialogState.isBusy) {
-      ev.preventDefault();
-    } else {
-      rowDeleteDialogState.shouldRestoreFocus = true;
     }
   });
 
@@ -4443,13 +4416,6 @@ function ensureRowDeleteDialog(manager) {
     var state = rowDeleteDialogState;
     clearRowDeleteDialogError(state);
     setRowDeleteDialogBusy(state, false);
-    if (
-      state.shouldRestoreFocus &&
-      state.currentButton &&
-      document.contains(state.currentButton)
-    ) {
-      state.currentButton.focus();
-    }
   });
 
   rowDeleteDialogState.confirmButton.addEventListener(
@@ -4476,8 +4442,7 @@ function ensureRowDeleteDialog(manager) {
           throw rowMutationRequestError(response, data);
         }
         if (data && data.redirect) {
-          state.shouldRestoreFocus = false;
-          state.dialog.close();
+          state.modal.close({ restoreFocus: false });
           location.href = data.redirect;
           return;
         }
@@ -4489,8 +4454,7 @@ function ensureRowDeleteDialog(manager) {
         var statusMessage = state.currentPkPath
           ? "Deleted row " + state.currentPkPath + "."
           : "Deleted row.";
-        state.shouldRestoreFocus = false;
-        state.dialog.close();
+        state.modal.close({ restoreFocus: false });
         state.currentRow.remove();
         showRowMutationStatus(state.manager, statusMessage, false);
         if (focusTarget && document.contains(focusTarget)) {
@@ -4519,11 +4483,9 @@ function openRowDeleteDialog(button, manager) {
   }
 
   state.manager = manager;
-  state.currentButton = button;
   state.currentRow = row;
   state.currentDeleteUrl = rowDeleteUrl(row);
   state.currentPkPath = rowDisplayLabel(row);
-  state.shouldRestoreFocus = true;
 
   clearRowDeleteDialogError(state);
   setRowDeleteDialogBusy(state, false);
@@ -4535,9 +4497,7 @@ function openRowDeleteDialog(button, manager) {
   );
   state.rowId.textContent = state.currentPkPath || "this row";
 
-  if (!state.dialog.open) {
-    state.dialog.showModal();
-  }
+  state.modal.show({ trigger: button });
   state.confirmButton.focus();
 }
 

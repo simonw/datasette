@@ -71,6 +71,12 @@ dialog.datasette-modal::backdrop {
     border-radius: 20px;
 }
 
+:where(.datasette-modal) .modal-body {
+    min-height: 0;
+    overflow: auto;
+    padding: 16px 24px 24px;
+}
+
 :where(.datasette-modal) .modal-footer {
     padding: 14px 20px;
     border-top: 1px solid var(--rule);
@@ -1179,7 +1185,6 @@ navigation-search .close-search:focus {
 
 navigation-search .results-container {
     box-sizing: content-box;
-    overflow-y: auto;
     height: calc(80vh - 180px);
     padding: 0.5rem;
 }
@@ -1409,7 +1414,7 @@ column-chooser .list-toolbar button:hover {
 
 column-chooser .list-wrap {
     flex: 1;
-    overflow-y: auto;
+    padding: 0;
     overflow-x: hidden;
     position: relative;
     overscroll-behavior: contain;
@@ -1662,8 +1667,7 @@ dialog.mobile-column-actions-dialog {
 
 .mobile-column-actions-dialog .list-wrap {
     flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
+    padding: 0;
     overflow-x: hidden;
     position: relative;
     overscroll-behavior: contain;
@@ -1817,8 +1821,6 @@ dialog.set-column-type-dialog {
 }
 
 .set-column-type-options {
-    padding: 16px 24px 24px;
-    overflow-y: auto;
     display: grid;
     gap: 12px;
 }
@@ -2018,8 +2020,6 @@ dialog.row-edit-dialog {
 .row-edit-fields {
     display: grid;
     gap: 14px;
-    padding: 16px 24px 24px;
-    overflow-y: auto;
 }
 
 .row-edit-fields[hidden],
@@ -2299,8 +2299,6 @@ textarea.row-edit-input {
 .row-edit-bulk {
     display: grid;
     gap: 8px;
-    padding: 16px 24px 24px;
-    overflow-y: auto;
 }
 
 .row-edit-bulk-editor {
@@ -2616,8 +2614,6 @@ dialog.table-create-dialog {
 .table-create-fields {
     display: grid;
     gap: 18px;
-    padding: 16px 24px 24px;
-    overflow-y: auto;
 }
 
 .table-create-field {
@@ -3081,8 +3077,6 @@ dialog.table-alter-dialog {
 .table-alter-fields {
     display: grid;
     gap: 18px;
-    padding: 16px 24px 24px;
-    overflow-y: auto;
 }
 
 .table-alter-table-options {
@@ -3116,8 +3110,6 @@ dialog.table-alter-dialog {
 .table-alter-review {
     display: grid;
     gap: 12px;
-    overflow-y: auto;
-    padding: 16px 24px 24px;
 }
 
 .table-alter-review[hidden] {

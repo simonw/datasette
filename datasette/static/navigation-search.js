@@ -47,7 +47,7 @@ class NavigationSearch extends HTMLElement {
                         >
                         <button type="button" class="close-search" aria-label="Close jump menu">&times;</button>
                     </div>
-                    <div class="results-container"></div>
+                    <div class="modal-body results-container"></div>
                     <div class="hint-text">
                         <span><kbd>↑</kbd> <kbd>↓</kbd> Navigate</span>
                         <span><kbd>Enter</kbd> Select</span>

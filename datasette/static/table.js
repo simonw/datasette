@@ -198,7 +198,7 @@ function ensureSetColumnTypeDialog() {
     </div>
     <p class="set-column-type-status"></p>
     <p class="set-column-type-error" hidden></p>
-    <div class="set-column-type-options"></div>
+    <div class="modal-body set-column-type-options"></div>
     <div class="modal-footer">
       <span class="footer-info"></span>
       <button type="button" class="modal-btn modal-btn-ghost set-column-type-cancel">Cancel</button>

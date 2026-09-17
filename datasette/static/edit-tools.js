@@ -2159,7 +2159,7 @@ function ensureTableCreateDialog(manager) {
     </div>
     <form class="table-create-form" method="post" novalidate>
       <p class="table-create-error" id="table-create-error" role="alert" tabindex="-1" hidden></p>
-      <div class="table-create-fields">
+      <div class="modal-body table-create-fields">
         <div class="table-create-field">
           <label class="table-create-label" for="table-create-name">Table name</label>
           <input class="table-create-input table-create-table-name" id="table-create-name" type="text" name="table" required autocomplete="off">
@@ -3909,7 +3909,7 @@ function ensureTableAlterDialog(manager) {
     </div>
     <form class="table-alter-form" method="post" novalidate>
       <p class="table-alter-error" id="table-alter-error" role="alert" tabindex="-1" hidden></p>
-      <div class="table-alter-fields">
+      <div class="modal-body table-alter-fields">
         <div class="table-alter-columns">
           <div class="table-alter-column-headings" aria-hidden="true">
             <span>Column</span>
@@ -3928,7 +3928,7 @@ function ensureTableAlterDialog(manager) {
           </div>
         </details>
       </div>
-      <div class="table-alter-review" hidden></div>
+      <div class="modal-body table-alter-review" hidden></div>
       <div class="modal-footer">
         <button type="button" class="modal-btn modal-btn-danger table-alter-drop" hidden>Drop table</button>
         <button type="button" class="modal-btn modal-btn-ghost table-alter-back" hidden>Back</button>
@@ -6984,8 +6984,8 @@ function ensureRowEditDialog(manager) {
       <p class="row-edit-summary" id="row-edit-summary" hidden></p>
       <p class="row-edit-loading" role="status" aria-live="polite">Loading row...</p>
       <p class="row-edit-error" role="alert" tabindex="-1" hidden></p>
-      <div class="row-edit-fields"></div>
-      <div class="row-edit-bulk" hidden>
+      <div class="modal-body row-edit-fields"></div>
+      <div class="modal-body row-edit-bulk" hidden>
         <div class="row-edit-bulk-editor">
           <p class="row-edit-bulk-note"><label for="row-edit-bulk-textarea">Paste TSV, CSV, or JSON</label>. You can also <button type="button" class="button-as-link row-edit-bulk-open-file">open a file</button> or drop it onto this textarea</p>
           <input class="row-edit-bulk-file-input" type="file" accept=".csv,.tsv,.json,.txt,text/csv,text/tab-separated-values,application/json,text/plain" hidden>

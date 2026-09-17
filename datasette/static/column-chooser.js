@@ -42,7 +42,7 @@ class ColumnChooser extends HTMLElement {
             <button class="select-all">Select all</button>
             <button class="deselect-all">Deselect all</button>
           </div>
-          <div class="list-wrap">
+          <div class="modal-body list-wrap">
             <div class="scroll-pulse top"></div>
             <div class="scroll-pulse bot"></div>
             <ul class="drag-list"></ul>

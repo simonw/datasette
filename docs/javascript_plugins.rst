@@ -511,7 +511,7 @@ This example adds a button that opens a reusable dialog:
               Example dialog
             </h2>
           </div>
-          <div style="padding: 1rem; overflow: auto; min-height: 0;">
+          <div class="modal-body">
             This dialog uses Datasette's shared styles and keyboard behavior.
           </div>
           <div class="modal-footer">
@@ -588,6 +588,9 @@ The classes in the example provide built-in styling. None of the classes you add
 ``modal-meta``
     Styles optional metadata, such as a selected-item count, as small monospace text with a rounded background.
 
+``modal-body``
+    Adds padding and makes overflowing content scroll while the header and footer remain visible. Sets ``min-height: 0``, ``overflow: auto`` and ``padding: 16px 24px 24px``. Add your own layout rules, such as ``display: grid`` and ``gap``, or override the padding for content such as a list.
+
 ``modal-footer``
     Adds padding, a top border and a background to the action area. Arranges its contents horizontally, with buttons aligned to the right.
 
@@ -613,7 +616,7 @@ You can customize layout and sizing without adding extra classes. For example, t
         width: min(720px, calc(100vw - 32px));
     }
 
-Long content should have a container with ``overflow: auto`` and ``min-height: 0`` so it can scroll while the header and footer remain visible. Keep these styles scoped to your dialog.
+Use ``modal-body`` on the scrolling content container. If that container is inside a form that also contains the footer, the form needs ``display: flex``, ``flex-direction: column``, ``flex: 1 1 auto`` and ``min-height: 0`` so its content can shrink within the dialog.
 
 The dialog shell also uses the CSS custom properties ``--modal-border-radius``, ``--modal-shadow``, ``--modal-backdrop-bg``, ``--modal-backdrop-blur`` and ``--modal-animation-duration``. The shared animations respect the user's reduced-motion preference.
 

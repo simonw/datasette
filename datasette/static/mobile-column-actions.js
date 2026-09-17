@@ -76,7 +76,7 @@ function initMobileColumnActions(manager) {
       <span class="modal-title" id="${MOBILE_COLUMN_DIALOG_TITLE_ID}">Column actions</span>
       <span class="modal-meta"></span>
     </div>
-    <div class="list-wrap mobile-column-list"></div>
+    <div class="modal-body list-wrap mobile-column-list"></div>
     <div class="modal-footer">
       <span class="footer-info">Tap a column to reveal actions.</span>
       <button type="button" class="modal-btn modal-btn-ghost mobile-column-actions-done">Done</button>

@@ -1,3 +1,144 @@
+/* Shared modal styles. */
+datasette-modal {
+    display: contents;
+}
+
+dialog.datasette-modal {
+    --ink: #0f0f0f;
+    --paper: #eef6ff;
+    --muted: #6b6b6b;
+    --rule: #d8e6f5;
+    --accent: #1a56db;
+    --card: #ffffff;
+    border: none;
+    border-radius: var(--modal-border-radius, 0.75rem);
+    padding: 0;
+    margin: auto;
+    width: min(520px, calc(100vw - 32px));
+    max-width: 95vw;
+    max-height: calc(100dvh - 32px);
+    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
+    animation: datasette-modal-slide-in var(--modal-animation-duration, 0.2s) ease-out;
+    overflow: hidden;
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--card);
+}
+
+dialog.datasette-modal[open] {
+    display: flex;
+    flex-direction: column;
+}
+
+dialog.datasette-modal::backdrop {
+    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
+    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
+    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
+    animation: datasette-modal-fade-in var(--modal-animation-duration, 0.2s) ease-out;
+}
+
+@keyframes datasette-modal-slide-in {
+    from { opacity: 0; transform: translateY(-20px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes datasette-modal-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+:where(.datasette-modal) .modal-header {
+    padding: 20px 24px 12px;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    min-width: 0;
+}
+
+:where(.datasette-modal) .modal-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--ink);
+}
+
+:where(.datasette-modal) .modal-meta {
+    font-family: ui-monospace, monospace;
+    font-size: 0.7rem;
+    color: var(--muted);
+    background: var(--paper);
+    padding: 3px 9px;
+    border-radius: 20px;
+}
+
+:where(.datasette-modal) .modal-body {
+    min-height: 0;
+    overflow: auto;
+    padding: 16px 24px 24px;
+}
+
+:where(.datasette-modal) .modal-footer {
+    padding: 14px 20px;
+    border-top: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-shrink: 0;
+    background: var(--paper);
+}
+
+:where(.datasette-modal) .footer-info {
+    flex: 1;
+    font-family: ui-monospace, monospace;
+    font-size: 0.68rem;
+    color: var(--muted);
+}
+
+:where(.datasette-modal) .modal-btn {
+    border: none;
+    border-radius: 5px;
+    padding: 9px 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    touch-action: manipulation;
+    font-family: inherit;
+    transition: background 0.12s;
+}
+
+:where(.datasette-modal) .modal-btn-ghost {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--rule);
+}
+
+:where(.datasette-modal) .modal-btn-ghost:hover {
+    background: var(--rule);
+    color: var(--ink);
+}
+
+:where(.datasette-modal) .modal-btn-primary {
+    background: var(--accent);
+    color: #fff;
+}
+
+:where(.datasette-modal) .modal-btn-primary:hover {
+    background: #1949b8;
+}
+
+:where(.datasette-modal) .modal-btn:disabled {
+    opacity: 0.65;
+    cursor: wait;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    dialog.datasette-modal,
+    dialog.datasette-modal::backdrop {
+        animation: none;
+    }
+}
+
 /* Reset and Page Setup ==================================================== */
 
 /* Reset from http://meyerweb.com/eric/tools/css/reset/
@@ -63,7 +204,7 @@ em {
 }
 /* end reset */
 
-/* Modal CSS variables (shared by web components via Shadow DOM) */
+/* Shared modal CSS variables */
 :root {
     --modal-backdrop-bg: rgba(0, 0, 0, 0.5);
     --modal-backdrop-blur: blur(4px);
@@ -981,84 +1122,552 @@ p.zero-results {
     display: none;
 }
 
-@keyframes datasette-modal-slide-in {
-    from {
-        opacity: 0;
-        transform: translateY(-20px) scale(0.95);
+/* navigation-search */
+navigation-search {
+    display: contents;
+}
+
+navigation-search dialog.datasette-modal {
+    max-width: 90vw;
+    width: 600px;
+    max-height: 80vh;
+}
+
+navigation-search .search-container {
+    display: flex;
+    flex-direction: column;
+}
+
+navigation-search .search-input-wrapper {
+    padding: 1.25rem;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+navigation-search .search-input {
+    width: 100%;
+    flex: 1;
+    min-width: 0;
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    border: 2px solid #e5e7eb;
+    border-radius: 0.5rem;
+    outline: none;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+}
+
+navigation-search .search-input:focus {
+    border-color: #2563eb;
+}
+
+navigation-search .close-search {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 0.375rem;
+    color: #4b5563;
+    cursor: pointer;
+    flex: 0 0 auto;
+    font: inherit;
+    font-size: 1.5rem;
+    height: 2.75rem;
+    line-height: 1;
+    width: 2.75rem;
+}
+
+navigation-search .close-search:hover,
+navigation-search .close-search:focus {
+    background-color: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+navigation-search .results-container {
+    box-sizing: content-box;
+    height: calc(80vh - 180px);
+    padding: 0.5rem;
+}
+
+navigation-search .results-list:empty {
+    display: none;
+}
+
+navigation-search .result-item {
+    padding: 0.875rem 1rem;
+    cursor: pointer;
+    border-radius: 0.5rem;
+    transition: background-color 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+navigation-search .result-item:hover {
+    background-color: #f3f4f6;
+}
+
+navigation-search .result-item.selected {
+    background-color: #dbeafe;
+}
+
+navigation-search .result-item > div {
+    flex: 1;
+    min-width: 0;
+}
+
+navigation-search .jump-start-content {
+    border-bottom: 1px solid #e5e7eb;
+    margin-bottom: 0.5rem;
+    padding: 0.5rem 0.5rem 1rem;
+}
+
+navigation-search .jump-start-content:empty {
+    display: none;
+}
+
+navigation-search .result-name {
+    font-weight: 500;
+    color: #111827;
+}
+
+navigation-search .result-label {
+    font-size: 0.875rem;
+    color: #4b5563;
+}
+
+navigation-search .result-type {
+    color: #4b5563;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+navigation-search .result-url {
+    font-size: 0.875rem;
+    color: #6b7280;
+}
+
+navigation-search .result-description {
+    color: #374151;
+    display: -webkit-box;
+    font-size: 0.8125rem;
+    line-height: 1.35;
+    margin-top: 0.35rem;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+navigation-search .results-heading {
+    color: #4b5563;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    padding: 0.5rem 1rem 0.25rem;
+    text-transform: uppercase;
+}
+
+navigation-search .recent-actions {
+    padding: 0.25rem 1rem 0.75rem;
+}
+
+navigation-search .clear-recent {
+    background: transparent;
+    border: 0;
+    color: #2563eb;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.875rem;
+    padding: 0;
+}
+
+navigation-search .clear-recent:hover {
+    text-decoration: underline;
+}
+
+navigation-search .no-results {
+    padding: 2rem;
+    text-align: center;
+    color: #6b7280;
+}
+
+navigation-search .hint-text {
+    padding: 0.75rem 1.25rem;
+    font-size: 0.875rem;
+    color: #6b7280;
+    border-top: 1px solid #e5e7eb;
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+navigation-search .hint-text kbd {
+    background: #f3f4f6;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    border: 1px solid #d1d5db;
+    font-family: monospace;
+}
+
+navigation-search .visually-hidden {
+    border: 0;
+    clip: rect(0 0 0 0);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+}
+
+@media (max-width: 640px) {
+    navigation-search dialog.datasette-modal {
+        width: 95vw;
+        max-height: 85vh;
+        border-radius: 0.5rem;
     }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
+
+    navigation-search .search-input-wrapper {
+        padding: 1rem;
+    }
+
+    navigation-search .search-input {
+        font-size: 16px;
+    }
+
+    navigation-search .result-item {
+        padding: 1rem 0.75rem;
+    }
+
+    navigation-search .hint-text {
+        font-size: 0.8rem;
+        padding: 0.5rem 1rem;
     }
 }
 
-@keyframes datasette-modal-fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
 
-dialog.mobile-column-actions-dialog {
+/* column-chooser */
+column-chooser {
+    display: contents;
     --ink: #0f0f0f;
     --paper: #eef6ff;
     --muted: #6b6b6b;
     --rule: #d8e6f5;
     --accent: #1a56db;
+    --accent-light: #e8effd;
     --card: #ffffff;
-    border: none;
-    border-radius: var(--modal-border-radius, 0.75rem);
+}
+
+column-chooser * {
+    box-sizing: border-box;
+    margin: 0;
     padding: 0;
-    margin: auto;
-    width: min(420px, calc(100vw - 32px));
-    max-width: 95vw;
+}
+
+column-chooser dialog.datasette-modal {
+    width: 100%;
+    max-width: 420px;
     max-height: min(640px, calc(100vh - 32px));
-    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
-    animation: datasette-modal-slide-in var(--modal-animation-duration, 0.2s) ease-out;
-    overflow: hidden;
-    font-family: system-ui, -apple-system, sans-serif;
-    background: var(--card);
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
-dialog.mobile-column-actions-dialog[open] {
-    display: flex;
-    flex-direction: column;
+column-chooser dialog.datasette-modal[open] {
+    height: min(640px, calc(100vh - 32px));
 }
 
-dialog.mobile-column-actions-dialog::backdrop {
-    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
-    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    animation: datasette-modal-fade-in var(--modal-animation-duration, 0.2s) ease-out;
-}
-
-.mobile-column-actions-dialog .modal-header {
+column-chooser .modal-header {
     padding: 20px 24px 16px;
+    justify-content: space-between;
+}
+
+column-chooser .list-toolbar {
+    padding: 6px 24px;
     border-bottom: 1px solid var(--rule);
     display: flex;
-    align-items: center;
-    justify-content: space-between;
     gap: 12px;
     flex-shrink: 0;
 }
 
-.mobile-column-actions-dialog .modal-title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--ink);
+column-chooser .list-toolbar button {
+    background: var(--accent-light);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.75rem;
+    color: var(--accent);
+    cursor: pointer;
+    padding: 3px 10px;
+    transition:
+        background 0.12s,
+        color 0.12s;
 }
 
-.mobile-column-actions-dialog .modal-meta {
-    font-family: ui-monospace, monospace;
-    font-size: 0.7rem;
-    color: var(--muted);
-    background: var(--paper);
-    padding: 3px 9px;
-    border-radius: 20px;
+column-chooser .list-toolbar button:hover {
+    background: var(--accent);
+    color: white;
+}
+
+column-chooser .list-wrap {
+    flex: 1;
+    padding: 0;
+    overflow-x: hidden;
+    position: relative;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+column-chooser .list-wrap::before,
+column-chooser .list-wrap::after {
+    content: "";
+    position: sticky;
+    display: block;
+    left: 0;
+    right: 0;
+    height: 20px;
+    pointer-events: none;
+    z-index: 5;
+    transition: opacity 0.2s;
+}
+
+column-chooser .list-wrap::before {
+    top: 0;
+    background: linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0.9),
+        transparent
+    );
+}
+
+column-chooser .list-wrap::after {
+    bottom: 0;
+    background: linear-gradient(to top, rgba(255, 255, 255, 0.9), transparent);
+    margin-top: -20px;
+}
+
+column-chooser .scroll-zone {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 72px;
+    pointer-events: none;
+    z-index: 10;
+}
+
+column-chooser .scroll-zone-top {
+    top: 0;
+}
+
+column-chooser .scroll-zone-bot {
+    bottom: 0;
+}
+
+column-chooser .drag-list {
+    list-style: none;
+    padding: 4px 0;
+}
+
+column-chooser .drag-item {
+    display: flex;
+    align-items: center;
+    background: white;
+    border-bottom: 1px solid var(--rule);
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    position: relative;
+    transition: background 0.08s;
+}
+
+column-chooser .drag-item:last-child {
+    border-bottom: none;
+}
+
+column-chooser .drag-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    flex-shrink: 0;
+    cursor: grab;
+    color: #c8c4bc;
+    touch-action: none;
+    transition: color 0.15s;
+}
+
+column-chooser .drag-handle:hover {
+    color: var(--accent);
+}
+
+column-chooser .drag-handle svg {
+    pointer-events: none;
+    display: block;
+}
+
+column-chooser .drag-item-content {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+}
+
+column-chooser .drag-item-check {
+    display: flex;
+    align-items: center;
+    width: 32px;
+    height: 48px;
+    flex-shrink: 0;
+}
+
+column-chooser .drag-item-check input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+column-chooser .drag-item-label {
+    flex: 1;
+    font-size: 0.9rem;
+    line-height: 48px;
+    padding-right: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
+}
+
+column-chooser .drag-item.is-dragging {
+    opacity: 0;
+}
+
+column-chooser .drop-indicator {
+    position: absolute;
+    left: 48px;
+    right: 0;
+    height: 2px;
+    background: var(--accent);
+    border-radius: 99px;
+    pointer-events: none;
+    z-index: 20;
+    display: none;
+}
+
+column-chooser .drop-indicator.top {
+    top: -1px;
+    display: block;
+}
+
+column-chooser .drop-indicator.bottom {
+    bottom: -1px;
+    display: block;
+}
+
+column-chooser .drag-ghost {
+    position: fixed;
+    pointer-events: none;
+    z-index: 9999;
+    background: white;
+    border-radius: 6px;
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.18),
+        0 2px 8px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    border: 1.5px solid var(--accent-light);
+    opacity: 0.97;
+    will-change: transform;
+    font-family:
+        system-ui,
+        -apple-system,
+        sans-serif;
+}
+
+column-chooser .scroll-pulse {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 10;
+    transition: opacity 0.15s;
+}
+
+column-chooser .scroll-pulse.top {
+    top: 8px;
+}
+
+column-chooser .scroll-pulse.bot {
+    bottom: 8px;
+}
+
+column-chooser .scroll-pulse.active {
+    opacity: 0.18;
+    animation: column-chooser-pulse 0.8s ease-in-out infinite;
+}
+
+@keyframes column-chooser-pulse {
+    0%,
+    100% {
+        transform: translateX(-50%) scale(1);
+        opacity: 0.18;
+    }
+    50% {
+        transform: translateX(-50%) scale(1.5);
+        opacity: 0.07;
+    }
+}
+
+column-chooser .modal-btn-primary {
+    color: white;
+}
+
+column-chooser .modal-btn-primary:hover {
+    background: #1448c0;
+}
+
+column-chooser .list-wrap::-webkit-scrollbar {
+    width: 5px;
+}
+
+column-chooser .list-wrap::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+column-chooser .list-wrap::-webkit-scrollbar-thumb {
+    background: var(--rule);
+    border-radius: 99px;
+}
+
+column-chooser input,
+column-chooser textarea {
+    -webkit-user-select: auto;
+    user-select: auto;
+}
+
+dialog.mobile-column-actions-dialog {
+    width: min(420px, calc(100vw - 32px));
+    max-height: min(640px, calc(100vh - 32px));
+}
+
+.mobile-column-actions-dialog .modal-header {
+    padding: 20px 24px 16px;
+    justify-content: space-between;
 }
 
 .mobile-column-actions-dialog .list-wrap {
     flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
+    padding: 0;
     overflow-x: hidden;
     position: relative;
     overscroll-behavior: contain;
@@ -1185,102 +1794,12 @@ dialog.mobile-column-actions-dialog::backdrop {
     font-size: 0.85em;
 }
 
-.mobile-column-actions-dialog .modal-footer {
-    padding: 14px 20px;
-    border-top: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-shrink: 0;
-    background: var(--paper);
-}
-
-.mobile-column-actions-dialog .footer-info {
-    flex: 1;
-    font-family: ui-monospace, monospace;
-    font-size: 0.68rem;
-    color: var(--muted);
-}
-
-.mobile-column-actions-dialog .btn {
-    border: none;
-    border-radius: 5px;
-    padding: 9px 20px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    touch-action: manipulation;
-    font-family: inherit;
-    transition: background 0.12s;
-}
-
-.mobile-column-actions-dialog .btn-ghost {
-    background: transparent;
-    color: var(--muted);
-    border: 1px solid var(--rule);
-}
-
-.mobile-column-actions-dialog .btn-ghost:hover {
-    background: var(--rule);
-    color: var(--ink);
-}
-
 dialog.set-column-type-dialog {
-    --ink: #0f0f0f;
-    --paper: #eef6ff;
-    --muted: #6b6b6b;
-    --rule: #d8e6f5;
-    --accent: #1a56db;
-    --card: #ffffff;
-    border: none;
-    border-radius: var(--modal-border-radius, 0.75rem);
-    padding: 0;
-    margin: auto;
-    width: min(520px, calc(100vw - 32px));
-    max-width: 95vw;
     max-height: min(720px, calc(100vh - 32px));
-    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
-    animation: datasette-modal-slide-in var(--modal-animation-duration, 0.2s) ease-out;
-    overflow: hidden;
-    font-family: system-ui, -apple-system, sans-serif;
-    background: var(--card);
-}
-
-dialog.set-column-type-dialog[open] {
-    display: flex;
-    flex-direction: column;
-}
-
-dialog.set-column-type-dialog::backdrop {
-    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
-    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    animation: datasette-modal-fade-in var(--modal-animation-duration, 0.2s) ease-out;
 }
 
 .set-column-type-dialog .modal-header {
-    padding: 20px 24px 12px;
-    border-bottom: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    flex-shrink: 0;
-}
-
-.set-column-type-dialog .modal-title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--ink);
-}
-
-.set-column-type-dialog .modal-meta {
-    font-family: ui-monospace, monospace;
-    font-size: 0.7rem;
-    color: var(--muted);
-    background: var(--paper);
-    padding: 3px 9px;
-    border-radius: 20px;
 }
 
 .set-column-type-status,
@@ -1302,8 +1821,6 @@ dialog.set-column-type-dialog::backdrop {
 }
 
 .set-column-type-options {
-    padding: 16px 24px 24px;
-    overflow-y: auto;
     display: grid;
     gap: 12px;
 }
@@ -1345,60 +1862,6 @@ dialog.set-column-type-dialog::backdrop {
     font-size: 0.9rem;
 }
 
-.set-column-type-dialog .modal-footer {
-    padding: 14px 20px;
-    border-top: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-shrink: 0;
-    background: var(--paper);
-}
-
-.set-column-type-dialog .footer-info {
-    flex: 1;
-    font-family: ui-monospace, monospace;
-    font-size: 0.68rem;
-    color: var(--muted);
-}
-
-.set-column-type-dialog .btn {
-    border: none;
-    border-radius: 5px;
-    padding: 9px 20px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    touch-action: manipulation;
-    font-family: inherit;
-    transition: background 0.12s;
-}
-
-.set-column-type-dialog .btn-ghost {
-    background: transparent;
-    color: var(--muted);
-    border: 1px solid var(--rule);
-}
-
-.set-column-type-dialog .btn-ghost:hover {
-    background: var(--rule);
-    color: var(--ink);
-}
-
-.set-column-type-dialog .btn-primary {
-    background: var(--accent);
-    color: #fff;
-}
-
-.set-column-type-dialog .btn-primary:hover {
-    background: #1949b8;
-}
-
-.set-column-type-dialog .btn:disabled {
-    opacity: 0.65;
-    cursor: wait;
-}
-
 .row-mutation-status {
     margin: 0 0 0.75rem;
     padding: 8px 10px;
@@ -1432,46 +1895,11 @@ button.table-insert-row svg {
 }
 
 dialog.row-delete-dialog {
-    --ink: #0f0f0f;
-    --paper: #eef6ff;
-    --muted: #6b6b6b;
-    --rule: #d8e6f5;
-    --accent: #1a56db;
-    --card: #ffffff;
-    border: none;
-    border-radius: var(--modal-border-radius, 0.75rem);
-    padding: 0;
-    margin: auto;
     width: min(440px, calc(100vw - 32px));
-    max-width: 95vw;
-    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
-    animation: datasette-modal-slide-in var(--modal-animation-duration, 0.2s) ease-out;
-    overflow: hidden;
-    font-family: system-ui, -apple-system, sans-serif;
-    background: var(--card);
-}
-
-dialog.row-delete-dialog[open] {
-    display: flex;
-    flex-direction: column;
-}
-
-dialog.row-delete-dialog::backdrop {
-    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
-    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    animation: datasette-modal-fade-in var(--modal-animation-duration, 0.2s) ease-out;
 }
 
 .row-delete-dialog .modal-header {
-    padding: 20px 24px 12px;
-    border-bottom: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
     justify-content: flex-start;
-    gap: 12px;
-    flex-shrink: 0;
-    min-width: 0;
 }
 
 .row-delete-dialog .modal-title {
@@ -1480,9 +1908,6 @@ dialog.row-delete-dialog::backdrop {
     gap: 0.35rem;
     min-width: 0;
     max-width: 100%;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--ink);
 }
 
 .row-delete-message,
@@ -1514,94 +1939,12 @@ dialog.row-delete-dialog::backdrop {
 
 .row-delete-dialog .modal-footer {
     padding: 18px 20px 14px;
-    border-top: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 10px;
-    flex-shrink: 0;
-    background: var(--paper);
     margin-top: 18px;
 }
 
-.row-delete-dialog .btn {
-    border: none;
-    border-radius: 5px;
-    padding: 9px 20px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    touch-action: manipulation;
-    font-family: inherit;
-    transition: background 0.12s;
-}
-
-.row-delete-dialog .btn-ghost {
-    background: transparent;
-    color: var(--muted);
-    border: 1px solid var(--rule);
-}
-
-.row-delete-dialog .btn-ghost:hover {
-    background: var(--rule);
-    color: var(--ink);
-}
-
-.row-delete-dialog .btn-primary {
-    background: var(--accent);
-    color: #fff;
-}
-
-.row-delete-dialog .btn-primary:hover {
-    background: #1949b8;
-}
-
-.row-delete-dialog .btn:disabled {
-    opacity: 0.65;
-    cursor: wait;
-}
-
 dialog.row-edit-dialog {
-    --ink: #0f0f0f;
-    --paper: #eef6ff;
-    --muted: #6b6b6b;
-    --rule: #d8e6f5;
-    --accent: #1a56db;
-    --card: #ffffff;
-    border: none;
-    border-radius: var(--modal-border-radius, 0.75rem);
-    padding: 0;
-    margin: auto;
     width: min(720px, calc(100vw - 32px));
-    max-width: 95vw;
     max-height: min(780px, calc(100vh - 32px));
-    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
-    animation: datasette-modal-slide-in var(--modal-animation-duration, 0.2s) ease-out;
-    overflow: hidden;
-    font-family: system-ui, -apple-system, sans-serif;
-    background: var(--card);
-}
-
-dialog.row-edit-dialog[open] {
-    display: flex;
-    flex-direction: column;
-}
-
-dialog.row-edit-dialog::backdrop {
-    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
-    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    animation: datasette-modal-fade-in var(--modal-animation-duration, 0.2s) ease-out;
-}
-
-.row-edit-dialog .modal-header {
-    padding: 20px 24px 12px;
-    border-bottom: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-shrink: 0;
-    min-width: 0;
 }
 
 .row-edit-dialog .modal-title {
@@ -1610,9 +1953,6 @@ dialog.row-edit-dialog::backdrop {
     gap: 0.35rem;
     min-width: 0;
     max-width: 100%;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--ink);
 }
 
 .row-edit-dialog .modal-title .row-dialog-action,
@@ -1680,8 +2020,6 @@ dialog.row-edit-dialog::backdrop {
 .row-edit-fields {
     display: grid;
     gap: 14px;
-    padding: 16px 24px 24px;
-    overflow-y: auto;
 }
 
 .row-edit-fields[hidden],
@@ -1961,8 +2299,6 @@ textarea.row-edit-input {
 .row-edit-bulk {
     display: grid;
     gap: 8px;
-    padding: 16px 24px 24px;
-    overflow-y: auto;
 }
 
 .row-edit-bulk-editor {
@@ -1982,7 +2318,7 @@ textarea.row-edit-input {
     justify-content: flex-start;
 }
 
-.row-edit-bulk-actions .btn {
+.row-edit-bulk-actions .modal-btn {
     padding-left: 12px;
     padding-right: 12px;
 }
@@ -2226,17 +2562,6 @@ datasette-autocomplete input[type="text"],
     max-width: 46rem;
 }
 
-.row-edit-dialog .modal-footer {
-    padding: 14px 20px;
-    border-top: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 10px;
-    flex-shrink: 0;
-    background: var(--paper);
-}
-
 .row-edit-mode-link {
     color: var(--accent);
     font-size: 0.9rem;
@@ -2247,84 +2572,14 @@ datasette-autocomplete input[type="text"],
     display: none;
 }
 
-.row-edit-dialog .btn {
-    border: none;
-    border-radius: 5px;
-    padding: 9px 20px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    touch-action: manipulation;
-    font-family: inherit;
-    transition: background 0.12s;
-}
-
-.row-edit-dialog .btn-ghost {
-    background: transparent;
-    color: var(--muted);
-    border: 1px solid var(--rule);
-}
-
-.row-edit-dialog .btn-ghost:hover {
-    background: var(--rule);
-    color: var(--ink);
-}
-
-.row-edit-dialog .btn-primary {
-    background: var(--accent);
-    color: #fff;
-}
-
-.row-edit-dialog .btn-primary:hover {
-    background: #1949b8;
-}
-
-.row-edit-dialog .btn:disabled {
+.row-edit-dialog .modal-btn:disabled {
     opacity: 0.55;
     cursor: not-allowed;
 }
 
 dialog.table-create-dialog {
-    --ink: #0f0f0f;
-    --paper: #eef6ff;
-    --muted: #6b6b6b;
-    --rule: #d8e6f5;
-    --accent: #1a56db;
-    --card: #ffffff;
-    border: none;
-    border-radius: var(--modal-border-radius, 0.75rem);
-    padding: 0;
-    margin: auto;
     width: min(980px, calc(100vw - 32px));
-    max-width: 95vw;
     max-height: min(780px, calc(100vh - 32px));
-    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
-    animation: datasette-modal-slide-in var(--modal-animation-duration, 0.2s) ease-out;
-    overflow: hidden;
-    font-family: system-ui, -apple-system, sans-serif;
-    background: var(--card);
-}
-
-dialog.table-create-dialog[open] {
-    display: flex;
-    flex-direction: column;
-}
-
-dialog.table-create-dialog::backdrop {
-    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
-    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    animation: datasette-modal-fade-in var(--modal-animation-duration, 0.2s) ease-out;
-}
-
-.table-create-dialog .modal-header {
-    padding: 20px 24px 12px;
-    border-bottom: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-shrink: 0;
-    min-width: 0;
 }
 
 .table-create-dialog .modal-title {
@@ -2332,9 +2587,6 @@ dialog.table-create-dialog::backdrop {
     align-items: center;
     min-width: 0;
     max-width: 100%;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--ink);
 }
 
 .table-create-form {
@@ -2362,8 +2614,6 @@ dialog.table-create-dialog::backdrop {
 .table-create-fields {
     display: grid;
     gap: 18px;
-    padding: 16px 24px 24px;
-    overflow-y: auto;
 }
 
 .table-create-field {
@@ -2773,17 +3023,6 @@ select.table-create-input {
     outline-offset: 1px;
 }
 
-.table-create-dialog .modal-footer {
-    padding: 14px 20px;
-    border-top: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 10px;
-    flex-shrink: 0;
-    background: var(--paper);
-}
-
 .table-create-mode-link {
     color: var(--accent);
     font-size: 0.9rem;
@@ -2794,39 +3033,7 @@ select.table-create-input {
     display: none;
 }
 
-.table-create-dialog .btn {
-    border: none;
-    border-radius: 5px;
-    padding: 9px 20px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    touch-action: manipulation;
-    font-family: inherit;
-    transition: background 0.12s;
-}
-
-.table-create-dialog .btn-ghost {
-    background: transparent;
-    color: var(--muted);
-    border: 1px solid var(--rule);
-}
-
-.table-create-dialog .btn-ghost:hover {
-    background: var(--rule);
-    color: var(--ink);
-}
-
-.table-create-dialog .btn-primary {
-    background: var(--accent);
-    color: #fff;
-}
-
-.table-create-dialog .btn-primary:hover {
-    background: #1949b8;
-}
-
-.table-create-dialog .btn:disabled,
+.table-create-dialog .modal-btn:disabled,
 .table-create-add-column:disabled,
 .table-create-icon-button:disabled {
     opacity: 0.55;
@@ -2834,46 +3041,8 @@ select.table-create-input {
 }
 
 dialog.table-alter-dialog {
-    --ink: #0f0f0f;
-    --paper: #eef6ff;
-    --muted: #6b6b6b;
-    --rule: #d8e6f5;
-    --accent: #1a56db;
-    --card: #ffffff;
-    border: none;
-    border-radius: var(--modal-border-radius, 0.75rem);
-    padding: 0;
-    margin: auto;
     width: min(980px, calc(100vw - 32px));
-    max-width: 95vw;
     max-height: min(780px, calc(100vh - 32px));
-    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
-    animation: datasette-modal-slide-in var(--modal-animation-duration, 0.2s) ease-out;
-    overflow: hidden;
-    font-family: system-ui, -apple-system, sans-serif;
-    background: var(--card);
-}
-
-dialog.table-alter-dialog[open] {
-    display: flex;
-    flex-direction: column;
-}
-
-dialog.table-alter-dialog::backdrop {
-    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
-    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    animation: datasette-modal-fade-in var(--modal-animation-duration, 0.2s) ease-out;
-}
-
-.table-alter-dialog .modal-header {
-    padding: 20px 24px 12px;
-    border-bottom: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-shrink: 0;
-    min-width: 0;
 }
 
 .table-alter-dialog .modal-title {
@@ -2881,9 +3050,6 @@ dialog.table-alter-dialog::backdrop {
     align-items: center;
     min-width: 0;
     max-width: 100%;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--ink);
 }
 
 .table-alter-form {
@@ -2911,8 +3077,6 @@ dialog.table-alter-dialog::backdrop {
 .table-alter-fields {
     display: grid;
     gap: 18px;
-    padding: 16px 24px 24px;
-    overflow-y: auto;
 }
 
 .table-alter-table-options {
@@ -2946,8 +3110,6 @@ dialog.table-alter-dialog::backdrop {
 .table-alter-review {
     display: grid;
     gap: 12px;
-    overflow-y: auto;
-    padding: 16px 24px 24px;
 }
 
 .table-alter-review[hidden] {
@@ -3241,72 +3403,29 @@ select.table-alter-input {
     outline-offset: 1px;
 }
 
-.table-alter-dialog .modal-footer {
-    padding: 14px 20px;
-    border-top: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 10px;
-    flex-shrink: 0;
-    background: var(--paper);
-}
-
-.table-alter-dialog .btn {
-    border: none;
-    border-radius: 5px;
-    padding: 9px 20px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    touch-action: manipulation;
-    font-family: inherit;
-    transition: background 0.12s;
-}
-
-.table-alter-dialog .btn-ghost {
-    background: transparent;
-    color: var(--muted);
-    border: 1px solid var(--rule);
-}
-
-.table-alter-dialog .btn-ghost:hover {
-    background: var(--rule);
-    color: var(--ink);
-}
-
-.table-alter-dialog .btn-danger {
+.table-alter-dialog .modal-btn-danger {
     background: #b91c1c;
     color: #fff;
     margin-right: auto;
 }
 
-.table-alter-dialog .btn-danger:hover {
+.table-alter-dialog .modal-btn-danger:hover {
     background: #991b1b;
 }
 
-.table-alter-dialog .btn-danger:disabled,
-.table-alter-dialog .btn-danger:disabled:hover {
+.table-alter-dialog .modal-btn-danger:disabled,
+.table-alter-dialog .modal-btn-danger:disabled:hover {
     background: #d98c8c;
     color: #fff;
 }
 
-.table-alter-dialog .btn-primary {
-    background: var(--accent);
-    color: #fff;
-}
-
-.table-alter-dialog .btn-primary:hover {
-    background: #1949b8;
-}
-
-.table-alter-dialog .btn-primary:disabled,
-.table-alter-dialog .btn-primary:disabled:hover {
+.table-alter-dialog .modal-btn-primary:disabled,
+.table-alter-dialog .modal-btn-primary:disabled:hover {
     background: #a0aec0;
     color: #fff;
 }
 
-.table-alter-dialog .btn:disabled,
+.table-alter-dialog .modal-btn:disabled,
 .table-alter-add-column:disabled,
 .table-alter-icon-button:disabled {
     opacity: 0.55;

@@ -1033,15 +1033,14 @@ def test_alter_table_cancel_skips_discard_prompt(page, datasette_server):
     dialog.locator(".table-alter-add-column").click()
     dialog.locator(".table-alter-column-name").last.fill("escape_me")
     page.keyboard.press("Escape")
+    page.wait_for_function("window.__discardConfirmMessages.length === 1")
     assert page.evaluate("() => window.__discardConfirmMessages") == [
         "Discard table changes?"
     ]
     assert dialog.evaluate("node => node.open") is True
 
     page.evaluate("() => window.__discardConfirmMessages = []")
-    dialog.evaluate(
-        """node => node.dispatchEvent(new MouseEvent("click", {bubbles: true}))"""
-    )
+    page.mouse.click(2, 2)
     assert page.evaluate("() => window.__discardConfirmMessages") == [
         "Discard table changes?"
     ]
@@ -1082,6 +1081,92 @@ def test_navigation_search_renders_jump_sections_from_javascript_plugins(
     assert button.inner_text() == "Start a new agent chat"
     button.click()
     page.wait_for_url("**/-/playwright-agent")
+
+
+@pytest.mark.playwright
+def test_navigation_search_created_from_javascript(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server)
+    page.evaluate("""() => {
+        const search = document.createElement('navigation-search');
+        search.id = 'additional-search';
+        search.setAttribute('items', JSON.stringify([
+            {name: 'Projects', url: '/data/projects'}
+        ]));
+        document.body.append(search);
+        const unrelated = document.createElement('div');
+        unrelated.className = 'search-container';
+        unrelated.id = 'outside-search';
+        document.body.append(unrelated);
+        search.openMenu();
+    }""")
+    search = page.locator("#additional-search")
+    dialog = search.get_by_role("dialog", name="Jump to", exact=True)
+    expect(dialog).to_be_visible()
+    # Page styles and ordinary DOM queries can reach the component's controls.
+    page.add_style_tag(
+        content="#additional-search .search-input { border-top-color: rgb(1, 2, 3); }"
+    )
+    field = dialog.get_by_role("combobox", name="Jump to", exact=True)
+    expect(field).to_have_css("border-top-color", "rgb(1, 2, 3)")
+    assert field.evaluate("node => document.getElementById(node.id) === node")
+    expect(page.locator("#outside-search")).to_have_css("display", "block")
+    field.fill("projects")
+    expect(dialog.get_by_role("option")).to_contain_text("Projects")
+    field.press("Enter")
+    page.wait_for_url("**/data/projects")
+
+
+@pytest.mark.playwright
+def test_column_chooser_selection_and_drag_in_document(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + "data/projects")
+    page.emulate_media(reduced_motion="reduce")
+    page.evaluate("""() => {
+        const chooser = document.createElement('column-chooser');
+        chooser.id = 'additional-chooser';
+        document.body.append(chooser);
+        window.appliedColumns = null;
+        chooser.open({
+            columns: ['title', 'notes', 'score'],
+            selected: ['title', 'notes'],
+            onApply: columns => { window.appliedColumns = columns; }
+        });
+    }""")
+    chooser = page.locator("#additional-chooser")
+    dialog = chooser.get_by_role("dialog", name="Choose columns")
+    expect(dialog).to_be_visible()
+    assert dialog.evaluate("""node => {
+        const id = node.getAttribute('aria-labelledby');
+        return document.querySelectorAll(`#${id}`).length === 1 &&
+            node.contains(document.getElementById(id));
+    }""")
+    expect(dialog.locator(".modal-meta")).to_have_text("2 of 3 selected")
+    dialog.get_by_role("button", name="Deselect all", exact=True).click()
+    expect(dialog.locator(".modal-meta")).to_have_text("0 of 3 selected")
+    dialog.get_by_role("button", name="Select all", exact=True).click()
+    expect(dialog.locator(".modal-meta")).to_have_text("3 of 3 selected")
+    # Move title after score using the same pointer events as mouse/touch dragging.
+    handle = dialog.locator(".drag-handle").first.bounding_box()
+    target = dialog.locator(".drag-item").last.bounding_box()
+    page.mouse.move(handle["x"] + handle["width"] / 2, handle["y"] + 24)
+    page.mouse.down()
+    page.mouse.move(target["x"] + 24, target["y"] + target["height"] - 4, steps=5)
+    expect(dialog.locator(".drag-ghost")).to_be_visible()
+    page.mouse.up()
+    expect(dialog.locator(".drag-item-label")).to_have_text(["notes", "score", "title"])
+    dialog.get_by_role("button", name="Apply", exact=True).click()
+    expect(dialog).not_to_be_visible()
+    assert page.evaluate("appliedColumns") == ["notes", "score", "title"]
+    chooser.evaluate(
+        "node => node.open({columns: ['title', 'notes'], selected: ['title']})"
+    )
+    dialog.get_by_role("button", name="Deselect all", exact=True).click()
+    dialog.get_by_role("button", name="Cancel", exact=True).click()
+    expect(dialog).not_to_be_visible()
+    assert page.evaluate("appliedColumns") == ["notes", "score", "title"]
 
 
 @pytest.mark.playwright
@@ -1604,7 +1689,7 @@ def test_delete_row_flow_removes_row(page, datasette_server):
     dialog = page.locator("#row-delete-dialog")
     dialog.wait_for()
     assert "Delete row 1" in dialog.inner_text()
-    dialog.locator(".row-delete-confirm").click()
+    dialog.locator(".row-delete-confirm").press("Enter")
 
     page.locator(".row-mutation-status", has_text="Deleted row 1").wait_for()
     page.locator('tr[data-row="1"]').wait_for(state="detached")
@@ -1651,3 +1736,276 @@ def test_count_all_error_retry(page, datasette_server):
         'document.querySelector(".table-count").textContent === "10,001 rows"'
     )
     assert page.locator(".count-error").inner_text() == ""
+
+
+@pytest.mark.playwright
+def test_modal_lifecycle(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server)
+    page.evaluate(
+        """() => {
+            const trigger = document.createElement('button');
+            trigger.id = 'modal-trigger';
+            trigger.textContent = 'Open test modal';
+            document.body.append(trigger);
+            window.testModal = DatasetteModal.create();
+            const dialog = testModal.dialog;
+            dialog.id = 'test-modal';
+            dialog.setAttribute('aria-labelledby', 'test-modal-title');
+            dialog.innerHTML = `
+                <h2 id="test-modal-title">Test modal</h2>
+                <input aria-label="First field">
+                <input aria-label="Second field">
+                <button id="test-modal-cancel">Cancel</button>`;
+            // Padding is part of the dialog, never a backdrop dismissal.
+            dialog.style.padding = '30px';
+            document.body.append(testModal);
+            window.closeSources = [];
+            testModal.beforeClose = source => {
+                closeSources.push(source);
+                return window.allowClose;
+            };
+            window.allowClose = false;
+            trigger.onclick = () => testModal.show({
+                returnFocusTo: trigger, initialFocus: dialog.querySelector('input')
+            });
+            dialog.querySelector('button').onclick = () => testModal.requestClose('cancel');
+        }""",
+    )
+    trigger = page.locator("#modal-trigger")
+    trigger.click()
+    dialog = page.get_by_role("dialog", name="Test modal", exact=True)
+    expect(dialog.get_by_role("textbox", name="First field")).to_be_focused()
+    assert dialog.evaluate("node => node instanceof HTMLDialogElement")
+    expect(dialog).to_have_css("display", "flex")
+    # Native modality keeps background content inert and keyboard focus inside.
+    page.keyboard.press("Tab")
+    expect(dialog.get_by_role("textbox", name="Second field")).to_be_focused()
+    page.keyboard.press("Shift+Tab")
+    expect(dialog.get_by_role("textbox", name="First field")).to_be_focused()
+    trigger.evaluate("node => node.focus()")
+    expect(dialog.get_by_role("textbox", name="First field")).to_be_focused()
+
+    page.keyboard.down("Escape")
+    assert page.evaluate("closeSources") == []
+    page.keyboard.up("Escape")
+    page.wait_for_function("closeSources.length === 1")
+    assert page.evaluate("closeSources") == ["escape"]
+    expect(dialog).to_be_visible()
+
+    dialog.click(position={"x": 3, "y": 3})
+    assert page.evaluate("closeSources") == ["escape"]
+    # A drag which starts inside and ends on the backdrop must not dismiss.
+    box = dialog.bounding_box()
+    page.mouse.move(box["x"] + 3, box["y"] + 3)
+    page.mouse.down()
+    page.mouse.move(2, 2)
+    page.mouse.up()
+    assert page.evaluate("closeSources") == ["escape"]
+    page.mouse.click(2, 2)
+    assert page.evaluate("closeSources") == ["escape", "backdrop"]
+
+    page.evaluate("testModal.busy = true; allowClose = true")
+    expect(dialog).to_have_attribute("aria-busy", "true")
+    page.keyboard.press("Escape")
+    page.mouse.click(2, 2)
+    dialog.get_by_role("button", name="Cancel").click()
+    expect(dialog).to_be_visible()
+    assert page.evaluate("closeSources") == ["escape", "backdrop"]
+    page.evaluate("testModal.busy = false")
+    dialog.get_by_role("button", name="Cancel").click()
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+    assert page.evaluate("closeSources") == ["escape", "backdrop", "cancel"]
+
+    # Reopening, including an extra show() call, preserves the original return-focus target.
+    trigger.click()
+    page.evaluate("testModal.show()")
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+
+    # Completion bypasses busy/confirmation and must not steal a caller's focus.
+    trigger.click()
+    page.evaluate("""() => new Promise(resolve => {
+        const next = document.createElement('button');
+        next.id = 'after-save';
+        next.textContent = 'Next action';
+        document.body.append(next);
+        testModal.dialog.addEventListener('close', resolve, {once: true});
+        testModal.busy = true;
+        testModal.close({restoreFocus: false});
+        next.focus();
+    })""")
+    expect(dialog).not_to_be_visible()
+    expect(page.locator("#after-save")).to_be_focused()
+
+
+@pytest.mark.playwright
+def test_modal_nested_escape_and_cleanup(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + "data/projects")
+    trigger = page.locator('tr[data-row="1"] button[data-row-action="edit"]')
+    trigger.click()
+    dialog = page.locator("#row-edit-dialog")
+    field = dialog.locator('input[name="title"]')
+    expect(field).to_be_visible()
+    field.fill("Unsaved title")
+    page.evaluate("""() => {
+        window.confirmations = [];
+        window.confirm = message => { confirmations.push(message); return false; };
+    }""")
+    # Plugin controls can consume Escape without closing their containing form.
+    field.evaluate("""node => node.addEventListener('keydown', event => {
+        if (event.key === 'Escape') event.preventDefault();
+    }, {once: true})""")
+    field.press("Escape")
+    assert page.evaluate("confirmations") == []
+    expect(dialog).to_be_visible()
+    field.press("Escape")
+    page.wait_for_function("confirmations.length === 1")
+    assert page.evaluate("confirmations") == ["Discard unsaved changes to this row?"]
+
+    # A nested native modal closes independently, then returns focus to its field.
+    field.evaluate("""node => {
+        node.focus();
+        window.nestedModal = DatasetteModal.create();
+        nestedModal.dialog.setAttribute('aria-label', 'Nested picker');
+        nestedModal.dialog.innerHTML = '<button>Choose</button>';
+        node.closest('dialog').append(nestedModal);
+        nestedModal.show();
+    }""")
+    nested = page.get_by_role("dialog", name="Nested picker")
+    page.keyboard.press("Escape")
+    expect(nested).not_to_be_visible()
+    expect(dialog).to_be_visible()
+    expect(field).to_be_focused()
+    assert page.evaluate("confirmations.length") == 1
+
+    # Closing before keyup cancels the pending confirmation, including on reopen.
+    page.keyboard.down("Escape")
+    dialog.locator(".row-edit-cancel").click()
+    expect(dialog).not_to_be_visible()
+    trigger.click()
+    page.keyboard.up("Escape")
+    expect(field).to_be_visible()
+    assert page.evaluate("confirmations.length") == 1
+    expect(dialog).to_be_visible()
+    # Native cancel (e.g. an accessibility action) does not wait for keyboard input.
+    field.fill("Another edit")
+    dialog.evaluate(
+        "node => node.dispatchEvent(new Event('cancel', {cancelable: true}))"
+    )
+    assert page.evaluate("confirmations.length") == 2
+    dialog.locator(".row-edit-cancel").click()
+    expect(trigger).to_be_focused()
+
+
+@pytest.mark.playwright
+@pytest.mark.parametrize("name", ["jump", "columns", "type", "mobile"])
+def test_modal_consumers_dismiss_and_restore_focus(page, datasette_server, name):
+    from playwright.sync_api import expect
+
+    page_errors = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    if name == "mobile":
+        page.set_viewport_size({"width": 390, "height": 844})
+    page.emulate_media(reduced_motion="reduce")
+    page.goto(datasette_server + "data/projects")
+    if name == "jump":
+        trigger = page.locator("details.nav-menu summary")
+        trigger.click()
+        page.locator("[data-navigation-search-open]").click()
+        dialog = page.locator("navigation-search dialog")
+    elif name == "columns":
+        # Open through its public API with a real, focused page control.
+        trigger = page.locator("details.actions-menu-links summary")
+        trigger.focus()
+        page.evaluate(
+            "document.querySelector('column-chooser').open({columns: ['id', 'title'], selected: ['id']})"
+        )
+        dialog = page.locator("column-chooser dialog")
+    elif name == "type":
+        trigger = page.locator("details.actions-menu-links summary")
+        trigger.focus()
+        page.evaluate(
+            "openSetColumnTypeDialog(document.querySelector('th[data-column=title]'))"
+        )
+        dialog = page.locator("#set-column-type-dialog")
+    else:
+        trigger = page.locator(".column-actions-mobile")
+        trigger.click()
+        dialog = page.locator("#mobile-column-actions-dialog")
+    expect(dialog).to_be_visible()
+    expect(dialog).to_have_css("border-radius", "8px" if name == "mobile" else "12px")
+    expect(dialog).to_have_css("animation-name", "none")
+    assert dialog.evaluate("node => node.parentElement.localName") == "datasette-modal"
+    assert dialog.evaluate("node => node.getRootNode() === document")
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+    assert page_errors == []
+
+
+@pytest.mark.playwright
+def test_modal_disconnect_cleans_up_pending_escape(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server)
+    page.evaluate("""() => {
+        window.detachable = DatasetteModal.create();
+        detachable.dialog.setAttribute('aria-label', 'Detachable');
+        detachable.dialog.innerHTML = '<button>Focus</button>';
+        window.closeAttempts = 0;
+        detachable.beforeClose = () => { closeAttempts++; return false; };
+        document.body.append(detachable);
+        detachable.show();
+    }""")
+    dialog = page.get_by_role("dialog", name="Detachable")
+    page.keyboard.down("Escape")
+    page.evaluate("detachable.remove()")
+    page.keyboard.up("Escape")
+    assert page.evaluate("closeAttempts") == 0
+    assert page.evaluate("detachable.dialog.open") is False
+    page.evaluate("document.body.append(detachable); detachable.show()")
+    expect(dialog).to_be_visible()
+    page.keyboard.press("Escape")
+    page.wait_for_function("closeAttempts === 1")
+    expect(dialog).to_be_visible()
+
+
+@pytest.mark.playwright
+@pytest.mark.parametrize("kind", ["create", "alter"])
+def test_schema_modal_escape_confirmation_and_focus(page, datasette_server, kind):
+    from playwright.sync_api import expect
+
+    path = "data" if kind == "create" else "data/projects"
+    page.goto(datasette_server + path)
+    menu = page.locator("details.actions-menu-links")
+    menu.locator("summary").click()
+    selector = "data-database-action" if kind == "create" else "data-table-action"
+    menu.locator(f'button[{selector}="{kind}-table"]').click()
+    dialog = page.locator(f"#table-{kind}-dialog")
+    if kind == "create":
+        dialog.locator('input[name="table"]').fill("unsaved_table")
+    else:
+        dialog.locator(".table-alter-add-column").click()
+    # Real browser confirms, including WebKit, should appear once and stay usable.
+    confirmations = []
+
+    def reject(prompt):
+        confirmations.append(prompt.message)
+        prompt.dismiss()
+
+    page.on("dialog", reject)
+    with page.expect_event("dialog"):
+        page.keyboard.press("Escape")
+    expect(dialog).to_be_visible()
+    assert len(confirmations) == 1
+    page.remove_listener("dialog", reject)
+    page.on("dialog", lambda prompt: prompt.accept())
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    expect(menu.locator("summary")).to_be_focused()

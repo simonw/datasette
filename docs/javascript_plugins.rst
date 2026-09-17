@@ -1,7 +1,7 @@
 .. _javascript_plugins:
 
-JavaScript plugins
-==================
+JavaScript in plugins
+=====================
 
 Datasette can run custom JavaScript in several different ways:
 
@@ -35,7 +35,7 @@ Your JavaScript code can listen out for this event using ``document.addEventList
 datasetteManager
 ----------------
 
-The ``datasetteManager`` object 
+The ``datasetteManager`` object
 
 ``VERSION`` - string
     The version of Datasette
@@ -473,6 +473,158 @@ Custom fields are responsible for preserving the accessibility of the form:
 - If a plugin hides ``field.input``, the replacement UI must still make the current value and available actions clear.
 
 Plugins should not submit the row themselves from inside ``makeColumnField()`` controls. Datasette owns the insert/edit dialog lifecycle, form submission, API call, error handling and row refresh.
+
+.. _javascript_plugins_modals:
+
+Reusable modal dialogs
+----------------------
+
+Plugins can use ``DatasetteModal`` to create dialogs with the same appearance and keyboard behavior as Datasette's built-in dialogs. The component provides a native modal dialog, shared styles, Escape and backdrop dismissal, busy-state dismissal guards and focus restoration.
+
+Creating a dialog
+~~~~~~~~~~~~~~~~~
+
+``DatasetteModal.create()`` returns a detached ``<datasette-modal>`` element containing a native ``<dialog>``. Access that native element through ``modal.dialog``. Populate its content before appending the wrapper to the page, then call ``modal.show()`` to open it.
+
+This example uses the :ref:`datasette_init event <javascript_datasette_init>` to add a button that opens a dialog:
+
+.. code-block:: javascript
+
+    document.addEventListener("datasette_init", () => {
+        const openButton = document.createElement("button");
+        openButton.type = "button";
+        openButton.textContent = "Open example dialog";
+        // Indicate that this button opens a dialog:
+        openButton.setAttribute("aria-haspopup", "dialog");
+        // Identify which dialog it controls:
+        openButton.setAttribute("aria-controls", "my-plugin-dialog");
+
+        const modal = DatasetteModal.create();
+        const dialog = modal.dialog;
+        dialog.id = "my-plugin-dialog";
+        // Tell screenreaders the dialog is labelled by #my-plugin-dialog-title
+        dialog.setAttribute("aria-labelledby", "my-plugin-dialog-title");
+        dialog.innerHTML = `
+          <div class="modal-header">
+            <h2 class="modal-title" id="my-plugin-dialog-title">
+              Example dialog
+            </h2>
+          </div>
+          <div class="modal-body">
+            This dialog uses Datasette's shared styles and keyboard behavior.
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="modal-btn modal-btn-ghost">Close</button>
+          </div>`;
+
+        const closeButton = dialog.querySelector("button");
+        closeButton.addEventListener("click", () => {
+            modal.requestClose("cancel");
+        });
+        openButton.addEventListener("click", () => {
+            modal.show({ returnFocusTo: openButton, initialFocus: closeButton });
+        });
+
+        document.body.append(modal);
+        document.querySelector("section.content").append(openButton);
+    });
+
+Opening and closing
+~~~~~~~~~~~~~~~~~~~
+
+``modal.show(options)``
+    Opens the native dialog using ``showModal()``. ``options`` is an optional object with these optional properties:
+
+    - ``returnFocusTo`` (DOM element): Focus returns to this element when the dialog closes. Defaults to the element with keyboard focus immediately before the dialog opens.
+    - ``initialFocus`` (DOM element or function): An element inside the dialog whose ``focus()`` method will be called, or a function called with no arguments that moves focus itself.
+
+    Use this to focus on an input field when the dialog opens.
+
+``modal.close(options)``
+    Closes the dialog directly. ``options`` is an optional object with one optional property:
+
+    - ``restoreFocus`` (boolean): Whether closing returns focus to the element recorded by ``show()``. Defaults to ``true``.
+
+``modal.requestClose(source)``
+    Alternative to ``.close()`` that requests dismissal through the busy-state and ``beforeClose`` guards described below. Returns ``true`` if it closes the dialog, or ``false`` if the dialog is already closed or a guard prevents dismissal. Close and Cancel buttons should use this method.
+
+    ``source`` is an optional string that is passed to ``beforeClose`` and identifies what requested dismissal. Datasette supplies ``"escape"`` for the Escape key or a native cancel event and ``"backdrop"`` for a click outside the dialog. ``source`` defaults to ``"cancel"``.
+
+Listen for the native dialog's ``close`` event to clean up resources such as pending requests or custom fields:
+
+.. code-block:: javascript
+
+    modal.dialog.addEventListener("close", () => {
+        // Clean up content-specific resources here.
+    });
+
+If the dialog is no longer needed, remove the wrapper with ``modal.remove()``.
+
+Dismissal guards and busy state
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can set ``modal.beforeClose`` to a synchronous function that receives the ``source`` string described above and returns ``false`` in order to keep the dialog open.
+
+Use ``source`` to decide what to do. This example prompts the user to ask if they want to discard unsaved changes - for example if they click outside the modal or hit Escape - but doesn't prompt them if they clicked a button like the Close one above that sets the ``source`` string to ``cancel``.
+
+.. code-block:: javascript
+
+    modal.beforeClose = (source) => {
+        if (source === "cancel") return true;
+        return confirm("Discard unsaved changes?");
+    };
+
+
+Set ``modal.busy = true`` while saving to prevent user dismissal.  While busy, ``requestClose()`` returns ``false`` without calling ``beforeClose``.
+
+If an operation fails, set ``modal.busy = false`` so the user can retry or close the dialog. A successful operation can call ``modal.close()`` even while busy.
+
+.. _javascript_plugins_modal_classes:
+
+Shared CSS classes
+~~~~~~~~~~~~~~~~~~
+
+The classes in the example above provide built-in styling. The following classes can be used by your modal:
+
+``datasette-modal``
+    Added automatically to the native ``<dialog>`` when the wrapper is connected to the page. Provides the dialog's sizing, background, rounded corners, shadow, backdrop and animations.
+
+``modal-header``
+    Adds padding, a bottom border and a horizontal layout for the title and optional metadata.
+
+``modal-title``
+    Sets the title's font size, weight and color. Use ``aria-labelledby`` to associate the title with the dialog.
+
+``modal-meta``
+    Styles optional metadata, such as a selected-item count, as small monospace text with a rounded background.
+
+``modal-body``
+    Adds padding and makes overflowing content scroll while the header and footer remain visible. Sets ``min-height: 0``, ``overflow: auto`` and ``padding: 16px 24px 24px``.
+
+``modal-footer``
+    Adds padding, a top border and a background to the action area. Arranges its contents horizontally, with buttons aligned to the right.
+
+``footer-info``
+    Styles supporting text in the footer and lets it fill the space before the action buttons.
+
+``modal-btn``
+    Provides base button styling, including padding, rounded corners, font and disabled appearance. Use it together with ``modal-btn-primary`` or ``modal-btn-ghost``.
+
+``modal-btn-primary``
+    Gives a button an accent-colored background and white text, suitable for a primary action such as Save.
+
+``modal-btn-ghost``
+    Gives a button a transparent background, muted text and a border, suitable for a secondary action such as Close or Cancel.
+
+These button classes are also used by Datasette's built-in dialogs.
+
+You can customize layout and sizing without adding extra classes. For example, this CSS uses the dialog's existing ID to widen it while keeping it inside the viewport:
+
+.. code-block:: css
+
+    dialog#my-plugin-dialog {
+        width: min(720px, calc(100vw - 32px));
+    }
 
 .. _javascript_datasette_manager_selectors:
 

@@ -982,61 +982,13 @@ p.zero-results {
 }
 
 dialog.mobile-column-actions-dialog {
-    --ink: #0f0f0f;
-    --paper: #eef6ff;
-    --muted: #6b6b6b;
-    --rule: #d8e6f5;
-    --accent: #1a56db;
-    --card: #ffffff;
-    border: none;
-    border-radius: var(--modal-border-radius, 0.75rem);
-    padding: 0;
-    margin: auto;
     width: min(420px, calc(100vw - 32px));
-    max-width: 95vw;
     max-height: min(640px, calc(100vh - 32px));
-    box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
-    animation: datasette-modal-slide-in var(--modal-animation-duration, 0.2s) ease-out;
-    overflow: hidden;
-    font-family: system-ui, -apple-system, sans-serif;
-    background: var(--card);
-}
-
-dialog.mobile-column-actions-dialog[open] {
-    display: flex;
-    flex-direction: column;
-}
-
-dialog.mobile-column-actions-dialog::backdrop {
-    background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
-    backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-    animation: datasette-modal-fade-in var(--modal-animation-duration, 0.2s) ease-out;
 }
 
 .mobile-column-actions-dialog .modal-header {
     padding: 20px 24px 16px;
-    border-bottom: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    flex-shrink: 0;
-}
-
-.mobile-column-actions-dialog .modal-title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--ink);
-}
-
-.mobile-column-actions-dialog .modal-meta {
-    font-family: ui-monospace, monospace;
-    font-size: 0.7rem;
-    color: var(--muted);
-    background: var(--paper);
-    padding: 3px 9px;
-    border-radius: 20px;
 }
 
 .mobile-column-actions-dialog .list-wrap {
@@ -1167,46 +1119,6 @@ dialog.mobile-column-actions-dialog::backdrop {
     padding: 0 24px 12px 24px;
     color: var(--muted);
     font-size: 0.85em;
-}
-
-.mobile-column-actions-dialog .modal-footer {
-    padding: 14px 20px;
-    border-top: 1px solid var(--rule);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-shrink: 0;
-    background: var(--paper);
-}
-
-.mobile-column-actions-dialog .footer-info {
-    flex: 1;
-    font-family: ui-monospace, monospace;
-    font-size: 0.68rem;
-    color: var(--muted);
-}
-
-.mobile-column-actions-dialog .btn {
-    border: none;
-    border-radius: 5px;
-    padding: 9px 20px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    touch-action: manipulation;
-    font-family: inherit;
-    transition: background 0.12s;
-}
-
-.mobile-column-actions-dialog .btn-ghost {
-    background: transparent;
-    color: var(--muted);
-    border: 1px solid var(--rule);
-}
-
-.mobile-column-actions-dialog .btn-ghost:hover {
-    background: var(--rule);
-    color: var(--ink);
 }
 
 dialog.set-column-type-dialog {

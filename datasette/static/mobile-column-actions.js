@@ -66,7 +66,8 @@ function initMobileColumnActions(manager) {
     return;
   }
 
-  var dialog = document.createElement("dialog");
+  var modal = DatasetteModal.create();
+  var dialog = modal.dialog;
   dialog.className = "mobile-column-actions-dialog";
   dialog.id = MOBILE_COLUMN_DIALOG_ID;
   dialog.setAttribute("aria-labelledby", MOBILE_COLUMN_DIALOG_TITLE_ID);
@@ -78,10 +79,10 @@ function initMobileColumnActions(manager) {
     <div class="list-wrap mobile-column-list"></div>
     <div class="modal-footer">
       <span class="footer-info">Tap a column to reveal actions.</span>
-      <button type="button" class="btn btn-ghost mobile-column-actions-done">Done</button>
+      <button type="button" class="modal-btn modal-btn-ghost mobile-column-actions-done">Done</button>
     </div>
   `;
-  document.body.appendChild(dialog);
+  document.body.appendChild(modal);
 
   triggerButton.setAttribute("aria-haspopup", "dialog");
   triggerButton.setAttribute("aria-controls", MOBILE_COLUMN_DIALOG_ID);
@@ -91,7 +92,6 @@ function initMobileColumnActions(manager) {
   var listWrap = dialog.querySelector(".mobile-column-list");
   var doneButton = dialog.querySelector(".mobile-column-actions-done");
   var expandedSectionId = null;
-  var shouldRestoreFocus = true;
 
   function updateExpandedSection() {
     Array.from(dialog.querySelectorAll(".col-header")).forEach((button) => {
@@ -128,16 +128,7 @@ function initMobileColumnActions(manager) {
   }
 
   function closeDialog(options) {
-    options = options || {};
-    shouldRestoreFocus = options.restoreFocus !== false;
-    if (dialog.open) {
-      dialog.close();
-    } else {
-      triggerButton.setAttribute("aria-expanded", "false");
-      if (shouldRestoreFocus) {
-        triggerButton.focus();
-      }
-    }
+    modal.close(options);
   }
 
   function renderDialog() {
@@ -166,7 +157,8 @@ function initMobileColumnActions(manager) {
       topActions.className = "mobile-column-top-actions";
 
       var showAllColumns = document.createElement("a");
-      showAllColumns.className = "btn btn-ghost mobile-column-top-action";
+      showAllColumns.className =
+        "modal-btn modal-btn-ghost mobile-column-top-action";
       showAllColumns.href = manager.columnActions.showAllColumnsUrl();
       showAllColumns.textContent = "Show all columns";
 
@@ -265,9 +257,7 @@ function initMobileColumnActions(manager) {
     if (!renderDialog()) {
       return;
     }
-    if (!dialog.open) {
-      dialog.showModal();
-    }
+    modal.show({ trigger: triggerButton });
     triggerButton.setAttribute("aria-expanded", "true");
     var focusTarget =
       dialog.querySelector(".mobile-column-top-action") ||
@@ -288,22 +278,8 @@ function initMobileColumnActions(manager) {
     closeDialog();
   });
 
-  dialog.addEventListener("click", function (ev) {
-    if (ev.target === dialog) {
-      closeDialog();
-    }
-  });
-
-  dialog.addEventListener("cancel", function (ev) {
-    ev.preventDefault();
-    closeDialog();
-  });
-
   dialog.addEventListener("close", function () {
     triggerButton.setAttribute("aria-expanded", "false");
-    if (shouldRestoreFocus) {
-      triggerButton.focus();
-    }
   });
 
   window.addEventListener("resize", function () {

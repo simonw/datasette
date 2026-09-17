@@ -1763,7 +1763,7 @@ def test_modal_lifecycle(page, datasette_server, shadow):
 
 
 @pytest.mark.playwright
-@pytest.mark.parametrize("name", ["jump", "columns"])
+@pytest.mark.parametrize("name", ["jump", "columns", "mobile"])
 def test_modal_consumers_dismiss_and_restore_focus(page, datasette_server, name):
     from playwright.sync_api import expect
 

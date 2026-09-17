@@ -1,7 +1,7 @@
 .. _javascript_plugins:
 
-JavaScript plugins
-==================
+JavaScript in plugins
+=====================
 
 Datasette can run custom JavaScript in several different ways:
 
@@ -35,7 +35,7 @@ Your JavaScript code can listen out for this event using ``document.addEventList
 datasetteManager
 ----------------
 
-The ``datasetteManager`` object 
+The ``datasetteManager`` object
 
 ``VERSION`` - string
     The version of Datasette
@@ -481,14 +481,12 @@ Reusable modal dialogs
 
 Plugins can use ``DatasetteModal`` to create dialogs with the same appearance and keyboard behavior as Datasette's built-in dialogs. The component provides a native modal dialog, shared styles, Escape and backdrop dismissal, busy-state dismissal guards and focus restoration.
 
-Use the :ref:`javascript_datasette_init` event to set up a dialog, as in this example.
-
 Creating a dialog
 ~~~~~~~~~~~~~~~~~
 
 ``DatasetteModal.create()`` returns a detached ``<datasette-modal>`` element containing a native ``<dialog>``. Access that native element through ``modal.dialog``. Populate its content before appending the wrapper to the page, then call ``modal.show()`` to open it.
 
-This example adds a button that opens a reusable dialog:
+This example uses the :ref:`datasette_init event <javascript_datasette_init>` to add a button that opens a dialog:
 
 .. code-block:: javascript
 
@@ -504,6 +502,7 @@ This example adds a button that opens a reusable dialog:
         const modal = DatasetteModal.create();
         const dialog = modal.dialog;
         dialog.id = "my-plugin-dialog";
+        // Tell screenreaders the dialog is labelled by #my-plugin-dialog-title
         dialog.setAttribute("aria-labelledby", "my-plugin-dialog-title");
         dialog.innerHTML = `
           <div class="modal-header">
@@ -530,25 +529,28 @@ This example adds a button that opens a reusable dialog:
         document.querySelector("section.content").append(openButton);
     });
 
-The example uses ``innerHTML`` for a static template. Use ``textContent`` when inserting database values or other user-supplied text. Give each dialog and its title unique IDs, and use ``aria-labelledby`` or ``aria-label`` to provide an accessible name.
-
 Opening and closing
 ~~~~~~~~~~~~~~~~~~~
 
-``modal.show({returnFocusTo, initialFocus})``
-    Opens the native dialog using ``showModal()``. Both options are optional. ``returnFocusTo`` is the element to return focus to when the dialog closes; it defaults to the element with keyboard focus immediately before the dialog opens, which is not necessarily the element clicked to open it. ``initialFocus`` can be an element to focus or a function that focuses a custom control. Without it, the browser chooses initial focus. Calling ``show()`` again while the dialog is open does not change where focus returns when it closes. For example, if the first call sets ``returnFocusTo`` to an Edit button, focus will still return to that button even if a later call specifies a different element.
+``modal.show(options)``
+    Opens the native dialog using ``showModal()``. ``options`` is an optional object with these optional properties:
+
+    - ``returnFocusTo`` (DOM element): Focus returns to this element when the dialog closes. Defaults to the element with keyboard focus immediately before the dialog opens.
+    - ``initialFocus`` (DOM element or function): An element inside the dialog whose ``focus()`` method will be called, or a function called with no arguments that moves focus itself.
+
+    Use this to focus on an input field when the dialog opens.
+
+``modal.close(options)``
+    Closes the dialog directly. ``options`` is an optional object with one optional property:
+
+    - ``restoreFocus`` (boolean): Whether closing returns focus to the element recorded by ``show()``. Defaults to ``true``.
 
 ``modal.requestClose(source)``
-    Requests dismissal through the busy-state and ``beforeClose`` guards described below. Returns ``true`` if it closes the dialog, or ``false`` if the dialog is already closed or a guard prevents dismissal. Close and Cancel buttons should use this method.
+    Alternative to ``.close()`` that requests dismissal through the busy-state and ``beforeClose`` guards described below. Returns ``true`` if it closes the dialog, or ``false`` if the dialog is already closed or a guard prevents dismissal. Close and Cancel buttons should use this method.
 
-    ``source`` is an optional string identifying what requested dismissal. It is passed to ``beforeClose`` and is never displayed to the user. Datasette supplies ``"escape"`` for the Escape key or a native cancel event and ``"backdrop"`` for a click outside the dialog. Calls to ``requestClose()`` default to ``"cancel"``; callers can supply any other string as their own identifier.
+    ``source`` is an optional string that is passed to ``beforeClose`` and identifies what requested dismissal. Datasette supplies ``"escape"`` for the Escape key or a native cancel event and ``"backdrop"`` for a click outside the dialog. ``source`` defaults to ``"cancel"``.
 
-``modal.close({restoreFocus = true})``
-    Closes the dialog directly, bypassing the guards. Use this after successfully completing an operation. Pass ``restoreFocus: false`` when your code will navigate away or move focus to another element, such as a newly inserted row.
-
-On normal dismissal, the component restores focus if the saved return-focus element is still connected to the document. If that element is inside a menu implemented with a closed ``<details>`` element, focus returns to that menu's ``<summary>`` instead.
-
-Closing a dialog leaves it in the page so it can be reopened. Listen for the native dialog's ``close`` event to clean up resources such as pending requests or custom fields:
+Listen for the native dialog's ``close`` event to clean up resources such as pending requests or custom fields:
 
 .. code-block:: javascript
 
@@ -556,12 +558,14 @@ Closing a dialog leaves it in the page so it can be reopened. Listen for the nat
         // Clean up content-specific resources here.
     });
 
-If the dialog is no longer needed, remove the wrapper with ``modal.remove()``. The component removes its own listeners and pending keyboard-dismissal callbacks when disconnected.
+If the dialog is no longer needed, remove the wrapper with ``modal.remove()``.
 
 Dismissal guards and busy state
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Set ``modal.beforeClose`` to a synchronous function that receives the ``source`` string described above and returns ``false`` to keep the dialog open. Your callback can apply different policies to each source, such as prompting before discarding edits on Escape while allowing an explicit Cancel button to close immediately. Any message shown to the user is supplied by your callback, separately from the source identifier:
+You can set ``modal.beforeClose`` to a synchronous function that receives the ``source`` string described above and returns ``false`` in order to keep the dialog open.
+
+Use ``source`` to decide what to do. This example prompts the user to ask if they want to discard unsaved changes - for example if they click outside the modal or hit Escape - but doesn't prompt them if they clicked a button like the Close one above that sets the ``source`` string to ``cancel``.
 
 .. code-block:: javascript
 
@@ -570,35 +574,32 @@ Set ``modal.beforeClose`` to a synchronous function that receives the ``source``
         return confirm("Discard unsaved changes?");
     };
 
-The callback must return synchronously: returning a Promise does not delay dismissal. For an asynchronous confirmation, return ``false`` immediately and call ``modal.close()`` yourself if the user later confirms.
 
-Set ``modal.busy = true`` while saving to prevent user dismissal. This also sets ``aria-busy="true"`` on the native dialog. While busy, ``requestClose()`` returns ``false`` without calling ``beforeClose``. Busy state resets when the dialog closes.
+Set ``modal.busy = true`` while saving to prevent user dismissal.  While busy, ``requestClose()`` returns ``false`` without calling ``beforeClose``.
 
-The plugin remains responsible for disabling its form controls, submitting data and displaying progress and errors. If an operation fails, set ``modal.busy = false`` so the user can retry or close the dialog. A successful operation can call ``modal.close()`` even while busy.
-
-Escape dismissal waits until the key is released before consulting the guard, so a discard-confirmation prompt remains usable in Safari. Nested controls, such as an autocomplete list, can consume Escape with ``event.preventDefault()`` to keep the containing dialog open.
+If an operation fails, set ``modal.busy = false`` so the user can retry or close the dialog. A successful operation can call ``modal.close()`` even while busy.
 
 .. _javascript_plugins_modal_classes:
 
 Shared CSS classes
 ~~~~~~~~~~~~~~~~~~
 
-The classes in the example provide built-in styling. None of the classes you add to the dialog's content is required for opening, closing or focus handling.
+The classes in the example above provide built-in styling. The following classes can be used by your modal:
 
 ``datasette-modal``
-    Added automatically to the native ``<dialog>`` when the wrapper is connected to the page. Provides the dialog's sizing, background, rounded corners, shadow, backdrop and animations. Keep this class when adding your own styles.
+    Added automatically to the native ``<dialog>`` when the wrapper is connected to the page. Provides the dialog's sizing, background, rounded corners, shadow, backdrop and animations.
 
 ``modal-header``
     Adds padding, a bottom border and a horizontal layout for the title and optional metadata.
 
 ``modal-title``
-    Sets the title's font size, weight and color. This class only changes its appearance; use ``aria-labelledby`` to associate the title with the dialog.
+    Sets the title's font size, weight and color. Use ``aria-labelledby`` to associate the title with the dialog.
 
 ``modal-meta``
     Styles optional metadata, such as a selected-item count, as small monospace text with a rounded background.
 
 ``modal-body``
-    Adds padding and makes overflowing content scroll while the header and footer remain visible. Sets ``min-height: 0``, ``overflow: auto`` and ``padding: 16px 24px 24px``. Add your own layout rules, such as ``display: grid`` and ``gap``, or override the padding for content such as a list.
+    Adds padding and makes overflowing content scroll while the header and footer remain visible. Sets ``min-height: 0``, ``overflow: auto`` and ``padding: 16px 24px 24px``.
 
 ``modal-footer``
     Adds padding, a top border and a background to the action area. Arranges its contents horizontally, with buttons aligned to the right.
@@ -615,7 +616,7 @@ The classes in the example provide built-in styling. None of the classes you add
 ``modal-btn-ghost``
     Gives a button a transparent background, muted text and a border, suitable for a secondary action such as Close or Cancel.
 
-These button classes are also used by Datasette's built-in dialogs. The ``modal-btn`` prefix keeps them separate from generic ``btn`` classes used by plugins or CSS frameworks. The shared CSS scopes them to descendants of ``.datasette-modal``, for example ``:where(.datasette-modal) .modal-btn``. Dialog content remains in the caller's DOM tree, so scope custom CSS to the intended component to avoid unintended overrides.
+These button classes are also used by Datasette's built-in dialogs.
 
 You can customize layout and sizing without adding extra classes. For example, this CSS uses the dialog's existing ID to widen it while keeping it inside the viewport:
 
@@ -624,10 +625,6 @@ You can customize layout and sizing without adding extra classes. For example, t
     dialog#my-plugin-dialog {
         width: min(720px, calc(100vw - 32px));
     }
-
-Use ``modal-body`` on the scrolling content container. If that container is inside a form that also contains the footer, the form needs ``display: flex``, ``flex-direction: column``, ``flex: 1 1 auto`` and ``min-height: 0`` so its content can shrink within the dialog.
-
-The dialog shell also uses the CSS custom properties ``--modal-border-radius``, ``--modal-shadow``, ``--modal-backdrop-bg``, ``--modal-backdrop-blur`` and ``--modal-animation-duration``. The shared animations respect the user's reduced-motion preference.
 
 .. _javascript_datasette_manager_selectors:
 

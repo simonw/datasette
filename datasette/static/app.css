@@ -1209,6 +1209,312 @@ navigation-search .visually-hidden {
 }
 
 
+/* column-chooser */
+column-chooser {
+    display: contents;
+    --ink: #0f0f0f;
+    --paper: #eef6ff;
+    --muted: #6b6b6b;
+    --rule: #d8e6f5;
+    --accent: #1a56db;
+    --accent-light: #e8effd;
+    --card: #ffffff;
+}
+
+column-chooser * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+column-chooser dialog.datasette-modal {
+    width: 100%;
+    max-width: 420px;
+    max-height: min(640px, calc(100vh - 32px));
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+column-chooser dialog.datasette-modal[open] {
+    height: min(640px, calc(100vh - 32px));
+}
+
+column-chooser .modal-header {
+    padding: 20px 24px 16px;
+    justify-content: space-between;
+}
+
+column-chooser .list-toolbar {
+    padding: 6px 24px;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+column-chooser .list-toolbar button {
+    background: var(--accent-light);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.75rem;
+    color: var(--accent);
+    cursor: pointer;
+    padding: 3px 10px;
+    transition:
+        background 0.12s,
+        color 0.12s;
+}
+
+column-chooser .list-toolbar button:hover {
+    background: var(--accent);
+    color: white;
+}
+
+column-chooser .list-wrap {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    position: relative;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+column-chooser .list-wrap::before,
+column-chooser .list-wrap::after {
+    content: "";
+    position: sticky;
+    display: block;
+    left: 0;
+    right: 0;
+    height: 20px;
+    pointer-events: none;
+    z-index: 5;
+    transition: opacity 0.2s;
+}
+
+column-chooser .list-wrap::before {
+    top: 0;
+    background: linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0.9),
+        transparent
+    );
+}
+
+column-chooser .list-wrap::after {
+    bottom: 0;
+    background: linear-gradient(to top, rgba(255, 255, 255, 0.9), transparent);
+    margin-top: -20px;
+}
+
+column-chooser .scroll-zone {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 72px;
+    pointer-events: none;
+    z-index: 10;
+}
+
+column-chooser .scroll-zone-top {
+    top: 0;
+}
+
+column-chooser .scroll-zone-bot {
+    bottom: 0;
+}
+
+column-chooser .drag-list {
+    list-style: none;
+    padding: 4px 0;
+}
+
+column-chooser .drag-item {
+    display: flex;
+    align-items: center;
+    background: white;
+    border-bottom: 1px solid var(--rule);
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    position: relative;
+    transition: background 0.08s;
+}
+
+column-chooser .drag-item:last-child {
+    border-bottom: none;
+}
+
+column-chooser .drag-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    flex-shrink: 0;
+    cursor: grab;
+    color: #c8c4bc;
+    touch-action: none;
+    transition: color 0.15s;
+}
+
+column-chooser .drag-handle:hover {
+    color: var(--accent);
+}
+
+column-chooser .drag-handle svg {
+    pointer-events: none;
+    display: block;
+}
+
+column-chooser .drag-item-content {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+}
+
+column-chooser .drag-item-check {
+    display: flex;
+    align-items: center;
+    width: 32px;
+    height: 48px;
+    flex-shrink: 0;
+}
+
+column-chooser .drag-item-check input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+column-chooser .drag-item-label {
+    flex: 1;
+    font-size: 0.9rem;
+    line-height: 48px;
+    padding-right: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
+}
+
+column-chooser .drag-item.is-dragging {
+    opacity: 0;
+}
+
+column-chooser .drop-indicator {
+    position: absolute;
+    left: 48px;
+    right: 0;
+    height: 2px;
+    background: var(--accent);
+    border-radius: 99px;
+    pointer-events: none;
+    z-index: 20;
+    display: none;
+}
+
+column-chooser .drop-indicator.top {
+    top: -1px;
+    display: block;
+}
+
+column-chooser .drop-indicator.bottom {
+    bottom: -1px;
+    display: block;
+}
+
+column-chooser .drag-ghost {
+    position: fixed;
+    pointer-events: none;
+    z-index: 9999;
+    background: white;
+    border-radius: 6px;
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.18),
+        0 2px 8px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    border: 1.5px solid var(--accent-light);
+    opacity: 0.97;
+    will-change: transform;
+    font-family:
+        system-ui,
+        -apple-system,
+        sans-serif;
+}
+
+column-chooser .scroll-pulse {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 10;
+    transition: opacity 0.15s;
+}
+
+column-chooser .scroll-pulse.top {
+    top: 8px;
+}
+
+column-chooser .scroll-pulse.bot {
+    bottom: 8px;
+}
+
+column-chooser .scroll-pulse.active {
+    opacity: 0.18;
+    animation: column-chooser-pulse 0.8s ease-in-out infinite;
+}
+
+@keyframes column-chooser-pulse {
+    0%,
+    100% {
+        transform: translateX(-50%) scale(1);
+        opacity: 0.18;
+    }
+    50% {
+        transform: translateX(-50%) scale(1.5);
+        opacity: 0.07;
+    }
+}
+
+column-chooser .modal-btn-primary {
+    color: white;
+}
+
+column-chooser .modal-btn-primary:hover {
+    background: #1448c0;
+}
+
+column-chooser .list-wrap::-webkit-scrollbar {
+    width: 5px;
+}
+
+column-chooser .list-wrap::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+column-chooser .list-wrap::-webkit-scrollbar-thumb {
+    background: var(--rule);
+    border-radius: 99px;
+}
+
+column-chooser input,
+column-chooser textarea {
+    -webkit-user-select: auto;
+    user-select: auto;
+}
+
 dialog.mobile-column-actions-dialog {
     width: min(420px, calc(100vw - 32px));
     max-height: min(640px, calc(100vh - 32px));

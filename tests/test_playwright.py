@@ -1119,6 +1119,57 @@ def test_navigation_search_created_from_javascript(page, datasette_server):
 
 
 @pytest.mark.playwright
+def test_column_chooser_selection_and_drag_in_document(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + "data/projects")
+    page.emulate_media(reduced_motion="reduce")
+    page.evaluate("""() => {
+        const chooser = document.createElement('column-chooser');
+        chooser.id = 'additional-chooser';
+        document.body.append(chooser);
+        window.appliedColumns = null;
+        chooser.open({
+            columns: ['title', 'notes', 'score'],
+            selected: ['title', 'notes'],
+            onApply: columns => { window.appliedColumns = columns; }
+        });
+    }""")
+    chooser = page.locator("#additional-chooser")
+    dialog = chooser.get_by_role("dialog", name="Choose columns")
+    expect(dialog).to_be_visible()
+    assert dialog.evaluate("""node => {
+        const id = node.getAttribute('aria-labelledby');
+        return document.querySelectorAll(`#${id}`).length === 1 &&
+            node.contains(document.getElementById(id));
+    }""")
+    expect(dialog.locator(".modal-meta")).to_have_text("2 of 3 selected")
+    dialog.get_by_role("button", name="Deselect all", exact=True).click()
+    expect(dialog.locator(".modal-meta")).to_have_text("0 of 3 selected")
+    dialog.get_by_role("button", name="Select all", exact=True).click()
+    expect(dialog.locator(".modal-meta")).to_have_text("3 of 3 selected")
+    # Move title after score using the same pointer events as mouse/touch dragging.
+    handle = dialog.locator(".drag-handle").first.bounding_box()
+    target = dialog.locator(".drag-item").last.bounding_box()
+    page.mouse.move(handle["x"] + handle["width"] / 2, handle["y"] + 24)
+    page.mouse.down()
+    page.mouse.move(target["x"] + 24, target["y"] + target["height"] - 4, steps=5)
+    expect(dialog.locator(".drag-ghost")).to_be_visible()
+    page.mouse.up()
+    expect(dialog.locator(".drag-item-label")).to_have_text(["notes", "score", "title"])
+    dialog.get_by_role("button", name="Apply", exact=True).click()
+    expect(dialog).not_to_be_visible()
+    assert page.evaluate("appliedColumns") == ["notes", "score", "title"]
+    chooser.evaluate(
+        "node => node.open({columns: ['title', 'notes'], selected: ['title']})"
+    )
+    dialog.get_by_role("button", name="Deselect all", exact=True).click()
+    dialog.get_by_role("button", name="Cancel", exact=True).click()
+    expect(dialog).not_to_be_visible()
+    assert page.evaluate("appliedColumns") == ["notes", "score", "title"]
+
+
+@pytest.mark.playwright
 def test_insert_row_flow_uses_custom_column_field(page, datasette_server):
     page.add_init_script("""
         (() => {

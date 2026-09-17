@@ -536,7 +536,7 @@ Opening and closing
 ~~~~~~~~~~~~~~~~~~~
 
 ``modal.show({trigger, initialFocus})``
-    Opens the native dialog using ``showModal()``. Both options are optional. ``trigger`` is the element to return focus to when the dialog closes; it defaults to the currently focused element. ``initialFocus`` can be an element to focus or a function that focuses a custom control. Without it, the browser chooses initial focus. Calling ``show()`` while the dialog is already open preserves the original return-focus target.
+    Opens the native dialog using ``showModal()``. Both options are optional. ``trigger`` is the element to return focus to when the dialog closes; it defaults to the currently focused element. ``initialFocus`` can be an element to focus or a function that focuses a custom control. Without it, the browser chooses initial focus. Calling ``show()`` again while the dialog is open does not change where focus returns when it closes. For example, if an Edit button opened the dialog, focus will still return to that button.
 
 ``modal.requestClose(reason = "cancel")``
     Requests dismissal through the busy-state and ``beforeClose`` guards described below. Returns ``true`` if it closes the dialog, or ``false`` if the dialog is already closed or a guard prevents dismissal. Close and Cancel buttons should use this method.

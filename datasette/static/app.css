@@ -63,7 +63,7 @@ em {
 }
 /* end reset */
 
-/* Modal CSS variables (shared by web components via Shadow DOM) */
+/* Shared modal CSS variables */
 :root {
     --modal-backdrop-bg: rgba(0, 0, 0, 0.5);
     --modal-backdrop-blur: blur(4px);

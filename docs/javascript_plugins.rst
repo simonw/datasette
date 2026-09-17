@@ -536,7 +536,7 @@ Opening and closing
 ~~~~~~~~~~~~~~~~~~~
 
 ``modal.show({trigger, initialFocus})``
-    Opens the native dialog using ``showModal()``. Both options are optional. ``trigger`` is the element to return focus to when the dialog closes; it defaults to the currently focused element, including inside an open shadow root. ``initialFocus`` can be an element to focus or a function that focuses a custom control. Without it, the browser chooses initial focus. Calling ``show()`` while the dialog is already open preserves the original return-focus target.
+    Opens the native dialog using ``showModal()``. Both options are optional. ``trigger`` is the element to return focus to when the dialog closes; it defaults to the currently focused element. ``initialFocus`` can be an element to focus or a function that focuses a custom control. Without it, the browser chooses initial focus. Calling ``show()`` while the dialog is already open preserves the original return-focus target.
 
 ``modal.requestClose(reason = "cancel")``
     Requests dismissal through the busy-state and ``beforeClose`` guards described below. Returns ``true`` if it closes the dialog, or ``false`` if the dialog is already closed or a guard prevents dismissal. Close and Cancel buttons should use this method.
@@ -615,7 +615,7 @@ You can customize layout and sizing without adding extra classes. For example, t
 
 Long content should have a container with ``overflow: auto`` and ``min-height: 0`` so it can scroll while the header and footer remain visible. Keep these styles scoped to your dialog.
 
-The dialog shell also uses the CSS custom properties ``--modal-border-radius``, ``--modal-shadow``, ``--modal-backdrop-bg``, ``--modal-backdrop-blur`` and ``--modal-animation-duration``. These work for dialogs in both the document and shadow roots. The shared animations respect the user's reduced-motion preference.
+The dialog shell also uses the CSS custom properties ``--modal-border-radius``, ``--modal-shadow``, ``--modal-backdrop-bg``, ``--modal-backdrop-blur`` and ``--modal-animation-duration``. The shared animations respect the user's reduced-motion preference.
 
 .. _javascript_datasette_manager_selectors:
 

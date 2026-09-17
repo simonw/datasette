@@ -1,4 +1,4 @@
-/* Shared by light-DOM dialogs and dialogs inside existing shadow roots. */
+/* Shared modal styles. */
 datasette-modal {
     display: contents;
 }

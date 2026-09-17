@@ -1739,20 +1739,16 @@ def test_count_all_error_retry(page, datasette_server):
 
 
 @pytest.mark.playwright
-@pytest.mark.parametrize("shadow", [False, True])
-def test_modal_lifecycle(page, datasette_server, shadow):
+def test_modal_lifecycle(page, datasette_server):
     from playwright.sync_api import expect
 
     page.goto(datasette_server)
     page.evaluate(
-        """shadow => {
-            const host = document.createElement('div');
-            document.body.append(host);
-            const root = shadow ? host.attachShadow({mode: 'open'}) : host;
+        """() => {
             const trigger = document.createElement('button');
             trigger.id = 'modal-trigger';
             trigger.textContent = 'Open test modal';
-            root.append(trigger);
+            document.body.append(trigger);
             window.testModal = DatasetteModal.create();
             const dialog = testModal.dialog;
             dialog.id = 'test-modal';
@@ -1764,7 +1760,7 @@ def test_modal_lifecycle(page, datasette_server, shadow):
                 <button id="test-modal-cancel">Cancel</button>`;
             // Padding is part of the dialog, never a backdrop dismissal.
             dialog.style.padding = '30px';
-            root.append(testModal);
+            document.body.append(testModal);
             window.closeReasons = [];
             testModal.beforeClose = reason => {
                 closeReasons.push(reason);
@@ -1776,7 +1772,6 @@ def test_modal_lifecycle(page, datasette_server, shadow):
             });
             dialog.querySelector('button').onclick = () => testModal.requestClose('cancel');
         }""",
-        shadow,
     )
     trigger = page.locator("#modal-trigger")
     trigger.click()
@@ -1947,6 +1942,7 @@ def test_modal_consumers_dismiss_and_restore_focus(page, datasette_server, name)
     expect(dialog).to_have_css("border-radius", "8px" if name == "mobile" else "12px")
     expect(dialog).to_have_css("animation-name", "none")
     assert dialog.evaluate("node => node.parentElement.localName") == "datasette-modal"
+    assert dialog.evaluate("node => node.getRootNode() === document")
     page.keyboard.press("Escape")
     expect(dialog).not_to_be_visible()
     expect(trigger).to_be_focused()

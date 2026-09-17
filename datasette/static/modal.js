@@ -1,8 +1,5 @@
-// Shared modal shell. Content stays in the caller's DOM, including plugin
-// controls and their form/ARIA relationships. The native dialog owns modality.
+// Shared lifecycle for native modal dialogs.
 (() => {
-  const stylesheet = document.currentScript.dataset.stylesheet;
-
   class DatasetteModal extends HTMLElement {
     constructor() {
       super();
@@ -39,18 +36,6 @@
       const dialog = this.dialog;
       if (!dialog) return;
       dialog.classList.add("datasette-modal");
-      // The same CSS is used in the document and in existing web components.
-      const root = this.getRootNode();
-      if (
-        root instanceof ShadowRoot &&
-        !root.querySelector("link[data-datasette-modal]")
-      ) {
-        const link = document.createElement("link");
-        link.rel = "stylesheet";
-        link.href = stylesheet;
-        link.dataset.datasetteModal = "";
-        root.prepend(link);
-      }
       this._listeners?.abort();
       this._listeners = new AbortController();
       const options = { signal: this._listeners.signal };
@@ -86,11 +71,7 @@
         (event) => {
           if (event.key !== "Escape" || event.defaultPrevented) return;
           // A nested native dialog or plugin picker gets first refusal.
-          if (
-            event.composedPath().find((node) => node.localName === "dialog") !==
-            dialog
-          )
-            return;
+          if (event.target.closest("dialog") !== dialog) return;
           event.preventDefault();
           if (this.busy || this._escapeCleanup || this._escapeTimer !== null)
             return;
@@ -158,10 +139,7 @@
       const dialog = this.dialog;
       if (!dialog.open) {
         this._clearPendingClose();
-        let active = this.ownerDocument.activeElement;
-        while (active?.shadowRoot?.activeElement)
-          active = active.shadowRoot.activeElement;
-        this._trigger = trigger || active;
+        this._trigger = trigger || this.ownerDocument.activeElement;
         this._restoreFocus = true;
         dialog.showModal();
       }

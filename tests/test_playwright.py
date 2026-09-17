@@ -1084,6 +1084,41 @@ def test_navigation_search_renders_jump_sections_from_javascript_plugins(
 
 
 @pytest.mark.playwright
+def test_navigation_search_created_from_javascript(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server)
+    page.evaluate("""() => {
+        const search = document.createElement('navigation-search');
+        search.id = 'additional-search';
+        search.setAttribute('items', JSON.stringify([
+            {name: 'Projects', url: '/data/projects'}
+        ]));
+        document.body.append(search);
+        const unrelated = document.createElement('div');
+        unrelated.className = 'search-container';
+        unrelated.id = 'outside-search';
+        document.body.append(unrelated);
+        search.openMenu();
+    }""")
+    search = page.locator("#additional-search")
+    dialog = search.get_by_role("dialog", name="Jump to", exact=True)
+    expect(dialog).to_be_visible()
+    # Page styles and ordinary DOM queries can reach the component's controls.
+    page.add_style_tag(
+        content="#additional-search .search-input { border-top-color: rgb(1, 2, 3); }"
+    )
+    field = dialog.get_by_role("combobox", name="Jump to", exact=True)
+    expect(field).to_have_css("border-top-color", "rgb(1, 2, 3)")
+    assert field.evaluate("node => document.getElementById(node.id) === node")
+    expect(page.locator("#outside-search")).to_have_css("display", "block")
+    field.fill("projects")
+    expect(dialog.get_by_role("option")).to_contain_text("Projects")
+    field.press("Enter")
+    page.wait_for_url("**/data/projects")
+
+
+@pytest.mark.playwright
 def test_insert_row_flow_uses_custom_column_field(page, datasette_server):
     page.add_init_script("""
         (() => {

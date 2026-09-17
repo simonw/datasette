@@ -10,247 +10,22 @@ class NavigationSearch extends HTMLElement {
     this.recentHeadingId = `navigation-search-recent-${this.instanceId}`;
     this.statusId = `navigation-search-status-${this.instanceId}`;
     this.titleId = `navigation-search-title-${this.instanceId}`;
-    this.attachShadow({ mode: "open" });
     this.selectedIndex = -1;
     this.matches = [];
     this.renderedMatches = [];
     this.debounceTimer = null;
+  }
 
+  connectedCallback() {
+    if (this._initialized) return;
+    this._initialized = true;
     this.render();
     this.setupEventListeners();
   }
 
   render() {
-    this.shadowRoot.innerHTML = `
-            <style>
-                :host {
-                    display: contents;
-                }
-
-                dialog.datasette-modal {
-                    max-width: 90vw;
-                    width: 600px;
-                    max-height: 80vh;
-                }
-
-                .search-container {
-                    display: flex;
-                    flex-direction: column;
-                }
-
-                .search-input-wrapper {
-                    padding: 1.25rem;
-                    border-bottom: 1px solid #e5e7eb;
-                    display: flex;
-                    gap: 0.5rem;
-                    align-items: center;
-                }
-
-                .search-input {
-                    width: 100%;
-                    flex: 1;
-                    min-width: 0;
-                    padding: 0.75rem 1rem;
-                    font-size: 1rem;
-                    border: 2px solid #e5e7eb;
-                    border-radius: 0.5rem;
-                    outline: none;
-                    transition: border-color 0.2s;
-                    box-sizing: border-box;
-                }
-
-                .search-input:focus {
-                    border-color: #2563eb;
-                }
-
-                .close-search {
-                    background: transparent;
-                    border: 1px solid transparent;
-                    border-radius: 0.375rem;
-                    color: #4b5563;
-                    cursor: pointer;
-                    flex: 0 0 auto;
-                    font: inherit;
-                    font-size: 1.5rem;
-                    height: 2.75rem;
-                    line-height: 1;
-                    width: 2.75rem;
-                }
-
-                .close-search:hover,
-                .close-search:focus {
-                    background-color: #f3f4f6;
-                    border-color: #d1d5db;
-                }
-
-                .results-container {
-                    overflow-y: auto;
-                    height: calc(80vh - 180px);
-                    padding: 0.5rem;
-                }
-
-                .results-list:empty {
-                    display: none;
-                }
-
-                .result-item {
-                    padding: 0.875rem 1rem;
-                    cursor: pointer;
-                    border-radius: 0.5rem;
-                    transition: background-color 0.15s;
-                    display: flex;
-                    align-items: center;
-                    gap: 0.75rem;
-                }
-
-                .result-item:hover {
-                    background-color: #f3f4f6;
-                }
-
-                .result-item.selected {
-                    background-color: #dbeafe;
-                }
-
-                .result-item > div {
-                    flex: 1;
-                    min-width: 0;
-                }
-
-                .jump-start-content {
-                    border-bottom: 1px solid #e5e7eb;
-                    margin-bottom: 0.5rem;
-                    padding: 0.5rem 0.5rem 1rem;
-                }
-
-                .jump-start-content:empty {
-                    display: none;
-                }
-
-                .result-name {
-                    font-weight: 500;
-                    color: #111827;
-                }
-
-                .result-label {
-                    font-size: 0.875rem;
-                    color: #4b5563;
-                }
-
-                .result-type {
-                    color: #4b5563;
-                    font-size: 0.75rem;
-                    font-weight: 600;
-                    text-transform: uppercase;
-                }
-
-                .result-url {
-                    font-size: 0.875rem;
-                    color: #6b7280;
-                }
-
-                .result-description {
-                    color: #374151;
-                    display: -webkit-box;
-                    font-size: 0.8125rem;
-                    line-height: 1.35;
-                    margin-top: 0.35rem;
-                    overflow: hidden;
-                    -webkit-box-orient: vertical;
-                    -webkit-line-clamp: 2;
-                }
-
-                .results-heading {
-                    color: #4b5563;
-                    font-size: 0.75rem;
-                    font-weight: 600;
-                    letter-spacing: 0;
-                    padding: 0.5rem 1rem 0.25rem;
-                    text-transform: uppercase;
-                }
-
-                .recent-actions {
-                    padding: 0.25rem 1rem 0.75rem;
-                }
-
-                .clear-recent {
-                    background: transparent;
-                    border: 0;
-                    color: #2563eb;
-                    cursor: pointer;
-                    font: inherit;
-                    font-size: 0.875rem;
-                    padding: 0;
-                }
-
-                .clear-recent:hover {
-                    text-decoration: underline;
-                }
-
-                .no-results {
-                    padding: 2rem;
-                    text-align: center;
-                    color: #6b7280;
-                }
-
-                .hint-text {
-                    padding: 0.75rem 1.25rem;
-                    font-size: 0.875rem;
-                    color: #6b7280;
-                    border-top: 1px solid #e5e7eb;
-                    display: flex;
-                    gap: 1rem;
-                    flex-wrap: wrap;
-                }
-
-                .hint-text kbd {
-                    background: #f3f4f6;
-                    padding: 0.125rem 0.375rem;
-                    border-radius: 0.25rem;
-                    font-size: 0.75rem;
-                    border: 1px solid #d1d5db;
-                    font-family: monospace;
-                }
-
-                .visually-hidden {
-                    border: 0;
-                    clip: rect(0 0 0 0);
-                    height: 1px;
-                    margin: -1px;
-                    overflow: hidden;
-                    padding: 0;
-                    position: absolute;
-                    white-space: nowrap;
-                    width: 1px;
-                }
-
-                /* Mobile optimizations */
-                @media (max-width: 640px) {
-                    dialog.datasette-modal {
-                        width: 95vw;
-                        max-height: 85vh;
-                        border-radius: 0.5rem;
-                    }
-
-                    .search-input-wrapper {
-                        padding: 1rem;
-                    }
-
-                    .search-input {
-                        font-size: 16px; /* Prevents zoom on iOS */
-                    }
-
-                    .result-item {
-                        padding: 1rem 0.75rem;
-                    }
-
-                    .hint-text {
-                        font-size: 0.8rem;
-                        padding: 0.5rem 1rem;
-                    }
-                }
-            </style>
-
-            <datasette-modal><dialog aria-modal="true" aria-labelledby="${this.titleId}">
+    this.innerHTML = `
+      <datasette-modal><dialog aria-modal="true" aria-labelledby="${this.titleId}">
                 <div class="search-container">
                     <h2 id="${this.titleId}" class="visually-hidden">Jump to</h2>
                     <p id="${this.instructionsId}" class="visually-hidden">Type to search. Use up and down arrow keys to move through results, Enter to select a result, and Escape to close this menu.</p>
@@ -284,11 +59,10 @@ class NavigationSearch extends HTMLElement {
   }
 
   setupEventListeners() {
-    const dialog = this.shadowRoot.querySelector("dialog");
-    const input = this.shadowRoot.querySelector(".search-input");
-    const closeButton = this.shadowRoot.querySelector(".close-search");
-    const resultsContainer =
-      this.shadowRoot.querySelector(".results-container");
+    const dialog = this.querySelector("dialog");
+    const input = this.querySelector(".search-input");
+    const closeButton = this.querySelector(".close-search");
+    const resultsContainer = this.querySelector(".results-container");
 
     // Global keyboard listener for "/"
     document.addEventListener("keydown", (e) => {
@@ -408,8 +182,8 @@ class NavigationSearch extends HTMLElement {
   }
 
   updateComboboxState() {
-    const dialog = this.shadowRoot.querySelector("dialog");
-    const input = this.shadowRoot.querySelector(".search-input");
+    const dialog = this.querySelector("dialog");
+    const input = this.querySelector(".search-input");
     const matches = this.renderedMatches || [];
     this.setElementAttribute(
       input,
@@ -434,7 +208,7 @@ class NavigationSearch extends HTMLElement {
   }
 
   setStatus(message) {
-    const status = this.shadowRoot.querySelector(`#${this.statusId}`);
+    const status = this.querySelector(`#${this.statusId}`);
     if (status) {
       status.textContent = message || "";
     }
@@ -644,7 +418,7 @@ class NavigationSearch extends HTMLElement {
       section.render(node, {
         navigationSearch: this,
         container,
-        input: this.shadowRoot.querySelector(".search-input"),
+        input: this.querySelector(".search-input"),
       });
     });
   }
@@ -683,8 +457,8 @@ class NavigationSearch extends HTMLElement {
   }
 
   renderResults() {
-    const container = this.shadowRoot.querySelector(".results-container");
-    const input = this.shadowRoot.querySelector(".search-input");
+    const container = this.querySelector(".results-container");
+    const input = this.querySelector(".search-input");
     const showStartContent = !input.value.trim();
     const jumpSections = showStartContent ? this.jumpSections() : [];
     const startBlock = showStartContent
@@ -797,11 +571,12 @@ class NavigationSearch extends HTMLElement {
   }
 
   openMenu(trigger) {
-    const input = this.shadowRoot.querySelector(".search-input");
+    const input = this.querySelector(".search-input");
 
-    this.shadowRoot
-      .querySelector("datasette-modal")
-      .show({ trigger, initialFocus: input });
+    this.querySelector("datasette-modal").show({
+      trigger,
+      initialFocus: input,
+    });
     this.setNavigationTriggersExpanded(true);
     input.value = "";
 
@@ -813,11 +588,11 @@ class NavigationSearch extends HTMLElement {
   }
 
   closeMenu(options = {}) {
-    this.shadowRoot.querySelector("datasette-modal").close(options);
+    this.querySelector("datasette-modal").close(options);
   }
 
   onMenuClosed() {
-    const input = this.shadowRoot.querySelector(".search-input");
+    const input = this.querySelector(".search-input");
     this.setElementAttribute(input, "aria-expanded", "false");
     this.removeElementAttribute(input, "aria-activedescendant");
     this.setNavigationTriggersExpanded(false);

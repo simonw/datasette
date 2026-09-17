@@ -147,7 +147,7 @@ And a class method that can be used to create fake request objects for use in te
 .. _internals_multiparams:
 
 The MultiParams class
-=====================
+---------------------
 
 ``request.args`` is a ``MultiParams`` object - a dictionary-like object which provides access to query string parameters that may have multiple values.
 
@@ -177,7 +177,7 @@ Consider the query string ``?foo=1&foo=2&bar=3`` - with two values for ``foo`` a
 .. _internals_formdata:
 
 The FormData class
-==================
+------------------
 
 ``await request.form()`` returns a ``FormData`` object - a dictionary-like object which provides access to form fields and uploaded files. It has a similar interface to ``MultiParams``.
 
@@ -205,7 +205,7 @@ The FormData class
 .. _internals_uploadedfile:
 
 The UploadedFile class
-======================
+----------------------
 
 When parsing multipart form data with ``files=True``, file uploads are returned as ``UploadedFile`` objects with the following properties and methods:
 

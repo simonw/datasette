@@ -1762,6 +1762,67 @@ def test_modal_lifecycle(page, datasette_server, shadow):
 
 
 @pytest.mark.playwright
+def test_modal_nested_escape_and_cleanup(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + "data/projects")
+    trigger = page.locator('tr[data-row="1"] button[data-row-action="edit"]')
+    trigger.click()
+    dialog = page.locator("#row-edit-dialog")
+    field = dialog.locator('input[name="title"]')
+    expect(field).to_be_visible()
+    field.fill("Unsaved title")
+    page.evaluate("""() => {
+        window.confirmations = [];
+        window.confirm = message => { confirmations.push(message); return false; };
+    }""")
+    # Plugin controls can consume Escape without closing their containing form.
+    field.evaluate("""node => node.addEventListener('keydown', event => {
+        if (event.key === 'Escape') event.preventDefault();
+    }, {once: true})""")
+    field.press("Escape")
+    assert page.evaluate("confirmations") == []
+    expect(dialog).to_be_visible()
+    field.press("Escape")
+    page.wait_for_function("confirmations.length === 1")
+    assert page.evaluate("confirmations") == ["Discard unsaved changes to this row?"]
+
+    # A nested native modal closes independently, then returns focus to its field.
+    field.evaluate("""node => {
+        node.focus();
+        window.nestedModal = DatasetteModal.create();
+        nestedModal.dialog.setAttribute('aria-label', 'Nested picker');
+        nestedModal.dialog.innerHTML = '<button>Choose</button>';
+        node.closest('dialog').append(nestedModal);
+        nestedModal.show();
+    }""")
+    nested = page.get_by_role("dialog", name="Nested picker")
+    page.keyboard.press("Escape")
+    expect(nested).not_to_be_visible()
+    expect(dialog).to_be_visible()
+    expect(field).to_be_focused()
+    assert page.evaluate("confirmations.length") == 1
+
+    # Closing before keyup cancels the pending confirmation, including on reopen.
+    page.keyboard.down("Escape")
+    dialog.locator(".row-edit-cancel").click()
+    expect(dialog).not_to_be_visible()
+    trigger.click()
+    page.keyboard.up("Escape")
+    expect(field).to_be_visible()
+    assert page.evaluate("confirmations.length") == 1
+    expect(dialog).to_be_visible()
+    # Native cancel (e.g. an accessibility action) does not wait for keyboard input.
+    field.fill("Another edit")
+    dialog.evaluate(
+        "node => node.dispatchEvent(new Event('cancel', {cancelable: true}))"
+    )
+    assert page.evaluate("confirmations.length") == 2
+    dialog.locator(".row-edit-cancel").click()
+    expect(trigger).to_be_focused()
+
+
+@pytest.mark.playwright
 @pytest.mark.parametrize("name", ["jump", "columns", "type", "mobile"])
 def test_modal_consumers_dismiss_and_restore_focus(page, datasette_server, name):
     from playwright.sync_api import expect

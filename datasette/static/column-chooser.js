@@ -41,74 +41,22 @@ class ColumnChooser extends HTMLElement {
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
-        dialog {
-          border: none;
-          border-radius: var(--modal-border-radius, 0.75rem);
-          padding: 0;
-          margin: auto;
+        dialog.datasette-modal {
           width: 100%;
           max-width: 420px;
           max-height: min(640px, calc(100vh - 32px));
-          box-shadow: var(--modal-shadow, 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04));
-          animation: slideIn var(--modal-animation-duration, 0.2s) ease-out;
-          overflow: hidden;
-          font-family: system-ui, -apple-system, sans-serif;
-          background: var(--card);
           -webkit-user-select: none;
           -webkit-touch-callout: none;
           -webkit-tap-highlight-color: transparent;
         }
 
-        dialog[open] {
-          display: flex;
-          flex-direction: column;
+        dialog.datasette-modal[open] {
           height: min(640px, calc(100vh - 32px));
-        }
-
-        dialog::backdrop {
-          background: var(--modal-backdrop-bg, rgba(0, 0, 0, 0.5));
-          backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-          -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(4px));
-          animation: fadeIn var(--modal-animation-duration, 0.2s) ease-out;
-        }
-
-        @keyframes slideIn {
-          from {
-            opacity: 0;
-            transform: translateY(-20px) scale(0.95);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
-        }
-
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
         }
 
         .modal-header {
           padding: 20px 24px 16px;
-          border-bottom: 1px solid var(--rule);
-          display: flex;
-          align-items: center;
           justify-content: space-between;
-          flex-shrink: 0;
-        }
-
-        .modal-title {
-          font-size: 1rem;
-          font-weight: 600;
-        }
-
-        .modal-meta {
-          font-family: ui-monospace, monospace;
-          font-size: 0.7rem;
-          color: var(--muted);
-          background: var(--paper);
-          padding: 3px 9px;
-          border-radius: 20px;
         }
 
         .list-toolbar {
@@ -299,47 +247,10 @@ class ColumnChooser extends HTMLElement {
           50% { transform: translateX(-50%) scale(1.5); opacity: 0.07; }
         }
 
-        .modal-footer {
-          padding: 14px 20px;
-          border-top: 1px solid var(--rule);
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          flex-shrink: 0;
-          background: var(--paper);
-        }
-
-        .footer-info {
-          flex: 1;
-          font-family: ui-monospace, monospace;
-          font-size: 0.68rem;
-          color: var(--muted);
-        }
-
-        .btn {
-          border: none;
-          border-radius: 5px;
-          padding: 9px 20px;
-          font-size: 0.85rem;
-          font-weight: 500;
-          cursor: pointer;
-          touch-action: manipulation;
-          font-family: inherit;
-          transition: background 0.12s;
-        }
-
-        .btn-primary {
-          background: var(--accent);
+        .modal-btn-primary {
           color: white;
         }
-        .btn-primary:hover { background: #1448c0; }
-
-        .btn-ghost {
-          background: transparent;
-          color: var(--muted);
-          border: 1px solid var(--rule);
-        }
-        .btn-ghost:hover { background: var(--rule); color: var(--ink); }
+        .modal-btn-primary:hover { background: #1448c0; }
 
         .list-wrap::-webkit-scrollbar { width: 5px; }
         .list-wrap::-webkit-scrollbar-track { background: transparent; }
@@ -348,7 +259,7 @@ class ColumnChooser extends HTMLElement {
         input, textarea { -webkit-user-select: auto; user-select: auto; }
       </style>
 
-      <dialog aria-labelledby="modalTitle">
+      <datasette-modal><dialog aria-labelledby="modalTitle">
           <div class="modal-header">
             <span class="modal-title" id="modalTitle">Choose columns</span>
             <span class="modal-meta" id="selectedCount"></span>
@@ -364,14 +275,14 @@ class ColumnChooser extends HTMLElement {
           </div>
           <div class="modal-footer">
             <span class="footer-info" id="footerInfo"></span>
-            <button class="btn btn-ghost" id="cancelBtn">Cancel</button>
-            <button class="btn btn-primary" id="applyBtn">Apply</button>
+            <button class="modal-btn modal-btn-ghost" id="cancelBtn">Cancel</button>
+            <button class="modal-btn modal-btn-primary" id="applyBtn">Apply</button>
           </div>
-      </dialog>
+      </dialog></datasette-modal>
     `;
 
     // DOM refs
-    this._dialog = this.shadowRoot.querySelector("dialog");
+    this._modal = this.shadowRoot.querySelector("datasette-modal");
     this._listWrap = this.shadowRoot.getElementById("listWrap");
     this._dragList = this.shadowRoot.getElementById("dragList");
     this._pulseTop = this.shadowRoot.getElementById("pulseTop");
@@ -386,15 +297,17 @@ class ColumnChooser extends HTMLElement {
     // Event listeners
     this._selectAllBtn.addEventListener("click", () => this._selectAll());
     this._deselectAllBtn.addEventListener("click", () => this._deselectAll());
-    this._cancelBtn.addEventListener("click", () => this._close());
+    this._cancelBtn.addEventListener("click", () =>
+      this._modal.requestClose("cancel"),
+    );
     this._applyBtn.addEventListener("click", () => this._apply());
-    this._dialog.addEventListener("click", (e) => {
-      if (e.target === this._dialog) this._close();
-    });
-    this._dialog.addEventListener("cancel", (e) => {
-      e.preventDefault();
-      this._close();
-    });
+    this._modal.beforeClose = () => {
+      this._items = this._savedItems ? [...this._savedItems] : this._items;
+      this._checked = this._savedChecked
+        ? new Set(this._savedChecked)
+        : this._checked;
+      return true;
+    };
   }
 
   /**
@@ -414,18 +327,10 @@ class ColumnChooser extends HTMLElement {
     this._savedChecked = new Set(this._checked);
 
     this._render();
-    this._dialog.showModal();
+    this._modal.show();
   }
 
   // ── Internal methods ──
-
-  _close() {
-    this._items = this._savedItems ? [...this._savedItems] : this._items;
-    this._checked = this._savedChecked
-      ? new Set(this._savedChecked)
-      : this._checked;
-    this._dialog.close();
-  }
 
   _selectAll() {
     this._items.forEach((col) => this._checked.add(col));
@@ -445,7 +350,7 @@ class ColumnChooser extends HTMLElement {
 
   _apply() {
     const selected = this._items.filter((col) => this._checked.has(col));
-    this._dialog.close();
+    this._modal.close();
     if (this._onApply) {
       this._onApply(selected);
     }

@@ -981,22 +981,6 @@ p.zero-results {
     display: none;
 }
 
-@keyframes datasette-modal-slide-in {
-    from {
-        opacity: 0;
-        transform: translateY(-20px) scale(0.95);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
-
-@keyframes datasette-modal-fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
 dialog.mobile-column-actions-dialog {
     --ink: #0f0f0f;
     --paper: #eef6ff;

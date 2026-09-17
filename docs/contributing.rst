@@ -132,6 +132,19 @@ If you are not using ``just``, the equivalent ``uv run`` commands are:
     uv run --group playwright playwright install chromium
     uv run --group playwright pytest tests/test_playwright.py --playwright --browser chromium
 
+.. _contributing_modals:
+
+Modal dialogs
+-------------
+
+Core dialogs use the same ``<datasette-modal>`` component available to plugins. See :ref:`javascript_plugins_modals` for examples, lifecycle methods, dismissal guards and shared styles.
+
+The implementation lives in ``datasette/static/modal.js`` and ``datasette/static/modal.css``. The wrapper keeps each native ``<dialog>`` and its content in the caller's DOM tree, preserving form associations, accessible labels and plugin controls. Components such as ``<navigation-search>`` use the same wrapper and stylesheet inside their shadow roots.
+
+Keep focus restoration, backdrop hit testing, busy-state dismissal guards and the Safari Escape/confirmation workaround in the shared component. Each consumer owns its content, submission logic, discard-confirmation policy and cleanup. In particular, preserve the intentional differences between Cancel and Escape in the editing dialogs.
+
+Add lifecycle coverage to ``tests/test_playwright.py`` when changing the shared component. Exercise both light DOM and shadow roots, focus restoration, busy state, nested controls consuming Escape, backdrop clicks and disconnect cleanup. Run these checks in Chromium, Firefox and WebKit; keyboard changes should include real confirmation prompts in WebKit.
+
 .. _contributing_using_fixtures:
 
 Using fixtures

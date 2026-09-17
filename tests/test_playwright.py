@@ -1651,3 +1651,139 @@ def test_count_all_error_retry(page, datasette_server):
         'document.querySelector(".table-count").textContent === "10,001 rows"'
     )
     assert page.locator(".count-error").inner_text() == ""
+
+
+@pytest.mark.playwright
+@pytest.mark.parametrize("shadow", [False, True])
+def test_modal_lifecycle(page, datasette_server, shadow):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server)
+    page.evaluate(
+        """shadow => {
+            const host = document.createElement('div');
+            document.body.append(host);
+            const root = shadow ? host.attachShadow({mode: 'open'}) : host;
+            const trigger = document.createElement('button');
+            trigger.id = 'modal-trigger';
+            trigger.textContent = 'Open test modal';
+            root.append(trigger);
+            window.testModal = DatasetteModal.create();
+            const dialog = testModal.dialog;
+            dialog.id = 'test-modal';
+            dialog.setAttribute('aria-labelledby', 'test-modal-title');
+            dialog.innerHTML = `
+                <h2 id="test-modal-title">Test modal</h2>
+                <input aria-label="First field">
+                <input aria-label="Second field">
+                <button id="test-modal-cancel">Cancel</button>`;
+            // Padding is part of the dialog, never a backdrop dismissal.
+            dialog.style.padding = '30px';
+            root.append(testModal);
+            window.closeReasons = [];
+            testModal.beforeClose = reason => {
+                closeReasons.push(reason);
+                return window.allowClose;
+            };
+            window.allowClose = false;
+            trigger.onclick = () => testModal.show({
+                trigger, initialFocus: dialog.querySelector('input')
+            });
+            dialog.querySelector('button').onclick = () => testModal.requestClose('cancel');
+        }""",
+        shadow,
+    )
+    trigger = page.locator("#modal-trigger")
+    trigger.click()
+    dialog = page.get_by_role("dialog", name="Test modal", exact=True)
+    expect(dialog.get_by_role("textbox", name="First field")).to_be_focused()
+    assert dialog.evaluate("node => node instanceof HTMLDialogElement")
+    expect(dialog).to_have_css("display", "flex")
+    # Native modality keeps background content inert and keyboard focus inside.
+    page.keyboard.press("Tab")
+    expect(dialog.get_by_role("textbox", name="Second field")).to_be_focused()
+    page.keyboard.press("Shift+Tab")
+    expect(dialog.get_by_role("textbox", name="First field")).to_be_focused()
+    trigger.evaluate("node => node.focus()")
+    expect(dialog.get_by_role("textbox", name="First field")).to_be_focused()
+
+    page.keyboard.down("Escape")
+    assert page.evaluate("closeReasons") == []
+    page.keyboard.up("Escape")
+    page.wait_for_function("closeReasons.length === 1")
+    assert page.evaluate("closeReasons") == ["escape"]
+    expect(dialog).to_be_visible()
+
+    dialog.click(position={"x": 3, "y": 3})
+    assert page.evaluate("closeReasons") == ["escape"]
+    # A drag which starts inside and ends on the backdrop must not dismiss.
+    box = dialog.bounding_box()
+    page.mouse.move(box["x"] + 3, box["y"] + 3)
+    page.mouse.down()
+    page.mouse.move(2, 2)
+    page.mouse.up()
+    assert page.evaluate("closeReasons") == ["escape"]
+    page.mouse.click(2, 2)
+    assert page.evaluate("closeReasons") == ["escape", "backdrop"]
+
+    page.evaluate("testModal.busy = true; allowClose = true")
+    expect(dialog).to_have_attribute("aria-busy", "true")
+    page.keyboard.press("Escape")
+    page.mouse.click(2, 2)
+    dialog.get_by_role("button", name="Cancel").click()
+    expect(dialog).to_be_visible()
+    assert page.evaluate("closeReasons") == ["escape", "backdrop"]
+    page.evaluate("testModal.busy = false")
+    dialog.get_by_role("button", name="Cancel").click()
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+    assert page.evaluate("closeReasons") == ["escape", "backdrop", "cancel"]
+
+    # Reopening, including an extra show() call, preserves the original trigger.
+    trigger.click()
+    page.evaluate("testModal.show()")
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+
+    # Completion bypasses busy/confirmation and must not steal a caller's focus.
+    trigger.click()
+    page.evaluate("""() => new Promise(resolve => {
+        const next = document.createElement('button');
+        next.id = 'after-save';
+        next.textContent = 'Next action';
+        document.body.append(next);
+        testModal.dialog.addEventListener('close', resolve, {once: true});
+        testModal.busy = true;
+        testModal.close({restoreFocus: false});
+        next.focus();
+    })""")
+    expect(dialog).not_to_be_visible()
+    expect(page.locator("#after-save")).to_be_focused()
+
+
+@pytest.mark.playwright
+def test_modal_disconnect_cleans_up_pending_escape(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server)
+    page.evaluate("""() => {
+        window.detachable = DatasetteModal.create();
+        detachable.dialog.setAttribute('aria-label', 'Detachable');
+        detachable.dialog.innerHTML = '<button>Focus</button>';
+        window.closeAttempts = 0;
+        detachable.beforeClose = () => { closeAttempts++; return false; };
+        document.body.append(detachable);
+        detachable.show();
+    }""")
+    dialog = page.get_by_role("dialog", name="Detachable")
+    page.keyboard.down("Escape")
+    page.evaluate("detachable.remove()")
+    page.keyboard.up("Escape")
+    assert page.evaluate("closeAttempts") == 0
+    assert page.evaluate("detachable.dialog.open") is False
+    page.evaluate("document.body.append(detachable); detachable.show()")
+    expect(dialog).to_be_visible()
+    page.keyboard.press("Escape")
+    page.wait_for_function("closeAttempts === 1")
+    expect(dialog).to_be_visible()

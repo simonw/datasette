@@ -6,7 +6,7 @@
       this.beforeClose = null;
       this._busy = false;
       this._restoreFocus = true;
-      this._trigger = null;
+      this._returnFocusTo = null;
       this._escapeCleanup = null;
       this._escapeTimer = null;
     }
@@ -108,13 +108,14 @@
           if (event.target !== dialog || dialog.open) return;
           this._clearPendingClose();
           this.busy = false;
-          if (this._restoreFocus && this._trigger?.isConnected) {
+          if (this._restoreFocus && this._returnFocusTo?.isConnected) {
             // Menu actions may have become hidden while the dialog was open.
-            const details = this._trigger.closest("details:not([open])");
-            const target = details?.querySelector("summary") || this._trigger;
+            const details = this._returnFocusTo.closest("details:not([open])");
+            const target =
+              details?.querySelector("summary") || this._returnFocusTo;
             target.focus({ preventScroll: true });
           }
-          this._trigger = null;
+          this._returnFocusTo = null;
         },
         options,
       );
@@ -123,7 +124,7 @@
     disconnectedCallback() {
       this._listeners?.abort();
       this._clearPendingClose();
-      this._trigger = null;
+      this._returnFocusTo = null;
       if (this.dialog?.open) this.dialog.close();
       this.busy = false;
     }
@@ -135,11 +136,11 @@
       this._escapeTimer = null;
     }
 
-    show({ trigger, initialFocus } = {}) {
+    show({ returnFocusTo, initialFocus } = {}) {
       const dialog = this.dialog;
       if (!dialog.open) {
         this._clearPendingClose();
-        this._trigger = trigger || this.ownerDocument.activeElement;
+        this._returnFocusTo = returnFocusTo || this.ownerDocument.activeElement;
         this._restoreFocus = true;
         dialog.showModal();
       }

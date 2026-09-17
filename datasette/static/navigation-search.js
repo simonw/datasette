@@ -570,11 +570,11 @@ class NavigationSearch extends HTMLElement {
     }
   }
 
-  openMenu(trigger) {
+  openMenu(returnFocusTo) {
     const input = this.querySelector(".search-input");
 
     this.querySelector("datasette-modal").show({
-      trigger,
+      returnFocusTo,
       initialFocus: input,
     });
     this.setNavigationTriggersExpanded(true);

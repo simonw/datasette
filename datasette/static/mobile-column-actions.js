@@ -257,7 +257,7 @@ function initMobileColumnActions(manager) {
     if (!renderDialog()) {
       return;
     }
-    modal.show({ trigger: triggerButton });
+    modal.show({ returnFocusTo: triggerButton });
     triggerButton.setAttribute("aria-expanded", "true");
     var focusTarget =
       dialog.querySelector(".mobile-column-top-action") ||

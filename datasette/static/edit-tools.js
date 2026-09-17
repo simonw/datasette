@@ -2384,7 +2384,7 @@ function openTableCreateDialog(button, manager) {
   clearTableCreateDialogError(state);
   resetTableCreateDialog(state);
   loadTableCreateForeignKeyTargets(state);
-  state.modal.show({ trigger: button });
+  state.modal.show({ returnFocusTo: button });
   state.tableName.focus();
 }
 
@@ -4058,7 +4058,7 @@ function openTableAlterDialog(button, manager) {
     tableAlterForeignKeyTargetsUrl(),
     { filterByType: false },
   );
-  state.modal.show({ trigger: button });
+  state.modal.show({ returnFocusTo: button });
   var firstName = state.columnList.querySelector(".table-alter-column-name");
   if (firstName) {
     firstName.focus();
@@ -4497,7 +4497,7 @@ function openRowDeleteDialog(button, manager) {
   );
   state.rowId.textContent = state.currentPkPath || "this row";
 
-  state.modal.show({ trigger: button });
+  state.modal.show({ returnFocusTo: button });
   state.confirmButton.focus();
 }
 
@@ -7302,7 +7302,7 @@ async function openRowEditDialog(button, manager) {
   state.summary.textContent = "";
   syncRowEditInsertModeUi(state);
 
-  state.modal.show({ trigger: button });
+  state.modal.show({ returnFocusTo: button });
   state.cancelButton.focus();
 
   try {
@@ -7378,7 +7378,7 @@ function openRowInsertDialog(button, manager) {
   state.summary.textContent = "";
   syncRowEditInsertModeUi(state);
 
-  state.modal.show({ trigger: button });
+  state.modal.show({ returnFocusTo: button });
   renderRowInsertFields(state, insertData);
 }
 

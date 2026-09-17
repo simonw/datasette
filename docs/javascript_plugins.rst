@@ -493,13 +493,13 @@ This example adds a button that opens a reusable dialog:
 .. code-block:: javascript
 
     document.addEventListener("datasette_init", () => {
-        const trigger = document.createElement("button");
-        trigger.type = "button";
-        trigger.textContent = "Open example dialog";
+        const openButton = document.createElement("button");
+        openButton.type = "button";
+        openButton.textContent = "Open example dialog";
         // Indicate that this button opens a dialog:
-        trigger.setAttribute("aria-haspopup", "dialog");
+        openButton.setAttribute("aria-haspopup", "dialog");
         // Identify which dialog it controls:
-        trigger.setAttribute("aria-controls", "my-plugin-dialog");
+        openButton.setAttribute("aria-controls", "my-plugin-dialog");
 
         const modal = DatasetteModal.create();
         const dialog = modal.dialog;
@@ -522,12 +522,12 @@ This example adds a button that opens a reusable dialog:
         closeButton.addEventListener("click", () => {
             modal.requestClose("cancel");
         });
-        trigger.addEventListener("click", () => {
-            modal.show({ trigger, initialFocus: closeButton });
+        openButton.addEventListener("click", () => {
+            modal.show({ returnFocusTo: openButton, initialFocus: closeButton });
         });
 
         document.body.append(modal);
-        document.querySelector("section.content").append(trigger);
+        document.querySelector("section.content").append(openButton);
     });
 
 The example uses ``innerHTML`` for a static template. Use ``textContent`` when inserting database values or other user-supplied text. Give each dialog and its title unique IDs, and use ``aria-labelledby`` or ``aria-label`` to provide an accessible name.
@@ -535,8 +535,8 @@ The example uses ``innerHTML`` for a static template. Use ``textContent`` when i
 Opening and closing
 ~~~~~~~~~~~~~~~~~~~
 
-``modal.show({trigger, initialFocus})``
-    Opens the native dialog using ``showModal()``. Both options are optional. ``trigger`` is the element to return focus to when the dialog closes; it defaults to the currently focused element. ``initialFocus`` can be an element to focus or a function that focuses a custom control. Without it, the browser chooses initial focus. Calling ``show()`` again while the dialog is open does not change where focus returns when it closes. For example, if an Edit button opened the dialog, focus will still return to that button.
+``modal.show({returnFocusTo, initialFocus})``
+    Opens the native dialog using ``showModal()``. Both options are optional. ``returnFocusTo`` is the element to return focus to when the dialog closes; it defaults to the element with keyboard focus immediately before the dialog opens, which is not necessarily the element clicked to open it. ``initialFocus`` can be an element to focus or a function that focuses a custom control. Without it, the browser chooses initial focus. Calling ``show()`` again while the dialog is open does not change where focus returns when it closes. For example, if the first call sets ``returnFocusTo`` to an Edit button, focus will still return to that button even if a later call specifies a different element.
 
 ``modal.requestClose(source)``
     Requests dismissal through the busy-state and ``beforeClose`` guards described below. Returns ``true`` if it closes the dialog, or ``false`` if the dialog is already closed or a guard prevents dismissal. Close and Cancel buttons should use this method.
@@ -546,7 +546,7 @@ Opening and closing
 ``modal.close({restoreFocus = true})``
     Closes the dialog directly, bypassing the guards. Use this after successfully completing an operation. Pass ``restoreFocus: false`` when your code will navigate away or move focus to another element, such as a newly inserted row.
 
-On normal dismissal, the component restores focus if the trigger is still connected to the document. If the trigger is inside a menu implemented with a closed ``<details>`` element, focus returns to that menu's ``<summary>`` instead.
+On normal dismissal, the component restores focus if the saved return-focus element is still connected to the document. If that element is inside a menu implemented with a closed ``<details>`` element, focus returns to that menu's ``<summary>`` instead.
 
 Closing a dialog leaves it in the page so it can be reopened. Listen for the native dialog's ``close`` event to clean up resources such as pending requests or custom fields:
 

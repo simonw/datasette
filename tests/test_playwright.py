@@ -1768,7 +1768,7 @@ def test_modal_lifecycle(page, datasette_server):
             };
             window.allowClose = false;
             trigger.onclick = () => testModal.show({
-                trigger, initialFocus: dialog.querySelector('input')
+                returnFocusTo: trigger, initialFocus: dialog.querySelector('input')
             });
             dialog.querySelector('button').onclick = () => testModal.requestClose('cancel');
         }""",
@@ -1819,7 +1819,7 @@ def test_modal_lifecycle(page, datasette_server):
     expect(trigger).to_be_focused()
     assert page.evaluate("closeSources") == ["escape", "backdrop", "cancel"]
 
-    # Reopening, including an extra show() call, preserves the original trigger.
+    # Reopening, including an extra show() call, preserves the original return-focus target.
     trigger.click()
     page.evaluate("testModal.show()")
     page.keyboard.press("Escape")

@@ -823,9 +823,7 @@ async def test_table_html_foreign_key_to_missing_table_is_not_linked():
     response = await ds.client.get("/data/books")
     assert response.status_code == 200
     table = Soup(response.text, "html.parser").find("table")
-    cells = {
-        td["class"][0]: str(td) for td in table.select("tbody tr")[0].select("td")
-    }
+    cells = {td["class"][0]: str(td) for td in table.select("tbody tr")[0].select("td")}
     assert cells["col-author_id"] == (
         '<td class="col-author_id type-int">'
         '<a href="/data/authors/1">Ada</a> <em>1</em></td>'

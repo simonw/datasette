@@ -46,7 +46,6 @@ EXPECTED_ATTRIBUTES = {
         "db.query.text",
         "datasette.callback",
         "db.operation.name",
-        "db.collection.name",
         "datasette.param_count",
         "datasette.param_sets",
         "datasette.time_limit_ms",
@@ -140,9 +139,6 @@ async def exercise():
             custom_time_limit=1,
         )
 
-    # db.collection.name - set only by views that already know their table
-    assert (await ds.client.get(f"/{name}/t?_facet=v")).status_code == 200
-    assert (await ds.client.get(f"/{name}/t/1.json")).status_code == 200
     return ds
 
 

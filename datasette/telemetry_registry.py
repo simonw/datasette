@@ -106,14 +106,6 @@ DB_OPERATION_NAME = Attribute(
     "form. Resolving it further would mean parsing.",
     optional=True,
 )
-DB_COLLECTION_NAME = Attribute(
-    "db.collection.name",
-    "The primary table, set only where the view already knows it - the table "
-    "and row pages. Omitted for arbitrary ``?sql=`` queries, where determining "
-    "the table would mean parsing the query.",
-    optional=True,
-)
-
 PARAM_COUNT = Attribute(
     "datasette.param_count",
     "Number of bound parameters. Recorded instead of the values themselves.",
@@ -197,7 +189,6 @@ DB_QUERY = SpanName(
         DB_QUERY_TEXT,
         CALLBACK,
         DB_OPERATION_NAME,
-        DB_COLLECTION_NAME,
         PARAM_COUNT,
         PARAM_SETS,
         TIME_LIMIT_MS,

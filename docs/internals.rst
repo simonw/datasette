@@ -2116,9 +2116,6 @@ Executes a SQL query against the database and returns the resulting rows (see :r
 ``log_sql_errors`` - boolean
     Should any SQL errors be logged to the console in addition to being raised as an error? Defaults to ``True``.
 
-``table`` - string
-    The name of the table this query is about, if the caller already knows it. This has no effect on how the query executes - it is recorded as the ``db.collection.name`` attribute on the :ref:`OpenTelemetry span <internals_telemetry>` for the query. Datasette never derives this from the SQL, so leave it unset for queries that do not have one obvious table.
-
 .. _database_results:
 
 Results
@@ -2566,7 +2563,6 @@ Spans are ``SpanKind.INTERNAL`` unless a kind is listed below. Only ``db.query``
     - ``db.query.text`` *(optional)* - The SQL, truncated to 2048 characters. Never the parameter values. Absent for a callback-style call (``execute_fn()`` and friends), where there is no SQL string to record - ``datasette.callback`` is set instead.
     - ``datasette.callback`` *(optional)* - The qualified name of the Python callable passed to ``execute_fn()``, ``execute_write_fn()`` or ``execute_isolated_fn()`` - for example ``TableInsertView.post.<locals>.insert_or_upsert_rows``. Set instead of ``db.query.text``, which does not exist for a callback: the SQL is whatever the function chooses to run. A lambda reports ``<lambda>``, which is why callers wanting a recognisable span should pass a named function. Bounded cardinality: the set of callables is fixed by the installed code, not by request input.
     - ``db.operation.name`` *(optional)* - The statement's leading keyword - ``SELECT``, ``INSERT``, ``CREATE``, and so on - matched against a small fixed allowlist. Omitted rather than set to an arbitrary value: the attribute must stay safe to use as a metric dimension, and echoing an unrecognised first token from user-supplied SQL would be an unbounded-cardinality hazard. Also omitted for ``execute_write_script()``, which runs multiple statements - per semantic conventions, the operation name should not be extracted from query text that can contain more than one operation. Note that a statement beginning with a CTE reports ``WITH``, not the operation inside it - a substantial share of Datasette's own reads take that form. Resolving it further would mean parsing.
-    - ``db.collection.name`` *(optional)* - The primary table, set only where the view already knows it - the table and row pages. Omitted for arbitrary ``?sql=`` queries, where determining the table would mean parsing the query.
     - ``datasette.param_count`` *(optional)* - Number of bound parameters. Recorded instead of the values themselves.
     - ``datasette.param_sets`` *(optional)* - Number of parameter sets consumed by ``execute_write_many()``. Not a row count - ``executemany()`` returns no rows. The parameter values themselves are never recorded: that sequence can hold thousands of rows.
     - ``datasette.time_limit_ms`` *(optional)* - The :ref:`setting_sql_time_limit_ms` value this query ran under. Set on reads, which are the queries that time limit applies to.
@@ -2612,7 +2608,6 @@ Spans leave your infrastructure whenever you configure an exporter, so what goes
 - **SQL text is truncated to 2048 characters.** On a public instance the SQL is supplied by visitors and is unbounded in length, so ``db.query.text`` is cut off - with a ``…[truncated]`` marker - rather than allowed to set the size of a span.
 - **SQL parameter values are never recorded.** Only ``datasette.param_count``, a count. Parameter values are the part of a query most likely to hold something sensitive, and separating them from the SQL is the reason bound parameters exist.
 - **No actor identifiers are recorded.** No actor ID, no actor JSON, no client IP address. Nothing on a span identifies who made the request.
-- **Table names come only from an explicit** ``table=`` **argument.** ``db.collection.name`` is set by callers that already know which table they are working with, and is never derived from the SQL. Deriving it would mean parsing, and on an instance where visitors can create tables the set of possible values has no ceiling.
 
 The SQL itself, though, *is* recorded, and on a public instance that means anything a visitor types into the query editor or passes as ``?sql=`` will be exported along with the span. That is the trade-off tracing a query engine makes.
 
@@ -2624,6 +2619,7 @@ Known limitations
 - **Datasette does not create a span for the HTTP request itself.** Every span listed above is therefore a root span unless something above Datasette - an ASGI instrumentation layer, or the web framework embedding it - has already started one for the request, in which case Datasette's spans nest underneath it correctly.
 - **Two plugin hooks run outside the** ``datasette.startup`` **span.** ``register_output_renderer`` is dispatched from ``Datasette.__init__()`` and ``asgi_wrapper`` from ``Datasette.app()``, both of which happen before ``invoke_startup()``. Datasette itself queries no database in either, so a default install emits nothing there - but a plugin that does will produce a root trace. Covering these would mean holding a span open across object construction, which is worse than the orphan.
 - ``db.operation.name`` **reports** ``WITH`` **for a statement that opens with a common table expression**, rather than the operation inside it, and a substantial share of Datasette's own reads take that form. The attribute is a leading-keyword match against a fixed allowlist, deliberately not a parse.
+- **Query spans do not carry** ``db.collection.name``. Nothing records which table a query is about. Datasette will not derive it from the SQL - that would mean parsing, and on an instance where visitors can create tables the set of possible values has no ceiling - so it can only come from callers that already know, which needs an API that does not exist yet.
 - **Spans emitted before a provider is installed are not recorded.** If you are embedding Datasette in a host application, install your ``TracerProvider`` before serving traffic. This is ordinary OpenTelemetry behaviour rather than anything Datasette controls; nothing is permanently affected, those particular spans are simply dropped.
 
 .. _internals_csrf:

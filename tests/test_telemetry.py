@@ -853,7 +853,7 @@ async def test_invoke_startup_produces_one_trace_not_dozens_of_orphans(otel_span
     )
 
 
-# --- Semantic conventions: span kind, scope, db.operation/collection -------
+# --- Semantic conventions: span kind, scope, db.operation.name -------------
 
 
 @pytest.mark.asyncio
@@ -997,58 +997,6 @@ async def test_execute_write_script_has_no_operation_name(otel_spans):
     ]
     assert len(script_spans) == 1
     assert "db.operation.name" not in script_spans[0].attributes
-
-
-@pytest.mark.asyncio
-async def test_db_collection_name_set_from_table_argument(ds_client, otel_spans):
-    db = ds_client.ds.get_database("fixtures")
-    await db.execute("select pk from facetable limit 1", table="facetable")
-
-    spans = _spans_for_namespace(otel_spans, "fixtures")
-    assert spans
-    assert spans[-1].attributes["db.collection.name"] == "facetable"
-
-
-@pytest.mark.asyncio
-async def test_db_collection_name_absent_without_table_argument(ds_client, otel_spans):
-    """
-    db.collection.name comes only from an explicit table= argument and is
-    never derived from the SQL.
-
-    Deriving it would be a parse, and on an instance where anybody can create
-    a table the value set has no ceiling. Without this test the one above
-    would still pass if the table name were being read out of the query text.
-    """
-    db = ds_client.ds.get_database("fixtures")
-    await db.execute("select pk from facetable limit 1")
-
-    spans = _spans_for_namespace(otel_spans, "fixtures")
-    assert spans
-    span = spans[-1]
-    assert span.attributes["db.query.text"] == "select pk from facetable limit 1"
-    assert "db.collection.name" not in span.attributes
-
-
-@pytest.mark.parametrize(
-    "path,table",
-    (
-        ("/fixtures/facetable.json", "facetable"),
-        ("/fixtures/simple_primary_key/1.json", "simple_primary_key"),
-    ),
-)
-@pytest.mark.asyncio
-async def test_table_and_row_pages_set_db_collection_name(
-    ds_client, otel_spans, path, table
-):
-    "The table and row views know their table, so their queries carry it."
-    response = await ds_client.get(path)
-    assert response.status_code == 200
-
-    spans = _spans_for_namespace(otel_spans, "fixtures")
-    assert spans
-    assert any(
-        span.attributes.get("db.collection.name") == table for span in spans
-    ), f"expected a db.query span from {path} carrying db.collection.name"
 
 
 # --- Callback-style calls: execute_fn / execute_write_fn / execute_isolated_fn

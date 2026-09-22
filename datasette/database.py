@@ -20,7 +20,6 @@ from .inspect import inspect_hash
 from .telemetry import callback_name, sql_attribute, sql_operation_name, tracer
 from .telemetry_registry import (
     CALLBACK,
-    DB_COLLECTION_NAME,
     DB_NAMESPACE,
     DB_OPERATION_NAME,
     DB_QUERY,
@@ -809,16 +808,8 @@ class Database:
         custom_time_limit=None,
         page_size=None,
         log_sql_errors=True,
-        table=None,
     ):
-        """Executes sql against db_name in a thread
-
-        `table`, if passed, is recorded as the `db.collection.name` span
-        attribute. It exists for callers that already know which table the
-        query targets - the table and row views - and is never derived from
-        `sql` itself: deriving it would be a parse, and on an instance where
-        anyone can create a table the resulting value set has no ceiling.
-        """
+        """Executes sql against db_name in a thread"""
         self._check_not_closed()
         page_size = page_size or self.ds.page_size
         time_limit_ms = self.ds.sql_time_limit_ms
@@ -921,8 +912,6 @@ class Database:
                 operation_name = sql_operation_name(sql)
                 if operation_name:
                     span.set_attribute(DB_OPERATION_NAME, operation_name)
-                if table:
-                    span.set_attribute(DB_COLLECTION_NAME, table)
                 if params:
                     span.set_attribute(PARAM_COUNT, len(params))
                 try:

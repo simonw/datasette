@@ -241,6 +241,54 @@ class DeleteRowEvent(Event):
     pks: list
 
 
+@dataclass
+class AddDatabaseEvent(Event):
+    """
+    Event name: ``add-database``
+
+    A new database was attached to this Datasette instance while it was
+    running, using :ref:`datasette.add_database() <datasette_add_database>`.
+
+    :ivar database: The name the database was attached as.
+    :type database: str
+    :ivar path: Resolved absolute filesystem path to the database file, or ``None`` for in-memory databases.
+    :type path: str or None
+    :ivar is_memory: ``True`` if this is an in-memory database.
+    :type is_memory: bool
+    """
+
+    name = "add-database"
+    database: str
+    path: str | None
+    is_memory: bool
+
+
+@dataclass
+class RemoveDatabaseEvent(Event):
+    """
+    Event name: ``remove-database``
+
+    A database was detached from this Datasette instance using
+    :ref:`datasette.remove_database() <datasette_remove_database>`. The
+    database file itself is not deleted by Datasette core, and any queued
+    writes have been flushed by the time this event is delivered - with one
+    exception: temporary on-disk databases remove their backing file when
+    they are closed, so for those the path in this event no longer exists.
+
+    :ivar database: The name the database was attached as.
+    :type database: str
+    :ivar path: Resolved absolute filesystem path to the database file, or ``None`` for in-memory databases.
+    :type path: str or None
+    :ivar is_memory: ``True`` if this was an in-memory database.
+    :type is_memory: bool
+    """
+
+    name = "remove-database"
+    database: str
+    path: str | None
+    is_memory: bool
+
+
 @hookimpl
 def write_wrapper(datasette, database, request, transaction):
     def wrapper(conn, track_event):
@@ -291,4 +339,6 @@ def register_events():
         UpsertRowsEvent,
         UpdateRowEvent,
         DeleteRowEvent,
+        AddDatabaseEvent,
+        RemoveDatabaseEvent,
     ]

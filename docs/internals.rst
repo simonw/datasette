@@ -1357,6 +1357,8 @@ Use ``is_mutable=False`` to add an immutable database.
         "CREATE TABLE foo(id integer primary key)"
     )
 
+Calling this method while the instance is running - after ``invoke_startup()`` has completed, with an event loop running - emits an ``add-database`` :ref:`event <events>`. Databases attached during startup do not emit events: plugins that need to see those should iterate over ``datasette.databases`` in their own :ref:`plugin_hook_startup` hook.
+
 .. _datasette_add_memory_database:
 
 .add_memory_database(memory_name, name=None, route=None)
@@ -1391,6 +1393,8 @@ The ``name`` and ``route`` parameters are optional and work the same way as they
     The name of the database to be removed.
 
 This removes a database that has been previously added. ``name=`` is the unique name of that database.
+
+The database is closed but its file is not deleted. When called while the instance is running this emits a ``remove-database`` :ref:`event <events>` after the database has been closed - since closing flushes any queued writes first, an event listener can safely perform a final read of the database file. The exception is temporary on-disk databases, which remove their backing file when closed.
 
 .. _datasette_close:
 

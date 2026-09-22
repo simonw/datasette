@@ -52,6 +52,36 @@ def test_homepage(app_client_two_attached_databases):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "sql,expected",
+    (
+        (["create view one as select 1 as n"], "0 tables, 1 view"),
+        (
+            ["create view one as select 1 as n", "create view two as select 2 as n"],
+            "0 tables, 2 views",
+        ),
+        (
+            ["create table t (id integer primary key)", "create view v as select 1"],
+            "0 rows in 1 table, 1 view",
+        ),
+    ),
+)
+async def test_homepage_database_summary_separators(sql, expected):
+    # https://github.com/simonw/datasette/issues/2012
+    ds = Datasette()
+    await ds.invoke_startup()
+    db = ds.add_memory_database("summary_separators")
+    for statement in sql:
+        await db.execute_write(statement)
+    response = await ds.client.get("/")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    h2 = next(h2 for h2 in soup.select("h2") if h2.text.strip() == "summary_separators")
+    counts_p = h2.find_next("p")
+    assert " ".join(counts_p.text.split()) == expected
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("path", ("/", "/-/"))
 async def test_homepage_alternative_location(path, tmp_path_factory):
     template_dir = tmp_path_factory.mktemp("templates")

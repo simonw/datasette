@@ -1,7 +1,7 @@
 {% if action_links %}
 <div class="page-action-menu">
-<details class="actions-menu-links details-menu">
-    <summary aria-haspopup="menu" aria-expanded="false">
+<details class="actions-menu-links details-menu" data-datasette-menu>
+    <summary class="datasette-menu-trigger" aria-haspopup="menu" aria-expanded="false" aria-controls="actions-menu-panel">
         <div class="icon-text">
             <svg class="icon" aria-labelledby="actions-menu-links-title" role="img" style="color: #fff" xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <title id="actions-menu-links-title">{{ action_title }}</title>
@@ -11,9 +11,8 @@
             <span>{{ action_title }}</span>
         </div>
     </summary>
-    <div class="dropdown-menu">
-        <div class="hook"></div>
-        <ul role="menu">
+    <div class="dropdown-menu datasette-menu" id="actions-menu-panel" role="menu" aria-label="{{ action_title }}">
+        <ul role="none">
             {% for link in action_links %}
             <li role="none">
             {% if link.get("type") == "button" %}

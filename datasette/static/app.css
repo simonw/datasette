@@ -4048,3 +4048,241 @@ dl.column-descriptions dd {
         transform: scale(1);
     }
 }
+
+/* Shared app, resource and column menus */
+header.app-header {
+    padding-top: 0;
+    padding-right: 4px;
+    padding-bottom: 0;
+}
+.app-header > nav {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0;
+    min-height: 2.6rem;
+}
+header.app-header .crumbs {
+    float: none;
+    flex: 1;
+    min-width: 0;
+    margin-right: 8px;
+    overflow-wrap: anywhere;
+}
+header.app-header .actor {
+    order: 1;
+    position: static;
+    float: none;
+    padding: 0;
+    overflow-wrap: anywhere;
+}
+.app-header details.nav-menu {
+    order: 2;
+    flex-shrink: 0;
+}
+.app-header details.nav-menu > summary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    float: none;
+    box-sizing: border-box;
+    width: 44px;
+    height: 2.6rem;
+    border-radius: 6px;
+}
+.app-header details.nav-menu > summary:hover {
+    background: #ffffff20;
+}
+.app-header details.nav-menu > summary[aria-expanded="true"] {
+    background: transparent;
+}
+.page-action-menu .datasette-menu-trigger {
+    display: inline-flex;
+    border-radius: .25rem;
+}
+.page-action-menu .datasette-menu-trigger .icon-text {
+    background: var(--accent, #1a56db);
+}
+button.column-menu-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    min-height: 24px;
+    padding: 0;
+    margin: 2px 0 4px 4px;
+    vertical-align: middle;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: #24465d;
+    cursor: pointer;
+}
+button.column-menu-trigger:hover,
+button.column-menu-trigger[aria-expanded="true"] {
+    background: #e2ebf1;
+}
+.column-menu-trigger svg.dropdown-menu-icon {
+    top: 0;
+    width: 16px;
+    height: 16px;
+}
+.datasette-menu {
+    --menu-ink: #203748;
+    --menu-muted: #536978;
+    --menu-line: #dce5eb;
+    --menu-hover: #edf3f7;
+    box-sizing: border-box;
+    width: 300px;
+    max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+    margin: 0;
+    padding: 6px;
+    border: 1px solid var(--menu-line);
+    border-radius: 12px;
+    background: #fff;
+    color: var(--menu-ink);
+    font-size: 15px;
+    line-height: 1.4;
+    box-shadow: 0 8px 28px #18384d1a, 0 2px 6px #18384d0d;
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+.datasette-menu.nav-menu-inner {
+    --menu-ink: #fff;
+    --menu-muted: #d0e4f1;
+    --menu-line: #ffffff30;
+    --menu-hover: #ffffff18;
+    width: 300px;
+    padding: 6px;
+    background: #276890;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+.datasette-menu.datasette-menu-floating {
+    position: fixed;
+    inset: auto;
+    max-width: none;
+    z-index: 20000;
+}
+.datasette-menu[hidden] {
+    display: none;
+}
+.datasette-menu ul,
+.datasette-menu li {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    list-style: none;
+}
+.datasette-menu .datasette-menu-heading {
+    position: relative;
+    padding: 10px 12px 12px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--menu-line);
+    overflow-wrap: anywhere;
+}
+.datasette-menu-heading strong {
+    display: block;
+    font-size: 15px;
+}
+.datasette-menu-heading small {
+    display: block;
+    margin-top: 2px;
+    color: var(--menu-muted);
+    font-size: 12px;
+}
+.datasette-menu :is(a, button.button-as-link),
+.datasette-menu.nav-menu-inner :is(a, button.button-as-link) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 8px;
+    width: 100%;
+    min-height: 44px;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 6px;
+    color: var(--menu-ink);
+    font: inherit;
+    line-height: 1.4;
+    text-align: left;
+    text-decoration: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    background: transparent;
+    cursor: pointer;
+}
+.datasette-menu :is(a, button.button-as-link):hover,
+.datasette-menu :is(a, button.button-as-link):focus-visible {
+    background: var(--menu-hover);
+}
+.datasette-menu.nav-menu-inner :is(a, button.button-as-link) {
+    min-height: 36px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+}
+:is(.datasette-menu-trigger, .column-menu-trigger, .datasette-menu a, .datasette-menu button):focus-visible {
+    outline: 2px solid #598fce;
+    outline-offset: -2px;
+}
+.app-header .nav-menu :is(summary, a, button):focus-visible {
+    outline: 2px solid #c3e5ff;
+    outline-offset: -2px;
+}
+.datasette-menu .dropdown-description {
+    flex-basis: 100%;
+    color: var(--menu-muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+.datasette-menu .keyboard-shortcut {
+    float: none;
+    margin-left: auto;
+}
+.datasette-menu .nav-menu-logout,
+.datasette-menu li.menu-separator {
+    margin: 4px 0 0;
+    padding: 4px 0 0;
+    border-top: 1px solid var(--menu-line);
+}
+.datasette-menu .dropdown-column-type,
+.datasette-menu .dropdown-column-description {
+    margin: 0;
+    padding: 8px 12px;
+    color: var(--menu-muted);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+.datasette-menu .dropdown-column-description {
+    font-size: 14px;
+}
+.column-actions-menu.datasette-menu .datasette-menu-heading {
+    padding: 8px 10px;
+}
+.column-actions-menu.datasette-menu :is(a, button.button-as-link) {
+    min-height: 38px;
+    padding: 7px 10px;
+}
+.column-actions-menu.datasette-menu :is(.dropdown-column-type, .dropdown-column-description) {
+    padding: 6px 10px;
+}
+@media (pointer: coarse), (max-width: 600px) {
+    .app-header details.nav-menu > summary {
+        width: 48px;
+    }
+    .datasette-menu :is(a, button.button-as-link),
+    .datasette-menu.nav-menu-inner :is(a, button.button-as-link) {
+        min-height: 48px;
+    }
+    .datasette-menu.nav-menu-inner :is(a, button.button-as-link) {
+        min-height: 44px;
+    }
+    .column-actions-menu.datasette-menu :is(a, button.button-as-link) {
+        min-height: 44px;
+    }
+    .datasette-menu .keyboard-shortcut {
+        display: none;
+    }
+}

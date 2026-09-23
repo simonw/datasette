@@ -2009,3 +2009,237 @@ def test_schema_modal_escape_confirmation_and_focus(page, datasette_server, kind
     page.keyboard.press("Escape")
     expect(dialog).not_to_be_visible()
     expect(menu.locator("summary")).to_be_focused()
+
+
+MENU_CASES = [
+    ("app", "", "details.nav-menu summary", "#app-menu-panel"),
+    ("database", "data", "details.actions-menu-links summary", "#actions-menu-panel"),
+    (
+        "column",
+        "data/projects",
+        'th[data-column="title"] .column-menu-trigger',
+        "#column-actions-menu",
+    ),
+]
+
+
+@pytest.mark.playwright
+@pytest.mark.parametrize("width", [390, 590])
+@pytest.mark.parametrize(
+    "path,trigger_selector,panel_selector",
+    [
+        ("", "details.nav-menu summary", "#app-menu-panel"),
+        ("data", "details.actions-menu-links summary", "#actions-menu-panel"),
+        ("data/projects", "details.actions-menu-links summary", "#actions-menu-panel"),
+    ],
+)
+def test_narrow_menus_stay_near_trigger(
+    page, datasette_server, width, path, trigger_selector, panel_selector
+):
+    from playwright.sync_api import expect
+
+    page.set_viewport_size({"width": width, "height": 1000})
+    page.goto(datasette_server + path)
+    trigger = page.locator(trigger_selector)
+    trigger.click()
+    panel = page.locator(panel_selector)
+    expect(panel).to_be_visible()
+    anchor = trigger.bounding_box()
+    menu = panel.bounding_box()
+    gap = 0 if panel_selector == "#app-menu-panel" else 8
+    assert menu["y"] - (anchor["y"] + anchor["height"]) == pytest.approx(gap, abs=1)
+    assert menu["x"] >= 12
+    assert menu["x"] + menu["width"] <= width - 12
+
+
+@pytest.mark.playwright
+@pytest.mark.parametrize("kind,path,trigger_selector,panel_selector", MENU_CASES)
+@pytest.mark.parametrize("width,height", [(1280, 800), (590, 500), (320, 240)])
+def test_menus_fit_viewport(
+    page, datasette_server, kind, path, trigger_selector, panel_selector, width, height
+):
+    from playwright.sync_api import expect
+
+    errors = []
+    page.on("pageerror", lambda error: errors.append(str(error)))
+    # Open before resizing: at phone widths the table uses cards and a separate
+    # column picker, while an already-open column menu should still fit.
+    page.set_viewport_size({"width": 1280, "height": 800})
+    page.goto(datasette_server + path)
+    trigger = page.locator(trigger_selector)
+    trigger.click()
+    panel = page.locator(panel_selector)
+    expect(panel).to_be_visible()
+    page.set_viewport_size({"width": width, "height": height})
+    page.wait_for_function(
+        """selector => {
+        const r = document.querySelector(selector).getBoundingClientRect();
+        return r.left >= 11 && r.top >= 11 &&
+            r.right <= innerWidth - 11 && r.bottom <= innerHeight - 11;
+    }""",
+        arg=panel_selector,
+    )
+    assert panel.evaluate("node => node.scrollWidth <= node.clientWidth + 1")
+    if kind == "column" and height == 240:
+        assert panel.evaluate("node => node.scrollHeight > node.clientHeight")
+        page.keyboard.press("End")
+        assert panel.evaluate("node => node.contains(document.activeElement)")
+        assert panel.evaluate("node => node.scrollTop > 0")
+    if kind != "column":
+        # These controls are available directly on phones, too.
+        page.keyboard.press("Escape")
+        trigger.click()
+        expect(panel).to_be_visible()
+        if width <= 600:
+            minimum_height = 44 if kind == "app" else 48
+            assert panel.locator("[role=menuitem]").first.evaluate(
+                "(node, minimum) => node.getBoundingClientRect().height >= minimum",
+                minimum_height,
+            )
+    page.keyboard.press("Escape")
+    expect(panel).not_to_be_visible()
+    expect(trigger).to_have_attribute("aria-expanded", "false")
+    assert errors == []
+
+
+@pytest.mark.playwright
+@pytest.mark.parametrize("kind,path,trigger_selector,panel_selector", MENU_CASES)
+@pytest.mark.parametrize("key", ["ArrowDown", "ArrowUp"])
+def test_menu_pointer_open_waits_for_keyboard_navigation(
+    page, datasette_server, kind, path, trigger_selector, panel_selector, key
+):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + path)
+    trigger = page.locator(trigger_selector)
+    panel = page.locator(panel_selector)
+    trigger.click()
+    expect(panel).to_be_visible()
+    expect(trigger).to_be_focused()
+    assert not panel.evaluate("node => node.contains(document.activeElement)")
+    page.keyboard.press(key)
+    items = panel.locator("[role=menuitem]")
+    expect(items.first if key == "ArrowDown" else items.last).to_be_focused()
+    page.keyboard.press("Escape")
+    expect(panel).not_to_be_visible()
+    expect(trigger).to_be_focused()
+
+
+@pytest.mark.playwright
+@pytest.mark.parametrize("kind,path,trigger_selector,panel_selector", MENU_CASES)
+def test_menu_keyboard_and_dismissal(
+    page, datasette_server, kind, path, trigger_selector, panel_selector
+):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + path)
+    trigger = page.locator(trigger_selector)
+    panel = page.locator(panel_selector)
+    trigger.focus()
+    page.keyboard.press("ArrowDown")
+    expect(panel).to_be_visible()
+    items = panel.locator("[role=menuitem]")
+    expect(items.first).to_be_focused()
+    page.keyboard.press("End")
+    expect(items.last).to_be_focused()
+    page.keyboard.press("ArrowDown")
+    expect(items.first).to_be_focused()
+    page.keyboard.press("Escape")
+    expect(panel).not_to_be_visible()
+    expect(trigger).to_be_focused()
+    page.keyboard.press("ArrowUp")
+    expect(items.last).to_be_focused()
+    trigger.click()
+    expect(panel).not_to_be_visible()
+    expect(trigger).to_be_focused()
+    trigger.click()
+    page.locator("h1").click()
+    expect(panel).not_to_be_visible()
+    trigger.click()
+    page.keyboard.press("Tab")
+    expect(panel).not_to_be_visible()
+
+
+@pytest.mark.playwright
+def test_column_menu_actions_and_dialog_focus(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + "data/projects")
+    trigger = page.locator('th[data-column="title"] .column-menu-trigger')
+    trigger.click()
+    panel = page.locator("#column-actions-menu")
+    panel.get_by_role("menuitem", name="Choose columns", exact=True).click()
+    dialog = page.locator("column-chooser dialog")
+    expect(dialog).to_be_visible()
+    expect(panel).not_to_be_visible()
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+    trigger.click()
+    panel.get_by_role("menuitem", name="Sort descending", exact=True).click()
+    expect(page).to_have_url(datasette_server + "data/projects?_sort_desc=title")
+    trigger.click()
+    panel.get_by_role("menuitem", name="Hide this column", exact=True).click()
+    expect(page.locator('th[data-column="title"]')).to_have_count(0)
+
+
+@pytest.mark.playwright
+def test_menu_switching_and_header_alignment(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + "data/projects")
+    # The signed-in label uses the same header layout as the anonymous fixture.
+    page.locator("header.app-header nav").evaluate("""node => {
+        const actor = document.createElement('div');
+        actor.className = 'actor';
+        actor.innerHTML = '<strong>root</strong>';
+        node.append(actor);
+    }""")
+    assert page.locator("header.app-header").evaluate("""node => {
+        const actor = node.querySelector('.actor').getBoundingClientRect();
+        const icon = node.querySelector('summary svg').getBoundingClientRect();
+        return Math.abs(actor.top + actor.height / 2 - icon.top - icon.height / 2) < 1;
+    }""")
+    app = page.locator("details.nav-menu summary")
+    actions = page.locator("details.actions-menu-links summary")
+    app.click()
+    actions.click()
+    expect(page.locator("#app-menu-panel")).not_to_be_visible()
+    expect(page.locator("#actions-menu-panel")).to_be_visible()
+    assert page.locator(".datasette-menu-floating").count() == 1
+    page.keyboard.press("Escape")
+    assert page.locator("header.app-header").evaluate("""node =>
+        Math.abs(node.getBoundingClientRect().height -
+            2.6 * parseFloat(getComputedStyle(document.documentElement).fontSize)) < 1
+    """)
+
+
+@pytest.mark.playwright
+def test_menu_long_plugin_content_and_no_popover_fallback(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.add_init_script("HTMLElement.prototype.showPopover = undefined")
+    page.set_viewport_size({"width": 390, "height": 360})
+    page.goto(datasette_server)
+    # Emulate plugin links with long, unbroken names and enough items to scroll.
+    page.locator("#app-menu-panel ul").evaluate("""node => {
+        for (let i = 0; i < 20; i++) {
+            const li = document.createElement('li');
+            const a = document.createElement('a');
+            a.href = '#plugin';
+            a.role = 'menuitem';
+            a.textContent = 'Plugin-' + i + '-' + 'x'.repeat(100);
+            li.append(a);
+            node.append(li);
+        }
+    }""")
+    page.locator("details.nav-menu summary").click()
+    panel = page.locator("#app-menu-panel")
+    expect(panel).to_be_visible()
+    assert panel.evaluate("node => node.scrollWidth <= node.clientWidth + 1")
+    assert panel.evaluate("node => node.scrollHeight > node.clientHeight")
+    page.keyboard.press("End")
+    expect(panel.get_by_role("menuitem").last).to_be_focused()
+    assert panel.evaluate("node => node.scrollTop > 0")
+    page.keyboard.press("Escape")
+    expect(panel).not_to_be_visible()

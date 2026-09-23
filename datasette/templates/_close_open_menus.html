@@ -10,12 +10,12 @@ document.body.addEventListener('click', (ev) => {
         detailsClickedWithin = target;
     }
     Array.from(document.querySelectorAll('details.details-menu')).filter(
-        (details) => details.open && details != detailsClickedWithin
+        (details) => !details.hasAttribute('data-datasette-menu') && details.open && details != detailsClickedWithin
     ).forEach(details => details.open = false);
 });
 
 /* Sync aria-expanded and add keyboard navigation for details-menu elements */
-document.querySelectorAll('details.details-menu').forEach(function(details) {
+document.querySelectorAll('details.details-menu:not([data-datasette-menu])').forEach(function(details) {
     var summary = details.querySelector('summary');
     details.addEventListener('toggle', function() {
         if (summary) {
@@ -31,7 +31,7 @@ document.querySelectorAll('details.details-menu').forEach(function(details) {
 
 document.body.addEventListener('keydown', function(ev) {
     /* Keyboard navigation for open details-menu elements */
-    var openDetails = Array.from(document.querySelectorAll('details.details-menu[open]'));
+    var openDetails = Array.from(document.querySelectorAll('details.details-menu[open]:not([data-datasette-menu])'));
     if (!openDetails.length) { return; }
 
     if (ev.key === 'Escape') {

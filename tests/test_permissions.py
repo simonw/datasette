@@ -525,11 +525,17 @@ def view_instance_client():
         "/-/permissions",
         "/-/messages",
         "/-/patterns",
+        "/-/patterns/menus",
     ],
 )
 def test_view_instance(path, view_instance_client):
     assert 403 == view_instance_client.get(path).status
-    if path not in ("/-/permissions", "/-/messages", "/-/patterns"):
+    if path not in (
+        "/-/permissions",
+        "/-/messages",
+        "/-/patterns",
+        "/-/patterns/menus",
+    ):
         assert 403 == view_instance_client.get(path + ".json").status
 
 

@@ -2859,6 +2859,10 @@ ORDER BY allowed.parent, allowed.child
             r"/-/patterns$",
         )
         add_route(
+            wrap_view(PatternPortfolioView, self),
+            r"/-/patterns/(?P<pattern>menus)$",
+        )
+        add_route(
             AutocompleteDebugView.as_view(self),
             r"/-/debug/autocomplete$",
         )

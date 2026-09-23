@@ -2755,6 +2755,13 @@ Because extraction goes through the *global* propagator there is no Datasette se
 
 **Where** ``datasette.startup`` **lands depends on how you run Datasette.** ``datasette serve`` calls ``invoke_startup()`` before the server starts accepting connections, so the startup span is its own trace. An ASGI-hosted or programmatic deployment reaches startup lazily, on the first request, so there the startup span nests under that first request - which is honest, since it genuinely is that request's latency.
 
+**Trace context is returned in response headers.** Whenever the request span is recording, every response carries the request span's context in two forms::
+
+    traceresponse: 00-<trace-id>-<span-id>-<flags>
+    Server-Timing: traceparent;desc="00-<trace-id>-<span-id>-<flags>"
+
+``traceresponse`` is the W3C Trace Context Level 2 response header, which ``opentelemetry-instrumentation-asgi`` also emits, and when CORS is enabled ``traceresponse`` is appended to the existing ``Access-Control-Expose-Headers`` value so cross-origin ``fetch()`` callers can read it. ``Server-Timing`` exists for page-load JavaScript, which cannot read response headers but can read ``performance.getEntriesByType("navigation")[0].serverTiming``; Datasette does not set ``Timing-Allow-Origin``, so cross-origin access to it is left to you. With no provider installed neither header is sent. If a sampler dropped the trace the flags read ``00`` and the IDs point at nothing in your backend - to force-trace a single request, send it with a ``traceparent`` whose flags are ``01`` and run a parent-based sampler. A trace ID is a random value carrying no user data, but it is a correlation handle if a proxy logs it, and ``Server-Timing`` is readable by any script on the page.
+
 .. _internals_telemetry_privacy:
 
 Privacy and safety

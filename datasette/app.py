@@ -243,6 +243,11 @@ SETTINGS = (
         "Allow users to download the original SQLite database files",
     ),
     Setting(
+        "allow_row_pages",
+        True,
+        "Allow HTML pages for individual rows, and link to them from table pages",
+    ),
+    Setting(
         "allow_signed_tokens",
         True,
         "Allow users to create and use signed API tokens",

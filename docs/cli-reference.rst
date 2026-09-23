@@ -263,6 +263,8 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
                                    ?_facet= parameter (default=True)
       allow_download               Allow users to download the original SQLite
                                    database files (default=True)
+      allow_row_pages              Allow HTML pages for individual rows, and link to
+                                   them from table pages (default=True)
       allow_signed_tokens          Allow users to create and use signed API tokens
                                    (default=True)
       default_allow_sql            Allow anyone to run arbitrary SQL queries

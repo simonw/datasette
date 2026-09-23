@@ -2291,6 +2291,33 @@ def test_allow_facet_off(allow_facet):
             assert "Suggested facets" not in response.text
 
 
+def test_allow_row_pages_off():
+    with make_app_client(settings={"allow_row_pages": False}) as client:
+        response = client.get("/fixtures/foreign_key_references")
+        assert response.status_code == 200
+        table = Soup(response.text, "html.parser").find("table")
+        # No links to row pages, for this table or for foreign key targets
+        assert table.select("tbody a") == []
+        first_row = table.select("tbody tr")[0]
+        assert first_row["data-row"] == "1"
+        assert [str(td) for td in first_row.select("td")][:3] == [
+            '<td class="col-pk type-pk">1</td>',
+            '<td class="col-foreign_key_with_label type-int">hello\xa0<em>1</em></td>',
+            '<td class="col-foreign_key_with_blank_label type-int">-\xa0<em>3</em></td>',
+        ]
+        # Compound primary keys get a plain text "Link" column
+        response = client.get("/fixtures/compound_primary_key")
+        table = Soup(response.text, "html.parser").find("table")
+        assert str(table.select("tbody tr td")[0]) == (
+            '<td class="col-Link type-pk">a,b</td>'
+        )
+        # The HTML row page is a 404, but the JSON version still works
+        assert client.get("/fixtures/simple_primary_key/1").status_code == 404
+        json_response = client.get("/fixtures/simple_primary_key/1.json")
+        assert json_response.status_code == 200
+        assert json_response.json["rows"] == [{"id": 1, "content": "hello"}]
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "size,title,length_bytes",

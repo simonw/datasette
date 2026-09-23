@@ -235,6 +235,9 @@ LINK_WITH_LABEL = (
     '<a href="{base_url}{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'
 )
 LINK_WITH_VALUE = '<a href="{base_url}{database}/{table}/{link_id}">{id}</a>'
+# Used instead of the above when the allow_row_pages setting is off
+UNLINKED_WITH_LABEL = "{label}&nbsp;<em>{id}</em>"
+UNLINKED_WITH_VALUE = "{id}"
 
 
 class Row:
@@ -716,6 +719,7 @@ async def display_columns_and_rows(
 
     cell_rows = []
     base_url = datasette.setting("base_url")
+    allow_row_pages = datasette.setting("allow_row_pages")
     for row in rows:
         cells = []
         # Unless we are a view, the first column is a link - either to the rowid
@@ -729,9 +733,10 @@ async def display_columns_and_rows(
             if row_label and row_label != pk_path:
                 row_action_label = f"{pk_path} {row_label}"
             table_path = datasette.urls.table(database_name, table_name)
-            row_link = (
-                f'<a href="{table_path}/{row_path}">{markupsafe.escape(pk_path)!s}</a>'
-            )
+            if allow_row_pages:
+                row_link = f'<a href="{table_path}/{row_path}">{markupsafe.escape(pk_path)!s}</a>'
+            else:
+                row_link = str(markupsafe.escape(pk_path))
             edit_icon = (
                 '<svg class="row-inline-action-icon" aria-hidden="true" '
                 'xmlns="http://www.w3.org/2000/svg" width="14" height="14" '
@@ -845,7 +850,14 @@ async def display_columns_and_rows(
                 value = value["value"]
                 # The table we link to depends on the column
                 other_table = column_to_foreign_key_table[column]
-                link_template = LINK_WITH_LABEL if (label != value) else LINK_WITH_VALUE
+                if allow_row_pages:
+                    link_template = (
+                        LINK_WITH_LABEL if (label != value) else LINK_WITH_VALUE
+                    )
+                else:
+                    link_template = (
+                        UNLINKED_WITH_LABEL if (label != value) else UNLINKED_WITH_VALUE
+                    )
                 display_value = markupsafe.Markup(
                     link_template.format(
                         database=tilde_encode(database_name),

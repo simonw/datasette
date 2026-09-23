@@ -2647,6 +2647,13 @@ That is the route's compiled regular expression, not a prettified ``/{database}/
     - ``datasette.permission.action`` - The action being checked - for example ``view-table``. When ``allowed_many()`` checks several actions at once they are joined with ``", "``.
     - ``datasette.resource.parent`` *(optional)* - The parent of the resource being checked - usually a database name. For a resource listing, the ``parent=`` filter. Omitted when there is none.
 
+``datasette.render_template``
+    Rendering one HTML page template: a call to ``datasette.render_template()``, or an error page. The span covers selecting the template, building its context - including awaiting the ``extra_template_vars``, ``extra_body_script``, ``extra_css_urls`` and ``extra_js_urls`` hooks, whose ``datasette.hook`` spans are its children - and the Jinja render itself. Context values are never recorded.
+
+    Attributes:
+
+    - ``datasette.template.name`` *(optional)* - The template that was rendered - the one Jinja selected from the candidate list, for example ``table-fixtures-facetable.html`` when a custom template overrides ``table.html``. Omitted for a template built from a string, which has no name.
+
 .. [[[end]]]
 
 .. _internals_telemetry_metrics:

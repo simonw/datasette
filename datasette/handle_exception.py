@@ -4,6 +4,8 @@ from markupsafe import Markup
 
 from datasette import Response, hookimpl
 
+from .telemetry import tracer
+from .telemetry_registry import RENDER_TEMPLATE, TEMPLATE_NAME
 from .utils import add_cors_headers, error_body
 from .utils.asgi import (
     Base400,
@@ -72,17 +74,19 @@ def handle_exception(datasette, request, exception):
             }
         )
         environment = datasette.get_jinja_environment(request)
-        template = environment.select_template(templates)
-        return Response.html(
-            await template.render_async(
+        # Error pages render outside Datasette.render_template(), so they get
+        # their own render span here
+        with tracer.start_as_current_span(RENDER_TEMPLATE) as span:
+            template = environment.select_template(templates)
+            if span.is_recording():
+                span.set_attribute(TEMPLATE_NAME, template.name)
+            body = await template.render_async(
                 dict(
                     info,
                     urls=datasette.urls,
                     menu_links=list,
                 )
-            ),
-            status=status,
-            headers=headers,
-        )
+            )
+        return Response.html(body, status=status, headers=headers)
 
     return inner

@@ -2621,6 +2621,14 @@ That is the route's compiled regular expression, not a prettified ``/{database}/
 
     No attributes.
 
+``datasette.hook``
+    One plugin's implementation of a plugin hook, once per call. For an ``async def`` implementation the span covers the ``await``, since that is where the work happens, and starts when the coroutine is awaited - an implementation Datasette never awaits, because an earlier plugin already supplied the answer, emits no span. A synchronous implementation's span is recorded once the call returns, so spans it creates itself do not nest under it. If an implementation returns a function for Datasette to call later, only the outer call is covered. Some hooks emit no span. ``render_cell`` and ``permission_resources_sql`` fire per cell or per permission check - hundreds or thousands of times on a single table page. ``register_routes`` and ``asgi_wrapper`` run while the ASGI app is built, outside any request, where each would be its own root trace. Hook wrappers are not traced.
+
+    Attributes:
+
+    - ``datasette.hook.name`` - The plugin hook being called - for example ``extra_template_vars``.
+    - ``datasette.plugin.name`` - The plugin providing the implementation: the name it was registered under - its entry point name, or a module path such as ``datasette.default_permissions`` for Datasette's built-in plugins - falling back to the plugin object's ``__name__`` or class name.
+
 .. [[[end]]]
 
 .. _internals_telemetry_metrics:

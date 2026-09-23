@@ -7,6 +7,15 @@ from datasette.database import QueryInterrupted
 from datasette.extras import Extra, ExtraExample, ExtraRegistry, ExtraScope, Provider
 from datasette.plugins import pm
 from datasette.resources import DatabaseResource, TableResource
+from datasette.telemetry import tracer
+from datasette.telemetry_registry import (
+    FACET,
+    FACET_COLUMNS,
+    FACET_SUGGEST,
+    FACET_SUGGESTION_COUNT,
+    FACET_TIMED_OUT_COLUMNS,
+    FACET_TYPE,
+)
 from datasette.utils import (
     await_me_maybe,
     call_with_supported_arguments,
@@ -197,6 +206,26 @@ class FacetInstancesProvider(Provider):
         return facet_instances
 
 
+async def _traced_facet_results(facet):
+    configs = facet.get_configs()
+    if not configs:
+        # Nothing requested for this facet type, so no work and no span
+        return await facet.facet_results()
+    with tracer.start_as_current_span(FACET) as span:
+        if span.is_recording():
+            span.set_attribute(FACET_TYPE, str(facet.type))
+            columns = [
+                c["config"].get("column") or c["config"].get("simple") for c in configs
+            ]
+            span.set_attribute(FACET_COLUMNS, [str(c) for c in columns])
+        results, timed_out = await facet.facet_results()
+        # A timed out facet is an expected answer under facet_time_limit_ms,
+        # so the span status is left unset, as db.query does for short budgets
+        if timed_out and span.is_recording():
+            span.set_attribute(FACET_TIMED_OUT_COLUMNS, [str(c) for c in timed_out])
+        return results, timed_out
+
+
 class FacetResultsExtra(Extra):
     description = "Results of facets calculated against this data. A dictionary with ``results`` and ``timed_out`` keys: ``results`` maps facet names to facet dictionaries with ``name``, ``type``, ``results`` and URL keys, and each facet result item includes ``value``, ``label``, ``count`` and ``toggle_url``."
     example = ExtraExample(
@@ -224,7 +253,9 @@ class FacetResultsExtra(Extra):
         facets_timed_out = []
 
         if not context.nofacet:
-            facet_awaitables = [facet.facet_results() for facet in facet_instances]
+            facet_awaitables = [
+                _traced_facet_results(facet) for facet in facet_instances
+            ]
             facet_awaitable_results = await context.run_sequential(*facet_awaitables)
             for (
                 instance_facet_results,
@@ -290,11 +321,16 @@ class SuggestedFacetsExtra(Extra):
             and not context.nofacet
             and not context.nosuggest
         ):
-            facet_suggest_awaitables = [facet.suggest() for facet in facet_instances]
-            for suggest_result in await context.run_sequential(
-                *facet_suggest_awaitables
-            ):
-                suggested_facets.extend(suggest_result)
+            # One span for all of discovery, not one per facet type or column
+            with tracer.start_as_current_span(FACET_SUGGEST) as span:
+                facet_suggest_awaitables = [
+                    facet.suggest() for facet in facet_instances
+                ]
+                for suggest_result in await context.run_sequential(
+                    *facet_suggest_awaitables
+                ):
+                    suggested_facets.extend(suggest_result)
+                span.set_attribute(FACET_SUGGESTION_COUNT, len(suggested_facets))
         return suggested_facets
 
 

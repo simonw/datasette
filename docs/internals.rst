@@ -2654,6 +2654,22 @@ That is the route's compiled regular expression, not a prettified ``/{database}/
 
     - ``datasette.template.name`` *(optional)* - The template that was rendered - the one Jinja selected from the candidate list, for example ``table-fixtures-facetable.html`` when a custom template overrides ``table.html``. Omitted for a template built from a string, which has no name.
 
+``datasette.facet``
+    Calculating the requested facets of one facet type on a table page: a call to that facet class's ``facet_results()``. The facet SQL runs inside it, so its ``db.query`` spans are children. A facet type with nothing requested emits no span.
+
+    Attributes:
+
+    - ``datasette.facet.type`` - The facet class's ``type`` - ``column``, ``array`` and ``date`` in core, or whatever a plugin's ``register_facet_classes()`` class declares.
+    - ``datasette.facet.columns`` - The columns being faceted by this facet type, in the order they were requested - from ``?_facet=``-style query string arguments and table configuration. Column names only, never the values being counted.
+    - ``datasette.facet.timed_out_columns`` *(optional)* - The columns whose facet query exceeded :ref:`setting_facet_time_limit_ms`. Omitted when none did. A facet timing out is an expected answer rather than a failure, so the span status is not set to ``ERROR``.
+
+``datasette.facet.suggest``
+    Discovering suggested facets for a table page, across every facet type and column - one span in total, not one per candidate column, which would be high volume on a wide table. The probing queries, run under :ref:`setting_facet_suggest_time_limit_ms`, are its children. Controlled by the :ref:`setting_suggest_facets` setting.
+
+    Attributes:
+
+    - ``datasette.facet.suggestion_count`` - The number of facets suggested.
+
 .. [[[end]]]
 
 .. _internals_telemetry_metrics:

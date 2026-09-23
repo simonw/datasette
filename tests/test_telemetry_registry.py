@@ -82,6 +82,12 @@ EXPECTED_ATTRIBUTES = {
         "datasette.resource.parent",
     },
     "datasette.render_template": {"datasette.template.name"},
+    "datasette.facet": {
+        "datasette.facet.type",
+        "datasette.facet.columns",
+        "datasette.facet.timed_out_columns",
+    },
+    "datasette.facet.suggest": {"datasette.facet.suggestion_count"},
 }
 EXPECTED_SPANS = set(EXPECTED_ATTRIBUTES)
 
@@ -213,6 +219,15 @@ async def exercise():
     # user_agent.original / http.response.status_code attributes.
     assert (await ds.client.get(f"/{name}/t?_facet=v")).status_code == 200
     assert (await ds.client.get(f"/{name}/t/1.json")).status_code == 200
+
+    # datasette.facet.timed_out_columns - a facet over a view that can never
+    # finish always exceeds facet_time_limit_ms
+    await db.execute_write(
+        "create view endless as with recursive c(x) as "
+        "(select 0 union all select x+1 from c) select x from c"
+    )
+    response = await ds.client.get(f"/{name}/endless.json?_facet=x")
+    assert response.status_code == 200
 
     # datasette.permission.resources with datasette.resource.parent - the
     # table pages above only check single resources

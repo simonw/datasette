@@ -1291,6 +1291,40 @@ async def test_infinity_returned_as_null(ds_client):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("extra", ("facet_results", "sorted_facet_results"))
+async def test_infinity_facet_values_returned_as_null(ds_client, extra):
+    # https://github.com/simonw/datasette/issues/2954
+    response = await ds_client.get(
+        "/fixtures/infinity.json?_facet=value&_extra=" + extra
+    )
+    assert response.status_code == 200
+
+    def reject_constant(token):
+        raise ValueError(f"Non-JSON numeric literal: {token}")
+
+    data = json.loads(response.text, parse_constant=reject_constant)
+    facets = data[extra]
+    facet = facets["results"]["value"] if extra == "facet_results" else facets[0]
+    values = sorted(
+        ((r["value"], r["label"]) for r in facet["results"]),
+        key=lambda pair: (pair[0] is not None, pair),
+    )
+    assert values == [(None, None), (None, None), (1.5, 1.5)]
+
+
+@pytest.mark.asyncio
+async def test_infinity_facet_values_returned_as_invalid_json_if_requested(ds_client):
+    response = await ds_client.get(
+        "/fixtures/infinity.json?_facet=value&_extra=facet_results&_json_infinity=1"
+    )
+    values = {
+        r["value"]
+        for r in response.json()["facet_results"]["results"]["value"]["results"]
+    }
+    assert values == {float("inf"), float("-inf"), 1.5}
+
+
+@pytest.mark.asyncio
 async def test_infinity_returned_as_invalid_json_if_requested(ds_client):
     response = await ds_client.get(
         "/fixtures/infinity.json?_shape=array&_json_infinity=1"

@@ -30,6 +30,10 @@ def convert_specific_columns_to_json(rows, columns, json_cols):
     return new_rows
 
 
+def _facet_without_infinites(facet):
+    return {**facet, "results": [remove_infinites(r) for r in facet["results"]]}
+
+
 def json_renderer(request, args, data, error, truncated=None):
     """Render a response as JSON"""
     status_code = 200
@@ -44,8 +48,23 @@ def json_renderer(request, args, data, error, truncated=None):
         )
 
     # unless _json_infinity=1 requested, replace infinity with None
-    if "rows" in data and not value_as_boolean(args.get("_json_infinity", "0")):
-        data["rows"] = [remove_infinites(row) for row in data["rows"]]
+    if not value_as_boolean(args.get("_json_infinity", "0")):
+        if "rows" in data:
+            data["rows"] = [remove_infinites(row) for row in data["rows"]]
+        # Facet values and labels can be infinities too
+        if isinstance(data.get("facet_results"), dict):
+            data["facet_results"] = {
+                **data["facet_results"],
+                "results": {
+                    name: _facet_without_infinites(facet)
+                    for name, facet in data["facet_results"]["results"].items()
+                },
+            }
+        if isinstance(data.get("sorted_facet_results"), list):
+            data["sorted_facet_results"] = [
+                _facet_without_infinites(facet)
+                for facet in data["sorted_facet_results"]
+            ]
 
     # Deal with the _shape option
     shape = args.get("_shape", "objects")

@@ -53,12 +53,19 @@ from .telemetry import (
     TelemetryMiddleware,
     _in_datasette_client,
     clamp_http_method,
+    permission_span,
     register_datasette,
     request_span,
     tracer,
     unregister_datasette,
 )
-from .telemetry_registry import HTTP_ROUTE, STARTUP
+from .telemetry_registry import (
+    HTTP_ROUTE,
+    PERMISSION_ALLOWED,
+    PERMISSION_CHECK,
+    PERMISSION_RESOURCES,
+    STARTUP,
+)
 from .tokens import TokenInvalid
 from .tracer import AsgiTracer
 from .url_builder import Urls
@@ -1735,17 +1742,22 @@ class Datasette:
         if resource is not None and not isinstance(resource, Resource):
             raise TypeError("resource must be a Resource subclass instance or None.")
 
-        # Check if actor can see it
-        if not await self.allowed(action=action, resource=resource, actor=actor):
-            return False, False
+        parent = resource.parent if resource else None
+        child = resource.child if resource else None
+        with permission_span(PERMISSION_CHECK, action, parent, child) as span:
+            # Check if actor can see it
+            if not await self.allowed(action=action, resource=resource, actor=actor):
+                span.set_attribute(PERMISSION_ALLOWED, False)
+                return False, False
+            span.set_attribute(PERMISSION_ALLOWED, True)
 
-        # Check if anonymous user can see it (for "private" flag)
-        if not await self.allowed(action=action, resource=resource, actor=None):
-            # Actor can see it but anonymous cannot - it's private
-            return True, True
+            # Check if anonymous user can see it (for "private" flag)
+            if not await self.allowed(action=action, resource=resource, actor=None):
+                # Actor can see it but anonymous cannot - it's private
+                return True, True
 
-        # Both actor and anonymous can see it - it's public
-        return True, False
+            # Both actor and anonymous can see it - it's public
+            return True, False
 
     async def allowed_resources_sql(
         self,
@@ -1782,17 +1794,22 @@ class Datasette:
         if not action_obj:
             raise ValueError(f"Unknown action: {action}")
 
-        sql, params = await build_allowed_resources_sql(
-            self, actor, action, parent=parent, include_is_private=include_is_private
-        )
-        if action == "view-table":
-            sql, params = await self._apply_derived_table_permissions_to_sql(
-                sql,
-                params,
-                actor=actor,
+        with permission_span(PERMISSION_RESOURCES, action, parent):
+            sql, params = await build_allowed_resources_sql(
+                self,
+                actor,
+                action,
                 parent=parent,
                 include_is_private=include_is_private,
             )
+            if action == "view-table":
+                sql, params = await self._apply_derived_table_permissions_to_sql(
+                    sql,
+                    params,
+                    actor=actor,
+                    parent=parent,
+                    include_is_private=include_is_private,
+                )
         return ResourcesSQL(sql, params)
 
     async def _allowed_derived_table_source(
@@ -1980,6 +1997,20 @@ ORDER BY allowed.parent, allowed.child
                 print(table.child)
         """
 
+        with permission_span(PERMISSION_RESOURCES, action, parent):
+            return await self._allowed_resources(
+                action,
+                actor,
+                parent=parent,
+                include_is_private=include_is_private,
+                include_reasons=include_reasons,
+                limit=limit,
+                next=next,
+            )
+
+    async def _allowed_resources(
+        self, action, actor, *, parent, include_is_private, include_reasons, limit, next
+    ):
         action_obj = self.actions.get(action)
         if not action_obj:
             raise ValueError(f"Unknown action: {action}")
@@ -2126,9 +2157,16 @@ ORDER BY allowed.parent, allowed.child
             )
             # {"edit-schema": True, "drop-table": True, "insert-row": False}
         """
-        return await self._allowed_many(
-            actions=actions, resource=resource, actor=actor, check_derived=True
-        )
+        parent = resource.parent if resource else None
+        child = resource.child if resource else None
+        requested = ", ".join(dict.fromkeys(actions))
+        with permission_span(PERMISSION_CHECK, requested, parent, child) as span:
+            results = await self._allowed_many(
+                actions=actions, resource=resource, actor=actor, check_derived=True
+            )
+            if len(results) == 1:
+                span.set_attribute(PERMISSION_ALLOWED, next(iter(results.values())))
+        return results
 
     async def _allowed_many(self, *, actions, resource, actor, check_derived):
         """Evaluate permissions, optionally applying the one-hop source policy."""

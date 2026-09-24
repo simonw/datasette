@@ -4,18 +4,37 @@
 Changelog
 =========
 
-.. _unreleased:
+.. _v1_0_a41:
 
-Unreleased
-----------
+1.0a41 (2026-09-24)
+-------------------
 
-- Datasette's database layer now emits `OpenTelemetry <https://opentelemetry.io/>`__ spans: one per query, covering the full round trip including time spent waiting for a SQL worker thread, plus separate child spans for the execution itself and for time spent in the write queue. Callback-style calls - :ref:`db.execute_fn() <database_execute_fn>`, :ref:`db.execute_write_fn() <database_execute_write_fn>` and ``db.execute_isolated_fn()``, the documented way for plugins to run arbitrary SQL - are covered too, carrying ``datasette.callback`` in place of the SQL text. Datasette core depends on ``opentelemetry-api`` only and never installs an SDK provider, an exporter or a sampler, so there is no effect and no measurable overhead unless tracing is switched on externally - normally with the standard ``opentelemetry-instrument`` agent. See :ref:`internals_telemetry`. (:issue:`1730`)
-- Every HTTP request now gets an OpenTelemetry ``SERVER`` span, named after the request method and matched route, carrying ``http.route``, the response status and W3C trace context extracted from inbound headers - so every database span has a request to belong to, and Datasette joins distributed traces started by a proxy or calling service. The query string is never recorded. See :ref:`internals_telemetry_requests`. (:issue:`1730`)
-- Datasette core now also emits OpenTelemetry **metrics** covering SQL thread pool saturation, per-database write queue depth, open connections, query latency and time-limit interruptions. These answer operational questions that spans structurally cannot - "am I saturating my :ref:`setting_num_sql_threads` threads?" is a level, not an event - and they survive trace sampling. As with spans, core installs no ``MeterProvider``, so there is no cost unless metrics are collected externally. See :ref:`internals_telemetry`. (:issue:`1730`)
+OpenTelemetry support, a new JavaScript AI for creating modal dialogs, and several smaller bug fixes.
 
-- New :ref:`plugin telemetry kit <plugin_telemetry>` for plugins that emit their own OpenTelemetry signals: the registry classes (``Attribute`` with closed-enum ``values=``, ``SpanName`` with prefix-matched families, ``MetricName``) are now documented public API, ``datasette.telemetry.linked_root_span_kwargs()`` provides the root-span-with-link shape for background work, ``datasette.telemetry.request_span()`` is documented, and ``datasette.telemetry_testing`` ships the pytest fixtures and two-way conformance checks - for spans and metrics, including instrument kind/unit verification, enum enforcement and a forbidden-values privacy walk - that core's own suite uses. (:issue:`1730`)
+OpenTelemetry
+~~~~~~~~~~~~~
 
-Nothing is removed by the OpenTelemetry work: the ``?_trace=1`` query string parameter, the ``trace_debug`` setting and the :ref:`internals_tracer` module all continue to work as before.
+Datasette now supports `OpenTelemetry <https://opentelemetry.io/>`__ traces and metrics for monitoring application performance. Thanks, `Alex Garcia <https://github.com/asg017>`__. (:issue:`1730`, :issue:`2867`)
+
+- Traces cover HTTP requests, database queries and startup, including time spent waiting for SQL threads and queued writes.
+- Metrics report query latency, time-limit interruptions, SQL thread usage, write queues and open connections.
+- New :ref:`tools for plugin authors <plugin_telemetry>` help plugins add their own traces and metrics, with shared registry classes and pytest helpers.
+
+To collect telemetry, configure an OpenTelemetry SDK and exporter, then run Datasette using ``opentelemetry-instrument``. See :ref:`internals_telemetry` for setup instructions.
+
+Other features
+~~~~~~~~~~~~~~
+
+- New :ref:`DatasetteModal JavaScript API <javascript_plugins_modals>` for plugins to create dialogs with Datasette's shared styles, keyboard behavior and focus handling. Datasette's built-in dialogs use the same API. (:issue:`2790`, :pr:`2948`)
+
+Bug fixes
+~~~~~~~~~
+
+- Table pages now show measured query timings instead of always displaying 1.2ms. (:issue:`2446`)
+- Facet loading now ignores unrelated query parameters such as ``?_facets=x``, instead of returning a 500 error. Thanks, `Peng Boyu <https://github.com/pengboyu-dev>`__. (:pr:`2949`)
+- Foreign key values no longer link to tables that do not exist. Thanks, `Dipak Chaudhari <https://github.com/dchaudhari7177>`__. (:issue:`1515`, :pr:`2952`)
+- Fixed missing punctuation between table and view counts on the homepage, such as ``0 tables1 view``. Thanks, `Dipak Chaudhari <https://github.com/dchaudhari7177>`__. (:issue:`2012`, :pr:`2951`)
+- The sort menu now excludes primary keys that are not included in :ref:`sortable_columns <table_configuration_sortable_columns>`. Thanks, `Sanjay Santhanam <https://github.com/Sanjays2402>`__. (:issue:`1980`, :pr:`2858`)
 
 .. _v1_0_a40:
 

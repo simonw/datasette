@@ -4,6 +4,15 @@
 Changelog
 =========
 
+.. _unreleased:
+
+Unreleased
+----------
+
+- Datasette's database layer now emits `OpenTelemetry <https://opentelemetry.io/>`__ spans: one per query, covering the full round trip including time spent waiting for a SQL worker thread, plus separate child spans for the execution itself and for time spent in the write queue. Callback-style calls - :ref:`db.execute_fn() <database_execute_fn>`, :ref:`db.execute_write_fn() <database_execute_write_fn>` and ``db.execute_isolated_fn()``, the documented way for plugins to run arbitrary SQL - are covered too, carrying ``datasette.callback`` in place of the SQL text. Datasette core depends on ``opentelemetry-api`` only and never installs an SDK provider, an exporter or a sampler, so there is no effect and no measurable overhead unless tracing is switched on externally - normally with the standard ``opentelemetry-instrument`` agent. See :ref:`internals_telemetry`. (:issue:`1730`)
+
+Nothing is removed by the OpenTelemetry work: the ``?_trace=1`` query string parameter, the ``trace_debug`` setting and the :ref:`internals_tracer` module all continue to work as before.
+
 .. _v1_0_a40:
 
 1.0a40 (2026-09-16)

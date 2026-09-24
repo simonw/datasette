@@ -9,7 +9,7 @@ Changelog
 1.0a41 (2026-09-24)
 -------------------
 
-OpenTelemetry support, a new JavaScript AI for creating modal dialogs, and several smaller bug fixes.
+OpenTelemetry support, a new JavaScript API for creating modal dialogs, and several smaller bug fixes.
 
 OpenTelemetry
 ~~~~~~~~~~~~~

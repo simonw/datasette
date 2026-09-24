@@ -2538,7 +2538,7 @@ Or using ``uv run``:
 
 This will output pretty-printed JSON telemetry to your console, representing requests and database queries executed by Datasette.
 
-To use an exporter endpoint, set ``OTEL_EXPORTER_OTLP_ENDPOINT`` to a URL, set ``OTEL_TRACES_EXPORTER`` to ``oltp``, and set the other exporters to ``none``:
+To use an exporter endpoint, set ``OTEL_EXPORTER_OTLP_ENDPOINT`` to a URL, set ``OTEL_TRACES_EXPORTER`` to ``otlp``, and set the other exporters to ``none``:
 
 .. code-block:: bash
 
@@ -2549,7 +2549,7 @@ To use an exporter endpoint, set ``OTEL_EXPORTER_OTLP_ENDPOINT`` to a URL, set `
     OTEL_TRACES_EXPORTER=otlp \
       opentelemetry-instrument datasette mydb.db
 
-On macOS one easy option for a port 4317 OLTP endpoint is `otel-tui <https://github.com/ymtdzzz/otel-tui>`__:
+On macOS one easy option for a port 4317 OTLP endpoint is `otel-tui <https://github.com/ymtdzzz/otel-tui>`__:
 
 .. code-block:: bash
 
@@ -2651,7 +2651,7 @@ Metric reference
 
 Spans describe events; metrics describe levels and rates. Metrics can be used to answer questions like "Am I saturating my :ref:`setting_num_sql_threads` threads right now?". Trace sampling drops a portion of traces but does not drop any metrics.
 
-Datasette configures duration histogram in **seconds**. OpenTelemetry's default boundaries are tuned for milliseconds but these would file every SQLite query into a single bucket, making quantile queries meaningless.
+Datasette configures duration histograms in **seconds**. OpenTelemetry's default boundaries are tuned for milliseconds but these would file every SQLite query into a single bucket, making quantile queries meaningless.
 
 This reference is also generated from ``datasette/telemetry_registry.py``:
 

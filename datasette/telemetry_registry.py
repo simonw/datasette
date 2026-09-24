@@ -1,25 +1,9 @@
 """
-The single source of truth for every span and span attribute that Datasette
-core emits.
+Every span, metric and attribute that Datasette emits.
 
-Three things read this module, which is the point of it existing:
-
-1. **The instrumentation itself.** `Attribute` and `SpanName` subclass `str`,
-   so a registry entry *is* the string OpenTelemetry wants. Call sites pass
-   `DB_NAMESPACE` where they used to pass `"db.namespace"` - no wrapper API
-   over the OTel calls, no parallel structure to keep in step, and a typo is
-   now an `ImportError` instead of a silently misnamed attribute.
-
-2. **The documentation.** `docs/telemetry_doc.py` renders the span reference
-   in `docs/internals.rst` from these definitions using cog, and
-   `cog --check` runs in CI - so the docs cannot drift from the code.
-
-3. **A conformance test.** `tests/test_telemetry_registry.py` makes real
-   requests, collects every span and attribute actually emitted, and compares
-   both directions: emitted-but-unregistered catches instrumentation added
-   without documentation, registered-but-never-emitted catches documentation
-   describing something that no longer exists. Neither the type system nor
-   the generated docs can catch that second case.
+These entries are used by the instrumentation code, by `docs/telemetry_doc.py`
+to generate the documentation, and by `tests/test_telemetry_registry.py` to
+check that the emitted telemetry matches the registry.
 """
 
 from opentelemetry.trace import SpanKind
@@ -42,26 +26,13 @@ class Attribute(str):
         self = super().__new__(cls, name)
         self.description = description
         self.optional = optional
-        # A closed enum vocabulary for the attribute's values, or None for
-        # an open value set. Declaring one does two things: the conformance
-        # helpers assert every emitted value is a member, and it marks the
-        # attribute as bounded - safe to use as a metric dimension, where an
-        # open value set would be a cardinality hazard.
+        # The allowed values for this attribute, or None to allow any value
         self.values = frozenset(values) if values is not None else None
         return self
 
     def __reduce__(self):
-        # Copies and pickles collapse to a plain str. Without this, `copy` has
-        # to reconstruct a str subclass through `cls.__new__(cls)`, which these
-        # classes reject - their `__new__` requires the metadata arguments. It
-        # is not a theoretical problem: the SDK's ConsoleMetricExporter renders
-        # data points with `dataclasses.asdict()`, which deepcopies mappings,
-        # and registry entries are used as metric attribute keys - so every
-        # console metrics dump would crash. Collapsing is also the honest
-        # answer, not a workaround. On the wire and in a copy an entry *is*
-        # its string; the description, values and buckets describe the single
-        # registered instance in this module, and nothing reads them off a
-        # copy.
+        # Copies and pickles become a plain str, since __new__ requires the
+        # extra arguments. ConsoleMetricExporter deepcopies attribute keys.
         return (str, (str(self),))
 
     def __repr__(self):
@@ -88,24 +59,12 @@ class SpanName(str):
         self = super().__new__(cls, name)
         self.description = description
         self.attributes = tuple(attributes)
-        # True for a span family whose emitted names carry a variable suffix
-        # after a fixed prefix - e.g. a plugin's `chat {model}` registered as
-        # SpanName("chat ", ..., prefix=True) - so `span_for()` matches by
-        # prefix rather than equality. Core registers none itself; the flag
-        # exists for plugin registries.
+        # Match emitted names that start with this prefix, for names with a
+        # variable suffix such as SpanName("chat ", ..., prefix=True)
         self.prefix = prefix
-        # True when the emitted name is composed at runtime and shares no
-        # fixed prefix with the registry entry - the HTTP request span, whose
-        # name is the request method followed by the matched route. There is
-        # no substring of the entry that could be matched against the wire, so
-        # `span_for()` resolves these by span kind instead, and the entry's own
-        # string is a template written for a human reading the generated
-        # reference.
+        # The emitted name is built at runtime, so `span_for()` matches it by
+        # span kind. The entry's string is a template for the documentation.
         self.dynamic = dynamic
-        # SpanKind.INTERNAL by default - every span Datasette emits describes
-        # its own internal work. db.query is the one exception: it is a real
-        # database call, so semantic conventions (and trace UIs, which key
-        # their database styling off this) expect SpanKind.CLIENT.
         self.kind = kind
         return self
 
@@ -128,10 +87,7 @@ class MetricName(str):
         self.unit = unit
         self.description = description
         self.attributes = tuple(attributes)
-        # Explicit histogram bucket boundaries, for histograms only. Passed to
-        # create_histogram() as explicit_bucket_boundaries_advisory and
-        # published in the generated docs, since an operator writing a
-        # histogram_quantile() query needs to know them.
+        # Explicit bucket boundaries, for histograms only
         self.buckets = tuple(buckets) if buckets is not None else None
         return self
 
@@ -150,9 +106,6 @@ GAUGE = "Observable gauge"
 
 
 # --- Attributes -----------------------------------------------------------
-#
-# Shared attributes are defined once and referenced by every span that sets
-# them, so "which spans carry db.namespace?" is answerable by grep.
 
 HTTP_REQUEST_METHOD = Attribute(
     "http.request.method",
@@ -391,20 +344,10 @@ def span_for(emitted_name, kind=None, spans=None):
     """
     Resolve an emitted span name to its registry entry, or None.
 
-    Handles the two entry kinds whose emitted names are not knowable in
-    advance:
+    Exact matches take precedence over `prefix=True` entries, which take
+    precedence over `dynamic=True` entries matched by `kind`.
 
-    - `prefix=True` - the name carries a variable suffix after a fixed
-      prefix, matched by prefix. Core registers none; plugin registries use
-      it for names like ``chat {model}``.
-    - `dynamic=True` - the name has no fixed part at all, so it is matched
-      on `kind` instead and the caller has to supply one.
-
-    Exact matches win over prefix matches, and both win over dynamic, so a
-    looser entry can never shadow a span with a registered name.
-
-    `spans` defaults to core's own registry; the plugin testing kit passes a
-    plugin's tuple instead.
+    `spans` defaults to Datasette's own registry.
     """
     if spans is None:
         spans = SPANS
@@ -427,9 +370,7 @@ def metric_for(emitted_name, metrics=None):
     """
     Resolve an emitted metric name to its registry entry, or None.
 
-    The `span_for()` analogue - simpler, because metric names are always
-    static strings. `metrics` defaults to core's own registry; the plugin
-    testing kit passes a plugin's tuple instead.
+    `metrics` defaults to Datasette's own registry.
     """
     if metrics is None:
         metrics = METRICS
@@ -455,11 +396,7 @@ def attribute_value_allowed(entry, emitted_key, value):
     Whether `value` is permitted for `emitted_key` on `entry` (a `SpanName`
     or a `MetricName`).
 
-    True for any value when the attribute declares no `values=` enum; when it
-    does, membership is enforced - that is what makes a declared enum a real
-    cardinality bound rather than documentation. On a metric entry this is
-    where the bound matters most: a metric series is keyed by its attribute
-    values.
+    Any value is allowed if the attribute does not declare `values=`.
     """
     if entry is None:
         return False
@@ -471,22 +408,11 @@ def attribute_value_allowed(entry, emitted_key, value):
 
 # --- Metrics --------------------------------------------------------------
 
-# Every duration histogram here is in seconds, and OpenTelemetry's default
-# bucket boundaries are tuned for milliseconds - their first non-zero boundary
-# is 5, so without explicit boundaries every SQLite query lands in the single
-# (0, 5] second bucket and every quantile query returns noise.
-#
-# These are the OpenTelemetry semantic conventions' recommended boundaries for
-# db.client.operation.duration, in seconds, plus 0.0001 and 0.0005 at the
-# bottom. The deviation is deliberate: those boundaries assume a network
-# database client, whereas SQLite is in-process and a large fraction of real
-# queries run in 30-80us, which would otherwise all pile into the first
-# bucket and be indistinguishable from each other.
-#
-# One shared list is used for every duration histogram rather than a tailored
-# list each, so that dashboards stay comparable and a queue wait can be read
-# against the query duration it delays. It already spans 100us to 10s, which
-# covers both a fast in-process read and a write queued behind contention.
+# Bucket boundaries in seconds for every duration histogram. OpenTelemetry's
+# defaults are designed for milliseconds and would put almost every SQLite
+# query in the first bucket. These are the semantic conventions' recommended
+# boundaries for db.client.operation.duration, plus 0.0001 and 0.0005 for
+# fast in-process SQLite queries.
 DURATION_BUCKETS = (0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10)
 
 M_OPERATION_DURATION = MetricName(

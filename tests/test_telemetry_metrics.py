@@ -1,19 +1,6 @@
 """
-Tests for the OpenTelemetry metrics Datasette core emits.
-
-Two layers are tested separately and deliberately:
-
-- The gauge callbacks are plain generator functions, so they are called
-  directly for exact-value assertions. Going through the SDK for those would
-  be unreliable: the pool gauges carry no attribute identifying which
-  Datasette produced them, and a pytest session has many live instances, so
-  the SDK's last-value aggregation would report whichever one happened to be
-  observed last.
-
-- The SDK pipeline (instrument -> reader -> data points) is tested through
-  the `otel_metrics` fixture, using metrics that carry `db.namespace` - a
-  uniquely named in-memory database is enough to isolate those from every
-  other instance alive in the session.
+Tests for the OpenTelemetry metrics emitted by Datasette. Gauge callbacks are
+called directly, since the pool gauges have no attributes to tell instances apart.
 """
 
 import asyncio
@@ -65,25 +52,17 @@ def metrics_ds():
 @pytest.mark.asyncio
 async def test_sql_thread_limit_gauge_reports_num_sql_threads(metrics_ds):
     values = [value for _, value in observations(telemetry.observe_sql_thread_limit)]
-    # Other instances are alive in this session, so assert membership rather
-    # than uniqueness - 7 is distinctive enough to only come from metrics_ds.
+    # Other Datasette instances may also be reporting:
     assert 7 in values
 
 
 @pytest.mark.asyncio
 async def test_no_thread_gauges_in_non_threaded_mode():
-    """
-    num_sql_threads=0 means there is no pool at all, so the pool gauges must
-    skip the instance rather than report a bogus limit of 0.
-
-    The pool gauges carry no attributes, so the live-instance registry is
-    narrowed to just this instance for the assertion - counting global
-    observations instead would let an unrelated instance being garbage
-    collected mid-test shift the baseline.
-    """
+    "Pool gauges skip instances with num_sql_threads=0, which have no pool."
     ds = Datasette(memory=True, settings={"num_sql_threads": 0})
     try:
         assert ds.executor is None
+        # Pool gauges have no attributes, so observe only this instance:
         original = telemetry._live_datasettes
         telemetry._live_datasettes = weakref.WeakSet([ds])
         try:
@@ -91,7 +70,7 @@ async def test_no_thread_gauges_in_non_threaded_mode():
             assert list(telemetry.observe_sql_thread_queue_depth()) == []
         finally:
             telemetry._live_datasettes = original
-        # Per-database gauges are unaffected - they do not depend on the pool.
+        # Per-database gauges do not depend on the pool:
         assert observations(telemetry.observe_pending_queries, ds)
     finally:
         ds.close()
@@ -100,11 +79,8 @@ async def test_no_thread_gauges_in_non_threaded_mode():
 @pytest.mark.asyncio
 async def test_thread_queue_depth_gauge_reports_saturation():
     """
-    The headline alerting metric must actually read above zero when reads
-    queue behind num_sql_threads. This also pins the private
-    `ThreadPoolExecutor._work_queue` attribute the callback depends on: if a
-    stdlib rename ever removes it, this fails instead of the metric silently
-    vanishing (the callback tolerates its absence at collection time).
+    Queue depth is above zero when reads queue behind num_sql_threads. Also
+    fails if the private ThreadPoolExecutor._work_queue attribute goes away.
     """
     ds = Datasette(memory=True, settings={"num_sql_threads": 1})
     db = ds.add_memory_database("metrics_saturation_db")
@@ -118,11 +94,10 @@ async def test_thread_queue_depth_gauge_reports_saturation():
 
     try:
         first = asyncio.ensure_future(db.execute_fn(blocker))
-        # Wait until the blocker owns the pool's only thread.
+        # Wait until the blocker is using the only thread:
         await asyncio.get_running_loop().run_in_executor(None, entered.wait, 10)
         second = asyncio.ensure_future(db.execute_fn(lambda conn: 2))
-        # The second submission lands in the executor's queue on the next
-        # event-loop turn; poll briefly rather than assume the timing.
+        # The second query is queued on a later event loop turn, so poll:
         depths = []
         for _ in range(500):
             depths = [
@@ -157,8 +132,7 @@ async def test_pending_queries_gauge_tracks_in_flight_queries(metrics_ds):
 
     assert value() == 0
 
-    # sqlite3.sleep is not a thing, so block the worker thread on an event we
-    # control from the event loop and sample the gauge while it is held.
+    # Hold the worker thread until release is set:
     release = asyncio.Event()
     loop = asyncio.get_running_loop()
     entered = asyncio.Event()
@@ -188,8 +162,7 @@ async def test_write_queue_depth_gauge(metrics_ds):
             if a == attributes
         ]
 
-    # No write has ever been queued, so there is no queue and no observation -
-    # rather than a fabricated zero for a queue that does not exist.
+    # No observation until the write queue has been created:
     assert depths() == []
 
     await db.execute_write("create table t (id integer primary key)")
@@ -277,11 +250,7 @@ async def test_operation_duration_records_error_type(otel_metrics):
 
 @pytest.mark.asyncio
 async def test_operation_duration_records_write_error_type(otel_metrics):
-    """
-    Same as the read-path error test, but the write wrappers time a different
-    code path - `execute_write_fn`, the write thread and its reply future -
-    so error propagation through them is pinned separately.
-    """
+    "A failed write is still timed and records error.type."
     ds = Datasette(memory=True)
     ds.add_memory_database("duration_write_error_db")
     try:
@@ -319,7 +288,7 @@ async def test_write_queue_wait_histogram(otel_metrics):
 
 @pytest.mark.asyncio
 async def test_interrupted_queries_counter(otel_metrics):
-    "The count of time-limit kills, which sampled traces cannot provide."
+    "Queries cancelled by sql_time_limit_ms are counted."
     ds = Datasette(memory=True, settings={"sql_time_limit_ms": 1})
     ds.add_memory_database("interrupted_db")
     try:
@@ -344,7 +313,7 @@ async def test_interrupted_queries_counter(otel_metrics):
 
 @pytest.mark.asyncio
 async def test_metrics_are_reported_through_the_sdk_for_gauges(otel_metrics):
-    "End-to-end: a gauge callback reaches the reader as a data point."
+    "Gauge callbacks reach the metric reader as data points."
     ds = Datasette(memory=True)
     ds.add_memory_database("gauge_pipeline_db")
     try:
@@ -373,14 +342,8 @@ def test_closed_datasette_stops_being_observed():
 
 def test_registry_holds_instances_weakly():
     """
-    Registering an instance must never be the thing that keeps it alive.
-
-    A stand-in object is used rather than a real Datasette because a Datasette
-    with a temp-disk internal database is pinned for the life of the process
-    by `Database.__init__`'s `atexit.register(self._cleanup_temp_file)`, which
-    holds the Database, which holds the Datasette. That is pre-existing and
-    unrelated to telemetry; what is tested here is that this registry adds no
-    reference of its own.
+    Registering an instance does not keep it alive. Uses a stand-in object
+    because an atexit handler in Database.__init__ keeps a real Datasette alive.
     """
     import gc
     import weakref
@@ -412,10 +375,8 @@ HISTOGRAM_PROBES = [
     ),
 ]
 
-# One value inside each of six distinct registry buckets. Under OpenTelemetry's
-# default boundaries - [0, 5, 10, 25, ...], meant for milliseconds - the first
-# five of these all land in (0, 5] and only 7.0 lands elsewhere, so the
-# "occupies six buckets" assertion below fails if the advisory is ever dropped.
+# One value in each of six registry buckets. The SDK's default boundaries
+# would put the first five in the same bucket.
 SPREAD = [0.00005, 0.0003, 0.002, 0.03, 0.8, 7.0]
 
 
@@ -428,18 +389,8 @@ def test_histograms_spread_values_across_buckets(
     otel_metrics, instrument_name, metric_name, attributes
 ):
     """
-    The registry's boundaries reach the SDK, and a realistic spread of
-    seconds-scale durations occupies more than one bucket.
-
-    Recording onto the instrument directly rather than driving a workload is
-    deliberate: real durations here are all tens of microseconds and would
-    share a bucket no matter what the boundaries were, which is exactly the
-    situation this test exists to detect.
-
-    `explicit_bounds` is compared against the registry rather than against the
-    instrument's own configuration - the instrument is built *from* the
-    registry, so that comparison would be a value against itself. What is
-    checked here is that the advisory survived the trip through the SDK.
+    The registry's bucket boundaries reach the SDK. Values are recorded
+    directly because real test query durations would all share one bucket.
     """
     from datasette.telemetry_registry import METRICS
 
@@ -464,7 +415,7 @@ def test_histograms_spread_values_across_buckets(
 
 @pytest.mark.asyncio
 async def test_operation_duration_histogram_records_execute_fn(otel_metrics):
-    "Callback-style reads land in the same histogram as SQL-string reads."
+    "execute_fn() reads are recorded in the same histogram as SQL reads."
     ds = Datasette(memory=True)
     ds.add_memory_database("duration_fn_db")
     try:
@@ -487,7 +438,7 @@ async def test_operation_duration_histogram_records_execute_fn(otel_metrics):
 
 @pytest.mark.asyncio
 async def test_operation_duration_histogram_records_execute_write_fn(otel_metrics):
-    "Callback-style writes - the JSON write API's whole diet - are counted too."
+    "execute_write_fn() writes are recorded in the same histogram."
     ds = Datasette(memory=True)
     ds.add_memory_database("duration_write_fn_db")
     try:

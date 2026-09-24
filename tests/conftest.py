@@ -58,8 +58,6 @@ def find_free_port():
         return sock.getsockname()[1]
 
 
-# The otel fixtures moved to datasette.telemetry_testing, which is public
-# plugin API - core's suite consumes it exactly the way a plugin's would.
 from datasette.telemetry_testing import (  # noqa: F401
     MetricsCollector,
     otel_meter_provider,
@@ -183,11 +181,8 @@ def pytest_collection_modifyitems(config, items):
     move_to_front(items, "test_spatialite_error_if_attempt_to_open_spatialite")
     move_to_front(items, "test_package")
     move_to_front(items, "test_package_with_port")
-    # Same reason: this one shells out to a fresh interpreter. Late in a serial
-    # run the pytest process holds enough threads that the fork half of
-    # subprocess' fork+exec crashes the interpreter on macOS/CPython 3.13
-    # (SIGSEGV/SIGBUS inside _execute_child). Reproduces with any subprocess
-    # call placed there, on an unmodified tree - running it first avoids it.
+    # These start subprocesses, which can crash on macOS/CPython 3.13 late in
+    # a test run once the pytest process has started many threads
     move_to_front(items, "test_datasette_package_never_imports_the_sdk")
     move_to_front(items, "test_kit_module_itself_never_imports_the_sdk")
     move_to_front(items, "test_no_provider_takes_the_fast_path")

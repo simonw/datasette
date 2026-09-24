@@ -5,7 +5,7 @@ Telemetry for plugin authors
 
 Datasette core emits OpenTelemetry spans and metrics for the work it does itself - see :ref:`internals_telemetry` for what those are and how an operator turns them on. This page is about the other half: instrumenting the work **your plugin** does, so that a plugin's queries, background jobs and custom operations show up in the same traces and the same metrics pipeline, using the same conventions.
 
-Everything here follows one rule inherited from core: **depend on** ``opentelemetry-api`` **only, and never install a provider**. With no SDK installed every span and instrument your plugin creates is a free no-op; whoever runs Datasette decides whether telemetry is collected, sampled or exported. A plugin that installs a ``TracerProvider`` or configures an exporter is making an operator's decision for them.
+Depend on ``opentelemetry-api`` only. Providers and exporters are configured by whoever runs Datasette. Without a provider, no telemetry is recorded.
 
 .. _plugin_telemetry_scope:
 

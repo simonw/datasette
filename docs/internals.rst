@@ -2581,24 +2581,24 @@ A request to a table page produces a span named, in full::
 .. ]]]
 
 ``{http.request.method} {http.route}``
-    One span per HTTP request, created by the outermost layer of the ASGI stack - so plugin ``asgi_wrapper()`` middleware, CSRF protection and every database span raised while serving the request all nest inside it. Without it each of those would be its own root trace. The span name is not a fixed string: it is the method followed by the matched route, and just the method for a request that matched no route. The span starts at the ASGI edge, before routing has happened, so it is named for the method there and renamed once the route is known. W3C ``traceparent`` and ``baggage`` headers are extracted using the global propagator, so a request arriving from an already-traced caller continues that trace; set ``OTEL_PROPAGATORS=none`` to turn that off, and strip those headers at your proxy if your instance is public.
+    One span per HTTP request, containing spans from plugin middleware and database operations. Named for the HTTP method and matched route, or just the method if no route matches. Incoming ``traceparent`` and ``baggage`` headers are extracted using the global propagator to continue the caller's trace. Set ``OTEL_PROPAGATORS=none`` to disable extraction. For public instances, strip these headers at your proxy if callers should not supply trace context.
 
     Kind: ``SERVER``.
 
     Attributes:
 
-    - ``http.request.method`` - The HTTP method, clamped to the nine methods RFC 9110 and RFC 5789 define. Anything else is reported as ``_OTHER``: the method is a client-controlled string, so echoing it back unbounded would be a cardinality hazard.
-    - ``http.route`` *(optional)* - The route the request matched, as the compiled regular expression pattern Datasette routes with - for example ``/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)(\.(?P<format>\w+))?$`` for a table page. It is deliberately the pattern rather than a prettified ``/{database}/{table}`` template: the route table is fixed when the app is built, so the pattern is exact, bounded and needs no parsing, whereas the transform into something prettier accretes edge cases. Unlike ``url.path`` this is low cardinality, so it is the attribute to group by. Omitted when no route matched - a 404 - which is also when the span name falls back to the bare method.
-    - ``url.path`` - The path portion of the URL. The query string is deliberately **not** recorded, on this or any other span: Datasette puts user-supplied SQL in ``?sql=`` and canned query parameters in the query string, so exporting it by default would export exactly the data the rest of this instrumentation is careful with.
+    - ``http.request.method`` - The HTTP request method. Methods outside the nine defined by RFC 9110 and RFC 5789 are recorded as ``_OTHER``.
+    - ``http.route`` *(optional)* - The regular expression for the matched route, for example ``/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)(\.(?P<format>\w+))?$`` for a table page. Use this attribute to group requests by route. Omitted when no route matches.
+    - ``url.path`` - The URL path, excluding the query string.
     - ``url.scheme`` - ``http`` or ``https``.
-    - ``server.address`` *(optional)* - The ``Host`` header, verbatim - including any ``:port`` suffix, a deliberate deviation from semantic conventions' ``server.address`` / ``server.port`` split. Client-controlled, so treat it as untrusted input rather than as the identity of the server.
+    - ``server.address`` *(optional)* - The ``Host`` header, including any ``:port`` suffix. This value is supplied by the client.
     - ``user_agent.original`` *(optional)* - The ``User-Agent`` header, verbatim. Omitted if the client sent none.
-    - ``http.response.status_code`` *(optional)* - The status of the response, read from the ASGI ``http.response.start`` message rather than from a :ref:`internals_response` object - several views, including static files, file downloads and streaming CSV, send that message themselves and never build one. Omitted if the connection closed before anything was sent.
-    - ``error.type`` *(optional)* - Set when the request failed: the exception class name if one escaped the application, otherwise the status code as a string for a 5xx response. A 4xx does **not** set this and does not set an error status - per semantic conventions a client error is not a server span's failure.
-    - ``datasette.internal_client`` *(optional)* - ``True`` when the request was made in-process through ``datasette.client`` rather than arriving over the network. Such a sub-request runs the full ASGI stack, so it emits its own nested ``SERVER`` span inside the outer request's - filter on this attribute to keep kind-based dashboards from double-counting requests. Omitted for real inbound requests.
+    - ``http.response.status_code`` *(optional)* - The HTTP response status code. Omitted if no response was started.
+    - ``error.type`` *(optional)* - The exception class name for a failed operation. On HTTP spans, also set to the status code as a string for 5xx responses. A 4xx response alone does not set this attribute or an error status.
+    - ``datasette.internal_client`` *(optional)* - ``True`` for requests made through ``datasette.client``. Calls made inside another request produce a nested ``SERVER`` span. Filter on this attribute to exclude internal requests from request counts. Omitted for requests received over the network.
 
 ``db.query``
-    A SQL operation issued by Datasette, covering the full round trip including any time spent queued for a thread. Callback-style calls - ``execute_fn()``, ``execute_write_fn()`` and ``execute_isolated_fn()`` - appear here too, distinguished by ``datasette.callback`` in place of ``db.query.text``.
+    A SQL operation, including time spent queued for a worker thread. For ``block=False`` writes, the span ends after the write is queued. Callback methods record ``datasette.callback`` in place of ``db.query.text``.
 
     Kind: ``CLIENT``.
 
@@ -2606,16 +2606,16 @@ A request to a table page produces a span named, in full::
 
     - ``db.system`` - Always ``sqlite``.
     - ``db.namespace`` - Name of the database being queried.
-    - ``db.query.text`` *(optional)* - The SQL, truncated to 2048 characters. Never the parameter values. Absent for a callback-style call (``execute_fn()`` and friends), where there is no SQL string to record - ``datasette.callback`` is set instead.
-    - ``datasette.callback`` *(optional)* - The qualified name of the Python callable passed to ``execute_fn()``, ``execute_write_fn()`` or ``execute_isolated_fn()`` - for example ``TableInsertView.post.<locals>.insert_or_upsert_rows``. Set instead of ``db.query.text``, which does not exist for a callback: the SQL is whatever the function chooses to run. A lambda reports ``<lambda>``, which is why callers wanting a recognisable span should pass a named function. Bounded cardinality: the set of callables is fixed by the installed code, not by request input.
-    - ``db.operation.name`` *(optional)* - The statement's leading keyword - ``SELECT``, ``INSERT``, ``CREATE``, and so on - matched against a small fixed allowlist. Omitted rather than set to an arbitrary value: the attribute must stay safe to use as a metric dimension, and echoing an unrecognised first token from user-supplied SQL would be an unbounded-cardinality hazard. Also omitted for ``execute_write_script()``, which runs multiple statements - per semantic conventions, the operation name should not be extracted from query text that can contain more than one operation. Note that a statement beginning with a CTE reports ``WITH``, not the operation inside it - a substantial share of Datasette's own reads take that form. Resolving it further would mean parsing.
+    - ``db.query.text`` *(optional)* - The SQL, truncated to 2048 characters. Bound parameter values are not recorded. For callback methods, ``datasette.callback`` is recorded instead.
+    - ``datasette.callback`` *(optional)* - The qualified name of the Python callable passed to ``execute_fn()``, ``execute_write_fn()`` or ``execute_isolated_fn()``, for example ``TableInsertView.post.<locals>.insert_or_upsert_rows``. Set instead of ``db.query.text``. Lambdas appear as ``<lambda>``; use a named function for a more descriptive span.
+    - ``db.operation.name`` *(optional)* - The statement's leading keyword, such as ``SELECT``, ``INSERT`` or ``CREATE``, if it matches the supported allowlist. Statements beginning with a common table expression report ``WITH``. Omitted for unrecognized keywords and ``execute_write_script()``.
     - ``datasette.param_count`` *(optional)* - Number of bound parameters. Recorded instead of the values themselves.
-    - ``datasette.param_sets`` *(optional)* - Number of parameter sets consumed by ``execute_write_many()``. Not a row count - ``executemany()`` returns no rows. The parameter values themselves are never recorded: that sequence can hold thousands of rows.
-    - ``datasette.time_limit_ms`` *(optional)* - The :ref:`setting_sql_time_limit_ms` value this query ran under. Set on reads, which are the queries that time limit applies to.
-    - ``datasette.rows_returned`` *(optional)* - Number of rows a read returned. Set on the read path only, and only when the read succeeded.
+    - ``datasette.param_sets`` *(optional)* - Number of parameter sets consumed by ``execute_write_many()``. The parameter values are not recorded.
+    - ``datasette.time_limit_ms`` *(optional)* - Time limit applied to the read query, in milliseconds: :ref:`setting_sql_time_limit_ms` or a shorter ``custom_time_limit``.
+    - ``datasette.rows_returned`` *(optional)* - Number of rows returned by a successful read query.
     - ``datasette.truncated`` *(optional)* - True if the result was cut short by :ref:`setting_max_returned_rows`.
-    - ``datasette.interrupted`` *(optional)* - True if the query was cancelled for exceeding the time limit. The span status is also set to ``ERROR``, unless the caller asked for a budget shorter than :ref:`setting_sql_time_limit_ms` - as table counts, facet suggestion and autocomplete all do - in which case running out of time is an expected answer rather than a failure and the status is left unset.
-    - ``datasette.sql_error_suppressed`` *(optional)* - True when the query failed but the caller passed ``log_sql_errors=False``, meaning it was probing and treats failure as an expected answer. Facet suggestion does this against every column.
+    - ``datasette.interrupted`` *(optional)* - True if the query exceeded its time limit. The span status is set to ``ERROR`` unless the caller used a ``custom_time_limit`` shorter than :ref:`setting_sql_time_limit_ms`, in which case the status is left unset.
+    - ``datasette.sql_error_suppressed`` *(optional)* - True for a non-timeout SQL error with ``log_sql_errors=False``. The exception is still raised, but the span status is left unset.
     - ``datasette.executescript`` *(optional)* - True for ``execute_write_script()``, which runs multiple statements.
     - ``datasette.executemany`` *(optional)* - True for ``execute_write_many()``, which runs one statement against many parameter sets.
 
@@ -2625,12 +2625,12 @@ A request to a table page produces a span named, in full::
     No attributes.
 
 ``db.write.queue_wait``
-    Time a write spent waiting in its database's write queue before the write thread picked it up. Child of ``db.query`` for a ``block=True`` write, where the caller awaits the write and containment is accurate. For a ``block=False`` write the caller does not await it - the enqueueing request *caused* the write without *containing* it, and the write's spans can outlive the request's own - so this is a root span instead, carrying an OpenTelemetry link back to the enqueueing span rather than a parent. A link records causation without asserting containment, which is exactly the distinction here.
+    Time a write spent waiting in its database's write queue. For ``block=True``, this is a child of ``db.query``. For ``block=False``, it is a root span linked to the span that queued the write, since the write can outlive that request.
 
     No attributes.
 
 ``db.write.execute``
-    The write executing on the write thread. Child of ``db.query`` for a ``block=True`` write; for ``block=False`` a root span with a link back to the enqueueing span instead - see ``db.write.queue_wait`` above.
+    The write executing on the write thread. For ``block=True``, this is a child of ``db.query``. For ``block=False``, it is a root span linked to the span that queued the write.
 
     Attributes:
 
@@ -2638,7 +2638,7 @@ A request to a table page produces a span named, in full::
     - ``datasette.transaction`` - False for statements such as ``VACUUM`` that cannot run inside a transaction.
 
 ``datasette.startup``
-    ``invoke_startup()`` running: ``register_events``, ``register_actions``, ``register_column_types``, ``prepare_jinja2_environment``, internal-database schema catalog refresh (including the ``prepare_connection`` warm-up this triggers for each database touched for the first time), saved queries, column type config and the ``startup`` hook. Runs once per process, before any request exists, so without this span every child it creates would be its own orphan root trace. A connection warmed later - lazily, the first time a *request* touches a new database or thread - nests under that request's own span instead, not under this one, since this span has already ended by then.
+    Startup work performed by ``invoke_startup()``, including registration hooks, schema catalog updates, saved queries, column type configuration and the ``startup`` hook. Runs during instance startup, either before serving requests or as part of the first request.
 
     No attributes.
 
@@ -2661,7 +2661,7 @@ This reference is also generated from ``datasette/telemetry_registry.py``:
 .. ]]]
 
 ``db.client.operation.duration``
-    Histogram, unit ``s``. Duration of a SQL operation. The standard OpenTelemetry semantic convention metric, and the one that survives trace sampling. Callback-style calls (``execute_fn()`` and friends) are counted alongside the SQL-string methods.
+    Histogram, unit ``s``. Duration of a SQL operation, including callback-based calls such as ``execute_fn()``. For ``block=False`` writes, measures enqueue time.
 
     Bucket boundaries: ``0.0001``, ``0.0005``, ``0.001``, ``0.005``, ``0.01``, ``0.05``, ``0.1``, ``0.5``, ``1``, ``5``, ``10``.
 
@@ -2670,10 +2670,10 @@ This reference is also generated from ``datasette/telemetry_registry.py``:
     - ``db.system`` - Always ``sqlite``.
     - ``db.namespace`` - Name of the database being queried.
     - ``datasette.operation`` - Whether the operation was a read or a write. One of: ``read``, ``write``.
-    - ``error.type`` *(optional)* - Set when the request failed: the exception class name if one escaped the application, otherwise the status code as a string for a 5xx response. A 4xx does **not** set this and does not set an error status - per semantic conventions a client error is not a server span's failure.
+    - ``error.type`` *(optional)* - The exception class name for a failed operation. On HTTP spans, also set to the status code as a string for 5xx responses. A 4xx response alone does not set this attribute or an error status.
 
 ``datasette.write.queue_wait``
-    Histogram, unit ``s``. Time each write waited in its database's write queue. The metric counterpart of the ``db.write.queue_wait`` span.
+    Histogram, unit ``s``. Time each write waited in its database's write queue.
 
     Bucket boundaries: ``0.0001``, ``0.0005``, ``0.001``, ``0.005``, ``0.01``, ``0.05``, ``0.1``, ``0.5``, ``1``, ``5``, ``10``.
 
@@ -2682,38 +2682,38 @@ This reference is also generated from ``datasette/telemetry_registry.py``:
     - ``db.namespace`` - Name of the database being queried.
 
 ``datasette.sql.queries.interrupted``
-    Counter, unit ``{query}``. Queries cancelled for exceeding :ref:`setting_sql_time_limit_ms`. Worth alerting on: a rising rate means the limit is too tight or a table has outgrown its queries. A caller that opted into a deliberately shorter budget - facet suggestion, for example - is not counted, for the same reason its timeout is not a span error.
+    Counter, unit ``{query}``. Queries cancelled for exceeding :ref:`setting_sql_time_limit_ms`. A rising rate can indicate that queries need optimization or a higher time limit. Caller-selected timeouts shorter than this limit, such as those used for facet suggestion, are excluded.
 
     Attributes:
 
     - ``db.namespace`` - Name of the database being queried.
 
 ``datasette.sql.threads.limit``
-    Observable gauge, unit ``{thread}``. Maximum concurrent read queries - the :ref:`setting_num_sql_threads` value. Not reported when ``num_sql_threads`` is ``0``, since then queries run on the event loop and there is no pool.
+    Observable gauge, unit ``{thread}``. Maximum concurrent read queries, configured by :ref:`setting_num_sql_threads`. Not reported when ``num_sql_threads`` is ``0``.
 
     No attributes.
 
 ``datasette.sql.threads.queue_depth``
-    Observable gauge, unit ``{query}``. Read queries waiting for a free thread. **This is the saturation signal** - sustained above zero means requests are queueing on ``num_sql_threads``.
+    Observable gauge, unit ``{query}``. Read queries waiting for a free SQL thread. Sustained values above zero indicate a saturated read pool.
 
     No attributes.
 
 ``datasette.sql.queries.pending``
-    Observable gauge, unit ``{query}``. Read queries submitted to the pool and not yet complete. Summed across databases and compared against the thread limit, this is pool utilisation.
+    Observable gauge, unit ``{query}``. Read queries submitted to the pool and not yet complete. Sum across databases and compare with ``datasette.sql.threads.limit`` to assess pool usage.
 
     Attributes:
 
     - ``db.namespace`` - Name of the database being queried.
 
 ``datasette.write.queue_depth``
-    Observable gauge, unit ``{write}``. Writes queued behind a database's single write thread. Backpressure that raising ``num_sql_threads`` cannot relieve. Not reported for a database that has never been written to.
+    Observable gauge, unit ``{write}``. Writes waiting for a database's single write thread. Increasing ``num_sql_threads`` does not increase write concurrency. Not reported for databases that have never been written to.
 
     Attributes:
 
     - ``db.namespace`` - Name of the database being queried.
 
 ``datasette.connections.open``
-    Observable gauge, unit ``{connection}``. Open SQLite connections currently tracked for closing.
+    Observable gauge, unit ``{connection}``. Open SQLite connections managed by Datasette.
 
     Attributes:
 

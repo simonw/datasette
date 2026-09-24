@@ -2317,6 +2317,10 @@ ORDER BY allowed.parent, allowed.child
         from datasette.resources import TableResource
 
         other_table = fk["other_table"]
+        if not await db.table_exists(other_table):
+            # SQLite accepts a foreign key to a table that does not exist, and
+            # linking to it would only lead to a 404
+            return {}
         other_column = fk["other_column"]
         if other_column is None:
             other_pks = await db.primary_keys(other_table)

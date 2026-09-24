@@ -804,6 +804,38 @@ async def test_table_html_foreign_key_links(ds_client):
 
 
 @pytest.mark.asyncio
+async def test_table_html_foreign_key_to_missing_table_is_not_linked():
+    # https://github.com/simonw/datasette/issues/1515
+    ds = Datasette([])
+    db = ds.add_database(
+        Database(ds, memory_name="test_foreign_key_to_missing_table"), name="data"
+    )
+    await db.execute_write_script("""
+        create table authors (id integer primary key, name text);
+        create table books (
+            id integer primary key,
+            author_id integer references authors(id),
+            missing_id integer references missing_table(id)
+        );
+        insert into authors (id, name) values (1, 'Ada');
+        insert into books (id, author_id, missing_id) values (1, 1, 7);
+        """)
+    response = await ds.client.get("/data/books")
+    assert response.status_code == 200
+    table = Soup(response.text, "html.parser").find("table")
+    cells = {td["class"][0]: str(td) for td in table.select("tbody tr")[0].select("td")}
+    assert cells["col-author_id"] == (
+        '<td class="col-author_id type-int">'
+        '<a href="/data/authors/1">Ada</a> <em>1</em></td>'
+    )
+    assert cells["col-missing_id"] == '<td class="col-missing_id type-int">7</td>'
+    # The JSON labels are left alone as well
+    data = (await ds.client.get("/data/books.json?_labels=on")).json()
+    assert data["rows"][0]["missing_id"] == 7
+    assert data["rows"][0]["author_id"] == {"value": 1, "label": "Ada"}
+
+
+@pytest.mark.asyncio
 async def test_table_html_foreign_key_facets(ds_client):
     response = await ds_client.get(
         "/fixtures/foreign_key_references?_facet=foreign_key_with_blank_label"

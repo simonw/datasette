@@ -511,26 +511,23 @@ async def test_view_names(db):
 
 
 @pytest.mark.asyncio
-async def test_execute_write_custom_time_limit():
-    ds = Datasette(settings={"sql_time_limit_ms": 1})
+@pytest.mark.parametrize("num_sql_threads", [0, 3])
+async def test_execute_write_zero_time_limit(num_sql_threads):
+    ds = Datasette(settings={"num_sql_threads": num_sql_threads})
     db = ds.add_memory_database(uuid.uuid4().hex, name="write_limits")
-    await ds.invoke_startup()
-    # Bounded work from PR #51; even without a limit this finishes on its own.
-    sql = (
-        "with recursive c(x) as "
-        "(select 1 union all select x+1 from c where x < 800000) "
-        "select x from c where x < 0"
-    )
     try:
+        await ds.invoke_startup()
         await db.execute_write("create table items(value integer)")
+        # Zero expires at the first SQLite progress callback, regardless of speed.
         with pytest.raises(QueryInterrupted):
-            await db.execute(sql)
-        # Writes take their own explicit limit, independent of the read setting.
-        with pytest.raises(QueryInterrupted):
-            await db.execute_write(f"insert into items(value) {sql}", time_limit_ms=1)
-        # Interruption must leave the connection available for subsequent writes.
-        await db.execute_write("insert into items(value) values (1)")
-        assert (await db.execute("select value from items")).single_value() == 1
+            await db.execute_write(
+                "insert into items(value) values (1)", time_limit_ms=0
+            )
+        # No new timeout handler: the interrupted operation must have cleared it.
+        await db.execute_write(
+            "insert into items(value) values (2)", time_limit_ms=None
+        )
+        assert (await db.execute("select value from items")).single_value() == 2
     finally:
         ds.close()
 

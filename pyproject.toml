@@ -63,7 +63,7 @@ dev = [
     "pytest-xdist>=2.2.1",
     "pytest-asyncio>=1.2.0",
     "beautifulsoup4>=4.8.1",
-    "black==26.3.1",
+    "black==26.5.1",
     "blacken-docs==1.20.0",
     "pytest-timeout>=1.4.2",
     "trustme>=0.7",
@@ -72,7 +72,7 @@ dev = [
     "ruff>=0.16.0",
     # docs
     "Sphinx==7.4.7",
-    "furo==2025.9.25",
+    "furo==2025.12.19",
     "sphinx-autobuild",
     "codespell>=2.2.5",
     "sphinx-copybutton",

@@ -496,6 +496,7 @@ Clicking that button opens this dialog:
 .. only:: not latex
 
     .. image:: images/modal-example.webp
+       :width: 584px
        :alt: A dialog titled Example dialog, with the text "This dialog uses Datasette's shared styles and keyboard behavior." and a Close button in the footer, shown in front of a dimmed Datasette page
 
 Opening and closing
@@ -558,6 +559,7 @@ The classes in the example above provide built-in styling. This dialog uses ever
 .. only:: not latex
 
     .. image:: images/modal-classes.webp
+       :width: 584px
        :alt: A dialog titled Export rows with a "3 selected" badge in its header, a list of three plant names in the body, and a footer containing the text "CSV, UTF-8", a Cancel button and a blue Export button
 
 The following classes can be used by your modal:

@@ -59,7 +59,7 @@ export DATASETTE_SECRET := "not_a_secret"
 # Take any missing documentation screenshots defined in docs/shots.yml
 @shots:
   uv run --group shots shot-scraper install
-  cd docs && uv run --group shots shot-scraper multi shots.yml --no-clobber --reduced-motion
+  cd docs && uv run --group shots shot-scraper multi shots.yml --no-clobber --reduced-motion --retina
 
 # Apply Black
 @black:

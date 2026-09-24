@@ -56,6 +56,15 @@ export DATASETTE_SECRET := "not_a_secret"
 @docs-build: cog blacken-docs
   rm -rf docs/_build && cd docs && uv run make html
 
+# Build docs as an EPUB in docs/_build/epub
+@docs-epub: cog blacken-docs
+  cd docs && uv run make epub
+
+# Build docs as a PDF in docs/_build/latex, needs LaTeX and latexmk
+# Continues past LaTeX errors, like the Read the Docs PDF build
+@docs-pdf: cog blacken-docs
+  cd docs && uv run make latexpdf LATEXMKOPTS="-f" LATEXOPTS="-interaction=nonstopmode"
+
 # Take any missing documentation screenshots defined in docs/shots.yml
 @shots:
   uv run --group shots shot-scraper install

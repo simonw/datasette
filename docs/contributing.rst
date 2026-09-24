@@ -325,6 +325,13 @@ To take any screenshots that do not exist yet, run::
 
 ``just docs`` runs this too. Existing images are skipped. To replace a screenshot, delete its image file and run ``just shots`` again.
 
+The PDF and EPUB versions of the documentation cannot use WebP images, so ``docs/conf.py`` converts them to PNG during those builds. The PNG files are written to ``docs/_build/`` and should not be committed. To build those versions locally, run::
+
+    just docs-epub
+    just docs-pdf
+
+``just docs-pdf`` needs a LaTeX installation that includes ``latexmk``.
+
 .. _contributing_template_contexts:
 
 Documented template contexts

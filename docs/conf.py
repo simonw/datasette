@@ -17,6 +17,8 @@
 #
 import os
 
+from sphinx.transforms.post_transforms.images import ImageConverter
+
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
 
@@ -190,3 +192,33 @@ texinfo_documents = [
         "Miscellaneous",
     ),
 ]
+
+
+# -- WebP screenshots in PDF and EPUB output -------------------------------
+
+
+class WebPToPNGConverter(ImageConverter):
+    # Screenshots are WebP, which LaTeX and EPUB do not support. Convert them
+    # to PNG in the build directory for those builders; HTML keeps the WebP.
+    conversion_rules = [("image/webp", "image/png")]
+
+    def match(self, node):
+        return self.app.builder.name in ("latex", "epub") and super().match(node)
+
+    def is_available(self):
+        try:
+            from PIL import features
+        except ImportError:
+            return False
+        return features.check("webp")
+
+    def convert(self, _from, _to):
+        from PIL import Image
+
+        with Image.open(_from) as image:
+            image.save(_to, "PNG")
+        return True
+
+
+def setup(app):
+    app.add_post_transform(WebPToPNGConverter)

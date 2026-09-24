@@ -81,6 +81,7 @@ dev = [
     "sphinx-inline-tabs",
     "myst-parser",
     "sphinx-markdown-builder",
+    "Pillow",
     "ruamel.yaml",
     "psutil>=5.9",
 ]

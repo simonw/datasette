@@ -49,12 +49,17 @@ export DATASETTE_SECRET := "not_a_secret"
   uv run cog -r README.md docs/*.rst
 
 # Serve live docs on localhost:8000
-@docs: cog blacken-docs
+@docs: shots cog blacken-docs
   uv run make -C docs livehtml
 
 # Build docs as static HTML
 @docs-build: cog blacken-docs
   rm -rf docs/_build && cd docs && uv run make html
+
+# Take any missing documentation screenshots defined in docs/shots.yml
+@shots:
+  uv run --group shots shot-scraper install
+  cd docs && uv run --group shots shot-scraper multi shots.yml --no-clobber --reduced-motion --retina
 
 # Apply Black
 @black:

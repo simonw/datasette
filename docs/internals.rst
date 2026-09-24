@@ -2502,7 +2502,7 @@ OpenTelemetry
 
 Datasette uses the `opentelemetry-api <https://pypi.org/project/opentelemetry-api/>`__ library to provide `OpenTelemetry <https://opentelemetry.io>`__ traces and metrics for Datasette applications.
 
-Datasette emits telemetry under the `datasette` instrumentation scope. To enable tracing, run Datasette under the ``opentelemetry-instrument`` agent.
+Datasette emits telemetry under the ``datasette`` instrumentation scope. To enable tracing, run Datasette under the ``opentelemetry-instrument`` agent.
 
 Plugins can emit their own spans and metrics alongside these, using the same registry classes and test helpers core uses - see :ref:`plugin_telemetry`.
 

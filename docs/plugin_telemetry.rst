@@ -172,7 +172,7 @@ For a *level* - how many streams are open, how deep is a queue - register an obs
 Testing your instrumentation
 ----------------------------
 
-``datasette.telemetry_testing`` ships the same fixtures and checks core's own suite uses. In your ``conftest.py``:
+Use ``datasette.telemetry_testing`` to capture telemetry in your tests and check it against your registry. Add `opentelemetry-sdk <https://github.com/open-telemetry/opentelemetry-python/tree/main/opentelemetry-sdk>`__ to your test dependencies, then import these fixtures in ``conftest.py``:
 
 .. code-block:: python
 
@@ -184,9 +184,34 @@ Testing your instrumentation
         otel_spans,
     )
 
-``otel_provider`` and ``otel_meter_provider`` are session-scoped and autouse - they install a real SDK provider (in-memory, synchronous export) once per process, and do nothing when the SDK is not installed, so add ``opentelemetry-sdk`` to your test dependencies only. If a different provider was installed first (an embedding app, ``opentelemetry-instrument``), the fixtures detect that the install did not take and skip with a clear message rather than asserting against an exporter wired to nothing. ``otel_reset`` is autouse too: it drains the exporter and reader after every test, so a large suite does not accumulate recorded spans for its whole lifetime. Tests then take ``otel_spans`` (an ``InMemorySpanExporter``) or ``otel_metrics`` (a collector with ``collect()`` / ``point()`` helpers).
+``otel_provider`` and ``otel_meter_provider``
+    Automatically configure in-memory recording for spans and metrics once per test session.
 
-Wire your registry to reality with the conformance helpers - the two directions catch instrumentation added without documentation and documentation describing signals that no longer exist:
+``otel_reset``
+    Automatically clears recorded spans and drains collected metrics after every test.
+
+``otel_spans``
+    Provides an ``InMemorySpanExporter``. Call ``get_finished_spans()`` to retrieve spans recorded during the test.
+
+``otel_metrics``
+    Provides a metrics collector. Call ``collect()`` to capture a snapshot, then use ``point()`` or ``points()`` to inspect it.
+
+Tests requesting ``otel_spans`` or ``otel_metrics`` skip if the SDK is unavailable or another provider has already been installed.
+
+The assertion helpers check the recorded telemetry against your registry:
+
+``assert_spans_conform()``
+    Checks that emitted spans and attributes are registered, and attribute values match any declared ``values=`` enums.
+
+``assert_metrics_conform()``
+    Checks that emitted metrics and attributes are registered, attribute values match any declared enums, and instrument kinds and units match the registry.
+
+``assert_spans_covered()`` and ``assert_metrics_covered()``
+    Check that every registered span or metric and its required attributes appeared during the test. Attributes marked ``optional=True`` are excluded from this check; test those separately.
+
+Pass your plugin's instrumentation scope as ``scope_name`` to these helpers, since the fixtures also record Datasette's own telemetry.
+
+Run a workload that exercises your instrumentation, then call ``otel_metrics.collect()`` once before checking the metrics. Counters and histograms report measurements since the previous collection. Keep the Datasette instance open until collection so observable gauges can report its state:
 
 .. code-block:: python
 
@@ -201,6 +226,10 @@ Wire your registry to reality with the conformance helpers - the two directions 
     from my_plugin.telemetry import METRICS, SPANS
 
 
+    def test_api_only_dependency():
+        assert_package_never_imports_sdk("my_plugin")
+
+
     def test_conformance(otel_spans, otel_metrics):
         run_a_workload_that_exercises_everything()
         finished = otel_spans.get_finished_spans()
@@ -212,7 +241,7 @@ Wire your registry to reality with the conformance helpers - the two directions 
         assert_spans_covered(
             SPANS, finished, scope_name="my_plugin"
         )
-        # Same two directions for metrics - one collect() after the workload:
+        # Collect once, then check the metrics:
         otel_metrics.collect()
         assert_metrics_conform(
             METRICS, otel_metrics, scope_name="my_plugin"
@@ -221,15 +250,11 @@ Wire your registry to reality with the conformance helpers - the two directions 
             METRICS, otel_metrics, scope_name="my_plugin"
         )
 
+``assert_package_never_imports_sdk()`` checks that importing your plugin does not import the OpenTelemetry SDK. Run this test early in your suite; see the helper's docstring for a macOS threading limitation.
 
-    def test_api_only_dependency():
-        assert_package_never_imports_sdk("my_plugin")
+Use ``assert_no_forbidden_values()`` to check for private data in telemetry. Include fake email addresses, tokens or usernames in your test workload, then pass those values, the finished spans and the collected metrics to the helper. It checks span names, attributes, events, status descriptions and metric attributes.
 
-Always pass ``scope_name`` - the exporter and reader also hold core's signals, and your registry should only be judged against your own.
-
-The metric helpers check more than names: ``assert_metrics_conform`` asserts each instrument was created as the **kind** and **unit** its registry entry declares (the registry entry and the ``meter.create_*()`` call are separate statements, and a dashboard built on the registry's word breaks silently if they drift), and that every value on a ``values=`` enum attribute is a member - which is what makes a metric dimension *provably* bounded rather than bounded by intent. Both ``*_covered`` helpers exempt attributes marked ``optional=True`` (an ``error.type`` only present on failures should not force your workload to manufacture errors - pin those with targeted tests instead), and the metrics reader uses delta temporality, so run one broad workload followed by a single ``collect()``.
-
-Finally, enforce the privacy rules with ``assert_no_forbidden_values()``: plant sentinel values in your workload - a fake email your fixtures log in with, a token, a username - and assert they never appear in any span name, attribute, event, status description or metric attribute. Leave ``scope_name`` unset for this one: a secret leaking through *core's* signals (SQL text, say) is still a leak. Schedule the test that calls ``assert_package_never_imports_sdk()`` early in your suite - see its docstring for the macOS threading hazard.
+Leave ``scope_name`` unset for privacy checks so they include both your plugin's telemetry and Datasette's own.
 
 .. _plugin_telemetry_caveats:
 

@@ -835,17 +835,18 @@ async def test_table_html_foreign_key_links(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_table_html_foreign_key_to_missing_table_is_not_linked():
+@pytest.mark.parametrize("referenced_table", ("authors", "AuThOrS"))
+async def test_table_html_foreign_key_to_missing_table_is_not_linked(referenced_table):
     # https://github.com/simonw/datasette/issues/1515
     ds = Datasette([])
     db = ds.add_database(
         Database(ds, memory_name="test_foreign_key_to_missing_table"), name="data"
     )
-    await db.execute_write_script("""
+    await db.execute_write_script(f"""
         create table authors (id integer primary key, name text);
         create table books (
             id integer primary key,
-            author_id integer references authors(id),
+            author_id integer references {referenced_table}(id),
             missing_id integer references missing_table(id)
         );
         insert into authors (id, name) values (1, 'Ada');
@@ -857,7 +858,7 @@ async def test_table_html_foreign_key_to_missing_table_is_not_linked():
     cells = {td["class"][0]: str(td) for td in table.select("tbody tr")[0].select("td")}
     assert cells["col-author_id"] == (
         '<td class="col-author_id type-int">'
-        '<a href="/data/authors/1">Ada</a> <em>1</em></td>'
+        f'<a href="/data/{referenced_table}/1">Ada</a> <em>1</em></td>'
     )
     assert cells["col-missing_id"] == '<td class="col-missing_id type-int">7</td>'
     # The JSON labels are left alone as well

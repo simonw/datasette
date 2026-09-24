@@ -12,7 +12,7 @@ Depend on ``opentelemetry-api`` only. Providers and exporters are configured by 
 Use your own instrumentation scope
 ----------------------------------
 
-Never emit through core's tracer or meter. Your plugin's scope name is the machine-readable claim about *who emitted a signal*, and consumers filter on it:
+Create a tracer and meter using your plugin's own instrumentation scope:
 
 .. code-block:: python
 
@@ -23,25 +23,23 @@ Never emit through core's tracer or meter. Your plugin's scope name is the machi
     tracer = trace.get_tracer("my_plugin", __version__)
     meter = metrics.get_meter("my_plugin", __version__)
 
-If every attribute you emit follows current semantic conventions you can also pass ``schema_url=``; ``datasette.telemetry.SCHEMA_URL`` is the version core's own spellings track, with a comment explaining how to choose one. When in doubt, omit it - a wrong schema URL is worse than none.
+Use these naming rules:
 
-Two naming rules keep the ecosystem's signals tellable-apart:
+- **Scope**: use your plugin's import package name, such as ``my_plugin``. This lets users filter telemetry by plugin.
+- **Signal prefix**: prefix spans, metrics and custom attributes with your package name (``my_plugin.*``) or a product name (``paper.*``). The ``datasette.*`` prefix is reserved for core.
 
-- **Scope**: use your plugin's *import package* name - ``my_plugin``, underscores and all. Consumers filter on the scope, and one spelling convention means they can guess it.
-- **Signal prefix**: name spans, metrics and custom attributes under a prefix you own - your package name (``my_plugin.*``) or a short product name (``paper.*``). **Never a bare** ``datasette.*`` **prefix**: that namespace belongs to core, an operator could no longer tell core signals from plugin signals, and a future core signal could collide with yours.
+Reuse shared attribute names where they describe the same thing: ``db.namespace`` for a database name, or ``error.type`` for an exception class.
 
-Reuse core's shared attribute spellings where they mean the same thing - ``db.namespace`` for a database name, ``error.type`` for a failure class - rather than minting parallel ones. If a span family in your registry shares a prefix with another entry, exact names always win over prefix matches, but two overlapping ``prefix=True`` entries resolve to whichever is listed first - avoid overlapping families rather than relying on order.
+If you pass ``schema_url=`` when creating a tracer or meter, choose the semantic-convention version that matches your attributes. Datasette's version is available as ``datasette.telemetry.SCHEMA_URL``. Omit ``schema_url`` if you are unsure which version applies.
 
 .. _plugin_telemetry_registry:
 
 Declare a registry
 ------------------
 
-Core keeps a single source of truth for every signal it emits in ``datasette/telemetry_registry.py``, and the classes it uses are public API. They subclass ``str``, so a registry entry *is* the name you pass to OpenTelemetry - no parallel constants to keep in step:
+Use ``Attribute``, ``SpanName`` and ``MetricName`` from ``datasette.telemetry_registry`` to describe your plugin's telemetry. Registry entries are strings and can be passed directly to OpenTelemetry:
 
 .. code-block:: python
-
-    from opentelemetry.trace import SpanKind
 
     from datasette.telemetry_registry import (
         Attribute,
@@ -82,11 +80,18 @@ Core keeps a single source of truth for every signal it emits in ``datasette/tel
         buckets=(0.01, 0.1, 1, 10, 60, 600, 3600),
     )
 
-Three details that matter:
+    METRICS = (JOB_DURATION,)
 
-- ``values=`` declares a **closed enum**. The conformance helpers (below) assert every emitted value is a member, which is what makes an attribute safe to use as a metric dimension - a metric series is keyed by its attribute values, so an open value set on a metric is an unbounded-cardinality hazard.
-- ``prefix=True`` registers a span *family* whose emitted names share a fixed prefix; ``datasette.telemetry_registry.span_for()`` matches them by prefix, exact names first.
-- Declare explicit histogram ``buckets=`` scaled to *your* domain. Core's SQLite-scale boundaries are importable as ``datasette.telemetry_registry.DURATION_BUCKETS`` (0.0001s to 10s) - use them if you are timing SQLite work so dashboards align, and define your own otherwise (a job scheduler wants buckets out to an hour; the SDK's defaults will put all your measurements in one bucket either way).
+The example uses these optional arguments:
+
+``values`` - iterable
+    Allowed values for an ``Attribute``. The :ref:`conformance helpers <plugin_telemetry_testing>` check that emitted values belong to this set. Omit it to allow any value.
+
+``prefix`` - boolean
+    For ``SpanName``, match emitted names by prefix. Defaults to ``False``. Exact names take precedence over prefix matches. Avoid overlapping prefixes: the first matching entry in the registry wins.
+
+``buckets`` - iterable
+    Histogram boundaries for a ``MetricName``, expressed in the metric's unit. Pass these to ``meter.create_histogram()`` using ``explicit_bucket_boundaries_advisory=JOB_DURATION.buckets``. Choose boundaries suitable for the operations you measure. For SQLite timings, ``datasette.telemetry_registry.DURATION_BUCKETS`` provides boundaries from 0.0001 to 10 seconds.
 
 .. _plugin_telemetry_privacy:
 
@@ -134,13 +139,13 @@ Inside a view or ASGI middleware, ``datasette.telemetry.request_span(scope)`` re
 Background work: roots with links
 ---------------------------------
 
-A background job, a scheduled task or a queue consumer must **not** parent its spans to the request that caused it - by the time the work runs, that request span has usually ended, and a child outliving its closed parent renders badly in every major trace UI. The correct shape, the one core itself uses for ``execute_write(block=False)``, is a **root span carrying a link** to the causing span:
+For background work that can outlive a request, create a root span linked to the span that scheduled it. Call ``linked_root_span_kwargs()`` when scheduling the work, then pass the result when starting its span. If there is no valid span context to capture, the new span has no link:
 
 .. code-block:: python
 
     from datasette.telemetry import linked_root_span_kwargs
 
-    # Capture at scheduling time, while the causing span is current:
+    # Capture the current span when scheduling the work:
     kwargs = linked_root_span_kwargs()
 
     # Later, wherever the work actually runs:
@@ -149,23 +154,24 @@ A background job, a scheduled task or a queue consumer must **not** parent its s
     ) as span:
         span.set_attribute(OUTCOME, "ok")
 
-For a periodic loop (a health check, a scheduler tick), the convention is one root span **per tick**, always emitted - including no-op ticks, with an outcome attribute saying so - plus a tick counter metric. Suppressing quiet ticks seems tidy but destroys the signal operators actually want: "is the loop still running?". Pair the spans with a gauge for the loop's staleness if the interval is long.
+For periodic tasks, create a root span and increment a counter on each iteration, including iterations with no work. Record the result in an outcome attribute. A gauge reporting the time since the last iteration can help monitor tasks with long intervals.
 
-Two propagation facts worth knowing (details in ``datasette/telemetry.py``):
+``asyncio.create_task()`` inherits the current trace context. Use ``linked_root_span_kwargs()`` to start background work with its own root span and a link to that context.
 
-- Core's ``tracer`` and yours are proxies. A ``ProxyTracer`` permanently caches the first concrete tracer it resolves *after* a provider exists, so in embedded deployments the provider must be installed before the first span - importing the module is fine, starting spans is not. Meters forward retroactively; tracers do not.
-- ``asyncio.create_task`` copies the ambient context, so a long-running task created during a request will silently parent to that request's span - exactly the bug ``linked_root_span_kwargs()`` exists to avoid.
+Tracers and meters can be created at module scope. In embedded deployments, configure the application's providers before the work you want to record begins.
 
 .. _plugin_telemetry_gauges:
 
 Observable gauges
 -----------------
 
-For a *level* - how many streams are open, how deep is a queue - register an observable gauge whose callback the SDK invokes on its own collection cycle. Three disciplines, all inherited from how core implements its pool gauges in ``datasette/telemetry.py``:
+Use an observable gauge for current values such as the number of open streams or the length of a queue. The SDK calls its callback when collecting metrics:
 
-- Hold live objects **weakly** (a ``weakref.WeakSet`` guarded by a lock), so instrumenting an object never keeps it alive, and unregister on close.
-- The callback runs on the SDK's **collection thread**: never take a lock the request path holds, never await, never do I/O. Read cached state and yield ``Observation`` values; if freshness matters, refresh the cache from your own code and expose its staleness as another gauge.
-- With no provider installed the callback is **never invoked at all**, so gauges are free by default.
+- Track live objects using weak references, such as a ``weakref.WeakSet``, and unregister them when they close.
+- Callbacks may run on a different thread from request handlers. Protect shared state and avoid waiting on locks held by request handlers.
+- Read cached state and yield ``Observation`` values. Keep callbacks synchronous and free of I/O. Refresh cached values outside the callback; use a separate gauge to report their age if needed.
+
+Without a provider, gauge callbacks are not invoked.
 
 .. _plugin_telemetry_testing:
 

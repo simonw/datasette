@@ -1804,7 +1804,7 @@ Datasette guarantees a fixed sequence of events between the moment a ``Datasette
 
 .. admonition:: Startup hooks run on the event loop that serves requests
 
-   In every trigger path below, ``startup`` hooks run on the same ``asyncio`` event loop that goes on to accept connections. It is safe to create loop-bound primitives — ``asyncio.Lock``, ``asyncio.Queue``, ``asyncio.Event``, a raw ``asyncio.create_task()`` call — inside a ``startup`` hook, and to register long-lived background work with :ref:`datasette_add_background_task` there. This was not always true: older Datasette versions ran startup on a temporary event loop in the CLI that was closed before the server's own loop was created, which could silently kill anything scheduled on it.
+   In every trigger path below, ``startup`` hooks run on the same ``asyncio`` event loop that goes on to accept connections. It is safe to create loop-bound primitives — ``asyncio.Lock``, ``asyncio.Queue``, ``asyncio.Event``, a raw ``asyncio.create_task()`` call — inside a ``startup`` hook, and to register long-lived background work with :ref:`datasette_add_background_task` there.
 
 Three trigger paths
 -------------------
@@ -1847,11 +1847,11 @@ Registration is separate from launch. Calling this from a ``startup`` hook — t
             poll_for_updates, name="my-plugin-poller"
         )
 
-Core owns the task for the rest of the process's life:
+Datasette supervises each registered task:
 
-- **A strong reference is kept forever**, so the task can never be silently garbage collected the way an unreferenced ``asyncio.create_task()`` call can be.
-- **A crash is logged, not swallowed.** If the task's callable raises anything other than ``asyncio.CancelledError``, the exception (with its traceback) is logged to the ``datasette.background_tasks`` logger and recorded on the handle's ``.exception``, and the task's ``.state`` becomes ``crashed``.
-- **Cancellation is coordinated.** On shutdown, every task that is still running is cancelled and given a grace period to stop — see :ref:`datasette_lifecycle`.
+- Keeps the task alive.
+- Logs exceptions other than ``asyncio.CancelledError``, with their tracebacks, to the ``datasette.background_tasks`` logger. The exception is recorded on the handle's ``.exception``, and its ``.state`` becomes ``crashed``.
+- Cancels running tasks during shutdown and gives them five seconds to stop. See :ref:`datasette_lifecycle`.
 
 .. _internals_background_tasks_launch:
 

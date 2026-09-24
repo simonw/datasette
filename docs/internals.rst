@@ -2581,7 +2581,7 @@ A request to a table page produces a span named, in full::
 .. ]]]
 
 ``{http.request.method} {http.route}``
-    One span per HTTP request, containing spans from plugin middleware and database operations. Named for the HTTP method and matched route, or just the method if no route matches. Incoming ``traceparent`` and ``baggage`` headers are extracted using the global propagator to continue the caller's trace. Set ``OTEL_PROPAGATORS=none`` to disable extraction. For public instances, strip these headers at your proxy if callers should not supply trace context.
+    One span per HTTP request, containing spans from plugin middleware and database operations. Named for the HTTP method and matched route, or just the method if no route matches. Incoming ``traceparent`` headers are extracted using the global propagator to continue the caller's trace. Incoming ``baggage`` is not propagated into plugin or downstream context in this release. Set ``OTEL_PROPAGATORS=none`` to disable extraction. For public instances, strip trace context headers at your proxy if callers should not supply trace context.
 
     Kind: ``SERVER``.
 
@@ -2740,12 +2740,13 @@ An OpenTelemetry `exemplar <https://opentelemetry.io/docs/specs/otel/metrics/dat
 Privacy and safety
 ------------------
 
-Since telemetry may be exported to an externally hosted service, Datasette's rules are:
+Datasette does not configure a telemetry exporter itself. If you enable one, traces may contain sensitive information:
 
-- **SQL text is truncated to 2048 characters.**
-- **SQL parameter values are never recorded.** Only ``datasette.param_count``, a count of the number of parameters.
-- **No actor identifiers are recorded.** Nothing on a span identifies who made the request.
-- **The query string is never recorded.** There is no ``url.query`` attribute on the request span or on any other span.
+- **SQL text is truncated to 2048 characters.** Literal values in that text are retained. Bound SQL parameter values are not added as attributes; ``datasette.param_count`` records only their count.
+- **Request spans include URL paths, host names and User-Agent headers.** Paths can include identifying values such as row primary keys. Core does not add actor identifiers, cookies, authorization headers, client IP addresses or a ``url.query`` attribute.
+- **Exception messages and tracebacks may be recorded.** These can contain data from requests or database operations.
+
+Review what your application and plugins record before exporting telemetry to an external service. Restrict access to exported data and configure redaction or filtering where needed.
 
 .. _internals_csrf:
 

@@ -98,13 +98,13 @@ The example uses these optional arguments:
 Privacy and cardinality rules
 -----------------------------
 
-Core's instrumentation records **no data users put into Datasette and no identifier that ties a signal to a person** - no parameter values, no query strings, no actor identifiers, no IP addresses. Hold your plugin to the same bar:
+Core does not explicitly attach bound SQL parameter values, actor identifiers, cookies, authorization headers, client IP addresses or URL query strings as attributes. It does record SQL text, URL paths, host names, User-Agent headers and exception details, which may contain sensitive information. See :ref:`internals_telemetry_privacy`.
 
-- Attribute values should be closed enums, booleans, counts and durations. Anything echoed from user input - a name, a URL, a token, free text - does not belong on a span, and *especially* not on a metric.
-- If you time user-influenced SQL, follow core: record the SQL via ``datasette.telemetry.sql_attribute()`` (truncated, never parameters) on spans only.
-- When a value is interesting but unbounded, record a bounded proxy instead: a count, a byte size, a truncation flag, or the enum outcome.
+- Prefer closed enums, booleans, counts and durations for attribute values. Avoid recording personal information, tokens or other secrets.
+- If you record SQL, use ``datasette.telemetry.sql_attribute()`` on spans only. It truncates SQL text but does not redact literal values. Do not add bound parameter values.
+- Keep metric dimensions bounded. For user input or other unbounded values, record a count, a byte size, a truncation flag or an enum outcome instead.
 
-These rules are enforceable: see ``assert_no_forbidden_values()`` in :ref:`plugin_telemetry_testing`.
+Use ``assert_no_forbidden_values()`` in :ref:`plugin_telemetry_testing` to check for specific sensitive values in captured telemetry. This helper does not automatically identify all sensitive information.
 
 .. _plugin_telemetry_callbacks:
 

@@ -302,11 +302,12 @@ HTTP_REQUEST = SpanName(
     "{http.request.method} {http.route}",
     "One span per HTTP request, containing spans from plugin middleware and "
     "database operations. Named for the HTTP method and matched route, or "
-    "just the method if no route matches. Incoming ``traceparent`` and "
-    "``baggage`` headers are extracted using the global propagator to "
-    "continue the caller's trace. Set ``OTEL_PROPAGATORS=none`` to disable "
-    "extraction. For public instances, strip these headers at your proxy "
-    "if callers should not supply trace context.",
+    "just the method if no route matches. Incoming ``traceparent`` headers "
+    "are extracted using the global propagator to continue the caller's "
+    "trace. Incoming ``baggage`` is not propagated into plugin or downstream "
+    "context in this release. Set ``OTEL_PROPAGATORS=none`` to disable "
+    "extraction. For public instances, strip trace context headers at your "
+    "proxy if callers should not supply trace context.",
     (
         HTTP_REQUEST_METHOD,
         HTTP_ROUTE,

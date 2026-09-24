@@ -323,7 +323,7 @@ To take any screenshots that do not exist yet, run::
 
     just shots
 
-Existing images are skipped. To replace a screenshot, delete its image file and run ``just shots`` again.
+``just docs`` runs this too. Existing images are skipped. To replace a screenshot, delete its image file and run ``just shots`` again.
 
 .. _contributing_template_contexts:
 

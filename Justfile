@@ -49,7 +49,7 @@ export DATASETTE_SECRET := "not_a_secret"
   uv run cog -r README.md docs/*.rst
 
 # Serve live docs on localhost:8000
-@docs: cog blacken-docs
+@docs: shots cog blacken-docs
   uv run make -C docs livehtml
 
 # Build docs as static HTML

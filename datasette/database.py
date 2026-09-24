@@ -310,9 +310,6 @@ class Database:
                     raise QueryInterrupted(e, sql, params)
                 raise
 
-        # SIM117 wants these two context managers merged. They are kept nested
-        # deliberately: the hand-rolled tracer's wrapper is on its way out, and
-        # nesting makes removing it a single-line deletion.
         with trace(  # noqa: SIM117
             "sql", database=self.name, sql=sql.strip(), params=params
         ):
@@ -337,14 +334,10 @@ class Database:
         def _inner(conn):
             return conn.executescript(sql)
 
-        # Nested on purpose - see the note in execute_write().
         with trace(  # noqa: SIM117
             "sql", database=self.name, sql=sql.strip(), executescript=True
         ):
-            # No db.operation.name here, deliberately: executescript() runs
-            # several semicolon-separated statements, and semantic conventions
-            # say the attribute should not be extracted from query text that
-            # can hold more than one operation - see sql_operation_name().
+            # No db.operation.name, since the script can contain multiple statements
             with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
                 span.set_attribute(DB_SYSTEM, "sqlite")
                 span.set_attribute(DB_NAMESPACE, self.name)
@@ -370,7 +363,6 @@ class Database:
 
             return conn.executemany(sql, count_params(params_seq)), count
 
-        # Nested on purpose - see the note in execute_write().
         with trace(
             "sql", database=self.name, sql=sql.strip(), executemany=True
         ) as kwargs:
@@ -379,8 +371,6 @@ class Database:
                 span.set_attribute(DB_NAMESPACE, self.name)
                 span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
                 span.set_attribute(EXECUTEMANY, True)
-                # A single statement run with many parameter sets, so unlike
-                # execute_write_script() there is exactly one operation to name.
                 operation_name = sql_operation_name(sql)
                 if operation_name:
                     span.set_attribute(DB_OPERATION_NAME, operation_name)
@@ -388,8 +378,6 @@ class Database:
                     results, count = await self._execute_write_fn(
                         _inner, block=block, request=request
                     )
-                # count is the number of parameter *sets* consumed by
-                # executemany(), not a row count - executemany returns no rows.
                 span.set_attribute(PARAM_SETS, count)
             kwargs["count"] = count
         return results
@@ -412,17 +400,11 @@ class Database:
                     # May already have been cleared by close().
                     pass
 
-        # One db.query span here, like execute_fn() / execute_write_fn().
-        # The wrap must NOT move into _send_to_write_thread(): that is the
-        # shared tail for every write, and for block=False it is where the
-        # link back to this span is captured - a span opened there would be
-        # the link target for its own children.
         with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
             span.set_attribute(DB_SYSTEM, "sqlite")
             span.set_attribute(DB_NAMESPACE, self.name)
             span.set_attribute(CALLBACK, callback_name(fn))
-            # "write" when mutable because the call blocks the write queue;
-            # "read" when immutable, where it runs on the read pool.
+            # Immutable databases run this on the read pool, not the write queue
             with record_operation_duration(self.name, "write" if write else "read"):
                 if self.ds.executor is None:
                     # non-threaded mode
@@ -430,10 +412,7 @@ class Database:
                 if not write:
                     # Immutable database - no writes can ever occur, so there
                     # is no write queue to block; run against a fresh
-                    # read-only connection. copy_context() carries the
-                    # caller's otel context onto the worker thread - see the
-                    # notes in _execute_fn() for why it must be a fresh copy
-                    # per submit and why carrying every ContextVar is safe.
+                    # read-only connection
                     ctx = contextvars.copy_context()
                     return await asyncio.get_running_loop().run_in_executor(
                         self.ds.executor, ctx.run, _run
@@ -450,20 +429,13 @@ class Database:
         return await self.execute_isolated_fn(_analyze_sql)
 
     async def execute_write_fn(self, fn, block=True, transaction=True, request=None):
-        """Run `fn(conn)` on the write connection, traced as one database call.
+        """Run `fn(conn)` on the write connection, traced as a `db.query` span.
 
-        The public entry point for callback-style writes. Instrumented like
-        `execute_write()`: one `db.query` span (with `datasette.callback` in
-        place of `db.query.text`) above the `db.write.queue_wait` and
-        `db.write.execute` spans the write thread emits. The SQL-string write
-        methods call `_execute_write_fn()` directly, so they never get a
-        second span. For `block=False` this span ends at enqueue and the
-        write-thread spans become roots carrying a link back to it, exactly
-        as for `execute_write(block=False)`.
+        The SQL-string write methods call `_execute_write_fn()` directly to
+        avoid creating a second span.
         """
         self._check_not_closed()
-        # The raw fn's name, before _wrap_fn_with_hooks() replaces it with a
-        # wrapper - otherwise every write would report the wrapper's name.
+        # Record the name before _wrap_fn_with_hooks() wraps fn
         name = callback_name(fn)
         with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
             span.set_attribute(DB_SYSTEM, "sqlite")
@@ -576,9 +548,7 @@ class Database:
         task_id = uuid.uuid4()
         loop = asyncio.get_running_loop()
         reply_future = loop.create_future()
-        # The otel Context and enqueue timestamp are captured here, on the
-        # event loop, for the db.write.queue_wait span built at dequeue time.
-        # `block` travels too - it decides parent vs. link; see `_execute_writes`.
+        # Capture the OpenTelemetry context and enqueue time for the write thread
         self._write_queue.put(
             WriteTask(
                 fn,
@@ -604,16 +574,8 @@ class Database:
         conn = None
         try:
             conn = self.connect(write=True)
-            # This warm-up runs before any write has ever been queued, so
-            # there is no captured caller context to attach - and a raw
-            # threading.Thread does not inherit the context of whoever started
-            # it. Spans created by plugin hooks here are therefore roots even
-            # when the write thread is started from inside invoke_startup():
-            # its datasette.startup span is current on the event loop but does
-            # not cross this thread boundary. Read connections differ - they
-            # warm up inside executor tasks submitted with copy_context(), so
-            # their prepare_connection spans do nest under whoever triggered
-            # them.
+            # Threads do not inherit the caller's context, so any spans
+            # created by prepare_connection hooks here are root spans
             self.ds._prepare_connection(conn, self.name)
         except Exception as e:  # noqa: BLE001
             # Stored and re-raised to whoever queues the next write
@@ -628,26 +590,11 @@ class Database:
                         # Best-effort close as the write thread exits
                         pass
                 return
-            # `task.block` decides how this task's spans relate to the
-            # context captured at enqueue time:
-            #
-            # - block=True: the caller genuinely awaits the reply, so
-            #   containment is accurate. Restore that context as current
-            #   (attach below) so db.write.queue_wait/db.write.execute parent
-            #   normally to the request that queued them. The token must be
-            #   detached below in `finally` - a leaked token silently
-            #   poisons this thread's ambient context for every write
-            #   processed after it, and a *wrong*-token detach only logs a
-            #   warning rather than raising, so this pairing is load-bearing
-            #   and easy to get wrong silently.
-            # - block=False: the caller returned already without awaiting,
-            #   so the enqueueing span may have closed before this task's
-            #   spans even start. The enqueueing request *caused* this write
-            #   without *containing* it, so nothing is attached here -
-            #   linked_root_span_kwargs() makes each write span a root with
-            #   a Link back to the enqueueing span (see its docstring for
-            #   the full rationale), built once into `write_span_kwargs`
-            #   and spread into every start_span call below.
+            # block=True: the caller awaits the result, so the write spans
+            # are children of the caller's span. The token must be detached
+            # in the finally block or the context leaks into later writes.
+            # block=False: the caller may finish first, so the write spans
+            # are root spans with a link back to the caller's span.
             token = None
             write_span_kwargs = {}
             if task.block:
@@ -657,10 +604,7 @@ class Database:
             try:
                 exception = None
                 result = None
-                # Explicit start_time/end_time rather than a `with` block:
-                # this span's duration is the time the task actually spent
-                # waiting in the queue (enqueue -> dequeue), not the near-
-                # zero time spent constructing/ending the span object here.
+                # Span covers the time from enqueue to dequeue
                 dequeued_at_ns = time.time_ns()
                 tracer.start_span(
                     DB_WRITE_QUEUE_WAIT,
@@ -669,8 +613,6 @@ class Database:
                 ).end(end_time=dequeued_at_ns)
                 record_write_queue_wait(self.name, dequeued_at_ns - task.enqueued_at_ns)
                 if conn_exception is not None:
-                    # fn never runs in this branch, so there is nothing to
-                    # wrap in a db.write.execute span.
                     exception = conn_exception
                 elif task.isolated_connection:
                     try:
@@ -723,22 +665,15 @@ class Database:
                     otel_context_api.detach(token)
 
     async def execute_fn(self, fn):
-        """Run `fn(conn)` on a read connection, traced as one database call.
+        """Run `fn(conn)` on a read connection, traced as a `db.query` span.
 
-        The public entry point for callback-style reads - plugins and core
-        both use it to run arbitrary Python against a connection. It is
-        instrumented exactly like `execute()`: one `db.query` span (with
-        `datasette.callback` in place of `db.query.text`, since there is no
-        SQL string to record) and a `db.query.execute` child covering the
-        time actually spent on the worker thread. `execute()` itself calls
-        `_execute_fn()` directly, so a SQL read never gets a second span.
+        `execute()` calls `_execute_fn()` directly to avoid creating a second
+        span.
         """
         self._check_not_closed()
 
         def fn_in_execute_span(conn):
-            # Created on the worker thread; parents to the db.query span via
-            # the copy_context() propagation in _execute_fn(). The gap
-            # between the two spans is time spent waiting for a free thread.
+            # Runs on the worker thread
             with tracer.start_as_current_span(DB_QUERY_EXECUTE):
                 return fn(conn)
 
@@ -746,9 +681,6 @@ class Database:
             span.set_attribute(DB_SYSTEM, "sqlite")
             span.set_attribute(DB_NAMESPACE, self.name)
             span.set_attribute(CALLBACK, callback_name(fn))
-            # Default exception handling applies, unlike execute(): there is
-            # no log_sql_errors=False probing caller and no expected-timeout
-            # budget on this path, so a raised exception is an error.
             with record_operation_duration(self.name, "read"):
                 return await self._execute_fn(fn_in_execute_span)
 
@@ -772,27 +704,9 @@ class Database:
 
         with self._pending_execute_futures_lock:
             self._check_not_closed()
-            # A fresh copy_context() is required per submit (not one shared
-            # copy reused across calls): concurrent execution of the same
-            # Context raises "RuntimeError: cannot enter context ...
-            # already entered". This propagates the caller's otel context
-            # (e.g. the enclosing db.query span) onto the worker thread.
-            #
-            # copy_context() is not selective: it also carries Datasette's own
-            # ContextVars - _skip_permission_checks and _permission_check_cache
-            # (datasette/permissions.py), _in_datasette_client (app.py) and,
-            # until the hand-rolled tracer goes, trace_task_id (tracer.py) -
-            # into worker threads, where they previously took their defaults.
-            # That is safe, for two reasons. Nothing reads them on a worker
-            # thread: the permission code that reads the first two is async and
-            # only ever runs on the event loop. And Context.run() restores the
-            # thread's previous context when the callable returns, so a value
-            # cannot outlive the submit that carried it and reach the next task
-            # on this shared pool - "skip permission checks" in particular can
-            # never bleed from one request into another's query. Where a value
-            # would be read - a plugin calling datasette.in_client() or trace()
-            # from inside an execute_fn callable - seeing the submitting
-            # request's value is the more accurate answer, not a leak.
+            # Run in a copy of the caller's context so spans created in the
+            # thread have the correct parent. This needs a fresh copy for
+            # each submit, since a Context cannot be entered concurrently.
             ctx = contextvars.copy_context()
             future = self.ds.executor.submit(ctx.run, in_thread)
             self._pending_execute_futures.add(future)
@@ -812,37 +726,15 @@ class Database:
         self._check_not_closed()
         page_size = page_size or self.ds.page_size
         time_limit_ms = self.ds.sql_time_limit_ms
-        # A caller that hands in a budget shorter than the instance-wide
-        # sql_time_limit_ms is saying "this may not finish, and that is an
-        # answer I can use" - and every such caller in core does treat the
-        # timeout as normal: table_counts() stores None per table, facet
-        # suggestion moves on to the next column, autocomplete falls back to a
-        # prefix query. Those timeouts are therefore not span errors. Without
-        # this, the homepage alone emits one red span per table (it counts
-        # every table under a 10ms budget) on every single hit.
-        #
-        # A query that runs out the instance-wide limit is a different event -
-        # nobody asked for a short budget, so it stays an error.
+        # Callers that pass a shorter custom_time_limit, such as table counts
+        # and facet suggestions, expect timeouts, so they are not span errors
         timeout_expected = bool(custom_time_limit) and custom_time_limit < time_limit_ms
         if timeout_expected:
             time_limit_ms = custom_time_limit
 
         def sql_operation_in_thread(conn):
-            # This span is created inside the worker thread. Its parent is
-            # resolved from the ambient otel context, which was propagated
-            # onto this thread via copy_context() at the executor.submit()
-            # boundary in _execute_fn() (or run_in_executor() for immutable
-            # databases) - so it parents correctly to the enclosing
-            # db.query span despite running on a different thread.
-            #
-            # Exception handling is explicit rather than left to the context
-            # manager's flags, which apply to every exception type alike. This
-            # span needs to tell two apart: an expected timeout is never an
-            # error, while a genuine SQL failure is one unless the caller
-            # passed log_sql_errors=False, meaning it was probing and treats
-            # failure as an expected answer. Without the latter, facet
-            # suggestion marks two spans per text column as failed on every
-            # table page; without the former, so does every homepage hit.
+            # Expected timeouts and errors with log_sql_errors=False are not
+            # recorded as span errors, so exceptions are handled explicitly
             with tracer.start_as_current_span(
                 DB_QUERY_EXECUTE,
                 record_exception=False,
@@ -889,15 +781,9 @@ class Database:
                 else:
                     return Results(rows, False, cursor.description)
 
-        # SIM117 wants these two context managers merged. They are kept nested
-        # deliberately: the hand-rolled tracer's wrapper is on its way out, and
-        # nesting makes removing it a single-line deletion.
         with trace(  # noqa: SIM117
             "sql", database=self.name, sql=sql.strip(), params=params
         ):
-            # Exception handling is explicit rather than left to the context
-            # manager's defaults, so that callers passing log_sql_errors=False
-            # can be honoured - see the comment on the generic handler below.
             with tracer.start_as_current_span(
                 DB_QUERY,
                 kind=DB_QUERY.kind,
@@ -917,26 +803,15 @@ class Database:
                     with record_operation_duration(self.name, "read"):
                         results = await self._execute_fn(sql_operation_in_thread)
                 except QueryInterrupted as e:
-                    # datasette.interrupted is set either way - it is the
-                    # signal worth having. Only the ERROR status is
-                    # conditional; see the timeout_expected comment above.
                     span.set_attribute(INTERRUPTED, True)
                     if not timeout_expected:
                         span.set_status(Status(StatusCode.ERROR, str(e)))
                         span.record_exception(e)
-                        # Expected timeouts (a caller that opted into a shorter
-                        # budget, like facet suggestion) are not counted - see
-                        # the M_QUERIES_INTERRUPTED registry entry for why.
                         record_query_interrupted(self.name)
                     raise
                 except Exception as e:
-                    # log_sql_errors=False means the caller is probing and
-                    # treats failure as an expected answer, not an error.
-                    # Facet suggestion is the big one: it runs json_type()
-                    # against every column precisely to find out which ones
-                    # raise, so a table with N text columns would otherwise
-                    # mark N queries per page as failed - burying real errors
-                    # and setting off any alerting based on span status.
+                    # log_sql_errors=False callers, such as facet suggestion,
+                    # expect some queries to fail
                     if log_sql_errors:
                         span.record_exception(e)
                         span.set_status(Status(StatusCode.ERROR, str(e)))
@@ -1035,10 +910,8 @@ class Database:
         )
         return [r[0] for r in results.rows]
 
-    # These callbacks are named functions rather than lambdas so that their
-    # db.query spans carry a greppable datasette.callback - exactly the
-    # guidance the plugin telemetry docs give, applied to core's own
-    # highest-frequency introspection calls.
+    # Named functions rather than lambdas give more useful datasette.callback
+    # span attributes
 
     async def table_columns(self, table):
         def _table_columns(conn):
@@ -1291,11 +1164,6 @@ class WriteTask:
         self.transaction = transaction
         self.otel_context = otel_context
         self.enqueued_at_ns = enqueued_at_ns
-        # Whether the enqueueing caller awaits the reply future. Decides how
-        # `_execute_writes` relates this task's spans to `otel_context`:
-        # parent (block=True) or span-link target (block=False). See the
-        # comment at the WriteTask construction site in
-        # `_send_to_write_thread`.
         self.block = block
 
 

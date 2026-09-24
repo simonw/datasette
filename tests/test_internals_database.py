@@ -1329,27 +1329,11 @@ async def test_write_thread_context_is_detached_between_tasks(
     tmp_path, monkeypatch, num_sql_threads
 ):
     """
-    The write thread attaches each task's otel Context and must detach it
-    again before picking up the next task. The thread is persistent and
-    shared, so a leaked token would grow that thread's context stack for the
-    rest of the process - and a *wrong*-token detach only logs a warning
-    rather than raising, so "does it throw" cannot catch either mistake.
+    The write thread attaches each task's OpenTelemetry context and detaches
+    it before the next task, including when the task raises an exception.
 
-    Two things are asserted, because neither alone is sufficient:
-
-    1. Each task observes the context value that was current on the event
-       loop when it was queued. This is what fails if the Context is not
-       carried on WriteTask, or is never attached. It does *not* catch a
-       missing detach: attach() replaces the current Context wholesale, so a
-       leftover one from a previous task is simply overwritten.
-    2. The write thread's attach depth is identical at the same point in
-       every task. This is what fails if detach is missing - the stack grows
-       by one per task - and it holds across a task that raises, because the
-       detach lives in a `finally`.
-
-    An otel context value is used rather than a plain contextvars.ContextVar:
-    a plain var set on the event loop never crosses into the write thread, so
-    the probe would read None every time and the test could not fail.
+    Checks that each task sees the context from when it was queued, and that
+    the write thread's attach depth does not grow between tasks.
     """
     name = f"context_leak_test_{num_sql_threads}"
     db_path = tmp_path / f"{name}.db"
@@ -1374,8 +1358,7 @@ async def test_write_thread_context_is_detached_between_tasks(
         if threading.current_thread().name == write_thread_name:
             depth["value"] -= 1
 
-    # Patched on the opentelemetry.context module itself, which is what both
-    # database.py and opentelemetry.trace.use_span() look the functions up on.
+    # database.py and opentelemetry.trace both call these via the module
     monkeypatch.setattr(otel_context_api, "attach", counting_attach)
     monkeypatch.setattr(otel_context_api, "detach", counting_detach)
 
@@ -1388,8 +1371,6 @@ async def test_write_thread_context_is_detached_between_tasks(
 
     def failing_probe(conn):
         probe(conn)
-        # Exercises the write thread's exception path: the detach still has
-        # to happen, which is why it lives in a `finally`.
         raise ValueError("deliberate failure inside a write task")
 
     try:
@@ -1405,9 +1386,7 @@ async def test_write_thread_context_is_detached_between_tasks(
             finally:
                 real_detach(token)
 
-        # Sanity check: no marker is active in *this* (event loop) context
-        # right now, so the final probe is a fair test of the write thread's
-        # own state rather than something this test forgot to clean up.
+        # No marker is set here, so the final probe should see None
         assert otel_context_api.get_value(_CONTEXT_LEAK_MARKER_KEY) is None
         await db.execute_write_fn(probe)
     finally:

@@ -1,23 +1,6 @@
 """
-The HTTP request span.
-
-`tests/test_telemetry_registry.py` already pins the span's name shape, kind
-and attribute keys against literals, so this file deliberately does not
-repeat that. What it covers is the properties of the middleware and of the
-router's `http.route` enrichment that the registry conformance test
-structurally cannot see:
-
-- **where the middleware sits.** Outermost is the entire point - moving it
-  inside the plugin `asgi_wrapper()` loop leaves plugin middleware creating
-  orphan root traces, which is the problem this span exists to fix, and every
-  attribute assertion still passes.
-- **which span the route lands on**, which only diverges once something else
-  has made a span current.
-- **method clamping**, which a workload of ordinary GETs can never exercise.
-- **the query string never being recorded**, which only fails if a request
-  actually carries one.
-- **the span outliving a streamed response body**, which only a paging export
-  can distinguish from ending far too early.
+Tests for the HTTP request span created by TelemetryMiddleware and the
+`http.route` enrichment added by the router.
 """
 
 import asyncio
@@ -51,9 +34,8 @@ from datasette.telemetry import (
 )
 from datasette.utils import resolve_routes
 
-# Named in-memory databases are shared-cache: two Datasette instances given
-# the same name share one SQLite database and the second `create table`
-# fails.
+# Named in-memory databases are shared between instances, so each fixture
+# needs a unique name.
 _names = itertools.count()
 
 
@@ -61,7 +43,7 @@ PLUGIN_MIDDLEWARE_SPAN = "test.plugin.middleware"
 
 
 class _MiddlewarePlugin:
-    "A plugin asgi_wrapper() that creates a span, standing in for a real one."
+    "A plugin asgi_wrapper() that creates a span."
 
     __name__ = "HttpSpanMiddlewarePlugin"
 
@@ -79,11 +61,8 @@ class _MiddlewarePlugin:
 
 class _RaisingMiddlewarePlugin:
     """
-    A plugin asgi_wrapper() that raises.
-
-    `route_path` converts almost every exception into a 500 itself, so an
-    exception escaping into the request span is only reachable from *outside*
-    the router - a plugin wrapper, or a failure inside the 500 handler.
+    A plugin asgi_wrapper() that raises. `route_path` turns most exceptions
+    into a 500, so this is how an exception reaches the request span.
     """
 
     __name__ = "HttpSpanRaisingMiddlewarePlugin"
@@ -135,18 +114,12 @@ async def ds():
 @pytest_asyncio.fixture
 async def ds_paging():
     """
-    An instance whose table is bigger than `max_returned_rows`.
-
-    That is what makes `?_stream=1` genuinely page: `stream_csv` loops calling
-    `fetch_data` for each page *inside* the response body send, so the trace
-    contains `db.query` spans that start after the response has begun. On a
-    table that fits in one page every query finishes before the body starts
-    and the span-covers-the-body assertion cannot fail.
+    An instance whose table is bigger than `max_returned_rows`, so a
+    `?_stream=1` export runs queries for later pages during the body send.
     """
     name = f"httpspanpaging{next(_names)}"
-    # Both settings matter. `?_stream=1` forces `_size=max`, which is
-    # `max_returned_rows` - so lowering only that gives one page of five rows
-    # and no `next` token, and the export never loops.
+    # Both settings are needed: lowering only max_returned_rows gives a
+    # single page with no `next` token.
     instance = Datasette(
         memory=True, settings={"max_returned_rows": 5, "default_page_size": 3}
     )
@@ -182,13 +155,8 @@ async def test_plugin_asgi_wrapper_middleware_runs_inside_the_request_span(
     ds, otel_spans
 ):
     """
-    The placement check.
-
-    A span created by a plugin `asgi_wrapper()` must be a *child* of the
-    request span. If the middleware is mounted anywhere inside the plugin
-    loop the two swap places - the plugin's span becomes the root and the
-    request span its child - which is exactly the orphaning this is meant to
-    prevent, and which no attribute assertion notices.
+    Spans created by plugin asgi_wrapper() middleware are children of the
+    request span.
     """
     ds.pm.register(_MiddlewarePlugin(), name="httpspan-middleware")
     try:
@@ -210,7 +178,7 @@ async def test_plugin_asgi_wrapper_middleware_runs_inside_the_request_span(
     assert plugin_spans[0].parent.span_id == server_span.context.span_id
     assert plugin_spans[0].context.trace_id == server_span.context.trace_id
 
-    # And the database work is in the same trace, not off on its own.
+    # Database spans are in the same trace.
     queries = [span for span in spans if span.name == "db.query"]
     assert queries, "a table page should have issued at least one query"
     for query in queries:
@@ -220,15 +188,8 @@ async def test_plugin_asgi_wrapper_middleware_runs_inside_the_request_span(
 @pytest.mark.asyncio
 async def test_unrecognised_method_is_clamped(ds, otel_spans):
     """
-    Anyone can send `FROB / HTTP/1.1`. An unclamped method is an unbounded
-    dimension a client controls, so semantic conventions map anything off the
-    known list to `_OTHER`.
-
-    The span name is checked too, and it is the reason the router clamps the
-    method a second time when it renames the span: the middleware's clamping
-    protects the attribute, but the name is rebuilt from `request.method` in
-    `route_path`, which is the raw client string. An unclamped rename would
-    put attacker-supplied text straight back into the span name.
+    Unknown methods are recorded as `_OTHER` in both the attribute and the
+    span name, which the router rebuilds from the raw `request.method`.
     """
     otel_spans.clear()
     await ds.client.request("FROB", f"/{ds.db_name}/t")
@@ -240,7 +201,7 @@ async def test_unrecognised_method_is_clamped(ds, otel_spans):
 
 @pytest.mark.asyncio
 async def test_known_method_is_not_clamped(ds, otel_spans):
-    "The other half of clamping: a real method must survive it verbatim."
+    "Known methods are recorded unchanged."
     otel_spans.clear()
     await ds.client.get(f"/{ds.db_name}/t")
     server = _server_spans(otel_spans)
@@ -251,12 +212,7 @@ async def test_known_method_is_not_clamped(ds, otel_spans):
 
 @pytest.mark.asyncio
 async def test_the_query_string_is_never_recorded(ds, otel_spans):
-    """
-    Datasette puts user-supplied SQL in `?sql=` and canned query parameters in
-    the query string, so no span may carry it. Asserting on the absence of a
-    `url.query` key alone would not catch it arriving under some other name,
-    so this searches every attribute value of every span for the marker.
-    """
+    "No attribute on any span contains the query string."
     marker = "canary-9f2b1c"
     otel_spans.clear()
     await ds.client.get(f"/{ds.db_name}/t?_facet=v&_nosuch={marker}")
@@ -283,9 +239,8 @@ async def test_url_path_is_recorded_without_the_query_string(ds, otel_spans):
 @pytest.mark.asyncio
 async def test_escaping_exception_sets_error_type_and_reraises(ds, otel_spans):
     """
-    An exception that gets past `route_path` must be recorded, not swallowed.
-
-    No response ever started, so there is no status code to record either.
+    An exception that escapes `route_path` is recorded and re-raised. No
+    response started, so no status code is recorded.
     """
     ds.pm.register(
         _RaisingMiddlewarePlugin(call_app_first=False), name="httpspan-raiser"
@@ -308,11 +263,8 @@ async def test_an_escaping_exception_beats_the_status_code_for_error_type(
     ds, otel_spans
 ):
     """
-    Both paths can fire on one request: a 500 response is sent and *then*
-    something raises on the way out. The `finally` block runs while the
-    exception is propagating, so without the guard it would overwrite the
-    exception's class name with the string "500" - strictly less information
-    about what actually went wrong.
+    A 500 response followed by an exception records the exception class as
+    `error.type`, not "500".
     """
     ds.pm.register(_BoomPlugin(), name="httpspan-boom")
     ds.pm.register(
@@ -327,24 +279,16 @@ async def test_an_escaping_exception_beats_the_status_code_for_error_type(
         ds.pm.unregister(name="httpspan-boom")
     server = _server_spans(otel_spans)
     assert len(server) == 1
-    # The 500 really was sent, so the status is still recorded ...
     assert server[0].attributes["http.response.status_code"] == 500
-    # ... but error.type names the exception, not the status.
     assert server[0].attributes["error.type"] == "RuntimeError"
 
 
 @pytest.mark.asyncio
 async def test_a_404_is_not_an_error(ds, otel_spans):
     """
-    Per semantic conventions a 4xx is the client's mistake, not the server's,
-    so a SERVER span must record the status and leave both its own status and
-    `error.type` alone. Datasette 404s are routine - every missing table, and
-    every bot probing for /wp-login.php - so treating them as errors would
-    drown a real 500 in noise.
-
-    Note this 404 *does* match a route: `/no-such-database-at-all` matches the
-    database pattern and the view then raises `NotFound`. Most Datasette 404s
-    are that shape rather than the unrouted one below.
+    A 4xx records the status code but no `error.type` or error status.
+    `/no-such-database-at-all` matches the database route, so `http.route`
+    is still set.
     """
     otel_spans.clear()
     response = await ds.client.get("/no-such-database-at-all")
@@ -354,7 +298,6 @@ async def test_a_404_is_not_an_error(ds, otel_spans):
     assert server[0].attributes["http.response.status_code"] == 404
     assert "error.type" not in server[0].attributes
     assert server[0].status.status_code is StatusCode.UNSET
-    # Route enrichment must not be gated on a successful response.
     assert "http.route" in server[0].attributes
     assert server[0].name != "GET"
 
@@ -362,14 +305,8 @@ async def test_a_404_is_not_an_error(ds, otel_spans):
 @pytest.mark.asyncio
 async def test_an_unrouted_404_has_no_route_and_a_bare_method_name(ds, otel_spans):
     """
-    When no route matches there is nothing to set `http.route` to, so the span
-    keeps the bare method name it was given at the edge - which is exactly the
-    fallback semantic conventions specify for an unknown route.
-
-    `/a/b/c/d/e` is used rather than a plausible-looking missing name because
-    Datasette's route table is greedy: `/no-such-database-at-all` matches the
-    database pattern, and `/-/nope/deeper` matches the row pattern. Only a
-    path deeper than any route matches nothing at all.
+    With no matching route the span keeps the bare method name. Most missing
+    paths still match a route, so this uses a path deeper than any route.
     """
     otel_spans.clear()
     response = await ds.client.get("/a/b/c/d/e")
@@ -384,14 +321,7 @@ async def test_an_unrouted_404_has_no_route_and_a_bare_method_name(ds, otel_span
 
 @pytest.mark.asyncio
 async def test_only_the_first_http_response_start_is_recorded(otel_spans):
-    """
-    The `send` wrapper keeps the first status it sees.
-
-    Nothing in Datasette sends two `http.response.start` messages, so this
-    drives the middleware directly rather than pretending a request could
-    reach it. Without the guard a misbehaving plugin's second start message
-    would silently replace the status the client actually received.
-    """
+    "The `send` wrapper records the status from the first `http.response.start`."
 
     async def two_starts(scope, receive, send):
         await send({"type": "http.response.start", "status": 200, "headers": []})
@@ -418,10 +348,8 @@ async def test_only_the_first_http_response_start_is_recorded(otel_spans):
 @pytest.mark.asyncio
 async def test_lifespan_scope_passes_through_unspanned(otel_spans):
     """
-    `AsgiLifespan` sits *inside* this middleware, so the scope-type check has
-    to come first or startup and shutdown events never reach it. A SERVER
-    span for a lifespan scope is the symptom of that check being missing or
-    late.
+    Lifespan scopes reach `AsgiLifespan`, which sits inside this middleware,
+    without creating a SERVER span.
     """
     instance = Datasette(memory=True)
     app = instance.app()
@@ -442,13 +370,7 @@ async def test_lifespan_scope_passes_through_unspanned(otel_spans):
 
 @pytest.mark.asyncio
 async def test_http_route_is_the_compiled_pattern(ds, otel_spans):
-    """
-    `http.route` is the route's compiled regex, not a prettified template.
-
-    Asserted against what Datasette's own router resolves rather than against
-    a copied literal, so this pins the *relationship* - the attribute is the
-    matched route - and does not break when a core pattern is edited.
-    """
+    "`http.route` is the compiled regex of the route Datasette's router resolves."
     path = f"/{ds.db_name}/t"
     expected = _route_for(ds, path)
     otel_spans.clear()
@@ -457,9 +379,7 @@ async def test_http_route_is_the_compiled_pattern(ds, otel_spans):
     assert len(server) == 1
     assert server[0].attributes["http.route"] == expected
     assert server[0].name == f"GET {expected}"
-    # The pattern really is the ugly one, and that is deliberate - if someone
-    # adds a prettifier this is the assertion that should make them argue for
-    # it rather than slip it in.
+    # The raw pattern, not a prettified template:
     assert "(?P<database>" in expected
 
 
@@ -469,16 +389,8 @@ async def test_the_route_lands_on_the_request_span_not_a_plugins_current_span(
 ):
     """
     The route is set on the span the middleware started, found through the
-    ASGI scope - not on whatever span happens to be current when routing
-    resolves.
-
-    Those are the same span only until a plugin `asgi_wrapper()` starts one of
-    its own. A plugin wrapper runs *inside* this middleware, so an instrumented
-    plugin makes its span current for the whole request: reading the current
-    span in `route_path` renames that plugin's INTERNAL span to
-    `GET <route>` and hangs `http.route` off it, while the actual request span
-    keeps a bare method name and never gets the one attribute a trace UI
-    groups requests by. Verified by reproducing it, not by reasoning about it.
+    ASGI scope, not on a plugin `asgi_wrapper()` span that is current during
+    routing.
     """
     ds.pm.register(_MiddlewarePlugin(), name="httpspan-middleware")
     try:
@@ -494,7 +406,7 @@ async def test_the_route_lands_on_the_request_span_not_a_plugins_current_span(
     assert len(server) == 1
     assert server[0].attributes["http.route"] == expected
     assert server[0].name == f"GET {expected}"
-    # And the plugin's span is untouched: same name, no route attribute.
+    # The plugin's span keeps its name and has no route attribute.
     plugin_spans = [span for span in spans if span.name == PLUGIN_MIDDLEWARE_SPAN]
     assert len(plugin_spans) == 1
     assert "http.route" not in (plugin_spans[0].attributes or {})
@@ -502,7 +414,7 @@ async def test_the_route_lands_on_the_request_span_not_a_plugins_current_span(
 
 @pytest.mark.asyncio
 async def test_request_span_attributes(ds, otel_spans):
-    "The whole attribute set on one ordinary request."
+    "The attributes recorded for an ordinary request."
     path = f"/{ds.db_name}/t"
     otel_spans.clear()
     assert (await ds.client.get(path)).status_code == 200
@@ -515,8 +427,7 @@ async def test_request_span_attributes(ds, otel_spans):
     assert attributes["http.response.status_code"] == 200
     assert attributes["http.route"] == _route_for(ds, path)
     assert server[0].status.status_code is StatusCode.UNSET
-    # Never, on any span: an IP is borderline PII and the query string carries
-    # user-supplied SQL.
+    # The client IP address and query string are not recorded.
     assert "client.address" not in attributes
     assert "url.query" not in attributes
 
@@ -524,12 +435,8 @@ async def test_request_span_attributes(ds, otel_spans):
 @pytest.mark.asyncio
 async def test_db_query_spans_are_children_of_the_request_span(ds, otel_spans):
     """
-    The point of the whole PR.
-
-    Not just "same trace ID" - every `db.query` span must reach the request
-    span by walking parents, and the request span must be the only root. A
-    stray root would show up in a trace UI as its own single-span trace, which
-    is the state this replaces.
+    Every `db.query` span descends from the request span, which is the only
+    root span.
     """
     otel_spans.clear()
     assert (await ds.client.get(f"/{ds.db_name}/t?_facet=v")).status_code == 200
@@ -550,7 +457,7 @@ async def test_db_query_spans_are_children_of_the_request_span(ds, otel_spans):
     assert queries, "a faceted table page should have issued queries"
     for query in queries:
         assert query.context.trace_id == server_span.context.trace_id
-        # Walk up to the root, which must be the request span.
+        # Walk up to the root, which should be the request span.
         current = query
         seen = 0
         while current.parent is not None:
@@ -563,9 +470,8 @@ async def test_db_query_spans_are_children_of_the_request_span(ds, otel_spans):
 @pytest.mark.asyncio
 async def test_500_sets_error_status_and_error_type(ds, otel_spans):
     """
-    A plain 500 - no exception escaping the app, because `route_path` converts
-    it into a response itself. The status is the only signal the middleware
-    gets, so `error.type` is the status as a string.
+    `route_path` turns the exception into a 500 response, so `error.type` is
+    the status code as a string.
     """
     ds.pm.register(_BoomPlugin(), name="httpspan-boom")
     try:
@@ -584,25 +490,11 @@ async def test_500_sets_error_status_and_error_type(ds, otel_spans):
 @pytest.mark.asyncio
 async def test_csv_stream_span_covers_the_body_send(ds_paging, otel_spans):
     """
-    The span must not end when the handler returns - it has to cover the
-    response body.
+    The request span covers a streamed CSV body, including queries for later
+    pages that run after the response has started.
 
-    `stream_csv` runs its generator inline inside `AsgiStream.asgi_send`, and
-    that call happens inside the single `await self.app(...)` the middleware
-    makes, so a plain `finally` is enough and no deferred-end machinery is
-    needed. This is the assertion that holds that claim up: a `db.query` that
-    starts during the body send must still finish before the request span
-    does.
-
-    Only meaningful on an export that actually pages, hence `ds_paging` - on a
-    single-page table every query is over before the body begins and this
-    passes however early the span ends. The middle assertion below, that some
-    query *started* after `http.response.start` went out, is what keeps the
-    test honest about that; it is why the app is driven as raw ASGI rather
-    than through `ds.client`, which cannot timestamp the response start.
-
-    `time.time_ns()` is the same clock the SDK stamps spans with, so the two
-    are directly comparable.
+    Driven as raw ASGI to timestamp `http.response.start` with `time.time_ns()`,
+    the clock the SDK uses for spans.
     """
     app = ds_paging.app()
     body = []
@@ -634,7 +526,7 @@ async def test_csv_stream_span_covers_the_body_send(ds_paging, otel_spans):
         receive,
         send,
     )
-    # 40 rows plus a header - the export really did read past one page
+    # 40 rows plus a header, so the export read past the first page
     assert len(b"".join(body).decode("utf-8").strip().splitlines()) == 41
     assert response_started_at is not None
 
@@ -662,12 +554,8 @@ async def test_csv_stream_span_covers_the_body_send(ds_paging, otel_spans):
 @pytest.mark.asyncio
 async def test_inbound_traceparent_becomes_the_parent(ds, otel_spans):
     """
-    W3C trace context is extracted with the global propagator, so a request
-    from an already-traced caller continues that trace.
-
-    The sampled flag has to be set: the SDK's default sampler is
-    parentbased_always_on, so a `-00` flag would drop the span and the test
-    would fail for a reason that has nothing to do with propagation.
+    An inbound `traceparent` header continues the caller's trace. It uses the
+    sampled flag (`-01`) because the SDK's default sampler is parent-based.
     """
     trace_id = "4bf92f3577b34da6a3ce929d0e0e4736"
     parent_span_id = "00f067aa0ba902b7"
@@ -684,7 +572,7 @@ async def test_inbound_traceparent_becomes_the_parent(ds, otel_spans):
     assert server_span.parent is not None
     assert f"{server_span.parent.span_id:016x}" == parent_span_id
     assert server_span.parent.is_remote
-    # And the database spans joined the caller's trace too, not a new one.
+    # Database spans are in the caller's trace too.
     queries = [
         span for span in otel_spans.get_finished_spans() if span.name == "db.query"
     ]
@@ -696,20 +584,12 @@ async def test_inbound_traceparent_becomes_the_parent(ds, otel_spans):
 @pytest.mark.asyncio
 async def test_user_supplied_sql_in_the_query_string_is_never_recorded(ds, otel_spans):
     """
-    The `?sql=` case specifically, which is the one that matters: this is the
-    request where the query string *is* user-supplied SQL, and it reaches a
-    view that runs it. The marker is searched for across every attribute of
-    every span in the trace, not just for a `url.query` key, so recording it
-    under some other name fails too.
-
-    `db.query.text` legitimately contains the SQL - that is documented and
-    deliberate - so the marker is checked against the request span's own
-    attributes, and against `url.*` and `http.*` keys everywhere.
+    SQL from `?sql=` is not recorded on the request span or in any `url.*`
+    or `http.*` attribute. `db.query.text` is expected to contain it.
     """
     marker = "secret_marker_5b1f"
     otel_spans.clear()
-    # `/{db}?sql=` 302s to the query view, so go straight there - a redirect
-    # would leave the SQL only on a span for a request that never ran it.
+    # `/{db}?sql=` redirects to the query view, so request that directly.
     response = await ds.client.get(f"/{ds.db_name}/-/query?sql=select+'{marker}'")
     assert response.status_code == 200
     spans = otel_spans.get_finished_spans()
@@ -723,26 +603,15 @@ async def test_user_supplied_sql_in_the_query_string_is_never_recorded(ds, otel_
         and (marker in str(value) or str(key) == "url.query")
     ]
     assert not leaked, "the query string reached a span attribute: " + ", ".join(leaked)
-    # The request really did carry the marker, so the search above had
-    # something to find.
+    # Confirm the query ran with the marker.
     assert marker in response.text
 
 
 def test_request_span_skips_a_valid_but_non_recording_span():
     """
-    `request_span()` is guarded on `is_recording()`, not on
-    `get_span_context().is_valid`, and this is the case that separates them.
-
-    With no provider installed but an inbound `traceparent`, the API's
-    NoOpTracer hands back a `NonRecordingSpan` carrying the *remote* span
-    context - valid, sampled, and recording nothing. An `is_valid` guard would
-    wave that through and the router would build the name string and call
-    `set_attribute`/`update_name` on a span that discards both.
-
-    Tested at this level deliberately: through a real request the two guards
-    are indistinguishable, because every call the router makes on a
-    NonRecordingSpan is already a no-op. The only difference is the work done
-    to get there, so the guard itself is what has to be asserted on.
+    `request_span()` returns None for a `NonRecordingSpan` with a valid remote
+    span context, which is what an inbound `traceparent` produces with no
+    provider installed.
     """
     remote = SpanContext(
         trace_id=0x4BF92F3577B34DA6A3CE929D0E0E4736,
@@ -754,13 +623,13 @@ def test_request_span_skips_a_valid_but_non_recording_span():
     non_recording = NonRecordingSpan(remote)
     assert non_recording.is_recording() is False
     assert request_span({REQUEST_SPAN_SCOPE_KEY: non_recording}) is None
-    # Nothing current, nothing in the scope: the INVALID_SPAN fallback.
+    # No span in the scope and no current span:
     assert request_span({}) is None
-    # And the case it must not skip.
+    # A recording span is returned:
     with tracer.start_as_current_span("test.request_span.recording") as span:
         assert request_span({REQUEST_SPAN_SCOPE_KEY: span}) is span
-        # Falling back to the current span is how an externally installed
-        # SERVER span still gets enriched.
+        # Falls back to the current span, such as one created by another
+        # SERVER instrumentation:
         assert request_span({}) is span
 
 
@@ -820,26 +689,11 @@ NO_PROVIDER_PROGRAM = textwrap.dedent("""
 
 def test_no_provider_takes_the_fast_path():
     """
-    With no `TracerProvider` installed the middleware must hand the
-    application the *original* `send`, not a wrapper - a default Datasette
-    install should pay essentially nothing for instrumentation it is not
-    using.
+    With no `TracerProvider` installed the middleware passes the original
+    `send` to the application, including for requests with a `traceparent`.
 
-    This has to run in a subprocess. The suite's `otel_provider` fixture is
-    session-scoped and autouse, and `set_tracer_provider()` is effectively
-    once-per-process, so in-process every span is recording and the fast path
-    is unreachable.
-
-    The second case, with an inbound `traceparent`, is the one that pins the
-    check itself. With no provider the API's NoOpTracer returns a
-    NonRecordingSpan carrying the *remote* span context: its
-    `get_span_context().is_valid` is True while `is_recording()` is False. A
-    fast path guarded on `is_valid` would therefore silently stop working for
-    exactly the requests that arrive from an already-traced caller - which on
-    a real deployment behind an instrumented proxy is all of them.
-
-    conftest.py's pytest_collection_modifyitems() moves this test to the front
-    of the run by name - if you rename it, rename it there too.
+    Runs in a subprocess because the suite installs a provider for the whole
+    process. conftest.py moves this test to the front of the run by name.
     """
     result = subprocess.run(
         [sys.executable, "-c", NO_PROVIDER_PROGRAM],
@@ -854,19 +708,15 @@ def test_no_provider_takes_the_fast_path():
         "entry is the inbound-traceparent case, which fails if the fast path "
         "is guarded on is_valid instead of is_recording()"
     )
-    # Same fast path, other observable: nothing is stashed in the scope either.
+    # Nothing is stored in the scope either.
     assert report["scope_keys"] == [False, False]
 
 
 @pytest.mark.asyncio
 async def test_internal_client_requests_are_marked(ds, otel_spans):
     """
-    An in-process `datasette.client` request runs the full ASGI stack, so it
-    emits its own SERVER span - `datasette.internal_client` marks those so
-    kind-based dashboards can filter the double-count out. A request that
-    arrives through the raw ASGI app (the shape of a real inbound request,
-    without the DatasetteClient wrapper setting the ContextVar) must not
-    carry the attribute.
+    `datasette.internal_client` is set on SERVER spans for `datasette.client`
+    requests, but not for requests made directly to the ASGI app.
     """
     otel_spans.clear()
     assert (await ds.client.get("/")).status_code == 200

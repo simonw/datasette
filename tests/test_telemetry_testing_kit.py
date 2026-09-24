@@ -1,8 +1,6 @@
 """
-The plugin telemetry kit (`datasette.telemetry_testing` plus the public
-registry classes), exercised the way a third-party plugin would use it: a
-toy plugin registry, a toy tracer scope, and the kit's own fixtures and
-conformance helpers.
+Tests for datasette.telemetry_testing and the public registry classes, using
+a toy plugin registry and instrumentation scope.
 """
 
 import pytest
@@ -54,8 +52,7 @@ def test_conformance_passes_for_a_conforming_workload(otel_spans):
     _run_workload()
     finished = otel_spans.get_finished_spans()
     assert_spans_conform(TOY_SPANS, finished, scope_name=SCOPE)
-    # Coverage direction needs prefix families seen too - the chat span
-    # resolves to the CHAT entry despite its variable suffix.
+    # The chat span matches the CHAT prefix entry:
     assert_spans_covered(TOY_SPANS, finished, scope_name=SCOPE)
 
 
@@ -98,8 +95,7 @@ def test_coverage_catches_a_never_emitted_span(otel_spans):
 
 
 def test_scope_filter_ignores_other_scopes(otel_spans):
-    # Core's own spans are in the exporter too; a plugin's conformance run
-    # must not fail because of them.
+    # Spans from other scopes, including Datasette's own, are ignored:
     other = otel_trace.get_tracer("someone-else", "1.0")
     with other.start_as_current_span("not.in.the.toy.registry"):
         pass
@@ -134,14 +130,9 @@ def test_linked_root_span_kwargs_with_no_current_span(otel_spans):
 
 def test_kit_module_itself_never_imports_the_sdk():
     """
-    The kit imports the SDK lazily, so a plugin importing it at module
-    level does not violate the api-only dependency rule.
+    The kit imports the SDK lazily, so plugins can import it at module level.
 
-    conftest.py's pytest_collection_modifyitems() moves this test to the
-    front of the run by name - if you rename it, rename it there too. Like
-    every subprocess-spawning test in this suite, running it late crashes
-    the interpreter on macOS/CPython 3.13 (SIGBUS in fork+exec once the
-    process holds enough threads) - see the comment there.
+    conftest.py runs this test first by name. Update it there if you rename it.
     """
     assert_package_never_imports_sdk("datasette.telemetry_testing")
 
@@ -159,8 +150,7 @@ from datasette.telemetry_testing import (
 
 toy_meter = otel_metrics_api.get_meter(SCOPE, "0.1")
 
-# Instrument names must be unique per meter for the SDK, so each test mints
-# its own via this counter rather than re-registering one name.
+# Gives each test a unique instrument name:
 _metric_ids = itertools.count()
 
 
@@ -251,14 +241,13 @@ def test_metrics_covered_skips_optional_attributes(otel_metrics):
     error_type = reg.Attribute("toyplugin.error", "Only on failure.", optional=True)
     registry = _toy_metric_registry(name, attributes=(OUTCOME, error_type))
     counter = toy_meter.create_counter(name, unit="{job}")
-    counter.add(1, {OUTCOME: "ok"})  # no error attribute - and that is fine
+    counter.add(1, {OUTCOME: "ok"})  # No error attribute
     otel_metrics.collect()
     assert_metrics_covered(registry, otel_metrics, scope_name=SCOPE)
 
 
 def test_metrics_scope_filter_ignores_other_scopes(otel_metrics):
-    # Core's own metrics are in the reader too; a plugin's conformance run
-    # must not fail because of them.
+    # Metrics from other scopes, including Datasette's own, are ignored:
     name = f"toyplugin.scoped.{next(_metric_ids)}"
     registry = _toy_metric_registry(name)
     counter = toy_meter.create_counter(name, unit="{job}")

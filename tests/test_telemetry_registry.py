@@ -1,26 +1,6 @@
 """
-Two-way conformance between `datasette/telemetry_registry.py` and what
-Datasette actually emits.
-
-This is the test that makes the generated documentation trustworthy. cog
-guarantees the docs match the registry; this guarantees the registry matches
-the code. Without it, both could agree with each other and be wrong.
-
-It checks both directions, and the second one is the one nothing else catches:
-
-- **emitted but not registered** - instrumentation was added without
-  documenting it, so the reference page silently omits it.
-- **registered but never emitted** - the reference page describes a span or
-  attribute that no longer exists, which is worse than omitting it, because a
-  reader will build a dashboard on it.
-
-Both of those directions compare the code against the registry. Neither can
-catch a *rename*, because the call sites now take their names from the
-registry - move `DB_NAMESPACE` to `"db.namespace2"` and code and registry
-still agree with each other, while every existing dashboard breaks. So the
-literal names live here too, spelled out, and are asserted against both the
-registry and the wire. That is the one comparison in this file that is not
-made against a value derived from the registry itself.
+Tests that the spans, attributes and metrics Datasette emits match
+datasette/telemetry_registry.py, in both directions.
 """
 
 import copy
@@ -42,10 +22,8 @@ from datasette.database import QueryInterrupted
 from datasette.telemetry_testing import assert_metrics_conform, assert_metrics_covered
 from datasette.utils.sqlite import sqlite3
 
-# The names as they appear on the wire, written out rather than read from the
-# registry. If a change to the registry makes one of these fail, that change
-# is renaming something a user's dashboards and saved queries depend on -
-# which is a decision to take deliberately, here, not a line to re-derive.
+# Written out as literals rather than read from the registry, so renaming a
+# signal fails these tests.
 EXPECTED_ATTRIBUTES = {
     "db.query": {
         "db.system",
@@ -73,18 +51,8 @@ EXPECTED_ATTRIBUTES = {
 }
 EXPECTED_SPANS = set(EXPECTED_ATTRIBUTES)
 
-# The HTTP request span is handled separately because its name is composed at
-# runtime - the request method, then the route it matched - so there is no
-# fixed string to pin it to. What can still be pinned, and is what a dashboard
-# depends on, is the shape of that name and the attribute keys.
-#
-# The route half is deliberately not spelled out as a literal: it is a core
-# route regex, and pinning those here would make an unrelated routing change
-# fail the telemetry conformance test. What is pinned instead is that the name
-# is exactly the method, a space, and the span's own `http.route` value - the
-# `{method} {route}` shape semantic conventions specify. The workload below
-# only issues GETs, so a change that stopped clamping the method, or that
-# started naming the span after the path, fails here.
+# The HTTP request span name is composed at runtime as "{method} {route}", so
+# it is checked by shape rather than as a literal. The workload only issues GETs.
 EXPECTED_HTTP_SPAN_NAME = "{http.request.method} {http.route}"
 EXPECTED_HTTP_METHOD_NAMES = {"GET"}
 EXPECTED_HTTP_ATTRIBUTES = {
@@ -99,16 +67,14 @@ EXPECTED_HTTP_ATTRIBUTES = {
     "datasette.internal_client",
 }
 
-# The registry's own name for the request span is that template, not anything
-# that appears on the wire.
+# The registry uses the name template for the request span.
 EXPECTED_REGISTRY_ATTRIBUTES = dict(
     EXPECTED_ATTRIBUTES, **{EXPECTED_HTTP_SPAN_NAME: EXPECTED_HTTP_ATTRIBUTES}
 )
 EXPECTED_REGISTRY_NAMES = set(EXPECTED_REGISTRY_ATTRIBUTES)
 
-# Named in-memory databases are shared-cache, so two Datasette instances using
-# the same name share one SQLite database - and the second `create table`
-# fails. Every workload below therefore gets its own name.
+# Named in-memory databases are shared between instances, so each workload
+# uses a unique name.
 _names = itertools.count()
 
 
@@ -117,14 +83,7 @@ def _unique(prefix):
 
 
 class _BoomPlugin:
-    """
-    A route that raises.
-
-    `error.type` on the request span is only ever set by a 5xx, and nothing
-    in Datasette returns one on a healthy instance - `route_path` converts
-    exceptions into a 500 itself, so the workload has to supply the
-    exception.
-    """
+    "A route that raises, producing a 500 and error.type on the request span."
 
     __name__ = "TelemetryRegistryBoomPlugin"
 
@@ -135,20 +94,13 @@ class _BoomPlugin:
 
 async def exercise():
     """
-    Drive enough of Datasette to emit every span and attribute the registry
-    claims exists.
-
-    Each call is here because it is the only thing that produces some span or
-    attribute - see the comments. If you add instrumentation on a path this
-    does not reach, add the path rather than loosening the assertions.
-
-    Returns the instance so the caller can close it; startup happens inside
-    so that the `datasette.startup` span lands in the collected set.
+    Drive enough of Datasette to emit every registered span and attribute,
+    including datasette.startup. Returns the instance so the caller can close it.
     """
     name = _unique("registry")
     ds = Datasette(memory=True)
     ds.add_memory_database(name)
-    # datasette.startup - and the internal catalog work nested under it
+    # datasette.startup
     await ds.invoke_startup()
     db = ds.get_database(name)
 
@@ -165,8 +117,7 @@ async def exercise():
     # datasette.isolated_connection=True
     await db.execute_isolated_fn(lambda conn: conn.execute("select 1").fetchone())
 
-    # datasette.callback, with named functions so the conformance run sees the
-    # attribute's documented value shape (a qualname, not just "<lambda>")
+    # datasette.callback, using named functions rather than lambdas
     def registry_read_callback(conn):
         return conn.execute("select count(*) from t").fetchone()
 
@@ -181,14 +132,11 @@ async def exercise():
     await db.execute("select * from t where id > :n", {"n": 5})
     await db.execute("select * from t", truncate=True)
 
-    # datasette.sql_error_suppressed - the caller is probing and treats
-    # failure as an expected answer
+    # datasette.sql_error_suppressed
     with pytest.raises(sqlite3.OperationalError):
         await db.execute("select nope from t", log_sql_errors=False)
 
-    # datasette.interrupted - only ever set when a query exceeds its time
-    # limit, so the workload has to force one rather than exempt it. An
-    # unbounded recursive CTE cannot finish, so 1ms is always exceeded.
+    # datasette.interrupted: an unbounded recursive CTE always exceeds 1ms
     with pytest.raises(QueryInterrupted):
         await db.execute(
             "with recursive c(x) as (select 0 union all select x+1 from c) "
@@ -196,13 +144,11 @@ async def exercise():
             custom_time_limit=1,
         )
 
-    # These requests produce the HTTP request span and its
-    # http.request.method / url.path / url.scheme / server.address /
-    # user_agent.original / http.response.status_code attributes.
+    # HTTP request spans and their attributes
     assert (await ds.client.get(f"/{name}/t?_facet=v")).status_code == 200
     assert (await ds.client.get(f"/{name}/t/1.json")).status_code == 200
 
-    # error.type on the request span, which only a 5xx sets
+    # error.type on the request span, set by a 5xx response
     ds.pm.register(_BoomPlugin(), name="telemetry-registry-boom")
     try:
         response = await ds.client.get("/-/telemetry-registry-boom")
@@ -215,21 +161,13 @@ async def exercise():
 @pytest_asyncio.fixture
 async def emitted(otel_spans):
     """
-    Every (span name, span kind, attributes) triple a broad workload emits.
-
-    The kind is carried because the request span's name is composed at
-    runtime, so `span_for()` resolves it by kind instead. The attributes are
-    carried as a mapping rather than a set of keys because the request span's
-    name has to be checked against its own `http.route` value.
+    Every (span name, span kind, attributes) triple emitted by exercise().
+    The kind is needed to resolve the dynamically named request span.
     """
-    # otel_spans has already cleared the exporter, and nothing is cleared
-    # after this point: the workload's own startup emits datasette.startup.
     ds = await exercise()
     spans = otel_spans.get_finished_spans()
     assert spans, "no spans captured - the fixture is not exercising anything"
-    # str() because span.name is the registry's SpanName instance, and a set
-    # of those would compare equal to literals but read confusingly in a
-    # failure message.
+    # str() so failure messages show plain strings, not registry instances
     collected = tuple(
         (
             str(span.name),
@@ -258,12 +196,7 @@ def _keys_by_span(records):
 
 @pytest.mark.asyncio
 async def test_workload_emits_exactly_the_expected_names(emitted):
-    """
-    The wire format, pinned to literals.
-
-    Not derived from the registry, so this is what catches a rename that the
-    registry and the call sites make together.
-    """
+    "Emitted span and attribute names match the expected literals."
     static, server = _partition(emitted)
     by_span = _keys_by_span(static)
     assert set(by_span) == EXPECTED_SPANS
@@ -275,9 +208,7 @@ async def test_workload_emits_exactly_the_expected_names(emitted):
     for name, _kind, attributes in server:
         union |= set(attributes)
         route = attributes.get("http.route")
-        # Every request in the workload matches a route, so every one of these
-        # names must be `{method} {route}`. A 404 would be a bare method - the
-        # http_route tests cover that case with a real request.
+        # Every request in the workload matches a route
         assert route, f"the request span {name!r} carries no http.route"
         method, _, name_route = name.partition(" ")
         assert name_route == route, (
@@ -290,7 +221,7 @@ async def test_workload_emits_exactly_the_expected_names(emitted):
 
 
 def test_registry_matches_the_expected_names():
-    "The other half of the rename check: the registry against the same literals."
+    "Registry names match the expected literals."
     assert {str(span) for span in reg.SPANS} == EXPECTED_REGISTRY_NAMES
     for span in reg.SPANS:
         assert {
@@ -329,12 +260,9 @@ async def test_every_emitted_attribute_is_registered(emitted):
 
 @pytest.mark.asyncio
 async def test_every_registered_span_is_emitted(emitted):
-    """
-    The direction nothing else catches: the docs must not describe a span that
-    no longer exists.
-    """
-    # By identity, not by name: a dynamic entry's own string never appears on
-    # the wire, so comparing strings would be comparing the wrong things.
+    "The docs should not describe a span that is no longer emitted."
+    # Compare by identity: the request span's registry name never appears on
+    # the wire.
     resolved = {id(reg.span_for(name, kind)) for name, kind, _ in emitted}
     missing = sorted(str(span) for span in reg.SPANS if id(span) not in resolved)
     assert not missing, (
@@ -346,14 +274,8 @@ async def test_every_registered_span_is_emitted(emitted):
 @pytest.mark.asyncio
 async def test_every_registered_attribute_is_emitted(emitted):
     """
-    Every registered attribute, optional or not, must actually be set at least
-    once by the workload.
-
-    `optional` describes whether a reader should expect it on every span, not
-    whether the code still sets it - so an attribute deleted from the code but
-    left in the docs has to fail here even when it is marked optional. If a
-    new attribute only appears in some rare case, extend exercise() to reach
-    that case.
+    Every registered attribute, including optional ones, is emitted at least
+    once. If a new attribute only appears in rare cases, extend exercise().
     """
     by_entry = {}
     for name, kind, keys in emitted:
@@ -381,7 +303,7 @@ def test_registry_has_no_duplicate_names():
 
 
 def test_registry_entries_are_documented():
-    "Every entry carries a description - the docs are generated from these."
+    "Every entry has a description, used to generate the docs."
     for span in reg.SPANS:
         assert span.description.strip(), f"{span} has no description"
         for attribute in span.attributes:
@@ -389,7 +311,6 @@ def test_registry_entries_are_documented():
 
 
 def test_registry_entries_are_usable_as_plain_strings():
-    "The str subclassing is the whole reason call sites need no wrapper API."
     assert isinstance(reg.DB_QUERY, str)
     assert isinstance(reg.DB_NAMESPACE, str)
     assert reg.DB_QUERY == "db.query"
@@ -399,30 +320,19 @@ def test_registry_entries_are_usable_as_plain_strings():
 
 def test_registry_entries_survive_deepcopy_and_pickle():
     """
-    A copy of an entry is a plain `str`.
-
-    These are `str` subclasses whose `__new__` requires the metadata
-    arguments, so without `__reduce__` `copy` cannot reconstruct one and
-    raises. That is not academic: the SDK's `ConsoleMetricExporter` renders
-    data points with `dataclasses.asdict()`, which deepcopies mappings, and
-    core passes registry entries as metric attribute keys - see
-    `test_console_metric_exporter_renders_core_metric_points`.
+    A copied or unpickled entry is a plain str. ConsoleMetricExporter
+    deepcopies metric attributes, which use registry entries as keys.
     """
     for entry in (reg.DB_NAMESPACE, reg.DB_QUERY, reg.M_OPERATION_DURATION):
         assert copy.deepcopy({entry: 1}) == {str(entry): 1}
         assert type(copy.deepcopy(entry)) is str
         assert pickle.loads(pickle.dumps(entry)) == str(entry)
-        # The metadata still lives on the registered instance itself, which
-        # is the only place anything reads it.
+        # The original entry keeps its metadata
         assert entry.description.strip()
 
 
 @pytest.mark.asyncio
 async def test_console_metric_exporter_renders_core_metric_points(otel_metrics):
-    """
-    The end-to-end shape of the bug above: a console metrics dump of
-    Datasette's own points has to survive `dataclasses.asdict()`.
-    """
     from opentelemetry.sdk.metrics.export import (
         ConsoleMetricExporter,
         MetricExportResult,
@@ -432,8 +342,7 @@ async def test_console_metric_exporter_renders_core_metric_points(otel_metrics):
     ds = Datasette(memory=True)
     ds.add_memory_database(name)
     await ds.invoke_startup()
-    # One real query, so the dump contains a db.client.operation.duration
-    # point keyed by the DB_NAMESPACE registry entry.
+    # Produces a db.client.operation.duration point keyed by DB_NAMESPACE
     await ds.get_database(name).execute("select 1")
 
     data = otel_metrics.reader.get_metrics_data()
@@ -445,13 +354,8 @@ async def test_console_metric_exporter_renders_core_metric_points(otel_metrics):
 
 def test_every_histogram_declares_bucket_boundaries():
     """
-    Every histogram must carry explicit boundaries, and only histograms may.
-
-    OpenTelemetry's default boundaries start at 5 and are meant for
-    milliseconds, so a seconds-valued histogram that inherits them records
-    everything into one bucket. This is a registry self-consistency check, not
-    a check that the boundaries reached the SDK - for that see
-    `test_histograms_spread_values_across_buckets` in test_telemetry_metrics.py.
+    Every histogram declares bucket boundaries, and only histograms do.
+    OpenTelemetry's defaults are meant for milliseconds, not seconds.
     """
     for metric in reg.METRICS:
         if metric.kind == reg.HISTOGRAM:
@@ -468,13 +372,8 @@ def test_every_histogram_declares_bucket_boundaries():
 
 def test_dynamic_span_lookup():
     """
-    `dynamic=True` matching, which is how the request span resolves.
-
-    The last two assertions are the ones worth having: a dynamic entry must
-    not swallow a span that does have a registered name, and must not match at
-    all when the caller supplies no kind - otherwise every unregistered span
-    in the suite would silently resolve to the request span and the
-    emitted-but-not-registered direction would stop catching anything.
+    dynamic=True entries such as the request span match on kind. They never
+    match without a kind, and never override a registered name.
     """
     assert reg.span_for("GET", SpanKind.SERVER) is reg.HTTP_REQUEST
     assert reg.span_for("POST /^/(?P<database>[^/]+)$", SpanKind.SERVER) is (
@@ -501,27 +400,15 @@ def test_span_and_attribute_lookup():
 @pytest_asyncio.fixture
 async def emitted_metrics(otel_metrics):
     """
-    Every (metric name, attribute key) pair produced by a broad workload,
-    plus the raw set of metric names - the metric-side counterpart of the
-    `emitted` span fixture above.
-
-    Metrics use DELTA temporality (see `otel_meter_provider` in datasette.telemetry_testing), and the
-    function-scoped `otel_metrics` fixture drains any state left by an
-    earlier test before yielding, so this collection is not polluted by
-    other tests in the session - only by other *instances*, which is why the
-    checks below key everything off attribute names rather than values.
+    Metric names and (metric name, attribute key) pairs from a broad workload.
+    Checks use attribute keys rather than values, since other Datasette
+    instances in the session can also report points.
     """
-    # The span workload already reaches every synchronous metric except the
-    # interrupted counter: reads and writes drive db.client.operation.duration
-    # and datasette.write.queue_wait, and both the suppressed-error probe and
-    # the custom_time_limit interrupt raise through record_operation_duration,
-    # setting error.type.
+    # Reaches every synchronous metric except datasette.sql.queries.interrupted
     ds = await exercise()
 
-    # datasette.sql.queries.interrupted counts only queries that exceed the
-    # *configured* limit - a caller opting into a deliberately short budget
-    # via custom_time_limit (as exercise() does) is excluded by design. So a
-    # second instance whose configured limit is tiny provides the real thing.
+    # datasette.sql.queries.interrupted ignores custom_time_limit timeouts, so
+    # this needs an instance with a low sql_time_limit_ms.
     slow_name = _unique("registry_metrics_slow")
     slow = Datasette(memory=True, settings={"sql_time_limit_ms": 5})
     slow.add_memory_database(slow_name)
@@ -533,8 +420,7 @@ async def emitted_metrics(otel_metrics):
             "select * from c"
         )
 
-    # Collect while both instances are still registered, so the observable
-    # gauges - which observe live instances at collection time - report.
+    # Collect before closing the instances so the observable gauges report them
     otel_metrics.collect()
     snapshot = otel_metrics.snapshot
     assert snapshot, "no metrics captured - the fixture is not exercising anything"
@@ -551,11 +437,8 @@ async def emitted_metrics(otel_metrics):
 @pytest.mark.asyncio
 async def test_metrics_conform_to_the_registry(emitted_metrics):
     """
-    Emitted-but-unregistered, via the plugin kit's helper - consumed here
-    exactly the way a plugin's suite would. Beyond names and attribute keys,
-    this also asserts each instrument was created as the kind and unit its
-    registry entry declares, and that `datasette.operation` only ever takes
-    its declared enum values.
+    Emitted metric names, kinds, units, attribute keys and enum values match
+    the registry, using the plugin testing helper.
     """
     assert_metrics_conform(
         reg.METRICS, emitted_metrics["collector"], scope_name="datasette"
@@ -564,7 +447,6 @@ async def test_metrics_conform_to_the_registry(emitted_metrics):
 
 @pytest.mark.asyncio
 async def test_every_registered_metric_is_emitted(emitted_metrics):
-    "Registered-but-never-collected, via the plugin kit's helper."
     assert_metrics_covered(
         reg.METRICS, emitted_metrics["collector"], scope_name="datasette"
     )
@@ -572,23 +454,7 @@ async def test_every_registered_metric_is_emitted(emitted_metrics):
 
 @pytest.mark.asyncio
 async def test_every_registered_metric_attribute_is_emitted(emitted_metrics):
-    """
-    The direction nothing else catches: the docs must not describe a metric
-    attribute that no longer exists.
-
-    Unlike the span-side attribute check, this does not skip `optional`
-    attributes. The only optional metric attribute is `error.type` on
-    `db.client.operation.duration`, and the workload reaches it from two
-    independent directions: the suppressed-error probe and the
-    custom_time_limit interrupt in `exercise()`, both of which raise through
-    `record_operation_duration`. So it is checked like any other attribute
-    rather than exempted; marking something optional here would opt it out of
-    verification entirely.
-
-    Gauges with no registered attributes (`datasette.sql.threads.limit` and
-    `.queue_depth`) fall out correctly with no special case: their
-    `metric.attributes` is empty, so the inner loop makes no assertion.
-    """
+    "Every registered metric attribute, including optional ones, is emitted."
     emitted_keys_by_metric = {}
     for metric_name, key in emitted_metrics["pairs"]:
         emitted_keys_by_metric.setdefault(metric_name, set()).add(key)
@@ -596,8 +462,7 @@ async def test_every_registered_metric_attribute_is_emitted(emitted_metrics):
     missing = []
     for metric in reg.METRICS:
         if str(metric) not in emitted_metrics["names"]:
-            # Not emitted at all - already reported by
-            # test_every_registered_metric_is_emitted; do not double-report.
+            # Reported by test_every_registered_metric_is_emitted
             continue
         emitted_keys = emitted_keys_by_metric.get(str(metric), set())
         for attribute in metric.attributes:
@@ -610,13 +475,7 @@ async def test_every_registered_metric_attribute_is_emitted(emitted_metrics):
 
 
 def test_prefix_span_lookup():
-    """
-    `prefix=True` matching, exercised directly.
-
-    Core registers no prefix spans - the flag exists for plugin registries
-    (e.g. a `chat {model}` span family) - so without this the branch in
-    `span_for()` would be untested code the conformance tests never reach.
-    """
+    "prefix=True matching, which core does not use but plugin registries can."
     hook = reg.SpanName("myplugin.hook.", "A hypothetical span family", prefix=True)
     spans = reg.SPANS + (hook,)
     assert reg.span_for("myplugin.hook.render_cell", spans=spans) is hook
@@ -626,7 +485,6 @@ def test_prefix_span_lookup():
 
 
 def test_exact_match_wins_over_prefix():
-    "A prefix family can never shadow a span with a registered exact name."
     family = reg.SpanName("db.", "Greedy prefix", prefix=True)
     spans = (family,) + reg.SPANS
     assert reg.span_for("db.query", spans=spans) is reg.DB_QUERY

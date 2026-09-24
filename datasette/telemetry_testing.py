@@ -13,17 +13,9 @@ Usage from a plugin's ``conftest.py``::
         otel_spans,
     )
 
-Importing the fixture names into a conftest registers them; ``otel_provider``
-and ``otel_meter_provider`` are session-scoped and autouse, so a real SDK
-provider (when the SDK is installed) is in place before any test emits a
-signal. Tests then take ``otel_spans`` / ``otel_metrics``. Everything here
-imports the OpenTelemetry SDK lazily: with no SDK installed the fixtures
-skip rather than fail, and importing this module costs nothing.
-
-The conformance helpers (`assert_spans_conform`, `assert_spans_covered`)
-check a registry of `SpanName` entries against actually-finished spans in
-both directions - emitted-but-unregistered and registered-but-never-emitted,
-the two drift modes documented in `tests/test_telemetry_registry.py`.
+Tests can then use the ``otel_spans`` and ``otel_metrics`` fixtures. The
+OpenTelemetry SDK is imported lazily, and the fixtures skip if it is not
+installed.
 """
 
 import subprocess
@@ -47,11 +39,7 @@ def install_span_exporter():
     Install a TracerProvider + InMemorySpanExporter once per process and
     return the exporter, or None when the SDK is not installed.
 
-    `set_tracer_provider()` is effectively once-per-process (a second call
-    logs a warning and is ignored), so this must run before anything asserts
-    on spans. A `SimpleSpanProcessor` exports synchronously on span end - no
-    background batching thread, so assertions immediately after a request
-    never race.
+    Uses `SimpleSpanProcessor` so spans are exported as soon as they end.
     """
     global _span_exporter
     if _span_exporter is not None:
@@ -69,12 +57,8 @@ def install_span_exporter():
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     otel_trace.set_tracer_provider(provider)
-    # set_tracer_provider() is once-per-process: if something else installed
-    # a provider first (another conftest, opentelemetry-instrument, an
-    # embedding app), the call above was silently ignored - and an exporter
-    # wired to nothing would make every span assertion fail confusingly, or
-    # pass vacuously on empty input. Leave the global unset in that case so
-    # the fixtures skip with a clear message instead.
+    # set_tracer_provider() is ignored if a provider was already installed,
+    # in which case the fixtures skip
     if otel_trace.get_tracer_provider() is not provider:
         return None
     _span_exporter = exporter
@@ -86,10 +70,8 @@ def install_metric_reader():
     Install a MeterProvider + InMemoryMetricReader once per process and
     return the reader, or None when the SDK is not installed.
 
-    DELTA temporality for counters and histograms, so each collection
-    reports only what happened since the previous one - with the SDK default
-    of CUMULATIVE, every metrics test would see every measurement from every
-    earlier test in the session.
+    Uses delta temporality for counters and histograms, so each collection
+    only reports measurements since the previous one.
     """
     global _metric_reader
     if _metric_reader is not None:
@@ -111,8 +93,6 @@ def install_metric_reader():
     )
     provider = MeterProvider(metric_readers=[reader])
     otel_metrics_api.set_meter_provider(provider)
-    # Same once-per-process guard as the tracer side: a provider that did
-    # not take must not leave a reader that collects nothing.
     if otel_metrics_api.get_meter_provider() is not provider:
         return None
     _metric_reader = reader
@@ -121,44 +101,19 @@ def install_metric_reader():
 
 @pytest.fixture(scope="session", autouse=True)
 def otel_provider():
-    """
-    Session-scoped, autouse: install the span exporter exactly once, before
-    any span is created.
-
-    `datasette.telemetry.tracer` (and a plugin's own tracer) is a
-    module-level `ProxyTracer`: once a provider exists, the first span it
-    starts resolves a concrete tracer and caches it permanently. It does
-    *not* cache the no-op tracer, so a span started before this fixture runs
-    is merely lost rather than poisoning the tracer for the process. With no
-    SDK installed this does nothing and spans stay no-op.
-    """
+    "Install the span exporter once per test session, before any spans are created."
     install_span_exporter()
 
 
 @pytest.fixture(scope="session", autouse=True)
 def otel_meter_provider():
-    """
-    Session-scoped, autouse: install the metric reader once per process.
-
-    Unlike the tracer, ordering is not load-bearing - `_ProxyMeter` and its
-    instruments forward to a provider installed after they were created.
-    Still autouse for symmetry, and so a single reader collects all run.
-    """
+    "Install the metric reader once per test session."
     install_metric_reader()
 
 
 @pytest.fixture(autouse=True)
 def otel_reset():
-    """
-    Autouse, function-scoped: drain the span exporter and metric reader
-    after every test - including the ones that never look at telemetry.
-
-    Without this, every test that exercises the app leaves its recorded
-    spans in the session-scoped exporter's list forever: a large suite
-    accumulates hundreds of thousands of ReadableSpans, degrading memory
-    and per-span export cost as the run goes on. Draining the metric reader
-    likewise stops delta state piling up between metric tests.
-    """
+    "Clear recorded spans and drain collected metrics after every test."
     yield
     if _span_exporter is not None:
         _span_exporter.clear()
@@ -169,9 +124,8 @@ def otel_reset():
 @pytest.fixture
 def otel_spans():
     """
-    Function-scoped access to the finished-spans exporter: clears spans left
-    over from previous tests, then yields the exporter so a test can call
-    `.get_finished_spans()`. Skips if the OTel SDK is not installed.
+    The in-memory span exporter, cleared before the test. Call
+    `.get_finished_spans()` to retrieve spans.
     """
     pytest.importorskip("opentelemetry.sdk")
     exporter = install_span_exporter()
@@ -183,21 +137,16 @@ def otel_spans():
 
 class MetricsCollector:
     """
-    Thin reader over an `InMemoryMetricReader`.
+    Wraps an `InMemoryMetricReader`.
 
-    `collect()` runs a collection cycle - which is what invokes observable
-    gauge callbacks - and snapshots the result. Queries then run against
-    that snapshot rather than re-collecting, so a test that inspects
-    several metrics sees one consistent moment and does not drain delta
-    state twice.
+    `collect()` runs a collection cycle and stores a snapshot, which
+    `points()` and `point()` then query.
     """
 
     def __init__(self, reader):
         self.reader = reader
         self.snapshot = {}
-        # (instrumentation scope name, sdk Metric) pairs from the last
-        # collect() - the metric conformance helpers read this, because the
-        # name-keyed snapshot deliberately flattens the scope away.
+        # (instrumentation scope name, sdk Metric) pairs from the last collect()
         self.collected = []
 
     def collect(self):
@@ -237,10 +186,7 @@ class MetricsCollector:
 
 @pytest.fixture
 def otel_metrics():
-    """
-    Function-scoped metrics collector. Drains delta state accumulated by
-    earlier tests before yielding, so counts start from zero.
-    """
+    "A `MetricsCollector`, drained before the test so counts start from zero."
     pytest.importorskip("opentelemetry.sdk")
     reader = install_metric_reader()
     if reader is None:
@@ -261,11 +207,10 @@ def _scoped(finished_spans, scope_name):
 
 def assert_spans_conform(registry_spans, finished_spans, scope_name=None):
     """
-    Every finished span (optionally: only those from `scope_name`, which is
-    what a plugin should pass - its own tracer's name) resolves to an entry
-    in `registry_spans`, sets only registered attributes, and respects any
-    declared `values=` enums. This is the emitted-but-unregistered direction:
-    instrumentation added without documentation fails here.
+    Assert every finished span is registered in `registry_spans`, sets only
+    registered attributes and uses allowed attribute values.
+
+    Pass `scope_name` to only check spans from that instrumentation scope.
     """
     problems = []
     for span in _scoped(finished_spans, scope_name):
@@ -285,14 +230,8 @@ def assert_spans_conform(registry_spans, finished_spans, scope_name=None):
 
 def assert_spans_covered(registry_spans, finished_spans, scope_name=None):
     """
-    Every entry in `registry_spans` was emitted at least once, and every one
-    of its registered non-`optional` attributes appeared on it at least
-    once. This is the registered-but-never-emitted direction - documentation
-    describing a signal that no longer exists, which is worse than omitting
-    it because a reader will build a dashboard on it. Run it against a
-    workload broad enough to exercise everything the registry claims;
-    `optional=True` attributes are exempt so a workload is not forced to
-    manufacture every error path (pin those with targeted tests instead).
+    Assert every entry in `registry_spans` was emitted at least once, with
+    each of its attributes that is not `optional=True`.
     """
     spans = _scoped(finished_spans, scope_name)
     seen_attributes = {}
@@ -318,9 +257,7 @@ def assert_spans_covered(registry_spans, finished_spans, scope_name=None):
 
 
 # Registry instrument kinds mapped to the SDK data type collected for them.
-# A registry kind outside this table (a plugin's own vocabulary) is not
-# kind-checked. Both counter kinds collect as Sum; monotonicity is what
-# tells them apart, checked separately below.
+# Both counter kinds collect as Sum, distinguished by is_monotonic.
 _KIND_TO_DATA_TYPE = {
     "Counter": "Sum",
     "UpDownCounter": "Sum",
@@ -338,15 +275,11 @@ def _scoped_metrics(collector, scope_name):
 
 def assert_metrics_conform(registry_metrics, collector, scope_name=None):
     """
-    Every metric in the collector's last `collect()` (optionally: only those
-    from `scope_name`, which is what a plugin should pass - its own meter's
-    name) is registered in `registry_metrics`, was created as the instrument
-    kind and unit the registry declares, sets only registered attributes,
-    and respects any declared `values=` enums.
+    Assert every metric in the collector's last `collect()` is registered in
+    `registry_metrics` with a matching instrument kind and unit, sets only
+    registered attributes and uses allowed attribute values.
 
-    The kind and unit checks catch a drift nothing else does: the registry
-    entry and the `meter.create_*()` call are separate statements, and a
-    dashboard built on the registry's word breaks silently if they disagree.
+    Pass `scope_name` to only check metrics from that instrumentation scope.
     """
     problems = set()
     for metric in _scoped_metrics(collector, scope_name):
@@ -390,14 +323,10 @@ def assert_metrics_conform(registry_metrics, collector, scope_name=None):
 
 def assert_metrics_covered(registry_metrics, collector, scope_name=None):
     """
-    Every entry in `registry_metrics` was collected at least once, and every
-    registered non-`optional` attribute appeared on it at least once - the
-    registered-but-never-emitted direction for metrics.
+    Assert every entry in `registry_metrics` was collected at least once,
+    with each of its attributes that is not `optional=True`.
 
-    Run one broad workload, then a single `collect()`, then this: the reader
-    uses delta temporality, so measurements drained by an earlier collect()
-    are gone. `optional=True` attributes (e.g. an `error.type` only present
-    on failures) are exempt, same as the span-side helper.
+    Call `collect()` once after the workload and before this check.
     """
     seen_attributes = {}
     for metric in _scoped_metrics(collector, scope_name):
@@ -431,11 +360,8 @@ def assert_no_forbidden_values(
     emitted telemetry: span names, span attribute values, span event names
     and attributes, span status descriptions, or metric point attributes.
 
-    This is the enforcement half of the privacy rules in the plugin
-    telemetry documentation. The strongest way to use it is to *plant*
-    sentinel values in your test workload - a fake email address, a token,
-    a username your fixtures log in with - and assert they never leak into
-    a signal:
+    Use fake private values such as tokens or email addresses in your test
+    workload, then check that they were not recorded:
 
         FORBIDDEN = {"secret-token-123", "alice@example.com"}
         run_workload_using_those_values()
@@ -443,14 +369,11 @@ def assert_no_forbidden_values(
             FORBIDDEN,
             finished_spans=otel_spans.get_finished_spans(),
             collector=otel_metrics,
-            scope_name="my_plugin",
         )
 
-    Matching is plain substring on the string form of each value; empty
-    strings in `forbidden` are ignored. Pass `finished_spans` and/or a
-    collected `MetricsCollector`; `scope_name=None` checks every scope,
-    which is the right default here - a leak through *core's* signals (e.g.
-    SQL text carrying a secret) is still a leak.
+    Matches substrings of each value's string form. Empty strings in
+    `forbidden` are ignored. Leave `scope_name` unset to also check
+    Datasette's own telemetry.
     """
     needles = [needle for needle in forbidden if needle]
     leaks = set()
@@ -485,15 +408,10 @@ def assert_no_forbidden_values(
 def assert_package_never_imports_sdk(*module_names):
     """
     Import the named modules in a fresh interpreter and assert none of them
-    dragged in `opentelemetry.sdk`. Checked via sys.modules in a subprocess
-    rather than by grepping, so a lazy `import opentelemetry.sdk` inside a
-    function body cannot slip past. A plugin should depend on
-    `opentelemetry-api` only, exactly as Datasette core does.
+    imported `opentelemetry.sdk`.
 
-    Run the test that calls this early in your suite: on macOS/CPython 3.13
-    a process that has accumulated many threads can crash (SIGBUS) in
-    subprocess's fork+exec - Datasette's own conftest front-loads its
-    equivalent tests by name for exactly this reason.
+    Run the test that calls this early in your suite: on macOS with CPython
+    3.13, starting a subprocess from a process with many threads can crash.
     """
     imports = "; ".join(f"import {name}" for name in module_names)
     code = (

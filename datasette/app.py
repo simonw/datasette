@@ -175,9 +175,7 @@ app_root = Path(__file__).parent.parent
 logger = logging.getLogger(__name__)
 
 
-# _in_datasette_client itself lives in telemetry.py so the request span
-# middleware can read it without a circular import; its writers
-# (_DatasetteClientContext) and reader (in_client()) both live here.
+# _in_datasette_client is defined in telemetry.py to avoid a circular import
 
 
 class _DatasetteClientContext:
@@ -653,9 +651,7 @@ class Datasette:
         self.root_enabled = False
         self.default_deny = default_deny
         self.client = DatasetteClient(self)
-        # Last, so that the observable-gauge callbacks - which may fire on the
-        # SDK's collection thread the instant this returns - never see a
-        # half-built instance.
+        # Last, so metric callbacks never see a partially initialized instance
         register_datasette(self)
 
     async def apply_metadata_json(self):
@@ -797,19 +793,7 @@ class Datasette:
         # This must be called for Datasette to be in a usable state
         if self._startup_invoked:
             return
-        # `datasette serve` calls invoke_startup() before uvicorn starts, so
-        # on the CLI path every span its children create - the register_*
-        # hook dispatches, the internal catalog's db.query/db.write spans,
-        # and the prepare_connection warm-up of the read connections those
-        # touch - would otherwise be its own orphan root trace: around twenty
-        # of them on a fresh instance. Bracketing the whole thing gives them
-        # somewhere to belong. An ASGI-hosted or programmatic deployment
-        # reaches here instead through AsgiRunOnFirstRequest, in which case
-        # this span nests under the first request's own span - honest enough,
-        # since it genuinely is that request's latency.
-        # A connection warmed lazily later, by a request touching a new
-        # database for the first time, nests under that request instead:
-        # this span has already ended by then.
+        # Group spans created during startup under a single parent span
         with tracer.start_as_current_span(STARTUP):
             # Register event classes
             event_classes = []
@@ -996,9 +980,7 @@ class Datasette:
         if self._closed:
             return
         self._closed = True
-        # Stop reporting gauges before tearing anything down, so a collection
-        # cycle landing mid-close cannot observe a half-closed instance. The
-        # WeakSet would drop it eventually anyway; this makes it immediate.
+        # Stop reporting metrics before closing databases
         unregister_datasette(self)
         first_exception = None
         dbs = list(self.databases.values()) + [self._internal_database]
@@ -3185,11 +3167,8 @@ ORDER BY allowed.parent, allowed.child
             asgi,
             on_startup=[self._startup_sequence, self._launch_background_tasks],
         )
-        # Outermost, deliberately: plugin asgi_wrapper() middleware, the
-        # CSRF layer and the first-request startup fallback all run *inside*
-        # this span, so a span created by an instrumented plugin - or by
-        # startup work triggered by the first request - parents to the
-        # request instead of becoming its own orphan root trace.
+        # Outermost, so spans from plugin middleware and first-request
+        # startup are children of the request span
         asgi = TelemetryMiddleware(asgi)
         return asgi
 
@@ -3314,24 +3293,13 @@ class DatasetteRouter:
         request.scope = scope
 
         if match is None:
-            # No route matched, so the span keeps the bare method name it was
-            # given at the edge and gets no http.route. That is what semantic
-            # conventions ask for when the route is unknown.
             return await self.handle_404(request, send)
 
-        # The request span was started at the ASGI edge, before routing, so it
-        # carries only the method as a name. Now that the route is known, give
-        # it the `{method} {route}` shape semantic conventions want, and the
-        # http.route attribute - the low-cardinality counterpart to url.path,
-        # and so the one to group by.
+        # Now the route is known, add it to the request span
         span = request_span(scope)
         if span is not None:
             route = match.re.pattern
             span.set_attribute(HTTP_ROUTE, route)
-            # Clamped, for the same reason the middleware clamps it: the method
-            # is a client-controlled string, and an unclamped one here would
-            # put attacker-supplied text back into the span name that the
-            # middleware just kept out of it.
             span.update_name(f"{clamp_http_method(request.method)} {route}")
 
         new_scope = dict(scope, url_route={"kwargs": match.groupdict()})

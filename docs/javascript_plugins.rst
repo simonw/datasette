@@ -488,46 +488,15 @@ Creating a dialog
 
 This example uses the :ref:`datasette_init event <javascript_datasette_init>` to add a button that opens a dialog:
 
-.. code-block:: javascript
+.. literalinclude:: shots/modal-example.js
+   :language: javascript
 
-    document.addEventListener("datasette_init", () => {
-        const openButton = document.createElement("button");
-        openButton.type = "button";
-        openButton.textContent = "Open example dialog";
-        // Indicate that this button opens a dialog:
-        openButton.setAttribute("aria-haspopup", "dialog");
-        // Identify which dialog it controls:
-        openButton.setAttribute("aria-controls", "my-plugin-dialog");
+Clicking that button opens this dialog:
 
-        const modal = DatasetteModal.create();
-        const dialog = modal.dialog;
-        dialog.id = "my-plugin-dialog";
-        // Tell screenreaders the dialog is labelled by #my-plugin-dialog-title
-        dialog.setAttribute("aria-labelledby", "my-plugin-dialog-title");
-        dialog.innerHTML = `
-          <div class="modal-header">
-            <h2 class="modal-title" id="my-plugin-dialog-title">
-              Example dialog
-            </h2>
-          </div>
-          <div class="modal-body">
-            This dialog uses Datasette's shared styles and keyboard behavior.
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="modal-btn modal-btn-ghost">Close</button>
-          </div>`;
+.. only:: not latex
 
-        const closeButton = dialog.querySelector("button");
-        closeButton.addEventListener("click", () => {
-            modal.requestClose("cancel");
-        });
-        openButton.addEventListener("click", () => {
-            modal.show({ returnFocusTo: openButton, initialFocus: closeButton });
-        });
-
-        document.body.append(modal);
-        document.querySelector("section.content").append(openButton);
-    });
+    .. image:: images/modal-example.webp
+       :alt: A dialog titled Example dialog, with the text "This dialog uses Datasette's shared styles and keyboard behavior." and a Close button in the footer, shown in front of a dimmed Datasette page
 
 Opening and closing
 ~~~~~~~~~~~~~~~~~~~
@@ -584,7 +553,14 @@ If an operation fails, set ``modal.busy = false`` so the user can retry or close
 Shared CSS classes
 ~~~~~~~~~~~~~~~~~~
 
-The classes in the example above provide built-in styling. The following classes can be used by your modal:
+The classes in the example above provide built-in styling. This dialog uses every class listed below, including a ``modal-meta`` count in the header and ``footer-info`` text next to ``modal-btn-ghost`` and ``modal-btn-primary`` buttons in the footer:
+
+.. only:: not latex
+
+    .. image:: images/modal-classes.webp
+       :alt: A dialog titled Export rows with a "3 selected" badge in its header, a list of three plant names in the body, and a footer containing the text "CSV, UTF-8", a Cancel button and a blue Export button
+
+The following classes can be used by your modal:
 
 ``datasette-modal``
     Added automatically to the native ``<dialog>`` when the wrapper is connected to the page. Provides the dialog's sizing, background, rounded corners, shadow, backdrop and animations.

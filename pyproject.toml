@@ -87,6 +87,9 @@ dev = [
 playwright = [
     "pytest-playwright>=0.8.0",
 ]
+shots = [
+    "shot-scraper>=1.12",
+]
 
 [project.optional-dependencies]
 rich = ["rich"]

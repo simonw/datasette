@@ -56,6 +56,11 @@ export DATASETTE_SECRET := "not_a_secret"
 @docs-build: cog blacken-docs
   rm -rf docs/_build && cd docs && uv run make html
 
+# Take any missing documentation screenshots defined in docs/shots.yml
+@shots:
+  uv run --group shots shot-scraper install
+  cd docs && uv run --group shots shot-scraper multi shots.yml --no-clobber --reduced-motion
+
 # Apply Black
 @black:
   uv run black datasette tests

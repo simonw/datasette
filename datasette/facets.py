@@ -39,7 +39,7 @@ def load_facet_configs(request, table_config):
         )
     qs_pairs = urllib.parse.parse_qs(request.query_string, keep_blank_values=True)
     for key, values in qs_pairs.items():
-        if key.startswith("_facet"):
+        if key == "_facet" or key.startswith("_facet_"):
             # Figure out the facet type
             if key == "_facet":
                 type = "column"

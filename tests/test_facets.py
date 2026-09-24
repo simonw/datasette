@@ -5,11 +5,45 @@ import pytest
 
 from datasette.app import Datasette
 from datasette.database import Database
-from datasette.facets import ArrayFacet, ColumnFacet, DateFacet, Facet
+from datasette.facets import (
+    ArrayFacet,
+    ColumnFacet,
+    DateFacet,
+    Facet,
+    load_facet_configs,
+)
 from datasette.utils import detect_json1
 from datasette.utils.asgi import Request
 
 from .fixtures import make_app_client
+
+
+@pytest.mark.parametrize(
+    "query_string",
+    ("_facets=ignored", "_facet=state&_facets=ignored", "_facets=ignored&_facet=state"),
+)
+@pytest.mark.parametrize("table_config", ({}, {"facets": ["state"]}))
+def test_facet_configs_ignore_unrelated_prefixes(query_string, table_config):
+    expected = load_facet_configs(
+        Request.fake("/?_facet=state" if "_facet=" in query_string else "/"),
+        table_config,
+    )
+    assert (
+        load_facet_configs(Request.fake("/?" + query_string), table_config) == expected
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "query_string",
+    ("_facet=state&_facets=ignored", "_facets=ignored&_facet=state"),
+)
+async def test_facet_ignores_unrelated_prefixes(ds_client, query_string):
+    response = await ds_client.get("/fixtures/facetable.json?" + query_string)
+    assert response.status_code == 200
+    facets = response.json()["facet_results"]["results"]
+    assert set(facets) == {"state"}
+    assert facets["state"]["results"]
 
 
 @pytest.mark.asyncio

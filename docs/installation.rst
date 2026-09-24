@@ -144,13 +144,12 @@ To upgrade a plugin within the pipx environment use ``pipx runpip datasette inst
 
 Now upgrade the plugin::
 
-    pipx runpip datasette install -U datasette-vega-0
+    pipx runpip datasette install -U datasette-vega
 
 ::
 
     Collecting datasette-vega
     Downloading datasette_vega-0.6.2-py3-none-any.whl (1.8 MB)
-        |████████████████████████████████| 1.8 MB 2.0 MB/s 
     ...
     Installing collected packages: datasette-vega
     Attempting uninstall: datasette-vega

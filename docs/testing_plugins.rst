@@ -57,7 +57,7 @@ Then run the tests using pytest like so::
 Setting up a Datasette test instance
 ------------------------------------
 
-The above example shows the easiest way to start writing tests against a Datasette instance:
+Use :ref:`datasette.client <internals_datasette_client>` to make requests against a test instance. The first request runs startup hooks and launches registered background tasks automatically:
 
 .. code-block:: python
 
@@ -71,26 +71,24 @@ The above example shows the easiest way to start writing tests against a Dataset
         response = await datasette.client.get("/-/plugins.json")
         assert response.status_code == 200
 
-Creating a ``Datasette()`` instance like this as useful shortcut in tests, but there is one detail you need to be aware of. It's important to ensure that the async method ``.invoke_startup()`` is called on that instance. You can do that like this:
+If your test uses Datasette directly without making a request, call ``await datasette.invoke_startup()`` to initialize the instance and run its startup hooks:
 
 .. code-block:: python
 
     datasette = Datasette(memory=True)
     await datasette.invoke_startup()
 
-This method registers any :ref:`plugin_hook_startup` or :ref:`plugin_hook_prepare_jinja2_environment` plugins that might themselves need to make async calls. It runs on the same event loop that runs your test, matching the guarantee described in :ref:`datasette_lifecycle`.
+This runs the :ref:`plugin_hook_startup` and :ref:`plugin_hook_prepare_jinja2_environment` hooks on the same event loop as your test. It does not launch registered background tasks.
 
-If you are using ``await datasette.client.get()`` and similar methods then you don't need to worry about this - Datasette automatically calls ``invoke_startup()`` the first time it handles a request, via the first-request fallback described in :ref:`datasette_lifecycle`.
-
-If your plugin also registers work with :ref:`datasette_add_background_task` (typically from a ``startup`` hook) and your test needs that work to actually run, call ``await datasette.start_background_tasks()`` as well - ``invoke_startup()`` alone only runs ``startup`` hooks, it does not launch anything they registered:
+To run tasks registered with :ref:`datasette_add_background_task` without making a request, use ``await datasette.start_background_tasks()``. This runs startup if needed and launches every registered task:
 
 .. code-block:: python
 
     datasette = Datasette(memory=True)
     await datasette.start_background_tasks()
-    # Any tasks registered by a startup() hook are now running
+    # Tasks registered by startup() hooks have been launched
 
-A request made through ``datasette.client`` arms both startup and background-task launch automatically, since they're both part of the same first-request fallback - ``start_background_tasks()`` is for tests that need tasks running without making an HTTP request first.
+See :ref:`datasette_lifecycle` for the full startup and shutdown sequence.
 
 .. _testing_plugins_datasette_fixtures_database:
 

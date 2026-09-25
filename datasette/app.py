@@ -1497,7 +1497,7 @@ class Datasette:
 
         # fallback to top-level if needed
         if db_plugin_config is None and fallback:
-            self._plugin_config_top(plugin_name)
+            return self._plugin_config_top(plugin_name)
 
         return db_plugin_config
 

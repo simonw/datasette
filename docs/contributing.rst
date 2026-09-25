@@ -325,12 +325,41 @@ To take any screenshots that do not exist yet, run::
 
 ``just docs`` runs this too. Existing images are skipped. To replace a screenshot, delete its image file and run ``just shots`` again.
 
-The PDF and EPUB versions of the documentation cannot use WebP images, so ``docs/conf.py`` converts them to PNG during those builds. The PNG files are written to ``docs/_build/`` and should not be committed. To build those versions locally, run::
+The PDF and EPUB versions of the documentation cannot use WebP images, so ``docs/conf.py`` converts them to PNG during those builds. The PNG files are written to ``docs/_build/`` and should not be committed. See :ref:`contributing_documentation_pdf_epub` to build those versions locally.
+
+.. _contributing_documentation_pdf_epub:
+
+Building the PDF and EPUB documentation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Read the Docs also publishes the documentation as a PDF and an EPUB. To build the EPUB in ``docs/_build/epub``::
 
     just docs-epub
+
+Building the PDF requires LaTeX, including ``latexmk``. On macOS you can install `MacTeX <https://www.tug.org/mactex/>`__, which includes everything needed::
+
+    brew install --cask mactex-no-gui
+
+Or install the much smaller BasicTeX and add the LaTeX packages used by the documentation::
+
+    brew install --cask basictex
+    sudo tlmgr update --self
+    sudo tlmgr install latexmk cmap tex-gyre fncychap xcolor float wrapfig \
+      capt-of framed fancyvrb upquote needspace tabulary varwidth booktabs \
+      parskip titlesec txfonts times
+
+Open a new terminal window after installing either of these so the LaTeX commands are available.
+
+On Debian or Ubuntu::
+
+    sudo apt install latexmk texlive-latex-recommended texlive-latex-extra \
+      texlive-fonts-recommended tex-gyre
+
+Then build the PDF in ``docs/_build/latex/Datasette.pdf``::
+
     just docs-pdf
 
-``just docs-pdf`` needs a LaTeX installation that includes ``latexmk``.
+LaTeX cannot display some emoji used in the documentation. ``latexmk`` reports these as errors, but the PDF is still created without those characters.
 
 .. _contributing_template_contexts:
 

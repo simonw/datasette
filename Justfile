@@ -63,7 +63,10 @@ export DATASETTE_SECRET := "not_a_secret"
 # Build docs as a PDF in docs/_build/latex, needs LaTeX and latexmk
 # Continues past LaTeX errors, like the Read the Docs PDF build
 @docs-pdf: cog blacken-docs
-  cd docs && uv run make latexpdf LATEXMKOPTS="-f" LATEXOPTS="-interaction=nonstopmode"
+  command -v latexmk > /dev/null || { echo "latexmk not found, see 'Building the PDF and EPUB documentation' in docs/contributing.rst"; exit 1; }
+  rm -rf docs/_build/latex
+  cd docs && uv run make latexpdf LATEXMKOPTS="-f -silent" || test -f _build/latex/Datasette.pdf
+  echo "PDF written to docs/_build/latex/Datasette.pdf"
 
 # Take any missing documentation screenshots defined in docs/shots.yml
 @shots:

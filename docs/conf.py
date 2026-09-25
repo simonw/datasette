@@ -155,6 +155,10 @@ latex_elements = {
     # 'figure_align': 'htbp',
 }
 
+# The default also includes "colorrows", which sends pdflatex into infinite
+# recursion on some tables with TeX Live 2026
+latex_table_style = ["booktabs"]
+
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).

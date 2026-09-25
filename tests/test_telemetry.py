@@ -457,6 +457,39 @@ async def test_immutable_database_propagates_context(tmp_path, otel_spans):
 
 
 @pytest.mark.asyncio
+async def test_queries_in_gathered_tasks_are_children_of_the_request_span(
+    ds_client, otel_spans
+):
+    # The /parallel-queries route in tests/plugins/my_plugin.py runs two
+    # queries at once using asyncio.gather()
+    response = await ds_client.get("/parallel-queries")
+    assert response.status_code == 200
+    assert response.json() == {"one": 1, "two": 2}
+
+    spans = otel_spans.get_finished_spans()
+    (request_span,) = [
+        span
+        for span in spans
+        if span.kind == SpanKind.SERVER
+        and span.attributes.get("url.path") == "/parallel-queries"
+    ]
+    one, two = [
+        span
+        for span in _db_query_spans(otel_spans)
+        if span.attributes.get("db.query.text", "").startswith(
+            "select coalesce(sleep(0.1)"
+        )
+    ]
+    for query_span in (one, two):
+        assert (
+            query_span.parent is not None
+            and query_span.parent.span_id == request_span.context.span_id
+        )
+    # The queries overlapped
+    assert one.start_time < two.end_time and two.start_time < one.end_time
+
+
+@pytest.mark.asyncio
 async def test_write_spans_parent_to_db_query(otel_spans):
     # execute_write() queues a WriteTask for the write thread.
     # db.write.queue_wait and db.write.execute are both children of db.query.

@@ -124,7 +124,6 @@ Shows the :ref:`configuration <configuration>` for this instance of Datasette. T
         "ok": true,
         "settings": {
             "template_debug": true,
-            "trace_debug": true,
             "force_https_urls": true
         }
     }

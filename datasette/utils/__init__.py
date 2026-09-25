@@ -1067,14 +1067,6 @@ class LimitedWriter:
         await self.writer.write(bytes)
 
 
-class EscapeHtmlWriter:
-    def __init__(self, writer):
-        self.writer = writer
-
-    async def write(self, content):
-        await self.writer.write(markupsafe.escape(content))
-
-
 _infinities = {float("inf"), float("-inf")}
 
 

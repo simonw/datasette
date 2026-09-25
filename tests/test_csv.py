@@ -1,9 +1,9 @@
 import urllib.parse
 
 import pytest
-from bs4 import BeautifulSoup as Soup
 
 from datasette.app import Datasette
+from datasette.telemetry_registry import DB_QUERY, DB_QUERY_TEXT
 
 EXPECTED_TABLE_CSV = """id,content
 1,hello
@@ -303,24 +303,34 @@ async def test_view_csv_stream(ds_client):
     assert lines[0] == b"content,content_extra"
 
 
-def test_csv_trace(app_client_with_trace):
-    response = app_client_with_trace.get("/fixtures/simple_primary_key.csv?_trace=1")
-    assert response.headers["content-type"] == "text/html; charset=utf-8"
-    soup = Soup(response.text, "html.parser")
-    assert (
-        soup.find("textarea").text
-        == "id,content\r\n1,hello\r\n2,world\r\n3,\r\n4,RENDER_CELL_DEMO\r\n5,RENDER_CELL_ASYNC\r\n"
-    )
-    assert "select id, content from simple_primary_key" in soup.find("pre").text
+def _db_query_texts(otel_spans):
+    return [
+        span.attributes.get(DB_QUERY_TEXT, "")
+        for span in otel_spans.get_finished_spans()
+        if span.name == DB_QUERY
+    ]
 
 
-def test_table_csv_stream_does_not_calculate_facets(app_client_with_trace):
-    response = app_client_with_trace.get("/fixtures/simple_primary_key.csv?_trace=1")
-    soup = Soup(response.text, "html.parser")
-    assert "select content, count(*) as n" not in soup.find("pre").text
+# The table view runs table_view_data() once before stream_csv() adds
+# _nofacet=1 and _nocount=1, so these queries can still run once. Without
+# those parameters they would run again for the CSV rows.
 
 
-def test_table_csv_stream_does_not_calculate_counts(app_client_with_trace):
-    response = app_client_with_trace.get("/fixtures/simple_primary_key.csv?_trace=1")
-    soup = Soup(response.text, "html.parser")
-    assert "select count(*)" not in soup.find("pre").text
+@pytest.mark.asyncio
+async def test_table_csv_does_not_recalculate_facets(ds_client, otel_spans):
+    response = await ds_client.get("/fixtures/facetable.csv?_facet=state")
+    assert response.status_code == 200
+    queries = _db_query_texts(otel_spans)
+    assert any("from facetable" in query for query in queries), queries
+    facet_queries = [q for q in queries if "count(*) as count" in q]
+    assert len(facet_queries) <= 1, facet_queries
+
+
+@pytest.mark.asyncio
+async def test_table_csv_does_not_recalculate_count(ds_client, otel_spans):
+    response = await ds_client.get("/fixtures/facetable.csv?_extra=count")
+    assert response.status_code == 200
+    queries = _db_query_texts(otel_spans)
+    assert any("from facetable" in query for query in queries), queries
+    count_queries = [q for q in queries if q.startswith("select count(*) from")]
+    assert len(count_queries) <= 1, count_queries

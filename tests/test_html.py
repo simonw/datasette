@@ -1173,8 +1173,8 @@ async def test_navigation_menu_links(
 
 
 @pytest.mark.asyncio
-async def test_trace_correctly_escaped(ds_client):
-    response = await ds_client.get("/fixtures/-/query?sql=select+'<h1>Hello'&_trace=1")
+async def test_query_page_escapes_sql(ds_client):
+    response = await ds_client.get("/fixtures/-/query?sql=select+'<h1>Hello'")
     assert "select '<h1>Hello" not in response.text
     assert "select &#39;&lt;h1&gt;Hello" in response.text
 

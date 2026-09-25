@@ -1266,7 +1266,7 @@ Datasette also now requires Python 3.7 or higher.
 - ``sqlite_stat`` tables are now hidden by default. (:issue:`1587`)
 - SpatiaLite tables ``data_licenses``, ``KNN`` and ``KNN2`` are now hidden by default. (:issue:`1601`)
 - SQL query tracing mechanism now works for queries executed in ``asyncio`` sub-tasks, such as those created by ``asyncio.gather()``. (:issue:`1576`)
-- :ref:`internals_tracer` mechanism is now documented.
+- ``datasette.tracer`` mechanism is now documented.
 - Common Datasette symbols can now be imported directly from the top-level ``datasette`` package, see :ref:`internals_shortcuts`. Those symbols are ``Response``, ``Forbidden``, ``NotFound``, ``hookimpl``, ``actor_matches_allow``. (:issue:`957`)
 - ``/-/versions`` page now returns additional details for libraries used by SpatiaLite. (:issue:`1607`)
 - Documentation now links to the `Datasette Tutorials <https://datasette.io/tutorials>`__.
@@ -1432,7 +1432,7 @@ New features
 - ``?_facet_size=max`` sets that to the maximum, which defaults to 1,000 and is controlled by the the :ref:`setting_max_returned_rows` setting. If facet results are truncated the … at the bottom of the facet list now links to this parameter. (:issue:`1337`)
 - ``?_nofacet=1`` option to disable all facet calculations on a page, used as a performance optimization for CSV exports and ``?_shape=array/object``. (:issue:`1349`, :issue:`263`)
 - ``?_nocount=1`` option to disable full query result counts. (:issue:`1353`)
-- ``?_trace=1`` debugging option is now controlled by the new :ref:`setting_trace_debug` setting, which is turned off by default. (:issue:`1359`)
+- ``?_trace=1`` debugging option is now controlled by the new ``trace_debug`` setting, which is turned off by default. (:issue:`1359`)
 
 Bug fixes and other improvements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

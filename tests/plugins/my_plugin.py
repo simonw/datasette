@@ -3,7 +3,7 @@ import base64
 import json
 import urllib.parse
 
-from datasette import hookimpl, tracer
+from datasette import hookimpl
 from datasette.facets import Facet
 from datasette.permissions import Action
 from datasette.resources import DatabaseResource
@@ -278,11 +278,10 @@ def register_routes():
 
     async def parallel_queries(datasette):
         db = datasette.get_database()
-        with tracer.trace_child_tasks():
-            one, two = await asyncio.gather(
-                db.execute("select coalesce(sleep(0.1), 1)"),
-                db.execute("select coalesce(sleep(0.1), 2)"),
-            )
+        one, two = await asyncio.gather(
+            db.execute("select coalesce(sleep(0.1), 1)"),
+            db.execute("select coalesce(sleep(0.1), 2)"),
+        )
         return Response.json({"one": one.single_value(), "two": two.single_value()})
 
     return [

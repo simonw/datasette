@@ -49,7 +49,6 @@ from .telemetry_registry import (
     TRANSACTION,
     TRUNCATED,
 )
-from .tracer import trace
 from .utils import (
     call_with_supported_arguments,
     detect_fts,
@@ -310,22 +309,19 @@ class Database:
                     raise QueryInterrupted(e, sql, params)
                 raise
 
-        with trace(  # noqa: SIM117
-            "sql", database=self.name, sql=sql.strip(), params=params
-        ):
-            with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
-                span.set_attribute(DB_SYSTEM, "sqlite")
-                span.set_attribute(DB_NAMESPACE, self.name)
-                span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
-                operation_name = sql_operation_name(sql)
-                if operation_name:
-                    span.set_attribute(DB_OPERATION_NAME, operation_name)
-                if params:
-                    span.set_attribute(PARAM_COUNT, len(params))
-                with record_operation_duration(self.name, "write"):
-                    results = await self._execute_write_fn(
-                        _inner, block=block, request=request, transaction=transaction
-                    )
+        with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
+            span.set_attribute(DB_SYSTEM, "sqlite")
+            span.set_attribute(DB_NAMESPACE, self.name)
+            span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
+            operation_name = sql_operation_name(sql)
+            if operation_name:
+                span.set_attribute(DB_OPERATION_NAME, operation_name)
+            if params:
+                span.set_attribute(PARAM_COUNT, len(params))
+            with record_operation_duration(self.name, "write"):
+                results = await self._execute_write_fn(
+                    _inner, block=block, request=request, transaction=transaction
+                )
         return results
 
     async def execute_write_script(self, sql, block=True, request=None):
@@ -334,19 +330,16 @@ class Database:
         def _inner(conn):
             return conn.executescript(sql)
 
-        with trace(  # noqa: SIM117
-            "sql", database=self.name, sql=sql.strip(), executescript=True
-        ):
-            # No db.operation.name, since the script can contain multiple statements
-            with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
-                span.set_attribute(DB_SYSTEM, "sqlite")
-                span.set_attribute(DB_NAMESPACE, self.name)
-                span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
-                span.set_attribute(EXECUTESCRIPT, True)
-                with record_operation_duration(self.name, "write"):
-                    results = await self._execute_write_fn(
-                        _inner, block=block, transaction=False, request=request
-                    )
+        # No db.operation.name, since the script can contain multiple statements
+        with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
+            span.set_attribute(DB_SYSTEM, "sqlite")
+            span.set_attribute(DB_NAMESPACE, self.name)
+            span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
+            span.set_attribute(EXECUTESCRIPT, True)
+            with record_operation_duration(self.name, "write"):
+                results = await self._execute_write_fn(
+                    _inner, block=block, transaction=False, request=request
+                )
         return results
 
     async def execute_write_many(self, sql, params_seq, block=True, request=None):
@@ -363,23 +356,19 @@ class Database:
 
             return conn.executemany(sql, count_params(params_seq)), count
 
-        with trace(
-            "sql", database=self.name, sql=sql.strip(), executemany=True
-        ) as kwargs:
-            with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
-                span.set_attribute(DB_SYSTEM, "sqlite")
-                span.set_attribute(DB_NAMESPACE, self.name)
-                span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
-                span.set_attribute(EXECUTEMANY, True)
-                operation_name = sql_operation_name(sql)
-                if operation_name:
-                    span.set_attribute(DB_OPERATION_NAME, operation_name)
-                with record_operation_duration(self.name, "write"):
-                    results, count = await self._execute_write_fn(
-                        _inner, block=block, request=request
-                    )
-                span.set_attribute(PARAM_SETS, count)
-            kwargs["count"] = count
+        with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
+            span.set_attribute(DB_SYSTEM, "sqlite")
+            span.set_attribute(DB_NAMESPACE, self.name)
+            span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
+            span.set_attribute(EXECUTEMANY, True)
+            operation_name = sql_operation_name(sql)
+            if operation_name:
+                span.set_attribute(DB_OPERATION_NAME, operation_name)
+            with record_operation_duration(self.name, "write"):
+                results, count = await self._execute_write_fn(
+                    _inner, block=block, request=request
+                )
+            span.set_attribute(PARAM_SETS, count)
         return results
 
     async def execute_isolated_fn(self, fn):
@@ -781,45 +770,42 @@ class Database:
                 else:
                     return Results(rows, False, cursor.description)
 
-        with trace(  # noqa: SIM117
-            "sql", database=self.name, sql=sql.strip(), params=params
-        ):
-            with tracer.start_as_current_span(
-                DB_QUERY,
-                kind=DB_QUERY.kind,
-                record_exception=False,
-                set_status_on_exception=False,
-            ) as span:
-                span.set_attribute(DB_SYSTEM, "sqlite")
-                span.set_attribute(DB_NAMESPACE, self.name)
-                span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
-                span.set_attribute(TIME_LIMIT_MS, time_limit_ms)
-                operation_name = sql_operation_name(sql)
-                if operation_name:
-                    span.set_attribute(DB_OPERATION_NAME, operation_name)
-                if params:
-                    span.set_attribute(PARAM_COUNT, len(params))
-                try:
-                    with record_operation_duration(self.name, "read"):
-                        results = await self._execute_fn(sql_operation_in_thread)
-                except QueryInterrupted as e:
-                    span.set_attribute(INTERRUPTED, True)
-                    if not timeout_expected:
-                        span.set_status(Status(StatusCode.ERROR, str(e)))
-                        span.record_exception(e)
-                        record_query_interrupted(self.name)
-                    raise
-                except Exception as e:
-                    # log_sql_errors=False callers, such as facet suggestion,
-                    # expect some queries to fail
-                    if log_sql_errors:
-                        span.record_exception(e)
-                        span.set_status(Status(StatusCode.ERROR, str(e)))
-                    else:
-                        span.set_attribute(SQL_ERROR_SUPPRESSED, True)
-                    raise
-                span.set_attribute(TRUNCATED, results.truncated)
-                span.set_attribute(ROWS_RETURNED, len(results.rows))
+        with tracer.start_as_current_span(
+            DB_QUERY,
+            kind=DB_QUERY.kind,
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
+            span.set_attribute(DB_SYSTEM, "sqlite")
+            span.set_attribute(DB_NAMESPACE, self.name)
+            span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
+            span.set_attribute(TIME_LIMIT_MS, time_limit_ms)
+            operation_name = sql_operation_name(sql)
+            if operation_name:
+                span.set_attribute(DB_OPERATION_NAME, operation_name)
+            if params:
+                span.set_attribute(PARAM_COUNT, len(params))
+            try:
+                with record_operation_duration(self.name, "read"):
+                    results = await self._execute_fn(sql_operation_in_thread)
+            except QueryInterrupted as e:
+                span.set_attribute(INTERRUPTED, True)
+                if not timeout_expected:
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
+                    span.record_exception(e)
+                    record_query_interrupted(self.name)
+                raise
+            except Exception as e:
+                # log_sql_errors=False callers, such as facet suggestion,
+                # expect some queries to fail
+                if log_sql_errors:
+                    span.record_exception(e)
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
+                else:
+                    span.set_attribute(SQL_ERROR_SUPPRESSED, True)
+                raise
+            span.set_attribute(TRUNCATED, results.truncated)
+            span.set_attribute(ROWS_RETURNED, len(results.rows))
         return results
 
     @property

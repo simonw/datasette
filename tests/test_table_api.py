@@ -4,6 +4,7 @@ import urllib
 import pytest
 
 from datasette.fixtures import generate_compound_rows, generate_sortable_rows
+from datasette.telemetry_registry import DB_QUERY, DB_QUERY_TEXT
 from datasette.utils import detect_json1, tilde_encode
 from datasette.utils.sqlite import sqlite_version
 
@@ -1204,11 +1205,20 @@ async def test_nocount(ds_client, nocount, expected_count):
     assert response.json()["count"] == expected_count
 
 
-def test_nocount_nofacet_if_shape_is_object(app_client_with_trace):
-    response = app_client_with_trace.get(
-        "/fixtures/facetable.json?_trace=1&_shape=object"
+@pytest.mark.asyncio
+async def test_nocount_nofacet_if_shape_is_object(ds_client, otel_spans):
+    # _extra=count and _facet=state would each run a count(*) query
+    response = await ds_client.get(
+        "/fixtures/facetable.json?_shape=object&_extra=count&_facet=state"
     )
-    assert "count(*)" not in response.text
+    assert response.status_code == 200
+    queries = [
+        span.attributes.get(DB_QUERY_TEXT, "")
+        for span in otel_spans.get_finished_spans()
+        if span.name == DB_QUERY
+    ]
+    assert any("from facetable" in query for query in queries), queries
+    assert not any("count(*)" in query for query in queries), queries
 
 
 @pytest.mark.asyncio

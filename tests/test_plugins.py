@@ -301,6 +301,34 @@ async def test_plugin_config(ds_client):
     assert None is ds_client.ds.plugin_config("unknown-plugin")
 
 
+@pytest.mark.parametrize(
+    "database,table,fallback,expected",
+    [
+        ("configured_db", None, True, {"setting": "top"}),
+        ("configured_db", None, False, None),
+        ("configured_db", "some_table", True, {"setting": "top"}),
+        ("configured_db", "some_table", False, None),
+    ],
+)
+def test_plugin_config_top_fallback_when_table_none(
+    database, table, fallback, expected
+):
+    datasette = Datasette(
+        config={
+            "plugins": {"test-plugin": {"setting": "top"}},
+            "databases": {
+                "configured_db": {"description": "A database without plugin config"}
+            },
+        }
+    )
+    assert (
+        datasette.plugin_config(
+            "test-plugin", database=database, table=table, fallback=fallback
+        )
+        == expected
+    )
+
+
 @pytest.mark.asyncio
 async def test_plugin_config_env(ds_client, monkeypatch):
     monkeypatch.setenv("FOO_ENV", "FROM_ENVIRONMENT")

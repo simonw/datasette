@@ -1,4 +1,6 @@
+import asyncio
 import itertools
+import time
 from dataclasses import dataclass
 from typing import ClassVar
 
@@ -290,10 +292,30 @@ class SuggestedFacetsExtra(Extra):
             and not context.nofacet
             and not context.nosuggest
         ):
-            facet_suggest_awaitables = [facet.suggest() for facet in facet_instances]
-            for suggest_result in await context.run_sequential(
-                *facet_suggest_awaitables
-            ):
+            time_limit_ms = context.datasette.setting("facet_suggest_time_limit_ms")
+            deadline = (
+                time.monotonic() + 10 * time_limit_ms / 1000
+                if time_limit_ms > 0
+                else None
+            )
+            for facet in facet_instances:
+                if deadline is None:
+                    (suggest_result,) = await context.run_sequential(facet.suggest())
+                else:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    try:
+                        (suggest_result,) = await asyncio.wait_for(
+                            context.run_sequential(facet.suggest()), timeout=remaining
+                        )
+                    except asyncio.TimeoutError:
+                        if time.monotonic() < deadline:
+                            raise
+                        suggested_facets.extend(
+                            getattr(facet, "_suggestions_so_far", [])
+                        )
+                        break
                 suggested_facets.extend(suggest_result)
         return suggested_facets
 

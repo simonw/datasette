@@ -3452,6 +3452,23 @@ async def test_execute_write_insert_links_to_inserted_row():
 
 
 @pytest.mark.asyncio
+async def test_execute_write_insert_no_row_link_if_row_pages_disabled():
+    ds = Datasette(memory=True, default_deny=True, settings={"allow_row_pages": False})
+    ds.root_enabled = True
+    db = ds.add_memory_database("execute_write_no_row_link", name="data")
+    await db.execute_write("create table dogs (id integer primary key, name text)")
+    await ds.invoke_startup()
+    response = await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        data={"sql": "insert into dogs (name) values ('Cleo')"},
+    )
+    assert response.status_code == 200
+    assert "Query executed, 1 row affected" in response.text
+    assert "View row" not in response.text
+
+
+@pytest.mark.asyncio
 async def test_execute_write_post_rejects_read_only_sql():
     ds = Datasette(memory=True, default_deny=True)
     ds.root_enabled = True

@@ -488,6 +488,30 @@ async def test_insert_rows_into_without_rowid_table_preserves_return_order(ds_wr
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    not hasattr(sqlite3.Connection, "setlimit"),
+    reason="SQLite variable limit controls require Python 3.11",
+)
+async def test_insert_rows_into_without_rowid_table_respects_variable_limit(ds_write):
+    db = ds_write.get_database("data")
+    await db.execute_write(
+        "create table compound_without_rowid (a text, b text, "
+        "primary key (a, b)) without rowid"
+    )
+    await db.execute_write_fn(
+        lambda conn: conn.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 4)
+    )
+    rows = [{"a": str(i), "b": "value"} for i in range(3)]
+    response = await ds_write.client.post(
+        "/data/compound_without_rowid/-/insert",
+        json={"rows": rows, "return": True},
+        headers=_headers(write_token(ds_write)),
+    )
+    assert response.status_code == 201, response.json()
+    assert response.json()["rows"] == rows
+
+
+@pytest.mark.asyncio
 async def test_insert_row_alter(ds_write):
     token = write_token(ds_write)
     response = await ds_write.client.post(

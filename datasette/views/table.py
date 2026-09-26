@@ -1147,16 +1147,15 @@ class TableInsertView(BaseView):
                     rowids.append(method(row, **kwargs).last_rowid)
                 table_options = table.schema.rsplit(")", 1)[-1]
                 if re.search(r"\bWITHOUT\s+ROWID\b", table_options, re.IGNORECASE):
-                    if not rows:
-                        return []
-                    where_clause = " OR ".join(
-                        "({})".format(
-                            " AND ".join(f"{escape_sqlite(pk)} = ?" for pk in pks)
-                        )
-                        for _ in rows
+                    where_clause = " AND ".join(
+                        f"{escape_sqlite(pk)} = ?" for pk in pks
                     )
-                    args = [row[pk] for row in rows for pk in pks]
-                    return list(table.rows_where(where_clause, args))
+                    returned_rows = []
+                    for row in rows:
+                        returned_rows.extend(
+                            table.rows_where(where_clause, [row[pk] for pk in pks])
+                        )
+                    return returned_rows
                 return list(
                     table.rows_where(
                         "rowid in ({})".format(",".join("?" for _ in rowids)),

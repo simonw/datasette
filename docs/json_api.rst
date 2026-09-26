@@ -1827,6 +1827,9 @@ If successful, this will return a ``201`` status code and the newly inserted row
         ]
     }
 
+This also works for SQLite ``WITHOUT ROWID`` tables with explicit primary key
+values. The returned ``"rows"`` list is looked up using those primary keys.
+
 To insert multiple rows at a time, use the same API method but send a list of dictionaries as the ``"rows"`` key:
 
 ::

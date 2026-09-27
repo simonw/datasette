@@ -26,6 +26,15 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 
 Want to stay up-to-date with the project? Subscribe to the [Datasette newsletter](https://datasette.substack.com/) for tips, tricks and news on what's new in the Datasette ecosystem.
 
+## Ultra-quickstart
+
+If you already have a SQLite database and want to run Datasette as quickly as possible:
+
+    uv tool install datasette
+    datasette my_database.db
+
+Then visit http://localhost:8001/
+
 ## Installation
 
 If you are on a Mac, [Homebrew](https://brew.sh/) is the easiest way to install Datasette:

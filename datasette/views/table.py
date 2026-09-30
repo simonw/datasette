@@ -2518,8 +2518,10 @@ async def _next_value_and_url(
                 prefix = rows[-2][sort or sort_desc]
             except IndexError:
                 # sort/sort_desc column missing from SELECT - look up value by PK instead
+                # Tables with no primary key paginate on rowid
+                lookup_pks = pks or ["rowid"]
                 prefix_where_clause = " and ".join(
-                    f"{escape_sqlite(pk)} = :pk{i}" for i, pk in enumerate(pks)
+                    f"{escape_sqlite(pk)} = :pk{i}" for i, pk in enumerate(lookup_pks)
                 )
                 prefix_lookup_sql = (
                     f"select {escape_sqlite(sort or sort_desc)} "
@@ -2528,7 +2530,7 @@ async def _next_value_and_url(
                 prefix = (
                     await db.execute(
                         prefix_lookup_sql,
-                        {**{f"pk{i}": rows[-2][pk] for i, pk in enumerate(pks)}},
+                        {**{f"pk{i}": rows[-2][pk] for i, pk in enumerate(lookup_pks)}},
                     )
                 ).single_value()
             if isinstance(prefix, dict) and "value" in prefix:

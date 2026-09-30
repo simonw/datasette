@@ -385,7 +385,8 @@ INSERT INTO "searchable_fts" (rowid, text1, text2)
 @documented(label="datasette_fixtures_populate_fixture_database")
 def populate_fixture_database(conn):
     """Populate a SQLite connection with Datasette's test fixture tables."""
-    conn.executescript(TABLES)
+    # TABLES is ~1,440 INSERTs; without a wrapping transaction each one commits on its own.
+    conn.executescript("BEGIN;" + TABLES + "COMMIT;")
     for sql, params in TABLE_PARAMETERIZED_SQL:
         with conn:
             conn.execute(sql, params)

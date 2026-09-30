@@ -1,6 +1,9 @@
 import csv
 import hashlib
 import sys
+import textwrap
+
+import markupsafe
 
 from datasette.utils import (
     EscapeHtmlWriter,
@@ -37,6 +40,29 @@ class DatasetteError(Exception):
         self.message_is_html = message_is_html
         # Plain text used for JSON and CSV error responses when message is HTML
         self.plain_message = plain_message
+
+
+def query_interrupted_error(ex):
+    """The SQL time limit error page, shared by every view that runs user SQL."""
+    return DatasetteError(
+        textwrap.dedent(f"""
+        <p>SQL query took too long. The time limit is controlled by the
+        <a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>
+        configuration option.</p>
+        <textarea style="width: 90%">{markupsafe.escape(ex.sql)}</textarea>
+        <script>
+        let ta = document.querySelector("textarea");
+        ta.style.height = ta.scrollHeight + "px";
+        </script>
+    """).strip(),
+        title="SQL Interrupted",
+        status=400,
+        message_is_html=True,
+        plain_message=(
+            "SQL query took too long. The time limit is"
+            " controlled by the sql_time_limit_ms setting."
+        ),
+    )
 
 
 class View:

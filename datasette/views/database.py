@@ -3,7 +3,6 @@ import hashlib
 import itertools
 import json
 import os
-import textwrap
 from dataclasses import asdict, dataclass, field
 from urllib.parse import parse_qsl, urlencode
 
@@ -39,7 +38,7 @@ from datasette.utils.asgi import AsgiFileDownload, Forbidden, NotFound, Response
 from datasette.write_sql import QueryWriteRejected
 
 from . import Context
-from .base import DatasetteError, View, stream_csv
+from .base import DatasetteError, View, query_interrupted_error, stream_csv
 from .query_helpers import (
     _block_framing,
     _ensure_stored_query_execution_permissions,
@@ -819,25 +818,7 @@ class QueryView(View):
                 columns = results.columns
                 rows = results.rows
             except QueryInterrupted as ex:
-                raise DatasetteError(
-                    textwrap.dedent(f"""
-                    <p>SQL query took too long. The time limit is controlled by the
-                    <a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>
-                    configuration option.</p>
-                    <textarea style="width: 90%">{markupsafe.escape(ex.sql)}</textarea>
-                    <script>
-                    let ta = document.querySelector("textarea");
-                    ta.style.height = ta.scrollHeight + "px";
-                    </script>
-                """).strip(),
-                    title="SQL Interrupted",
-                    status=400,
-                    message_is_html=True,
-                    plain_message=(
-                        "SQL query took too long. The time limit is"
-                        " controlled by the sql_time_limit_ms setting."
-                    ),
-                )
+                raise query_interrupted_error(ex)
             except sqlite3.DatabaseError as ex:
                 query_error = str(ex)
                 results = None

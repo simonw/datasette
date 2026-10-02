@@ -228,8 +228,13 @@ class TelemetryMiddleware:
             await self.app(scope, receive, send)
             return
         headers = scope.get("headers") or []
-        # Uses the global propagator, configured with OTEL_PROPAGATORS
-        context = extract(headers, getter=_HEADERS_GETTER)
+        # Uses the global propagator, configured with OTEL_PROPAGATORS.
+        # For datasette.client calls, extract into the caller's context so
+        # the inner SERVER span nests under the caller's active span.
+        parent_context = (
+            otel_context_api.get_current() if _in_datasette_client.get() else None
+        )
+        context = extract(headers, getter=_HEADERS_GETTER, context=parent_context)
         method = clamp_http_method(scope.get("method", ""))
         # Renamed to include the route once routing has happened
         with tracer.start_as_current_span(

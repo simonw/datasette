@@ -33,6 +33,7 @@ from datasette.telemetry import (
     tracer,
 )
 from datasette.utils import resolve_routes
+from datasette.utils.asgi import Response
 
 # Named in-memory databases are shared between instances, so each fixture
 # needs a unique name.
@@ -725,6 +726,7 @@ async def test_internal_client_requests_are_marked(ds, otel_spans):
     assert all(
         span.attributes.get("datasette.internal_client") is True for span in server
     )
+    assert all(span.parent is None for span in server)
 
     import httpx2
 
@@ -737,3 +739,121 @@ async def test_internal_client_requests_are_marked(ds, otel_spans):
     server = _server_spans(otel_spans)
     assert server
     assert all("datasette.internal_client" not in span.attributes for span in server)
+    assert all(span.parent is None for span in server)
+
+
+@pytest.mark.asyncio
+async def test_internal_client_nested_in_route_handler_span(ds, otel_spans):
+    """
+    An internal `datasette.client` request made from inside a route handler
+    nests its SERVER span under the outer route's SERVER span, sharing
+    the trace ID.
+    """
+
+    class _NestedRoutePlugin:
+        __name__ = "HttpSpanNestedRoutePlugin"
+
+        @hookimpl
+        def register_routes(self):
+            async def outer(datasette):
+                await datasette.client.get("/-/versions.json")
+                return Response.text("ok")
+
+            return [(r"^/-/nested-route$", outer)]
+
+    ds.pm.register(_NestedRoutePlugin(), name="httpspan-nested-route")
+    try:
+        # Outer request via datasette.client
+        otel_spans.clear()
+        response = await ds.client.get("/-/nested-route")
+        assert response.status_code == 200
+
+        server = _server_spans(otel_spans)
+        assert len(server) == 2
+        outer = [s for s in server if s.name.startswith("GET ^/-/nested-route")][0]
+        inner = [s for s in server if s != outer][0]
+
+        assert inner.parent is not None
+        assert inner.parent.span_id == outer.context.span_id
+        assert inner.context.trace_id == outer.context.trace_id
+        assert outer.attributes.get("datasette.internal_client") is True
+        assert inner.attributes.get("datasette.internal_client") is True
+
+        # Outer request received directly over ASGI (simulating a network request)
+        import httpx2
+
+        transport = httpx2.ASGITransport(app=ds.app())
+        async with httpx2.AsyncClient(
+            transport=transport, base_url="http://localhost"
+        ) as client:
+            otel_spans.clear()
+            response = await client.get("/-/nested-route")
+            assert response.status_code == 200
+
+        server = _server_spans(otel_spans)
+        assert len(server) == 2
+        outer = [s for s in server if s.name.startswith("GET ^/-/nested-route")][0]
+        inner = [s for s in server if s != outer][0]
+
+        assert outer.parent is None
+        assert "datasette.internal_client" not in outer.attributes
+        assert inner.parent is not None
+        assert inner.parent.span_id == outer.context.span_id
+        assert inner.context.trace_id == outer.context.trace_id
+        assert inner.attributes.get("datasette.internal_client") is True
+    finally:
+        ds.pm.unregister(name="httpspan-nested-route")
+
+
+@pytest.mark.asyncio
+async def test_internal_client_nested_in_custom_span(ds, otel_spans):
+    """
+    An internal `datasette.client` request made within an active span
+    (e.g., from a plugin or background task) nests under that span.
+    """
+    otel_spans.clear()
+    with tracer.start_as_current_span("plugin.work") as parent:
+        response = await ds.client.get("/-/versions.json")
+        assert response.status_code == 200
+
+    spans = otel_spans.get_finished_spans()
+    plugin_spans = [s for s in spans if s.name == "plugin.work"]
+    assert len(plugin_spans) == 1
+    plugin_span = plugin_spans[0]
+
+    server = _server_spans(otel_spans)
+    assert len(server) == 1
+    server_span = server[0]
+
+    assert server_span.parent is not None
+    assert server_span.parent.span_id == plugin_span.context.span_id
+    assert server_span.context.trace_id == plugin_span.context.trace_id
+    assert server_span.attributes.get("datasette.internal_client") is True
+
+
+@pytest.mark.asyncio
+async def test_internal_client_explicit_traceparent_takes_priority(ds, otel_spans):
+    """
+    An explicit `traceparent` header on a `datasette.client` request takes priority
+    over the caller's active span, adopting the trace ID and parent from the header.
+    """
+    trace_id = "4bf92f3577b34da6a3ce929d0e0e4736"
+    parent_span_id = "00f067aa0ba902b7"
+    otel_spans.clear()
+
+    with tracer.start_as_current_span("plugin.work") as parent:
+        response = await ds.client.get(
+            "/-/versions.json",
+            headers={"traceparent": f"00-{trace_id}-{parent_span_id}-01"},
+        )
+        assert response.status_code == 200
+
+    server = _server_spans(otel_spans)
+    assert len(server) == 1
+    server_span = server[0]
+
+    assert f"{server_span.context.trace_id:032x}" == trace_id
+    assert server_span.parent is not None
+    assert f"{server_span.parent.span_id:016x}" == parent_span_id
+    assert server_span.parent.is_remote
+    assert server_span.attributes.get("datasette.internal_client") is True

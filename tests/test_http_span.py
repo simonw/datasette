@@ -770,8 +770,8 @@ async def test_internal_client_nested_in_route_handler_span(ds, otel_spans):
 
         server = _server_spans(otel_spans)
         assert len(server) == 2
-        outer = [s for s in server if s.name.startswith("GET ^/-/nested-route")][0]
-        inner = [s for s in server if s != outer][0]
+        outer = next(s for s in server if s.name.startswith("GET ^/-/nested-route"))
+        inner = next(s for s in server if s != outer)
 
         assert inner.parent is not None
         assert inner.parent.span_id == outer.context.span_id
@@ -792,8 +792,8 @@ async def test_internal_client_nested_in_route_handler_span(ds, otel_spans):
 
         server = _server_spans(otel_spans)
         assert len(server) == 2
-        outer = [s for s in server if s.name.startswith("GET ^/-/nested-route")][0]
-        inner = [s for s in server if s != outer][0]
+        outer = next(s for s in server if s.name.startswith("GET ^/-/nested-route"))
+        inner = next(s for s in server if s != outer)
 
         assert outer.parent is None
         assert "datasette.internal_client" not in outer.attributes
@@ -812,7 +812,7 @@ async def test_internal_client_nested_in_custom_span(ds, otel_spans):
     (e.g., from a plugin or background task) nests under that span.
     """
     otel_spans.clear()
-    with tracer.start_as_current_span("plugin.work") as parent:
+    with tracer.start_as_current_span("plugin.work"):
         response = await ds.client.get("/-/versions.json")
         assert response.status_code == 200
 
@@ -841,7 +841,7 @@ async def test_internal_client_explicit_traceparent_takes_priority(ds, otel_span
     parent_span_id = "00f067aa0ba902b7"
     otel_spans.clear()
 
-    with tracer.start_as_current_span("plugin.work") as parent:
+    with tracer.start_as_current_span("plugin.work"):
         response = await ds.client.get(
             "/-/versions.json",
             headers={"traceparent": f"00-{trace_id}-{parent_span_id}-01"},

@@ -743,6 +743,7 @@ class Database:
             ) as execute_span:
                 try:
                     with sqlite_timelimit(conn, time_limit_ms):
+                        cursor = None
                         try:
                             cursor = conn.cursor()
                             cursor.execute(sql, params if params is not None else {})
@@ -756,6 +757,7 @@ class Database:
                             else:
                                 rows = cursor.fetchall()
                                 truncated = False
+                            description = cursor.description
                         except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
                             if e.args == ("interrupted",):
                                 raise QueryInterrupted(e, sql, params)
@@ -765,6 +767,13 @@ class Database:
                                 )
                                 sys.stderr.flush()
                             raise
+                        finally:
+                            # Release the statement now: a traceback that
+                            # keeps this frame alive would otherwise keep it
+                            # unfinalized, and closing the pooled connection
+                            # later would leave a zombie holding its fds
+                            if cursor is not None:
+                                cursor.close()
                 except QueryInterrupted as e:
                     if not timeout_expected:
                         execute_span.record_exception(e)
@@ -777,10 +786,10 @@ class Database:
                     raise
 
                 if truncate:
-                    return Results(rows, truncated, cursor.description)
+                    return Results(rows, truncated, description)
 
                 else:
-                    return Results(rows, False, cursor.description)
+                    return Results(rows, False, description)
 
         with trace(  # noqa: SIM117
             "sql", database=self.name, sql=sql.strip(), params=params

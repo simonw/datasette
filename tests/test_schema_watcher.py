@@ -440,6 +440,10 @@ async def test_external_file_deleted_and_recreated(tmp_path, db_path):
     await wait_for(gone)
     response = await ds.client.get("/ext/t.json")
     assert response.status_code in (404, 500)
+    # Writes fail instead of silently creating a new empty file
+    with pytest.raises(sqlite3.OperationalError):
+        await ds.get_database("ext").execute_write("insert into t (a) values ('x')")
+    assert not os.path.exists(db_path)
     make_db(db_path, sql="create table t (id integer primary key, a text, back text)")
 
     async def back():

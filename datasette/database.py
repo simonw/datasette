@@ -251,6 +251,11 @@ class Database:
         assert not (write and not self.is_mutable)
         if write:
             qs = ""
+            state = self._watch_state
+            if self._conn_generation or (state is not None and state.missing):
+                # Reopening after the file was replaced or deleted: never
+                # silently create a new empty database in its place
+                qs = "?mode=rw"
         if self.mode is not None:
             qs = f"?mode={self.mode}"
         conn = sqlite3.connect(
@@ -1129,7 +1134,22 @@ class Database:
 
     async def derived_table_dependencies(self):
         """Return implementation tables and the tables they derive from."""
-        schema_version = (await self.execute("PRAGMA schema_version")).first()[0]
+        state = self._watch_state
+        if (
+            state is not None
+            and state.catalog_version is not None
+            and not state.needs_scan
+            and not state.missing
+        ):
+            # O(1): the schema_version the SchemaWatcher last stored in the
+            # catalog. allowed_resources() calls this for every database on
+            # every page, so a PRAGMA here was a per-request sweep of all
+            # databases (one pooled connection each). The cache is now as
+            # fresh as the catalog itself. The scan count is part of the key
+            # because a replaced file can have the same schema_version.
+            schema_version = ("catalog", state.catalog_version, state.stats["scans"])
+        else:
+            schema_version = (await self.execute("PRAGMA schema_version")).first()[0]
         if (
             self._cached_derived_table_dependencies is None
             or self._cached_derived_table_dependencies[0] != schema_version

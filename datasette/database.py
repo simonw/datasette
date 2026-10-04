@@ -16,7 +16,7 @@ import sqlite_utils
 from opentelemetry import context as otel_context_api
 from opentelemetry.trace import Status, StatusCode
 
-from .connection_pool import ConnectionLeaseError  # noqa: F401
+from .connection_pool import ConnectionLeaseError, LeasedConnection  # noqa: F401
 from .inspect import inspect_hash
 from .telemetry import (
     callback_name,
@@ -127,6 +127,8 @@ class Database:
         # Write threads that have deregistered (idle exit) but may still be
         # closing their connection. close() joins them.
         self._retiring_write_threads = set()
+        # Connections currently held by write threads (see _WriteConnection)
+        self._write_thread_connections = set()
         # Number of write threads started over the lifetime of this Database,
         # and how often a thread's idle timeout fired but it found a newly
         # queued task once it held the lock (so it kept running)
@@ -341,13 +343,18 @@ class Database:
             retiring_threads = tuple(self._retiring_write_threads)
             if write_thread is not None:
                 self._write_queue.put(_SHUTDOWN)
+        still_running = False
         for thread in ((write_thread,) if write_thread else ()) + retiring_threads:
             thread.join(timeout=10)
             if thread.is_alive():
+                still_running = True
                 sys.stderr.write(
                     f"Datasette: write thread for {self.name!r} did not exit within 10s\n"
                 )
                 sys.stderr.flush()
+        # A write thread that is still running owns its connection and closes
+        # it when it finishes; closing it here could free it mid-query
+        in_use = set(self._write_thread_connections) if still_running else set()
         for future in pending_execute_futures:
             try:
                 future.result()
@@ -361,6 +368,8 @@ class Database:
             read_pool.close_database(self)
         # Close anything still tracked in _all_connections
         for connection in list(self._all_connections):
+            if connection in in_use:
+                continue
             try:
                 connection.close()
             except Exception:  # noqa: BLE001, S110
@@ -495,18 +504,16 @@ class Database:
         write = self.is_mutable
 
         def _run():
+            # Always closed here, by the thread using it. close() waits for
+            # this call before closing tracked connections (the threaded
+            # immutable case runs as a tracked executor future)
             isolated_connection = self.connect(write=write)
             try:
-                return fn(isolated_connection)
+                return _call_with_lease(fn, isolated_connection, self.name, "isolated")
             finally:
                 if write:
                     self._schema_check(isolated_connection)
-                isolated_connection.close()
-                try:
-                    self._all_connections.remove(isolated_connection)
-                except ValueError:
-                    # May already have been cleared by close().
-                    pass
+                self._forget_connection(isolated_connection)
 
         with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
             span.set_attribute(DB_SYSTEM, "sqlite")
@@ -522,11 +529,9 @@ class Database:
                 if not write:
                     # Immutable database - no writes can ever occur, so there
                     # is no write queue to block; run against a fresh
-                    # read-only connection
-                    ctx = contextvars.copy_context()
-                    return await asyncio.get_running_loop().run_in_executor(
-                        self.ds.executor, ctx.run, _run
-                    )
+                    # read-only connection on the SQL thread pool, tracked so
+                    # close() waits for it
+                    return await self._run_in_executor(_run)
                 # Threaded mode - send to write thread
                 result = await self._send_to_write_thread(fn, isolated_connection=True)
                 await self._after_write()
@@ -573,9 +578,9 @@ class Database:
                 if transaction:
                     with conn:
                         conn.execute("BEGIN IMMEDIATE")
-                        result = fn(conn)
+                        result = _call_with_lease(fn, conn, self.name, "write")
                 else:
-                    result = fn(conn)
+                    result = _call_with_lease(fn, conn, self.name, "write")
             finally:
                 self._schema_check(conn)
             if not block:
@@ -810,11 +815,19 @@ class Database:
                             )
                             span.set_attribute(TRANSACTION, task.transaction)
                             isolated_connection = self.connect(write=True)
+                            # Owned by this thread: close() must not close it
+                            # if this thread outlives close()'s join timeout
+                            self._write_thread_connections.add(isolated_connection)
                             try:
-                                result = task.fn(isolated_connection)
+                                result = _call_with_lease(
+                                    task.fn, isolated_connection, self.name, "isolated"
+                                )
                             finally:
                                 self._schema_check(isolated_connection, task.loop)
                                 self._forget_connection(isolated_connection)
+                                self._write_thread_connections.discard(
+                                    isolated_connection
+                                )
                     except Exception as e:  # noqa: BLE001
                         # Write thread must survive any task failure or the database wedges
                         sys.stderr.write(f"{e}\n")
@@ -831,13 +844,20 @@ class Database:
                                 task.isolated_connection,
                             )
                             span.set_attribute(TRANSACTION, task.transaction)
+                            # The callback gets a lease proxy that stops
+                            # working when it returns: the connection belongs
+                            # to this thread and is closed when it idles out
                             try:
                                 if task.transaction:
                                     with conn:
                                         conn.execute("BEGIN IMMEDIATE")
-                                        result = task.fn(conn)
+                                        result = _call_with_lease(
+                                            task.fn, conn, self.name, "write"
+                                        )
                                 else:
-                                    result = task.fn(conn)
+                                    result = _call_with_lease(
+                                        task.fn, conn, self.name, "write"
+                                    )
                             finally:
                                 self._schema_check(conn, task.loop)
                     except Exception as e:  # noqa: BLE001
@@ -880,13 +900,19 @@ class Database:
         def in_thread():
             return read_pool.run(self, fn)
 
+        return await self._run_in_executor(in_thread)
+
+    async def _run_in_executor(self, fn):
+        """Run fn() on the shared SQL thread pool. The future is tracked in
+        _pending_execute_futures so close() waits for it before closing any
+        connection."""
         with self._pending_execute_futures_lock:
             self._check_not_closed()
             # Run in a copy of the caller's context so spans created in the
             # thread have the correct parent. This needs a fresh copy for
             # each submit, since a Context cannot be entered concurrently.
             ctx = contextvars.copy_context()
-            future = self.ds.executor.submit(ctx.run, in_thread)
+            future = self.ds.executor.submit(ctx.run, fn)
             self._pending_execute_futures.add(future)
         future.add_done_callback(self._remove_pending_execute_future)
         return await asyncio.wrap_future(future)
@@ -1333,6 +1359,21 @@ def _apply_write_wrapper(fn, wrapper_factory, track_event):
     return wrapped
 
 
+def _call_with_lease(fn, conn, db_name, kind):
+    """Call fn with a LeasedConnection for conn that expires when it returns.
+
+    Unlike read callbacks, write callbacks may return a cursor (for example
+    ``lambda conn: conn.execute(...)``, and execute_write_many() and
+    execute_write_script() return theirs); reading attributes such as
+    ``lastrowid`` from it afterwards is fine, fetching rows is not.
+    """
+    lease = LeasedConnection(conn, db_name, kind)
+    try:
+        return fn(lease)
+    finally:
+        lease._expire()
+
+
 class _WriteConnection:
     """The write thread's connection to its database.
 
@@ -1359,6 +1400,7 @@ class _WriteConnection:
         self.exception = None
         try:
             self.conn = db.connect(write=True)
+            db._write_thread_connections.add(self.conn)
             # Threads do not inherit the caller's context, so any spans
             # created by prepare_connection hooks here are root spans
             db.ds._prepare_connection(self.conn, db.name)
@@ -1376,6 +1418,7 @@ class _WriteConnection:
             # Also drops it from _all_connections, so that list does not
             # grow by one closed connection per write thread restart
             self.db._forget_connection(conn)
+            self.db._write_thread_connections.discard(conn)
 
 
 class WriteTask:

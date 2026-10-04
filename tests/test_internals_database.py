@@ -1319,9 +1319,14 @@ async def test_close_releases_memory_connections(num_sql_threads, named):
     read_connection = await db.execute_fn(
         lambda conn: conn.execute("select 1").connection
     )
-    write_connection = await db.execute_write_fn(lambda conn: conn)
+    leased_write = await db.execute_write_fn(lambda conn: conn)
+    write_connection = await db.execute_write_fn(
+        lambda conn: conn.execute("select 1").connection
+    )
     with pytest.raises(ConnectionLeaseError):
         leased.execute("select 1")
+    with pytest.raises(ConnectionLeaseError):
+        leased_write.execute("select 1")
     ds.close()
     for conn in (read_connection, write_connection):
         with pytest.raises(sqlite3.ProgrammingError, match="closed"):

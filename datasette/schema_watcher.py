@@ -66,7 +66,7 @@ MODES = ("owned", "external", "immutable")
 RACY_WINDOW_NS = 2_000_000_000
 # Databases per thread hop / per internal-DB transaction for bulk scans
 SCAN_CHUNK = 64
-SCAN_CONCURRENCY = 3
+SCAN_CONCURRENCY = 1
 # Directories with at least this many watched files are listed once per
 # sweep with os.scandir() instead of probing -wal/-journal with stat()
 SCANDIR_THRESHOLD = 8
@@ -146,9 +146,15 @@ def fingerprint(path, present=None):
             parts.append(None)
             continue
         try:
-            parts.append(_fp_side(os.stat(path + suffix)))
+            st = os.stat(path + suffix)
         except FileNotFoundError:
             parts.append(None)
+            continue
+        # An empty -wal holds no frames (and an empty -journal nothing to
+        # roll back): the database is exactly the main file, same as when
+        # the file is absent. Read-only opens of a WAL database create an
+        # empty -wal, which must not look like a change.
+        parts.append(_fp_side(st) if st.st_size else None)
     return tuple(parts)
 
 

@@ -3,7 +3,8 @@ import textwrap
 from sqlite_utils import Database as SQLiteUtilsDatabase
 from sqlite_utils import Migrations
 
-from datasette.utils import escape_sqlite, table_column_details
+from datasette.utils import escape_sqlite, sqlite3, table_column_details
+from datasette.utils.sqlite import supports_table_xinfo
 
 INTERNAL_DB_SCHEMA_TABLES = {
     "catalog_databases",
@@ -200,11 +201,90 @@ def catalog_fingerprint_column(db):
         db.execute("ALTER TABLE catalog_databases ADD COLUMN fingerprint TEXT")
 
 
+_COLUMNS_SQL = """
+SELECT m.name, p.cid, p.name, p.type, p."notnull", p.dflt_value, p.pk, p.hidden
+FROM sqlite_master m, pragma_table_xinfo(m.name) p WHERE m.type = 'table'
+"""
+_FOREIGN_KEYS_SQL = """
+SELECT m.name, p.id, p.seq, p."table", p."from", p."to", p.on_update, p.on_delete, p."match"
+FROM sqlite_master m, pragma_foreign_key_list(m.name) p WHERE m.type = 'table'
+"""
+_INDEXES_SQL = """
+SELECT m.name, p.seq, p.name, p."unique", p.origin, p.partial
+FROM sqlite_master m, pragma_index_list(m.name) p WHERE m.type = 'table'
+"""
+
+
 def collect_schema(conn, database_name):
     """Read everything the catalog needs from one connection.
 
-    Run it inside a read transaction so it sees a single snapshot.
+    Run it inside a read transaction so it sees a single snapshot. Uses
+    three joined pragma table-valued-function queries per database instead
+    of three PRAGMA calls per table, falling back to the per-table loop if
+    that fails (e.g. a virtual table whose module is not loaded).
     """
+    if supports_table_xinfo():
+        try:
+            return _collect_schema_joined(conn, database_name)
+        except sqlite3.DatabaseError:
+            pass
+    return _collect_schema_per_table(conn, database_name)
+
+
+def _collect_schema_joined(conn, database_name):
+    tables = conn.execute("select * from sqlite_master WHERE type = 'table'").fetchall()
+    views = conn.execute("select * from sqlite_master WHERE type = 'view'").fetchall()
+    columns = [
+        {
+            "database_name": database_name,
+            "table_name": r[0],
+            "cid": r[1],
+            "name": r[2],
+            "type": r[3],
+            "notnull": r[4],
+            "default_value": r[5],
+            "is_pk": r[6],
+            "hidden": r[7],
+        }
+        for r in conn.execute(_COLUMNS_SQL).fetchall()
+    ]
+    foreign_keys = [
+        {
+            "database_name": database_name,
+            "table_name": r[0],
+            "id": r[1],
+            "seq": r[2],
+            "table": r[3],
+            "from": r[4],
+            "to": r[5],
+            "on_update": r[6],
+            "on_delete": r[7],
+            "match": r[8],
+        }
+        for r in conn.execute(_FOREIGN_KEYS_SQL).fetchall()
+    ]
+    indexes = [
+        {
+            "database_name": database_name,
+            "table_name": r[0],
+            "seq": r[1],
+            "name": r[2],
+            "unique": r[3],
+            "origin": r[4],
+            "partial": r[5],
+        }
+        for r in conn.execute(_INDEXES_SQL).fetchall()
+    ]
+    return {
+        "tables": [(database_name, t["name"], t["rootpage"], t["sql"]) for t in tables],
+        "views": [(database_name, v["name"], v["rootpage"], v["sql"]) for v in views],
+        "columns": columns,
+        "foreign_keys": foreign_keys,
+        "indexes": indexes,
+    }
+
+
+def _collect_schema_per_table(conn, database_name):
     tables = conn.execute("select * from sqlite_master WHERE type = 'table'").fetchall()
     views = conn.execute("select * from sqlite_master WHERE type = 'view'").fetchall()
     tables_to_insert = []

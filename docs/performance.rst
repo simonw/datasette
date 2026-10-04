@@ -22,14 +22,14 @@ To open a file in immutable mode pass it to the datasette command using the ``-i
 
     datasette -i data.db
 
-When you open a file in immutable mode like this Datasette will also calculate and cache the row counts for each table in that database when it first starts up, further improving performance.
+When you open a file in immutable mode like this Datasette will also calculate and cache the row counts for each table in that database the first time a page needs them, further improving performance. (Earlier versions counted every immutable database at startup.)
 
 .. _performance_inspect:
 
 Using "datasette inspect"
 -------------------------
 
-Counting the rows in a table can be a very expensive operation on larger databases. In immutable mode Datasette performs this count only once and caches the results, but this can still cause server startup time to increase by several seconds or more.
+Counting the rows in a table can be a very expensive operation on larger databases. In immutable mode Datasette performs this count only once and caches the results, but this can still make the first page that shows those counts take several seconds or more.
 
 If you know that a database is never going to change you can precalculate the table row counts once and store then in a JSON file, then use that file when you later start the server.
 
@@ -37,7 +37,7 @@ To create a JSON file containing the calculated row counts for a database, use t
 
     datasette inspect data.db --inspect-file=counts.json
 
-Then later you can start Datasette against the ``counts.json`` file and use it to skip the row counting step and speed up server startup::
+Then later you can start Datasette against the ``counts.json`` file and use it to skip the row counting step entirely::
 
     datasette -i data.db --inspect-file=counts.json
 

@@ -4,7 +4,11 @@ from sqlite_utils import Database as SQLiteUtilsDatabase
 from sqlite_utils import Migrations
 
 from datasette.utils import escape_sqlite, sqlite3, table_column_details
-from datasette.utils.sqlite import supports_table_xinfo
+from datasette.utils.sqlite import (
+    sqlite_table_list_types,
+    supports_table_xinfo,
+    table_types_from_rows,
+)
 
 INTERNAL_DB_SCHEMA_TABLES = {
     "catalog_databases",
@@ -201,6 +205,19 @@ def catalog_fingerprint_column(db):
         db.execute("ALTER TABLE catalog_databases ADD COLUMN fingerprint TEXT")
 
 
+@internal_migrations(name="0003_catalog_table_type")
+def catalog_table_type_column(db):
+    # PRAGMA table_list's type for each table ("table", "virtual" or
+    # "shadow"), so hidden tables can be worked out from the catalog
+    # without opening the database. NULL means unknown.
+    if "type" not in db["catalog_tables"].columns_dict:
+        db.execute("ALTER TABLE catalog_tables ADD COLUMN type TEXT")
+        # Rows written before this column existed have no type: forget
+        # their fingerprints so the next startup rescans those databases
+        # instead of restoring them from the persisted catalog
+        db.execute("UPDATE catalog_databases SET fingerprint = NULL")
+
+
 _COLUMNS_SQL = """
 SELECT m.name, p.cid, p.name, p.type, p."notnull", p.dflt_value, p.pk, p.hidden
 FROM sqlite_master m, pragma_table_xinfo(m.name) p WHERE m.type = 'table'
@@ -223,12 +240,22 @@ def collect_schema(conn, database_name):
     of three PRAGMA calls per table, falling back to the per-table loop if
     that fails (e.g. a virtual table whose module is not loaded).
     """
+    schema = None
     if supports_table_xinfo():
         try:
-            return _collect_schema_joined(conn, database_name)
+            schema = _collect_schema_joined(conn, database_name)
         except sqlite3.DatabaseError:
             pass
-    return _collect_schema_per_table(conn, database_name)
+    if schema is None:
+        schema = _collect_schema_per_table(conn, database_name)
+    # Record each table's type (table/virtual/shadow) as SQLite itself
+    # reports it - with this connection's extensions loaded, so shadow
+    # tables of extension modules are recognised too
+    types = sqlite_table_list_types(conn)
+    if types is None:
+        types = table_types_from_rows((t[1], t[3]) for t in schema["tables"])
+    schema["tables"] = [(*t, types.get(t[1])) for t in schema["tables"]]
+    return schema
 
 
 def _collect_schema_joined(conn, database_name):
@@ -368,10 +395,10 @@ def write_catalog_entries(conn, entries):
         )
         conn.executemany(
             """
-            INSERT INTO catalog_tables (database_name, table_name, rootpage, sql)
-            values (?, ?, ?, ?)
+            INSERT INTO catalog_tables (database_name, table_name, rootpage, sql, type)
+            values (?, ?, ?, ?, ?)
             """,
-            schema["tables"],
+            [t if len(t) == 5 else (*t, None) for t in schema["tables"]],
         )
         conn.executemany(
             """

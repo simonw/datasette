@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from datasette.permissions import Resource
     from datasette.tokens import TokenRestrictions
 import collections
+import copy
 import dataclasses
 import datetime
 import functools
@@ -114,6 +115,7 @@ from .utils.asgi import (
     asgi_send_redirect,
     asgi_static,
 )
+from .utils.catalog import all_derived_table_dependencies
 from .utils.internal_db import init_internal_db
 from .utils.sqlite import (
     sqlite3,
@@ -513,6 +515,11 @@ class Datasette:
         self.nolock = nolock
         self.internal_db_created = False
         self._schema_watcher = SchemaWatcher(self)
+        # (catalog generation, derived-table dependency map) - see
+        # datasette.utils.catalog.all_derived_table_dependencies()
+        self._catalog_derived_cache = None
+        # SQLite version/extension details for /-/versions, computed once
+        self._sqlite_versions_info = None
         if memory or crossdb or not self.files:
             self.add_database(
                 Database(self, is_mutable=False, is_memory=True), name="_memory"
@@ -1693,7 +1700,7 @@ class Datasette:
         separator = "&" if "?" in url else "?"
         return url + separator + urllib.parse.urlencode({"_hash": hash_value})
 
-    def _prepare_connection(self, conn, database):
+    def _prepare_connection(self, conn, database, *, crossdb=True):
         conn.row_factory = sqlite3.Row
         conn.text_factory = lambda x: str(x, "utf-8", "replace")
         if self.sqlite_extensions and database != INTERNAL_DB_NAME:
@@ -1725,7 +1732,7 @@ class Datasette:
         if database != INTERNAL_DB_NAME:
             pm.hook.prepare_connection(conn=conn, database=database, datasette=self)
         # If self.crossdb and this is _memory, connect the first SQLITE_LIMIT_ATTACHED databases
-        if self.crossdb and database == "_memory":
+        if crossdb and self.crossdb and database == "_memory":
             count = 0
             for db_name, db in self.databases.items():
                 # Scratch databases are never attached: they can be deleted
@@ -1952,19 +1959,34 @@ class Datasette:
         parent,
         include_is_private,
     ):
-        databases = (
-            [(parent, self.databases[parent])]
-            if parent in self.databases
-            else ([] if parent is not None else list(self.databases.items()))
-        )
-        dependency_maps = dict(
-            zip(
-                (name for name, _ in databases),
-                await asyncio.gather(
-                    *(db.derived_table_dependencies() for _, db in databases)
-                ),
+        if parent is not None:
+            dependency_maps = (
+                {parent: await self.databases[parent].derived_table_dependencies()}
+                if parent in self.databases
+                else {}
             )
-        )
+        else:
+            # Every database: read the dependencies from the catalog (cached
+            # until it changes) rather than asking each database in turn -
+            # that was a query against every attached database for every
+            # page of allowed_resources(). The listing being filtered comes
+            # from the same catalog rows. Only databases the SchemaWatcher
+            # does not track fall back to live introspection.
+            dependency_maps = dict(await all_derived_table_dependencies(self))
+            unwatched = [
+                (name, db)
+                for name, db in self.databases.items()
+                if db._watch_state is None
+            ]
+            if unwatched:
+                dependency_maps.update(
+                    zip(
+                        (name for name, _ in unwatched),
+                        await asyncio.gather(
+                            *(db.derived_table_dependencies() for _, db in unwatched)
+                        ),
+                    )
+                )
         dependencies = [
             (database_name, child, source)
             for database_name, dependency_map in dependency_maps.items()
@@ -2114,7 +2136,29 @@ ORDER BY allowed.parent, allowed.child
 
         # Validate and cap limit
         limit = min(max(1, limit), 1000)
+        return await self._allowed_resources_page(
+            action,
+            actor,
+            parent=parent,
+            include_is_private=include_is_private,
+            include_reasons=include_reasons,
+            limit=limit,
+            next=next,
+        )
 
+    async def _allowed_resources_page(
+        self,
+        action,
+        actor,
+        *,
+        parent,
+        include_is_private,
+        include_reasons,
+        limit,
+        next,
+    ):
+        """allowed_resources() without the limit cap: ``limit=None`` returns
+        every remaining resource in one query (PaginatedResources.all())."""
         # Get base SQL query
         query, params = await self.allowed_resources_sql(
             action=action,
@@ -2144,15 +2188,16 @@ ORDER BY allowed.parent, allowed.child
 
         # Add LIMIT (fetch limit+1 to detect if there are more results)
         # Note: query from allowed_resources_sql() already includes ORDER BY parent, child
-        query = f"{query} LIMIT :limit"
-        params["limit"] = limit + 1
+        if limit is not None:
+            query = f"{query} LIMIT :limit"
+            params["limit"] = limit + 1
 
         # Execute query
         result = await self.get_internal_database().execute(query, params)
         rows = list(result.rows)
 
         # Check if truncated (got more than limit rows)
-        truncated = len(rows) > limit
+        truncated = limit is not None and len(rows) > limit
         if truncated:
             rows = rows[:limit]  # Remove the extra row
 
@@ -2499,7 +2544,7 @@ ORDER BY allowed.parent, allowed.child
             url = "https://" + url[len("http://") :]
         return url
 
-    def _connected_databases(self):
+    def _connected_databases(self, names=None):
         return [
             {
                 "name": d.name,
@@ -2511,23 +2556,58 @@ ORDER BY allowed.parent, allowed.child
                 "hash": d.hash,
             }
             for name, d in self.databases.items()
+            if names is None or name in names
         ]
 
     async def _connected_databases_for_actor(self, actor):
         page = await self.allowed_resources("view-database", actor)
         allowed_names = {resource.parent async for resource in page.all()}
-        return [
-            database
-            for database in self._connected_databases()
-            if database["name"] in allowed_names
-        ]
+        # Only stat (size) and hash (a full read of an immutable file, the
+        # first time) the databases this actor may see
+        return self._connected_databases(allowed_names)
 
     async def _databases_data(self, request):
         return {"databases": await self._connected_databases_for_actor(request.actor)}
 
     def _versions(self):
+        if self._sqlite_versions_info is None:
+            self._sqlite_versions_info = self._sqlite_versions()
+        sqlite_info, pysqlite3_version = self._sqlite_versions_info
+        datasette_version = {"version": __version__}
+        if self.version_note:
+            datasette_version["note"] = self.version_note
+
+        try:
+            # Optional import to avoid breaking Pyodide
+            # https://github.com/simonw/datasette/issues/1733#issuecomment-1115268245
+            import uvicorn
+
+            uvicorn_version = uvicorn.__version__
+        except ImportError:
+            uvicorn_version = None
+        info = {
+            "python": {
+                "version": ".".join(map(str, sys.version_info[:3])),
+                "full": sys.version,
+            },
+            "datasette": datasette_version,
+            "asgi": "3.0",
+            "uvicorn": uvicorn_version,
+            "sqlite": copy.deepcopy(sqlite_info),
+        }
+        if pysqlite3_version is not None:
+            info["pysqlite3"] = pysqlite3_version
+        return info
+
+    def _sqlite_versions(self):
+        """SQLite version, extensions, FTS versions and compile options, as
+        seen by a fully prepared connection. They cannot change while the
+        process runs, so /-/versions computes this once per instance rather
+        than preparing (loading extensions into) a connection per request.
+        crossdb=False: ATTACHing every --crossdb database is not needed to
+        report versions."""
         conn = sqlite3.connect(":memory:")
-        self._prepare_connection(conn, "_memory")
+        self._prepare_connection(conn, "_memory", crossdb=False)
         sqlite_version = conn.execute("select sqlite_version()").fetchone()[0]
         sqlite_extensions = {"json1": detect_json1(conn)}
         for extension, testsql, hasversion in (
@@ -2561,44 +2641,24 @@ ORDER BY allowed.parent, allowed.child
                 fts_versions.append(fts)
             except sqlite3.OperationalError:
                 continue
-        datasette_version = {"version": __version__}
-        if self.version_note:
-            datasette_version["note"] = self.version_note
-
-        try:
-            # Optional import to avoid breaking Pyodide
-            # https://github.com/simonw/datasette/issues/1733#issuecomment-1115268245
-            import uvicorn
-
-            uvicorn_version = uvicorn.__version__
-        except ImportError:
-            uvicorn_version = None
-        info = {
-            "python": {
-                "version": ".".join(map(str, sys.version_info[:3])),
-                "full": sys.version,
-            },
-            "datasette": datasette_version,
-            "asgi": "3.0",
-            "uvicorn": uvicorn_version,
-            "sqlite": {
-                "version": sqlite_version,
-                "fts_versions": fts_versions,
-                "extensions": sqlite_extensions,
-                "compile_options": [
-                    r[0] for r in conn.execute("pragma compile_options;").fetchall()
-                ],
-            },
+        sqlite_info = {
+            "version": sqlite_version,
+            "fts_versions": fts_versions,
+            "extensions": sqlite_extensions,
+            "compile_options": [
+                r[0] for r in conn.execute("pragma compile_options;").fetchall()
+            ],
         }
+        conn.close()
+        pysqlite3_version = None
         if using_pysqlite3:
             for package in ("pysqlite3", "pysqlite3-binary"):
                 try:
-                    info["pysqlite3"] = importlib.metadata.version(package)
+                    pysqlite3_version = importlib.metadata.version(package)
                     break
                 except importlib.metadata.PackageNotFoundError:
                     pass
-        conn.close()
-        return info
+        return sqlite_info, pysqlite3_version
 
     def _plugins(self, request=None, all=False):
         ps = list(get_plugins())
@@ -3214,11 +3274,10 @@ ORDER BY allowed.parent, allowed.child
             if self._startup_invoked and self._setup_db_done:
                 return
             if not self._setup_db_done:
-                # First time server starts up, calculate table counts for
-                # immutable databases
-                for database in self.databases.values():
-                    if not database.is_mutable:
-                        await database.table_counts(limit=60 * 60 * 1000)
+                # Immutable databases used to have their table counts
+                # computed here, opening every one of them at startup. They
+                # are now computed the first time a page needs them (see
+                # Database.table_counts()) and cached from then on.
                 self._setup_db_done = True
             await self.invoke_startup()
 

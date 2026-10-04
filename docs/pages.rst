@@ -23,6 +23,10 @@ Add ``/.json`` to the end of the URL for the JSON version of the underlying data
 
 The index page can also be accessed at ``/-/``, useful for if the default index page has been replaced using an :ref:`index.html custom template <customization_custom_templates>`. The ``/-/`` page will always render the default Datasette ``index.html`` template.
 
+.. _IndexView_row_counts:
+
+The index page reads table names, columns, primary keys, hidden tables and foreign key relationships from the :ref:`internal database catalog <internals_internal>`, so it does not need to open each attached database. Row counts are the exception: they need a ``count(*)`` per table. The index page shows row counts when it lists at most 20 databases that would need counting, each smaller than 100MB, and the counts for a database are dropped if any of them takes longer than 10ms. With more databases than that it shows the number of tables in each database, sorts the most interesting tables first by their number of foreign key relationships, and only includes row counts that are already known without opening a database: counts for :ref:`immutable databases <performance_immutable_mode>` from ``--inspect-file`` or calculated by an earlier page. Visit a database's page for its row counts.
+
 .. _DatabaseView:
 
 Database

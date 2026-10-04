@@ -2220,6 +2220,8 @@ Datasette is designed to serve anything from one database to thousands of databa
 
 **Schema changes** made by Datasette's own writes are detected as soon as the write finishes, and databases that other processes may change are polled - see :ref:`setting_schema_watch_interval_ms`. If a database file is replaced (for example by renaming a new file over it) or deleted, connections to the old file are discarded. Once Datasette has seen a database file exist it will not create it again: writes to a deleted file fail with an error rather than silently creating a new empty database. A database added with :ref:`datasette_add_database` whose file does not exist yet is created by its first write.
 
+**Pages that cover many databases** - the index page, ``allowed_resources()`` listings and their derived-table permission rules, ``/-/api`` and the like - read what they need about each database's tables from the :ref:`catalog tables in the internal database <internals_internal>` instead of opening every database. Plugins that summarise many databases should do the same: a query against ``catalog_tables``, ``catalog_columns`` or ``catalog_foreign_keys`` costs the same however many databases are attached, while calling methods such as ``db.table_names()`` on every database opens a connection to each of them. Use the live methods on a single :ref:`Database <internals_database>` when you need the database's own current answer.
+
 With :ref:`setting_num_sql_threads` set to ``0`` (for example in Pyodide) there are no threads: reads and writes run on the event loop, read connections are still pooled and closed when idle, and the write connection stays open until the database is closed.
 
 Every new connection is set up by the :ref:`plugin_hook_prepare_connection` plugin hook, except isolated connections, the brief connections used to check a file's schema version, and connections to the internal database. Because connections are opened and closed as needed, anything set up on a connection - functions, temporary tables, ``ATTACH``, ``PRAGMA`` settings - only lasts as long as that connection, and is not seen by other connections to the same database. Use ``prepare_connection`` for anything every connection needs.
@@ -2980,7 +2982,7 @@ You can also set the ``DATASETTE_INTERNAL`` environment variable to specify this
     export DATASETTE_INTERNAL=/path/to/internal.db
     datasette mydatabase.db
 
-Datasette maintains tables called ``catalog_databases``, ``catalog_tables``, ``catalog_views``, ``catalog_columns``, ``catalog_indexes``, ``catalog_foreign_keys`` with details of the attached databases and their schemas. These tables should not be considered a stable API - they may change between Datasette releases.
+Datasette maintains tables called ``catalog_databases``, ``catalog_tables``, ``catalog_views``, ``catalog_columns``, ``catalog_indexes``, ``catalog_foreign_keys`` with details of the attached databases and their schemas. ``catalog_tables.type`` is the type ``PRAGMA table_list`` reports for each table (``table``, ``virtual`` or ``shadow``), or ``NULL`` if unknown. These tables should not be considered a stable API - they may change between Datasette releases.
 
 Metadata is stored in tables ``metadata_instance``, ``metadata_databases``, ``metadata_resources`` and ``metadata_columns``. Plugins can interact with these tables via the :ref:`get_*_metadata() and set_*_metadata() methods <datasette_get_set_metadata>`.
 
@@ -3027,7 +3029,7 @@ The internal database schema is as follows:
         database_name TEXT,
         table_name TEXT,
         rootpage INTEGER,
-        sql TEXT,
+        sql TEXT, type TEXT,
         PRIMARY KEY (database_name, table_name),
         FOREIGN KEY (database_name) REFERENCES catalog_databases(database_name)
     );

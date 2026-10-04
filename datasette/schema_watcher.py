@@ -74,7 +74,6 @@ open.
 """
 
 import asyncio
-import concurrent.futures
 import json
 import logging
 import os
@@ -83,6 +82,7 @@ import time
 
 from .utils import sqlite3
 from .utils.catalog import remember_derived_table_dependencies
+from .utils.inflight import InFlight, wait_for_concurrent
 from .utils.internal_db import CATALOG_TABLES, collect_schema, write_catalog_entries
 
 logger = logging.getLogger("datasette.schema_watcher")
@@ -144,7 +144,8 @@ class WatchState:
         self.catalog_version = None
         self.notified_version = None
         self.needs_scan = True
-        # An _InflightScan while a catalog scan of this database runs
+        # An InFlight (datasette.utils.inflight) while a catalog scan of
+        # this database runs
         self.scan_future = None
         # time.monotonic() before which a failed scan is not retried, and
         # the delay used for the next failure (doubles, see RETRY_DELAY_S)
@@ -246,61 +247,6 @@ def header_schema_version(path):
     if len(header) < 100 or not header.startswith(SQLITE_HEADER):
         return None
     return int.from_bytes(header[40:44], "big")
-
-
-class _InflightScan:
-    """One catalog scan in progress for one database.
-
-    Not bound to an event loop: one Datasette is driven by several loops
-    (``--get``, TestClient, pytest-asyncio), each in its own thread, and a
-    write on any of them may need to wait for a scan started on another.
-    Waiters use :func:`_wait_for` on ``future``, a ``concurrent.futures``
-    future that the scan's owner resolves in a ``finally`` block.
-    """
-
-    __slots__ = ("future", "loop")
-
-    def __init__(self, loop):
-        self.future = concurrent.futures.Future()
-        self.loop = loop
-
-    def done(self):
-        return self.future.done()
-
-    def abandoned(self):
-        """True if nothing will ever finish this scan: the loop running it
-        has closed, or has stopped (``run_until_complete()`` returned while
-        the scan task was still pending)."""
-        loop = self.loop
-        return loop.is_closed() or not loop.is_running()
-
-    def finish(self):
-        try:
-            self.future.set_result(None)
-        except concurrent.futures.InvalidStateError:
-            pass
-
-
-def _wait_for(cf_future):
-    """An asyncio future on the running loop that completes when the
-    concurrent future does. Cancelling it does not cancel cf_future, which
-    other waiters (maybe on other loops) share."""
-    loop = asyncio.get_running_loop()
-    waiter = loop.create_future()
-
-    def _set():
-        if not waiter.done():
-            waiter.set_result(None)
-
-    def _done(_):
-        try:
-            loop.call_soon_threadsafe(_set)
-        except RuntimeError:
-            # That loop has closed; nobody is waiting any more
-            pass
-
-    cf_future.add_done_callback(_done)
-    return waiter
 
 
 def _is_transient(error):
@@ -987,7 +933,7 @@ class SchemaWatcher:
                         inflight.finish()
                     if state.needs_scan and not state.removed and state not in failed:
                         state.needs_scan = False
-                        state.scan_future = _InflightScan(loop)
+                        state.scan_future = InFlight(loop)
                         mine.append(state)
             if mine:
                 records = {state: state.scan_future for state in mine}
@@ -1018,7 +964,7 @@ class SchemaWatcher:
                     for record in records.values():
                         record.finish()
             if waits:
-                await asyncio.wait([_wait_for(f) for f in waits])
+                await asyncio.wait([wait_for_concurrent(f) for f in waits])
             pending = [
                 s
                 for s in pending
@@ -1042,7 +988,7 @@ class SchemaWatcher:
         """Wait for a catalog scan of state that is in flight, if any."""
         inflight = state.scan_future
         if inflight is not None and not inflight.done() and not inflight.abandoned():
-            await _wait_for(inflight.future)
+            await wait_for_concurrent(inflight.future)
 
     async def _scan_and_store(self, states, records, handled):
         memory = [s for s in states if not s.is_file and s.db.memory_name]
@@ -1069,7 +1015,7 @@ class SchemaWatcher:
 
     async def _store(self, results, records=None, handled=None):
         """Write scan results to the catalog. ``records`` maps each state to
-        the _InflightScan this scan was started as: results for a state whose
+        the InFlight this scan was started as: results for a state whose
         scan has since been taken over by another loop are dropped. States
         whose outcome was recorded are added to ``handled``; the others
         (transient failures) are retried later by refresh()."""

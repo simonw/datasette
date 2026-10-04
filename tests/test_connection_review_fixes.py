@@ -668,22 +668,22 @@ async def test_stale_owned_catalog_is_not_persisted_at_close(tmp_path):
     make_db(path)
     config = {"databases": {"data": {"schema_watch": "owned"}}}
 
-    async def tables_after_start(change=None):
+    async def tables_after_start(change_before_close=None):
         ds = Datasette([path], internal=internal, config=config)
         await ds.invoke_startup()
-        if change:
-            change()
         response = await ds.client.get("/data.json")
+        if change_before_close:
+            # Behind Datasette's back, after the last request: an owned
+            # database is not polled, so the catalog is now stale
+            change_before_close()
         ds.close()
         return [t["name"] for t in response.json()["tables"]]
 
     assert await tables_after_start() == ["t"]
-    # Owned: a change made behind Datasette's back is not noticed while
-    # it runs (documented) ...
     assert await tables_after_start(
         lambda: make_db(path, "create table t2 (id integer)")
     ) == ["t"]
-    # ... but it is not persisted as current either
+    # The stale catalog was not persisted as current: the restart rescans
     assert await tables_after_start() == ["t", "t2"]
 
 
@@ -744,3 +744,164 @@ async def test_execute_fn_may_return_generator_over_fetched_rows():
     with pytest.raises(ConnectionLeaseError):
         await db.execute_fn(closure)
     ds.close()
+
+
+# ----------------------------------------------------------------------
+# Found by the torture harness (tests/connection_torture.py)
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_index_survives_database_removed_mid_request(tmp_path, monkeypatch):
+    # The index page looked databases up by name again after listing them:
+    # one removed meanwhile (remove_database(), a scratch delete or rename)
+    # failed the whole page with a KeyError
+    from datasette.views import index as index_module
+
+    paths = []
+    for name in ("keep", "gone"):
+        path = str(tmp_path / f"{name}.db")
+        make_db(path)
+        paths.append(path)
+    ds = Datasette(paths)
+    await ds.invoke_startup()
+    original = index_module.catalog_summaries
+
+    async def remove_during(datasette, names):
+        result = await original(datasette, names)
+        if "gone" in datasette.databases:
+            datasette.remove_database("gone")
+        return result
+
+    monkeypatch.setattr(index_module, "catalog_summaries", remove_during)
+    response = await ds.client.get("/.json")
+    assert response.status_code == 200
+    assert [d["name"] for d in response.json()["databases"]] == ["keep"]
+    ds.close()
+
+
+@pytest.mark.asyncio
+async def test_index_and_databases_with_closed_or_deleted_database(tmp_path):
+    paths = []
+    for name in ("keep", "closed", "deleted"):
+        path = str(tmp_path / f"{name}.db")
+        make_db(path)
+        paths.append(path)
+    ds = Datasette(paths, settings={"schema_watch_interval_ms": 0})
+    await ds.invoke_startup()
+    # Closed by a plugin but still attached
+    ds.get_database("closed").close()
+    # Deleted from under Datasette before any sweep noticed
+    os.unlink(paths[2])
+    for path in ("/.json", "/", "/-/databases.json"):
+        response = await ds.client.get(path)
+        assert response.status_code == 200, (path, response.text[:300])
+    databases = (await ds.client.get("/-/databases.json")).json()
+    if isinstance(databases, dict):
+        databases = databases["databases"]
+    sizes = {d["name"]: d["size"] for d in databases}
+    assert sizes["deleted"] == 0
+    ds.close()
+
+
+@pytest.mark.asyncio
+async def test_cursors_are_closed_before_leaving_their_thread(owned_db):
+    # A cursor still references its connection's cached statement, and on
+    # Python < 3.12 freeing it resets that statement. execute_write_many()
+    # handed its cursor to the caller's event loop thread; freed there while
+    # the write thread ran the same SQL again, the write failed with
+    # "bad parameter or other API misuse"
+    _ds, db, _path = owned_db
+    cursor = await db.execute_write_many(
+        "insert into t (v) values (?)", [("a",), ("b",)]
+    )
+    assert cursor.rowcount == 2
+    with pytest.raises(sqlite3.ProgrammingError):
+        cursor.fetchall()
+    cursor = await db.execute_write_fn(
+        lambda conn: conn.execute("insert into t (v) values ('c')")
+    )
+    assert cursor.lastrowid == 3
+    with pytest.raises(sqlite3.ProgrammingError):
+        cursor.fetchone()
+
+    # Cursors held by the frames of an exception raised by a callback are
+    # closed before the connection goes back to the pool (or write thread)
+    captured = []
+
+    def read_then_fail(conn):
+        cursor = conn.execute("select * from t")
+        captured.append(cursor)
+        raise ValueError("boom")
+
+    with pytest.raises(ValueError):
+        await db.execute_fn(read_then_fail)
+    with pytest.raises(ValueError):
+        await db.execute_write_fn(read_then_fail)
+    for cursor in captured:
+        with pytest.raises(sqlite3.ProgrammingError):
+            cursor.fetchone()
+
+
+def test_startup_from_several_event_loops_runs_once(monkeypatch):
+    # _startup_sequence() serialized startup with an asyncio.Lock: callers
+    # on a second event loop got "is bound to a different event loop" (or,
+    # free-threaded, waited forever), and invoke_startup() itself let two
+    # loops run every startup hook twice
+    ds = Datasette(memory=True)
+    calls = []
+    original = Datasette._apply_column_types_config
+
+    async def slow(self):
+        calls.append(threading.current_thread().name)
+        await asyncio.sleep(0.3)
+        return await original(self)
+
+    monkeypatch.setattr(Datasette, "_apply_column_types_config", slow)
+
+    def starter(use_sequence):
+        async def run():
+            if use_sequence:
+                await ds._startup_sequence()
+            else:
+                await ds.invoke_startup()
+            assert ds._startup_invoked
+            return (await ds.client.get("/_memory.json")).status_code
+
+        return run
+
+    statuses = run_in_threads(starter(True), starter(True), starter(False))
+    assert statuses == [200, 200, 200]
+    assert len(calls) == 1
+    ds.close()
+
+
+@pytest.mark.asyncio
+async def test_startup_hook_can_make_requests():
+    # A request made from inside startup (same task) must not wait for
+    # startup to finish - that would wait forever
+    from datasette import hookimpl
+    from datasette.plugins import pm
+
+    statuses = []
+
+    class Plugin:
+        __name__ = "StartupRequestPlugin"
+
+        @hookimpl
+        def startup(self, datasette):
+            async def inner():
+                statuses.append(
+                    (await datasette.client.get("/-/versions.json")).status_code
+                )
+
+            return inner
+
+    pm.register(Plugin(), name="startup_request_plugin")
+    try:
+        ds = Datasette(memory=True)
+        await asyncio.wait_for(ds.invoke_startup(), 10)
+        assert statuses == [200]
+        ds.close()
+    finally:
+        pm.unregister(name="startup_request_plugin")

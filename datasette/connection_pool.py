@@ -154,6 +154,58 @@ class LeasedConnection:
         return f"<LeasedConnection {self._kind} database={self._db_name!r} {state}>"
 
 
+def close_cursors(value):
+    """Close the cursors in a callback's result (a cursor, or a tuple or
+    list holding one), in a generator's locals, or - for an exception - in
+    the locals of the frames it was raised through.
+
+    Call it on the thread that owns the connection, before the connection
+    can be used by anyone else. A cursor keeps a reference to the
+    connection's cached statement for its SQL; on Python before 3.12,
+    deallocating the cursor resets that statement. If the cursor dies on
+    another thread (the caller's event loop) while the connection is running
+    the same SQL again - the write thread's next execute_write_many(), or
+    another worker that has leased the connection - the statement is reset
+    mid-step and that query fails with "bad parameter or other API misuse".
+    A closed cursor keeps its rowcount, lastrowid and description.
+    """
+    if isinstance(value, BaseException):
+        tb = value.__traceback__
+        while tb is not None:
+            try:
+                values = list(tb.tb_frame.f_locals.values())
+            except Exception:  # noqa: BLE001
+                values = []
+            for item in values:
+                if isinstance(item, sqlite3.Cursor):
+                    _close_cursor(item)
+            tb = tb.tb_next
+        return
+    if isinstance(value, sqlite3.Cursor):
+        _close_cursor(value)
+    elif isinstance(value, (tuple, list)):
+        for item in value:
+            if isinstance(item, sqlite3.Cursor):
+                _close_cursor(item)
+    elif inspect.isgenerator(value):
+        try:
+            values = list(inspect.getgeneratorlocals(value).values())
+        except Exception:  # noqa: BLE001
+            values = []
+        for item in values:
+            if isinstance(item, sqlite3.Cursor):
+                _close_cursor(item)
+        value.close()
+
+
+def _close_cursor(cursor):
+    try:
+        cursor.close()
+    except Exception:  # noqa: BLE001, S110
+        # Its connection is closed already
+        pass
+
+
 def _generator_uses_connection(result):
     """True for a generator that would step the leased connection after
     the callback returned: one holding the connection (a closure over
@@ -219,12 +271,19 @@ class ReadConnectionPool:
         """Call fn(conn) with a pooled connection leased for the duration."""
         entry = self.acquire(db)
         lease = LeasedConnection(entry.conn, db.name, "read")
+        rejected = False
         try:
             result = fn(lease)
+            if isinstance(result, sqlite3.Cursor) or _generator_uses_connection(result):
+                rejected = True
+                close_cursors(result)
+        except BaseException as e:
+            close_cursors(e)
+            raise
         finally:
             lease._expire()
             self.release(entry)
-        if isinstance(result, sqlite3.Cursor) or _generator_uses_connection(result):
+        if rejected:
             raise ConnectionLeaseError(
                 f"An execute_fn() callback for database {db.name!r} returned a {type(result).__name__}, which "
                 "would keep using the pooled connection after the callback "

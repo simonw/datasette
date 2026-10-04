@@ -116,6 +116,7 @@ from .utils.asgi import (
     asgi_static,
 )
 from .utils.catalog import all_derived_table_dependencies
+from .utils.inflight import InFlight, wait_for_concurrent
 from .utils.internal_db import init_internal_db
 from .utils.sqlite import (
     sqlite3,
@@ -499,17 +500,11 @@ class Datasette:
         # Datasette can be driven by several event loops, and an
         # asyncio.Lock binds to whichever loop first waits on it
         self._refresh_schemas_lock = threading.Lock()
-        try:
-            self._startup_lock = asyncio.Lock()
-        except RuntimeError as rex:
-            # Workaround for intermittent test failure, see:
-            # https://github.com/simonw/datasette/issues/1802
-            if "There is no current event loop in thread" in str(rex):
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                self._startup_lock = asyncio.Lock()
-            else:
-                raise
+        # invoke_startup() in progress (datasette.utils.inflight.InFlight),
+        # claimed under this lock: concurrent callers on any event loop wait
+        # for it. Not an asyncio.Lock, which binds to one event loop
+        self._startup_running = None
+        self._startup_state_lock = threading.Lock()
         self._background_tasks = BackgroundTaskSupervisor(self)
         self.crossdb = crossdb
         self.nolock = nolock
@@ -834,9 +829,40 @@ class Datasette:
         return pm
 
     async def invoke_startup(self):
-        # This must be called for Datasette to be in a usable state
-        if self._startup_invoked:
+        # This must be called for Datasette to be in a usable state.
+        # Several event loops (threads) may call it at once: one runs
+        # startup, the others wait for it to finish - and try again
+        # themselves if it failed or its event loop went away.
+        while not self._startup_invoked:
+            loop = asyncio.get_running_loop()
+            task = asyncio.current_task()
+            with self._startup_state_lock:
+                running = self._startup_running
+                if running is not None and (running.done() or running.abandoned()):
+                    running.finish()
+                    running = self._startup_running = None
+                if running is None:
+                    running = self._startup_running = InFlight(loop, task)
+                    mine = True
+                elif running.task is task:
+                    # Called from inside startup itself (a startup hook
+                    # making a request through datasette.client)
+                    return
+                else:
+                    mine = False
+            if not mine:
+                await wait_for_concurrent(running.future)
+                continue
+            try:
+                await self._invoke_startup()
+            finally:
+                with self._startup_state_lock:
+                    if self._startup_running is running:
+                        self._startup_running = None
+                running.finish()
             return
+
+    async def _invoke_startup(self):
         # Group spans created during startup under a single parent span
         with tracer.start_as_current_span(STARTUP):
             # Register event classes
@@ -3293,16 +3319,13 @@ ORDER BY allowed.parent, allowed.child
         """
         if self._startup_invoked and self._setup_db_done:
             return
-        async with self._startup_lock:
-            if self._startup_invoked and self._setup_db_done:
-                return
-            if not self._setup_db_done:
-                # Immutable databases used to have their table counts
-                # computed here, opening every one of them at startup. They
-                # are now computed the first time a page needs them (see
-                # Database.table_counts()) and cached from then on.
-                self._setup_db_done = True
-            await self.invoke_startup()
+        # Immutable databases used to have their table counts computed
+        # here, opening every one of them at startup. They are now computed
+        # the first time a page needs them (see Database.table_counts()) and
+        # cached from then on. invoke_startup() makes concurrent callers -
+        # on any event loop - wait for the one running it.
+        self._setup_db_done = True
+        await self.invoke_startup()
 
     def add_background_task(self, func, name=None) -> BackgroundTask:
         """Register a piece of supervised background work, typically from

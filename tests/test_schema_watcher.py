@@ -625,7 +625,9 @@ async def test_default_schema_watch_setting(tmp_path, db_path, setting, expected
         Database(ds, path=other), name="polled", schema_watch="external"
     )
     assert polled._watch_state.mode == "external"
-    owned = ds.add_database(Database(ds, path=other), name="owned", schema_watch="owned")
+    owned = ds.add_database(
+        Database(ds, path=other), name="owned", schema_watch="owned"
+    )
     assert owned._watch_state.mode == "owned"
     ds.close()
 

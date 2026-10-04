@@ -16,7 +16,11 @@ import sqlite_utils
 from opentelemetry import context as otel_context_api
 from opentelemetry.trace import Status, StatusCode
 
-from .connection_pool import ConnectionLeaseError, LeasedConnection  # noqa: F401
+from .connection_pool import (  # noqa: F401
+    ConnectionLeaseError,
+    LeasedConnection,
+    close_cursors,
+)
 from .inspect import inspect_hash
 from .telemetry import (
     callback_name,
@@ -1119,7 +1123,12 @@ class Database:
         elif self.is_memory:
             return 0
         elif self.is_mutable:
-            return Path(self.path).stat().st_size
+            try:
+                return Path(self.path).stat().st_size
+            except FileNotFoundError:
+                # Deleted from under Datasette: report it as empty rather
+                # than failing every page that lists databases
+                return 0
         elif self.ds.inspect_data and self.ds.inspect_data.get(self.name):
             self.cached_size = self.ds.inspect_data[self.name]["size"]
             return self.cached_size
@@ -1440,12 +1449,22 @@ def _call_with_lease(fn, conn, db_name, kind):
 
     Unlike read callbacks, write callbacks may return a cursor (for example
     ``lambda conn: conn.execute(...)``, and execute_write_many() and
-    execute_write_script() return theirs); reading attributes such as
-    ``lastrowid`` from it afterwards is fine, fetching rows is not.
+    execute_write_script() return theirs); it is closed before it leaves
+    this thread, so reading attributes such as ``lastrowid`` from it
+    afterwards is fine, fetching rows is not.
     """
     lease = LeasedConnection(conn, db_name, kind)
     try:
-        return fn(lease)
+        result = fn(lease)
+    except BaseException as e:
+        close_cursors(e)
+        raise
+    else:
+        # A returned cursor is closed here, on the thread that owns the
+        # connection (see close_cursors()); its rowcount and lastrowid can
+        # still be read
+        close_cursors(result)
+        return result
     finally:
         lease._expire()
 

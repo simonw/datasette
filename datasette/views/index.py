@@ -1,5 +1,6 @@
 import json
 
+from datasette.database import DatasetteClosedError
 from datasette.plugins import pm
 from datasette.utils import (
     UNSTABLE_API_MESSAGE,
@@ -7,6 +8,8 @@ from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
     make_slot_function,
+    sqlite3,
+    tilde_encode,
 )
 from datasette.utils.asgi import Response
 from datasette.utils.catalog import (
@@ -46,8 +49,13 @@ class IndexView(BaseView):
             "view-database", request.actor, include_is_private=True
         )
         allowed_databases = [r async for r in db_page.all()]
+        # One snapshot for the whole request: add_database() and
+        # remove_database() replace ds.databases rather than changing it, so
+        # a database removed while this page is being built is still listed
+        # instead of failing the page with a KeyError
+        all_databases = self.ds.databases
         allowed_db_dict = {
-            r.parent: r for r in allowed_databases if r.parent in self.ds.databases
+            r.parent: r for r in allowed_databases if r.parent in all_databases
         }
 
         # Group tables by database
@@ -62,7 +70,7 @@ class IndexView(BaseView):
 
         names = list(allowed_db_dict)
         summaries = await catalog_summaries(self.ds, names)
-        all_counts = await self._table_counts(names)
+        all_counts = await self._table_counts(names, all_databases)
         sort_by_relationships = request.args.get("_sort") == "relationships"
         need_relationships = {
             name for name in names if sort_by_relationships or not all_counts[name]
@@ -149,7 +157,7 @@ class IndexView(BaseView):
             table_counts,
             tables_and_views_truncated,
         ) in prepared:
-            db = self.ds.databases[name]
+            db = all_databases[name]
             tables_and_views_truncated = [
                 {
                     "name": t["name"],
@@ -173,7 +181,8 @@ class IndexView(BaseView):
                     "name": name,
                     "hash": db.hash,
                     "color": db.color,
-                    "path": self.ds.urls.database(name),
+                    # From the snapshot: name may have been removed since
+                    "path": self.ds.urls.path(tilde_encode(db.route)),
                     "tables_and_views_truncated": tables_and_views_truncated,
                     "tables_and_views_more": (len(visible_tables) + len(views))
                     > TRUNCATE_AT,
@@ -188,6 +197,10 @@ class IndexView(BaseView):
                     "private": allowed_db.private,
                 }
             )
+
+        # Leave out databases removed while this page was being built: the
+        # HTML template links to them by name
+        databases = [d for d in databases if d["name"] in self.ds.databases]
 
         if as_format:
             headers = {}
@@ -235,13 +248,13 @@ class IndexView(BaseView):
                 },
             )
 
-    async def _table_counts(self, names):
+    async def _table_counts(self, names, all_databases):
         """``{database: {table: count}}`` - empty for a database whose
         counts are skipped or timed out (see COUNT_MAX_DATABASES)."""
         counts = {}
         to_count = []
         for name in names:
-            db = self.ds.databases[name]
+            db = all_databases[name]
             if not db.is_mutable and db.cached_table_counts is not None:
                 # Known without opening the database
                 counts[name] = db.cached_table_counts
@@ -258,7 +271,12 @@ class IndexView(BaseView):
                 except OSError:
                     # The file has gone: there is nothing to count
                     continue
-            table_counts = await db.table_counts(10)
+            try:
+                table_counts = await db.table_counts(10)
+            except (DatasetteClosedError, sqlite3.Error):
+                # Closed or removed while this page was being built, or its
+                # file deleted or replaced: show it without counts
+                continue
             # If any of these are None it means at least one timed out - ignore them all
             if any(v is None for v in table_counts.values()):
                 table_counts = {}

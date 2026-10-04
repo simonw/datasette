@@ -354,6 +354,13 @@ def _quote_identifier(value: str) -> str:
 def _virtual_table_module(sql: str | None) -> str | None:
     if not sql:
         return None
+    if "virtual" not in sql.lower():
+        # Fast path: removing comments only ever replaces text with spaces,
+        # so it cannot produce the VIRTUAL keyword. Skips the
+        # character-by-character comment scan for ordinary tables, which
+        # cost ~1.4s of event loop time per 17,500 tables when the
+        # SchemaWatcher computes derived-table dependencies at startup.
+        return None
     match = _VIRTUAL_TABLE_MODULE_RE.search(_strip_sql_comments(sql))
     if match is None:
         return None

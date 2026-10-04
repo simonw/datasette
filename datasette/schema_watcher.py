@@ -63,6 +63,7 @@ import asyncio
 import json
 import logging
 import os
+import threading
 import time
 
 from .utils import sqlite3
@@ -243,8 +244,11 @@ class SchemaWatcher:
         self._spawned = set()
         self._last_sweep = 0.0
         # Bumped after every write to the catalog tables, so readers can
-        # cache things derived from the catalog (see datasette.utils.catalog)
+        # cache things derived from the catalog (see datasette.utils.catalog).
+        # Locked: several event loops (threads) can store scans at once, and
+        # a lost increment would leave a stale cache in place
         self.catalog_generation = 0
+        self._generation_lock = threading.Lock()
         self.counters = {
             "sweeps": 0,
             "sweep_seconds": 0.0,
@@ -258,6 +262,10 @@ class SchemaWatcher:
             "busy": 0,
             "restored_from_persisted": 0,
         }
+
+    def _bump_catalog_generation(self):
+        with self._generation_lock:
+            self.catalog_generation += 1
 
     # ------------------------------------------------------------------
     # configuration
@@ -886,7 +894,7 @@ class SchemaWatcher:
                 )
             # After the states: a reader that sees the new generation must
             # also see their new catalog versions
-            self.catalog_generation += 1
+            self._bump_catalog_generation()
         if missing:
             for state in missing:
                 if not state.missing:
@@ -910,7 +918,7 @@ class SchemaWatcher:
         await self.ds.get_internal_database().execute_write_fn(_clear)
         for state in states:
             state.catalog_version = None
-        self.catalog_generation += 1
+        self._bump_catalog_generation()
 
     async def _delete_catalog(self, names):
         watcher = self
@@ -924,7 +932,7 @@ class SchemaWatcher:
                     conn.execute(f"DELETE FROM {table} WHERE database_name = ?", [name])
 
         await self.ds.get_internal_database().execute_write_fn(_delete)
-        self.catalog_generation += 1
+        self._bump_catalog_generation()
         for name in names:
             self._pending_removals.discard(name)
 
@@ -952,7 +960,7 @@ class SchemaWatcher:
                 )
 
         await internal.execute_write_fn(_delete_stale)
-        self.catalog_generation += 1
+        self._bump_catalog_generation()
         self._pending_removals.clear()
         states = [s for s in self.states.values() if not s.removed]
         persisted = {}

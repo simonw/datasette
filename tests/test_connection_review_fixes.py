@@ -619,9 +619,10 @@ async def test_new_memory_database_is_not_scanned_at_registration():
     state = memory._watch_state
     assert state.scan_future is None
     assert state in watcher._pending
-    # Fill it from a connection of its own, as the plugin does (it uses
-    # VACUUM INTO, which newer SQLite versions refuse for an existing
-    # in-memory database, so a plain connection here)
+    # Fill it from a connection of its own, as the plugin does. (The plugin
+    # uses VACUUM INTO from a connection opened with uri=True; a plain
+    # connection is simpler and does not depend on whether the SQLite build
+    # treats URI file names as URIs without that flag)
     conn = sqlite3.connect("file:review_fixes_copy?mode=memory&cache=shared", uri=True)
     conn.execute("create table copied (id integer)")
     conn.commit()

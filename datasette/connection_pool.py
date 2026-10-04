@@ -195,6 +195,11 @@ class ReadConnectionPool:
             self._collect_expired_locked(now, to_close)
             deadline = None
             while True:
+                if deadline is not None:
+                    self.stats["wait_ms_max"] = max(
+                        self.stats["wait_ms_max"],
+                        int((time.monotonic() - now) * 1000),
+                    )
                 if state.idle:
                     entry = state.idle.pop()
                     if state.counted:
@@ -227,11 +232,15 @@ class ReadConnectionPool:
                             self._cond.wait(remaining)
                         finally:
                             self._waiters -= 1
-                            self.stats["wait_ms_total"] += int(
-                                (time.monotonic() - t0) * 1000
-                            )
+                            waited_ms = int((time.monotonic() - t0) * 1000)
+                            self.stats["wait_ms_total"] += waited_ms
                         continue
                     self.stats["wait_timeouts"] += 1
+                if deadline is not None:
+                    self.stats["wait_ms_max"] = max(
+                        self.stats["wait_ms_max"],
+                        int((time.monotonic() - now) * 1000),
+                    )
                 # Soft cap: open one more. Bounded by the number of threads
                 # that can hold a lease at once (num_sql_threads).
                 self.stats["exceeded_cap"] += 1

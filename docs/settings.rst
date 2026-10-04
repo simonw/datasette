@@ -214,6 +214,72 @@ Maximum number of threads in the thread pool Datasette uses to execute SQLite qu
 
 Setting this to 0 turns off threaded SQL queries entirely - useful for environments that do not support threading such as `Pyodide <https://pyodide.org/>`__.
 
+.. _setting_max_open_connections:
+
+max_open_connections
+~~~~~~~~~~~~~~~~~~~~
+
+.. [[[cog
+    setting_default(cog, "max_open_connections")
+.. ]]]
+
+Default: ``128``
+
+.. [[[end]]]
+
+Read queries borrow a connection from a pool for the duration of one query and return it afterwards. This setting caps how many pooled read connections can be open at once across all attached file databases. When a new connection is needed and the cap has been reached, the least recently used idle connection is closed first.
+
+If every connection is in use the pool waits up to :ref:`setting_connection_pool_wait_ms` and then opens one more anyway, so the cap can be exceeded by at most :ref:`setting_num_sql_threads` connections. Set this to 0 for no limit.
+
+::
+
+    datasette *.db --setting max_open_connections 64
+
+.. _setting_connection_idle_timeout:
+
+connection_idle_timeout
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. [[[cog
+    setting_default(cog, "connection_idle_timeout")
+.. ]]]
+
+Default: ``60``
+
+.. [[[end]]]
+
+Pooled read connections that have not been used for this many seconds are closed. Set to 0 to keep idle connections open until they are evicted by :ref:`setting_max_open_connections`.
+
+.. _setting_connection_pool_wait_ms:
+
+connection_pool_wait_ms
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. [[[cog
+    setting_default(cog, "connection_pool_wait_ms")
+.. ]]]
+
+Default: ``0``
+
+.. [[[end]]]
+
+How long a query waits for a connection to be returned when :ref:`setting_max_open_connections` has been reached and every pooled connection is in use, before opening one more connection anyway.
+
+.. _setting_pool_read_connections:
+
+pool_read_connections
+~~~~~~~~~~~~~~~~~~~~~
+
+.. [[[cog
+    setting_default(cog, "pool_read_connections")
+.. ]]]
+
+Default: ``on``
+
+.. [[[end]]]
+
+Reuse read connections between queries. Turn this off to open, prepare and close a new connection for every read query.
+
 .. _setting_allow_facet:
 
 allow_facet

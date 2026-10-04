@@ -16,6 +16,7 @@ import sqlite_utils
 from opentelemetry import context as otel_context_api
 from opentelemetry.trace import Status, StatusCode
 
+from .connection_pool import ConnectionLeaseError  # noqa: F401
 from .inspect import inspect_hash
 from .telemetry import (
     callback_name,
@@ -127,9 +128,11 @@ class Database:
         self._closed = False
         self._pending_execute_futures = set()
         self._pending_execute_futures_lock = threading.Lock()
-        # These are used when in non-threaded mode:
+        # Used when in non-threaded mode (reads go through ds._read_pool):
         self._read_connection = None
         self._write_connection = None
+        # Bookkeeping for ds._read_pool, created on first read
+        self._read_pool_state = None
         # Track file and memory connections, including reads on worker threads,
         # so close() can release all of them from the calling thread.
         self._all_connections = []
@@ -242,8 +245,13 @@ class Database:
             except Exception:  # noqa: BLE001, S110
                 # Shutdown teardown - a failed pending write must not block close()
                 pass
+        # Close idle pooled read connections; any still leased are closed
+        # by the pool when they are released
+        read_pool = getattr(self.ds, "_read_pool_or_none", None)
+        if read_pool is not None:
+            read_pool.close_database(self)
         # Close anything still tracked in _all_connections
-        for connection in self._all_connections:
+        for connection in list(self._all_connections):
             try:
                 connection.close()
             except Exception:  # noqa: BLE001, S110
@@ -686,21 +694,14 @@ class Database:
 
     async def _execute_fn(self, fn):
         self._check_not_closed()
+        read_pool = self.ds._read_pool
         if self.ds.executor is None:
-            # non-threaded mode
-            if self._read_connection is None:
-                self._read_connection = self.connect()
-                self.ds._prepare_connection(self._read_connection, self.name)
-            return fn(self._read_connection)
+            # non-threaded mode: lease on the event loop thread
+            return read_pool.run(self, fn)
 
-        # threaded mode
+        # threaded mode: lease on the executor thread for one callback
         def in_thread():
-            conn = getattr(connections, self._thread_local_id, None)
-            if not conn:
-                conn = self.connect()
-                self.ds._prepare_connection(conn, self.name)
-                setattr(connections, self._thread_local_id, conn)
-            return fn(conn)
+            return read_pool.run(self, fn)
 
         with self._pending_execute_futures_lock:
             self._check_not_closed()
@@ -742,6 +743,7 @@ class Database:
             ) as execute_span:
                 try:
                     with sqlite_timelimit(conn, time_limit_ms):
+                        cursor = None
                         try:
                             cursor = conn.cursor()
                             cursor.execute(sql, params if params is not None else {})
@@ -755,6 +757,7 @@ class Database:
                             else:
                                 rows = cursor.fetchall()
                                 truncated = False
+                            description = cursor.description
                         except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
                             if e.args == ("interrupted",):
                                 raise QueryInterrupted(e, sql, params)
@@ -764,6 +767,13 @@ class Database:
                                 )
                                 sys.stderr.flush()
                             raise
+                        finally:
+                            # Release the statement now: a traceback that
+                            # keeps this frame alive would otherwise keep it
+                            # unfinalized, and closing the pooled connection
+                            # later would leave a zombie holding its fds
+                            if cursor is not None:
+                                cursor.close()
                 except QueryInterrupted as e:
                     if not timeout_expected:
                         execute_span.record_exception(e)
@@ -776,10 +786,10 @@ class Database:
                     raise
 
                 if truncate:
-                    return Results(rows, truncated, cursor.description)
+                    return Results(rows, truncated, description)
 
                 else:
-                    return Results(rows, False, cursor.description)
+                    return Results(rows, False, description)
 
         with trace(  # noqa: SIM117
             "sql", database=self.name, sql=sql.strip(), params=params

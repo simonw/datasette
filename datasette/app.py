@@ -230,6 +230,26 @@ SETTINGS = (
         3,
         "Number of threads in the thread pool for executing SQLite queries",
     ),
+    Setting(
+        "max_open_connections",
+        128,
+        "Maximum number of pooled read connections open across all databases - least recently used idle connections are closed first, 0 for no limit",
+    ),
+    Setting(
+        "connection_idle_timeout",
+        60,
+        "Close pooled read connections that have been idle for this many seconds - 0 to keep them open",
+    ),
+    Setting(
+        "connection_pool_wait_ms",
+        0,
+        "When max_open_connections is reached and every connection is in use, wait this long for one to be returned before opening one more",
+    ),
+    Setting(
+        "pool_read_connections",
+        True,
+        "Reuse read connections between queries - turn off to open a new connection for every query",
+    ),
     Setting("sql_time_limit_ms", 1000, "Time limit for a SQL query in milliseconds"),
     Setting(
         "default_facet_size", 30, "Number of values to return for requested facets"
@@ -991,6 +1011,9 @@ class Datasette:
                 # Collect the first failure and re-raise after every close() has run
                 if first_exception is None:
                     first_exception = e
+        read_pool = self._read_pool_or_none
+        if read_pool is not None:
+            read_pool.close()
         if self.executor is not None:
             try:
                 self.executor.shutdown(wait=True, cancel_futures=True)
@@ -1002,6 +1025,26 @@ class Datasette:
 
     def setting(self, key):
         return self._settings.get(key, None)
+
+    @property
+    def _read_pool(self):
+        pool = self.__dict__.get("_read_pool_instance")
+        if pool is None:
+            from .connection_pool import ReadConnectionPool
+
+            pool = ReadConnectionPool(
+                self._prepare_connection,
+                max_open=self.setting("max_open_connections") or 0,
+                idle_timeout=float(self.setting("connection_idle_timeout") or 0),
+                wait_ms=self.setting("connection_pool_wait_ms") or 0,
+                enabled=bool(self.setting("pool_read_connections")),
+            )
+            pool = self.__dict__.setdefault("_read_pool_instance", pool)
+        return pool
+
+    @property
+    def _read_pool_or_none(self):
+        return self.__dict__.get("_read_pool_instance")
 
     def settings_dict(self):
         # Returns a fully resolved settings dictionary, useful for templates

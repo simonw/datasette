@@ -607,14 +607,17 @@ class Torture:
                 # 404: data or the database page during an external change
                 self.count(f"http {response.status_code} (expected)")
                 return
-            if response.status_code == 500 and (
+            if response.status_code in (400, 500) and (
                 "schema is locked" in response.text
                 or "table is locked" in response.text
             ):
                 # SQLITE_LOCKED from the shared-cache in-memory database: it
-                # does not wait for locks (documented, the same on main)
+                # does not wait for locks (documented, the same on main). The
+                # table page reports it as a 400 "Invalid SQL" (P45)
                 with self.lock:
-                    self.expected_errors["http 500: shared-cache lock"] += 1
+                    self.expected_errors[
+                        f"http {response.status_code}: shared-cache lock"
+                    ] += 1
                 return
             self.problem(
                 "http", f"GET {path} -> {response.status_code}: {response.text[:300]}"

@@ -550,3 +550,30 @@ async def test_persisted_fingerprints_skip_unchanged_files(tmp_path, monkeypatch
     assert await catalog_tables(ds2, "p1") == ["added_offline", "t"]
     assert await catalog_tables(ds2, "p0") == ["t"]
     ds2.close()
+
+
+@pytest.mark.asyncio
+async def test_remove_database_during_catalog_scan(tmp_path):
+    # remove_database() closes the Database while the watcher may still be
+    # scanning it in a worker thread. The scan connection is not tracked by
+    # the Database, so close() must not pull it out from under the scan
+    # (that used to segfault).
+    path = str(tmp_path / "big.db")
+    conn = sqlite3.connect(path)
+    for i in range(150):
+        conn.execute(f"create table t{i} (a, b, c integer references t0(a))")
+        conn.execute(f"create index i{i} on t{i}(a)")
+    conn.commit()
+    conn.close()
+    ds = Datasette(settings={"schema_watch_interval_ms": 0})
+    await ds.invoke_startup()
+    for i in range(60):
+        ds.add_database(Database(ds, path=path, is_mutable=i % 2 == 0), name=f"x{i}")
+        await asyncio.sleep(0.0005 * (i % 5))
+        ds.remove_database(f"x{i}")
+    await asyncio.sleep(0.2)
+    rows = await ds.get_internal_database().execute(
+        "select count(*) from catalog_tables where database_name like 'x%'"
+    )
+    assert rows.first()[0] == 0
+    ds.close()

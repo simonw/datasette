@@ -223,7 +223,11 @@ class Database:
         else:
             return "db"
 
-    def connect(self, write=False):
+    def connect(self, write=False, track=True):
+        """Open a new connection. ``track=False`` leaves it out of
+        ``_all_connections``: the caller closes it itself and close() must
+        never close it from another thread while it is in use (the
+        SchemaWatcher's short-lived scan connections)."""
         extra_kwargs = {}
         if write:
             extra_kwargs["isolation_level"] = "IMMEDIATE"
@@ -234,11 +238,13 @@ class Database:
             )
             if not write:
                 conn.execute("PRAGMA query_only=1")
-            self._all_connections.append(conn)
+            if track:
+                self._all_connections.append(conn)
             return conn
         if self.is_memory:
             conn = sqlite3.connect(":memory:", uri=True, check_same_thread=False)
-            self._all_connections.append(conn)
+            if track:
+                self._all_connections.append(conn)
             return conn
 
         # mode=ro or immutable=1?
@@ -261,7 +267,8 @@ class Database:
         conn = sqlite3.connect(
             f"file:{self.path}{qs}", uri=True, check_same_thread=False, **extra_kwargs
         )
-        self._all_connections.append(conn)
+        if track:
+            self._all_connections.append(conn)
         if self.is_temp_disk and not self._wal_enabled:
             conn.execute("PRAGMA journal_mode=WAL")
             self._wal_enabled = True

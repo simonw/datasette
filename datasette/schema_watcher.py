@@ -605,26 +605,23 @@ class SchemaWatcher:
     # scanning + storing
     # ------------------------------------------------------------------
     def _connect(self, db, prepare):
-        conn = db.connect()
+        # Untracked: Database.close() on the event loop thread must not close
+        # this connection while a worker thread is using it (that segfaults).
+        # It is always closed by _close() in the same thread that opened it.
+        conn = db.connect(track=False)
         try:
             if prepare:
                 self.ds._prepare_connection(conn, db.name)
             else:
                 conn.row_factory = None
         except Exception:
-            self._close(db, conn)
+            conn.close()
             raise
         return conn
 
     @staticmethod
     def _close(db, conn):
-        try:
-            conn.close()
-        finally:
-            try:
-                db._all_connections.remove(conn)
-            except ValueError:
-                pass
+        conn.close()
 
     def _scan_sync(self, state):
         """Read schema_version + full schema in one read transaction."""

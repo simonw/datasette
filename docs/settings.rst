@@ -563,6 +563,33 @@ You can do that like so::
 
     datasette mydatabase.db --setting base_url /tools/datasette/
 
+.. _setting_schema_watch_interval_ms:
+
+schema_watch_interval_ms
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. [[[cog
+    setting_default(cog, "schema_watch_interval_ms")
+.. ]]]
+
+Default: ``1000``
+
+.. [[[end]]]
+
+How often, in milliseconds, Datasette checks database files that other processes may change for schema changes, so that the ``_internal`` catalog tables stay current. Each check is a ``stat()`` of the database file and its ``-wal`` and ``-journal`` files; a database is only opened if those changed.
+
+Databases passed on the command line are checked this way by default. Databases added by plugins using ``datasette.add_database()`` are ``owned``: Datasette detects their schema changes when it writes to them and never polls them. Immutable databases are scanned once at startup. You can override the mode for a database in ``datasette.yaml``:
+
+.. code-block:: yaml
+
+    databases:
+      mydatabase:
+        schema_watch: owned   # or external, or immutable
+
+Set this to ``0`` to turn polling off::
+
+    datasette mydatabase.db --setting schema_watch_interval_ms 0
+
 .. _setting_secret:
 
 Configuring the secret

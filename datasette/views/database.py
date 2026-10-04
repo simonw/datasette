@@ -80,7 +80,7 @@ class DatabaseView(View):
     async def get(self, request, datasette):
         format_ = request.url_vars.get("format") or "html"
 
-        await datasette.refresh_schemas()
+        await datasette._schema_watcher.on_request()
 
         db = await datasette.resolve_database(request)
         database = db.name
@@ -711,7 +711,7 @@ class QueryView(View):
     async def get(self, request, datasette):
         from datasette.app import TableNotFound
 
-        await datasette.refresh_schemas()
+        await datasette._schema_watcher.on_request()
 
         db = await datasette.resolve_database(request)
         database = db.name

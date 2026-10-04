@@ -29,7 +29,8 @@ async def test_internal_migrations_recorded(ds_client):
         order by id
         """)
     assert [tuple(row) for row in migrations.rows] == [
-        ("datasette_internal", "0001_initial")
+        ("datasette_internal", "0001_initial"),
+        ("datasette_internal", "0002_catalog_fingerprint"),
     ]
 
 
@@ -61,7 +62,8 @@ async def test_internal_migrations_adopt_existing_internal_db(tmp_path):
         order by id
         """)
     assert [tuple(row) for row in migrations.rows] == [
-        ("datasette_internal", "0001_initial")
+        ("datasette_internal", "0001_initial"),
+        ("datasette_internal", "0002_catalog_fingerprint"),
     ]
 
     ds.close()

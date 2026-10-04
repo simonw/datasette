@@ -180,87 +180,100 @@ async def init_internal_db(db):
     await db.execute_write_fn(apply_migrations, transaction=False)
 
 
-async def populate_schema_tables(internal_db, db, schema_version):
-    database_name = db.name
+# Children first, catalog_databases last, so deletes work with FK enforcement
+CATALOG_TABLES = (
+    "catalog_columns",
+    "catalog_foreign_keys",
+    "catalog_indexes",
+    "catalog_views",
+    "catalog_tables",
+    "catalog_databases",
+)
 
-    tables = (await db.execute("select * from sqlite_master WHERE type = 'table'")).rows
-    views = (await db.execute("select * from sqlite_master WHERE type = 'view'")).rows
 
-    def collect_info(conn):
-        tables_to_insert = []
-        views_to_insert = []
-        columns_to_insert = []
-        foreign_keys_to_insert = []
-        indexes_to_insert = []
+@internal_migrations(name="0002_catalog_fingerprint")
+def catalog_fingerprint_column(db):
+    # stat() fingerprint of the database file when the catalog rows were
+    # written, so a restart with a persistent internal database can skip
+    # unchanged files without opening them
+    if "fingerprint" not in db["catalog_databases"].columns_dict:
+        db.execute("ALTER TABLE catalog_databases ADD COLUMN fingerprint TEXT")
 
-        for view in views:
-            view_name = view["name"]
-            views_to_insert.append(
-                (database_name, view_name, view["rootpage"], view["sql"])
-            )
 
-        for table in tables:
-            table_name = table["name"]
-            tables_to_insert.append(
-                (database_name, table_name, table["rootpage"], table["sql"])
-            )
-            columns = table_column_details(conn, table_name)
-            columns_to_insert.extend(
-                {
-                    "database_name": database_name,
-                    "table_name": table_name,
-                    **column._asdict(),
-                }
-                for column in columns
-            )
-            foreign_keys = conn.execute(
-                f"PRAGMA foreign_key_list({escape_sqlite(table_name)})"
-            ).fetchall()
-            foreign_keys_to_insert.extend(
-                {
-                    "database_name": database_name,
-                    "table_name": table_name,
-                    **dict(foreign_key),
-                }
-                for foreign_key in foreign_keys
-            )
-            indexes = conn.execute(
-                f"PRAGMA index_list({escape_sqlite(table_name)})"
-            ).fetchall()
-            indexes_to_insert.extend(
-                {
-                    "database_name": database_name,
-                    "table_name": table_name,
-                    **dict(index),
-                }
-                for index in indexes
-            )
-        return (
-            tables_to_insert,
-            views_to_insert,
-            columns_to_insert,
-            foreign_keys_to_insert,
-            indexes_to_insert,
+def collect_schema(conn, database_name):
+    """Read everything the catalog needs from one connection.
+
+    Run it inside a read transaction so it sees a single snapshot.
+    """
+    tables = conn.execute("select * from sqlite_master WHERE type = 'table'").fetchall()
+    views = conn.execute("select * from sqlite_master WHERE type = 'view'").fetchall()
+    tables_to_insert = []
+    views_to_insert = []
+    columns_to_insert = []
+    foreign_keys_to_insert = []
+    indexes_to_insert = []
+
+    for view in views:
+        views_to_insert.append(
+            (database_name, view["name"], view["rootpage"], view["sql"])
         )
 
-    (
-        tables_to_insert,
-        views_to_insert,
-        columns_to_insert,
-        foreign_keys_to_insert,
-        indexes_to_insert,
-    ) = await db.execute_fn(collect_info)
+    for table in tables:
+        table_name = table["name"]
+        tables_to_insert.append(
+            (database_name, table_name, table["rootpage"], table["sql"])
+        )
+        columns = table_column_details(conn, table_name)
+        columns_to_insert.extend(
+            {
+                "database_name": database_name,
+                "table_name": table_name,
+                **column._asdict(),
+            }
+            for column in columns
+        )
+        foreign_keys = conn.execute(
+            f"PRAGMA foreign_key_list({escape_sqlite(table_name)})"
+        ).fetchall()
+        foreign_keys_to_insert.extend(
+            {
+                "database_name": database_name,
+                "table_name": table_name,
+                **dict(foreign_key),
+            }
+            for foreign_key in foreign_keys
+        )
+        indexes = conn.execute(
+            f"PRAGMA index_list({escape_sqlite(table_name)})"
+        ).fetchall()
+        indexes_to_insert.extend(
+            {
+                "database_name": database_name,
+                "table_name": table_name,
+                **dict(index),
+            }
+            for index in indexes
+        )
+    return {
+        "tables": tables_to_insert,
+        "views": views_to_insert,
+        "columns": columns_to_insert,
+        "foreign_keys": foreign_keys_to_insert,
+        "indexes": indexes_to_insert,
+    }
 
-    def replace_catalog(conn):
+
+def write_catalog_entries(conn, entries):
+    """Replace the catalog rows for each database in ``entries``.
+
+    Each entry is (database_name, path, is_memory, schema_version,
+    fingerprint_json, schema) where schema comes from collect_schema().
+    Runs on the internal database write connection, in one transaction.
+    """
+    for database_name, path, is_memory, schema_version, fingerprint, schema in entries:
         # Delete child rows before their catalog_tables parents so this also
         # works if a prepare_connection plugin enables foreign key enforcement.
-        for table in (
-            "catalog_columns",
-            "catalog_foreign_keys",
-            "catalog_indexes",
-            "catalog_views",
-            "catalog_tables",
-        ):
+        for table in CATALOG_TABLES[:-1]:
             conn.execute(
                 f"DELETE FROM {table} WHERE database_name = ?",
                 [database_name],
@@ -268,29 +281,24 @@ async def populate_schema_tables(internal_db, db, schema_version):
         conn.execute(
             """
             INSERT OR REPLACE INTO catalog_databases (
-                database_name, path, is_memory, schema_version
-            ) VALUES (?, ?, ?, ?)
+                database_name, path, is_memory, schema_version, fingerprint
+            ) VALUES (?, ?, ?, ?, ?)
             """,
-            [
-                database_name,
-                str(db.path) if db.path is not None else None,
-                db.is_memory,
-                schema_version,
-            ],
+            [database_name, path, is_memory, schema_version, fingerprint],
         )
         conn.executemany(
             """
             INSERT INTO catalog_tables (database_name, table_name, rootpage, sql)
             values (?, ?, ?, ?)
             """,
-            tables_to_insert,
+            schema["tables"],
         )
         conn.executemany(
             """
             INSERT INTO catalog_views (database_name, view_name, rootpage, sql)
             values (?, ?, ?, ?)
             """,
-            views_to_insert,
+            schema["views"],
         )
         conn.executemany(
             """
@@ -300,7 +308,7 @@ async def populate_schema_tables(internal_db, db, schema_version):
                 :database_name, :table_name, :cid, :name, :type, :notnull, :default_value, :is_pk, :hidden
             )
             """,
-            columns_to_insert,
+            schema["columns"],
         )
         conn.executemany(
             """
@@ -310,7 +318,7 @@ async def populate_schema_tables(internal_db, db, schema_version):
                 :database_name, :table_name, :id, :seq, :table, :from, :to, :on_update, :on_delete, :match
             )
             """,
-            foreign_keys_to_insert,
+            schema["foreign_keys"],
         )
         conn.executemany(
             """
@@ -320,7 +328,29 @@ async def populate_schema_tables(internal_db, db, schema_version):
                 :database_name, :table_name, :seq, :name, :unique, :origin, :partial
             )
             """,
-            indexes_to_insert,
+            schema["indexes"],
         )
+
+
+async def populate_schema_tables(internal_db, db, schema_version):
+    """Rebuild the catalog rows for one database (kept for compatibility -
+    the SchemaWatcher reads the schema on its own short-lived connection)."""
+    database_name = db.name
+
+    def _collect(conn):
+        return collect_schema(conn, database_name)
+
+    schema = await db.execute_fn(_collect)
+    entry = (
+        database_name,
+        str(db.path) if db.path is not None else None,
+        db.is_memory,
+        schema_version,
+        None,
+        schema,
+    )
+
+    def replace_catalog(conn):
+        write_catalog_entries(conn, [entry])
 
     await internal_db.execute_write_fn(replace_catalog)

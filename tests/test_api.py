@@ -767,6 +767,7 @@ async def test_settings_json(ds_client):
         "template_debug": False,
         "trace_debug": False,
         "base_url": "/",
+        "schema_watch_interval_ms": 1000,
     }
 
 

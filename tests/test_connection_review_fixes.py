@@ -907,3 +907,28 @@ async def test_startup_hook_can_make_requests():
         ds.close()
     finally:
         pm.unregister(name="startup_request_plugin")
+
+
+def test_execute_write_many_from_several_event_loops(owned_db):
+    # T1 end to end: on Python 3.11 before the fix, dozens of these calls
+    # failed with "bad parameter or other API misuse" (3 of 3 runs)
+    _ds, db, _path = owned_db
+    errors = []
+
+    def loop(i):
+        async def run():
+            async def worker(t):
+                for seq in range(60):
+                    try:
+                        await db.execute_write_many(
+                            "insert into t (v) values (?)", [(f"{i}-{t}-{seq}",)]
+                        )
+                    except Exception as e:  # noqa: BLE001
+                        errors.append(repr(e))
+
+            await asyncio.gather(*(worker(t) for t in range(5)))
+
+        return run
+
+    run_in_threads(loop(0), loop(1), loop(2))
+    assert errors == []

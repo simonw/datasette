@@ -354,7 +354,8 @@ class Database:
                 sys.stderr.flush()
         # A write thread that is still running owns its connection and closes
         # it when it finishes; closing it here could free it mid-query
-        in_use = set(self._write_thread_connections) if still_running else set()
+        # (membership tests only: copying the set could race the thread)
+        in_use = self._write_thread_connections if still_running else ()
         for future in pending_execute_futures:
             try:
                 future.result()

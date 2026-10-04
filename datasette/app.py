@@ -487,8 +487,11 @@ class Datasette:
         self._column_types = {}  # .invoke_startup() will populate this
         self._setup_db_done = False
         self._suppress_background_tasks = False
+        # A threading.Lock only ever acquired without blocking: one
+        # Datasette can be driven by several event loops, and an
+        # asyncio.Lock binds to whichever loop first waits on it
+        self._refresh_schemas_lock = threading.Lock()
         try:
-            self._refresh_schemas_lock = asyncio.Lock()
             self._startup_lock = asyncio.Lock()
         except RuntimeError as rex:
             # Workaround for intermittent test failure, see:
@@ -496,7 +499,6 @@ class Datasette:
             if "There is no current event loop in thread" in str(rex):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                self._refresh_schemas_lock = asyncio.Lock()
                 self._startup_lock = asyncio.Lock()
             else:
                 raise
@@ -755,10 +757,20 @@ class Datasette:
         ):
             return
         self._last_schema_refresh = time.monotonic()
-        if self._refresh_schemas_lock.locked() and not force:
-            return
-        async with self._refresh_schemas_lock:
+        if not self._refresh_schemas_lock.acquire(blocking=False):
+            if not force:
+                return
+            # A refresh is already running, maybe on another event loop.
+            # A forced refresh must see changes made before it was called,
+            # so run another sweep now rather than wait for that one (sweeps
+            # are safe to overlap: catalog writes go through the internal
+            # database's write queue)
             await self._refresh_schemas()
+            return
+        try:
+            await self._refresh_schemas()
+        finally:
+            self._refresh_schemas_lock.release()
 
     async def _refresh_schemas(self, *, background=False):
         internal_db = self.get_internal_database()

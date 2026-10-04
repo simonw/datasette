@@ -344,6 +344,14 @@ class SchemaWatcher:
     # ------------------------------------------------------------------
     # task helpers
     # ------------------------------------------------------------------
+    async def _off_loop(self, fn, *args):
+        """Run blocking stat()/scan work in a worker thread - or inline with
+        num_sql_threads=0, which must work where threads cannot be started
+        at all (Pyodide)."""
+        if self.ds.executor is None:
+            return fn(*args)
+        return await asyncio.to_thread(fn, *args)
+
     def _spawn(self, coro):
         try:
             loop = asyncio.get_running_loop()
@@ -511,7 +519,7 @@ class SchemaWatcher:
         outcomes = []
         file_candidates = [s for s in candidates if s.is_file]
         if file_candidates:
-            outcomes = await asyncio.to_thread(self._sweep_sync, file_candidates)
+            outcomes = await self._off_loop(self._sweep_sync, file_candidates)
         for state in candidates:
             if not state.is_file and state.db.memory_name and not state.removed:
                 outcomes.append(await self._memory_pragma_check(state))
@@ -779,7 +787,7 @@ class SchemaWatcher:
 
         async def one(chunk):
             async with semaphore:
-                results = await asyncio.to_thread(self._scan_chunk_sync, chunk)
+                results = await self._off_loop(self._scan_chunk_sync, chunk)
             await self._store(results)
 
         if len(chunks) == 1:
@@ -914,7 +922,7 @@ class SchemaWatcher:
             persisted = {row["database_name"]: row for row in rows.rows}
         to_scan = []
         if persisted:
-            reuse = await asyncio.to_thread(self._reusable_sync, states, persisted)
+            reuse = await self._off_loop(self._reusable_sync, states, persisted)
             for state in states:
                 hit = reuse.get(state.name)
                 if hit is None:

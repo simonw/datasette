@@ -187,3 +187,97 @@ async def test_close_waits_for_immutable_isolated_fn(tmp_path):
     db.close()
     assert await task == 1
     ds.close()
+
+
+NO_THREADS_SCRIPT = r"""
+import asyncio, os, sqlite3, sys, threading
+
+def no_threads(self):
+    raise RuntimeError("can't start new thread")
+
+threading.Thread.start = no_threads
+
+from datasette.app import Datasette
+from datasette.database import Database
+
+path, scratch = sys.argv[1], sys.argv[2]
+conn = sqlite3.connect(path)
+conn.execute("create table t (id integer primary key, v text)")
+conn.execute("insert into t (v) values ('x')")
+conn.commit()
+conn.close()
+
+
+async def main():
+    ds = Datasette(
+        [path],
+        settings={
+            "num_sql_threads": 0,
+            "connection_idle_timeout_ms": 50,
+            "schema_watch_interval_ms": 50,
+        },
+    )
+    await ds.invoke_startup()
+    db = ds.get_database("nothreads")
+    assert (await db.execute("select count(*) from t")).single_value() == 1
+    await db.execute_write("insert into t (v) values ('y')")
+    await db.execute_write("create table t2 (id)")
+    tables = await ds.get_internal_database().execute(
+        "select table_name from catalog_tables where database_name = 'nothreads' "
+        "order by table_name"
+    )
+    assert [r[0] for r in tables.rows] == ["t", "t2"], tables.rows
+    assert await db.execute_isolated_fn(
+        lambda conn: conn.execute("select count(*) from t").fetchone()[0]
+    ) == 2
+    await db.execute_write("insert into t (v) values ('z')", block=False)
+    response = await ds.client.get("/nothreads/t.json?_shape=array")
+    assert response.status_code == 200, response.text
+    assert len(response.json()) == 3
+    # External change detected by the polling task, inline on the loop
+    other = sqlite3.connect(path)
+    other.execute("create table external_t (id)")
+    other.commit()
+    other.close()
+    for _ in range(100):
+        await asyncio.sleep(0.02)
+        tables = await ds.get_internal_database().execute(
+            "select 1 from catalog_tables where table_name = 'external_t'"
+        )
+        if tables.rows:
+            break
+    else:
+        raise AssertionError("external change not seen")
+    # Scratch database added later, created by its first write
+    sdb = ds.add_database(Database(ds, path=scratch), name="scratch")
+    await sdb.execute_write("create table s (id)")
+    assert os.path.exists(scratch)
+    ds.close()
+    print("ok", threading.active_count())
+
+
+asyncio.run(main())
+"""
+
+
+def test_num_sql_threads_zero_starts_no_threads(tmp_path):
+    # Simulates Pyodide, where no thread can be started: nothing in the
+    # read pool, write path or schema watcher may need one
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            NO_THREADS_SCRIPT,
+            str(tmp_path / "nothreads.db"),
+            str(tmp_path / "scratch.db"),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == "ok 1"

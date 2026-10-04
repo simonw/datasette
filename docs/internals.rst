@@ -2174,6 +2174,8 @@ Example usage:
 
     version = await db.execute_fn(get_version)
 
+The connection is borrowed from a pool for the duration of the call (see :ref:`setting_max_open_connections`) and is only valid inside the function. Using it after the function has returned - for example by storing it on an object - raises a ``datasette.database.ConnectionLeaseError``. Returning a cursor or a generator from the function raises the same error: fetch the rows you need before returning.
+
 The call is traced as a ``db.query`` OpenTelemetry span carrying ``datasette.callback`` (the function's qualified name) rather than ``db.query.text``, since the SQL is whatever the function chooses to run - see :ref:`internals_telemetry`. Passing a named function gives the span a readable identity; a lambda reports ``<lambda>``.
 
 .. _database_execute_write:

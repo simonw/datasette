@@ -251,6 +251,19 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
                                    this limit (default=2097152)
       num_sql_threads              Number of threads in the thread pool for
                                    executing SQLite queries (default=3)
+      max_open_connections         Maximum number of pooled read connections open
+                                   across all databases - least recently used idle
+                                   connections are closed first, 0 for no limit
+                                   (default=128)
+      connection_idle_timeout      Close pooled read connections that have been idle
+                                   for this many seconds - 0 to keep them open
+                                   (default=60)
+      connection_pool_wait_ms      When max_open_connections is reached and every
+                                   connection is in use, wait this long for one to
+                                   be returned before opening one more (default=0)
+      pool_read_connections        Reuse read connections between queries - turn off
+                                   to open a new connection for every query
+                                   (default=True)
       sql_time_limit_ms            Time limit for a SQL query in milliseconds
                                    (default=1000)
       default_facet_size           Number of values to return for requested facets

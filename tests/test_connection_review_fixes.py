@@ -619,10 +619,12 @@ async def test_new_memory_database_is_not_scanned_at_registration():
     state = memory._watch_state
     assert state.scan_future is None
     assert state in watcher._pending
-    # Fill it the way the plugin does
-    conn = sqlite3.connect(":memory:")
+    # Fill it from a connection of its own, as the plugin does (it uses
+    # VACUUM INTO, which newer SQLite versions refuse for an existing
+    # in-memory database, so a plain connection here)
+    conn = sqlite3.connect("file:review_fixes_copy?mode=memory&cache=shared", uri=True)
     conn.execute("create table copied (id integer)")
-    conn.execute("VACUUM INTO 'file:review_fixes_copy?mode=memory&cache=shared'")
+    conn.commit()
     conn.close()
     # The next request scans it
     response = await ds.client.get("/copy.json")

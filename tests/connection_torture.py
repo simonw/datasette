@@ -362,6 +362,15 @@ class Torture:
         with self.lock:
             self.problems.append({"kind": kind, "message": message[:2000]})
 
+    def dump_stacks_once(self, why):
+        """Every thread's stack on stderr, the first time something hangs."""
+        with self.lock:
+            if getattr(self, "_dumped", False):
+                return
+            self._dumped = True
+        sys.stderr.write(f"\n=== {why}: stacks of all threads ===\n")
+        faulthandler.dump_traceback(all_threads=True)
+
     def count(self, key):
         with self.lock:
             self.counts[key] += 1
@@ -414,6 +423,7 @@ class Torture:
             value = await asyncio.wait_for(awaitable, timeout)
         except asyncio.TimeoutError:
             self.problem("hang", f"{op} on {group} did not finish in {timeout}s")
+            self.dump_stacks_once(f"{op} on {group} hung")
             return False, None
         except asyncio.CancelledError:
             raise

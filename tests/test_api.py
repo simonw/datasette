@@ -763,6 +763,7 @@ async def test_settings_json(ds_client):
         "connection_idle_timeout": 60,
         "connection_pool_wait_ms": 0,
         "pool_read_connections": True,
+        "write_thread_idle_timeout_ms": 30000,
         "cache_size_kb": 0,
         "allow_csv_stream": True,
         "max_csv_mb": 100,

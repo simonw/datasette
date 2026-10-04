@@ -250,6 +250,11 @@ SETTINGS = (
         True,
         "Reuse read connections between queries - turn off to open a new connection for every query",
     ),
+    Setting(
+        "write_thread_idle_timeout_ms",
+        30000,
+        "Milliseconds a database's write thread waits for a write before closing its connection and exiting - set 0 to keep it running",
+    ),
     Setting("sql_time_limit_ms", 1000, "Time limit for a SQL query in milliseconds"),
     Setting(
         "default_facet_size", 30, "Number of values to return for requested facets"

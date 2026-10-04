@@ -280,6 +280,29 @@ Default: ``on``
 
 Reuse read connections between queries. Turn this off to open, prepare and close a new connection for every read query.
 
+.. _setting_write_thread_idle_timeout_ms:
+
+write_thread_idle_timeout_ms
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. [[[cog
+    setting_default(cog, "write_thread_idle_timeout_ms")
+.. ]]]
+
+Default: ``30000``
+
+.. [[[end]]]
+
+Each database that receives writes gets its own write thread, holding a single write connection. Writes to that database are queued and executed one at a time by that thread.
+
+If a write thread has had no work for this many milliseconds it closes its connection and exits. The next write to that database starts a new thread and opens a new connection. This keeps an instance with many databases from holding a thread and a file descriptor open for every database it has ever written to.
+
+Anything a write function attaches to the write connection itself - temporary tables, ``ATTACH`` statements, ``PRAGMA`` settings - is lost when the thread exits. In-memory databases are exempt, since closing their only write connection would discard their contents.
+
+Set this to 0 to keep write threads running until Datasette shuts down::
+
+    datasette mydatabase.db --setting write_thread_idle_timeout_ms 0
+
 .. _setting_allow_facet:
 
 allow_facet

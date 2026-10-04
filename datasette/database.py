@@ -125,6 +125,18 @@ class Database:
         self._cached_derived_table_dependencies = None
         self._write_thread = None
         self._write_queue = None
+        # Guards the write thread lifecycle. A task is only ever enqueued,
+        # and a write thread only ever decides to exit, while holding this
+        # lock - see _send_to_write_thread() and _execute_writes().
+        self._write_thread_lock = threading.Lock()
+        # Write threads that have deregistered (idle exit) but may still be
+        # closing their connection. close() joins them.
+        self._retiring_write_threads = set()
+        # Number of write threads started over the lifetime of this Database,
+        # and how often a thread's idle timeout fired but it found a newly
+        # queued task once it held the lock (so it kept running)
+        self._write_threads_started = 0
+        self._write_thread_exits_averted = 0
         self._closed = False
         self._pending_execute_futures = set()
         self._pending_execute_futures_lock = threading.Lock()
@@ -229,12 +241,16 @@ class Database:
             pending_execute_futures = tuple(self._pending_execute_futures)
         # Shut down the write thread, if any, via a sentinel. The thread
         # drains any writes already queued before the sentinel and then
-        # closes its own write connection and returns.
-        write_thread = self._write_thread
-        if write_thread is not None and self._write_queue is not None:
-            self._write_queue.put(_SHUTDOWN)
-            write_thread.join(timeout=10)
-            if write_thread.is_alive():
+        # closes its own write connection and returns. _closed is already
+        # set, so once we hold the lock no further task can be enqueued.
+        with self._write_thread_lock:
+            write_thread = self._write_thread
+            retiring_threads = tuple(self._retiring_write_threads)
+            if write_thread is not None:
+                self._write_queue.put(_SHUTDOWN)
+        for thread in ((write_thread,) if write_thread else ()) + retiring_threads:
+            thread.join(timeout=10)
+            if thread.is_alive():
                 sys.stderr.write(
                     f"Datasette: write thread for {self.name!r} did not exit within 10s\n"
                 )
@@ -545,58 +561,134 @@ class Database:
     async def _send_to_write_thread(
         self, fn, block=True, isolated_connection=False, transaction=True
     ):
-        if self._write_queue is None:
-            self._write_queue = queue.Queue()
-        if self._write_thread is None:
-            self._write_thread = threading.Thread(
-                target=self._execute_writes, daemon=True
-            )
-            self._write_thread.name = f"_execute_writes for database {self.name}"
-            self._write_thread.start()
         task_id = uuid.uuid4()
         loop = asyncio.get_running_loop()
         reply_future = loop.create_future()
-        # Capture the OpenTelemetry context and enqueue time for the write thread
-        self._write_queue.put(
-            WriteTask(
-                fn,
-                task_id,
-                loop,
-                reply_future,
-                isolated_connection,
-                transaction,
-                otel_context_api.get_current(),
-                time.time_ns(),
-                block,
+        with self._write_thread_lock:
+            # Enqueueing and checking for a live write thread happen under
+            # one lock. A write thread only decides to exit while holding
+            # this lock and after seeing an empty queue, so a task can never
+            # be left in the queue with no thread to run it: either the
+            # thread sees this task and keeps going, or it has already
+            # deregistered and we start a new one.
+            if self._closed:
+                raise DatasetteClosedError(f"Database {self.name!r} has been closed")
+            if self._write_queue is None:
+                self._write_queue = queue.Queue()
+            if self._write_thread is None:
+                # Start the thread before enqueueing: if start() fails (for
+                # example "can't start new thread") nothing is stranded
+                self._start_write_thread()
+            # Capture the OpenTelemetry context and enqueue time for the write thread
+            self._write_queue.put(
+                WriteTask(
+                    fn,
+                    task_id,
+                    loop,
+                    reply_future,
+                    isolated_connection,
+                    transaction,
+                    otel_context_api.get_current(),
+                    time.time_ns(),
+                    block,
+                )
             )
-        )
         if block:
             return await reply_future
         else:
             return task_id, reply_future
 
+    def _start_write_thread(self):
+        # Caller must hold self._write_thread_lock
+        thread = threading.Thread(
+            target=self._execute_writes,
+            daemon=True,
+            name=f"_execute_writes for database {self.name}",
+        )
+        thread.start()
+        self._write_thread = thread
+        self._write_threads_started += 1
+
+    def _write_thread_idle_timeout(self):
+        """Seconds the write thread may wait for a task before exiting.
+
+        None means wait forever (the thread lives until close()).
+        """
+        if self.is_memory:
+            # Closing the last connection to a memory database discards
+            # its contents, so its write connection must stay open
+            return None
+        setting = getattr(self.ds, "setting", None)
+        timeout_ms = setting("write_thread_idle_timeout_ms") if setting else None
+        if not timeout_ms or timeout_ms <= 0:
+            return None
+        return timeout_ms / 1000
+
     def _execute_writes(self):
-        # Infinite looping thread that protects the single write connection
-        # to this database
+        # Thread that protects the single write connection to this database.
+        # It runs until close(), or until it has waited idle_timeout seconds
+        # with no task, in which case it closes its connection and exits.
+        # The next write starts a new thread.
+        idle_timeout = self._write_thread_idle_timeout()
         conn_exception = None
         conn = None
+        deregistered = False
         try:
             conn = self.connect(write=True)
             # Threads do not inherit the caller's context, so any spans
             # created by prepare_connection hooks here are root spans
             self.ds._prepare_connection(conn, self.name)
         except Exception as e:  # noqa: BLE001
-            # Stored and re-raised to whoever queues the next write
+            # Stored and re-raised to every write already queued. With an
+            # idle timeout the thread then exits as soon as the queue is
+            # empty, so the next write tries to connect again.
             conn_exception = e
+            if idle_timeout is not None:
+                idle_timeout = 0
+        try:
+            self._process_write_queue(conn, conn_exception, idle_timeout)
+            deregistered = True
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:  # noqa: BLE001, S110
+                    # Best-effort close as the write thread exits
+                    pass
+                try:
+                    self._all_connections.remove(conn)
+                except ValueError:
+                    # May already have been cleared by close().
+                    pass
+            current = threading.current_thread()
+            with self._write_thread_lock:
+                self._retiring_write_threads.discard(current)
+                if not deregistered and self._write_thread is current:
+                    # Died from an unexpected BaseException. Deregister so
+                    # the next write starts a fresh thread, and start one
+                    # now if tasks are already waiting.
+                    self._write_thread = None
+                    if not self._closed and not self._write_queue.empty():
+                        self._start_write_thread()
+
+    def _process_write_queue(self, conn, conn_exception, idle_timeout):
         while True:
-            task = self._write_queue.get()
+            try:
+                task = self._write_queue.get(timeout=idle_timeout)
+            except queue.Empty:
+                with self._write_thread_lock:
+                    if not self._write_queue.empty():
+                        # A task was enqueued after the timeout fired
+                        self._write_thread_exits_averted += 1
+                        continue
+                    # Deregister while holding the lock: any write enqueued
+                    # from now on will start a new thread
+                    current = threading.current_thread()
+                    if self._write_thread is current:
+                        self._write_thread = None
+                    self._retiring_write_threads.add(current)
+                return
             if task is _SHUTDOWN:
-                if conn is not None:
-                    try:
-                        conn.close()
-                    except Exception:  # noqa: BLE001, S110
-                        # Best-effort close as the write thread exits
-                        pass
                 return
             # block=True: the caller awaits the result, so the write spans
             # are children of the caller's span. The token must be detached

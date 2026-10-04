@@ -2057,7 +2057,29 @@ ORDER BY allowed.parent, allowed.child
 
         # Validate and cap limit
         limit = min(max(1, limit), 1000)
+        return await self._allowed_resources_page(
+            action,
+            actor,
+            parent=parent,
+            include_is_private=include_is_private,
+            include_reasons=include_reasons,
+            limit=limit,
+            next=next,
+        )
 
+    async def _allowed_resources_page(
+        self,
+        action,
+        actor,
+        *,
+        parent,
+        include_is_private,
+        include_reasons,
+        limit,
+        next,
+    ):
+        """allowed_resources() without the limit cap: ``limit=None`` returns
+        every remaining resource in one query (PaginatedResources.all())."""
         # Get base SQL query
         query, params = await self.allowed_resources_sql(
             action=action,
@@ -2087,15 +2109,16 @@ ORDER BY allowed.parent, allowed.child
 
         # Add LIMIT (fetch limit+1 to detect if there are more results)
         # Note: query from allowed_resources_sql() already includes ORDER BY parent, child
-        query = f"{query} LIMIT :limit"
-        params["limit"] = limit + 1
+        if limit is not None:
+            query = f"{query} LIMIT :limit"
+            params["limit"] = limit + 1
 
         # Execute query
         result = await self.get_internal_database().execute(query, params)
         rows = list(result.rows)
 
         # Check if truncated (got more than limit rows)
-        truncated = len(rows) > limit
+        truncated = limit is not None and len(rows) > limit
         if truncated:
             rows = rows[:limit]  # Remove the extra row
 

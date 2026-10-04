@@ -334,3 +334,55 @@ async def catalog_relationship_counts(datasette, database_names):
     for database_name, table_name, n in rows.rows:
         counts.setdefault(database_name, {})[table_name] = n
     return counts
+
+
+async def catalog_all_foreign_keys(datasette, database_name):
+    """``get_all_foreign_keys()`` for one database, from the catalog:
+    ``{table: {"incoming": [...], "outgoing": [...]}}`` for every table."""
+    internal = datasette.get_internal_database()
+    tables = await internal.execute(
+        "select table_name from catalog_tables where database_name = ? order by table_name",
+        [database_name],
+    )
+    table_to_foreign_keys = {
+        row[0]: {"incoming": [], "outgoing": []} for row in tables.rows
+    }
+    rows = await internal.execute(
+        """
+        select table_name, id, "table", "from", "to" from catalog_foreign_keys
+        where database_name = ?
+        order by table_name, id, seq
+        """,
+        [database_name],
+    )
+    by_table = {}
+    for table_name, fk_id, other_table, from_, to_ in rows.rows:
+        by_table.setdefault(table_name, {}).setdefault(fk_id, []).append(
+            (other_table, from_, to_)
+        )
+    for table, fks in by_table.items():
+        if table not in table_to_foreign_keys:
+            continue
+        for parts in fks.values():
+            if len(parts) != 1:
+                # Compound foreign keys are left out, as get_outbound_foreign_keys() does
+                continue
+            other_table, from_, to_ = parts[0]
+            if other_table not in table_to_foreign_keys:
+                # Weird edge case where something refers to a table that does
+                # not actually exist
+                continue
+            table_to_foreign_keys[other_table]["incoming"].append(
+                {"other_table": table, "column": to_, "other_column": from_}
+            )
+            table_to_foreign_keys[table]["outgoing"].append(
+                {"other_table": other_table, "column": from_, "other_column": to_}
+            )
+    for foreign_keys in table_to_foreign_keys.values():
+        foreign_keys["incoming"].sort(
+            key=lambda fk: (fk["other_table"], fk["column"], fk["other_column"])
+        )
+        foreign_keys["outgoing"].sort(
+            key=lambda fk: (fk["other_table"], fk["column"], fk["other_column"])
+        )
+    return table_to_foreign_keys

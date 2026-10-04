@@ -34,10 +34,6 @@ if typing.TYPE_CHECKING:
     from datasette.permissions import Resource
 
 
-# Page size PaginatedResources.all() uses after the first page
-ALL_RESOURCES_PAGE_SIZE = 1000
-
-
 @dataclasses.dataclass
 class PaginatedResources:
     """Paginated results from allowed_resources query."""
@@ -71,24 +67,22 @@ class PaginatedResources:
         for resource in self.resources:
             yield resource
 
-        # Continue fetching subsequent pages if there are more. Every page
-        # re-runs the whole permission query, so fetch the rest in the
-        # largest pages allowed_resources() supports - the caller sees the
-        # same sequence of resources whatever the page size.
-        next_token = self.next
-        while next_token:
-            page = await self._datasette.allowed_resources(
+        # Fetch everything after the first page in one query. Each page
+        # re-runs the whole permission query, so paging through N resources
+        # 1000 at a time cost O(N^2 / 1000) - 21 seconds for the index page
+        # with 87,000 tables. The caller sees the same sequence either way.
+        if self.next:
+            rest = await self._datasette._allowed_resources_page(
                 self._action,
                 self._actor,
                 parent=self._parent,
                 include_is_private=self._include_is_private,
                 include_reasons=self._include_reasons,
-                limit=max(self._limit, ALL_RESOURCES_PAGE_SIZE),
-                next=next_token,
+                limit=None,
+                next=self.next,
             )
-            for resource in page.resources:
+            for resource in rest.resources:
                 yield resource
-            next_token = page.next
 
 
 # From https://www.sqlite.org/lang_keywords.html

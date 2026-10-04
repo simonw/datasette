@@ -870,7 +870,6 @@ class SchemaWatcher:
                 write_catalog_entries(conn, live)
 
             await self.ds.get_internal_database().execute_write_fn(_write)
-            self.catalog_generation += 1
             for r in stored:
                 state = r["state"]
                 state.catalog_version = r["version"]
@@ -885,6 +884,9 @@ class SchemaWatcher:
                 remember_derived_table_dependencies(
                     state, [(t[1], t[3]) for t in r["schema"]["tables"]]
                 )
+            # After the states: a reader that sees the new generation must
+            # also see their new catalog versions
+            self.catalog_generation += 1
         if missing:
             for state in missing:
                 if not state.missing:
@@ -906,9 +908,9 @@ class SchemaWatcher:
                 )
 
         await self.ds.get_internal_database().execute_write_fn(_clear)
-        self.catalog_generation += 1
         for state in states:
             state.catalog_version = None
+        self.catalog_generation += 1
 
     async def _delete_catalog(self, names):
         watcher = self

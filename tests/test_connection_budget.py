@@ -417,7 +417,14 @@ async def test_startup_with_crossdb_attaches_nothing(db_files):
 
 
 @pytest.mark.asyncio
-async def test_restart_with_persisted_catalog_opens_nothing(db_files, tmp_path):
+async def test_restart_with_persisted_catalog_opens_nothing(
+    db_files, tmp_path, monkeypatch
+):
+    from datasette import schema_watcher
+
+    # The files' ctimes are recent (os.utime() in the fixture): without this
+    # their stored fingerprints would be racy, and so rescanned
+    monkeypatch.setattr(schema_watcher, "RACY_WINDOW_NS", 0)
     internal = str(tmp_path / "internal.db")
     ds = Datasette(db_files, internal=internal)
     await ds.invoke_startup()
@@ -506,62 +513,74 @@ async def test_check_databases_reuses_catalog_scan(db_files, tmp_path):
 # Parity: the catalog helpers answer exactly what the live helpers do
 
 
+MISC_SQL = """
+    create table docs (id integer primary key, title text, body text);
+    create virtual table docs_fts using fts4(title, body, content="docs");
+    create virtual table docs_vocab using fts4aux(docs_fts);
+    create virtual table plain using fts5(x);
+    create virtual table geo using rtree(id, minx, maxx);
+    create table _private (x);
+    create table geometry_columns (f_table_name text);
+    create table idx_foo_bar (x);
+    create table IDXA (x);
+    create table parent (id integer primary key);
+    create table child (
+        id integer primary key,
+        p integer references parent(id),
+        q integer references missing(id)
+    );
+    create table comp (a, b, foreign key (a, b) references parent(id, id));
+    create table self_ref (id integer primary key, up integer references self_ref(id));
+    create table wide (b text, a integer, c, primary key (a, b));
+    create view v_docs as select * from docs;
+"""
+
+
 @pytest.mark.asyncio
-async def test_catalog_helpers_match_live_introspection(tmp_path):
-    path = str(tmp_path / "misc.db")
-    conn = sqlite3.connect(path)
-    conn.executescript("""
-        create table docs (id integer primary key, title text, body text);
-        create virtual table docs_fts using fts4(title, body, content="docs");
-        create virtual table docs_vocab using fts4aux(docs_fts);
-        create virtual table plain using fts5(x);
-        create virtual table geo using rtree(id, minx, maxx);
-        create table _private (x);
-        create table geometry_columns (f_table_name text);
-        create table idx_foo_bar (x);
-        create table IDXA (x);
-        create table parent (id integer primary key);
-        create table child (
-            id integer primary key,
-            p integer references parent(id),
-            q integer references missing(id)
-        );
-        create table comp (a, b, foreign key (a, b) references parent(id, id));
-        create table self_ref (id integer primary key, up integer references self_ref(id));
-        create table wide (b text, a integer, c, primary key (a, b));
-        create view v_docs as select * from docs;
-        """)
-    conn.close()
-    ds = Datasette(
-        [path],
-        config={"databases": {"misc": {"tables": {"docs": {"hidden": True}}}}},
-        settings={"schema_watch_interval_ms": 0},
+@pytest.mark.parametrize("name", ["misc", "fixtures"])
+async def test_catalog_helpers_match_live_introspection(tmp_path, name):
+    from datasette.fixtures import write_fixture_database
+    from datasette.utils.catalog import (
+        all_derived_table_dependencies,
+        catalog_all_foreign_keys,
     )
+
+    path = str(tmp_path / f"{name}.db")
+    if name == "fixtures":
+        write_fixture_database(path)
+        config_hidden = set()
+        config = {}
+    else:
+        conn = sqlite3.connect(path)
+        conn.executescript(MISC_SQL)
+        conn.close()
+        config_hidden = {"docs"}
+        config = {"databases": {"misc": {"tables": {"docs": {"hidden": True}}}}}
+    ds = Datasette([path], config=config, settings={"schema_watch_interval_ms": 0})
     await ds.invoke_startup()
-    db = ds.get_database("misc")
+    db = ds.get_database(name)
     tables = await db.table_names()
-    summary = (await catalog_summaries(ds, ["misc"]))["misc"]
+    summary = (await catalog_summaries(ds, [name]))[name]
     # hidden_table_names() also lists SpatiaLite names that do not exist
     hidden = set(await db.hidden_table_names()) & set(tables)
-    config_hidden = {"docs"}
     assert {t for t in tables if summary.is_hidden(t, config_hidden)} == hidden
     assert summary.views == set(await db.view_names())
 
-    details = await catalog_table_details(ds, [("misc", t) for t in tables])
+    details = await catalog_table_details(ds, [(name, t) for t in tables])
     for table in tables:
-        assert details[("misc", table)]["columns"] == await db.table_columns(table)
-        assert details[("misc", table)]["primary_keys"] == await db.primary_keys(table)
-        assert details[("misc", table)]["fts_table"] == await db.fts_table(table)
+        assert details[(name, table)]["columns"] == await db.table_columns(table)
+        assert details[(name, table)]["primary_keys"] == await db.primary_keys(table)
+        assert details[(name, table)]["fts_table"] == await db.fts_table(table)
 
-    relationships = (await catalog_relationship_counts(ds, ["misc"])).get("misc", {})
-    for table, fks in (await db.get_all_foreign_keys()).items():
+    all_foreign_keys = await db.get_all_foreign_keys()
+    assert await catalog_all_foreign_keys(ds, name) == all_foreign_keys
+    relationships = (await catalog_relationship_counts(ds, [name])).get(name, {})
+    for table, fks in all_foreign_keys.items():
         assert relationships.get(table, 0) == len(fks["incoming"] + fks["outgoing"])
-
-    from datasette.utils.catalog import all_derived_table_dependencies
 
     derived = await all_derived_table_dependencies(ds)
     live = await db.execute_fn(sqlite_derived_table_dependencies)
-    assert derived["misc"] == live
+    assert derived.get(name, {}) == live
     # Restored from the catalog rather than remembered from the scan
     db._cached_derived_table_dependencies = None
     assert await db.derived_table_dependencies() == live

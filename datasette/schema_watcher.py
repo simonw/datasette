@@ -71,6 +71,9 @@ SCAN_CONCURRENCY = 1
 # sweep with os.scandir() instead of probing -wal/-journal with stat()
 SCANDIR_THRESHOLD = 8
 PRAGMA_BUSY_TIMEOUT_MS = 200
+# Read the schema cookie from the file header instead of opening a
+# connection when no -wal/-journal has content
+USE_HEADER_CHECK = True
 
 
 class WatchState:
@@ -171,6 +174,35 @@ def is_racy(fp, t_ns):
     return newest_timestamp(fp) >= t_ns - RACY_WINDOW_NS
 
 
+SQLITE_HEADER = b"SQLite format 3\x00"
+
+
+def header_schema_version(path):
+    """The schema cookie (offset 40 of the database header) read straight
+    from the file - what PRAGMA schema_version returns - without opening a
+    SQLite connection or taking any lock.
+
+    Only meaningful when there is no non-empty -wal or -journal: then the
+    main file is the whole database. The caller must have taken the
+    fingerprint *before* calling this; a commit in flight at that moment has
+    already bumped the mtime it saw, so the fingerprint is racy and the next
+    sweep looks again.
+    """
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return None
+    try:
+        header = os.pread(fd, 100, 0)
+    except OSError:
+        return None
+    finally:
+        os.close(fd)
+    if len(header) < 100 or not header.startswith(SQLITE_HEADER):
+        return None
+    return int.from_bytes(header[40:44], "big")
+
+
 def _fp_to_json(fp, t_ns):
     return json.dumps({"fp": fp, "t": t_ns})
 
@@ -198,6 +230,7 @@ class SchemaWatcher:
             "sweep_seconds": 0.0,
             "stats": 0,
             "pragma_checks": 0,
+            "header_checks": 0,
             "scans": 0,
             "write_detections": 0,
             "replaced": 0,
@@ -476,8 +509,10 @@ class SchemaWatcher:
             elif kind == "busy":
                 self.counters["busy"] += 1
                 state.fp_racy = True  # check again next sweep
-            elif kind == "checked":
-                self.counters["pragma_checks"] += 1
+            elif kind in ("checked", "header"):
+                self.counters[
+                    "pragma_checks" if kind == "checked" else "header_checks"
+                ] += 1
                 state.stats["checks"] += 1
                 if version != state.catalog_version:
                     state.needs_scan = True
@@ -525,6 +560,14 @@ class SchemaWatcher:
                     # first sight: the schema_version alone cannot be trusted
                     out.append((state, "replaced", fp, t_ns, None))
                     continue
+                if USE_HEADER_CHECK and fp[1] is None and fp[2] is None:
+                    # No -wal/-journal content: read the cookie from the
+                    # header. No connection, no SHARED lock that could make
+                    # a concurrent writer back off.
+                    version = header_schema_version(os.fspath(state.db.path))
+                    if version is not None:
+                        out.append((state, "header", fp, t_ns, version))
+                        continue
                 out.append(self._pragma_check(state, fp, t_ns))
         return out
 

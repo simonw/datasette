@@ -229,7 +229,9 @@ async def test_external_data_only_insert_does_not_rescan(db_path):
 
 
 @pytest.mark.asyncio
-async def test_external_add_column(db_path):
+@pytest.mark.parametrize("use_header", (True, False))
+async def test_external_add_column(db_path, monkeypatch, use_header):
+    monkeypatch.setattr(schema_watcher_module, "USE_HEADER_CHECK", use_header)
     ds = await start_ds([db_path])
     run_external(db_path, "alter table t add column b text")
 
@@ -395,11 +397,41 @@ def _coarse_fingerprint(real):
     return fingerprint
 
 
+@pytest.mark.parametrize("journal_mode", ("delete", "wal", "truncate"))
+def test_header_schema_version_matches_pragma(tmp_path, journal_mode):
+    path = str(tmp_path / "h.db")
+    conn = sqlite3.connect(path, isolation_level=None)
+    conn.execute(f"PRAGMA journal_mode={journal_mode}")
+    for i in range(300):
+        conn.execute(f"create table t{i} (id integer)")
+    conn.execute("alter table t1 add column b")
+    version = conn.execute("PRAGMA schema_version").fetchone()[0]
+    if journal_mode == "wal":
+        # Pages still in the -wal: the main file header is stale, which is
+        # why the watcher only reads it when the -wal is empty
+        assert schema_watcher_module.fingerprint(path)[1] is not None
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    assert schema_watcher_module.fingerprint(path)[1:] == (None, None)
+    assert schema_watcher_module.header_schema_version(path) == version == 301
+    conn.close()
+    assert (
+        schema_watcher_module.header_schema_version(str(tmp_path / "nope.db")) is None
+    )
+    (tmp_path / "junk.db").write_bytes(b"not a database" * 20)
+    assert (
+        schema_watcher_module.header_schema_version(str(tmp_path / "junk.db")) is None
+    )
+
+
 @pytest.mark.asyncio
+@pytest.mark.parametrize("use_header", (True, False))
 @pytest.mark.parametrize("racy_rule", (True, False))
-async def test_racily_clean_same_tick_change(db_path, monkeypatch, racy_rule):
+async def test_racily_clean_same_tick_change(
+    db_path, monkeypatch, racy_rule, use_header
+):
     """Two schema changes inside one timestamp tick, same file size and
     inode: only the racy-clean rule catches the second one."""
+    monkeypatch.setattr(schema_watcher_module, "USE_HEADER_CHECK", use_header)
     monkeypatch.setattr(
         schema_watcher_module,
         "fingerprint",

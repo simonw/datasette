@@ -126,9 +126,30 @@ async def test_modes_and_defaults(tmp_path, db_path):
     watcher = ds._schema_watcher
     assert watcher.states["ext"].mode == "external"
     assert watcher.states["imm"].mode == "immutable"
+    # add_database(): files and named in-memory databases can be changed
+    # by code other than Datasette's write methods (a plugin's own
+    # connection, a backup() into a named in-memory database), so they get
+    # the default_schema_watch mode too unless the caller says otherwise
     added = ds.add_database(Database(ds, memory_name="sw_owned_mem"), name="added")
-    assert watcher.states["added"].mode == "owned"
+    assert watcher.states["added"].mode == "external"
     assert added._watch_state is watcher.states["added"]
+    added_file = str(tmp_path / "added_file.db")
+    make_db(added_file)
+    ds.add_database(Database(ds, path=added_file), name="added_file")
+    assert watcher.states["added_file"].mode == "external"
+    ds.add_database(
+        Database(ds, memory_name="sw_owned_mem2"), name="owned", schema_watch="owned"
+    )
+    assert watcher.states["owned"].mode == "owned"
+    # A private ":memory:" database: nothing else can change it
+    ds.add_database(Database(ds, is_memory=True), name="private")
+    assert watcher.states["private"].mode == "owned"
+    ds.close()
+    # default_schema_watch=owned applies to add_database() too
+    ds = Datasette(files=[db_path], settings={"default_schema_watch": "owned"})
+    ds.add_database(Database(ds, memory_name="sw_owned_mem3"), name="added")
+    assert ds._schema_watcher.states["added"].mode == "owned"
+    assert ds._schema_watcher.states["ext"].mode == "owned"
     ds.close()
 
 
@@ -595,15 +616,17 @@ async def test_default_schema_watch_setting(tmp_path, db_path, setting, expected
     assert watcher.states["ext"].mode == expected
     # Immutable files are always immutable
     assert watcher.states["imm"].mode == "immutable"
-    # add_database() still defaults to owned, and can ask for external
+    # add_database() follows the setting too, and can ask for either mode
     other = str(tmp_path / "other.db")
     make_db(other)
     added = ds.add_database(Database(ds, path=other), name="added")
-    assert added._watch_state.mode == "owned"
+    assert added._watch_state.mode == expected
     polled = ds.add_database(
         Database(ds, path=other), name="polled", schema_watch="external"
     )
     assert polled._watch_state.mode == "external"
+    owned = ds.add_database(Database(ds, path=other), name="owned", schema_watch="owned")
+    assert owned._watch_state.mode == "owned"
     ds.close()
 
 

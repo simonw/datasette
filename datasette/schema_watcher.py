@@ -26,12 +26,26 @@ Every attached database has a *schema watch mode*:
 ``immutable``
     Scanned once at startup and never again.
 
-Defaults: files passed to ``Datasette(files=...)`` / the CLI use the
+Defaults: database files and named in-memory databases use the
 ``default_schema_watch`` setting (``external`` unless set to ``owned``),
-immutable files are ``immutable``, anything added later with
-``datasette.add_database()`` is ``owned``. Override per database with
+whether they were passed to ``Datasette(files=...)`` / the CLI or added
+later with ``datasette.add_database()``. Immutable files are ``immutable``
+and private ``:memory:`` databases ``owned``. Override per database with
 ``databases: {name: {schema_watch: owned|external|immutable}}`` in
-``datasette.yaml`` or ``add_database(..., schema_watch=...)``.
+``datasette.yaml`` or ``add_database(..., schema_watch=...)``. A named
+in-memory database in ``external`` mode is polled with ``PRAGMA
+schema_version`` on its write connection (shared-cache table locks do not
+wait, so reading it from another connection could fail Datasette's writes).
+
+Several event loops
+-------------------
+One Datasette can be driven by several event loops at once, each in its own
+thread. Scans in flight are tracked with ``concurrent.futures`` futures that
+any loop can wait for; a scan is only taken over when the loop running it
+has closed or stopped. There is at most one live polling task. State that a
+write thread marks (``needs_scan``, ``_pending``) is set under a lock, before
+the write's result is delivered, so nothing depends on a notification
+reaching a loop that may have gone away.
 
 Replaced and deleted files
 --------------------------
@@ -60,6 +74,7 @@ open.
 """
 
 import asyncio
+import concurrent.futures
 import json
 import logging
 import os
@@ -92,6 +107,11 @@ PRAGMA_BUSY_TIMEOUT_MS = 200
 # Read the schema cookie from the file header instead of opening a
 # connection when no -wal/-journal has content
 USE_HEADER_CHECK = True
+# Seconds before a database whose catalog scan or catalog write failed for a
+# transient reason (internal database locked, cancelled) is scanned again by
+# a request or sweep; doubled after each consecutive failure up to the max
+RETRY_DELAY_S = 1.0
+RETRY_DELAY_MAX_S = 30.0
 
 
 class WatchState:
@@ -108,6 +128,8 @@ class WatchState:
         "notified_version",
         "removed",
         "requested_mode",
+        "retry_at",
+        "retry_delay",
         "scan_future",
         "stats",
     )
@@ -122,7 +144,12 @@ class WatchState:
         self.catalog_version = None
         self.notified_version = None
         self.needs_scan = True
+        # An _InflightScan while a catalog scan of this database runs
         self.scan_future = None
+        # time.monotonic() before which a failed scan is not retried, and
+        # the delay used for the next failure (doubles, see RETRY_DELAY_S)
+        self.retry_at = 0.0
+        self.retry_delay = RETRY_DELAY_S
         self.missing = False
         self.removed = False
         self.error = None
@@ -221,6 +248,68 @@ def header_schema_version(path):
     return int.from_bytes(header[40:44], "big")
 
 
+class _InflightScan:
+    """One catalog scan in progress for one database.
+
+    Not bound to an event loop: one Datasette is driven by several loops
+    (``--get``, TestClient, pytest-asyncio), each in its own thread, and a
+    write on any of them may need to wait for a scan started on another.
+    Waiters use :func:`_wait_for` on ``future``, a ``concurrent.futures``
+    future that the scan's owner resolves in a ``finally`` block.
+    """
+
+    __slots__ = ("future", "loop")
+
+    def __init__(self, loop):
+        self.future = concurrent.futures.Future()
+        self.loop = loop
+
+    def done(self):
+        return self.future.done()
+
+    def abandoned(self):
+        """True if nothing will ever finish this scan: the loop running it
+        has closed, or has stopped (``run_until_complete()`` returned while
+        the scan task was still pending)."""
+        loop = self.loop
+        return loop.is_closed() or not loop.is_running()
+
+    def finish(self):
+        try:
+            self.future.set_result(None)
+        except concurrent.futures.InvalidStateError:
+            pass
+
+
+def _wait_for(cf_future):
+    """An asyncio future on the running loop that completes when the
+    concurrent future does. Cancelling it does not cancel cf_future, which
+    other waiters (maybe on other loops) share."""
+    loop = asyncio.get_running_loop()
+    waiter = loop.create_future()
+
+    def _set():
+        if not waiter.done():
+            waiter.set_result(None)
+
+    def _done(_):
+        try:
+            loop.call_soon_threadsafe(_set)
+        except RuntimeError:
+            # That loop has closed; nobody is waiting any more
+            pass
+
+    cf_future.add_done_callback(_done)
+    return waiter
+
+
+def _is_transient(error):
+    if isinstance(error, sqlite3.OperationalError):
+        message = str(error)
+        return "locked" in message or "busy" in message
+    return False
+
+
 def _fp_to_json(fp, t_ns, closed=False):
     data = {"fp": fp, "t": t_ns}
     if closed:
@@ -263,9 +352,21 @@ class SchemaWatcher:
     def __init__(self, ds):
         self.ds = ds
         self.states = {}
-        self._pending = set()  # states registered after startup, not yet scanned
+        # States whose catalog must be (re)built: registered after startup,
+        # changed by a write whose notification may never run, or whose last
+        # scan failed for a transient reason. Flushed by the next request or
+        # sweep.
+        self._pending = set()
         self._pending_removals = set()  # names whose catalog rows must go
+        # Guards claiming scans (WatchState.needs_scan / scan_future) and
+        # _pending: refresh() runs on several event loops in different
+        # threads, and write threads mark states from their own thread
+        self._lock = threading.Lock()
+        # The current polling task. At most one is live: a poller whose loop
+        # has closed or stopped is replaced, and a replaced poller exits at
+        # its next wake-up (it is no longer self._task)
         self._task = None
+        self._pollers = set()
         self._spawned = set()
         self._last_sweep = 0.0
         # Bumped after every write to the catalog tables, so readers can
@@ -320,7 +421,13 @@ class SchemaWatcher:
         db = state.db
         mode = self._config_mode(state.name) or state.requested_mode
         if mode is None:
-            mode = "owned"
+            if state.is_file or db.memory_name:
+                # Other code may change it: a plugin's own connection, a
+                # backup() into a named in-memory database, another process
+                mode = self._default_mode_for_files()
+            else:
+                # A private ":memory:" database: nothing else can see it
+                mode = "owned"
         elif mode == FILES_DEFAULT:
             mode = self._default_mode_for_files()
         if mode not in MODES:
@@ -333,8 +440,10 @@ class SchemaWatcher:
         if not db.is_mutable:
             # Nothing can change an immutable database
             mode = "immutable"
-        elif mode == "external" and not state.is_file:
-            # There is no file to stat: rely on the write path
+        elif mode == "external" and not state.is_file and not db.memory_name:
+            # A private ":memory:" database: there is nothing to poll.
+            # Named in-memory databases are polled with PRAGMA
+            # schema_version on their write connection.
             mode = "owned"
         return mode
 
@@ -363,8 +472,16 @@ class SchemaWatcher:
         db._watch_state = state
         self._pending_removals.discard(db.name)
         if self.ds.internal_db_created:
-            self._pending.add(state)
-            self._spawn(self.refresh([state]))
+            with self._lock:
+                self._pending.add(state)
+            if not db.memory_name:
+                self._spawn(self.refresh([state]))
+            # A shared-cache in-memory database is scanned by the next
+            # request or sweep instead: plugins typically fill one right
+            # after adding it (VACUUM INTO, backup()) from their own
+            # connection, and shared-cache table locks do not wait - a scan
+            # reading sqlite_master at that moment makes their writes fail
+            # with "database table is locked"
         return state
 
     def unregister(self, name):
@@ -373,7 +490,8 @@ class SchemaWatcher:
             return
         state.removed = True
         state.db._watch_state = None
-        self._pending.discard(state)
+        with self._lock:
+            self._pending.discard(state)
         if self.ds.internal_db_created:
             self._pending_removals.add(name)
             self._spawn(self._delete_catalog([name]))
@@ -408,34 +526,51 @@ class SchemaWatcher:
         task.add_done_callback(_done)
         return task
 
-    def loop_running(self):
+    def _poller_alive(self):
         task = self._task
         if task is None or task.done():
             return False
-        try:
-            return task.get_loop() is asyncio.get_running_loop()
-        except RuntimeError:
-            return False
+        loop = task.get_loop()
+        return not loop.is_closed() and loop.is_running()
+
+    def loop_running(self):
+        """True while a polling task is alive, on any event loop."""
+        return self._poller_alive()
 
     async def start(self):
-        """Start the polling loop (idempotent). Runs one sweep first so the
-        catalog is current when the first request is served."""
-        if self.interval_s <= 0 or self.ds._closed or self.loop_running():
+        """Start the polling loop unless one is already alive on any event
+        loop. Runs one sweep first so the catalog is current when the first
+        request is served."""
+        if self.interval_s <= 0 or self.ds._closed:
             return
         loop = asyncio.get_running_loop()
-        # Claim the slot before awaiting so concurrent start() calls no-op
-        self._task = loop.create_task(self._run(), name="datasette-schema-watcher")
+        with self._lock:
+            if self._poller_alive():
+                return
+            # Claim the slot before awaiting so concurrent start() calls,
+            # on this loop or another, no-op
+            task = loop.create_task(self._run(), name="datasette-schema-watcher")
+            self._task = task
+            self._pollers.add(task)
+        task.add_done_callback(self._poller_done)
         if self.ds.internal_db_created:
             try:
                 await self.ds._refresh_schemas(background=True)
             except Exception:
                 logger.exception("schema watcher initial sweep failed")
 
+    def _poller_done(self, task):
+        with self._lock:
+            self._pollers.discard(task)
+
     async def _run(self):
-        # Wait one interval first: start() has just swept
-        while not self.ds._closed:
+        me = asyncio.current_task()
+        # Wait one interval first: start() has just swept. A poller that
+        # has been replaced (its loop stopped for a while and another loop
+        # started a new one) exits instead of sweeping alongside it.
+        while not self.ds._closed and self._task is me:
             await asyncio.sleep(self.interval_s)
-            if self.ds._closed:
+            if self.ds._closed or self._task is not me:
                 return
             try:
                 await self.ds._refresh_schemas(background=True)
@@ -444,8 +579,12 @@ class SchemaWatcher:
             except Exception:
                 logger.exception("schema watcher sweep failed")
 
+    def _all_tasks(self):
+        with self._lock:
+            return [t for t in [self._task, *self._pollers, *self._spawned] if t]
+
     def stop(self):
-        tasks = [t for t in [self._task, *self._spawned] if t is not None]
+        tasks = self._all_tasks()
         self._task = None
         for task in tasks:
             if task.done():
@@ -464,7 +603,7 @@ class SchemaWatcher:
                     pass
 
     async def astop(self):
-        tasks = [t for t in [self._task, *self._spawned] if t is not None]
+        tasks = self._all_tasks()
         self.stop()
         loop = asyncio.get_running_loop()
         mine = [t for t in tasks if t.get_loop() is loop and not t.done()]
@@ -472,23 +611,35 @@ class SchemaWatcher:
             await asyncio.wait(mine, timeout=5)
 
     # ------------------------------------------------------------------
-    # request path: O(1) unless add/remove_database left work pending
+    # request path: O(1) unless add/remove_database or a write left work
+    # pending
     # ------------------------------------------------------------------
     async def on_request(self):
         if (self._pending or self._pending_removals) and self.ds.internal_db_created:
-            await self.flush_pending()
+            try:
+                await self.flush_pending()
+            except Exception:
+                # Never fail the request: what is still pending is retried
+                # (with back-off) by later requests and sweeps
+                logger.warning("Could not update the catalog", exc_info=True)
         if (
-            not self.loop_running()
-            and self.interval_s > 0
+            self.interval_s > 0
             and self.ds.internal_db_created
+            and not self._poller_alive()
         ):
             await self.start()
+
+    def _ready_pending(self):
+        now = time.monotonic()
+        with self._lock:
+            return [s for s in self._pending if not s.removed and s.retry_at <= now]
 
     async def flush_pending(self):
         if self._pending_removals:
             await self._delete_catalog(list(self._pending_removals))
-        if self._pending:
-            await self.refresh(list(self._pending))
+        ready = self._ready_pending()
+        if ready:
+            await self.refresh(ready)
 
     # ------------------------------------------------------------------
     # write path
@@ -501,9 +652,25 @@ class SchemaWatcher:
             version = conn.execute("PRAGMA schema_version").fetchone()[0]
         except Exception:  # noqa: BLE001
             return
-        if version == state.catalog_version or version == state.notified_version:
-            return
-        state.notified_version = version
+        with self._lock:
+            if (
+                state.removed
+                or version == state.catalog_version
+                or version == state.notified_version
+            ):
+                return
+            state.notified_version = version
+            # Marked here, on the write thread, before the write's result is
+            # delivered: a blocking writer always finds needs_scan set in
+            # Database._after_write(). The notification below only starts a
+            # scan sooner; if it never runs (a block=False write from an
+            # event loop that has since closed or stopped) the next request
+            # or sweep picks the state up from _pending.
+            state.needs_scan = True
+            state.retry_at = 0.0
+            self._pending.add(state)
+            state.stats["write_detections"] += 1
+            self.counters["write_detections"] += 1
         if loop is None:
             self._on_write_schema_change(state)
         else:
@@ -515,9 +682,6 @@ class SchemaWatcher:
     def _on_write_schema_change(self, state):
         if state.removed:
             return
-        state.needs_scan = True
-        state.stats["write_detections"] += 1
-        self.counters["write_detections"] += 1
         if self.ds.internal_db_created:
             self._spawn(self.refresh([state]))
 
@@ -562,7 +726,7 @@ class SchemaWatcher:
         for state in candidates:
             if not state.is_file and state.db.memory_name and not state.removed:
                 outcomes.append(await self._memory_pragma_check(state))
-        to_scan = [s for s in self._pending if not s.removed]
+        to_scan = self._ready_pending()
         to_clear = []
         for state, kind, fp, t_ns, version in outcomes:
             if state.removed:
@@ -797,40 +961,69 @@ class SchemaWatcher:
 
     async def refresh(self, states):
         """Rebuild the catalog for every state that needs it, coalescing with
-        scans already in flight for the same database."""
+        scans already in flight for the same database - on this event loop
+        or any other."""
         loop = asyncio.get_running_loop()
         pending = list(states)
+        # States whose scan this call ran and that failed transiently: left
+        # in _pending for a later request or sweep, not retried here
+        failed = set()
         for _ in range(10):
             mine = []
             waits = []
-            for state in pending:
-                fut = state.scan_future
-                if fut is not None and not fut.done():
-                    if fut.get_loop() is loop:
-                        waits.append(fut)
-                        continue
-                    # Scan started on an event loop that has gone away
-                    state.scan_future = None
-                    state.needs_scan = True
-                if state.needs_scan and not state.removed:
-                    state.needs_scan = False
-                    state.scan_future = loop.create_future()
-                    mine.append(state)
-            if mine:
-                try:
-                    await self._scan_and_store(mine)
-                finally:
-                    for state in mine:
-                        fut = state.scan_future
-                        if fut is not None and not fut.done():
-                            fut.set_result(None)
+            with self._lock:
+                for state in pending:
+                    inflight = state.scan_future
+                    if inflight is not None and not inflight.done():
+                        if not inflight.abandoned():
+                            waits.append(inflight.future)
+                            continue
+                        # Its event loop has closed or stopped, so nothing
+                        # will finish that scan. Take over: its results are
+                        # discarded (_store() checks scan_future) and its
+                        # waiters are woken to wait for this one instead
                         state.scan_future = None
+                        state.needs_scan = True
+                        inflight.finish()
+                    if state.needs_scan and not state.removed and state not in failed:
+                        state.needs_scan = False
+                        state.scan_future = _InflightScan(loop)
+                        mine.append(state)
+            if mine:
+                records = {state: state.scan_future for state in mine}
+                handled = set()
+                try:
+                    await self._scan_and_store(mine, records, handled)
+                finally:
+                    now = time.monotonic()
+                    with self._lock:
+                        for state, record in records.items():
+                            if state.scan_future is not record:
+                                # Taken over by another loop (see above)
+                                continue
+                            state.scan_future = None
+                            if state not in handled and not state.removed:
+                                # The scan or the catalog write failed
+                                # transiently (internal database locked, a
+                                # shared-cache lock) or was cancelled: the
+                                # catalog is not current, so make sure a
+                                # later request or sweep tries again
+                                state.needs_scan = True
+                                state.retry_at = now + state.retry_delay
+                                state.retry_delay = min(
+                                    state.retry_delay * 2, RETRY_DELAY_MAX_S
+                                )
+                                self._pending.add(state)
+                                failed.add(state)
+                    for record in records.values():
+                        record.finish()
             if waits:
-                await asyncio.wait(waits)
+                await asyncio.wait([_wait_for(f) for f in waits])
             pending = [
                 s
                 for s in pending
                 if not s.removed
+                and s not in failed
                 and (
                     s.needs_scan
                     or (s.scan_future is not None and not s.scan_future.done())
@@ -839,18 +1032,25 @@ class SchemaWatcher:
             ]
             if not pending:
                 break
-        for state in states:
-            # Failed scans are retried by sweeps, not by every request
-            if not state.needs_scan or state.error is not None:
-                self._pending.discard(state)
+        with self._lock:
+            for state in states:
+                # Failed scans are retried by sweeps, not by every request
+                if not state.needs_scan or state.error is not None:
+                    self._pending.discard(state)
 
-    async def _scan_and_store(self, states):
+    async def wait_for_scan(self, state):
+        """Wait for a catalog scan of state that is in flight, if any."""
+        inflight = state.scan_future
+        if inflight is not None and not inflight.done() and not inflight.abandoned():
+            await _wait_for(inflight.future)
+
+    async def _scan_and_store(self, states, records, handled):
         memory = [s for s in states if not s.is_file and s.db.memory_name]
         if memory:
             results = []
             for state in memory:
                 results.append(await self._scan_on_write_connection(state))
-            await self._store(results)
+            await self._store(results, records, handled)
             states = [s for s in states if s not in memory]
             if not states:
                 return
@@ -860,24 +1060,49 @@ class SchemaWatcher:
         async def one(chunk):
             async with semaphore:
                 results = await self._off_loop(self._scan_chunk_sync, chunk)
-            await self._store(results)
+            await self._store(results, records, handled)
 
         if len(chunks) == 1:
             await one(chunks[0])
         else:
             await asyncio.gather(*(one(c) for c in chunks))
 
-    async def _store(self, results):
+    async def _store(self, results, records=None, handled=None):
+        """Write scan results to the catalog. ``records`` maps each state to
+        the _InflightScan this scan was started as: results for a state whose
+        scan has since been taken over by another loop are dropped. States
+        whose outcome was recorded are added to ``handled``; the others
+        (transient failures) are retried later by refresh()."""
+        records = records or {}
+        if handled is None:
+            handled = set()
+
+        def current(state):
+            record = records.get(state)
+            return record is None or state.scan_future is record
+
         entries = []
         missing = []
         stored = []
         for r in results:
             state = r["state"]
-            if state.removed:
+            if state.removed or not current(state):
+                handled.add(state)
                 continue
             if "error" in r:
                 if state.db._closed:
                     # Closed (or deleted) while the scan was running
+                    handled.add(state)
+                    continue
+                if _is_transient(r["error"]):
+                    # "database is locked" / "database table is locked" (a
+                    # shared-cache memory database being filled from another
+                    # connection): not a property of the database, retry
+                    logger.info(
+                        "Schema of database %r is locked, will retry: %s",
+                        state.name,
+                        r["error"],
+                    )
                     continue
                 state.error = r["error"]
                 state.needs_scan = True
@@ -887,23 +1112,28 @@ class SchemaWatcher:
                 logger.warning(
                     "Could not read schema of database %r: %s", state.name, r["error"]
                 )
+                handled.add(state)
                 continue
             state.error = None
             if r.get("missing"):
                 missing.append(state)
                 state.fp = r["fp"]
                 state.fp_racy = True
+                handled.add(state)
                 continue
             db = state.db
             fp_json = _fp_to_json(r["fp"], r["t"]) if r["fp"] is not None else None
             entries.append(
                 (
-                    state.name,
-                    str(db.path) if db.path is not None else None,
-                    db.is_memory,
-                    r["version"],
-                    fp_json,
-                    r["schema"],
+                    state,
+                    (
+                        state.name,
+                        str(db.path) if db.path is not None else None,
+                        db.is_memory,
+                        r["version"],
+                        fp_json,
+                        r["schema"],
+                    ),
                 )
             )
             stored.append(r)
@@ -911,15 +1141,27 @@ class SchemaWatcher:
             watcher = self
 
             def _write(conn):
-                # Skip databases removed while we were scanning
-                live = [e for e in entries if e[0] in watcher.states]
+                # Runs on the internal database's write thread, which
+                # serializes catalog writes: skip databases removed (or
+                # re-added) while we were scanning, and scans another loop
+                # has taken over - its newer rows must not be overwritten
+                live = [
+                    entry
+                    for state, entry in entries
+                    if watcher.states.get(entry[0]) is state and current(state)
+                ]
                 write_catalog_entries(conn, live)
 
             await self.ds.get_internal_database().execute_write_fn(_write)
             for r in stored:
                 state = r["state"]
+                handled.add(state)
+                if state.removed or not current(state):
+                    continue
                 state.catalog_version = r["version"]
                 state.missing = False
+                state.retry_at = 0.0
+                state.retry_delay = RETRY_DELAY_S
                 if r["fp"] is not None:
                     state.fp = r["fp"]
                     state.fp_racy = is_racy(r["fp"], r["t"])
@@ -1028,7 +1270,10 @@ class SchemaWatcher:
             state.needs_scan = True
         if to_scan:
             await self.refresh(to_scan)
-        self._pending.clear()
+        with self._lock:
+            # Keep states that a write marked during the scan, or whose scan
+            # failed transiently
+            self._pending = {s for s in self._pending if s.needs_scan and not s.removed}
 
     def _reusable_sync(self, states, persisted):
         """Databases whose stored fingerprint matches the file right now and
@@ -1080,12 +1325,76 @@ class SchemaWatcher:
                 fp = fingerprint(state.db.path)
             except OSError:
                 continue
-            if fp[0] is None:
+            if fp[0] is None or fp[1] is not None or fp[2] is not None:
+                # Missing, or a -wal/-journal with content: the header
+                # check below would not describe the whole database
+                continue
+            if state.fp is None or state.fp[0] is None or state.fp[0][:2] != fp[0][:2]:
+                # Replaced since the catalog was built
+                continue
+            if header_schema_version(os.fspath(state.db.path)) != state.catalog_version:
+                # Changed by something other than Datasette while it ran:
+                # the catalog is stale and must not be restored next time
                 continue
             out.append(
                 (state.name, state.catalog_version, _fp_to_json(fp, t_ns, closed=True))
             )
         return out
+
+    # ------------------------------------------------------------------
+    # single-database freshness checks (permission decisions)
+    # ------------------------------------------------------------------
+    def catalog_is_current(self, state):
+        """True if this database's catalog rows provably describe it as it
+        is right now - checked without opening a SQLite connection.
+
+        Used before trusting the catalog for a decision about one database
+        (the derived-table permission rule), where a catalog that lags an
+        out-of-band change could expose a table. Immutable databases cannot
+        change. A file database is current if it is the same file the
+        catalog was built from, has no -wal/-journal content, and the schema
+        cookie in its header equals the catalog's version. Anything else
+        (in-memory databases, live WAL content) returns False and the caller
+        asks the database itself.
+        """
+        if state.mode == "immutable":
+            return True
+        if (
+            not state.is_file
+            or state.catalog_version is None
+            or state.needs_scan
+            or state.missing
+        ):
+            return False
+        path = os.fspath(state.db.path)
+        try:
+            fp = fingerprint(path)
+        except OSError:
+            return False
+        if fp[0] is None or fp[1] is not None or fp[2] is not None:
+            return False
+        prev = state.fp
+        if prev is None or prev[0] is None or prev[0][:2] != fp[0][:2]:
+            return False
+        return header_schema_version(path) == state.catalog_version
+
+    def note_live_version(self, state, version):
+        """A caller read ``PRAGMA schema_version`` from the database itself.
+        If the catalog is behind, schedule a rescan instead of waiting for
+        the next write (owned) or poll (external)."""
+        with self._lock:
+            if (
+                state.removed
+                or state.error is not None
+                or state.needs_scan
+                or state.scan_future is not None
+                or version == state.catalog_version
+            ):
+                return
+            state.needs_scan = True
+            self._pending.add(state)
+        if self.ds.internal_db_created:
+            self._spawn(self.refresh([state]))
 
     # ------------------------------------------------------------------
     # introspection

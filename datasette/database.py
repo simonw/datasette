@@ -1,5 +1,4 @@
 import asyncio
-import atexit
 import contextvars
 import inspect
 import os
@@ -9,6 +8,7 @@ import tempfile
 import threading
 import time
 import uuid
+import weakref
 from collections import namedtuple
 from pathlib import Path
 
@@ -120,7 +120,13 @@ class Database:
             self.is_mutable = True
             self.mode = "rwc"
             self._wal_enabled = False
-            atexit.register(self._cleanup_temp_file)
+            # Unlinked by close(), when this Database is garbage collected,
+            # or at exit. The finalizer holds only the path: an
+            # atexit.register() of a bound method would keep this Database -
+            # and through it the whole Datasette - alive until exit
+            self._temp_file_finalizer = weakref.finalize(
+                self, _unlink_temp_files, temp_path
+            )
         else:
             self._wal_enabled = False
         self.cached_hash = None
@@ -266,6 +272,7 @@ class Database:
             generation = self._conn_generation
             conn = self.connect(write=True)
             try:
+                _pin_write_connection_pragmas(conn)
                 self.ds._prepare_connection(conn, self.name)
             except BaseException:
                 # Never cache a half-prepared connection
@@ -429,11 +436,7 @@ class Database:
 
     def _cleanup_temp_file(self):
         if self.is_temp_disk and self.path:
-            for suffix in ("", "-wal", "-shm"):
-                try:
-                    os.unlink(self.path + suffix)
-                except OSError:
-                    pass
+            self._temp_file_finalizer()
 
     async def execute_write(
         self,
@@ -815,11 +818,13 @@ class Database:
                 return
             if task is _SHUTDOWN:
                 return
-            if writer.generation != self._conn_generation:
+            if writer.generation != self._conn_generation or not writer.usable():
                 # The file was replaced or deleted since this connection was
                 # opened (the SchemaWatcher bumps the generation): reopen by
                 # path. connect() uses mode=rw for a file Datasette has seen,
                 # so a deleted file is reported, not silently recreated.
+                # Also reopened if something closed it (a callback reaching
+                # the raw connection through cursor.connection).
                 writer.reopen()
                 idle_timeout = current_idle_timeout()
             # block=True: the caller awaits the result, so the write spans
@@ -870,11 +875,9 @@ class Database:
                                 self._write_thread_connections.discard(
                                     isolated_connection
                                 )
-                    except Exception as e:  # noqa: BLE001
+                    except BaseException as e:  # noqa: BLE001
                         # Write thread must survive any task failure or the database wedges
-                        sys.stderr.write(f"{e}\n")
-                        sys.stderr.flush()
-                        exception = e
+                        exception = self._write_task_failed(e)
                 else:
                     conn = writer.conn
                     try:
@@ -902,14 +905,32 @@ class Database:
                                     )
                             finally:
                                 self._schema_check(conn, task.loop)
-                    except Exception as e:  # noqa: BLE001
-                        sys.stderr.write(f"{e}\n")
-                        sys.stderr.flush()
-                        exception = e
+                    except BaseException as e:  # noqa: BLE001
+                        exception = self._write_task_failed(e)
                 _deliver_write_result(task, result, exception)
             finally:
                 if token is not None:
                     otel_context_api.detach(token)
+
+    def _write_task_failed(self, e):
+        """The exception to deliver to the caller of a write task that
+        raised ``e``. An Exception is delivered as it is. Any other
+        BaseException (SystemExit, or a plugin's own BaseException subclass)
+        is delivered wrapped in a RuntimeError: re-raised by ``await`` on the
+        caller's event loop, SystemExit or KeyboardInterrupt would stop that
+        loop. The write thread keeps running (``with conn`` has rolled the
+        transaction back). Before this the thread died and the caller
+        waited forever."""
+        if isinstance(e, Exception):
+            sys.stderr.write(f"{e}\n")
+            sys.stderr.flush()
+            return e
+        wrapped = RuntimeError(
+            f"A write callback for database {self.name!r} raised "
+            f"{type(e).__name__}: {e}"
+        )
+        wrapped.__cause__ = e
+        return wrapped
 
     async def execute_fn(self, fn):
         """Run `fn(conn)` on a read connection, traced as a `db.query` span.
@@ -1276,23 +1297,26 @@ class Database:
     async def derived_table_dependencies(self):
         """Return implementation tables and the tables they derive from."""
         state = self._watch_state
-        if (
-            state is not None
-            and state.catalog_version is not None
-            and not state.needs_scan
-            and not state.missing
-        ):
+        if state is not None and self.ds._schema_watcher.catalog_is_current(state):
             # From the catalog rows (computed by the SchemaWatcher when it
             # scanned this database, or read back from _internal), so a
             # permission check on one of this database's tables does not
-            # open it and agrees with what allowed_resources() lists. As
-            # fresh as the catalog itself.
+            # open it and agrees with what allowed_resources() lists. Only
+            # when the catalog provably matches the file (a stat and a
+            # header read): this decides whether a table that derives from
+            # another - an external-content FTS table - may be shown, and a
+            # catalog that lags an out-of-band change would allow a table
+            # it has not seen yet.
             from .utils.catalog import catalog_derived_table_dependencies
 
             return (await catalog_derived_table_dependencies(self.ds, [self]))[
                 self.name
             ]
         schema_version = (await self.execute("PRAGMA schema_version")).first()[0]
+        if state is not None:
+            # Found the catalog behind: rebuild it now rather than at the
+            # next write (owned) or poll (external)
+            self.ds._schema_watcher.note_live_version(state, schema_version)
         if (
             self._cached_derived_table_dependencies is None
             or self._cached_derived_table_dependencies[0] != schema_version
@@ -1396,6 +1420,21 @@ def _apply_write_wrapper(fn, wrapper_factory, track_event):
     return wrapped
 
 
+def _pin_write_connection_pragmas(conn):
+    """Connection state Datasette's writes rely on, set explicitly on every
+    new write connection (before prepare_connection hooks, which may change
+    it). Write connections are reopened after an idle period, so anything
+    that used to "drift" into place on a long-lived connection must be set
+    here instead.
+
+    recursive_triggers: sqlite-utils turns it on whenever it wraps a
+    connection (core's JSON write API does that), and the triggers that keep
+    sqlite-utils FTS indexes in sync need it for INSERT OR REPLACE to remove
+    the replaced row's index entry.
+    """
+    conn.execute("PRAGMA recursive_triggers = on")
+
+
 def _call_with_lease(fn, conn, db_name, kind):
     """Call fn with a LeasedConnection for conn that expires when it returns.
 
@@ -1438,6 +1477,7 @@ class _WriteConnection:
         try:
             self.conn = db.connect(write=True)
             db._write_thread_connections.add(self.conn)
+            _pin_write_connection_pragmas(self.conn)
             # Threads do not inherit the caller's context, so any spans
             # created by prepare_connection hooks here are root spans
             db.ds._prepare_connection(self.conn, db.name)
@@ -1448,6 +1488,18 @@ class _WriteConnection:
     def reopen(self):
         self.close()
         self.open()
+
+    def usable(self):
+        """False if the connection has been closed behind the write thread's
+        back. A failed open (``exception`` set) counts as usable: that error
+        is reported to each write until the thread exits and retries."""
+        conn = self.conn
+        if conn is None:
+            return self.exception is not None
+        try:
+            return conn.total_changes >= 0
+        except sqlite3.ProgrammingError:
+            return False
 
     def close(self):
         conn, self.conn = self.conn, None
@@ -1511,6 +1563,14 @@ def _deliver_write_result(task, result, exception):
     except RuntimeError:
         # Event loop has been closed; the awaiter is gone.
         pass
+
+
+def _unlink_temp_files(path):
+    for suffix in ("", "-wal", "-shm"):
+        try:
+            os.unlink(path + suffix)
+        except OSError:
+            pass
 
 
 class QueryInterrupted(Exception):

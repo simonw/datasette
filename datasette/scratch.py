@@ -108,6 +108,10 @@ class ScratchDatabaseError(Exception):
     """A scratch database operation could not be carried out."""
 
 
+class ScratchDirectoryInUse(StartupError):
+    """Another Datasette instance holds the scratch directory's lock."""
+
+
 class ScratchDatabaseExists(ScratchDatabaseError):
     """A database with that name already exists."""
 
@@ -291,11 +295,19 @@ class ScratchDatabases:
     available as ``datasette._scratch``; plugins use the Datasette methods
     (``create_scratch_database()`` etc.)."""
 
-    def __init__(self, ds, directory=None):
+    def __init__(self, ds, directory=None, *, inferred=False, fallback_dir=None):
         self.ds = ds
         self.configured_dir = (
             Path(directory).expanduser().resolve() if directory else None
         )
+        # Configuration directory mode: config_dir/scratch, used only if
+        # Datasette created it (it holds the registry) or it is empty - a
+        # user's own "scratch" folder is never taken over
+        self._inferred_dir = (
+            Path(fallback_dir) if inferred and fallback_dir is not None else None
+        )
+        # Whether the registry already existed when the directory was opened
+        self._registry_existed = False
         # The directory in use: configured_dir, or a temporary directory
         # created by the first create_scratch_database() call
         self.directory = None
@@ -331,11 +343,45 @@ class ScratchDatabases:
     def load(self):
         """Called from Datasette.__init__. Attaches every scratch database
         in the configured directory without opening any of them."""
-        if self.configured_dir is None:
+        if self.configured_dir is None and self._inferred_dir is not None:
+            directory = self._accept_inferred_dir(self._inferred_dir)
+            if directory is None:
+                return
+            try:
+                self._open_directory(directory)
+            except ScratchDirectoryInUse as e:
+                # Another Datasette (a server) is using the configuration
+                # directory's scratch databases: this one (datasette ...
+                # --get, a second process) runs without them rather than
+                # failing to start
+                logger.warning("%s; not attaching its scratch databases", e)
+                return
+            self.configured_dir = directory
+        elif self.configured_dir is None:
             return
-        self._open_directory(self.configured_dir)
+        else:
+            self._open_directory(self.configured_dir)
         for entry in self._reconcile():
             self._attach(entry)
+
+    @staticmethod
+    def _accept_inferred_dir(path):
+        if not path.is_dir():
+            return None
+        if (path / REGISTRY_FILENAME).exists():
+            return path.resolve()
+        try:
+            empty = not os.listdir(path)
+        except OSError:
+            return None
+        if empty:
+            return path.resolve()
+        logger.warning(
+            "Not using %s for scratch databases: Datasette did not create it "
+            "and it is not empty. Use --scratch-dir to use it anyway",
+            path,
+        )
+        return None
 
     def _open_directory(self, directory):
         directory = Path(directory)
@@ -349,6 +395,7 @@ class ScratchDatabases:
         except OSError as e:
             raise StartupError(f"Cannot create scratch directory {directory}: {e}")
         self._acquire_directory_lock(directory)
+        self._registry_existed = (directory / REGISTRY_FILENAME).exists()
         self.directory = str(directory)
 
     def _acquire_directory_lock(self, directory):
@@ -362,7 +409,7 @@ class ScratchDatabases:
         except OSError as e:
             os.close(fd)
             if e.errno in (errno.EWOULDBLOCK, errno.EAGAIN, errno.EACCES):
-                raise StartupError(
+                raise ScratchDirectoryInUse(
                     f"Scratch directory {directory} is in use by another Datasette instance"
                 )
             # flock() not supported here (some network file systems,
@@ -467,7 +514,9 @@ class ScratchDatabases:
             entries[name] = _Entry(name, created)
             self.counters["adopted"] += 1
         # -wal/-shm/-journal files whose database is gone would be replayed
-        # into the next database created under that name
+        # into the next database created under that name. Only in a
+        # directory Datasette has used before: never delete files the first
+        # time a directory is opened
         files = set(os.listdir(directory))
         for filename in files:
             for suffix in SIDECAR_SUFFIXES:
@@ -476,6 +525,15 @@ class ScratchDatabases:
                     and not filename.startswith(".")
                     and filename[: -len(suffix)] not in files
                 ):
+                    if not self._registry_existed:
+                        logger.warning(
+                            "Scratch directory %s contains %s but not its "
+                            "database file; remove it before creating a "
+                            "scratch database with that name",
+                            directory,
+                            filename,
+                        )
+                        continue
                     try:
                         os.unlink(os.path.join(directory, filename))
                         self.counters["stray_files_removed"] += 1
@@ -796,16 +854,9 @@ class ScratchDatabases:
         db._scratch_gone = reason
         state = db._watch_state
         if state is not None:
-            fut = state.scan_future
-            if fut is not None and not fut.done():
-                try:
-                    same_loop = fut.get_loop() is asyncio.get_running_loop()
-                except RuntimeError:
-                    same_loop = False
-                if same_loop:
-                    # A catalog scan in flight: let it finish, its rows are
-                    # deleted below
-                    await asyncio.wait([fut])
+            # A catalog scan in flight (on any event loop): let it finish,
+            # its rows are deleted below
+            await self.ds._schema_watcher.wait_for_scan(state)
         if self.ds.databases.get(entry.name) is db:
             self.ds._detach_database(entry.name)
         await self._run_blocking(self._close_and_wait, db)

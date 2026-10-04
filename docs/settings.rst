@@ -240,7 +240,7 @@ Set this to 0 for no limit, in which case idle connections are only closed by :r
 
     datasette *.db --setting max_open_connections 64
 
-The cap does not cover write connections (one per database that is being written to, see :ref:`setting_connection_idle_timeout_ms`), the short-lived connections used by :ref:`database_execute_isolated_fn` and by schema checks, or in-memory databases, which use no file descriptors.
+The cap does not cover write connections (one per database that is being written to, see :ref:`setting_connection_idle_timeout_ms`), the short-lived connections used by :ref:`database_execute_isolated_fn` and by schema checks, or in-memory databases, which use no file descriptors. The exception is the ``_memory`` database under ``--crossdb``: each of its connections ``ATTACH``\ es up to ten database files, so those connections count against the cap and are closed when idle like file connections. Adding or removing a database closes them too, so the next cross-database query sees the current set of databases.
 
 Each pooled connection to a file in WAL mode uses three file descriptors (the database, its ``-wal`` and its ``-shm`` file); other databases use one. Under a small file descriptor limit such as ``ulimit -n 256``, a cap of 64 keeps pooled read connections below about 200 descriptors even if every database uses WAL, leaving room for write connections and Datasette itself.
 
@@ -298,7 +298,7 @@ Set this to ``0`` to turn polling off. External databases are then only checked 
 
     datasette mydatabase.db --setting schema_watch_interval_ms 0
 
-Databases opened from files use the :ref:`setting_default_schema_watch` mode. Databases added by plugins with :ref:`datasette.add_database() <datasette_add_database>` are ``owned`` unless the plugin passes ``schema_watch="external"``. You can set the mode for an individual database in ``datasette.yaml``, which overrides both:
+Database files, and named in-memory databases, use the :ref:`setting_default_schema_watch` mode - including those added by plugins with :ref:`datasette.add_database() <datasette_add_database>`, unless the plugin passes ``schema_watch="owned"`` (or ``"external"``). A named in-memory database in ``external`` mode is checked with ``PRAGMA schema_version`` on its write connection every ``schema_watch_interval_ms``, which notices tables created through a plugin's own connection to it. You can set the mode for an individual database in ``datasette.yaml``, which overrides both:
 
 .. code-block:: yaml
 
@@ -319,7 +319,7 @@ Default: ``external``
 
 .. [[[end]]]
 
-The schema watch mode, ``external`` or ``owned``, for mutable database files passed on the command line or with ``Datasette(files=...)`` - see :ref:`setting_schema_watch_interval_ms`.
+The schema watch mode, ``external`` or ``owned``, for mutable database files and named in-memory databases that do not have a mode of their own: files passed on the command line or with ``Datasette(files=...)``, and databases added with :ref:`datasette.add_database() <datasette_add_database>` without a ``schema_watch`` argument - see :ref:`setting_schema_watch_interval_ms`.
 
 The default, ``external``, suits the common workflow of changing a database with another tool such as ``sqlite-utils`` while Datasette is serving it: new tables and columns show up within about a second. If Datasette is the only thing that ever changes your database files, set this to ``owned`` and they will not be polled. This is worth doing for instances with thousands of databases, where polling costs a few milliseconds of CPU per second::
 

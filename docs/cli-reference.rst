@@ -262,9 +262,10 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
       schema_watch_interval_ms     How often to check external database files for
                                    schema changes - 0 to disable polling
                                    (default=1000)
-      default_schema_watch         Schema watch mode for databases opened from
-                                   files: external (poll for changes made by other
-                                   processes) or owned (only Datasette changes them)
+      default_schema_watch         Schema watch mode for database files and named
+                                   in-memory databases without a mode of their own:
+                                   external (poll for changes made outside
+                                   Datasette) or owned (only Datasette changes them)
                                    (default=external)
       sql_time_limit_ms            Time limit for a SQL query in milliseconds
                                    (default=1000)

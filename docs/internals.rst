@@ -1328,7 +1328,7 @@ Removes the column type assignment for the specified column.
     This will be used in the URL path. If not specified, it will default to the same thing as the ``name``.
 
 ``schema_watch`` - string, optional
-    How Datasette keeps its catalog of this database's tables current: ``"owned"`` (the default - only Datasette's own writes change the schema), ``"external"`` (other processes may change the file too, so it is polled) or ``"immutable"``. A ``schema_watch`` setting for this database in ``datasette.yaml`` takes precedence. See :ref:`setting_schema_watch_interval_ms`.
+    How Datasette keeps its catalog of this database's tables current: ``"owned"`` (only Datasette's own writes change the schema), ``"external"`` (other code may change it too - another process, or a plugin's own connection - so it is polled) or ``"immutable"``. The default for a database file or a named in-memory database is the :ref:`setting_default_schema_watch` setting, ``"external"`` unless configured. Pass ``"owned"`` if every change to the database goes through Datasette's write methods: it is then never polled. A ``schema_watch`` setting for this database in ``datasette.yaml`` takes precedence. See :ref:`setting_schema_watch_interval_ms`.
 
 The ``datasette.add_database(db)`` method lets you add a new database to the current Datasette instance.
 
@@ -1405,10 +1405,10 @@ A *scratch database* is a SQLite file that a plugin (or a user, through a plugin
 They live in the **scratch directory**:
 
 - ``datasette --scratch-dir path/to/scratch`` (or the ``DATASETTE_SCRATCH_DIR`` environment variable, or ``Datasette(scratch_dir=...)``). The directory is created if it does not exist.
-- In :ref:`config_dir`, a ``scratch/`` directory inside the configuration directory is used if it exists.
+- In :ref:`config_dir`, a ``scratch/`` directory inside the configuration directory is used if it exists and either is empty or was created by Datasette (it contains ``.datasette-scratch.db``). A ``scratch/`` folder of your own that holds other files is left alone, with a warning in the log. If another Datasette instance is already using it - a server, while you run ``datasette mydir --get ...`` - the second instance starts without its scratch databases, with a warning.
 - Otherwise scratch databases are **temporary**: they go in a temporary directory that is created the first time a plugin creates one and deleted when Datasette shuts down, the same way the internal database is temporary unless ``--internal`` is used. ``datasette.scratch_dir`` is ``None`` until then. Plugins can use the same API either way.
 
-Use a directory just for scratch databases. Only one Datasette instance can use a scratch directory at a time: a second one fails to start with an error.
+Use a directory just for scratch databases. Only one Datasette instance can use a scratch directory at a time: a second one given the same ``--scratch-dir`` fails to start with an error. The first time Datasette opens a directory it adopts any SQLite files already in it, but never deletes anything: leftover ``-wal``, ``-shm`` or ``-journal`` files without their database are only removed once the directory holds Datasette's registry.
 
 The directory contains one ``<name>.db`` file per scratch database, plus a registry (``.datasette-scratch.db``) that records each database's owner, metadata, creation time and when it was last used. Scratch databases are created in WAL mode (rollback journal mode with ``--nolock``).
 
@@ -2233,7 +2233,9 @@ Connections are only valid inside your function
 
 The ``conn`` passed to an ``execute_fn()``, ``execute_write_fn()`` or ``execute_isolated_fn()`` function - and to :ref:`plugin_hook_write_wrapper` hooks - is lent to that function for the duration of the call. It behaves like a ``sqlite3.Connection`` (``isinstance(conn, sqlite3.Connection)`` is ``True`` and it works with ``sqlite_utils.Database(conn)``), but once the function returns it stops working: any further use raises ``datasette.database.ConnectionLeaseError``. Do not store the connection on an object, in a global or in a closure for later use. Do everything you need inside the function and return plain Python values.
 
-``execute_fn()`` also raises ``ConnectionLeaseError`` if your function returns a cursor or a generator, since those would keep reading from the connection after it had been returned to the pool.
+``execute_fn()`` also raises ``ConnectionLeaseError`` if your function returns a cursor, or a generator that holds the connection or a cursor (for example ``(row for row in conn.execute(...))``), since those would keep reading from the connection after it had been returned to the pool. A generator over rows already fetched inside the function is fine.
+
+The write connection belongs to Datasette: calling ``conn.close()`` inside an ``execute_write_fn()`` function raises ``ConnectionLeaseError``. Closing the connection passed to an ``execute_fn()`` or ``execute_isolated_fn()`` function is allowed.
 
 Datasette cannot detect every misuse. These are unsupported and may fail unpredictably, or read from a connection that is now being used by someone else:
 
@@ -2366,7 +2368,7 @@ Example usage:
 
     version = await db.execute_fn(get_version)
 
-The connection is borrowed from a pool for the duration of the call (see :ref:`database_connections`) and is only valid inside the function. Using it after the function has returned - for example by storing it on an object - raises a ``datasette.database.ConnectionLeaseError``. Returning a cursor or a generator from the function raises the same error: fetch the rows you need before returning. See :ref:`database_connection_leases`.
+The connection is borrowed from a pool for the duration of the call (see :ref:`database_connections`) and is only valid inside the function. Using it after the function has returned - for example by storing it on an object - raises a ``datasette.database.ConnectionLeaseError``. Returning a cursor, or a generator that is still reading from the connection, raises the same error: fetch the rows you need before returning. See :ref:`database_connection_leases`.
 
 Calls to ``execute_fn()`` are not guaranteed to use the same connection, so temporary tables, ``ATTACH`` statements and functions created inside one call may not be visible in the next.
 
@@ -2455,7 +2457,9 @@ This method works like ``.execute_write()``, but instead of a SQL statement you 
 
 The function can then perform multiple actions, safe in the knowledge that it has exclusive access to the single writable connection for as long as it is executing.
 
-The connection is only valid while your function is running: using it after the function has returned raises ``datasette.database.ConnectionLeaseError`` - see :ref:`database_connection_leases`. The write connection is closed after :ref:`setting_connection_idle_timeout_ms` without writes, so temporary tables, ``ATTACH`` statements and functions created by one write function may be gone by the next.
+The connection is only valid while your function is running: using it after the function has returned raises ``datasette.database.ConnectionLeaseError`` - see :ref:`database_connection_leases`. The write connection is closed after :ref:`setting_connection_idle_timeout_ms` without writes, so temporary tables, ``ATTACH`` statements and functions created by one write function may be gone by the next. Every new write connection has ``PRAGMA recursive_triggers`` turned on (before any :ref:`plugin_hook_prepare_connection` hook runs), which is what ``sqlite-utils`` sets and what the triggers it creates to keep full-text search indexes current rely on for ``INSERT OR REPLACE``.
+
+If your function raises an exception, ``execute_write_fn()`` raises it too and the transaction is rolled back. An exception that is not a subclass of ``Exception``, such as ``SystemExit``, is raised as a ``RuntimeError`` whose ``__cause__`` is the original exception.
 
 Like ``execute_fn()``, the call is traced as a ``db.query`` OpenTelemetry span carrying ``datasette.callback`` rather than ``db.query.text``, above the write-queue spans - see :ref:`internals_telemetry`. A named function gives the span a readable identity; a lambda reports ``<lambda>``.
 

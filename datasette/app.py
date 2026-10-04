@@ -256,7 +256,7 @@ SETTINGS = (
     Setting(
         "default_schema_watch",
         "external",
-        "Schema watch mode for databases opened from files: external (poll for changes made by other processes) or owned (only Datasette changes them)",
+        "Schema watch mode for database files and named in-memory databases without a mode of their own: external (poll for changes made outside Datasette) or owned (only Datasette changes them)",
     ),
     Setting("sql_time_limit_ms", 1000, "Time limit for a SQL query in milliseconds"),
     Setting(
@@ -540,12 +540,16 @@ class Datasette:
         self._internal_database.name = INTERNAL_DB_NAME
 
         # Scratch databases: an explicit directory, else config_dir/scratch
-        # if it exists, else a temporary directory created on first use
-        if scratch_dir is None and config_dir and (config_dir / "scratch").is_dir():
-            scratch_dir = config_dir / "scratch"
-        self._scratch = ScratchDatabases(self, scratch_dir)
-        # Attaches existing scratch databases without opening any of them
-        self._scratch.load()
+        # if Datasette created it (or it is empty), else a temporary
+        # directory created on first use. Loaded - and the directory locked
+        # - at the end of __init__, so a failed construction leaves nothing
+        # locked.
+        self._scratch = ScratchDatabases(
+            self,
+            scratch_dir,
+            inferred=scratch_dir is None and config_dir is not None,
+            fallback_dir=(config_dir / "scratch") if config_dir else None,
+        )
 
         self.cache_headers = cache_headers
         self._static_asset_hashes = {}
@@ -702,6 +706,13 @@ class Datasette:
         self.client = DatasetteClient(self)
         # ds.config is available now: resolve per-database schema_watch modes
         self._schema_watcher.configure()
+        # Attaches existing scratch databases without opening any of them.
+        # Takes the scratch directory's lock, so nothing after this may fail
+        try:
+            self._scratch.load()
+        except BaseException:
+            self._scratch.close()
+            raise
         # Last, so metric callbacks never see a partially initialized instance
         register_datasette(self)
 
@@ -1002,7 +1013,18 @@ class Datasette:
         self._schema_watcher.register(
             db, schema_watch or getattr(db, "schema_watch", None)
         )
+        self._crossdb_attachments_changed(db)
         return db
+
+    def _crossdb_attachments_changed(self, db):
+        # --crossdb: each pooled _memory connection ATTACHed the databases
+        # that existed when it was opened. Discard them so the next query
+        # sees databases added since, and none removed since
+        if not self.crossdb or db.is_memory or db.is_scratch:
+            return
+        memory = self.databases.get("_memory")
+        if memory is not None and memory is not db:
+            memory._invalidate_connections()
 
     def add_memory_database(self, memory_name, name=None, route=None):
         return self.add_database(
@@ -1022,6 +1044,7 @@ class Datasette:
         # Deletes this database's catalog rows (explicitly - there is no
         # periodic stale-catalog scan any more)
         self._schema_watcher.unregister(name)
+        self._crossdb_attachments_changed(db)
         return db
 
     @property

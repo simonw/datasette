@@ -35,7 +35,10 @@ callback and returns it afterwards.
   Write callbacks get the same proxy (see ``Database._execute_writes``).
 * In-memory databases are leased the same way but do not count against the
   cap and are never reaped: they use no file descriptors, and closing every
-  connection to a named in-memory database would destroy its contents.
+  connection to a named in-memory database would destroy its contents. The
+  exception is ``_memory`` under ``--crossdb``: each of its connections
+  ATTACHes up to ten database files, so those are counted and reaped like
+  file connections.
 """
 
 import collections
@@ -132,13 +135,37 @@ class LeasedConnection:
         return self._live().cursor(*args, **kwargs)
 
     def close(self):
+        conn = self._live()
+        if self._kind == "write":
+            # The write connection belongs to the database's write thread,
+            # which keeps using it for every later write
+            raise ConnectionLeaseError(
+                f"Cannot close the write connection to database "
+                f"{self._db_name!r} from inside an execute_write_fn() "
+                "callback: Datasette owns it and closes it when it is idle"
+            )
         # Closing a pooled read connection is allowed; the pool notices on
-        # release and discards it instead of returning it to the idle stack
-        self._live().close()
+        # release and discards it instead of returning it to the idle stack.
+        # An isolated connection is closed afterwards anyway.
+        conn.close()
 
     def __repr__(self):
         state = "expired" if self._conn is None else "active"
         return f"<LeasedConnection {self._kind} database={self._db_name!r} {state}>"
+
+
+def _generator_uses_connection(result):
+    """True for a generator that would step the leased connection after
+    the callback returned: one holding the connection (a closure over
+    ``conn``) or a live cursor (``(r for r in conn.execute(...))``). A
+    generator over rows already fetched inside the callback is fine."""
+    if not inspect.isgenerator(result):
+        return False
+    try:
+        values = inspect.getgeneratorlocals(result).values()
+    except Exception:  # noqa: BLE001
+        return False
+    return any(isinstance(v, (sqlite3.Connection, sqlite3.Cursor)) for v in values)
 
 
 class _Entry:
@@ -163,7 +190,15 @@ class _DatabaseState:
         self.leased = 0
         self.closed = False
         # In-memory databases use no file descriptors and are never evicted
-        self.counted = not db.is_memory
+        # (closing every connection to a named one would destroy it) -
+        # except _memory under --crossdb, whose connections each ATTACH up
+        # to ten database files and are private, so closing one loses
+        # nothing
+        self.counted = not db.is_memory or (
+            db.name == "_memory"
+            and not db.memory_name
+            and bool(getattr(db.ds, "crossdb", False))
+        )
 
 
 class ReadConnectionPool:
@@ -189,7 +224,7 @@ class ReadConnectionPool:
         finally:
             lease._expire()
             self.release(entry)
-        if isinstance(result, sqlite3.Cursor) or inspect.isgenerator(result):
+        if isinstance(result, sqlite3.Cursor) or _generator_uses_connection(result):
             raise ConnectionLeaseError(
                 f"An execute_fn() callback for database {db.name!r} returned a {type(result).__name__}, which "
                 "would keep using the pooled connection after the callback "
@@ -474,14 +509,10 @@ class _Reaper:
                 self.wake_at = float("inf")
                 self._dirty = False
                 pools = list(self._pools)
-            next_wake = None
-            for pool in pools:
-                try:
-                    expiry = pool.reap_expired()
-                except Exception:  # noqa: BLE001
-                    expiry = None
-                if expiry is not None and (next_wake is None or expiry < next_wake):
-                    next_wake = expiry
+            # In a helper so that no reference to a pool (and through its
+            # _prepare_connection, the whole Datasette) survives in this
+            # long-lived frame while it waits
+            next_wake = self._reap(pools)
             del pools
             with self._cond:
                 if self._dirty:
@@ -494,6 +525,18 @@ class _Reaper:
                     # Small slack so a batch of connections that expire close
                     # together is handled in one pass
                     self._cond.wait(max(0.0, next_wake - time.monotonic()) + 0.05)
+
+    @staticmethod
+    def _reap(pools):
+        next_wake = None
+        for pool in pools:
+            try:
+                expiry = pool.reap_expired()
+            except Exception:  # noqa: BLE001
+                expiry = None
+            if expiry is not None and (next_wake is None or expiry < next_wake):
+                next_wake = expiry
+        return next_wake
 
 
 _reaper = _Reaper()

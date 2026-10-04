@@ -240,55 +240,59 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
 ::
 
     Settings:
-      default_page_size            Default page size for the table view
-                                   (default=100)
-      max_returned_rows            Maximum rows that can be returned from a table or
-                                   custom query (default=1000)
-      max_insert_rows              Maximum rows that can be inserted at a time using
-                                   the bulk insert API (default=100)
-      max_post_body_bytes          Maximum size in bytes for a POST body read into
-                                   memory, e.g. JSON API requests - set 0 to disable
-                                   this limit (default=2097152)
-      num_sql_threads              Number of threads in the thread pool for
-                                   executing SQLite queries (default=3)
-      sql_time_limit_ms            Time limit for a SQL query in milliseconds
-                                   (default=1000)
-      default_facet_size           Number of values to return for requested facets
-                                   (default=30)
-      facet_time_limit_ms          Time limit for calculating a requested facet
-                                   (default=200)
-      facet_suggest_time_limit_ms  Time limit for calculating a suggested facet
-                                   (default=50)
-      allow_facet                  Allow users to specify columns to facet using
-                                   ?_facet= parameter (default=True)
-      allow_download               Allow users to download the original SQLite
-                                   database files (default=True)
-      allow_signed_tokens          Allow users to create and use signed API tokens
-                                   (default=True)
-      default_allow_sql            Allow anyone to run arbitrary SQL queries
-                                   (default=True)
-      max_signed_tokens_ttl        Maximum allowed expiry time for signed API tokens
-                                   (default=0)
-      suggest_facets               Calculate and display suggested facets
-                                   (default=True)
-      default_cache_ttl            Default HTTP cache TTL (used in Cache-Control:
-                                   max-age= header) (default=5)
-      cache_size_kb                SQLite cache size in KB (0 == use SQLite default)
-                                   (default=0)
-      allow_csv_stream             Allow .csv?_stream=1 to download all rows
-                                   (ignoring max_returned_rows) (default=True)
-      max_csv_mb                   Maximum size allowed for CSV export in MB - set 0
-                                   to disable this limit (default=100)
-      truncate_cells_html          Truncate cells longer than this in HTML table
-                                   view - set 0 to disable (default=2048)
-      force_https_urls             Force URLs in API output to always use https://
-                                   protocol (default=False)
-      template_debug               Allow display of template debug information with
-                                   ?_context=1 (default=False)
-      trace_debug                  Allow display of SQL trace debug information with
-                                   ?_trace=1 (default=False)
-      base_url                     Datasette URLs should use this base path
-                                   (default=/)
+      default_page_size             Default page size for the table view
+                                    (default=100)
+      max_returned_rows             Maximum rows that can be returned from a table
+                                    or custom query (default=1000)
+      max_insert_rows               Maximum rows that can be inserted at a time
+                                    using the bulk insert API (default=100)
+      max_post_body_bytes           Maximum size in bytes for a POST body read into
+                                    memory, e.g. JSON API requests - set 0 to
+                                    disable this limit (default=2097152)
+      num_sql_threads               Number of threads in the thread pool for
+                                    executing SQLite queries (default=3)
+      write_thread_idle_timeout_ms  Milliseconds a database's write thread waits for
+                                    a write before closing its connection and
+                                    exiting - set 0 to keep it running
+                                    (default=30000)
+      sql_time_limit_ms             Time limit for a SQL query in milliseconds
+                                    (default=1000)
+      default_facet_size            Number of values to return for requested facets
+                                    (default=30)
+      facet_time_limit_ms           Time limit for calculating a requested facet
+                                    (default=200)
+      facet_suggest_time_limit_ms   Time limit for calculating a suggested facet
+                                    (default=50)
+      allow_facet                   Allow users to specify columns to facet using
+                                    ?_facet= parameter (default=True)
+      allow_download                Allow users to download the original SQLite
+                                    database files (default=True)
+      allow_signed_tokens           Allow users to create and use signed API tokens
+                                    (default=True)
+      default_allow_sql             Allow anyone to run arbitrary SQL queries
+                                    (default=True)
+      max_signed_tokens_ttl         Maximum allowed expiry time for signed API
+                                    tokens (default=0)
+      suggest_facets                Calculate and display suggested facets
+                                    (default=True)
+      default_cache_ttl             Default HTTP cache TTL (used in Cache-Control:
+                                    max-age= header) (default=5)
+      cache_size_kb                 SQLite cache size in KB (0 == use SQLite
+                                    default) (default=0)
+      allow_csv_stream              Allow .csv?_stream=1 to download all rows
+                                    (ignoring max_returned_rows) (default=True)
+      max_csv_mb                    Maximum size allowed for CSV export in MB - set
+                                    0 to disable this limit (default=100)
+      truncate_cells_html           Truncate cells longer than this in HTML table
+                                    view - set 0 to disable (default=2048)
+      force_https_urls              Force URLs in API output to always use https://
+                                    protocol (default=False)
+      template_debug                Allow display of template debug information with
+                                    ?_context=1 (default=False)
+      trace_debug                   Allow display of SQL trace debug information
+                                    with ?_trace=1 (default=False)
+      base_url                      Datasette URLs should use this base path
+                                    (default=/)
 
 
 

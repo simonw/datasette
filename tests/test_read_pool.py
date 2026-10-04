@@ -105,11 +105,10 @@ async def test_leased_connection_compatibility(tmp_path):
 @pytest.mark.parametrize("num_sql_threads", [0, 3])
 async def test_global_cap_evicts_least_recently_used(tmp_path, num_sql_threads):
     paths = _make_dbs(tmp_path, 6)
-    ds = Datasette(
-        paths,
-        settings={"num_sql_threads": num_sql_threads, "max_open_connections": 2},
-    )
+    ds = Datasette(paths, settings={"num_sql_threads": num_sql_threads})
     pool = ds._read_pool
+    # Below the 4 x num_sql_threads clamp, so set the private attribute
+    pool.max_open = 2
     for i in range(6):
         await ds.get_database(f"db{i}").execute("select 1")
         assert pool.snapshot()["open"] <= 2
@@ -130,7 +129,8 @@ async def test_global_cap_evicts_least_recently_used(tmp_path, num_sql_threads):
 @pytest.mark.asyncio
 async def test_prepare_connection_runs_for_every_pooled_connection(tmp_path):
     paths = _make_dbs(tmp_path, 3)
-    ds = Datasette(paths, settings={"max_open_connections": 1})
+    ds = Datasette(paths)
+    ds._read_pool.max_open = 1
     calls = []
     original = ds._prepare_connection
 
@@ -174,54 +174,61 @@ def test_idle_reaper_closes_connections_without_event_loop(tmp_path):
     ds.close()
 
 
-@pytest.mark.asyncio
-async def test_pooling_disabled_opens_connection_per_query(tmp_path):
-    (path,) = _make_dbs(tmp_path, 1)
-    ds = Datasette([path], settings={"pool_read_connections": False})
-    db = ds.get_database("db0")
-    for _ in range(5):
-        await db.execute("select 1")
-    pool = ds._read_pool
-    assert pool.stats["opened"] == 5
-    assert pool.snapshot()["open"] == 0
-    assert _file_conns(db) == []
+@pytest.mark.parametrize(
+    "num_sql_threads,configured,expected",
+    [
+        (3, 128, 128),
+        (3, 5, 12),
+        (8, 20, 32),
+        (0, 1, 1),
+        (3, 0, 0),
+    ],
+)
+def test_max_open_connections_clamped_to_four_times_threads(
+    num_sql_threads, configured, expected
+):
+    ds = Datasette(
+        settings={
+            "num_sql_threads": num_sql_threads,
+            "max_open_connections": configured,
+        }
+    )
+    assert ds._read_pool.max_open == expected
+    # /-/settings.json reports the configured value
+    assert ds.setting("max_open_connections") == configured
+    ds.close()
+
+
+def test_connection_idle_timeout_ms_setting():
+    ds = Datasette(settings={"connection_idle_timeout_ms": 1500})
+    assert ds._read_pool.idle_timeout == 1.5
+    ds.close()
+    ds = Datasette(settings={"connection_idle_timeout_ms": 0})
+    assert ds._read_pool.idle_timeout == 0
     ds.close()
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("wait_ms,expect_exceeded", [(0, True), (10000, False)])
-async def test_cap_exhausted_policy(tmp_path, wait_ms, expect_exceeded):
+async def test_soft_cap_when_every_connection_is_leased(tmp_path):
+    # Only reachable with a cap below the thread count, which the setting
+    # clamp prevents: open one more connection rather than wait, and close
+    # it again on release
     paths = _make_dbs(tmp_path, 3)
-    ds = Datasette(
-        paths,
-        settings={
-            "num_sql_threads": 3,
-            "max_open_connections": 1,
-            "connection_pool_wait_ms": wait_ms,
-        },
-    )
-    barrier = threading.Barrier(3, timeout=0.5)
+    ds = Datasette(paths, settings={"num_sql_threads": 3})
+    pool = ds._read_pool
+    pool.max_open = 1
+    barrier = threading.Barrier(3, timeout=5)
 
     def slow(conn):
-        try:
-            # With a hard cap only one callback can run at a time
-            barrier.wait()
-        except threading.BrokenBarrierError:
-            pass
-        time.sleep(0.05)
+        barrier.wait()
         return conn.execute("select 1").fetchone()[0]
 
     results = await asyncio.gather(
         *[ds.get_database(f"db{i}").execute_fn(slow) for i in range(3)]
     )
     assert results == [1, 1, 1]
-    pool = ds._read_pool
-    if expect_exceeded:
-        assert pool.stats["exceeded_cap"] >= 1
-        assert pool.stats["peak_open"] > 1
-    else:
-        assert pool.stats["exceeded_cap"] == 0
-        assert pool.stats["peak_open"] == 1
+    assert pool.stats["exceeded_cap"] >= 2
+    assert pool.stats["peak_open"] == 3
     # Back under the cap once everything has been returned
     assert pool.snapshot()["open"] <= 1
     ds.close()
@@ -281,4 +288,87 @@ async def test_open_transaction_rolled_back_on_release(tmp_path):
     await db.execute_fn(begin)
     assert ds._read_pool.stats["rolled_back"] == 1
     assert not await db.execute_fn(lambda conn: conn.in_transaction)
+    ds.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("num_sql_threads", [0, 2])
+async def test_invalidate_database_discards_stale_connections(
+    tmp_path, num_sql_threads
+):
+    paths = _make_dbs(tmp_path, 2)
+    ds = Datasette(paths, settings={"num_sql_threads": num_sql_threads})
+    db0, db1 = ds.get_database("db0"), ds.get_database("db1")
+    pool = ds._read_pool
+    await db0.execute("select 1")
+    await db1.execute("select 1")
+    old = db0._read_pool_state.idle[-1].conn
+    assert db0._read_pool_state.open == 1
+    # What the SchemaWatcher does when it sees db0's file replaced
+    db0._invalidate_connections()
+    # Idle connections for db0 are closed at once; db1 is untouched
+    assert db0._read_pool_state.open == 0
+    assert db1._read_pool_state.open == 1
+    assert old not in db0._all_connections
+    with pytest.raises(sqlite3.ProgrammingError):
+        old.execute("select 1")
+    # The next read opens a new connection
+    await db0.execute("select 1")
+    assert db0._read_pool_state.idle[-1].conn is not old
+    assert pool.stats["discarded_stale"] == 1
+    ds.close()
+
+
+@pytest.mark.asyncio
+async def test_leased_connection_discarded_on_release_after_invalidation(tmp_path):
+    (path,) = _make_dbs(tmp_path, 1)
+    ds = Datasette([path], settings={"num_sql_threads": 2})
+    db = ds.get_database("db0")
+    pool = ds._read_pool
+    seen = {}
+
+    def callback(conn):
+        seen["raw"] = conn.execute("select 1").connection
+        # The file is replaced while this callback holds the connection:
+        # it must not be closed under us, only discarded on release
+        db._invalidate_connections()
+        return conn.execute("select count(*) from t").fetchone()[0]
+
+    assert await db.execute_fn(callback) == 1
+    assert db._read_pool_state.open == 0
+    assert pool.stats["discarded_stale"] == 1
+    with pytest.raises(sqlite3.ProgrammingError):
+        seen["raw"].execute("select 1")
+    assert (await db.execute("select count(*) from t")).single_value() == 1
+    ds.close()
+
+
+def test_reaper_unavailable_falls_back_to_checkout_reaping(tmp_path, monkeypatch):
+    # Pyodide cannot start threads: idle connections must then be reaped by
+    # the next checkout instead, and reads must keep working
+    from datasette import connection_pool
+
+    reaper = connection_pool._Reaper()
+    monkeypatch.setattr(connection_pool, "_reaper", reaper)
+
+    def no_threads(self):
+        raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr(threading.Thread, "start", no_threads)
+    paths = _make_dbs(tmp_path, 2)
+    ds = Datasette(paths, settings={"num_sql_threads": 0})
+    pool = ds._read_pool
+    pool.idle_timeout = 0.05
+
+    async def read(name):
+        return (await ds.get_database(name).execute("select 1")).single_value()
+
+    assert asyncio.run(read("db0")) == 1
+    assert reaper.unavailable
+    assert pool.snapshot()["open"] == 1
+    time.sleep(0.1)
+    assert asyncio.run(read("db1")) == 1
+    # db0's expired connection was closed during db1's checkout
+    assert pool.stats["expired"] == 1
+    assert ds.get_database("db0")._read_pool_state.open == 0
     ds.close()

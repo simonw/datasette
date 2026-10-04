@@ -68,8 +68,6 @@ from .utils import (
 from .utils.sql_analysis import SQLAnalysis, analyze_sql_tables
 from .utils.sqlite import sqlite_derived_table_dependencies, sqlite_hidden_table_names
 
-connections = threading.local()
-
 EXECUTE_WRITE_RETURNING_LIMIT = 10
 
 AttachedDatabase = namedtuple("AttachedDatabase", ("seq", "name", "file"))
@@ -85,7 +83,6 @@ _SHUTDOWN = object()
 class Database:
     # For table counts stop at this many rows:
     count_limit = 10000
-    _thread_local_id_counter = 1
 
     def __init__(
         self,
@@ -98,8 +95,6 @@ class Database:
         is_temp_disk=False,
     ):
         self.name = None
-        self._thread_local_id = f"x{self._thread_local_id_counter}"
-        Database._thread_local_id_counter += 1
         self.route = None
         self.ds = ds
         self.path = path
@@ -140,14 +135,25 @@ class Database:
         self._closed = False
         self._pending_execute_futures = set()
         self._pending_execute_futures_lock = threading.Lock()
-        # Used when in non-threaded mode (reads go through ds._read_pool):
-        self._read_connection = None
+        # The write connection in non-threaded mode (reads go through
+        # ds._read_pool in both modes)
         self._write_connection = None
+        self._write_connection_generation = 0
         # Bookkeeping for ds._read_pool, created on first read
         self._read_pool_state = None
         # Track file and memory connections, including reads on worker threads,
         # so close() can release all of them from the calling thread.
         self._all_connections = []
+        # Set by SchemaWatcher.register(); None for the internal database
+        self._watch_state = None
+        # Bumped when the file behind this database is replaced or deleted,
+        # so pooled read connections and the write connection still pointing
+        # at the old inode are discarded and reopened
+        self._conn_generation = 0
+        # True once Datasette has seen this database's file exist (a
+        # connection opened, or the SchemaWatcher stat()ed it). From then on
+        # write connections never create the file - see connect()
+        self._file_seen = False
         if not is_temp_disk:
             self.mode = mode
 
@@ -158,6 +164,80 @@ class Database:
     def _remove_pending_execute_future(self, future):
         with self._pending_execute_futures_lock:
             self._pending_execute_futures.discard(future)
+
+    def _invalidate_connections(self):
+        """The file behind this database was replaced or deleted.
+
+        Bumps the connection generation: pooled read connections are closed
+        (idle ones now, leased ones when their callback returns) and the
+        write connection is reopened before the next write task. Nothing is
+        closed from this thread while another thread may be using it.
+        """
+        with self._write_thread_lock:
+            self._conn_generation += 1
+        read_pool = getattr(self.ds, "_read_pool_or_none", None)
+        if read_pool is not None:
+            read_pool.invalidate_database(self)
+
+    def _forget_connection(self, conn):
+        try:
+            conn.close()
+        except Exception:  # noqa: BLE001, S110
+            pass
+        try:
+            self._all_connections.remove(conn)
+        except ValueError:
+            pass
+
+    def _schema_check(self, conn, loop=None):
+        # Runs on the thread that owns conn, right after a write task
+        state = self._watch_state
+        if state is not None:
+            self.ds._schema_watcher.check_after_write(state, conn, loop)
+
+    async def _execute_on_write_connection(self, fn):
+        """Run fn(conn) on the write connection, serialized with writes,
+        without write_wrapper hooks, events or a transaction. Used by the
+        SchemaWatcher for shared-cache memory databases, where a second
+        connection reading sqlite_master would make concurrent DDL fail
+        with "database table is locked" (shared-cache locks do not wait)."""
+        self._check_not_closed()
+        if self.ds.executor is None:
+            return fn(self._non_threaded_write_connection())
+        return await self._send_to_write_thread(fn, transaction=False)
+
+    def _non_threaded_write_connection(self):
+        """num_sql_threads=0: the single write connection, used inline on
+        the event loop. Reopened if the file was replaced or deleted. Unlike
+        the threaded write connection it is not closed when idle - there is
+        no thread to time it out (Pyodide has none at all)."""
+        conn = self._write_connection
+        if (
+            conn is not None
+            and self._write_connection_generation != self._conn_generation
+        ):
+            self._write_connection = None
+            self._forget_connection(conn)
+            conn = None
+        if conn is None:
+            generation = self._conn_generation
+            conn = self.connect(write=True)
+            try:
+                self.ds._prepare_connection(conn, self.name)
+            except BaseException:
+                # Never cache a half-prepared connection
+                self._forget_connection(conn)
+                raise
+            self._write_connection = conn
+            self._write_connection_generation = generation
+        return conn
+
+    async def _after_write(self):
+        # Read-your-writes for the catalog: if that write changed the schema,
+        # wait for the catalog rows for this database to be rebuilt
+        state = self._watch_state
+        if state is not None and (state.needs_scan or state.scan_future is not None):
+            await self.ds._schema_watcher.after_write(state)
 
     @property
     def cached_table_counts(self):
@@ -187,7 +267,11 @@ class Database:
         else:
             return "db"
 
-    def connect(self, write=False):
+    def connect(self, write=False, track=True):
+        """Open a new connection. ``track=False`` leaves it out of
+        ``_all_connections``: the caller closes it itself and close() must
+        never close it from another thread while it is in use (the
+        SchemaWatcher's short-lived scan connections)."""
         extra_kwargs = {}
         if write:
             extra_kwargs["isolation_level"] = "IMMEDIATE"
@@ -198,11 +282,13 @@ class Database:
             )
             if not write:
                 conn.execute("PRAGMA query_only=1")
-            self._all_connections.append(conn)
+            if track:
+                self._all_connections.append(conn)
             return conn
         if self.is_memory:
             conn = sqlite3.connect(":memory:", uri=True, check_same_thread=False)
-            self._all_connections.append(conn)
+            if track:
+                self._all_connections.append(conn)
             return conn
 
         # mode=ro or immutable=1?
@@ -214,13 +300,20 @@ class Database:
             qs = "?immutable=1"
         assert not (write and not self.is_mutable)
         if write:
-            qs = ""
+            # The first write connection may create the file (a database
+            # added with add_database() before its file exists). Once
+            # Datasette has seen the file exist, writes use mode=rw: if it
+            # is deleted from under us later, writes fail instead of
+            # silently creating a new empty database in its place.
+            qs = "?mode=rw" if self._file_seen else ""
         if self.mode is not None:
             qs = f"?mode={self.mode}"
         conn = sqlite3.connect(
             f"file:{self.path}{qs}", uri=True, check_same_thread=False, **extra_kwargs
         )
-        self._all_connections.append(conn)
+        self._file_seen = True
+        if track:
+            self._all_connections.append(conn)
         if self.is_temp_disk and not self._wal_enabled:
             conn.execute("PRAGMA journal_mode=WAL")
             self._wal_enabled = True
@@ -273,18 +366,7 @@ class Database:
             except Exception:  # noqa: BLE001, S110
                 pass
         self._all_connections = []
-        # Drop per-thread cached read connections we can reach
-        try:
-            delattr(connections, self._thread_local_id)
-        except AttributeError:
-            pass
-        # Close non-threaded-mode cached connections if still open
-        if self._read_connection is not None:
-            try:
-                self._read_connection.close()
-            except Exception:  # noqa: BLE001, S110
-                pass
-            self._read_connection = None
+        # Close the non-threaded-mode write connection if still open
         if self._write_connection is not None:
             try:
                 self._write_connection.close()
@@ -417,6 +499,8 @@ class Database:
             try:
                 return fn(isolated_connection)
             finally:
+                if write:
+                    self._schema_check(isolated_connection)
                 isolated_connection.close()
                 try:
                     self._all_connections.remove(isolated_connection)
@@ -432,7 +516,9 @@ class Database:
             with record_operation_duration(self.name, "write" if write else "read"):
                 if self.ds.executor is None:
                     # non-threaded mode
-                    return _run()
+                    result = _run()
+                    await self._after_write()
+                    return result
                 if not write:
                     # Immutable database - no writes can ever occur, so there
                     # is no write queue to block; run against a fresh
@@ -442,7 +528,9 @@ class Database:
                         self.ds.executor, ctx.run, _run
                     )
                 # Threaded mode - send to write thread
-                return await self._send_to_write_thread(fn, isolated_connection=True)
+                result = await self._send_to_write_thread(fn, isolated_connection=True)
+                await self._after_write()
+                return result
 
     async def analyze_sql(self, sql, params=None) -> SQLAnalysis:
         self._check_not_closed()
@@ -480,15 +568,16 @@ class Database:
         fn = self._wrap_fn_with_hooks(fn, request, transaction, track_event)
         if self.ds.executor is None:
             # non-threaded mode
-            if self._write_connection is None:
-                self._write_connection = self.connect(write=True)
-                self.ds._prepare_connection(self._write_connection, self.name)
-            if transaction:
-                with self._write_connection:
-                    self._write_connection.execute("BEGIN IMMEDIATE")
-                    result = fn(self._write_connection)
-            else:
-                result = fn(self._write_connection)
+            conn = self._non_threaded_write_connection()
+            try:
+                if transaction:
+                    with conn:
+                        conn.execute("BEGIN IMMEDIATE")
+                        result = fn(conn)
+                else:
+                    result = fn(conn)
+            finally:
+                self._schema_check(conn)
             if not block:
                 # There is no write thread here, so the write has already
                 # finished. Hand back the same (task_id, reply_future) shape
@@ -503,6 +592,7 @@ class Database:
                 fn, block=block, transaction=transaction
             )
         if block:
+            await self._after_write()
             for event in pending_events:
                 await self.ds.track_event(event)
         else:
@@ -618,48 +708,25 @@ class Database:
             # Closing the last connection to a memory database discards
             # its contents, so its write connection must stay open
             return None
-        setting = getattr(self.ds, "setting", None)
-        timeout_ms = setting("write_thread_idle_timeout_ms") if setting else None
-        if not timeout_ms or timeout_ms <= 0:
-            return None
-        return timeout_ms / 1000
+        get_timeout = getattr(self.ds, "_connection_idle_timeout_s", None)
+        timeout_s = get_timeout() if get_timeout is not None else 0
+        return timeout_s or None
 
     def _execute_writes(self):
         # Thread that protects the single write connection to this database.
         # It runs until close(), or until it has waited idle_timeout seconds
         # with no task, in which case it closes its connection and exits.
         # The next write starts a new thread.
-        idle_timeout = self._write_thread_idle_timeout()
-        conn_exception = None
-        conn = None
+        writer = _WriteConnection(self)
+        writer.open()
         deregistered = False
         try:
-            conn = self.connect(write=True)
-            # Threads do not inherit the caller's context, so any spans
-            # created by prepare_connection hooks here are root spans
-            self.ds._prepare_connection(conn, self.name)
-        except Exception as e:  # noqa: BLE001
-            # Stored and re-raised to every write already queued. With an
-            # idle timeout the thread then exits as soon as the queue is
-            # empty, so the next write tries to connect again.
-            conn_exception = e
-            if idle_timeout is not None:
-                idle_timeout = 0
-        try:
-            self._process_write_queue(conn, conn_exception, idle_timeout)
+            self._process_write_queue(writer)
             deregistered = True
         finally:
-            if conn is not None:
-                try:
-                    conn.close()
-                except Exception:  # noqa: BLE001, S110
-                    # Best-effort close as the write thread exits
-                    pass
-                try:
-                    self._all_connections.remove(conn)
-                except ValueError:
-                    # May already have been cleared by close().
-                    pass
+            # Close outside _write_thread_lock: closing the last connection
+            # to a WAL database runs a checkpoint, which can be slow
+            writer.close()
             current = threading.current_thread()
             with self._write_thread_lock:
                 self._retiring_write_threads.discard(current)
@@ -671,7 +738,18 @@ class Database:
                     if not self._closed and not self._write_queue.empty():
                         self._start_write_thread()
 
-    def _process_write_queue(self, conn, conn_exception, idle_timeout):
+    def _process_write_queue(self, writer):
+        configured_idle_timeout = self._write_thread_idle_timeout()
+
+        def current_idle_timeout():
+            if writer.exception is not None and configured_idle_timeout is not None:
+                # The connect error has been reported to every write already
+                # queued: exit as soon as the queue is empty, so the next
+                # write starts a new thread that tries to connect again
+                return 0
+            return configured_idle_timeout
+
+        idle_timeout = current_idle_timeout()
         while True:
             try:
                 task = self._write_queue.get(timeout=idle_timeout)
@@ -690,6 +768,13 @@ class Database:
                 return
             if task is _SHUTDOWN:
                 return
+            if writer.generation != self._conn_generation:
+                # The file was replaced or deleted since this connection was
+                # opened (the SchemaWatcher bumps the generation): reopen by
+                # path. connect() uses mode=rw for a file Datasette has seen,
+                # so a deleted file is reported, not silently recreated.
+                writer.reopen()
+                idle_timeout = current_idle_timeout()
             # block=True: the caller awaits the result, so the write spans
             # are children of the caller's span. The token must be detached
             # in the finally block or the context leaks into later writes.
@@ -712,8 +797,8 @@ class Database:
                     **write_span_kwargs,
                 ).end(end_time=dequeued_at_ns)
                 record_write_queue_wait(self.name, dequeued_at_ns - task.enqueued_at_ns)
-                if conn_exception is not None:
-                    exception = conn_exception
+                if writer.exception is not None:
+                    exception = writer.exception
                 elif task.isolated_connection:
                     try:
                         with tracer.start_as_current_span(
@@ -728,18 +813,15 @@ class Database:
                             try:
                                 result = task.fn(isolated_connection)
                             finally:
-                                isolated_connection.close()
-                                try:
-                                    self._all_connections.remove(isolated_connection)
-                                except ValueError:
-                                    # May already have been cleared by close().
-                                    pass
+                                self._schema_check(isolated_connection, task.loop)
+                                self._forget_connection(isolated_connection)
                     except Exception as e:  # noqa: BLE001
                         # Write thread must survive any task failure or the database wedges
                         sys.stderr.write(f"{e}\n")
                         sys.stderr.flush()
                         exception = e
                 else:
+                    conn = writer.conn
                     try:
                         with tracer.start_as_current_span(
                             DB_WRITE_EXECUTE, **write_span_kwargs
@@ -749,12 +831,15 @@ class Database:
                                 task.isolated_connection,
                             )
                             span.set_attribute(TRANSACTION, task.transaction)
-                            if task.transaction:
-                                with conn:
-                                    conn.execute("BEGIN IMMEDIATE")
+                            try:
+                                if task.transaction:
+                                    with conn:
+                                        conn.execute("BEGIN IMMEDIATE")
+                                        result = task.fn(conn)
+                                else:
                                     result = task.fn(conn)
-                            else:
-                                result = task.fn(conn)
+                            finally:
+                                self._schema_check(conn, task.loop)
                     except Exception as e:  # noqa: BLE001
                         sys.stderr.write(f"{e}\n")
                         sys.stderr.flush()
@@ -1131,7 +1216,22 @@ class Database:
 
     async def derived_table_dependencies(self):
         """Return implementation tables and the tables they derive from."""
-        schema_version = (await self.execute("PRAGMA schema_version")).first()[0]
+        state = self._watch_state
+        if (
+            state is not None
+            and state.catalog_version is not None
+            and not state.needs_scan
+            and not state.missing
+        ):
+            # O(1): the schema_version the SchemaWatcher last stored in the
+            # catalog. allowed_resources() calls this for every database on
+            # every page, so a PRAGMA here was a per-request sweep of all
+            # databases (one pooled connection each). The cache is now as
+            # fresh as the catalog itself. The scan count is part of the key
+            # because a replaced file can have the same schema_version.
+            schema_version = ("catalog", state.catalog_version, state.stats["scans"])
+        else:
+            schema_version = (await self.execute("PRAGMA schema_version")).first()[0]
         if (
             self._cached_derived_table_dependencies is None
             or self._cached_derived_table_dependencies[0] != schema_version
@@ -1231,6 +1331,51 @@ def _apply_write_wrapper(fn, wrapper_factory, track_event):
             return result
 
     return wrapped
+
+
+class _WriteConnection:
+    """The write thread's connection to its database.
+
+    Reopened by the write thread when the file is replaced or deleted
+    (``Database._conn_generation`` moves). A failure to open or prepare the
+    connection is kept in ``exception`` and handed to every write that runs
+    while it is set.
+    """
+
+    __slots__ = ("conn", "db", "exception", "generation")
+
+    def __init__(self, db):
+        self.db = db
+        self.conn = None
+        self.exception = None
+        self.generation = None
+
+    def open(self):
+        db = self.db
+        # Read the generation before connecting: if it moves while we
+        # connect, the next task reopens - one connection too many, never
+        # a stale one
+        self.generation = db._conn_generation
+        self.exception = None
+        try:
+            self.conn = db.connect(write=True)
+            # Threads do not inherit the caller's context, so any spans
+            # created by prepare_connection hooks here are root spans
+            db.ds._prepare_connection(self.conn, db.name)
+        except Exception as e:  # noqa: BLE001
+            self.exception = e
+            self.close()
+
+    def reopen(self):
+        self.close()
+        self.open()
+
+    def close(self):
+        conn, self.conn = self.conn, None
+        if conn is not None:
+            # Also drops it from _all_connections, so that list does not
+            # grow by one closed connection per write thread restart
+            self.db._forget_connection(conn)
 
 
 class WriteTask:

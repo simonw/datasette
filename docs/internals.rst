@@ -2828,7 +2828,7 @@ The internal database schema is as follows:
         path TEXT,
         is_memory INTEGER,
         schema_version INTEGER
-    );
+    , fingerprint TEXT);
     CREATE TABLE catalog_tables (
         database_name TEXT,
         table_name TEXT,

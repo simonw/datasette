@@ -227,81 +227,103 @@ Default: ``128``
 
 .. [[[end]]]
 
-Read queries borrow a connection from a pool for the duration of one query and return it afterwards. This setting caps how many pooled read connections can be open at once across all attached file databases. When a new connection is needed and the cap has been reached, the least recently used idle connection is closed first.
+Read queries borrow a connection from a pool for the duration of one query (or one :ref:`execute_fn() <database_execute_fn>` callback) and return it afterwards. This setting caps how many pooled read connections can be open at once, across all attached file databases. When a new connection is needed and the cap has been reached, the least recently used idle connection - which may belong to any database - is closed first.
 
-If every connection is in use the pool waits up to :ref:`setting_connection_pool_wait_ms` and then opens one more anyway, so the cap can be exceeded by at most :ref:`setting_num_sql_threads` connections. Set this to 0 for no limit.
+This is what lets one Datasette instance serve hundreds or thousands of database files without holding a connection, and its file descriptors, open to every one of them.
+
+Every SQL thread can hold one read connection at a time, so a cap smaller than the number of threads would close and reopen connections for nearly every query. Datasette therefore raises the cap it uses to at least four times :ref:`setting_num_sql_threads` (12 with the default of 3 threads). ``/-/settings.json`` shows the value you configured.
+
+Set this to 0 for no limit, in which case idle connections are only closed by :ref:`setting_connection_idle_timeout_ms`.
 
 ::
 
     datasette *.db --setting max_open_connections 64
 
-.. _setting_connection_idle_timeout:
+The cap does not cover write connections (one per database that is being written to, see :ref:`setting_connection_idle_timeout_ms`), the short-lived connections used by :ref:`database_execute_isolated_fn` and by schema checks, or in-memory databases, which use no file descriptors.
 
-connection_idle_timeout
-~~~~~~~~~~~~~~~~~~~~~~~
+Each pooled connection to a file in WAL mode uses three file descriptors (the database, its ``-wal`` and its ``-shm`` file); other databases use one. Under a small file descriptor limit such as ``ulimit -n 256``, a cap of 64 keeps pooled read connections below about 200 descriptors even if every database uses WAL, leaving room for write connections and Datasette itself.
 
-.. [[[cog
-    setting_default(cog, "connection_idle_timeout")
-.. ]]]
+.. _setting_connection_idle_timeout_ms:
 
-Default: ``60``
-
-.. [[[end]]]
-
-Pooled read connections that have not been used for this many seconds are closed. Set to 0 to keep idle connections open until they are evicted by :ref:`setting_max_open_connections`.
-
-.. _setting_connection_pool_wait_ms:
-
-connection_pool_wait_ms
-~~~~~~~~~~~~~~~~~~~~~~~
+connection_idle_timeout_ms
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. [[[cog
-    setting_default(cog, "connection_pool_wait_ms")
-.. ]]]
-
-Default: ``0``
-
-.. [[[end]]]
-
-How long a query waits for a connection to be returned when :ref:`setting_max_open_connections` has been reached and every pooled connection is in use, before opening one more connection anyway.
-
-.. _setting_pool_read_connections:
-
-pool_read_connections
-~~~~~~~~~~~~~~~~~~~~~
-
-.. [[[cog
-    setting_default(cog, "pool_read_connections")
-.. ]]]
-
-Default: ``on``
-
-.. [[[end]]]
-
-Reuse read connections between queries. Turn this off to open, prepare and close a new connection for every read query.
-
-.. _setting_write_thread_idle_timeout_ms:
-
-write_thread_idle_timeout_ms
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. [[[cog
-    setting_default(cog, "write_thread_idle_timeout_ms")
+    setting_default(cog, "connection_idle_timeout_ms")
 .. ]]]
 
 Default: ``30000``
 
 .. [[[end]]]
 
-Each database that receives writes gets its own write thread, holding a single write connection. Writes to that database are queued and executed one at a time by that thread.
+Connections that have not been used for this many milliseconds are closed, so a database that stops receiving traffic stops holding file descriptors, memory and threads.
 
-If a write thread has had no work for this many milliseconds it closes its connection and exits. The next write to that database starts a new thread and opens a new connection. This keeps an instance with many databases from holding a thread and a file descriptor open for every database it has ever written to.
+- **Read connections** in the pool are closed once they have been idle this long. The next read to that database opens a new connection.
+- **Write threads**: each database that receives writes gets its own write thread, holding a single write connection, and writes to that database are run one at a time by that thread. A write thread that has had no work for this long closes its connection and exits. The next write to that database starts a new thread and opens a new connection.
 
-Anything a write function attaches to the write connection itself - temporary tables, ``ATTACH`` statements, ``PRAGMA`` settings - is lost when the thread exits. In-memory databases are exempt, since closing their only write connection would discard their contents.
+Opening a new connection costs around a millisecond (more if :ref:`plugin_hook_prepare_connection` hooks or extensions such as SpatiaLite have to be loaded again), which is negligible for a database that has been idle for 30 seconds, so the default keeps busy databases warm and releases forgotten ones quickly.
 
-Set this to 0 to keep write threads running until Datasette shuts down::
+Anything a function attaches to a connection itself - temporary tables, ``ATTACH`` statements, ``PRAGMA`` settings, functions registered with ``conn.create_function()`` - is lost when that connection is closed, and is never shared between pooled connections. Set that up in the :ref:`plugin_hook_prepare_connection` plugin hook instead, which runs once for every new connection.
 
-    datasette mydatabase.db --setting write_thread_idle_timeout_ms 0
+In-memory databases are exempt, since closing their only write connection would discard their contents. With :ref:`setting_num_sql_threads` set to 0 there are no threads to time out, so the write connection stays open until Datasette shuts down; read connections are still closed when idle.
+
+Set this to 0 to keep read connections open until they are evicted by :ref:`setting_max_open_connections`, and write threads running until Datasette shuts down::
+
+    datasette mydatabase.db --setting connection_idle_timeout_ms 0
+
+.. _setting_schema_watch_interval_ms:
+
+schema_watch_interval_ms
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. [[[cog
+    setting_default(cog, "schema_watch_interval_ms")
+.. ]]]
+
+Default: ``1000``
+
+.. [[[end]]]
+
+Datasette keeps a catalog of every attached database's tables, columns, indexes and foreign keys in its :ref:`internal database <internals_internal>`. Each database has a *schema watch mode* that decides how that catalog is kept current:
+
+``owned``
+    Only Datasette changes this database's schema. After every write Datasette makes to it, Datasette checks whether the schema changed and, if it did, updates the catalog before the write call returns. Owned databases are never polled.
+``external``
+    Other processes may change the file too - for example ``sqlite-utils`` adding a table while Datasette is serving it. On top of the checks after Datasette's own writes, the file is polled every ``schema_watch_interval_ms`` milliseconds. Each check is a ``stat()`` of the database file and its ``-wal`` and ``-journal`` files; a database is only opened if those changed, and its catalog is only rebuilt if its schema changed. Databases whose file is replaced (for example by renaming another file over it) or deleted are noticed too: open connections to the old file are discarded and the catalog is updated.
+``immutable``
+    The catalog is built once at startup. Immutable databases (opened with ``-i``) always use this mode.
+
+Set this to ``0`` to turn polling off. External databases are then only checked after Datasette's own writes to them::
+
+    datasette mydatabase.db --setting schema_watch_interval_ms 0
+
+Databases opened from files use the :ref:`setting_default_schema_watch` mode. Databases added by plugins with :ref:`datasette.add_database() <datasette_add_database>` are ``owned`` unless the plugin passes ``schema_watch="external"``. You can set the mode for an individual database in ``datasette.yaml``, which overrides both:
+
+.. code-block:: yaml
+
+    databases:
+      mydatabase:
+        schema_watch: owned   # or external, or immutable
+
+.. _setting_default_schema_watch:
+
+default_schema_watch
+~~~~~~~~~~~~~~~~~~~~
+
+.. [[[cog
+    setting_default(cog, "default_schema_watch")
+.. ]]]
+
+Default: ``external``
+
+.. [[[end]]]
+
+The schema watch mode, ``external`` or ``owned``, for mutable database files passed on the command line or with ``Datasette(files=...)`` - see :ref:`setting_schema_watch_interval_ms`.
+
+The default, ``external``, suits the common workflow of changing a database with another tool such as ``sqlite-utils`` while Datasette is serving it: new tables and columns show up within about a second. If Datasette is the only thing that ever changes your database files, set this to ``owned`` and they will not be polled. This is worth doing for instances with thousands of databases, where polling costs a few milliseconds of CPU per second::
+
+    datasette *.db --setting default_schema_watch owned
+
 
 .. _setting_allow_facet:
 

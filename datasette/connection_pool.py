@@ -1,27 +1,38 @@
-"""Leased read-connection pool.
+"""Leased read-connection pool, and the lease proxy every callback receives.
 
-Read connections are no longer cached per worker thread. Instead every
-``execute_fn()`` / ``execute()`` call checks a connection out of a pool for
-the duration of one callback and returns it afterwards.
+Read connections are not cached per worker thread. Every ``execute_fn()`` /
+``execute()`` call checks a connection out of a pool for the duration of one
+callback and returns it afterwards.
 
 * One ``ReadConnectionPool`` per ``Datasette`` instance. It enforces a global
-  cap (``max_open_connections``) on open pooled read connections across all
-  file-backed databases. When a new connection is needed and the cap has been
-  reached, the least recently used *idle* connection (from any database) is
-  closed first.
+  cap (the ``max_open_connections`` setting) on open pooled read connections
+  across all file-backed databases. When a new connection is needed and the
+  cap has been reached, the least recently used *idle* connection (from any
+  database) is closed first.
 * Each database keeps a LIFO stack of its idle connections, so the most
   recently used (warmest) connection is reused and surplus ones age out.
-* Idle connections are closed after ``connection_idle_timeout`` seconds. This
-  is done opportunistically on every checkout and by one process-wide daemon
+* Idle connections are closed after ``connection_idle_timeout_ms``. This is
+  done opportunistically on every checkout and by one process-wide daemon
   reaper thread, so it works with or without a running event loop
-  (non-threaded mode, sync callers, closed loops in tests).
-* When the cap has been reached and every connection is checked out the pool
-  waits up to ``connection_pool_wait_ms`` for one to come back and then opens
-  a connection anyway (the cap is soft). Each checked-out connection occupies
-  one executor thread, so the overflow can never exceed ``num_sql_threads``.
+  (non-threaded mode, sync callers, closed loops in tests). Where threads
+  cannot be started at all (Pyodide) only the opportunistic reaping runs.
+* Every connection is opened with ``Database.connect()`` and prepared with
+  ``Datasette._prepare_connection()`` exactly once, outside the pool lock.
+* Each pooled connection remembers the database's ``_conn_generation`` when
+  it was opened. The SchemaWatcher bumps that generation when a file is
+  replaced or deleted and calls ``invalidate_database()``: idle connections
+  are closed at once, and leased ones are discarded by their own thread when
+  they are returned. A connection is never closed while another thread may
+  be stepping it (that segfaults).
+* The cap is soft. Each lease occupies one executor thread (or the event
+  loop in non-threaded mode), and Datasette clamps the cap to at least
+  ``4 x num_sql_threads``, so "cap reached and every connection leased"
+  cannot happen with the public settings. If it does (a cap lowered through
+  the private attribute) the pool opens one more connection and closes it
+  on release.
 * Callbacks receive a ``LeasedConnection`` proxy. Once the callback returns
-  the proxy is invalidated and any further use raises
-  ``ConnectionLeaseError``.
+  the proxy is expired and any further use raises ``ConnectionLeaseError``.
+  Write callbacks get the same proxy (see ``Database._execute_writes``).
 * In-memory databases are leased the same way but do not count against the
   cap and are never reaped: they use no file descriptors, and closing every
   connection to a named in-memory database would destroy its contents.
@@ -37,11 +48,18 @@ from .utils import sqlite3
 
 
 class ConnectionLeaseError(RuntimeError):
-    """A pooled read connection was used outside the callback it was lent to."""
+    """A connection was used outside the callback it was lent to."""
+
+
+_CALLBACK_NAMES = {
+    "read": "execute_fn()",
+    "write": "execute_write_fn()",
+    "isolated": "execute_isolated_fn()",
+}
 
 
 class LeasedConnection:
-    """Forwarding proxy handed to read callbacks.
+    """Forwarding proxy handed to read, write and isolated callbacks.
 
     Every attribute access, method call and attribute assignment is forwarded
     to the underlying ``sqlite3.Connection`` while the lease is active. After
@@ -53,22 +71,27 @@ class LeasedConnection:
     ``isinstance(proxy, sqlite3.Connection)`` is True (via ``__class__``), but
     C functions that require a real connection object (for example the
     *target* argument of ``Connection.backup()``) reject the proxy.
+
+    Not enforceable: a cursor created inside the callback and used after it
+    returns, and the raw connection reached through ``cursor.connection``.
     """
 
-    __slots__ = ("_conn", "_db_name")
+    __slots__ = ("_conn", "_db_name", "_kind")
 
-    def __init__(self, conn, db_name):
+    def __init__(self, conn, db_name, kind="read"):
         object.__setattr__(self, "_conn", conn)
         object.__setattr__(self, "_db_name", db_name)
+        object.__setattr__(self, "_kind", kind)
 
     def _live(self):
         conn = self._conn
         if conn is None:
             raise ConnectionLeaseError(
-                f"A read connection to database {self._db_name!r} was used after the "
-                "execute_fn() callback it was passed to had returned. Read "
-                "connections are pooled and only valid inside the callback: do "
-                "not store the connection (or a cursor) for later use"
+                f"A {self._kind} connection to database {self._db_name!r} was used "
+                f"after the {_CALLBACK_NAMES.get(self._kind, 'callback')} callback "
+                "it was passed to had returned. Connections are only valid inside "
+                "the callback: do not store the connection (or a cursor) for "
+                "later use"
             )
         return conn
 
@@ -91,7 +114,9 @@ class LeasedConnection:
 
     # Dunder methods are looked up on the type, so forward them explicitly
     def __enter__(self):
-        return self._live().__enter__()
+        self._live().__enter__()
+        # "with conn as c" must not hand out the raw connection
+        return self
 
     def __exit__(self, *args):
         return self._live().__exit__(*args)
@@ -107,21 +132,22 @@ class LeasedConnection:
         return self._live().cursor(*args, **kwargs)
 
     def close(self):
-        # Closing a pooled connection is allowed; the pool notices on release
-        # and discards it instead of returning it to the idle stack.
+        # Closing a pooled read connection is allowed; the pool notices on
+        # release and discards it instead of returning it to the idle stack
         self._live().close()
 
     def __repr__(self):
         state = "expired" if self._conn is None else "active"
-        return f"<LeasedConnection database={self._db_name!r} {state}>"
+        return f"<LeasedConnection {self._kind} database={self._db_name!r} {state}>"
 
 
 class _Entry:
-    __slots__ = ("conn", "last_used", "state")
+    __slots__ = ("conn", "generation", "last_used", "state")
 
-    def __init__(self, conn, state):
+    def __init__(self, conn, state, generation):
         self.conn = conn
         self.state = state
+        self.generation = generation
         self.last_used = 0.0
 
 
@@ -141,25 +167,14 @@ class _DatabaseState:
 
 
 class ReadConnectionPool:
-    def __init__(
-        self,
-        prepare_connection,
-        max_open=128,
-        idle_timeout=60.0,
-        wait_ms=0,
-        enabled=True,
-    ):
+    def __init__(self, prepare_connection, max_open=128, idle_timeout=30.0):
         self._prepare_connection = prepare_connection
         self.max_open = max_open  # 0 = no limit
         self.idle_timeout = idle_timeout  # seconds, 0 = never
-        self.wait_s = wait_ms / 1000.0
-        self.enabled = enabled
         self._lock = threading.Lock()
-        self._cond = threading.Condition(self._lock)
         # Idle, counted entries, least recently used first
         self._lru = collections.OrderedDict()
         self._open = 0  # counted open connections, idle + leased
-        self._waiters = 0
         self._closed = False
         self.stats = collections.Counter()
 
@@ -168,7 +183,7 @@ class ReadConnectionPool:
     def run(self, db, fn):
         """Call fn(conn) with a pooled connection leased for the duration."""
         entry = self.acquire(db)
-        lease = LeasedConnection(entry.conn, db.name)
+        lease = LeasedConnection(entry.conn, db.name, "read")
         try:
             result = fn(lease)
         finally:
@@ -191,19 +206,19 @@ class ReadConnectionPool:
                 from .database import DatasetteClosedError
 
                 raise DatasetteClosedError(f"Database {db.name!r} has been closed")
-            now = time.monotonic()
-            self._collect_expired_locked(now, to_close)
-            deadline = None
+            self._collect_expired_locked(time.monotonic(), to_close)
             while True:
-                if deadline is not None:
-                    self.stats["wait_ms_max"] = max(
-                        self.stats["wait_ms_max"],
-                        int((time.monotonic() - now) * 1000),
-                    )
                 if state.idle:
                     entry = state.idle.pop()
                     if state.counted:
                         del self._lru[entry]
+                    if entry.generation != db._conn_generation:
+                        # Opened before the file was replaced or deleted
+                        self._forget_locked(entry)
+                        to_close.append(entry)
+                        self.stats["discarded_stale"] += 1
+                        entry = None
+                        continue
                     state.leased += 1
                     self.stats["reused"] += 1
                     break
@@ -219,33 +234,16 @@ class ReadConnectionPool:
                     to_close.append(victim)
                     self.stats["evicted_lru"] += 1
                     continue
-                # Cap reached and every connection is checked out
-                if self.wait_s > 0:
-                    if deadline is None:
-                        deadline = now + self.wait_s
-                        self.stats["waits"] += 1
-                    remaining = deadline - time.monotonic()
-                    if remaining > 0:
-                        self._waiters += 1
-                        t0 = time.monotonic()
-                        try:
-                            self._cond.wait(remaining)
-                        finally:
-                            self._waiters -= 1
-                            waited_ms = int((time.monotonic() - t0) * 1000)
-                            self.stats["wait_ms_total"] += waited_ms
-                        continue
-                    self.stats["wait_timeouts"] += 1
-                if deadline is not None:
-                    self.stats["wait_ms_max"] = max(
-                        self.stats["wait_ms_max"],
-                        int((time.monotonic() - now) * 1000),
-                    )
-                # Soft cap: open one more. Bounded by the number of threads
-                # that can hold a lease at once (num_sql_threads).
+                # Cap reached and every connection is leased: open one more
+                # (soft cap). Bounded by the number of threads that can hold
+                # a lease at once, and closed again on release.
                 self.stats["exceeded_cap"] += 1
                 break
             if entry is None:
+                # Read before connecting: if the generation moves while we
+                # connect, the connection is discarded on release - one
+                # connection too many, never a stale one handed out twice
+                generation = db._conn_generation
                 state.open += 1
                 state.leased += 1
                 self.stats["opened"] += 1
@@ -255,7 +253,7 @@ class ReadConnectionPool:
         self._close_entries(to_close)
         if entry is not None:
             return entry
-        # Open and prepare outside the lock
+        # Open and prepare outside the lock, exactly once per connection
         conn = None
         try:
             conn = db.connect()
@@ -268,21 +266,19 @@ class ReadConnectionPool:
                 self.stats["open_failed"] += 1
                 if state.counted:
                     self._open -= 1
-                if self._waiters:
-                    self._cond.notify()
             if conn is not None:
                 self._close_conn(state, conn)
             raise
-        return _Entry(conn, state)
+        return _Entry(conn, state, generation)
 
     def release(self, entry):
         state = entry.state
         conn = entry.conn
         discard = False
+        rolled_back = False
         try:
             # Hygiene: a callback that began a transaction and did not end it
             # must not hand that transaction to the next borrower
-            rolled_back = False
             if conn.in_transaction:
                 conn.rollback()
                 rolled_back = True
@@ -296,14 +292,17 @@ class ReadConnectionPool:
             elif rolled_back:
                 self.stats["rolled_back"] += 1
             state.leased -= 1
+            stale = entry.generation != state.db._conn_generation
             over_cap = state.counted and self.max_open and self._open > self.max_open
-            if discard or over_cap or self._closed or state.closed or not self.enabled:
+            if discard or stale or over_cap or self._closed or state.closed:
                 state.open -= 1
                 if state.counted:
                     self._open -= 1
                 discard = True
                 if over_cap:
                     self.stats["closed_over_cap"] += 1
+                if stale:
+                    self.stats["discarded_stale"] += 1
             else:
                 entry.last_used = time.monotonic()
                 state.idle.append(entry)
@@ -311,8 +310,6 @@ class ReadConnectionPool:
                     self._lru[entry] = None
                     if self.idle_timeout > 0:
                         notify_reaper = entry.last_used + self.idle_timeout
-            if self._waiters:
-                self._cond.notify()
         if discard:
             self._close_conn(state, conn)
         if notify_reaper is not None:
@@ -331,6 +328,23 @@ class ReadConnectionPool:
         self._close_entries(to_close)
         return next_expiry
 
+    def invalidate_database(self, db):
+        """db's file was replaced or deleted and its ``_conn_generation`` has
+        been bumped: close its idle connections now. Leased connections are
+        closed by the thread using them, when they are released."""
+        state = getattr(db, "_read_pool_state", None)
+        if state is None:
+            return
+        with self._lock:
+            stale = [e for e in state.idle if e.generation != db._conn_generation]
+            for entry in stale:
+                state.idle.remove(entry)
+                if state.counted:
+                    self._lru.pop(entry, None)
+                self._forget_locked(entry)
+                self.stats["discarded_stale"] += 1
+        self._close_entries(stale)
+
     def close_database(self, db):
         """Close idle connections for db; leased ones are closed on release."""
         state = getattr(db, "_read_pool_state", None)
@@ -343,8 +357,7 @@ class ReadConnectionPool:
             for entry in to_close:
                 if state.counted:
                     self._lru.pop(entry, None)
-                    self._open -= 1
-                state.open -= 1
+                self._forget_locked(entry)
         self._close_entries(to_close)
 
     def close(self):
@@ -354,9 +367,7 @@ class ReadConnectionPool:
             self._lru.clear()
             for entry in to_close:
                 entry.state.idle.remove(entry)
-                entry.state.open -= 1
-                self._open -= 1
-            self._cond.notify_all()
+                self._forget_locked(entry)
         self._close_entries(to_close)
 
     def snapshot(self):
@@ -380,6 +391,13 @@ class ReadConnectionPool:
                     state = db._read_pool_state = _DatabaseState(db)
         return state
 
+    def _forget_locked(self, entry):
+        # Caller holds the lock and has already removed entry from the idle
+        # stack and the LRU
+        entry.state.open -= 1
+        if entry.state.counted:
+            self._open -= 1
+
     def _collect_expired_locked(self, now, to_close):
         if self.idle_timeout <= 0 or not self._lru:
             return
@@ -391,8 +409,7 @@ class ReadConnectionPool:
                 break
             lru.popitem(last=False)
             head.state.idle.remove(head)
-            head.state.open -= 1
-            self._open -= 1
+            self._forget_locked(head)
             to_close.append(head)
             self.stats["expired"] += 1
 
@@ -423,21 +440,30 @@ class _Reaper:
         self._pools = weakref.WeakSet()
         self._thread = None
         self._dirty = False
+        # Set when this platform cannot start threads (Pyodide): pools then
+        # rely on reaping during checkout only
+        self.unavailable = False
         # monotonic time of the next planned scan, inf while sleeping
         # indefinitely or while scanning
         self.wake_at = float("inf")
 
     def wake(self, pool, expiry):
         # Unlocked pre-check: most releases do not need to wake the reaper
-        if expiry >= self.wake_at and pool in self._pools:
+        if self.unavailable or (expiry >= self.wake_at and pool in self._pools):
             return
         with self._cond:
             self._pools.add(pool)
             if self._thread is None or not self._thread.is_alive():
-                self._thread = threading.Thread(
+                thread = threading.Thread(
                     target=self._run, name="datasette-read-pool-reaper", daemon=True
                 )
-                self._thread.start()
+                try:
+                    thread.start()
+                except RuntimeError:
+                    # "can't start new thread": no threads on this platform
+                    self.unavailable = True
+                    return
+                self._thread = thread
             if expiry < self.wake_at:
                 self._dirty = True
                 self._cond.notify()

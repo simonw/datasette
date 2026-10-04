@@ -1,5 +1,5 @@
 """
-Tests for the write_thread_idle_timeout_ms setting: a database's write thread
+Tests for the connection_idle_timeout_ms setting: a database's write thread
 closes its connection and exits after sitting idle, and the next write
 starts a new one.
 """
@@ -42,7 +42,7 @@ def _write_threads(name):
 
 @pytest.mark.asyncio
 async def test_write_thread_exits_when_idle_and_restarts(tmp_path):
-    ds, db = _make_db(tmp_path, write_thread_idle_timeout_ms=50)
+    ds, db = _make_db(tmp_path, connection_idle_timeout_ms=50)
     try:
         await db.execute_write("insert into t (writer, seq) values (1, 1)")
         thread = db._write_thread
@@ -66,7 +66,7 @@ async def test_write_thread_exits_when_idle_and_restarts(tmp_path):
 
 @pytest.mark.asyncio
 async def test_write_thread_idle_timeout_zero_keeps_thread(tmp_path):
-    ds, db = _make_db(tmp_path, write_thread_idle_timeout_ms=0)
+    ds, db = _make_db(tmp_path, connection_idle_timeout_ms=0)
     try:
         await db.execute_write("insert into t (writer, seq) values (1, 1)")
         thread = db._write_thread
@@ -82,7 +82,7 @@ async def test_write_thread_idle_timeout_zero_keeps_thread(tmp_path):
 @pytest.mark.parametrize("named", (True, False))
 async def test_memory_database_write_thread_never_idles(named):
     # Closing the write connection of a memory database would lose its data
-    ds = Datasette(settings={"write_thread_idle_timeout_ms": 10})
+    ds = Datasette(settings={"connection_idle_timeout_ms": 10})
     if named:
         db = ds.add_memory_database("idle_mem")
     else:
@@ -103,7 +103,7 @@ async def test_memory_database_write_thread_never_idles(named):
 
 @pytest.mark.asyncio
 async def test_close_after_idle_exit(tmp_path):
-    ds, db = _make_db(tmp_path, write_thread_idle_timeout_ms=10)
+    ds, db = _make_db(tmp_path, connection_idle_timeout_ms=10)
     await db.execute_write("insert into t (writer, seq) values (1, 1)")
     thread = db._write_thread
     assert await _wait_for(lambda: db._write_thread is None)
@@ -116,7 +116,7 @@ async def test_close_after_idle_exit(tmp_path):
 
 @pytest.mark.asyncio
 async def test_close_drains_queued_writes_with_idle_timeout(tmp_path):
-    ds, db = _make_db(tmp_path, write_thread_idle_timeout_ms=10)
+    ds, db = _make_db(tmp_path, connection_idle_timeout_ms=10)
     release = threading.Event()
 
     def slow(conn):
@@ -149,7 +149,7 @@ async def test_close_drains_queued_writes_with_idle_timeout(tmp_path):
 async def test_connect_failure_retried_after_queue_drains(tmp_path):
     # With an idle timeout, a failed connect is reported to the writes that
     # were queued, then the thread exits and the next write tries again
-    ds, db = _make_db(tmp_path, write_thread_idle_timeout_ms=30000)
+    ds, db = _make_db(tmp_path, connection_idle_timeout_ms=30000)
 
     class ConnectError(Exception):
         pass
@@ -198,7 +198,7 @@ class _RacyQueue(queue.Queue):
 
 @pytest.mark.asyncio
 async def test_task_enqueued_between_timeout_and_exit_is_not_stranded(tmp_path):
-    ds, db = _make_db(tmp_path, write_thread_idle_timeout_ms=60000)
+    ds, db = _make_db(tmp_path, connection_idle_timeout_ms=60000)
     racy = _RacyQueue()
     db._write_queue = racy
     try:
@@ -246,7 +246,7 @@ async def test_idle_exit_race_stress(tmp_path, idle_timeout_ms):
     Every task must complete, and each writer's tasks must run in the order
     they were queued.
     """
-    ds, db = _make_db(tmp_path, write_thread_idle_timeout_ms=idle_timeout_ms)
+    ds, db = _make_db(tmp_path, connection_idle_timeout_ms=idle_timeout_ms)
     idle_timeout = idle_timeout_ms / 1000
     rng = random.Random(42)
     writers = 12
@@ -310,7 +310,7 @@ def test_idle_exit_race_stress_many_event_loops(tmp_path):
     ordering between producers). Rounds are synchronised with a barrier,
     then each producer waits a random 0.5x-1.5x of the idle timeout.
     """
-    ds, db = _make_db(tmp_path, write_thread_idle_timeout_ms=1)
+    ds, db = _make_db(tmp_path, connection_idle_timeout_ms=1)
     loops = 6
     rounds = 200
     barrier = threading.Barrier(loops)

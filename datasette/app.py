@@ -49,6 +49,7 @@ from .events import Event
 from .plugins import DEFAULT_PLUGINS, get_plugins, pm
 from .renderer import json_renderer
 from .resources import DatabaseResource, TableResource
+from .schema_watcher import FILES_DEFAULT, SchemaWatcher
 from .telemetry import (
     TelemetryMiddleware,
     _in_datasette_client,
@@ -108,7 +109,7 @@ from .utils.asgi import (
     asgi_send_redirect,
     asgi_static,
 )
-from .utils.internal_db import init_internal_db, populate_schema_tables
+from .utils.internal_db import init_internal_db
 from .utils.sqlite import (
     sqlite3,
     using_pysqlite3,
@@ -233,27 +234,22 @@ SETTINGS = (
     Setting(
         "max_open_connections",
         128,
-        "Maximum number of pooled read connections open across all databases - least recently used idle connections are closed first, 0 for no limit",
+        "Maximum number of pooled read connections open across all databases (at least 4 x num_sql_threads) - 0 for no limit",
     ),
     Setting(
-        "connection_idle_timeout",
-        60,
-        "Close pooled read connections that have been idle for this many seconds - 0 to keep them open",
-    ),
-    Setting(
-        "connection_pool_wait_ms",
-        0,
-        "When max_open_connections is reached and every connection is in use, wait this long for one to be returned before opening one more",
-    ),
-    Setting(
-        "pool_read_connections",
-        True,
-        "Reuse read connections between queries - turn off to open a new connection for every query",
-    ),
-    Setting(
-        "write_thread_idle_timeout_ms",
+        "connection_idle_timeout_ms",
         30000,
-        "Milliseconds a database's write thread waits for a write before closing its connection and exiting - set 0 to keep it running",
+        "Close read connections, and stop write threads, that have been idle for this many milliseconds - 0 to keep them open",
+    ),
+    Setting(
+        "schema_watch_interval_ms",
+        1000,
+        "How often to check external database files for schema changes - 0 to disable polling",
+    ),
+    Setting(
+        "default_schema_watch",
+        "external",
+        "Schema watch mode for databases opened from files: external (poll for changes made by other processes) or owned (only Datasette changes them)",
     ),
     Setting("sql_time_limit_ms", 1000, "Time limit for a SQL query in milliseconds"),
     Setting(
@@ -507,16 +503,21 @@ class Datasette:
         self._background_tasks = BackgroundTaskSupervisor(self)
         self.crossdb = crossdb
         self.nolock = nolock
+        self.internal_db_created = False
+        self._schema_watcher = SchemaWatcher(self)
         if memory or crossdb or not self.files:
             self.add_database(
                 Database(self, is_mutable=False, is_memory=True), name="_memory"
             )
         for file in self.files:
+            is_mutable = file not in self.immutables
             self.add_database(
-                Database(self, file, is_mutable=file not in self.immutables)
+                Database(self, file, is_mutable=is_mutable),
+                # Files named on the command line or in files= use the
+                # default_schema_watch setting (external unless configured)
+                schema_watch=FILES_DEFAULT if is_mutable else "immutable",
             )
 
-        self.internal_db_created = False
         if internal is None:
             self._internal_database = Database(self, is_temp_disk=True)
         else:
@@ -676,6 +677,8 @@ class Datasette:
         self.root_enabled = False
         self.default_deny = default_deny
         self.client = DatasetteClient(self)
+        # ds.config is available now: resolve per-database schema_watch modes
+        self._schema_watcher.configure()
         # Last, so metric callbacks never see a partially initialized instance
         register_datasette(self)
 
@@ -738,66 +741,38 @@ class Datasette:
         return None
 
     async def refresh_schemas(self, *, force=False):
-        # Throttle schema refreshes to at most once per second
+        """Bring the _internal catalog up to date with every attached database.
+
+        Uses the SchemaWatcher stat() prefilter, so it only opens connections
+        to databases whose files changed. Not called on the request path any
+        more - the watcher polls external databases in the background and
+        the write path catches schema changes made through Datasette.
+        """
+        # Throttle non-forced refreshes to at most once per second
         if (
             not force
             and time.monotonic() - getattr(self, "_last_schema_refresh", 0) < 1.0
         ):
             return
         self._last_schema_refresh = time.monotonic()
-        if self._refresh_schemas_lock.locked():
+        if self._refresh_schemas_lock.locked() and not force:
             return
         async with self._refresh_schemas_lock:
             await self._refresh_schemas()
 
-    async def _refresh_schemas(self):
+    async def _refresh_schemas(self, *, background=False):
         internal_db = self.get_internal_database()
         if not self.internal_db_created:
+            if background:
+                return
             await init_internal_db(internal_db)
             await self.apply_metadata_json()
             self.internal_db_created = True
-        current_schema_versions = {
-            row["database_name"]: row["schema_version"]
-            for row in await internal_db.execute(
-                "select database_name, schema_version from catalog_databases"
-            )
-        }
-        catalog_table_names = (
-            "catalog_columns",
-            "catalog_foreign_keys",
-            "catalog_indexes",
-            "catalog_views",
-            "catalog_tables",
-            "catalog_databases",
-        )
-        # Delete stale entries for databases that are no longer attached
-        catalog_database_names = set(current_schema_versions.keys())
-        for table in catalog_table_names[:-1]:
-            catalog_database_names.update(
-                row["database_name"]
-                for row in await internal_db.execute(
-                    f"select distinct database_name from {table}"
-                )
-                if row["database_name"] is not None
-            )
-        stale_databases = catalog_database_names - set(self.databases.keys())
-        if stale_databases:
-
-            def delete_stale_database_catalog(conn):
-                for stale_db_name in stale_databases:
-                    for table in catalog_table_names:
-                        conn.execute(
-                            f"DELETE FROM {table} WHERE database_name = ?",
-                            [stale_db_name],
-                        )
-
-            await internal_db.execute_write_fn(delete_stale_database_catalog)
-        for database_name, db in self.databases.items():
-            schema_version = (await db.execute("PRAGMA schema_version")).first()[0]
-            # Compare schema versions to see if we should skip it
-            if schema_version == current_schema_versions.get(database_name):
-                continue
-            await populate_schema_tables(internal_db, db, schema_version)
+            # Full catalog build (skips files whose persisted fingerprint
+            # shows they are unchanged when --internal is a real file)
+            await self._schema_watcher.initial_scan()
+            return
+        await self._schema_watcher.sweep(background=background)
 
     @property
     def urls(self):
@@ -965,7 +940,16 @@ class Datasette:
             name = next(iter(self.databases.keys()))
         return self.databases[name]
 
-    def add_database(self, db, name=None, route=None):
+    def add_database(self, db, name=None, route=None, schema_watch=None):
+        """Attach a database.
+
+        ``schema_watch`` is how the _internal catalog is kept current for it:
+        ``"owned"`` (default - schema changes come through Datasette's write
+        methods), ``"external"`` (other processes may change the file, poll
+        it) or ``"immutable"`` (scan once). ``databases.<name>.schema_watch``
+        in datasette.yaml overrides it. Databases that are not mutable are
+        always ``"immutable"``.
+        """
         new_databases = self.databases.copy()
         if name is None:
             # Pick a unique name for this database
@@ -982,6 +966,9 @@ class Datasette:
         new_databases[name] = db
         # don't mutate! that causes race conditions with live import
         self.databases = new_databases
+        self._schema_watcher.register(
+            db, schema_watch or getattr(db, "schema_watch", None)
+        )
         return db
 
     def add_memory_database(self, memory_name, name=None, route=None):
@@ -990,10 +977,14 @@ class Datasette:
         )
 
     def remove_database(self, name):
-        self.get_database(name).close()
+        db = self.get_database(name)
         new_databases = self.databases.copy()
         new_databases.pop(name)
         self.databases = new_databases
+        # Deletes this database's catalog rows (explicitly - there is no
+        # periodic stale-catalog scan any more)
+        self._schema_watcher.unregister(name)
+        db.close()
 
     def close(self):
         """Release all resources held by this Datasette instance.
@@ -1005,6 +996,7 @@ class Datasette:
         if self._closed:
             return
         self._closed = True
+        self._schema_watcher.stop()
         # Stop reporting metrics before closing databases
         unregister_datasette(self)
         first_exception = None
@@ -1039,13 +1031,28 @@ class Datasette:
 
             pool = ReadConnectionPool(
                 self._prepare_connection,
-                max_open=self.setting("max_open_connections") or 0,
-                idle_timeout=float(self.setting("connection_idle_timeout") or 0),
-                wait_ms=self.setting("connection_pool_wait_ms") or 0,
-                enabled=bool(self.setting("pool_read_connections")),
+                max_open=self._effective_max_open_connections(),
+                idle_timeout=self._connection_idle_timeout_s(),
             )
             pool = self.__dict__.setdefault("_read_pool_instance", pool)
         return pool
+
+    def _effective_max_open_connections(self):
+        """max_open_connections, raised to at least 4 x num_sql_threads.
+
+        Every executor thread can hold one read connection at a time, so a
+        cap below the thread count would close and reopen a connection for
+        nearly every query. 0 means no limit."""
+        configured = self.setting("max_open_connections") or 0
+        if configured <= 0:
+            return 0
+        threads = self.setting("num_sql_threads") or 0
+        return max(configured, 4 * threads)
+
+    def _connection_idle_timeout_s(self):
+        "connection_idle_timeout_ms in seconds; 0 means never close idle ones."
+        timeout_ms = self.setting("connection_idle_timeout_ms") or 0
+        return max(timeout_ms, 0) / 1000
 
     @property
     def _read_pool_or_none(self):
@@ -3158,6 +3165,7 @@ ORDER BY allowed.parent, allowed.child
         """
         await self.invoke_startup()
         await self._background_tasks.launch_all()
+        await self._schema_watcher.start()
 
     async def _launch_background_tasks(self):
         """Idempotently launch every registered background task. Private:
@@ -3180,6 +3188,7 @@ ORDER BY allowed.parent, allowed.child
         if self._suppress_background_tasks:
             return
         await self._background_tasks.launch_all()
+        await self._schema_watcher.start()
 
     async def invoke_shutdown(self):
         """Run the graceful teardown sequence: plugin ``shutdown`` hooks,
@@ -3195,6 +3204,7 @@ ORDER BY allowed.parent, allowed.child
             except Exception:
                 logging.getLogger("datasette").exception("shutdown hook failed")
         await self._background_tasks.cancel_all(grace=5.0)
+        await self._schema_watcher.astop()
         self.close()
 
     def app(self):

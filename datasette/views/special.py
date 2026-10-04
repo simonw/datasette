@@ -312,7 +312,7 @@ class AllowedResourcesView(BaseView):
 
     async def get(self, request):
         await self.ds.ensure_permission(action="view-instance", actor=request.actor)
-        await self.ds.refresh_schemas()
+        await self.ds._schema_watcher.on_request()
 
         # Check if user has permissions-debug (to show sensitive fields)
         has_debug_permission = await self.ds.allowed(
@@ -530,7 +530,7 @@ class PermissionRulesView(BaseView):
         union_sql, union_params, _restriction_sqls = await build_permission_rules_sql(
             self.ds, actor, action
         )
-        await self.ds.refresh_schemas()
+        await self.ds._schema_watcher.on_request()
         db = self.ds.get_internal_database()
 
         count_query = f"""

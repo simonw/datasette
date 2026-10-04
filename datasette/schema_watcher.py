@@ -219,17 +219,42 @@ def header_schema_version(path):
     return int.from_bytes(header[40:44], "big")
 
 
-def _fp_to_json(fp, t_ns):
-    return json.dumps({"fp": fp, "t": t_ns})
+def _fp_to_json(fp, t_ns, closed=False):
+    data = {"fp": fp, "t": t_ns}
+    if closed:
+        # Taken by Datasette.close() after every connection to an owned
+        # database had been closed: nothing in this process can change the
+        # file after the stat, so the racily-clean rule does not apply
+        data["closed"] = True
+    return json.dumps(data)
 
 
 def _fp_from_json(value):
+    """(fp, t_ns, closed) - (None, None, False) if unreadable."""
     try:
         data = json.loads(value)
         fp = tuple(tuple(p) if p is not None else None for p in data["fp"])
-        return fp, int(data["t"])
+        return fp, int(data["t"]), bool(data.get("closed"))
     except Exception:  # noqa: BLE001
-        return None, None
+        return None, None, False
+
+
+def store_closing_fingerprints(internal_path, rows):
+    """Write SchemaWatcher.closing_fingerprints() to a persistent internal
+    database that has already been closed (Datasette.close() is synchronous
+    and the internal database's write thread is gone by then). Only rows
+    whose stored schema_version still matches are updated."""
+    conn = sqlite3.connect(internal_path, isolation_level=None)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.executemany(
+            "UPDATE catalog_databases SET fingerprint = ? "
+            "WHERE database_name = ? AND schema_version = ?",
+            [(fp_json, name, version) for name, version, fp_json in rows],
+        )
+        conn.execute("COMMIT")
+    finally:
+        conn.close()
 
 
 class SchemaWatcher:
@@ -649,20 +674,30 @@ class SchemaWatcher:
         # Untracked: Database.close() on the event loop thread must not close
         # this connection while a worker thread is using it (that segfaults).
         # It is always closed by _close() in the same thread that opened it.
-        conn = db.connect(track=False)
+        # It is counted instead, so that deleting a scratch database's files
+        # can wait for it (and raises once the database has been closed).
+        db._untracked_connection_opened()
+        try:
+            conn = db.connect(track=False)
+        except BaseException:
+            db._untracked_connection_closed()
+            raise
         try:
             if prepare:
                 self.ds._prepare_connection(conn, db.name)
             else:
                 conn.row_factory = None
-        except Exception:
-            conn.close()
+        except BaseException:
+            self._close(db, conn)
             raise
         return conn
 
     @staticmethod
     def _close(db, conn):
-        conn.close()
+        try:
+            conn.close()
+        finally:
+            db._untracked_connection_closed()
 
     def _scan_sync(self, state):
         """Read schema_version + full schema in one read transaction."""
@@ -804,6 +839,9 @@ class SchemaWatcher:
             if state.removed:
                 continue
             if "error" in r:
+                if state.db._closed:
+                    # Closed (or deleted) while the scan was running
+                    continue
                 state.error = r["error"]
                 state.needs_scan = True
                 logger.warning(
@@ -953,13 +991,51 @@ class SchemaWatcher:
                 continue
             if row["path"] != str(state.db.path) or row["schema_version"] is None:
                 continue
-            stored_fp, stored_t = _fp_from_json(row["fingerprint"])
-            if stored_fp is None or is_racy(stored_fp, stored_t):
+            stored_fp, stored_t, closed = _fp_from_json(row["fingerprint"])
+            if stored_fp is None or (is_racy(stored_fp, stored_t) and not closed):
                 continue
             t_ns = time.time_ns()
             fp = fingerprint(state.db.path)
             if fp == stored_fp:
                 out[state.name] = (fp, t_ns, row["schema_version"])
+        return out
+
+    # ------------------------------------------------------------------
+    # shutdown
+    # ------------------------------------------------------------------
+    def closing_fingerprints(self):
+        """Called by Datasette.close() once every attached database has been
+        closed. For each owned file database whose catalog is current,
+        returns ``(name, schema_version, fingerprint_json)`` for the file as
+        it is now. Owned databases are only changed through Datasette, so a
+        restart with a persistent internal database can reuse their catalog
+        rows without opening them - even if data was written (or the -wal
+        checkpointed by the final close) after the catalog was last built.
+        Stat calls only."""
+        out = []
+        for state in list(self.states.values()):
+            if (
+                state.mode != "owned"
+                or not state.is_file
+                or state.removed
+                or state.missing
+                or state.needs_scan
+                or state.scan_future is not None
+                or state.error is not None
+                or state.catalog_version is None
+                or state.notified_version not in (None, state.catalog_version)
+            ):
+                continue
+            t_ns = time.time_ns()
+            try:
+                fp = fingerprint(state.db.path)
+            except OSError:
+                continue
+            if fp[0] is None:
+                continue
+            out.append(
+                (state.name, state.catalog_version, _fp_to_json(fp, t_ns, closed=True))
+            )
         return out
 
     # ------------------------------------------------------------------

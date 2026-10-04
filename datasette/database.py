@@ -83,6 +83,9 @@ _SHUTDOWN = object()
 class Database:
     # For table counts stop at this many rows:
     count_limit = 10000
+    # True for ScratchDatabase (datasette.scratch): created and deleted by
+    # Datasette in its scratch directory
+    is_scratch = False
 
     def __init__(
         self,
@@ -156,6 +159,12 @@ class Database:
         # connection opened, or the SchemaWatcher stat()ed it). From then on
         # write connections never create the file - see connect()
         self._file_seen = False
+        # Short-lived connections that are not in _all_connections (the
+        # SchemaWatcher's scans and pragma checks): counted, so that deleting
+        # the file can wait until none is open - see
+        # _untracked_connection_opened()
+        self._untracked_open = 0
+        self._untracked_cond = threading.Condition()
         if not is_temp_disk:
             self.mode = mode
 
@@ -190,6 +199,32 @@ class Database:
             self._all_connections.remove(conn)
         except ValueError:
             pass
+
+    def _untracked_connection_opened(self):
+        """Call before opening a connection with ``connect(track=False)``.
+
+        Raises DatasetteClosedError once close() has started, so after
+        close() no new untracked connection can be opened and
+        _wait_for_untracked_connections() only has to wait for the ones
+        already counted."""
+        with self._untracked_cond:
+            if self._closed:
+                raise DatasetteClosedError(f"Database {self.name!r} has been closed")
+            self._untracked_open += 1
+
+    def _untracked_connection_closed(self):
+        with self._untracked_cond:
+            self._untracked_open -= 1
+            if self._untracked_open <= 0:
+                self._untracked_cond.notify_all()
+
+    def _wait_for_untracked_connections(self, timeout=None):
+        """Wait until every untracked connection has been closed. Only
+        meaningful after close(). Returns False on timeout."""
+        with self._untracked_cond:
+            return self._untracked_cond.wait_for(
+                lambda: self._untracked_open <= 0, timeout=timeout
+            )
 
     def _schema_check(self, conn, loop=None):
         # Runs on the thread that owns conn, right after a write task
@@ -329,7 +364,7 @@ class Database:
         """
         if self._closed:
             return
-        with self._pending_execute_futures_lock:
+        with self._pending_execute_futures_lock, self._untracked_cond:
             if self._closed:
                 return
             self._closed = True
@@ -1306,6 +1341,8 @@ class Database:
             tags.append("memory")
         if self.is_temp_disk:
             tags.append("temp_disk")
+        if self.is_scratch:
+            tags.append("scratch")
         if self.hash:
             tags.append(f"hash={self.hash}")
         if self.size is not None:

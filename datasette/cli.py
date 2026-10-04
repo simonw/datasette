@@ -503,6 +503,12 @@ def uninstall(packages, yes):
     help="Path to a persistent Datasette internal SQLite database",
     envvar="DATASETTE_INTERNAL",
 )
+@click.option(
+    "--scratch-dir",
+    type=click.Path(file_okay=False),
+    help="Directory for scratch databases, which then survive a restart",
+    envvar="DATASETTE_SCRATCH_DIR",
+)
 def serve(
     files,
     immutable,
@@ -537,6 +543,7 @@ def serve(
     ssl_keyfile,
     ssl_certfile,
     internal,
+    scratch_dir=None,
     return_instance=False,
 ):
     """Serve up specified SQLite database files with a web UI"""
@@ -604,6 +611,7 @@ def serve(
         "nolock": nolock,
         "internal": internal,
         "default_deny": default_deny,
+        "scratch_dir": scratch_dir,
     }
 
     # Separate directories from files
@@ -899,6 +907,9 @@ async def check_databases(ds):
     # Run check_connection against every connected database
     # to confirm they are all usable
     for database in list(ds.databases.values()):
+        if database.is_scratch:
+            # Created by Datasette; checking them would open every one
+            continue
         try:
             await database.execute_fn(check_connection)
         except SpatialiteConnectionProblem:

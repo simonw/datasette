@@ -56,6 +56,7 @@ The files that can be included in this directory are as follows. All are optiona
 * ``templates/`` - a directory containing :ref:`customization_custom_templates`
 * ``plugins/`` - a directory containing plugins, see :ref:`writing_plugins_one_off`
 * ``static/`` - a directory containing static files - these will be served from ``/static/filename.txt``, see :ref:`customization_static_files`
+* ``scratch/`` - a directory for :ref:`scratch databases <datasette_scratch_databases>`, used instead of a temporary directory if it exists
 
 Settings
 --------

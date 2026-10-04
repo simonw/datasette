@@ -759,6 +759,7 @@ async def test_settings_json(ds_client):
         "suggest_facets": True,
         "default_cache_ttl": 5,
         "num_sql_threads": 1,
+        "write_thread_idle_timeout_ms": 30000,
         "cache_size_kb": 0,
         "allow_csv_stream": True,
         "max_csv_mb": 100,

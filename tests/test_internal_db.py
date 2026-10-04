@@ -31,6 +31,7 @@ async def test_internal_migrations_recorded(ds_client):
     assert [tuple(row) for row in migrations.rows] == [
         ("datasette_internal", "0001_initial"),
         ("datasette_internal", "0002_catalog_fingerprint"),
+        ("datasette_internal", "0003_catalog_table_type"),
     ]
 
 
@@ -64,6 +65,7 @@ async def test_internal_migrations_adopt_existing_internal_db(tmp_path):
     assert [tuple(row) for row in migrations.rows] == [
         ("datasette_internal", "0001_initial"),
         ("datasette_internal", "0002_catalog_fingerprint"),
+        ("datasette_internal", "0003_catalog_table_type"),
     ]
 
     ds.close()
@@ -75,7 +77,13 @@ async def test_internal_tables(ds_client):
     tables = await internal_db.execute("select * from catalog_tables")
     assert len(tables) > 5
     table = tables.rows[0]
-    assert set(table.keys()) == {"rootpage", "table_name", "database_name", "sql"}
+    assert set(table.keys()) == {
+        "rootpage",
+        "table_name",
+        "database_name",
+        "sql",
+        "type",
+    }
 
 
 @pytest.mark.asyncio

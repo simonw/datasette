@@ -66,6 +66,7 @@ import os
 import time
 
 from .utils import sqlite3
+from .utils.catalog import remember_derived_table_dependencies
 from .utils.internal_db import CATALOG_TABLES, collect_schema, write_catalog_entries
 
 logger = logging.getLogger("datasette.schema_watcher")
@@ -241,6 +242,9 @@ class SchemaWatcher:
         self._task = None
         self._spawned = set()
         self._last_sweep = 0.0
+        # Bumped after every write to the catalog tables, so readers can
+        # cache things derived from the catalog (see datasette.utils.catalog)
+        self.catalog_generation = 0
         self.counters = {
             "sweeps": 0,
             "sweep_seconds": 0.0,
@@ -519,7 +523,9 @@ class SchemaWatcher:
         outcomes = []
         file_candidates = [s for s in candidates if s.is_file]
         if file_candidates:
-            outcomes = await self._off_loop(self._sweep_sync, file_candidates)
+            outcomes = await self._off_loop(
+                self._sweep_sync, file_candidates, background
+            )
         for state in candidates:
             if not state.is_file and state.db.memory_name and not state.removed:
                 outcomes.append(await self._memory_pragma_check(state))
@@ -536,6 +542,8 @@ class SchemaWatcher:
                     state.db._file_seen = True
             if kind == "clean":
                 pass
+            elif kind == "failed_unchanged":
+                continue
             elif kind == "missing":
                 self.counters["missing"] += 1
                 if not state.missing:
@@ -569,7 +577,7 @@ class SchemaWatcher:
         self.counters["sweep_seconds"] += time.perf_counter() - t0
         self._last_sweep = time.monotonic()
 
-    def _sweep_sync(self, states):
+    def _sweep_sync(self, states, background=False):
         """Runs in a worker thread. Reads state, never writes it."""
         by_dir = {}
         for state in states:
@@ -592,6 +600,20 @@ class SchemaWatcher:
                 prev = state.fp
                 if fp == prev and not state.fp_racy and not state.needs_scan:
                     out.append((state, "clean", fp, t_ns, None))
+                    continue
+                if (
+                    background
+                    and state.error is not None
+                    and fp == prev
+                    # Not state.fp_racy: failed checks set that flag to
+                    # force a recheck, which would retry forever
+                    and not is_racy(fp, t_ns)
+                ):
+                    # The last scan failed (missing extension module, not
+                    # a database, ...) and the file has not changed since:
+                    # retrying would fail again. An explicit
+                    # refresh_schemas() still retries.
+                    out.append((state, "failed_unchanged", fp, t_ns, None))
                     continue
                 if fp[0] is None:
                     out.append((state, "missing", fp, t_ns, None))
@@ -652,7 +674,9 @@ class SchemaWatcher:
         conn = db.connect(track=False)
         try:
             if prepare:
-                self.ds._prepare_connection(conn, db.name)
+                # crossdb=False: a scan of _memory reads its own schema only,
+                # it must not ATTACH (open) up to ten other database files
+                self.ds._prepare_connection(conn, db.name, crossdb=False)
             else:
                 conn.row_factory = None
         except Exception:
@@ -673,17 +697,22 @@ class SchemaWatcher:
             fp = fingerprint(db.path)
             if fp[0] is None:
                 return {"state": state, "missing": True, "fp": fp, "t": t_ns}
-        conn = self._connect(db, prepare=True)
         try:
-            conn.row_factory = sqlite3.Row
-            conn.execute("BEGIN")
+            conn = self._connect(db, prepare=True)
             try:
-                version = conn.execute("PRAGMA schema_version").fetchone()[0]
-                schema = collect_schema(conn, db.name)
+                conn.row_factory = sqlite3.Row
+                conn.execute("BEGIN")
+                try:
+                    version = conn.execute("PRAGMA schema_version").fetchone()[0]
+                    schema = collect_schema(conn, db.name)
+                finally:
+                    conn.rollback()
             finally:
-                conn.rollback()
-        finally:
-            self._close(db, conn)
+                self._close(db, conn)
+        except Exception as e:  # noqa: BLE001
+            # Keep the fingerprint: a background sweep retries a failed scan
+            # only once the file changes, instead of every interval
+            return {"state": state, "error": e, "fp": fp, "t": t_ns}
         return {
             "state": state,
             "fp": fp,
@@ -806,6 +835,9 @@ class SchemaWatcher:
             if "error" in r:
                 state.error = r["error"]
                 state.needs_scan = True
+                if r.get("fp") is not None and r["fp"][0] is not None:
+                    state.fp = r["fp"]
+                    state.fp_racy = is_racy(r["fp"], r["t"])
                 logger.warning(
                     "Could not read schema of database %r: %s", state.name, r["error"]
                 )
@@ -838,6 +870,7 @@ class SchemaWatcher:
                 write_catalog_entries(conn, live)
 
             await self.ds.get_internal_database().execute_write_fn(_write)
+            self.catalog_generation += 1
             for r in stored:
                 state = r["state"]
                 state.catalog_version = r["version"]
@@ -849,6 +882,9 @@ class SchemaWatcher:
                         state.db._file_seen = True
                 state.stats["scans"] += 1
                 self.counters["scans"] += 1
+                remember_derived_table_dependencies(
+                    state, [(t[1], t[3]) for t in r["schema"]["tables"]]
+                )
         if missing:
             for state in missing:
                 if not state.missing:
@@ -870,6 +906,7 @@ class SchemaWatcher:
                 )
 
         await self.ds.get_internal_database().execute_write_fn(_clear)
+        self.catalog_generation += 1
         for state in states:
             state.catalog_version = None
 
@@ -885,6 +922,7 @@ class SchemaWatcher:
                     conn.execute(f"DELETE FROM {table} WHERE database_name = ?", [name])
 
         await self.ds.get_internal_database().execute_write_fn(_delete)
+        self.catalog_generation += 1
         for name in names:
             self._pending_removals.discard(name)
 
@@ -912,6 +950,7 @@ class SchemaWatcher:
                 )
 
         await internal.execute_write_fn(_delete_stale)
+        self.catalog_generation += 1
         self._pending_removals.clear()
         states = [s for s in self.states.values() if not s.removed]
         persisted = {}

@@ -34,6 +34,10 @@ if typing.TYPE_CHECKING:
     from datasette.permissions import Resource
 
 
+# Page size PaginatedResources.all() uses after the first page
+ALL_RESOURCES_PAGE_SIZE = 1000
+
+
 @dataclasses.dataclass
 class PaginatedResources:
     """Paginated results from allowed_resources query."""
@@ -67,7 +71,10 @@ class PaginatedResources:
         for resource in self.resources:
             yield resource
 
-        # Continue fetching subsequent pages if there are more
+        # Continue fetching subsequent pages if there are more. Every page
+        # re-runs the whole permission query, so fetch the rest in the
+        # largest pages allowed_resources() supports - the caller sees the
+        # same sequence of resources whatever the page size.
         next_token = self.next
         while next_token:
             page = await self._datasette.allowed_resources(
@@ -76,7 +83,7 @@ class PaginatedResources:
                 parent=self._parent,
                 include_is_private=self._include_is_private,
                 include_reasons=self._include_reasons,
-                limit=self._limit,
+                limit=max(self._limit, ALL_RESOURCES_PAGE_SIZE),
                 next=next_token,
             )
             for resource in page.resources:
@@ -851,19 +858,32 @@ def detect_fts_sql(table):
     )
 
 
+_detected_json1 = None
+
+
 def detect_json1(conn=None):
-    close_conn = False
+    """Does SQLite have the JSON functions? With no ``conn`` this checks the
+    SQLite library itself, which cannot change while the process runs, so
+    the answer is cached instead of opening a connection on every call (it
+    is called for every HTML table page and facet request)."""
+    global _detected_json1
     if conn is None:
-        conn = sqlite3.connect(":memory:")
-        close_conn = True
+        if _detected_json1 is None:
+            probe = sqlite3.connect(":memory:")
+            try:
+                _detected_json1 = _json1_works(probe)
+            finally:
+                probe.close()
+        return _detected_json1
+    return _json1_works(conn)
+
+
+def _json1_works(conn):
     try:
         conn.execute("SELECT json('{}')")
         return True
     except sqlite3.Error:
         return False
-    finally:
-        if close_conn:
-            conn.close()
 
 
 def table_columns(conn, table):
@@ -1212,12 +1232,16 @@ class SpatialiteConnectionProblem(ConnectionProblem):
 
 
 def check_connection(conn):
-    tables = [
-        r[0]
-        for r in conn.execute(
-            "select name from sqlite_master where type='table'"
-        ).fetchall()
-    ]
+    try:
+        tables = [
+            r[0]
+            for r in conn.execute(
+                "select name from sqlite_master where type='table'"
+            ).fetchall()
+        ]
+    except sqlite3.DatabaseError as e:
+        # e.g. "file is not a database"
+        raise ConnectionProblem(e)
     for table in tables:
         try:
             conn.execute(

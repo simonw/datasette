@@ -2876,7 +2876,7 @@ The internal database schema is as follows:
         database_name TEXT,
         table_name TEXT,
         rootpage INTEGER,
-        sql TEXT,
+        sql TEXT, type TEXT,
         PRIMARY KEY (database_name, table_name),
         FOREIGN KEY (database_name) REFERENCES catalog_databases(database_name)
     );

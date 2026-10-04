@@ -139,6 +139,11 @@ def check_structured_write_table(conn, table: str, *, allow_missing=False):
     raise ValueError("Structured writes require an ordinary table")
 
 
+SQLITE_STAT_TABLES = frozenset(
+    {"sqlite_stat1", "sqlite_stat2", "sqlite_stat3", "sqlite_stat4"}
+)
+
+
 def sqlite_hidden_table_names(conn, *, schema: str | None = "main") -> list[str]:
     schema_table = _sqlite_schema_table(schema)
     try:
@@ -147,18 +152,74 @@ def sqlite_hidden_table_names(conn, *, schema: str | None = "main") -> list[str]
         ).fetchall()
     except sqlite3.DatabaseError:
         return []
+    return hidden_table_names_from_rows(
+        rows,
+        table_type=lambda name: sqlite_table_type(conn, name, schema=schema),
+    )
+
+
+def hidden_table_names_from_rows(rows, table_type) -> list[str]:
+    """Hidden tables, given ``(name, sql)`` rows for every table in one
+    schema (in ``sqlite_master`` order) and a ``table_type(name)`` callable.
+
+    Shared by the live introspection above and by the ``_internal`` catalog
+    (see ``datasette.utils.catalog``), which stores ``PRAGMA table_list``
+    types when it scans a database.
+    """
     hidden_tables = []
     content_fts_tables = []
     for name, sql in rows:
         if (
-            name in {"sqlite_stat1", "sqlite_stat2", "sqlite_stat3", "sqlite_stat4"}
+            name in SQLITE_STAT_TABLES
             or name.startswith("_")
-            or sqlite_table_type(conn, name, schema=schema) == "shadow"
+            or table_type(name) == "shadow"
         ):
             hidden_tables.append(name)
         elif _is_fts_content_virtual_table(sql):
             content_fts_tables.append(name)
     return sorted(hidden_tables) + content_fts_tables
+
+
+def table_types_from_rows(rows) -> dict[str, SQLiteTableType]:
+    """Classify ``(name, sql)`` table rows as table/virtual/shadow from their
+    DDL alone - the fallback used when ``PRAGMA table_list`` is unavailable.
+    Only knows the shadow tables of SQLite's built-in modules."""
+    rows = list(rows)
+    names = {name for name, _ in rows}
+    types = {}
+    for name, sql in rows:
+        types[name] = "virtual" if _virtual_table_module(sql) is not None else "table"
+    for virtual_table, sql in rows:
+        module = _virtual_table_module(sql)
+        if module is None:
+            continue
+        for suffix in _VIRTUAL_TABLE_SHADOW_SUFFIXES.get(module, ()):
+            if virtual_table + suffix in names:
+                types[virtual_table + suffix] = "shadow"
+    return types
+
+
+def sqlite_table_list_types(conn, *, schema: str = "main") -> dict | None:
+    """``{table name: type}`` from ``PRAGMA table_list`` for one schema, or
+    None if this SQLite does not support it (before 3.37) or it fails."""
+    if not supports_table_list():
+        return None
+    try:
+        # The statement form cannot be shadowed by a user-created relation
+        # called pragma_table_list - see sqlite_table_type()
+        cursor = conn.execute(f"PRAGMA {_quote_identifier(schema)}.table_list")
+        columns = [description[0] for description in cursor.description]
+        types = {}
+        for row in cursor.fetchall():
+            record = dict(zip(columns, row))
+            if record.get("schema") != schema:
+                continue
+            row_type = record.get("type")
+            if row_type in {"table", "virtual", "shadow"}:
+                types[record.get("name")] = row_type
+        return types
+    except sqlite3.DatabaseError:
+        return None
 
 
 def sqlite_derived_table_dependencies(
@@ -178,7 +239,16 @@ def sqlite_derived_table_dependencies(
     rows = conn.execute(
         f"select name, sql from {schema_table} where type = 'table'"
     ).fetchall()
+    return derived_table_dependencies_from_rows(rows, schema=schema)
 
+
+def derived_table_dependencies_from_rows(
+    rows, *, schema: str | None = "main"
+) -> dict[str, str]:
+    """``sqlite_derived_table_dependencies()`` for ``(name, sql)`` rows of
+    every table in one schema - from a live connection or from the
+    ``_internal`` catalog."""
+    rows = list(rows)
     table_names = {row[0] for row in rows}
     # SQLite identifiers fold ASCII letters only.
     identifier_case = str.maketrans(

@@ -65,6 +65,7 @@ from .utils import (
     table_column_details,
     table_columns,
 )
+from .utils.catalog import SPATIALITE_HIDDEN_TABLES
 from .utils.sql_analysis import SQLAnalysis, analyze_sql_tables
 from .utils.sqlite import sqlite_derived_table_dependencies, sqlite_hidden_table_names
 
@@ -83,6 +84,11 @@ _SHUTDOWN = object()
 class Database:
     # For table counts stop at this many rows:
     count_limit = 10000
+    # Counts for immutable databases are computed once, the first time a
+    # page needs them, with this per-table time limit, then cached (they
+    # cannot change). They used to be computed for every immutable database
+    # at startup.
+    immutable_count_time_limit_ms = 60 * 60 * 1000
 
     def __init__(
         self,
@@ -1066,8 +1072,12 @@ class Database:
             return self.cached_size
 
     async def table_counts(self, limit=10):
-        if not self.is_mutable and self.cached_table_counts is not None:
-            return self.cached_table_counts
+        if not self.is_mutable:
+            if self.cached_table_counts is not None:
+                return self.cached_table_counts
+            # The result is cached for the life of the process, so do not
+            # let a caller's short limit cache timeouts (None) forever
+            limit = max(limit, self.immutable_count_time_limit_ms)
         # Try to get counts for each table, $limit timeout for each count
         counts = {}
         for table in await self.table_names():
@@ -1218,20 +1228,7 @@ class Database:
         has_spatialite = await self.execute_fn(detect_spatialite)
         if has_spatialite:
             # Also hide Spatialite internal tables
-            hidden_tables += [
-                "ElementaryGeometries",
-                "SpatialIndex",
-                "geometry_columns",
-                "spatial_ref_sys",
-                "spatialite_history",
-                "sql_statements_log",
-                "sqlite_sequence",
-                "views_geometry_columns",
-                "virts_geometry_columns",
-                "data_licenses",
-                "KNN",
-                "KNN2",
-            ] + [
+            hidden_tables += list(SPATIALITE_HIDDEN_TABLES) + [
                 r[0] for r in (await self.execute("""
                         select name from sqlite_master
                         where name like "idx_%"
@@ -1250,15 +1247,17 @@ class Database:
             and not state.needs_scan
             and not state.missing
         ):
-            # O(1): the schema_version the SchemaWatcher last stored in the
-            # catalog. allowed_resources() calls this for every database on
-            # every page, so a PRAGMA here was a per-request sweep of all
-            # databases (one pooled connection each). The cache is now as
-            # fresh as the catalog itself. The scan count is part of the key
-            # because a replaced file can have the same schema_version.
-            schema_version = ("catalog", state.catalog_version, state.stats["scans"])
-        else:
-            schema_version = (await self.execute("PRAGMA schema_version")).first()[0]
+            # From the catalog rows (computed by the SchemaWatcher when it
+            # scanned this database, or read back from _internal), so a
+            # permission check on one of this database's tables does not
+            # open it and agrees with what allowed_resources() lists. As
+            # fresh as the catalog itself.
+            from .utils.catalog import catalog_derived_table_dependencies
+
+            return (await catalog_derived_table_dependencies(self.ds, [self]))[
+                self.name
+            ]
+        schema_version = (await self.execute("PRAGMA schema_version")).first()[0]
         if (
             self._cached_derived_table_dependencies is None
             or self._cached_derived_table_dependencies[0] != schema_version

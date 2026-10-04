@@ -311,9 +311,7 @@ sql_operation_duration = meter.create_histogram(
 write_queue_wait = meter.create_histogram(
     M_WRITE_QUEUE_WAIT,
     unit=M_WRITE_QUEUE_WAIT.unit,
-    description=(
-        "Time a write spent queued behind the single write thread for its database"
-    ),
+    description=("Time a write spent queued behind the write thread for its database"),
     explicit_bucket_boundaries_advisory=M_WRITE_QUEUE_WAIT.buckets,
 )
 
@@ -426,7 +424,7 @@ def observe_pending_queries(options=None):
 
 
 def observe_write_queue_depth(options=None):
-    "Writes queued behind the single write thread, per database."
+    "Writes queued behind a database's write thread, per database."
     for ds in _live_instances():
         for db in _databases_of(ds):
             write_queue = db._write_queue
@@ -437,7 +435,11 @@ def observe_write_queue_depth(options=None):
 
 
 def observe_open_connections(options=None):
-    "Open SQLite connections tracked for closing, per database."
+    """
+    Open SQLite connections tracked for closing, per database: pooled read
+    connections (idle and leased), the write connection while its thread
+    runs, and isolated connections in use.
+    """
     for ds in _live_instances():
         for db in _databases_of(ds):
             yield otel_metrics.Observation(
@@ -470,7 +472,7 @@ write_queue_depth_gauge = meter.create_observable_gauge(
     M_WRITE_QUEUE_DEPTH,
     callbacks=[observe_write_queue_depth],
     unit=M_WRITE_QUEUE_DEPTH.unit,
-    description="Writes queued behind a database's single write thread",
+    description="Writes queued behind a database's write thread",
 )
 
 open_connections_gauge = meter.create_observable_gauge(

@@ -650,3 +650,237 @@ def test_connection_budget_helper_counts(db_files):
     budget = asyncio.run(run())
     assert sum(budget.probes.values()) == 1
     assert json.dumps(budget.summary())
+
+
+# Scratch databases: creating, using, listing, renaming and deleting one
+# touches only that database, and startup with many of them opens each one
+# at most once (none at all with a persisted catalog)
+
+
+SCRATCH_N = 1000
+
+
+def _scratch_probes_only(budget, scratch_dir):
+    """Direct sqlite3.connect() calls are allowed for the scratch registry
+    and the scratch files themselves (creating a file in WAL mode, the
+    rename checkpoint) - nothing else."""
+    outside = [p for p in budget.probes if not p.startswith(str(scratch_dir))]
+    assert not outside, f"probes outside the scratch directory: {outside}"
+
+
+def _no_resources_held(db):
+    assert db._all_connections == []
+    assert db._read_pool_state is None
+    assert db._write_thread is None
+
+
+@pytest.fixture(scope="module")
+def scratch_template_dir(tmp_path_factory):
+    """SCRATCH_N scratch database files, copied in by hand (adopted at the
+    first startup). Copies of one template, so building it is fast."""
+    directory = tmp_path_factory.mktemp("scratch_template")
+    template = directory / "template.sqlite"
+    conn = sqlite3.connect(template)
+    conn.executescript("""
+        create table t (id integer primary key, v text);
+        insert into t (v) values ('a'), ('b');
+        create view tv as select * from t;
+        """)
+    conn.close()
+    scratch = directory / "scratch"
+    scratch.mkdir()
+    for i in range(SCRATCH_N):
+        shutil.copy(template, scratch / f"s{i:04d}.db")
+    old = time.time() - 60
+    for path in scratch.iterdir():
+        os.utime(path, (old, old))
+    return scratch
+
+
+@pytest.fixture
+def scratch_1000(scratch_template_dir, tmp_path):
+    target = tmp_path / "scratch"
+    shutil.copytree(scratch_template_dir, target)
+    return target
+
+
+# Pages that list or check every database (see
+# test_instance_pages_open_no_user_database and the index tests above)
+SCRATCH_INSTANCE_PAGES = [
+    ("/", False),
+    ("/", True),
+    ("/.json", False),
+    ("/-/databases.json", False),
+    ("/-/api", True),
+    ("/-/versions.json", False),
+    ("/-/jump.json?q=t", False),
+    ("/-/allowed.json?action=view-table", False),
+    ("/-/allowed.json?action=view-table", True),
+    ("/-/allowed.json?action=view-database", False),
+    ("/-/check.json?action=view-table&parent=s0001&child=t", True),
+    ("/-/permissions", True),
+]
+
+
+def _scratch_names(ds):
+    return sorted(name for name, db in ds.databases.items() if db.is_scratch)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("num_sql_threads", [0, 3])
+async def test_startup_with_many_scratch_databases(scratch_1000, num_sql_threads):
+    settings = {"schema_watch_interval_ms": 0, "num_sql_threads": num_sql_threads}
+    with connection_budget() as budget:
+        ds = Datasette(scratch_dir=str(scratch_1000), settings=settings)
+    # Attached by reading the registry and listing the directory: no
+    # scratch database opened, read or written
+    assert len(_scratch_names(ds)) == SCRATCH_N
+    assert not any(n.startswith("s") for n in budget.touched()), budget.summary()
+    _scratch_probes_only(budget, scratch_1000)
+    assert ds._read_pool_or_none is None
+
+    with connection_budget() as budget:
+        await ds._startup_sequence()
+    # With a temporary internal database each scratch database is opened
+    # once, for its catalog scan - no pooled reads, writes or ATTACH
+    scratch_opened = {k: v for k, v in budget.opened.items() if k.startswith("s")}
+    assert len(scratch_opened) == SCRATCH_N
+    assert set(scratch_opened.values()) == {1}
+    assert set(budget.reads) <= {INTERNAL, "_memory"}, budget.reads
+    assert set(budget.writes) <= {INTERNAL}, budget.writes
+    assert not budget.attached
+    assert not budget.probes, budget.probes
+    for name in _scratch_names(ds)[:: SCRATCH_N // 10]:
+        _no_resources_held(ds.get_database(name))
+
+    # Pages that cover every database, and idle sweeps, open none of them
+    ds.root_enabled = True
+    await ds.client.get("/-/versions.json")
+    with connection_budget() as budget:
+        for path, as_root in SCRATCH_INSTANCE_PAGES:
+            response = await ds.client.get(path, cookies=_root(ds) if as_root else None)
+            assert response.status_code == 200, path
+        await ds._refresh_schemas(background=True)
+        await ds.refresh_schemas(force=True)
+    budget.assert_only("_memory")
+    assert not any(n.startswith("s") for n in budget.opened)
+    data = (await ds.client.get("/.json")).json()
+    s0001 = next(d for d in data["databases"] if d["name"] == "s0001")
+    assert (s0001["tables_count"], s0001["views_count"]) == (1, 1)
+    ds.close()
+
+
+@pytest.mark.asyncio
+async def test_restart_with_many_scratch_databases_opens_none(scratch_1000, tmp_path):
+    # Not patching RACY_WINDOW_NS: the files were adopted and scanned just
+    # now, and close() records "closed" fingerprints for owned databases,
+    # which are trusted inside the racy window
+    internal = str(tmp_path / "internal.db")
+    settings = {"schema_watch_interval_ms": 0}
+    ds = Datasette(scratch_dir=str(scratch_1000), internal=internal, settings=settings)
+    await ds.invoke_startup()
+    # Written after its catalog scan - still not rescanned at restart
+    await ds.get_database("s0007").execute_write("insert into t (v) values ('c')")
+    ds.close()
+
+    with connection_budget() as budget:
+        ds = Datasette(
+            scratch_dir=str(scratch_1000), internal=internal, settings=settings
+        )
+        await ds._startup_sequence()
+        response = await ds.client.get("/.json")
+    assert response.status_code == 200
+    budget.assert_only("_memory", probes=1)
+    _scratch_probes_only(budget, scratch_1000)
+    assert ds._schema_watcher.counters["restored_from_persisted"] >= SCRATCH_N
+    # The catalog came back without opening them, and they still work
+    rows = await ds.get_internal_database().execute(
+        "select count(*) from catalog_tables where database_name like 's%'"
+    )
+    assert rows.single_value() == SCRATCH_N
+    db = ds.get_database("s0007")
+    assert (await db.execute("select count(*) from t")).single_value() == 3
+    ds.close()
+
+
+@pytest.mark.asyncio
+async def test_check_databases_skips_scratch_databases(scratch_1000, tmp_path):
+    from datasette.cli import check_databases
+
+    ds = Datasette(
+        scratch_dir=str(scratch_1000), settings={"schema_watch_interval_ms": 0}
+    )
+    with connection_budget() as budget:
+        await check_databases(ds)
+    # Only the catalog scan (once each): no check_connection() pass over the
+    # scratch databases
+    scratch_opened = {k: v for k, v in budget.opened.items() if k.startswith("s")}
+    assert len(scratch_opened) == SCRATCH_N
+    assert set(scratch_opened.values()) == {1}
+    assert set(budget.reads) <= {INTERNAL, "_memory"}, budget.reads
+    ds.close()
+
+    # A broken file in the scratch directory does not stop the server
+    # starting; it is reported by the catalog scan instead
+    (scratch_1000 / "s0003.db").write_bytes(b"SQLite format 3\x00" + b"x" * 200)
+    ds = Datasette(
+        scratch_dir=str(scratch_1000), settings={"schema_watch_interval_ms": 0}
+    )
+    await check_databases(ds)
+    assert ds.get_database("s0003")._watch_state.error is not None
+    ds.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("num_sql_threads", [0, 3])
+async def test_scratch_operations_touch_only_their_database(
+    db_files, tmp_path, num_sql_threads
+):
+    scratch_dir = tmp_path / "scratch"
+    ds = _ds(
+        db_files,
+        scratch_dir=str(scratch_dir),
+        settings={"num_sql_threads": num_sql_threads},
+    )
+    await ds.invoke_startup()
+    for i in range(10):
+        db = await ds.create_scratch_database(f"other{i}")
+        await db.execute_write("create table t (id integer primary key)")
+
+    async with connection_budget() as budget:
+        db = await ds.create_scratch_database("work", actor={"id": "alice"})
+    budget.assert_only("work", probes=10)
+    _scratch_probes_only(budget, scratch_dir)
+    assert await ds.get_internal_database().execute(
+        "select 1 from catalog_databases where database_name = 'work'"
+    )
+
+    async with connection_budget() as budget:
+        await db.execute_write("create table t (id integer primary key, v text)")
+        await db.execute_write_many(
+            "insert into t (v) values (?)", [(str(i),) for i in range(10)]
+        )
+        response = await ds.client.get("/work/t.json?_shape=array")
+        assert len(response.json()) == 10
+        response = await ds.client.get("/work.json")
+        assert response.status_code == 200
+    budget.assert_only("work")
+
+    async with connection_budget() as budget:
+        infos = await ds.list_scratch_databases()
+    assert len(infos) == 11
+    budget.assert_only(internal=False)
+    budget.assert_no_connections(internal=False)
+
+    async with connection_budget() as budget:
+        db = await ds.rename_scratch_database("work", "renamed")
+    budget.assert_only("work", "renamed", probes=10)
+    _scratch_probes_only(budget, scratch_dir)
+    assert (await db.execute("select count(*) from t")).single_value() == 10
+
+    async with connection_budget() as budget:
+        await ds.delete_scratch_database("renamed")
+    budget.assert_only("renamed", probes=10)
+    _scratch_probes_only(budget, scratch_dir)
+    assert "renamed" not in ds.databases
+    ds.close()

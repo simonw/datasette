@@ -29,7 +29,7 @@ def convert_specific_columns_to_json(rows, columns, json_cols):
     return new_rows
 
 
-def json_renderer(request, args, data, error, truncated=None):
+def json_renderer(request, args, data, error, truncated=None, view_name=None):
     """Render a response as JSON"""
     status_code = 200
 
@@ -48,10 +48,13 @@ def json_renderer(request, args, data, error, truncated=None):
 
     # Deal with the _shape option
     shape = args.get("_shape", "objects")
+    # Row pages return {"row": {...}} unless a _shape is requested
+    single_row = view_name == "row" and "_shape" not in args
     # if there's an error, ignore the shape entirely
     data["ok"] = True
     if error:
         shape = "objects"
+        single_row = False
         status_code = 400
         data.update(error_body(error, status_code))
 
@@ -68,6 +71,13 @@ def json_renderer(request, args, data, error, truncated=None):
         rows = data.get("rows")
         if rows and columns and not isinstance(rows[0], dict):
             data["rows"] = [dict(zip(columns, row)) for row in rows]
+        if single_row and "rows" in data:
+            # Swap "rows" for "row", keeping its position in the output
+            row = data["rows"][0] if data["rows"] else None
+            data = dict(
+                ("row", row) if key == "rows" else (key, value)
+                for key, value in data.items()
+            )
         if shape == "object":
             shape_error = None
             if "primary_keys" not in data:

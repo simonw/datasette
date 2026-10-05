@@ -6838,7 +6838,7 @@ async function saveRowEditDialog(state) {
 }
 
 function renderRowEditFields(state, data) {
-  var row = data.rows && data.rows.length ? data.rows[0] : null;
+  var row = data.row || null;
   var columns = data.columns || (row ? Object.keys(row) : []);
   var primaryKeys = data.primary_keys || [];
   var columnTypes = data.column_types || {};

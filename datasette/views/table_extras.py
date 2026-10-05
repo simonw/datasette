@@ -647,7 +647,7 @@ class RenderCellExtra(Extra):
     examples: ClassVar[dict[ExtraScope, ExtraExample | list[ExtraExample]]] = {
         ExtraScope.ROW: ExtraExample(
             value={
-                "rows": [{"id": 4, "content": "RENDER_CELL_DEMO"}],
+                "row": {"id": 4, "content": "RENDER_CELL_DEMO"},
                 "render_cell": [{"content": "<strong>Custom rendered HTML</strong>"}],
             },
             note=(

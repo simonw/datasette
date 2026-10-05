@@ -6,7 +6,6 @@ from datasette.utils import (
     error_body,
     path_from_row_pks,
     remove_infinites,
-    sqlite3,
     value_as_boolean,
 )
 from datasette.utils.asgi import Response
@@ -30,7 +29,7 @@ def convert_specific_columns_to_json(rows, columns, json_cols):
     return new_rows
 
 
-def json_renderer(request, args, data, error, truncated=None):
+def json_renderer(request, args, data, error, truncated=None, view_name=None):
     """Render a response as JSON"""
     status_code = 200
 
@@ -49,28 +48,41 @@ def json_renderer(request, args, data, error, truncated=None):
 
     # Deal with the _shape option
     shape = args.get("_shape", "objects")
+    # Row pages return {"row": {...}} unless a _shape is requested
+    single_row = view_name == "row" and "_shape" not in args
     # if there's an error, ignore the shape entirely
     data["ok"] = True
     if error:
         shape = "objects"
+        single_row = False
         status_code = 400
         data.update(error_body(error, status_code))
 
-    if truncated is not None:
+    # A single row lookup cannot be truncated
+    if truncated is not None and not single_row:
         data["truncated"] = truncated
     if shape == "arrayfirst":
-        if not data["rows"]:
-            data = []
-        elif isinstance(data["rows"][0], sqlite3.Row):
-            data = [row[0] for row in data["rows"]]
-        else:
-            assert isinstance(data["rows"][0], dict)
-            data = [next(iter(row.values())) for row in data["rows"]]
+        # Rows can be dicts, sqlite3.Row or lists (from remove_infinites)
+        data = [
+            next(iter(row.values())) if isinstance(row, dict) else row[0]
+            for row in data["rows"]
+        ]
     elif shape in ("objects", "object", "array"):
         columns = data.get("columns")
         rows = data.get("rows")
         if rows and columns and not isinstance(rows[0], dict):
             data["rows"] = [dict(zip(columns, row)) for row in rows]
+        if single_row and "rows" in data:
+            # Swap "rows" for "row", keeping its position in the output
+            row = data["rows"][0] if data["rows"] else None
+            data = dict(
+                ("row", row) if key == "rows" else (key, value)
+                for key, value in data.items()
+            )
+            # Likewise the render_cell extra becomes a single object
+            if "render_cell" in data:
+                cells = data["render_cell"]
+                data["render_cell"] = cells[0] if cells else {}
         if shape == "object":
             shape_error = None
             if "primary_keys" not in data:
@@ -94,12 +106,10 @@ def json_renderer(request, args, data, error, truncated=None):
             data = data["rows"]
 
     elif shape == "arrays":
-        if not data["rows"]:
-            pass
-        elif isinstance(data["rows"][0], sqlite3.Row):
-            data["rows"] = [list(row) for row in data["rows"]]
-        else:
-            data["rows"] = [list(row.values()) for row in data["rows"]]
+        data["rows"] = [
+            list(row.values()) if isinstance(row, dict) else list(row)
+            for row in data["rows"]
+        ]
     else:
         status_code = 400
         data = error_body(f"Invalid _shape: {shape}", status_code)

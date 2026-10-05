@@ -647,13 +647,14 @@ class RenderCellExtra(Extra):
     examples: ClassVar[dict[ExtraScope, ExtraExample | list[ExtraExample]]] = {
         ExtraScope.ROW: ExtraExample(
             value={
-                "rows": [{"id": 4, "content": "RENDER_CELL_DEMO"}],
-                "render_cell": [{"content": "<strong>Custom rendered HTML</strong>"}],
+                "row": {"id": 4, "content": "RENDER_CELL_DEMO"},
+                "render_cell": {"content": "<strong>Custom rendered HTML</strong>"},
             },
             note=(
-                "The ``render_cell`` array has one item for the requested row. "
-                "The object is keyed by column name. Only columns whose rendered "
-                "value differs from the default are included."
+                "The ``render_cell`` object is keyed by column name. Only columns "
+                "whose rendered value differs from the default are included. If a "
+                "``?_shape=`` is specified ``render_cell`` is instead a list with "
+                "one item, matching the ``rows`` list."
             ),
         ),
         ExtraScope.QUERY: ExtraExample(

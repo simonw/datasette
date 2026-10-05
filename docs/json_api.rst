@@ -153,6 +153,29 @@ Values for named SQL parameters can be provided as additional query string param
 
 The response uses the same default representation described above.
 
+.. _json_api_row:
+
+Rows
+----
+
+Every row in a table has its own JSON URL, see :ref:`RowView`. The row is returned as an object in the ``"row"`` key:
+
+::
+
+    GET /fixtures/simple_primary_key/1.json
+
+.. code-block:: json
+
+    {
+      "ok": true,
+      "row": {
+        "id": 1,
+        "content": "hello"
+      }
+    }
+
+Pass any :ref:`?_shape= option <json_api_shapes>` to return the row using the same shapes as table JSON instead. ``?_shape=objects`` returns the table default representation, with the row as the only item in the ``"rows"`` list.
+
 .. _json_api_shapes:
 
 Different shapes
@@ -162,7 +185,7 @@ The ``_shape`` parameter can be used to access alternative formats for the
 ``rows`` key which may be more convenient for your application. There are three
 options:
 
-* ``?_shape=objects`` - ``"rows"`` is a list of JSON key/value objects - the default
+* ``?_shape=objects`` - ``"rows"`` is a list of JSON key/value objects - the default for tables and queries
 * ``?_shape=arrays`` - ``"rows"`` is a list of lists, where the order of values in each list matches the order of the columns
 * ``?_shape=array`` - a JSON array of objects - effectively just the ``"rows"`` key from the default representation
 * ``?_shape=array&_nl=on`` - a newline-separated list of JSON objects
@@ -937,22 +960,18 @@ The following extras are available for row JSON responses.
 ``render_cell``
     Rendered HTML for each cell using the render_cell plugin hook (See the :ref:`render_cell() plugin hook <plugin_hook_render_cell>` documentation.)
 
-    The ``render_cell`` array has one item for the requested row. The object is keyed by column name. Only columns whose rendered value differs from the default are included.
+    The ``render_cell`` object is keyed by column name. Only columns whose rendered value differs from the default are included. If a ``?_shape=`` is specified ``render_cell`` is instead a list with one item, matching the ``rows`` list.
 
     .. code-block:: json
 
         {
-          "rows": [
-            {
-              "id": 4,
-              "content": "RENDER_CELL_DEMO"
-            }
-          ],
-          "render_cell": [
-            {
-              "content": "<strong>Custom rendered HTML</strong>"
-            }
-          ]
+          "row": {
+            "id": 4,
+            "content": "RENDER_CELL_DEMO"
+          },
+          "render_cell": {
+            "content": "<strong>Custom rendered HTML</strong>"
+          }
         }
 
 ``debug``

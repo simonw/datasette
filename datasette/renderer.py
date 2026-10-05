@@ -58,7 +58,8 @@ def json_renderer(request, args, data, error, truncated=None, view_name=None):
         status_code = 400
         data.update(error_body(error, status_code))
 
-    if truncated is not None:
+    # A single row lookup cannot be truncated
+    if truncated is not None and not single_row:
         data["truncated"] = truncated
     if shape == "arrayfirst":
         # Rows can be dicts, sqlite3.Row or lists (from remove_infinites)
@@ -78,6 +79,10 @@ def json_renderer(request, args, data, error, truncated=None, view_name=None):
                 ("row", row) if key == "rows" else (key, value)
                 for key, value in data.items()
             )
+            # Likewise the render_cell extra becomes a single object
+            if "render_cell" in data:
+                cells = data["render_cell"]
+                data["render_cell"] = cells[0] if cells else {}
         if shape == "object":
             shape_error = None
             if "primary_keys" not in data:

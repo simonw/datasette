@@ -960,7 +960,7 @@ The following extras are available for row JSON responses.
 ``render_cell``
     Rendered HTML for each cell using the render_cell plugin hook (See the :ref:`render_cell() plugin hook <plugin_hook_render_cell>` documentation.)
 
-    The ``render_cell`` array has one item for the requested row. The object is keyed by column name. Only columns whose rendered value differs from the default are included.
+    The ``render_cell`` object is keyed by column name. Only columns whose rendered value differs from the default are included. If a ``?_shape=`` is specified ``render_cell`` is instead a list with one item, matching the ``rows`` list.
 
     .. code-block:: json
 
@@ -969,11 +969,9 @@ The following extras are available for row JSON responses.
             "id": 4,
             "content": "RENDER_CELL_DEMO"
           },
-          "render_cell": [
-            {
-              "content": "<strong>Custom rendered HTML</strong>"
-            }
-          ]
+          "render_cell": {
+            "content": "<strong>Custom rendered HTML</strong>"
+          }
         }
 
 ``debug``

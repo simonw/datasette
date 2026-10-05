@@ -2359,8 +2359,8 @@ def test_allow_facet_off(allow_facet):
 @pytest.mark.parametrize(
     "size,title,length_bytes",
     (
-        (2000, ' title="2.0 KB"', "2,000"),
-        (20000, ' title="19.5 KB"', "20,000"),
+        (2000, ' title="2.0 kB"', "2,000"),
+        (20000, ' title="20.0 kB"', "20,000"),
         (20, "", "20"),
     ),
 )

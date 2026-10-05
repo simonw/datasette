@@ -77,7 +77,6 @@ from .utils import (
     escape_css_string,
     escape_sqlite,
     find_spatialite,
-    format_bytes,
     module_from_path,
     move_plugins_and_allow,
     move_table_config,
@@ -392,7 +391,6 @@ TEMPLATE_BASE_CONTEXT = {
     "show_logout": "True if the logout link should be shown in the navigation menu",
     "zip": "Python's ``zip()`` builtin, made available to template logic",
     "body_scripts": 'List of JavaScript snippets contributed by plugins using :ref:`plugin_hook_extra_body_script`. Each item is a dictionary with ``script`` containing JavaScript source and ``module`` indicating whether Datasette will wrap it in ``<script type="module">``; otherwise Datasette wraps it in a regular ``<script>`` block.',
-    "format_bytes": "Function that accepts a byte count integer and returns a human-readable string such as ``1.2 MB``.",
     "show_messages": "Function returning any messages set for the current user, clearing them in the process. Returns a list of ``(message, type)`` pairs, where ``type`` is one of Datasette's ``INFO``, ``WARNING`` or ``ERROR`` constants.",
     "extra_css_urls": "List of extra CSS stylesheets to include on the page. Each item is a dictionary with ``url`` and optional ``sri`` keys, from plugins and configuration.",
     "extra_js_urls": "List of extra JavaScript URLs to include on the page. Each item is a dictionary with ``url`` plus optional ``sri`` and ``module`` keys, from plugins and configuration.",
@@ -2649,7 +2647,6 @@ ORDER BY allowed.parent, allowed.child
             and request.actor,
             "zip": zip,
             "body_scripts": body_scripts,
-            "format_bytes": format_bytes,
             "show_messages": lambda: self._show_messages(request),
             "extra_css_urls": await self._asset_urls(
                 "extra_css_urls", template, context, request, view_name

@@ -579,21 +579,6 @@ def test_path_with_format_can_override_request_path():
 
 
 @pytest.mark.parametrize(
-    "bytes,expected",
-    [
-        (120, "120 bytes"),
-        (1024, "1.0 KB"),
-        (1024 * 1024, "1.0 MB"),
-        (1024 * 1024 * 1024, "1.0 GB"),
-        (1024 * 1024 * 1024 * 1.3, "1.3 GB"),
-        (1024 * 1024 * 1024 * 1024, "1.0 TB"),
-    ],
-)
-def test_format_bytes(bytes, expected):
-    assert expected == utils.format_bytes(bytes)
-
-
-@pytest.mark.parametrize(
     "query,expected",
     [
         ("dog", '"dog"'),

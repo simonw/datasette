@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass, field
 from urllib.parse import parse_qsl, urlencode
 
 import markupsafe
+from jinja2.filters import do_filesizeformat as filesizeformat
 
 from datasette.database import QueryInterrupted
 from datasette.extras import ExtraScope, extra_names_from_request
@@ -20,7 +21,6 @@ from datasette.utils import (
     await_me_maybe,
     call_with_supported_arguments,
     error_body,
-    format_bytes,
     is_url,
     make_slot_function,
     path_with_added_args,
@@ -1240,15 +1240,11 @@ async def display_rows(datasette, database, request, rows, columns):
                             "_blob_hash": hashlib.sha256(display_value).hexdigest(),
                         },
                     )
-                    formatted = format_bytes(len(value))
+                    formatted = filesizeformat(len(value))
                     display_value = markupsafe.Markup(
                         '<a class="blob-download" href="{}"{}>&lt;Binary:&nbsp;{:,}&nbsp;byte{}&gt;</a>'.format(
                             blob_url,
-                            (
-                                f' title="{formatted}"'
-                                if "bytes" not in formatted
-                                else ""
-                            ),
+                            (f' title="{formatted}"' if len(value) >= 1000 else ""),
                             len(value),
                             "" if len(value) == 1 else "s",
                         )

@@ -53,9 +53,6 @@ These variables are available on every page rendered by Datasette, including pag
 ``body_scripts``
     List of JavaScript snippets contributed by plugins using :ref:`plugin_hook_extra_body_script`. Each item is a dictionary with ``script`` containing JavaScript source and ``module`` indicating whether Datasette will wrap it in ``<script type="module">``; otherwise Datasette wraps it in a regular ``<script>`` block.
 
-``format_bytes``
-    Function that accepts a byte count integer and returns a human-readable string such as ``1.2 MB``.
-
 ``show_messages``
     Function returning any messages set for the current user, clearing them in the process. Returns a list of ``(message, type)`` pairs, where ``type`` is one of Datasette's ``INFO``, ``WARNING`` or ``ERROR`` constants.
 

@@ -1130,18 +1130,6 @@ class LoadExtension(click.ParamType):
         return path, entrypoint
 
 
-def format_bytes(bytes):
-    current = float(bytes)
-    for unit in ("bytes", "KB", "MB", "GB", "TB"):
-        if current < 1024:
-            break
-        current = current / 1024
-    if unit == "bytes":
-        return f"{int(current)} {unit}"
-    else:
-        return f"{current:.1f} {unit}"
-
-
 _escape_fts_re = re.compile(r'\s+|(".*?")')
 
 

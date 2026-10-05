@@ -625,6 +625,12 @@ When a request is received, the ``"render"`` callback function is called with ze
 ``request`` - :ref:`internals_request`
     The current HTTP request.
 
+``path`` - string
+    The path to the HTML version of this page, without the ``.extension`` - for example ``/fixtures/facetable`` for a request to ``/fixtures/facetable.test``. This includes the :ref:`setting_base_url` prefix if one is configured.
+
+``full_path`` - string
+    The same as ``path`` but with the query string included, if there was one - for example ``/fixtures/facetable?_sort=pk``. Use ``datasette.absolute_url(request, full_path)`` to turn this into a full URL.
+
 ``error`` - string or None
     If an error occurred this string will contain the error message.
 

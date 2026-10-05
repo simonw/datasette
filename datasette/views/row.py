@@ -27,6 +27,7 @@ from datasette.utils import (
     path_from_row_pks,
     path_with_format,
     path_with_removed_args,
+    path_without_format,
     sqlite3,
     tilde_decode,
     to_css_class,
@@ -235,6 +236,8 @@ class RowView(BaseView):
                 database=database,
                 table=data.get("table"),
                 request=request,
+                path=path_without_format(request),
+                full_path=path_without_format(request, include_query_string=True),
                 view_name=self.name,
                 truncated=False,  # TODO: support this
                 error=data.get("error"),
@@ -298,6 +301,8 @@ class RowView(BaseView):
                 database=data.get("database"),
                 table=data.get("table"),
                 request=request,
+                path=path_without_format(request),
+                full_path=path_without_format(request, include_query_string=True),
                 view_name=self.name,
             )
             it_can_render = await await_me_maybe(it_can_render)

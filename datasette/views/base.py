@@ -327,6 +327,12 @@ async def stream_csv(datasette, fetch_data, request, database):
     headers = {}
     if datasette.cors:
         add_cors_headers(headers)
+    if "truncated" in data:
+        headers["Datasette-Truncated"] = str(data["truncated"]).lower()
+        headers["Datasette-Max-Returned-Rows"] = str(datasette.max_returned_rows)
+        if datasette.cors:
+            headers["Access-Control-Expose-Headers"] += ", Datasette-Truncated"
+            headers["Access-Control-Expose-Headers"] += ", Datasette-Max-Returned-Rows"
     if request.args.get("_dl", None):
         if not trace:
             content_type = "text/csv; charset=utf-8"

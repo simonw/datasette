@@ -49,6 +49,7 @@ async def test_table_csv(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key.csv?_oh=1")
     assert response.status_code == 200
     assert not response.headers.get("Access-Control-Allow-Origin")
+    assert "Datasette-Truncated" not in response.headers
     assert response.headers["content-type"] == "text/plain; charset=utf-8"
     assert response.text == EXPECTED_TABLE_CSV
 
@@ -164,6 +165,74 @@ async def test_custom_sql_csv(ds_client):
     assert response.status_code == 200
     assert response.headers["content-type"] == "text/plain; charset=utf-8"
     assert response.text == EXPECTED_CUSTOM_CSV
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("download", (False, True))
+@pytest.mark.parametrize(
+    "sql,truncated",
+    [
+        ("select content from simple_primary_key limit 2", "false"),
+        ("select * from no_primary_key", "true"),
+    ],
+)
+async def test_custom_sql_csv_reports_row_limit(ds_client, sql, truncated, download):
+    parameters = {"sql": sql}
+    if download:
+        parameters["_dl"] = "1"
+    response = await ds_client.get(
+        "/fixtures/-/query.csv?" + urllib.parse.urlencode(parameters)
+    )
+    assert response.status_code == 200
+    assert response.headers["Datasette-Truncated"] == truncated
+    assert response.headers["Datasette-Max-Returned-Rows"] == "100"
+
+
+@pytest.mark.asyncio
+async def test_custom_sql_csv_row_limit_headers_are_exposed_to_cors():
+    ds = Datasette(memory=True, cors=True)
+    try:
+        response = await ds.client.get("/_memory/-/query.csv?sql=select+1")
+        assert response.status_code == 200
+        assert response.headers["Datasette-Truncated"] == "false"
+        assert response.headers["Access-Control-Expose-Headers"] == (
+            "Link, Datasette-Truncated, Datasette-Max-Returned-Rows"
+        )
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_custom_sql_csv_without_row_limit():
+    ds = Datasette(memory=True, settings={"max_returned_rows": 0})
+    try:
+        response = await ds.client.get(
+            "/_memory/-/query.csv?sql=select+1+as+n+union+all+select+2"
+        )
+        assert response.status_code == 200
+        assert response.text == "n\r\n1\r\n2\r\n"
+        assert response.headers["Datasette-Truncated"] == "false"
+        assert response.headers["Datasette-Max-Returned-Rows"] == "0"
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+async def test_custom_sql_csv_row_limit_matching_page_size():
+    ds = Datasette(
+        memory=True, settings={"max_returned_rows": 2, "default_page_size": 2}
+    )
+    try:
+        response = await ds.client.get(
+            "/_memory/-/query.csv?sql=select+1+as+n+union+all+select+2+"
+            "union+all+select+3+union+all+select+4"
+        )
+        assert response.status_code == 200
+        assert response.text == "n\r\n1\r\n2\r\n"
+        assert response.headers["Datasette-Truncated"] == "true"
+        assert response.headers["Datasette-Max-Returned-Rows"] == "2"
+    finally:
+        ds.close()
 
 
 @pytest.mark.asyncio

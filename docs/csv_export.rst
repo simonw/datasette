@@ -45,6 +45,13 @@ The following options can be used to customize the CSVs returned by Datasette.
 ``?_dl=on``
     Causes Datasette to return a ``content-disposition: attachment; filename="filename.csv"`` header.
 
+Custom SQL query CSV responses include a ``Datasette-Truncated`` response
+header with the value ``true`` or ``false``. A value of ``true`` means rows
+were omitted because of the :ref:`setting_max_returned_rows` limit. The
+``Datasette-Max-Returned-Rows`` header reports that limit, including ``0``
+when it is disabled. These headers are also available to cross-origin browser
+clients when CORS is enabled.
+
 Streaming all records
 ---------------------
 

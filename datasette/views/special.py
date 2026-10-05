@@ -91,7 +91,11 @@ class PatternPortfolioView(View):
         await datasette.ensure_permission(action="view-instance", actor=request.actor)
         return Response.html(
             await datasette.render_template(
-                "patterns.html",
+                (
+                    "patterns_menus.html"
+                    if request.url_vars.get("pattern") == "menus"
+                    else "patterns.html"
+                ),
                 request=request,
                 view_name="patterns",
             )

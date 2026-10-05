@@ -944,6 +944,7 @@ def test_debug_context_includes_extra_template_vars():
         "/fixtures/-/query?sql=select+1",
         "/-/api",
         "/-/patterns",
+        "/-/patterns/menus",
     ],
 )
 @pytest.mark.parametrize("use_prefix", (True, False))
@@ -1232,7 +1233,13 @@ async def test_alternate_url_json(ds_client, path, expected):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
-    ("/-/patterns", "/-/messages", "/-/allow-debug", "/fixtures.db"),
+    (
+        "/-/patterns",
+        "/-/patterns/menus",
+        "/-/messages",
+        "/-/allow-debug",
+        "/fixtures.db",
+    ),
 )
 async def test_no_alternate_url_json(ds_client, path):
     response = await ds_client.get(path)

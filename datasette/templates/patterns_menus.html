@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}Menu patterns — Datasette{% endblock %}
+{% block body_class %}patterns-menus{% endblock %}
+{% block nav %}
+<p class="crumbs"><a href="{{ urls.path('/') }}">home</a> / <a href="{{ urls.path('/-/patterns') }}">patterns</a> / menus</p>
+{% endblock %}
+{% block extra_head %}
+<meta name="robots" content="noindex">
+<style>
+    .menu-pattern-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin-bottom: 40px; }
+    .menu-pattern-grid article { min-width: 0; }
+    .menu-pattern-grid h3 { margin-bottom: 16px; }
+    .menu-pattern-stage { position: relative; min-height: 60px; }
+    .menu-pattern-stage header.hd { overflow: visible; position: relative; }
+    .menu-pattern-column-name { color: #276890; text-decoration: underline; }
+    .menu-pattern-open .datasette-menu { position: static; max-width: 100%; max-height: none; }
+    .menu-pattern-open .nav-menu-inner.datasette-menu { margin-left: auto; }
+    .menu-pattern-open .app-header { max-width: 300px; margin-left: auto; }
+    .menu-pattern-open .page-action-menu .datasette-menu,
+    .menu-pattern-open .column-actions-menu { margin-top: 8px; }
+    @media (max-width: 900px) {
+        .menu-pattern-grid { grid-template-columns: 1fr; }
+        .menu-pattern-stage header.hd { max-width: 360px; }
+        .menu-pattern-open .nav-menu-inner.datasette-menu { margin-left: 0; }
+        .menu-pattern-open .app-header { margin-left: 0; }
+    }
+</style>
+{% endblock %}
+
+{% macro app_icon(key) %}
+<svg aria-labelledby="pattern-nav-menu-{{ key }}" role="img"
+            fill="currentColor" stroke="currentColor" xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 16 16" width="16" height="16">
+                <title id="pattern-nav-menu-{{ key }}">Menu</title>
+                <path fill-rule="evenodd" d="M1 2.75A.75.75 0 011.75 2h12.5a.75.75 0 110 1.5H1.75A.75.75 0 011 2.75zm0 5A.75.75 0 011.75 7h12.5a.75.75 0 110 1.5H1.75A.75.75 0 011 7.75zM1.75 12a.75.75 0 100 1.5h12.5a.75.75 0 100-1.5H1.75z"></path>
+        </svg>
+{% endmacro %}
+
+{% macro database_icon(key) %}
+<svg class="icon" aria-labelledby="pattern-actions-{{ key }}" role="img" style="color: #fff" xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <title id="pattern-actions-{{ key }}">Database actions</title>
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+{% endmacro %}
+
+{% macro column_icon(key) %}
+<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="12" cy="12" r="3"></circle>
+  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+</svg>
+{% endmacro %}
+
+{% macro app_panel(key) %}
+<div id="{{ key }}-panel" class="nav-menu-inner datasette-menu" role="menu" aria-label="App menu">
+    <div class="datasette-menu-heading" role="presentation"><small>Signed in as root</small></div>
+    <ul role="none">
+        <li role="none"><button type="button" class="button-as-link" role="menuitem">Jump to... <kbd class="keyboard-shortcut" aria-hidden="true">/</kbd></button></li>
+    </ul>
+    <div class="nav-menu-logout"><button type="button" class="button-as-link" role="menuitem">Log out</button></div>
+</div>
+{% endmacro %}
+
+{% macro app_menu(state) %}
+{% set key = state ~ '-app' %}
+<header class="hd app-header"><nav aria-label="{{ state|capitalize }} app menu example">
+    <details class="nav-menu"{% if state == 'closed' %} data-datasette-menu{% endif %}{% if state == 'open' %} open{% endif %}>
+        <summary aria-haspopup="menu" aria-expanded="{{ 'true' if state == 'open' else 'false' }}" aria-controls="{{ key }}-panel">{{ app_icon(key) }}</summary>
+        {% if state == 'closed' %}{{ app_panel(key) }}{% endif %}
+    </details>
+    <div class="actor"><strong>root</strong></div>
+</nav></header>
+{% if state == 'open' %}{{ app_panel(key) }}{% endif %}
+{% endmacro %}
+
+{% macro database_menu(state) %}
+{% set key = state ~ '-database' %}
+<div class="page-action-menu">
+    <details class="actions-menu-links"{% if state == 'closed' %} data-datasette-menu{% endif %}{% if state == 'open' %} open{% endif %}>
+        <summary class="datasette-menu-trigger" aria-haspopup="menu" aria-expanded="{{ 'true' if state == 'open' else 'false' }}" aria-controls="{{ key }}-panel">
+            <div class="icon-text">{{ database_icon(key) }}<span>Database actions</span></div>
+        </summary>
+        <div id="{{ key }}-panel" class="datasette-menu" role="menu" aria-label="Database actions">
+            <ul role="none">
+                <li role="none"><button type="button" class="button-as-link action-menu-button" role="menuitem">Create table<span class="dropdown-description">Create a new table in this database.</span></button></li>
+                <li role="none"><button type="button" class="button-as-link action-menu-button" role="menuitem">Execute write SQL<span class="dropdown-description">Run writable SQL with table permission checks.</span></button></li>
+            </ul>
+        </div>
+    </details>
+</div>
+{% endmacro %}
+
+{% macro column_panel(key, state) %}
+<div id="{{ key }}-panel" class="column-actions-menu datasette-menu" role="menu" aria-label="Actions for column url"{% if state == 'closed' %} hidden{% endif %}>
+    <div class="datasette-menu-heading" role="presentation"><strong>url</strong></div>
+    <ul class="dropdown-actions" role="none">
+        {% for label in ['Sort ascending', 'Sort descending', 'Facet by this', 'Choose columns', 'Set custom type', 'Hide this column'] %}
+        <li role="none"{% if loop.index in (4, 6) %} class="menu-separator"{% endif %}><a href="#" role="menuitem">{{ label }}</a></li>
+        {% endfor %}
+    </ul>
+    <p class="dropdown-column-type">Type: TEXT</p>
+</div>
+{% endmacro %}
+
+{% macro column_menu(state) %}
+{% set key = state ~ '-column' %}
+<span class="menu-pattern-column-name">url</span><button type="button" class="column-menu-trigger"{% if state == 'closed' %} data-pattern-column{% endif %} aria-label="Actions for column url" aria-haspopup="menu" aria-expanded="{{ 'true' if state == 'open' else 'false' }}" aria-controls="{{ key }}-panel">{{ column_icon(key) }}</button>
+{{ column_panel(key, state) }}
+{% endmacro %}
+
+{% block content %}
+<div id="menu-patterns">
+<h1>Menu patterns</h1>
+<p>Try opening each menu, or inspect the expanded examples below. Sample actions do not change any data.</p>
+{% for state in ['closed', 'open'] %}
+<section aria-labelledby="{{ state }}-heading" class="menu-pattern-{{ state }}">
+    <h2 id="{{ state }}-heading">{{ state|capitalize }}</h2>
+    <div class="menu-pattern-grid">
+        <article>
+            <h3>App menu</h3>
+            <div class="menu-pattern-stage">{{ app_menu(state) }}</div>
+        </article>
+        <article>
+            <h3>Database actions</h3>
+            <div class="menu-pattern-stage">{{ database_menu(state) }}</div>
+        </article>
+        <article>
+            <h3>Column actions</h3>
+            <div class="menu-pattern-stage">{{ column_menu(state) }}</div>
+        </article>
+    </div>
+</section>
+{% endfor %}
+</div>
+<script>
+(() => {
+    const root = document.getElementById('menu-patterns');
+    root.querySelectorAll('[data-pattern-column]').forEach(trigger => {
+        const panel = document.getElementById(trigger.getAttribute('aria-controls'));
+        const open = event => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (event.type === 'click' && window.DatasetteMenu.isOpenFor(trigger)) {
+                window.DatasetteMenu.close({restoreFocus: true});
+            } else {
+                window.DatasetteMenu.open({trigger, panel, focusMenu: event.type === 'keydown' || event.detail === 0, focusLast: event.key === 'ArrowUp'});
+            }
+        };
+        trigger.addEventListener('click', open);
+        trigger.addEventListener('keydown', event => {
+            if (['ArrowDown', 'ArrowUp'].includes(event.key)) open(event);
+        });
+    });
+    // Open samples stay expanded; sample links never navigate or modify data.
+    root.addEventListener('click', event => {
+        if (event.target.closest('[role="menuitem"], .menu-pattern-open summary')) event.preventDefault();
+    });
+})();
+</script>
+{% endblock %}

@@ -1004,12 +1004,12 @@ def path_with_format(
     qs = extra_qs or {}
     if path is None and request:
         path = request.path
+    if replace_format is None and request:
+        # Drop the extension the current request used, e.g. .json
+        replace_format = request.url_vars.get("format")
     if replace_format and path.endswith(f".{replace_format}"):
         path = path[: -(1 + len(replace_format))]
-    if "." in path:
-        qs["_format"] = format
-    else:
-        path = f"{path}.{format}"
+    path = f"{path}.{format}"
     if qs:
         extra = urllib.parse.urlencode(sorted(qs.items()))
         if request and request.query_string:
@@ -1017,6 +1017,17 @@ def path_with_format(
         else:
             path = f"{path}?{extra}"
     elif request and request.query_string:
+        path = f"{path}?{request.query_string}"
+    return path
+
+
+def path_without_format(request, *, include_query_string=False):
+    "Path for this request with any ``.format`` removed, e.g. ``/db/table.json`` -> ``/db/table``"
+    path = request.path
+    format = request.url_vars.get("format")
+    if format and path.endswith(f".{format}"):
+        path = path[: -(1 + len(format))]
+    if include_query_string and request.query_string:
         path = f"{path}?{request.query_string}"
     return path
 

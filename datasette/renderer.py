@@ -6,7 +6,6 @@ from datasette.utils import (
     error_body,
     path_from_row_pks,
     remove_infinites,
-    sqlite3,
     value_as_boolean,
 )
 from datasette.utils.asgi import Response
@@ -59,13 +58,11 @@ def json_renderer(request, args, data, error, truncated=None):
     if truncated is not None:
         data["truncated"] = truncated
     if shape == "arrayfirst":
-        if not data["rows"]:
-            data = []
-        elif isinstance(data["rows"][0], sqlite3.Row):
-            data = [row[0] for row in data["rows"]]
-        else:
-            assert isinstance(data["rows"][0], dict)
-            data = [next(iter(row.values())) for row in data["rows"]]
+        # Rows can be dicts, sqlite3.Row or lists (from remove_infinites)
+        data = [
+            next(iter(row.values())) if isinstance(row, dict) else row[0]
+            for row in data["rows"]
+        ]
     elif shape in ("objects", "object", "array"):
         columns = data.get("columns")
         rows = data.get("rows")
@@ -94,12 +91,10 @@ def json_renderer(request, args, data, error, truncated=None):
             data = data["rows"]
 
     elif shape == "arrays":
-        if not data["rows"]:
-            pass
-        elif isinstance(data["rows"][0], sqlite3.Row):
-            data["rows"] = [list(row) for row in data["rows"]]
-        else:
-            data["rows"] = [list(row.values()) for row in data["rows"]]
+        data["rows"] = [
+            list(row.values()) if isinstance(row, dict) else list(row)
+            for row in data["rows"]
+        ]
     else:
         status_code = 400
         data = error_body(f"Invalid _shape: {shape}", status_code)

@@ -600,6 +600,52 @@ async def test_database_metadata_with_custom_sql(ds_client):
     # assert_footer_links(soup)TODO(alex) ensure
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,metadata,expected_text,expected_href",
+    (
+        ("/", {"about": "Instance about"}, "About: Instance about", None),
+        (
+            "/",
+            {"about_url": "https://example.com/"},
+            "About: https://example.com/",
+            "https://example.com/",
+        ),
+        (
+            "/data",
+            {"databases": {"data": {"about": "Database about"}}},
+            "About: Database about",
+            None,
+        ),
+        (
+            "/data/t",
+            {"databases": {"data": {"tables": {"t": {"about": "Table about"}}}}},
+            "About: Table about",
+            None,
+        ),
+    ),
+)
+async def test_about_without_source_or_license(
+    path, metadata, expected_text, expected_href
+):
+    # https://github.com/simonw/datasette/issues/512
+    ds = Datasette(metadata=metadata)
+    db = ds.add_memory_database("test_about_without_source_or_license", name="data")
+    await db.execute_write("create table if not exists t (id integer primary key)")
+    response = await ds.client.get(path)
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    about_p = soup.select_one("section.content p:-soup-contains('About:')")
+    assert about_p is not None
+    # No leading separator, since there is no license or source before it
+    assert " ".join(about_p.text.split()) == expected_text
+    links = about_p.find_all("a")
+    if expected_href:
+        assert [a["href"] for a in links] == [expected_href]
+    else:
+        assert links == []
+
+
 def test_database_download_for_immutable():
     with make_app_client(is_immutable=True) as client:
         assert not client.ds.databases["fixtures"].is_mutable

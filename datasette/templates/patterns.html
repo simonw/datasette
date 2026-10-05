@@ -5,35 +5,16 @@
     <link rel="stylesheet" href="{{ static('app.css') }}">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <meta name="robots" content="noindex">
-    <style></style>
+    <script src="{{ static('menus.js') }}" defer></script>
+    <script src="{{ static('modal.js') }}" defer></script>
 </head>
 <body>
 
-<header class="hd"><nav>
+<header class="hd app-header"><nav>
     <p class="crumbs">
         <a href="{{ base_url }}">home</a>
     </p>
-    <details class="nav-menu details-menu">
-        <summary><svg aria-labelledby="nav-menu-svg-title" role="img"
-            fill="currentColor" stroke="currentColor" xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 16 16" width="16" height="16">
-                <title id="nav-menu-svg-title">Menu</title>
-                <path fill-rule="evenodd" d="M1 2.75A.75.75 0 011.75 2h12.5a.75.75 0 110 1.5H1.75A.75.75 0 011 2.75zm0 5A.75.75 0 011.75 7h12.5a.75.75 0 110 1.5H1.75A.75.75 0 011 7.75zM1.75 12a.75.75 0 100 1.5h12.5a.75.75 0 100-1.5H1.75z"></path>
-        </svg></summary>
-        <div class="nav-menu-inner">
-            <ul>
-                <li><a href="{{ base_url }}-/databases">Databases</a></li>
-                <li><a href="{{ base_url }}-/plugins">Installed plugins</a></li>
-                <li><a href="{{ base_url }}-/versions">Version info</a></li>
-            </ul>
-            <form class="nav-menu-logout" action="{{ base_url }}-/logout" method="post">
-                <button class="button-as-link">Log out</button>
-            </form>
-        </div>
-    </details>
-    <div class="actor">
-        <strong>root</strong>
-    </div>
+    {% include "_app_menu.html" %}
 </nav></header>
 
 <section class="content">
@@ -46,7 +27,7 @@
 
 <h2 class="pattern-heading">Header for /database/table/row and Messages</h2>
 
-<header class="hd">
+<header class="hd app-header">
   <nav>
       <p class="crumbs">
           <a href="{{ base_url }}">home</a> /
@@ -98,27 +79,9 @@
     <div class="page-header" style="border-color: #ff0000">
         <h1>fixtures</h1>
     </div>
-    <div class="page-action-menu">
-        <details class="actions-menu-links details-menu">
-            <summary>
-                <div class="icon-text">
-                    <svg class="icon" aria-labelledby="actions-menu-links-title" role="img" style="color: #fff" xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <title id="actions-menu-links-title">Database actions</title>
-                        <circle cx="12" cy="12" r="3"></circle>
-                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                    </svg>
-                    <span>Database actions</span>
-                </div>
-            </summary>
-            <div class="dropdown-menu">
-                <div class="hook"></div>
-                <ul>
-                    <li><a href="#">Action one</a></li>
-                    <li><a href="#">Action two</a></li>
-                </ul>
-            </div>
-        </details>
-    </div>
+    {% with action_title="Database actions", action_menu_id="pattern-database-actions", action_links=[{"label": "Action one", "href": "#"}, {"label": "Action two", "href": "#"}] %}
+    {% include "_action_menu.html" %}
+    {% endwith %}
 
     <div class="metadata-description">
             Test tables description
@@ -166,27 +129,9 @@
     <div class="page-header" style="border-color: #ff0000">
         <h1>roadside_attraction_characteristics</h1>
     </div>
-    <div class="page-action-menu">
-        <details class="actions-menu-links details-menu">
-            <summary>
-                <div class="icon-text">
-                    <svg class="icon" aria-labelledby="actions-menu-links-title" role="img" style="color: #fff" xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <title id="actions-menu-links-title">Database actions</title>
-                        <circle cx="12" cy="12" r="3"></circle>
-                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                    </svg>
-                    <span>Table actions</span>
-                </div>
-            </summary>
-            <div class="dropdown-menu">
-                <div class="hook"></div>
-                <ul>
-                    <li><a href="#">Action one</a></li>
-                    <li><a href="#">Action two</a></li>
-                </ul>
-            </div>
-        </details>
-    </div>
+    {% with action_title="Table actions", action_menu_id="pattern-table-actions", action_links=[{"label": "Action one", "href": "#"}, {"label": "Action two", "href": "#"}] %}
+    {% include "_action_menu.html" %}
+    {% endwith %}
 
     <p>
     Data license:
@@ -502,7 +447,8 @@
         About Datasette</a>
 </footer>
 
-{% include "_close_open_menus.html" %}
+<script src="{{ static('navigation-search.js') }}" defer></script>
+<navigation-search url="{{ urls.path("/-/jump") }}"></navigation-search>
 
 </body>
 </html>

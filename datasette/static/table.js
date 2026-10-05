@@ -582,7 +582,7 @@ const initDatasetteTable = function (manager) {
 
   const menu = document.createElement("div");
   menu.id = "column-actions-menu";
-  menu.className = "dropdown-menu column-actions-menu datasette-menu";
+  menu.className = "column-actions-menu datasette-menu";
   menu.hidden = true;
   document.body.appendChild(menu);
 
@@ -603,7 +603,6 @@ const initDatasetteTable = function (manager) {
     trigger.setAttribute("aria-controls", menu.id);
     trigger.innerHTML = DROPDOWN_ICON_SVG;
     const icon = trigger.querySelector("svg");
-    icon.classList.add("dropdown-menu-icon");
     icon.setAttribute("aria-hidden", "true");
     trigger.addEventListener("click", onTableHeaderClick);
     trigger.addEventListener("keydown", (event) => {

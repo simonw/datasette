@@ -2024,6 +2024,64 @@ MENU_CASES = [
 
 
 @pytest.mark.playwright
+@pytest.mark.parametrize("width", [390, 1280])
+def test_menu_patterns_use_shared_menus(page, datasette_server, width):
+    from playwright.sync_api import expect
+
+    page.set_viewport_size({"width": width, "height": 1000})
+    page.goto(datasette_server + "-/patterns/menus")
+    samples = page.locator('.menu-pattern-open [role="menu"]')
+    expect(samples).to_have_count(3)
+    for sample in samples.all():
+        expect(sample).to_be_visible()
+    for kind in ("app", "database", "column"):
+        panel_id = f"closed-{kind}-panel"
+        trigger = page.locator(f'[aria-controls="{panel_id}"]')
+        trigger.click()
+        panel = page.locator(f"#{panel_id}")
+        expect(panel).to_be_visible()
+        assert panel.evaluate(
+            "node => node.classList.contains('datasette-menu-floating')"
+        )
+        expect(trigger).to_be_focused()
+        page.keyboard.press("ArrowDown")
+        expect(panel.get_by_role("menuitem").first).to_be_focused()
+        panel.get_by_role("menuitem").first.click()
+        expect(panel).not_to_be_visible()
+        expect(page).to_have_url(datasette_server + "-/patterns/menus")
+    trigger = page.locator(".menu-pattern-closed .column-menu-trigger")
+    assert trigger.bounding_box()["height"] == 24
+    expect(page.locator(".menu-pattern-closed details[open]")).to_have_count(0)
+
+
+@pytest.mark.playwright
+@pytest.mark.parametrize("width", [390, 1280])
+def test_portfolio_uses_shared_menus(page, datasette_server, width):
+    from playwright.sync_api import expect
+
+    page.set_viewport_size({"width": width, "height": 1000})
+    page.goto(datasette_server + "-/patterns")
+    for panel_id in (
+        "app-menu-panel",
+        "pattern-database-actions",
+        "pattern-table-actions",
+    ):
+        trigger = page.locator(f'[aria-controls="{panel_id}"]')
+        trigger.click()
+        panel = page.locator(f"#{panel_id}")
+        expect(panel).to_be_visible()
+        assert panel.evaluate(
+            "node => node.classList.contains('datasette-menu-floating')"
+        )
+        expect(trigger).to_be_focused()
+        page.keyboard.press("ArrowDown")
+        expect(panel.get_by_role("menuitem").first).to_be_focused()
+        page.keyboard.press("Escape")
+        expect(panel).not_to_be_visible()
+        expect(trigger).to_be_focused()
+
+
+@pytest.mark.playwright
 @pytest.mark.parametrize("width", [390, 590])
 @pytest.mark.parametrize(
     "path,trigger_selector,panel_selector",

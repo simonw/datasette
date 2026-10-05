@@ -8,214 +8,111 @@
 {% block extra_head %}
 <meta name="robots" content="noindex">
 <style>
-    .menu-pattern-grid {
-        display: grid;
-        grid-template-columns: minmax(180px, 1fr) minmax(290px, 1.5fr) minmax(160px, 1fr);
-        gap: 24px;
-        margin-bottom: 40px;
-    }
+    .menu-pattern-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin-bottom: 40px; }
     .menu-pattern-grid article { min-width: 0; }
     .menu-pattern-grid h3 { margin-bottom: 16px; }
     .menu-pattern-stage { position: relative; min-height: 60px; }
-    .menu-pattern-open .menu-pattern-stage { min-height: 270px; }
     .menu-pattern-stage header.hd { overflow: visible; position: relative; }
-    .menu-pattern-column { position: relative; display: inline-block; }
-    .menu-pattern-column summary { display: inline; list-style: none; cursor: pointer; }
-    .menu-pattern-column summary::-webkit-details-marker { display: none; }
-    .menu-pattern-column .dropdown-menu { position: absolute; top: calc(100% + 6px); left: 0; }
-    .menu-pattern-column .hook { left: 25px; }
     .menu-pattern-column-name { color: #276890; text-decoration: underline; }
-    .pattern-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 24px 0; }
-    .pattern-toolbar label { font-weight: 600; }
-    .pattern-toolbar select { min-height: 44px; max-width: 100%; }
-    .proposal-only { display: none; }
-    [data-design="proposed"] .proposal-only { display: block; }
-    [data-design="proposed"] .menu-pattern-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    [data-design="proposed"] .menu-pattern-stage header.hd { min-height: 2.6rem; border-radius: 10px; padding: 0 8px; }
-    [data-design="proposed"] .menu-pattern-closed header.hd nav { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
-    [data-design="proposed"] .menu-pattern-closed .nav-menu { order: 1; }
-    [data-design="proposed"] .menu-pattern-closed .actor { position: static; float: none; padding: 0; }
-    [data-design="proposed"] .menu-pattern-closed details.nav-menu > summary { height: 2.6rem; min-height: 0; float: none; }
-    [data-design="proposed"] details > summary { min-height: 44px; box-sizing: border-box; border-radius: 8px; }
-    [data-design="proposed"] details.nav-menu > summary { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; float: right; }
-    [data-design="proposed"] details.nav-menu > summary:hover { background: #ffffff20; }
-    [data-design="proposed"] .page-action-menu .icon-text { min-height: 44px; box-sizing: border-box; gap: 6px; padding: 10px 12px; border-radius: 8px; background: #276890; font-size: 14px; }
-    [data-design="proposed"] .page-action-menu .icon-text span { top: 0; }
-    [data-design="proposed"] .page-action-menu .icon { flex-shrink: 0; margin: 0; }
-    [data-design="proposed"] .menu-pattern-column summary { display: inline-flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #b9c8d2; background: white; }
-    [data-design="proposed"] .menu-pattern-column-name { color: #24465d; text-decoration: none; font-weight: 600; }
-    [data-design="proposed"] svg.dropdown-menu-icon { top: 0; width: 16px; height: 16px; }
-    [data-design="proposed"] .pattern-panel {
-        --menu-ink: #203748;
-        --menu-muted: #536978;
-        --menu-line: #dce5eb;
-        --menu-hover: #edf3f7;
-        box-sizing: border-box;
-        width: 300px;
-        max-width: 100%;
-        margin: 0;
-        padding: 6px;
-        border: 1px solid var(--menu-line);
-        border-radius: 12px;
-        background: #fff;
-        color: var(--menu-ink);
-        font-size: 15px;
-        line-height: 1.4;
-        box-shadow: 0 8px 28px #18384d1a, 0 2px 6px #18384d0d;
-        overflow: auto;
-        overscroll-behavior: contain;
-    }
-    [data-design="proposed"] .nav-menu-inner.pattern-panel {
-        --menu-ink: #fff;
-        --menu-muted: #d0e4f1;
-        --menu-line: #ffffff30;
-        --menu-hover: #ffffff18;
-        background: #276890;
-    }
-    [data-design="proposed"] .pattern-panel .hook { display: none; }
-    [data-design="proposed"] .pattern-panel ul { margin: 0; padding: 0; list-style: none; }
-    [data-design="proposed"] .pattern-panel li { border: 0; padding: 0; }
-    [data-design="proposed"] .pattern-panel .pattern-panel-heading { position: relative; padding: 10px 12px 12px; margin-bottom: 4px; border-bottom: 1px solid var(--menu-line); }
-    [data-design="proposed"] .pattern-panel-heading strong { display: block; font-size: 15px; }
-    [data-design="proposed"] .pattern-panel-heading small { display: block; margin-top: 2px; font-size: 12px; color: var(--menu-muted); overflow-wrap: anywhere; }
-    [data-design="proposed"] .pattern-panel :is(a, button.button-as-link) {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 2px 8px;
-        width: 100%;
-        min-height: 44px;
-        box-sizing: border-box;
-        padding: 10px 12px;
-        border: 0;
-        border-radius: 6px;
-        color: var(--menu-ink);
-        font: inherit;
-        line-height: 1.4;
-        text-align: left;
-        text-decoration: none;
-        white-space: normal;
-        overflow-wrap: anywhere;
-        background: transparent;
-        cursor: pointer;
-    }
-    [data-design="proposed"] .pattern-panel :is(a, button.button-as-link):hover { background: var(--menu-hover); }
-    [data-design="proposed"] :is(summary, .pattern-panel a, .pattern-panel button):focus-visible { outline: 2px solid #598fce; outline-offset: -2px; }
-    [data-design="proposed"] .nav-menu :is(summary, button):focus-visible { outline-color: #c3e5ff; }
-    [data-design="proposed"] .pattern-panel .dropdown-description { flex-basis: 100%; color: var(--menu-muted); font-size: 12px; line-height: 1.5; }
-    [data-design="proposed"] .pattern-panel .keyboard-shortcut { margin-left: auto; float: none; }
-    [data-design="proposed"] .pattern-panel .nav-menu-logout { margin: 4px 0 0; padding: 4px 0 0; border-top: 1px solid var(--menu-line); }
-    [data-design="proposed"] .dropdown-actions li:nth-child(4),
-    [data-design="proposed"] .dropdown-actions li:last-child { border-top: 1px solid var(--menu-line); margin-top: 4px; padding-top: 4px; }
-    [data-design="proposed"] .pattern-panel .dropdown-column-type { padding: 8px 12px; color: var(--menu-muted); font-size: 12px; }
-    [data-design="proposed"] .menu-pattern-open .menu-pattern-stage { min-height: 0; }
-    [data-design="proposed"] .menu-pattern-open .pattern-panel { position: relative; inset: auto; width: 100%; margin-top: 12px; }
-    [data-design="proposed"] .menu-pattern-open header.hd { display: flow-root; }
-    [data-design="proposed"] .menu-pattern-open header.hd:has(details[open]) { background: transparent; padding: 0; color: #276890; }
-    [data-design="proposed"] .menu-pattern-open .nav-menu > summary { float: none; background: #276890; color: white; }
-    [data-design="proposed"] .menu-pattern-open .actor { display: none; }
-    [data-design="proposed"] .menu-pattern-open .menu-pattern-column { display: block; }
-    [data-design="proposed"] .pattern-panel.is-floating { position: fixed; inset: auto; max-width: none; z-index: 20000; }
-    @media (max-width: 760px) {
-        [data-design="proposed"] .menu-pattern-grid { grid-template-columns: 1fr; }
-        [data-design="proposed"] .menu-pattern-open .pattern-panel { max-width: 360px; }
-        [data-design="proposed"] .menu-pattern-open .menu-pattern-stage header.hd { max-width: 360px; }
-    }
-    @media (pointer: coarse), (max-width: 600px) {
-        [data-design="proposed"] details > summary,
-        [data-design="proposed"] .page-action-menu .icon-text,
-        [data-design="proposed"] .pattern-panel :is(a, button.button-as-link) { min-height: 48px; }
-        [data-design="proposed"] details.nav-menu > summary { min-width: 48px; }
-        [data-design="proposed"] .pattern-panel .keyboard-shortcut { display: none; }
-    }
-    @media (max-width: 760px) {
+    .menu-pattern-open .datasette-menu { position: static; max-width: 100%; max-height: none; }
+    .menu-pattern-open .nav-menu-inner.datasette-menu { margin-left: auto; }
+    .menu-pattern-open .app-header { max-width: 300px; margin-left: auto; }
+    .menu-pattern-open .page-action-menu .datasette-menu,
+    .menu-pattern-open .column-actions-menu { margin-top: 8px; }
+    @media (max-width: 900px) {
         .menu-pattern-grid { grid-template-columns: 1fr; }
-        .menu-pattern-stage header.hd { max-width: 320px; }
-        .menu-pattern-open .menu-pattern-stage { min-height: 150px; }
-        .menu-pattern-open article:last-child .menu-pattern-stage { min-height: 250px; }
+        .menu-pattern-stage header.hd { max-width: 360px; }
+        .menu-pattern-open .nav-menu-inner.datasette-menu { margin-left: 0; }
+        .menu-pattern-open .app-header { margin-left: 0; }
     }
 </style>
 {% endblock %}
 
-{% macro app_menu(state) %}
-<header class="hd"><nav aria-label="{{ state|capitalize }} app menu example">
-    {# Omit details-menu so the shared click handler leaves these examples independent. #}
-    <details class="nav-menu"{% if state == 'open' %} open{% endif %}>
-        <summary><svg aria-labelledby="pattern-nav-menu-{{ state }}" role="img"
+{% macro app_icon(key) %}
+<svg aria-labelledby="pattern-nav-menu-{{ key }}" role="img"
             fill="currentColor" stroke="currentColor" xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 16 16" width="16" height="16">
-                <title id="pattern-nav-menu-{{ state }}">Menu</title>
+                <title id="pattern-nav-menu-{{ key }}">Menu</title>
                 <path fill-rule="evenodd" d="M1 2.75A.75.75 0 011.75 2h12.5a.75.75 0 110 1.5H1.75A.75.75 0 011 2.75zm0 5A.75.75 0 011.75 7h12.5a.75.75 0 110 1.5H1.75A.75.75 0 011 7.75zM1.75 12a.75.75 0 100 1.5h12.5a.75.75 0 100-1.5H1.75z"></path>
-        </svg></summary>
-        <div class="nav-menu-inner pattern-panel" data-pattern-panel>
-            <div class="pattern-panel-heading proposal-only"><small>Signed in as root</small></div>
-            <ul>
-                <li><button type="button" class="button-as-link">Jump to... <kbd class="keyboard-shortcut" aria-hidden="true">/</kbd></button></li>
-            </ul>
-            <form class="nav-menu-logout" method="dialog">
-                <button type="button" class="button-as-link">Log out</button>
-            </form>
-        </div>
-    </details>
-    <div class="actor"><strong>root</strong></div>
-</nav></header>
+        </svg>
 {% endmacro %}
 
-{% macro database_menu(state) %}
-<div class="page-action-menu">
-    <details class="actions-menu-links"{% if state == 'open' %} open{% endif %}>
-        <summary>
-            <div class="icon-text">
-                <svg class="icon" aria-labelledby="pattern-actions-{{ state }}" role="img" style="color: #fff" xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <title id="pattern-actions-{{ state }}">Database actions</title>
+{% macro database_icon(key) %}
+<svg class="icon" aria-labelledby="pattern-actions-{{ key }}" role="img" style="color: #fff" xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <title id="pattern-actions-{{ key }}">Database actions</title>
                 <circle cx="12" cy="12" r="3"></circle>
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
             </svg>
-                <span>Database actions</span>
-            </div>
+{% endmacro %}
+
+{% macro column_icon(key) %}
+<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="12" cy="12" r="3"></circle>
+  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+</svg>
+{% endmacro %}
+
+{% macro app_panel(key) %}
+<div id="{{ key }}-panel" class="nav-menu-inner datasette-menu" role="menu" aria-label="App menu">
+    <div class="datasette-menu-heading" role="presentation"><small>Signed in as root</small></div>
+    <ul role="none">
+        <li role="none"><button type="button" class="button-as-link" role="menuitem">Jump to... <kbd class="keyboard-shortcut" aria-hidden="true">/</kbd></button></li>
+    </ul>
+    <div class="nav-menu-logout"><button type="button" class="button-as-link" role="menuitem">Log out</button></div>
+</div>
+{% endmacro %}
+
+{% macro app_menu(state) %}
+{% set key = state ~ '-app' %}
+<header class="hd app-header"><nav aria-label="{{ state|capitalize }} app menu example">
+    <details class="nav-menu"{% if state == 'closed' %} data-datasette-menu{% endif %}{% if state == 'open' %} open{% endif %}>
+        <summary aria-haspopup="menu" aria-expanded="{{ 'true' if state == 'open' else 'false' }}" aria-controls="{{ key }}-panel">{{ app_icon(key) }}</summary>
+        {% if state == 'closed' %}{{ app_panel(key) }}{% endif %}
+    </details>
+    <div class="actor"><strong>root</strong></div>
+</nav></header>
+{% if state == 'open' %}{{ app_panel(key) }}{% endif %}
+{% endmacro %}
+
+{% macro database_menu(state) %}
+{% set key = state ~ '-database' %}
+<div class="page-action-menu">
+    <details class="actions-menu-links"{% if state == 'closed' %} data-datasette-menu{% endif %}{% if state == 'open' %} open{% endif %}>
+        <summary class="datasette-menu-trigger" aria-haspopup="menu" aria-expanded="{{ 'true' if state == 'open' else 'false' }}" aria-controls="{{ key }}-panel">
+            <div class="icon-text">{{ database_icon(key) }}<span>Database actions</span></div>
         </summary>
-        <div class="dropdown-menu pattern-panel" data-pattern-panel>
-            <div class="pattern-panel-heading proposal-only"><strong>content</strong><small>Database actions</small></div>
-            <div class="hook"></div>
-            <ul>
-                <li><button type="button" class="button-as-link action-menu-button">Create table<span class="dropdown-description">Create a new table in this database.</span></button></li>
-                <li><button type="button" class="button-as-link action-menu-button">Execute write SQL<span class="dropdown-description">Run writable SQL with table permission checks.</span></button></li>
+        <div id="{{ key }}-panel" class="datasette-menu" role="menu" aria-label="Database actions">
+            <ul role="none">
+                <li role="none"><button type="button" class="button-as-link action-menu-button" role="menuitem">Create table<span class="dropdown-description">Create a new table in this database.</span></button></li>
+                <li role="none"><button type="button" class="button-as-link action-menu-button" role="menuitem">Execute write SQL<span class="dropdown-description">Run writable SQL with table permission checks.</span></button></li>
             </ul>
         </div>
     </details>
+</div>
+{% endmacro %}
+
+{% macro column_panel(key, state) %}
+<div id="{{ key }}-panel" class="column-actions-menu datasette-menu" role="menu" aria-label="Actions for column url"{% if state == 'closed' %} hidden{% endif %}>
+    <div class="datasette-menu-heading" role="presentation"><strong>url</strong></div>
+    <ul class="dropdown-actions" role="none">
+        {% for label in ['Sort ascending', 'Sort descending', 'Facet by this', 'Choose columns', 'Set custom type', 'Hide this column'] %}
+        <li role="none"{% if loop.index in (4, 6) %} class="menu-separator"{% endif %}><a href="#" role="menuitem">{{ label }}</a></li>
+        {% endfor %}
+    </ul>
+    <p class="dropdown-column-type">Type: TEXT</p>
 </div>
 {% endmacro %}
 
 {% macro column_menu(state) %}
-<details class="menu-pattern-column"{% if state == 'open' %} open{% endif %}>
-    <summary aria-label="url column actions"><span class="menu-pattern-column-name">url</span> <svg class="dropdown-menu-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-  <circle cx="12" cy="12" r="3"></circle>
-  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-</svg></summary>
-    <div class="dropdown-menu pattern-panel" data-pattern-panel>
-        <div class="pattern-panel-heading proposal-only"><strong>url</strong></div>
-        <div class="hook"></div>
-        <ul class="dropdown-actions">
-            {% for label in ['Sort ascending', 'Sort descending', 'Facet by this', 'Choose columns', 'Set custom type', 'Hide this column'] %}
-            <li><a href="#" onclick="return false">{{ label }}</a></li>
-            {% endfor %}
-        </ul>
-        <p class="dropdown-column-type">Type: TEXT</p>
-    </div>
-</details>
+{% set key = state ~ '-column' %}
+<span class="menu-pattern-column-name">url</span><button type="button" class="column-menu-trigger"{% if state == 'closed' %} data-pattern-column{% endif %} aria-label="Actions for column url" aria-haspopup="menu" aria-expanded="{{ 'true' if state == 'open' else 'false' }}" aria-controls="{{ key }}-panel">{{ column_icon(key) }}</button>
+{{ column_panel(key, state) }}
 {% endmacro %}
 
 {% block content %}
-<div id="menu-patterns" data-design="proposed">
+<div id="menu-patterns">
 <h1>Menu patterns</h1>
-<p>Compare the menus, then try opening each one. Sample actions do not change any data.</p>
-<div class="pattern-toolbar">
-    <label for="menu-design">Design</label>
-    <select id="menu-design">
-        <option value="current">Current design</option>
-        <option value="proposed" selected>Proposed: unified menus</option>
-    </select>
-</div>
+<p>Try opening each menu, or inspect the expanded examples below. Sample actions do not change any data.</p>
 {% for state in ['closed', 'open'] %}
 <section aria-labelledby="{{ state }}-heading" class="menu-pattern-{{ state }}">
     <h2 id="{{ state }}-heading">{{ state|capitalize }}</h2>
@@ -239,139 +136,26 @@
 <script>
 (() => {
     const root = document.getElementById('menu-patterns');
-    const selector = document.getElementById('menu-design');
-    const interactiveMenus = Array.from(root.querySelectorAll('.menu-pattern-closed details'));
-    let active = null;
-    let positionFrame = null;
-
-    function closeMenu(restoreFocus = false) {
-        if (!active) return;
-        const details = active;
-        active = null;
-        const panel = details.querySelector('[data-pattern-panel]');
-        if (panel.hasAttribute('popover') && typeof panel.hidePopover === 'function') panel.hidePopover();
-        panel.removeAttribute('popover');
-        panel.classList.remove('is-floating');
-        panel.removeAttribute('style');
-        details.open = false;
-        details.querySelector('summary').setAttribute('aria-expanded', 'false');
-        if (restoreFocus) details.querySelector('summary').focus();
-    }
-
-    function positionMenu() {
-        if (!active) return;
-        const panel = active.querySelector('[data-pattern-panel]');
-        const anchor = active.querySelector('summary').getBoundingClientRect();
-        const viewport = window.visualViewport;
-        const width = viewport ? viewport.width : window.innerWidth;
-        const height = viewport ? viewport.height : window.innerHeight;
-        const x = viewport ? viewport.offsetLeft : 0;
-        const y = viewport ? viewport.offsetTop : 0;
-        const gutter = 12;
-        const narrow = width <= 600;
-        const panelWidth = Math.min(narrow ? 360 : 300, width - gutter * 2);
-        panel.style.width = panelWidth + 'px';
-        panel.style.maxHeight = Math.max(0, height - gutter * 2) + 'px';
-        const naturalHeight = panel.scrollHeight + 2;
-        const below = Math.max(0, y + height - anchor.bottom - gutter - 8);
-        const above = Math.max(0, anchor.top - y - gutter - 8);
-        // Narrow screens use a bottom sheet. Desktop chooses the roomier side.
-        const sheet = narrow || Math.max(above, below) < Math.min(naturalHeight, 180);
-        let top;
-        let left;
-        if (sheet) {
-            panel.style.maxHeight = Math.max(0, height - gutter * 2) + 'px';
-            top = y + height - panel.offsetHeight - gutter;
-            left = x + (width - panelWidth) / 2;
-        } else {
-            const down = below >= naturalHeight || below >= above;
-            panel.style.maxHeight = Math.min(height - gutter * 2, down ? below : above) + 'px';
-            top = down ? anchor.bottom + 8 : anchor.top - panel.offsetHeight - 8;
-            left = active.classList.contains('nav-menu') ? anchor.right - panelWidth : anchor.left;
-        }
-        panel.style.left = Math.max(x + gutter, Math.min(left, x + width - panelWidth - gutter)) + 'px';
-        panel.style.top = Math.max(y + gutter, Math.min(top, y + height - panel.offsetHeight - gutter)) + 'px';
-    }
-
-    function schedulePosition() {
-        if (positionFrame !== null) return;
-        positionFrame = requestAnimationFrame(() => { positionFrame = null; positionMenu(); });
-    }
-
-    interactiveMenus.forEach((details, index) => {
-        const summary = details.querySelector('summary');
-        const panel = details.querySelector('[data-pattern-panel]');
-        panel.id = 'interactive-menu-' + index;
-        summary.setAttribute('aria-controls', panel.id);
-        summary.setAttribute('aria-expanded', 'false');
-        const items = () => Array.from(panel.querySelectorAll('a, button'));
-
-        function openMenu(focusLast = false) {
-            closeMenu();
-            active = details;
-            details.open = true;
-            summary.setAttribute('aria-expanded', 'true');
-            panel.classList.add('is-floating');
-            if (typeof panel.showPopover === 'function') {
-                panel.setAttribute('popover', 'manual');
-                panel.showPopover();
-            }
-            positionMenu();
-            const actions = items();
-            (focusLast ? actions[actions.length - 1] : actions[0]).focus({preventScroll: true});
-        }
-
-        summary.addEventListener('click', event => {
-            if (root.dataset.design !== 'proposed') return;
+    root.querySelectorAll('[data-pattern-column]').forEach(trigger => {
+        const panel = document.getElementById(trigger.getAttribute('aria-controls'));
+        const open = event => {
             event.preventDefault();
-            if (active === details) closeMenu(true);
-            else openMenu();
-        });
-        summary.addEventListener('keydown', event => {
-            if (root.dataset.design !== 'proposed' || !['ArrowDown', 'ArrowUp'].includes(event.key)) return;
-            event.preventDefault();
-            openMenu(event.key === 'ArrowUp');
-        });
-        panel.addEventListener('keydown', event => {
-            if (active !== details) return;
-            const actions = items();
-            const index = actions.indexOf(document.activeElement);
-            let next;
-            if (event.key === 'ArrowDown') next = (index + 1) % actions.length;
-            if (event.key === 'ArrowUp') next = (index - 1 + actions.length) % actions.length;
-            if (event.key === 'Home') next = 0;
-            if (event.key === 'End') next = actions.length - 1;
-            if (next !== undefined) { event.preventDefault(); actions[next].focus(); }
-        });
-        panel.addEventListener('click', event => {
-            if (active === details && event.target.closest('a, button')) {
-                event.preventDefault();
-                closeMenu(true);
+            event.stopPropagation();
+            if (event.type === 'click' && window.DatasetteMenu.isOpenFor(trigger)) {
+                window.DatasetteMenu.close({restoreFocus: true});
+            } else {
+                window.DatasetteMenu.open({trigger, panel, focusMenu: event.type === 'keydown' || event.detail === 0, focusLast: event.key === 'ArrowUp'});
             }
+        };
+        trigger.addEventListener('click', open);
+        trigger.addEventListener('keydown', event => {
+            if (['ArrowDown', 'ArrowUp'].includes(event.key)) open(event);
         });
-        details.addEventListener('toggle', () => summary.setAttribute('aria-expanded', String(details.open)));
     });
-    selector.addEventListener('change', () => {
-        closeMenu();
-        root.dataset.design = selector.value;
-        interactiveMenus.forEach(details => details.open = false);
-        root.querySelectorAll('.menu-pattern-open details').forEach(details => details.open = true);
+    // Open samples stay expanded; sample links never navigate or modify data.
+    root.addEventListener('click', event => {
+        if (event.target.closest('[role="menuitem"], .menu-pattern-open summary')) event.preventDefault();
     });
-    document.addEventListener('pointerdown', event => {
-        if (active && !active.contains(event.target)) closeMenu();
-    });
-    document.addEventListener('focusin', event => {
-        if (active && !active.contains(event.target)) closeMenu();
-    });
-    document.addEventListener('keydown', event => {
-        if (event.key === 'Escape' && active) { event.preventDefault(); closeMenu(true); }
-    });
-    window.addEventListener('resize', schedulePosition);
-    window.addEventListener('scroll', schedulePosition, true);
-    if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', schedulePosition);
-        window.visualViewport.addEventListener('scroll', schedulePosition);
-    }
 })();
 </script>
 {% endblock %}

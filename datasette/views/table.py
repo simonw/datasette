@@ -721,6 +721,8 @@ async def display_columns_and_rows(
         # Unless we are a view, the first column is a link - either to the rowid
         # or to the simple or compound primary key
         if link_column:
+            # NULL keys may be duplicated and encode like a real string key.
+            has_null_pk = bool(pks) and any(row[pk] is None for pk in pks)
             is_special_link_column = len(pks) != 1
             pk_path = path_from_row_pks(row, pks, not pks, False)
             row_path = path_from_row_pks(row, pks, not pks)
@@ -729,9 +731,9 @@ async def display_columns_and_rows(
             if row_label and row_label != pk_path:
                 row_action_label = f"{pk_path} {row_label}"
             table_path = datasette.urls.table(database_name, table_name)
-            row_link = (
-                f'<a href="{table_path}/{row_path}">{markupsafe.escape(pk_path)!s}</a>'
-            )
+            row_link = markupsafe.escape(pk_path)
+            if not has_null_pk:
+                row_link = f'<a href="{table_path}/{row_path}">{markupsafe.escape(pk_path)!s}</a>'
             edit_icon = (
                 '<svg class="row-inline-action-icon" aria-hidden="true" '
                 'xmlns="http://www.w3.org/2000/svg" width="14" height="14" '
@@ -754,14 +756,14 @@ async def display_columns_and_rows(
                 "</svg>"
             )
             row_actions = []
-            if row_action_permissions.get("update-row"):
+            if not has_null_pk and row_action_permissions.get("update-row"):
                 row_actions.append(
                     '<button type="button" class="row-inline-action row-inline-action-edit" '
                     f'aria-label="Edit row {markupsafe.escape(row_action_label)}" title="Edit row" '
                     'data-row-action="edit">'
                     f"{edit_icon}</button>"
                 )
-            if row_action_permissions.get("delete-row"):
+            if not has_null_pk and row_action_permissions.get("delete-row"):
                 row_actions.append(
                     '<button type="button" class="row-inline-action row-inline-action-delete" '
                     f'aria-label="Delete row {markupsafe.escape(row_action_label)}" title="Delete row" '

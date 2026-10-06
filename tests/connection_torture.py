@@ -295,6 +295,29 @@ class Hang(Exception):
     pass
 
 
+def open_file_paths():
+    # Paths of every file this process has open, including files that have
+    # since been deleted (psutil's open_files() leaves those out)
+    paths = []
+    if os.path.isdir("/proc/self/fd"):
+        for fd in os.listdir("/proc/self/fd"):
+            try:
+                paths.append(os.readlink(f"/proc/self/fd/{fd}"))
+            except OSError:
+                continue
+        return paths
+    # macOS: no /proc, but F_GETPATH works on any open descriptor
+    import fcntl
+
+    for fd in os.listdir("/dev/fd"):
+        try:
+            path = fcntl.fcntl(int(fd), fcntl.F_GETPATH, bytes(1024))
+        except OSError:
+            continue
+        paths.append(os.fsdecode(path.rstrip(b"\0")))
+    return paths
+
+
 def make_file(path, wal=False, extra_sql=""):
     conn = sqlite3.connect(path)
     if wal:
@@ -1190,16 +1213,15 @@ class Torture:
 
     def check_resources(self, baseline_threads):
         deadline = time.monotonic() + 15
+        # On macOS the temp directory is reported via its /private symlink target
+        tmp = os.path.realpath(self.tmp)
         while True:
             gc.collect()
-            leaked_fds = []
-            for fd in os.listdir("/proc/self/fd"):
-                try:
-                    target = os.readlink(f"/proc/self/fd/{fd}")
-                except OSError:
-                    continue
-                if target.startswith(self.tmp) or "datasette_temp_" in target:
-                    leaked_fds.append(target)
+            leaked_fds = [
+                target
+                for target in open_file_paths()
+                if target.startswith(tmp) or "datasette_temp_" in target
+            ]
             threads = [
                 t.name
                 for t in threading.enumerate()

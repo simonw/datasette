@@ -58,7 +58,13 @@ def test_connection_torture(scenario, seed):
             f"{scenario} crashed with {signal.Signals(-proc.returncode).name}:\n"
             f"{proc.stderr[-4000:]}"
         )
-    summary = json.loads(proc.stdout.strip().splitlines()[-1])
+    lines = proc.stdout.strip().splitlines()
+    if not lines:
+        pytest.fail(
+            f"{scenario} exited {proc.returncode} without a summary:\n"
+            f"{proc.stderr[-4000:]}"
+        )
+    summary = json.loads(lines[-1])
     problems = "\n".join(
         f"[{p['kind']}] {p['message'][:600]}" for p in summary["problems"]
     )

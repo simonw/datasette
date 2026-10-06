@@ -2140,10 +2140,10 @@ async def table_view_data(
     count_sql = f"select count(*) {from_sql}"
 
     # Handle pagination driven by ?_next=
-    _next = _next or request.args.get("_next")
+    _next = _next if _next is not None else request.args.get("_next")
 
     offset = ""
-    if _next:
+    if _next is not None:
         sort_value = None
         if is_view:
             # _next is an offset
@@ -2397,7 +2397,7 @@ async def table_view_data(
 
     data = {
         "ok": True,
-        "next": next_value and str(next_value) or None,
+        "next": None if next_value is None else str(next_value),
         "next_url": next_url,
     }
     data.update(

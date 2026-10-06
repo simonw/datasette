@@ -302,16 +302,65 @@ def _coerce_execute_write_payload(data, is_json):
     return data.get("sql"), params
 
 
-async def _prepare_execute_write(datasette, db, sql, params, actor):
+def _reject_unknown_parameters(params, allowed_names):
+    unknown = set(params) - set(allowed_names)
+    if unknown:
+        raise QueryValidationError(
+            "Unknown parameters: {}".format(", ".join(sorted(unknown)))
+        )
+
+
+def _json_parameter_value(value):
+    # Match the insert API: booleans become 1/0, arrays and objects JSON text
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (list, dict)):
+        return json.dumps(value)
+    return value
+
+
+def _json_sql_parameters(params, allowed_names, required_names):
+    """
+    Validate a dictionary of SQL parameters decoded from a JSON request
+    body and convert its values to types SQLite can bind.
+    """
+    if not isinstance(params, dict):
+        raise QueryValidationError("params must be a dictionary")
+    _reject_unknown_parameters(params, allowed_names)
+    missing = [name for name in required_names if name not in params]
+    if missing:
+        raise QueryValidationError("Missing parameters: {}".format(", ".join(missing)))
+    return {key: _json_parameter_value(value) for key, value in params.items()}
+
+
+def _stored_query_json_parameters(query: StoredQuery, params):
+    sql_names = list(dict.fromkeys(derive_named_parameters(query.sql)))
+    # Parameters declared in "params" are form fields, so accept them too
+    allowed_names = sql_names + [
+        name for name in query.parameters if name not in sql_names
+    ]
+    # Magic parameters such as :_actor_id are not supplied by the client
+    required_names = [name for name in sql_names if not name.startswith("_")]
+    try:
+        return _json_sql_parameters(params, allowed_names, required_names)
+    except QueryValidationError as ex:
+        if "params" not in allowed_names and isinstance(params.get("params"), dict):
+            raise QueryValidationError(
+                ex.message + ". Stored queries take parameters as top-level keys,"
+                ' not inside "params"'
+            ) from ex
+        raise
+
+
+async def _prepare_execute_write(datasette, db, sql, params, actor, *, is_json=False):
     if not sql or not isinstance(sql, str):
         raise QueryValidationError("SQL is required")
     parameter_names = _derived_query_parameters(sql)
-    extra_params = set(params) - set(parameter_names)
-    if extra_params:
-        raise QueryValidationError(
-            "Unknown parameters: {}".format(", ".join(sorted(extra_params)))
-        )
-    params = {name: params.get(name, "") for name in parameter_names}
+    if is_json:
+        params = _json_sql_parameters(params, parameter_names, parameter_names)
+    else:
+        _reject_unknown_parameters(params, parameter_names)
+        params = {name: params.get(name, "") for name in parameter_names}
     try:
         analysis = await db.analyze_sql(sql, params)
     except sqlite3.DatabaseError as ex:

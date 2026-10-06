@@ -5,6 +5,8 @@ import pytest
 from asgiref.sync import async_to_sync
 from bs4 import BeautifulSoup as Soup
 
+from datasette.app import Datasette
+
 from .fixtures import make_app_client
 
 
@@ -224,7 +226,7 @@ def test_json_post_body(stored_write_client):
     assert 302 == response.status
     assert "/data/add_name?success" == response.headers["Location"]
     rows = stored_write_client.get("/data/names.json?_shape=array").json
-    assert rows == [{"rowid": 1, "name": "['Hello', 'there']"}]
+    assert rows == [{"rowid": 1, "name": '["Hello", "there"]'}]
 
 
 @pytest.mark.parametrize(
@@ -474,3 +476,172 @@ def test_stored_write_query_disabled_for_immutable_database(
     )
     assert response.status == 403
     assert "Database is immutable" in response.text
+
+
+JSON_EVENT_SQL = (
+    "insert into events (value, flag, extra, tags, meta) "
+    "values (:value, :flag, :extra, :tags, :meta)"
+)
+JSON_EVENT_PARAMS = {
+    "value": 5,
+    "flag": True,
+    "extra": None,
+    "tags": ["a", "b"],
+    "meta": {"k": 1},
+}
+
+
+async def _json_params_datasette():
+    ds = Datasette(
+        memory=True,
+        config={
+            "databases": {
+                "data": {
+                    "queries": {
+                        "add_event": {"sql": JSON_EVENT_SQL, "write": True},
+                        "add_event_declared": {
+                            "sql": "insert into events (value) values (:value)",
+                            "params": ["value", "note"],
+                            "write": True,
+                        },
+                        "add_event_actor": {
+                            "sql": "insert into events (value, extra) values (:value, :_actor_id)",
+                            "write": True,
+                        },
+                    }
+                }
+            }
+        },
+    )
+    ds.root_enabled = True
+    db = ds.add_memory_database("stored_query_json_params", name="data")
+    # Columns without a declared type store values exactly as they are bound
+    await db.execute_write(
+        "create table if not exists events (value, flag, extra, tags, meta)"
+    )
+    await db.execute_write("delete from events")
+    await ds.invoke_startup()
+    return ds, db
+
+
+async def _post_json_params(ds, endpoint, params):
+    if endpoint == "stored":
+        return await ds.client.post(
+            "/data/add_event",
+            actor={"id": "root"},
+            json=params,
+            headers={"Accept": "application/json"},
+        )
+    return await ds.client.post(
+        "/data/-/execute-write",
+        actor={"id": "root"},
+        json={"sql": JSON_EVENT_SQL, "params": params},
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ("stored", "execute-write"))
+async def test_json_parameters_keep_types(endpoint):
+    # https://github.com/simonw/datasette/issues/2946
+    ds, db = await _json_params_datasette()
+    response = await _post_json_params(ds, endpoint, JSON_EVENT_PARAMS)
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    rows = (
+        await db.execute(
+            "select value, typeof(value) as value_type, flag, typeof(flag) as flag_type, "
+            "extra, typeof(extra) as extra_type, tags, meta from events"
+        )
+    ).dicts()
+    assert rows == [
+        {
+            "value": 5,
+            "value_type": "integer",
+            "flag": 1,
+            "flag_type": "integer",
+            "extra": None,
+            "extra_type": "null",
+            "tags": '["a", "b"]',
+            "meta": '{"k": 1}',
+        }
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ("stored", "execute-write"))
+@pytest.mark.parametrize(
+    "params,expected_error",
+    (
+        ({"value": 1}, "Missing parameters: flag, extra, tags, meta"),
+        ({**JSON_EVENT_PARAMS, "bogus": 1}, "Unknown parameters: bogus"),
+    ),
+)
+async def test_json_parameters_missing_or_unknown(endpoint, params, expected_error):
+    ds, db = await _json_params_datasette()
+    response = await _post_json_params(ds, endpoint, params)
+    assert response.status_code == 400
+    assert response.json()["errors"] == [expected_error]
+    assert (await db.execute("select count(*) from events")).single_value() == 0
+
+
+@pytest.mark.asyncio
+async def test_stored_query_json_params_wrapper_hint():
+    ds, db = await _json_params_datasette()
+    response = await ds.client.post(
+        "/data/add_event",
+        actor={"id": "root"},
+        json={"params": JSON_EVENT_PARAMS},
+        headers={"Accept": "application/json"},
+    )
+    assert response.status_code == 400
+    assert response.json()["errors"] == [
+        (
+            "Unknown parameters: params. Stored queries take parameters as "
+            'top-level keys, not inside "params"'
+        )
+    ]
+    assert (await db.execute("select count(*) from events")).single_value() == 0
+
+
+@pytest.mark.asyncio
+async def test_stored_query_json_declared_and_magic_parameters():
+    ds, db = await _json_params_datasette()
+    # Parameters declared in "params" are accepted even if the SQL does not use them
+    declared = await ds.client.post(
+        "/data/add_event_declared",
+        actor={"id": "root"},
+        json={"value": 1, "note": "ignored"},
+        headers={"Accept": "application/json"},
+    )
+    assert declared.status_code == 200
+    # Magic parameters are filled in by Datasette, not required from the client
+    magic = await ds.client.post(
+        "/data/add_event_actor",
+        actor={"id": "root"},
+        json={"value": 2},
+        headers={"Accept": "application/json"},
+    )
+    assert magic.status_code == 200
+    rows = (await db.execute("select value, extra from events order by value")).dicts()
+    assert rows == [{"value": 1, "extra": None}, {"value": 2, "extra": "root"}]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body,expected_error",
+    (
+        ("[1, 2]", "JSON must be a dictionary"),
+        ("{bad json}", "Invalid JSON: "),
+    ),
+)
+async def test_stored_query_invalid_json_body(body, expected_error):
+    ds, db = await _json_params_datasette()
+    response = await ds.client.post(
+        "/data/add_event",
+        actor={"id": "root"},
+        content=body,
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+    )
+    assert response.status_code == 400
+    assert response.json()["errors"][0].startswith(expected_error)
+    assert (await db.execute("select count(*) from events")).single_value() == 0

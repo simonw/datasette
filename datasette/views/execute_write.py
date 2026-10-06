@@ -363,7 +363,7 @@ class ExecuteWriteView(BaseView):
             data, is_json = await _json_or_form_payload(request)
             sql, provided_params = _coerce_execute_write_payload(data, is_json)
             parameter_names, params, analysis = await _prepare_execute_write(
-                self.ds, db, sql, provided_params, request.actor
+                self.ds, db, sql, provided_params, request.actor, is_json=is_json
             )
         except QueryValidationError as ex:
             if _wants_json(request, is_json, data):

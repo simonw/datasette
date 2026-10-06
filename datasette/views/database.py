@@ -41,8 +41,10 @@ from datasette.write_sql import QueryWriteRejected
 from . import Context
 from .base import DatasetteError, View, stream_csv
 from .query_helpers import (
+    QueryValidationError,
     _block_framing,
     _ensure_stored_query_execution_permissions,
+    _stored_query_json_parameters,
     _table_columns,
 )
 from .table_create_alter import _create_table_ui_context
@@ -626,23 +628,49 @@ class QueryView(View):
         # Process the POST
         body = await request.post_body()
         body = body.decode("utf-8").strip()
-        if body.startswith("{") and body.endswith("}"):
-            params = json.loads(body)
-            # But we want key=value strings
-            for key, value in params.items():
-                params[key] = str(value)
+        is_json = request.headers.get("content-type", "").startswith(
+            "application/json"
+        ) or (body.startswith("{") and body.endswith("}"))
+        validation_error = None
+        if is_json:
+            try:
+                params = json.loads(body or "{}")
+            except json.JSONDecodeError as ex:
+                params = {}
+                validation_error = f"Invalid JSON: {ex}"
+            if not isinstance(params, dict):
+                params = {}
+                validation_error = "JSON must be a dictionary"
         else:
             params = dict(parse_qsl(body, keep_blank_values=True))
 
-        # Don't ever send csrftoken as a SQL parameter
+        # csrftoken and _json are reserved keys, never SQL parameters
         params.pop("csrftoken", None)
+        json_requested = params.pop("_json", None)
 
         # Should we return JSON?
         should_return_json = (
             request.headers.get("accept") == "application/json"
             or request.args.get("_json")
-            or params.get("_json")
+            or json_requested
         )
+        if is_json and validation_error is None:
+            try:
+                params = _stored_query_json_parameters(stored_query, params)
+            except QueryValidationError as ex:
+                validation_error = ex.message
+        if validation_error:
+            if should_return_json:
+                return Response.json(
+                    dict(
+                        error_body([validation_error], 400),
+                        redirect=stored_query.on_error_redirect,
+                    ),
+                    status=400,
+                )
+            datasette.add_message(request, validation_error, datasette.ERROR)
+            return Response.redirect(stored_query.on_error_redirect or request.path)
+
         params_for_query = MagicParameters(stored_query.sql, params, request, datasette)
         await params_for_query.execute_params()
         ok = None

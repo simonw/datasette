@@ -1705,6 +1705,10 @@ The request body must include a ``"sql"`` string. Named SQL parameters can be pr
         }
     }
 
+Every named parameter in the SQL must have a value in ``"params"``, and ``"params"`` cannot contain keys that are not used by the SQL. Either mistake results in a ``400`` error such as ``"Missing parameters: name"`` or ``"Unknown parameters: breed"``.
+
+Parameter values keep their JSON types, using the same rules as the :ref:`insert API <TableInsertView>`: strings, numbers and ``null`` are passed through unchanged, ``true`` and ``false`` become ``1`` and ``0``, and arrays and objects are passed as JSON text.
+
 The SQL must be writable. Read-only ``select`` queries should use the regular :ref:`custom SQL query JSON API <json_api_custom_sql>` instead.
 
 Datasette analyzes the SQL before executing it. The actor must have ``execute-write-sql`` permission for the database, and must also have any permissions required by the operations in the SQL. For example, inserts and updates against a table require ``insert-row``, ``update-row`` and ``delete-row`` permissions for that table. Reads performed as part of the write, such as ``insert into dogs select ... from other_table``, require ``view-table`` permission on the source table. Schema changes require ``create-table``, ``alter-table`` or ``drop-table`` permissions as appropriate.

@@ -642,8 +642,21 @@ Writable queries can also be accessed using a JSON API. You can POST data to the
 To submit JSON to a writable query, encode key/value parameters as a JSON document::
 
     POST /mydatabase/add_message
+    Content-Type: application/json
 
     {"message": "Message goes here"}
+
+Each top-level key is the name of a parameter in the query's SQL, or one of the parameters listed in its ``"params"`` configuration. Parameters are not wrapped in a ``"params"`` object - that format is used by :ref:`execute-write <ExecuteWriteView>`, which needs to send the SQL as well.
+
+The keys ``_json`` and ``csrftoken`` are reserved: they are never passed to the SQL query, so a query cannot use them as parameter names.
+
+JSON values are passed to SQLite with their types intact, using the same rules as the :ref:`insert API <TableInsertView>`:
+
+- Strings, numbers and ``null`` are passed through unchanged.
+- ``true`` and ``false`` are passed as ``1`` and ``0``.
+- Arrays and objects are passed as JSON text, so they can be used with SQLite functions such as ``json_each()``.
+
+Every parameter used by the SQL must be included, apart from :ref:`magic parameters <queries_magic_parameters>`. Missing parameters or unknown keys result in a ``400`` error, for example ``"Missing parameters: message"``.
 
 You can also continue to submit data using regular form encoding, like so::
 

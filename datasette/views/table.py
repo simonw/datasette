@@ -2146,8 +2146,15 @@ async def table_view_data(
     if _next:
         sort_value = None
         if is_view:
-            # _next is an offset
-            offset = f" offset {int(_next)}"
+            # _next is an offset. A negative one starts from the first row, as a
+            # negative keyset token does for a table, and pagination continues
+            # from there.
+            try:
+                offset_value = max(int(_next), 0)
+            except ValueError:
+                raise BadRequest("_next must be an integer")
+            _next = str(offset_value)
+            offset = f" offset {offset_value}"
         else:
             components = urlsafe_components(_next)
             # If a sort order is applied and there are multiple components,

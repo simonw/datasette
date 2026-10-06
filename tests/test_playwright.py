@@ -2301,3 +2301,16 @@ def test_menu_long_plugin_content_and_no_popover_fallback(page, datasette_server
     assert panel.evaluate("node => node.scrollTop > 0")
     page.keyboard.press("Escape")
     expect(panel).not_to_be_visible()
+
+
+@pytest.mark.playwright
+def test_column_menu_facet_by_first_column_of_view(page, datasette_server):
+    # https://github.com/simonw/datasette/issues/1785
+    from playwright.sync_api import expect
+
+    panel = page.locator("#column-actions-menu")
+    page.goto(datasette_server + "fixtures/paginated_view")
+    page.locator('th[data-column="content"] .column-menu-trigger').click()
+    expect(
+        panel.get_by_role("menuitem", name="Facet by this", exact=True)
+    ).to_be_visible()

@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 import json
+import re
 import time
 import urllib
 import urllib.parse
@@ -1144,6 +1145,17 @@ class TableInsertView(BaseView):
                 method = table.upsert if upsert else table.insert
                 for row in rows:
                     rowids.append(method(row, **kwargs).last_rowid)
+                table_options = table.schema.rsplit(")", 1)[-1]
+                if re.search(r"\bWITHOUT\s+ROWID\b", table_options, re.IGNORECASE):
+                    where_clause = " AND ".join(
+                        f"{escape_sqlite(pk)} = ?" for pk in pks
+                    )
+                    returned_rows = []
+                    for row in rows:
+                        returned_rows.extend(
+                            table.rows_where(where_clause, [row[pk] for pk in pks])
+                        )
+                    return returned_rows
                 return list(
                     table.rows_where(
                         "rowid in ({})".format(",".join("?" for _ in rowids)),

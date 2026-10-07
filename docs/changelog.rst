@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _unreleased:
+
+Unreleased
+----------
+
+- Responses now include the request span's trace context in ``traceresponse`` and ``Server-Timing`` headers while tracing is recording. See :ref:`internals_telemetry_response_headers`. (:issue:`1730`)
+
 .. _v1_0_a41:
 
 1.0a41 (2026-09-24)

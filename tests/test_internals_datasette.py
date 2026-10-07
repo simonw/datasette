@@ -476,3 +476,98 @@ async def test_datasette_render_template_dataclass_values_not_deep_copied():
     await ds.invoke_startup()
     rendered = await ds.render_template("error.html", context)
     assert "shallow-copied-value" in rendered
+
+
+def _lifecycle_events(ds):
+    return [
+        event
+        for event in getattr(ds, "_tracked_events", [])
+        if event.name in ("add-database", "remove-database")
+    ]
+
+
+async def _drain_event_tasks(ds):
+    await asyncio.gather(*ds._pending_event_tasks)
+
+
+@pytest.mark.asyncio
+async def test_add_database_fires_event(tmp_path):
+    ds = Datasette(memory=True)
+    await ds.invoke_startup()
+    path = str(tmp_path / "data.db")
+    sqlite3.connect(path).execute("vacuum")
+    db = ds.add_database(Database(ds, path=path, is_mutable=True))
+    await _drain_event_tasks(ds)
+    events = _lifecycle_events(ds)
+    assert len(events) == 1
+    event = events[0]
+    assert event.name == "add-database"
+    assert event.database == db.name == "data"
+    assert event.path == os.path.abspath(path)
+    assert event.is_memory is False
+    assert event.actor is None
+
+
+@pytest.mark.asyncio
+async def test_add_memory_database_fires_event():
+    ds = Datasette(memory=True)
+    await ds.invoke_startup()
+    ds.add_memory_database("test_add_memory_database_event")
+    await _drain_event_tasks(ds)
+    events = _lifecycle_events(ds)
+    assert len(events) == 1
+    event = events[0]
+    assert event.name == "add-database"
+    assert event.database == "test_add_memory_database_event"
+    assert event.path is None
+    assert event.is_memory is True
+
+
+@pytest.mark.asyncio
+async def test_remove_database_fires_event(tmp_path):
+    ds = Datasette(memory=True)
+    await ds.invoke_startup()
+    path = str(tmp_path / "data.db")
+    sqlite3.connect(path).execute("vacuum")
+    db = ds.add_database(Database(ds, path=path, is_mutable=True))
+    ds.remove_database(db.name)
+    await _drain_event_tasks(ds)
+    events = _lifecycle_events(ds)
+    assert [event.name for event in events] == ["add-database", "remove-database"]
+    event = events[1]
+    assert event.database == "data"
+    assert event.path == os.path.abspath(path)
+    assert event.is_memory is False
+    assert event.actor is None
+    # remove_database never deletes the file
+    assert os.path.exists(path)
+
+
+@pytest.mark.asyncio
+async def test_add_database_no_event_before_startup():
+    ds = Datasette(memory=True)
+    # invoke_startup() has not run - no event, and no AssertionError from
+    # track_event()'s event_classes check
+    ds.add_database(Database(ds, memory_name="pre_startup_db"))
+    assert ds._pending_event_tasks == set()
+    assert _lifecycle_events(ds) == []
+
+
+def test_add_database_no_event_without_running_loop():
+    ds = Datasette(memory=True)
+    asyncio.run(ds.invoke_startup())
+    # Startup has run but there is no running event loop now
+    ds.add_database(Database(ds, memory_name="no_loop_db"))
+    assert ds._pending_event_tasks == set()
+    assert _lifecycle_events(ds) == []
+
+
+@pytest.mark.asyncio
+async def test_add_database_event_uses_renamed_name():
+    ds = Datasette(memory=True)
+    await ds.invoke_startup()
+    ds.add_memory_database("first_mem", name="clash")
+    ds.add_memory_database("second_mem", name="clash")
+    await _drain_event_tasks(ds)
+    events = _lifecycle_events(ds)
+    assert [event.database for event in events] == ["clash", "clash_2"]

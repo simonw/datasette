@@ -64,6 +64,43 @@ async def test_not_found_error_shape(ds_client):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "headers",
+    (
+        {"Accept": "application/json"},
+        {"Content-Type": "application/json"},
+    ),
+)
+async def test_not_found_error_shape_with_json_request_headers(ds_client, headers):
+    response = await ds_client.get("/fixtures/no_such_table", headers=headers)
+    assert_canonical_error(response, 404)
+
+
+@pytest.mark.asyncio
+async def test_not_found_without_json_request_headers_returns_html(ds_client):
+    response = await ds_client.get("/fixtures/no_such_table")
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("text/html")
+
+
+@pytest.mark.asyncio
+async def test_csv_error_keeps_text_format_with_json_accept_header(ds_client):
+    response = await ds_client.get(
+        "/fixtures/no_such_table.csv", headers={"Accept": "application/json"}
+    )
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("text/plain")
+
+
+@pytest.mark.asyncio
+async def test_write_api_missing_database_error_shape(ds_client):
+    response = await ds_client.post(
+        "/no_such/-/create", json={}, headers={"Content-Type": "application/json"}
+    )
+    assert_canonical_error(response, 404)
+
+
+@pytest.mark.asyncio
 async def test_datasette_error_with_title_omits_title_key(ds_client):
     # DatasetteError(title="Invalid SQL") previously leaked a "title" key
     response = await ds_client.get(

@@ -240,8 +240,15 @@ SETTINGS = (
     ),
     Setting(
         "max_open_connections",
-        128,
-        "Maximum number of pooled read connections open across all databases (at least 4 x num_sql_threads) - 0 for no limit",
+        32,
+        "Maximum number of pooled read connections open across all databases - 0 for no limit",
+    ),
+    Setting("max_write_connections", 8, "Maximum concurrent user database writers"),
+    Setting(
+        "max_pending_writes", 256, "Maximum queued user writes across all databases"
+    ),
+    Setting(
+        "write_queue_timeout_ms", 5000, "Maximum wait before a queued write starts"
     ),
     Setting(
         "connection_idle_timeout_ms",
@@ -629,6 +636,13 @@ class Datasette:
             self.executor = futures.ThreadPoolExecutor(
                 max_workers=self.setting("num_sql_threads")
             )
+        for name in (
+            "max_write_connections",
+            "max_pending_writes",
+            "write_queue_timeout_ms",
+        ):
+            if self.setting(name) <= 0:
+                raise StartupError(f"{name} must be greater than zero")
         self.max_returned_rows = self.setting("max_returned_rows")
         self.sql_time_limit_ms = self.setting("sql_time_limit_ms")
         self.page_size = self.setting("default_page_size")
@@ -842,6 +856,7 @@ class Datasette:
             return
 
     async def _invoke_startup(self):
+        self._warn_connection_headroom()
         # Group spans created during startup under a single parent span
         with tracer.start_as_current_span(STARTUP):
             # Register event classes
@@ -1108,6 +1123,20 @@ class Datasette:
         return self._settings.get(key, None)
 
     @property
+    def _write_budget(self):
+        from .write_budget import WriteBudget
+
+        budget = self.__dict__.get("_write_budget_instance")
+        if budget is None:
+            budget = WriteBudget(
+                self.setting("max_write_connections"),
+                self.setting("max_pending_writes"),
+                self.setting("write_queue_timeout_ms"),
+            )
+            budget = self.__dict__.setdefault("_write_budget_instance", budget)
+        return budget
+
+    @property
     def _read_pool(self):
         pool = self.__dict__.get("_read_pool_instance")
         if pool is None:
@@ -1121,17 +1150,32 @@ class Datasette:
             pool = self.__dict__.setdefault("_read_pool_instance", pool)
         return pool
 
-    def _effective_max_open_connections(self):
-        """max_open_connections, raised to at least 4 x num_sql_threads.
+    def _warn_connection_headroom(self):
+        try:
+            import resource
 
-        Every executor thread can hold one read connection at a time, so a
-        cap below the thread count would close and reopen a connection for
-        nearly every query. 0 means no limit."""
-        configured = self.setting("max_open_connections") or 0
-        if configured <= 0:
-            return 0
-        threads = self.setting("num_sql_threads") or 0
-        return max(configured, 4 * threads)
+            limit, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
+        except (ImportError, OSError, ValueError):
+            return
+        reads = self._effective_max_open_connections()
+        writes = self.setting("max_write_connections")
+        attachments = min(10, len(self.databases)) if self.crossdb else 0
+        estimate = 64 + 3 * (reads * (1 + attachments) + writes + 2)
+        if limit != resource.RLIM_INFINITY and (not reads or estimate > limit):
+            logging.getLogger(__name__).warning(
+                "Connection settings may exceed the file descriptor limit (%s): "
+                "read limit %s, writer limit %s, estimated descriptors including "
+                "WAL, attachments and headroom %s. Reduce connection limits or "
+                "increase the OS limit. This estimate excludes plugin allocations.",
+                limit,
+                reads,
+                writes,
+                estimate,
+            )
+
+    def _effective_max_open_connections(self):
+        """Configured read cap; do not silently increase it with thread count."""
+        return max(self.setting("max_open_connections") or 0, 0)
 
     def _connection_idle_timeout_s(self):
         "connection_idle_timeout_ms in seconds; 0 means never close idle ones."

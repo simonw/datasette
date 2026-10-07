@@ -1264,10 +1264,11 @@ async def test_database_close_shuts_down_write_thread(tmpdir):
     await db.execute_write("insert into t (id) values (1)")
     assert db._write_thread is not None
     assert db._write_thread.is_alive()
+    thread = db._write_thread
     db.close()
-    # Wait briefly for the thread to exit — the sentinel should cause it to return.
-    db._write_thread.join(timeout=5)
-    assert not db._write_thread.is_alive()
+    thread.join(timeout=5)
+    assert not thread.is_alive()
+    assert db._write_thread is None
     ds._internal_database.close()
 
 
@@ -1314,21 +1315,17 @@ async def test_close_releases_memory_connections(num_sql_threads, named):
     ds = Datasette(memory=True, settings={"num_sql_threads": num_sql_threads})
     db = ds.add_memory_database(uuid.uuid4().hex) if named else ds.get_database()
     leased = await db.execute_fn(lambda conn: conn)
-    # Read connections are leased: the proxy is unusable once the callback
-    # returns, so reach the underlying connection through a cursor
-    read_connection = await db.execute_fn(
-        lambda conn: conn.execute("select 1").connection
-    )
     leased_write = await db.execute_write_fn(lambda conn: conn)
-    write_connection = await db.execute_write_fn(
-        lambda conn: conn.execute("select 1").connection
-    )
+    # Inspect the owned raw connections to verify physical closure as well
+    # as lease expiry. cursor.connection intentionally no longer leaks them.
+    connections = list(db._all_connections)
+    assert len(connections) >= 2
     with pytest.raises(ConnectionLeaseError):
         leased.execute("select 1")
     with pytest.raises(ConnectionLeaseError):
         leased_write.execute("select 1")
     ds.close()
-    for conn in (read_connection, write_connection):
+    for conn in connections:
         with pytest.raises(sqlite3.ProgrammingError, match="closed"):
             conn.execute("select 1")
 

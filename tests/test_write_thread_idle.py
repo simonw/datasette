@@ -323,6 +323,14 @@ def test_idle_exit_race_stress_many_event_loops(tmp_path):
         async def go():
             for seq in range(rounds):
                 barrier.wait(timeout=30)
+                # Force some completed retirements as well as racing the
+                # boundary. Scheduler latency must not decide coverage.
+                if seq % 4 == 0:
+                    deadline = time.monotonic() + 5
+                    while db._write_thread is not None:
+                        assert time.monotonic() < deadline
+                        await asyncio.sleep(0.001)
+                    barrier.wait(timeout=30)
                 await asyncio.sleep(0.001 * rng.uniform(0.5, 1.5))
                 await asyncio.wait_for(
                     db.execute_write_fn(_recorder(log, w, seq)), timeout=10

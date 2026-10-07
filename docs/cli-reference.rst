@@ -252,8 +252,14 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
       num_sql_threads              Number of threads in the thread pool for
                                    executing SQLite queries (default=3)
       max_open_connections         Maximum number of pooled read connections open
-                                   across all databases (at least 4 x
-                                   num_sql_threads) - 0 for no limit (default=128)
+                                   across all databases - 0 for no limit
+                                   (default=32)
+      max_write_connections        Maximum concurrent user database writers
+                                   (default=8)
+      max_pending_writes           Maximum queued user writes across all databases
+                                   (default=256)
+      write_queue_timeout_ms       Maximum wait before a queued write starts
+                                   (default=5000)
       connection_idle_timeout_ms   Close read connections, and stop write threads,
                                    that have been idle for this many milliseconds -
                                    0 to keep them open (default=30000)

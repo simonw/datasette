@@ -48,6 +48,11 @@ def test_plugin_hooks_have_tests(plugin_hook):
     assert ok, f"Plugin hook is missing tests: {plugin_hook}"
 
 
+def test_hook_write_task_completed():
+    # Success and expiry delivery are exercised in tests/test_write_budget.py.
+    assert "write_task_completed" in dir(pm.hook)
+
+
 def test_hook_jump_items_sql():
     # Detailed behavior is covered in tests/test_jump.py.
     assert "jump_items_sql" in dir(pm.hook)

@@ -333,12 +333,11 @@ async def test_write_callback_cannot_close_write_connection(owned_db):
         await db.execute_write_fn(close_it)
     await db.execute_write("insert into t (v) values ('after')")
 
-    # Reaching the raw connection through a cursor still closes it: the
-    # write thread notices and reopens before the next write
+    # cursor.connection has the same lease protections as the connection.
     def close_raw(conn):
         conn.execute("select 1").connection.close()
 
-    with pytest.raises(sqlite3.ProgrammingError):
+    with pytest.raises(ConnectionLeaseError):
         await db.execute_write_fn(close_raw)
     for _ in range(3):
         await db.execute_write("insert into t (v) values ('again')")
@@ -747,13 +746,13 @@ async def test_cursors_are_closed_before_leaving_their_thread(owned_db):
         "insert into t (v) values (?)", [("a",), ("b",)]
     )
     assert cursor.rowcount == 2
-    with pytest.raises(sqlite3.ProgrammingError):
+    with pytest.raises(ConnectionLeaseError):
         cursor.fetchall()
     cursor = await db.execute_write_fn(
         lambda conn: conn.execute("insert into t (v) values ('c')")
     )
     assert cursor.lastrowid == 3
-    with pytest.raises(sqlite3.ProgrammingError):
+    with pytest.raises(ConnectionLeaseError):
         cursor.fetchone()
 
     # Cursors held by the frames of an exception raised by a callback are
@@ -770,7 +769,7 @@ async def test_cursors_are_closed_before_leaving_their_thread(owned_db):
     with pytest.raises(ValueError):
         await db.execute_write_fn(read_then_fail)
     for cursor in captured:
-        with pytest.raises(sqlite3.ProgrammingError):
+        with pytest.raises(ConnectionLeaseError):
             cursor.fetchone()
 
 

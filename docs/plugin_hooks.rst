@@ -2604,3 +2604,13 @@ Tokens can then be created and verified using :ref:`datasette.create_token() <da
     actor = await datasette.verify_token(token)
 
 If no handlers are registered, ``create_token()`` raises ``RuntimeError``. If the requested ``handler`` name is not found, it raises ``ValueError``.
+
+
+.. _plugin_hook_write_task_completed:
+
+write_task_completed(datasette, database, task_id, exception)
+-------------------------------------------------------------
+
+Called after an accepted ``execute_write_fn(..., block=False)`` task finishes, fails, or expires before execution. ``database`` is the database name and ``task_id`` is the UUID returned on acceptance. ``exception`` is ``None`` on success, otherwise the exception describing the failure. ``DatabaseAdmissionTimeout`` means execution never started; other execution failures must not be assumed safe to retry. An immediately rejected submission does not trigger this hook because no task was accepted.
+
+The hook may return an awaitable. Delivery runs on the submitting event loop and is not durable: stopping that loop or the process can prevent notification. Failures are also logged with ``database``, ``task_id`` and ``error_code`` fields. A failing completion hook is logged and does not retry the write or change its result.

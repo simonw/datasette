@@ -2063,7 +2063,7 @@ Datasette is designed to serve anything from one database to thousands of databa
 
 **Reads** run on a shared pool of :ref:`setting_num_sql_threads` threads. Each read borrows a connection from a pool for the duration of one query or one ``execute_fn()`` callback, then returns it. At most :ref:`setting_max_open_connections` pooled read connections are open at once across all databases; when a new one is needed the least recently used idle connection is closed first, and connections idle for longer than :ref:`setting_connection_idle_timeout_ms` are closed. Read connections to the database files Datasette serves are read-only.
 
-**Writes** to each database are run one at a time, in the order they were submitted, by a write thread dedicated to that database and holding its single write connection. The thread is started by the first write and stops, closing its connection, after :ref:`setting_connection_idle_timeout_ms` without writes; the next write starts a new one.
+**Writes** to each database are run one at a time, in the order they were submitted, by a write thread dedicated to that database and holding its single write connection. At most :ref:`setting_max_write_connections` user writers exist at once. The thread stops, closing its connection, after :ref:`setting_connection_idle_timeout_ms` without writes, or after a callback when another database needs its slot; the next write waits for capacity and starts a new one. Queued writes are bounded by :ref:`setting_max_pending_writes` and :ref:`setting_write_queue_timeout_ms`. The internal catalog uses its own writer.
 
 **Isolated functions** (:ref:`database_execute_isolated_fn`) get a connection of their own that is opened and closed for that one call.
 
@@ -2333,6 +2333,8 @@ For example:
         )
     except Exception as e:
         print("An error occurred:", e)
+
+With ``transaction=False``, finish any transaction you start before returning. An unfinished transaction is rolled back and raises ``ConnectionLeaseError``. A connection can be retired between callbacks, so transaction state and connection-local state must not span callbacks. Do not synchronously wait for another Datasette database operation inside a callback: finite connection limits can deadlock that pattern. Straightforward nested calls raise ``DatabaseReentrancyError``; schedule dependent operations after the callback has returned.
 
 Your function can optionally accept a ``track_event`` parameter in addition to ``conn``.  If it does, it will be passed a callable that can be used to queue events for dispatch after the write transaction commits successfully.  Events queued this way are discarded if the write raises an exception.
 

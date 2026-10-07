@@ -178,13 +178,13 @@ def test_idle_reaper_closes_connections_without_event_loop(tmp_path):
     "num_sql_threads,configured,expected",
     [
         (3, 128, 128),
-        (3, 5, 12),
-        (8, 20, 32),
+        (3, 5, 5),
+        (8, 20, 20),
         (0, 1, 1),
         (3, 0, 0),
     ],
 )
-def test_max_open_connections_clamped_to_four_times_threads(
+def test_max_open_connections_respects_configured_limit(
     num_sql_threads, configured, expected
 ):
     ds = Datasette(
@@ -209,29 +209,33 @@ def test_connection_idle_timeout_ms_setting():
 
 
 @pytest.mark.asyncio
-async def test_soft_cap_when_every_connection_is_leased(tmp_path):
-    # Only reachable with a cap below the thread count, which the setting
-    # clamp prevents: open one more connection rather than wait, and close
-    # it again on release
+async def test_hard_cap_when_every_connection_is_leased(tmp_path):
     paths = _make_dbs(tmp_path, 3)
-    ds = Datasette(paths, settings={"num_sql_threads": 3})
-    pool = ds._read_pool
-    pool.max_open = 1
-    barrier = threading.Barrier(3, timeout=5)
+    ds = Datasette(paths, settings={"num_sql_threads": 3, "max_open_connections": 1})
+    entered = threading.Event()
+    release = threading.Event()
 
     def slow(conn):
-        barrier.wait()
+        entered.set()
+        assert release.wait(5)
         return conn.execute("select 1").fetchone()[0]
 
-    results = await asyncio.gather(
-        *[ds.get_database(f"db{i}").execute_fn(slow) for i in range(3)]
-    )
-    assert results == [1, 1, 1]
-    assert pool.stats["exceeded_cap"] >= 2
-    assert pool.stats["peak_open"] == 3
-    # Back under the cap once everything has been returned
-    assert pool.snapshot()["open"] <= 1
-    ds.close()
+    tasks = [
+        asyncio.create_task(ds.get_database(f"db{i}").execute_fn(slow))
+        for i in range(3)
+    ]
+    try:
+        assert await asyncio.to_thread(entered.wait, 5)
+        await asyncio.sleep(0.05)
+        assert ds._read_pool.snapshot()["open"] == 1
+        assert not any(task.done() for task in tasks)
+        release.set()
+        assert await asyncio.gather(*tasks) == [1, 1, 1]
+        assert ds._read_pool.stats["peak_open"] == 1
+    finally:
+        release.set()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        ds.close()
 
 
 @pytest.mark.asyncio

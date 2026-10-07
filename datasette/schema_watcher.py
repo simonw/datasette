@@ -251,6 +251,10 @@ def header_schema_version(path):
 
 
 def _is_transient(error):
+    from .write_budget import DatabaseResourceError
+
+    if isinstance(error, DatabaseResourceError):
+        return True
     if isinstance(error, OSError):
         return error.errno in (errno.EMFILE, errno.ENFILE, errno.ENOMEM, errno.EAGAIN)
     if isinstance(error, sqlite3.OperationalError):
@@ -312,6 +316,7 @@ class SchemaWatcher:
     def __init__(self, ds):
         self.ds = ds
         self.states = {}
+        self._scan_resource_lock = threading.Lock()
         # States whose catalog must be (re)built: registered after startup,
         # changed by a write whose notification may never run, or whose last
         # scan failed for a transient reason. Flushed by the next request or
@@ -735,6 +740,10 @@ class SchemaWatcher:
         self._last_sweep = time.monotonic()
 
     def _sweep_sync(self, states, background=False):
+        with self._scan_resource_lock:
+            return self._sweep_serial(states, background)
+
+    def _sweep_serial(self, states, background=False):
         """Runs in a worker thread. Reads state, never writes it."""
         by_dir = {}
         for state in states:
@@ -911,6 +920,10 @@ class SchemaWatcher:
         }
 
     def _scan_chunk_sync(self, states):
+        with self._scan_resource_lock:
+            return self._scan_chunk_serial(states)
+
+    def _scan_chunk_serial(self, states):
         results = []
         for state in states:
             try:

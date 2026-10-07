@@ -223,25 +223,64 @@ max_open_connections
     setting_default(cog, "max_open_connections")
 .. ]]]
 
-Default: ``128``
+Default: ``32``
 
 .. [[[end]]]
 
-Read queries borrow a connection from a pool for the duration of one query (or one :ref:`execute_fn() <database_execute_fn>` callback) and return it afterwards. This setting caps how many pooled read connections can be open at once, across all attached file databases. When a new connection is needed and the cap has been reached, the least recently used idle connection - which may belong to any database - is closed first.
+Maximum pooled read connections across file-backed databases. When all connections are busy, reads wait up to five seconds for capacity instead of exceeding the cap. Idle connections are evicted before opening a connection to another database. The configured limit is respected even when it is smaller than :ref:`setting_num_sql_threads`. Set this to 0 for no limit.
 
-This is what lets one Datasette instance serve hundreds or thousands of database files without holding a connection, and its file descriptors, open to every one of them.
+Immutable isolated callbacks use fresh connections counted against this same cap. In-memory read connections are exempt, except for the ``_memory`` database under ``--crossdb``, whose connections attach database files and count against the cap.
 
-Every SQL thread can hold one read connection at a time, so a cap smaller than the number of threads would close and reopen connections for nearly every query. Datasette therefore raises the cap it uses to at least four times :ref:`setting_num_sql_threads` (12 with the default of 3 threads). ``/-/settings.json`` shows the value you configured.
+This limits connections, not exact file descriptors or RSS. WAL files, cross-database attachments, HTTP sockets, temporary files and plugins consume additional resources. Datasette logs a warning at startup if a conservative estimate of configured connection costs and headroom exceeds the OS file descriptor limit. Read queries waiting for executor threads, result sizes, callback payload sizes and plugin memory remain outside these limits.
 
-Set this to 0 for no limit, in which case idle connections are only closed by :ref:`setting_connection_idle_timeout_ms`.
+.. _setting_max_write_connections:
 
-::
+max_write_connections
+~~~~~~~~~~~~~~~~~~~~~
 
-    datasette *.db --setting max_open_connections 64
+.. [[[cog
+    setting_default(cog, "max_write_connections")
+.. ]]]
 
-The cap does not cover write connections (one per database that is being written to, see :ref:`setting_connection_idle_timeout_ms`), the short-lived connections used by :ref:`database_execute_isolated_fn` and by schema checks, or in-memory databases, which use no file descriptors. The exception is the ``_memory`` database under ``--crossdb``: each of its connections ``ATTACH``\ es up to ten database files, so those connections count against the cap and are closed when idle like file connections. Adding or removing a database closes them too, so the next cross-database query sees the current set of databases.
+Default: ``8``
 
-Each pooled connection to a file in WAL mode uses three file descriptors (the database, its ``-wal`` and its ``-shm`` file); other databases use one. Under a small file descriptor limit such as ``ulimit -n 256``, a cap of 64 keeps pooled read connections below about 200 descriptors even if every database uses WAL, leaving room for write connections and Datasette itself.
+.. [[[end]]]
+
+Maximum simultaneous user database writer threads and their retained connections. Must be greater than zero. Each database preserves FIFO write order. When other databases are waiting, a writer closes its connection and releases its slot after its current callback completes. A retiring writer counts against the limit until its thread exits. Idle writers also release their slots under pressure, even if :ref:`setting_connection_idle_timeout_ms` is 0.
+
+The internal catalog has a separate writer, and file schema scans are serialized. Mutable isolated callbacks occupy a writer slot without retaining an additional ordinary file connection. Named in-memory writers occupy non-evictable slots to preserve their data; waiting writes can time out if these consume all capacity. In non-threaded mode, the same setting bounds retained writer connections, evicting an idle file connection before opening another.
+
+.. _setting_max_pending_writes:
+
+max_pending_writes
+~~~~~~~~~~~~~~~~~~
+
+.. [[[cog
+    setting_default(cog, "max_pending_writes")
+.. ]]]
+
+Default: ``256``
+
+.. [[[end]]]
+
+Maximum queued user writes across all databases, excluding callbacks already executing. Must be greater than zero. A full queue immediately raises ``datasette.write_budget.DatabaseQueueFull`` without accepting the write. Callers are not queued waiting for queue space. The internal catalog writer is separate.
+
+.. _setting_write_queue_timeout_ms:
+
+write_queue_timeout_ms
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. [[[cog
+    setting_default(cog, "write_queue_timeout_ms")
+.. ]]]
+
+Default: ``5000``
+
+.. [[[end]]]
+
+Maximum milliseconds an accepted write can wait before execution starts. Must be greater than zero. Expired tasks are removed and raise ``datasette.write_budget.DatabaseAdmissionTimeout``. Queue-full and admission-timeout errors have ``execution_started=False`` and become HTTP 503 responses with ``Retry-After: 1`` and an error ``code`` in JSON responses.
+
+After execution starts, cancellation of the calling request does not cancel the write. Datasette never automatically retries a write callback. A connection-open failure can reclaim idle connections and retry opening once, before any preparation hook or callback runs. ``block=False`` calls return a task ID on acceptance; later failures are logged and reported to :ref:`plugin_hook_write_task_completed` while the calling event loop remains running.
 
 .. _setting_connection_idle_timeout_ms:
 
@@ -265,9 +304,9 @@ Opening a new connection costs around a millisecond (more if :ref:`plugin_hook_p
 
 Anything a function attaches to a connection itself - temporary tables, ``ATTACH`` statements, ``PRAGMA`` settings, functions registered with ``conn.create_function()`` - is lost when that connection is closed, and is never shared between pooled connections. Set that up in the :ref:`plugin_hook_prepare_connection` plugin hook instead, which runs once for every new connection.
 
-In-memory databases are exempt, since closing their only write connection would discard their contents. With :ref:`setting_num_sql_threads` set to 0 there are no threads to time out, so the write connection stays open until Datasette shuts down; read connections are still closed when idle.
+In-memory databases are exempt, since closing their only write connection would discard their contents. With :ref:`setting_num_sql_threads` set to 0 there are no threads to time out, so idle write connections are closed under capacity pressure or when Datasette shuts down; read connections are still closed when idle.
 
-Set this to 0 to keep read connections open until they are evicted by :ref:`setting_max_open_connections`, and write threads running until Datasette shuts down::
+Set this to 0 to keep read connections open until they are evicted by :ref:`setting_max_open_connections`, and write threads running until capacity pressure or Datasette shutdown::
 
     datasette mydatabase.db --setting connection_idle_timeout_ms 0
 

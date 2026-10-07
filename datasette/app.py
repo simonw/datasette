@@ -55,7 +55,6 @@ from .schema_watcher import (
     SchemaWatcher,
     store_closing_fingerprints,
 )
-from .scratch import ScratchDatabases
 from .telemetry import (
     TelemetryMiddleware,
     _in_datasette_client,
@@ -459,7 +458,6 @@ class Datasette:
         nolock=False,
         internal=None,
         default_deny=False,
-        scratch_dir=None,
     ):
         self._startup_invoked = False
         self._shutdown_invoked = False
@@ -533,18 +531,6 @@ class Datasette:
         else:
             self._internal_database = Database(self, path=internal, mode="rwc")
         self._internal_database.name = INTERNAL_DB_NAME
-
-        # Scratch databases: an explicit directory, else config_dir/scratch
-        # if Datasette created it (or it is empty), else a temporary
-        # directory created on first use. Loaded - and the directory locked
-        # - at the end of __init__, so a failed construction leaves nothing
-        # locked.
-        self._scratch = ScratchDatabases(
-            self,
-            scratch_dir,
-            inferred=scratch_dir is None and config_dir is not None,
-            fallback_dir=(config_dir / "scratch") if config_dir else None,
-        )
 
         self.cache_headers = cache_headers
         self._static_asset_hashes = {}
@@ -701,13 +687,6 @@ class Datasette:
         self.client = DatasetteClient(self)
         # ds.config is available now: resolve per-database schema_watch modes
         self._schema_watcher.configure()
-        # Attaches existing scratch databases without opening any of them.
-        # Takes the scratch directory's lock, so nothing after this may fail
-        try:
-            self._scratch.load()
-        except BaseException:
-            self._scratch.close()
-            raise
         # Last, so metric callbacks never see a partially initialized instance
         register_datasette(self)
 
@@ -1046,7 +1025,7 @@ class Datasette:
         # --crossdb: each pooled _memory connection ATTACHed the databases
         # that existed when it was opened. Discard them so the next query
         # sees databases added since, and none removed since
-        if not self.crossdb or db.is_memory or db.is_scratch:
+        if not self.crossdb or db.is_memory:
             return
         memory = self.databases.get("_memory")
         if memory is not None and memory is not db:
@@ -1072,39 +1051,6 @@ class Datasette:
         self._schema_watcher.unregister(name)
         self._crossdb_attachments_changed(db)
         return db
-
-    @property
-    def scratch_dir(self):
-        """The scratch directory in use, or None if scratch databases are
-        temporary and none has been created yet."""
-        return self._scratch.directory
-
-    async def create_scratch_database(self, name=None, *, actor=None, metadata=None):
-        """Create a new, empty scratch database and attach it.
-
-        ``name`` defaults to a random ``scratch_xxxxxxxx`` name. ``actor``
-        (an actor dictionary or an actor ID) is recorded as the owner and
-        ``metadata`` is any JSON-serializable dictionary, both returned by
-        :meth:`list_scratch_databases`. Returns the
-        :class:`~datasette.scratch.ScratchDatabase`.
-        """
-        return await self._scratch.create(name, actor=actor, metadata=metadata)
-
-    async def delete_scratch_database(self, name):
-        """Detach a scratch database and delete its files.
-
-        Waits for reads and writes that are already running; calls that are
-        queued or made later raise
-        :class:`~datasette.scratch.ScratchDatabaseDeleted`."""
-        await self._scratch.delete(name)
-
-    async def rename_scratch_database(self, name, new_name):
-        "Rename a scratch database. Returns the new Database object."
-        return await self._scratch.rename(name, new_name)
-
-    async def list_scratch_databases(self):
-        "List scratch databases as ScratchDatabaseInfo objects, sorted by name."
-        return await self._scratch.list()
 
     def close(self):
         """Release all resources held by this Datasette instance.
@@ -1155,13 +1101,6 @@ class Datasette:
             except Exception as e:  # noqa: BLE001
                 if first_exception is None:
                     first_exception = e
-        try:
-            # Records last_used, unlocks the directory, removes a temporary
-            # scratch directory
-            self._scratch.close()
-        except Exception as e:  # noqa: BLE001
-            if first_exception is None:
-                first_exception = e
         if first_exception is not None:
             raise first_exception
 
@@ -1784,9 +1723,7 @@ class Datasette:
         if crossdb and self.crossdb and database == "_memory":
             count = 0
             for db_name, db in self.databases.items():
-                # Scratch databases are never attached: they can be deleted
-                # while a pooled _memory connection would still hold them
-                if count >= SQLITE_LIMIT_ATTACHED or db.is_memory or db.is_scratch:
+                if count >= SQLITE_LIMIT_ATTACHED or db.is_memory:
                     continue
                 sql = 'ATTACH DATABASE "file:{path}?{qs}" AS [{name}];'.format(
                     path=db.path,

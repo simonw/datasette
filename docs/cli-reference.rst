@@ -140,8 +140,6 @@ Use ``--internal PATH`` or the ``DATASETTE_INTERNAL`` environment variable to pe
       --ssl-certfile TEXT             SSL certificate file
       --internal PATH                 Path to a persistent Datasette internal SQLite
                                       database
-      --scratch-dir DIRECTORY         Directory for scratch databases, which then
-                                      survive a restart
       --help                          Show this message and exit.
 
 

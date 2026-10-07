@@ -6,7 +6,7 @@ segfault or a hang fails one test instead of killing the test run.
 Several event loops (threads) drive one Datasette with extreme settings
 (smallest pool, 1ms idle timeout, 10ms schema polling) through reads,
 writes of every kind, DDL, isolated functions, analyze_sql, cancellation,
-add/remove_database, scratch databases, external schema changes, files
+add/remove_database, external schema changes, files
 replaced and deleted, Database.close() and Datasette.close() mid-flight,
 and non-threaded mode. See the harness docstring for what is checked.
 """

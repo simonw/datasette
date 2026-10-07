@@ -88,9 +88,6 @@ _SHUTDOWN = object()
 class Database:
     # For table counts stop at this many rows:
     count_limit = 10000
-    # True for ScratchDatabase (datasette.scratch): created and deleted by
-    # Datasette in its scratch directory
-    is_scratch = False
     # Counts for immutable databases are computed once, the first time a
     # page needs them, with this per-table time limit, then cached (they
     # cannot change). They used to be computed for every immutable database
@@ -1373,8 +1370,6 @@ class Database:
             tags.append("memory")
         if self.is_temp_disk:
             tags.append("temp_disk")
-        if self.is_scratch:
-            tags.append("scratch")
         if self.hash:
             tags.append(f"hash={self.hash}")
         if self.size is not None:

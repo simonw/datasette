@@ -28,8 +28,7 @@ Checks:
   on any database file, no write or SQL thread left, the instance itself
   collected.
 
-Works against older checkouts too: features they lack (settings, scratch
-databases, schema watch modes) are detected and skipped.
+Works against older checkouts too: features they lack (settings and schema watch modes) are detected and skipped.
 """
 
 import argparse
@@ -66,10 +65,6 @@ try:
     from datasette.connection_pool import ConnectionLeaseError
 except ImportError:
     ConnectionLeaseError = None
-try:
-    from datasette import scratch as scratch_module
-except ImportError:
-    scratch_module = None
 
 OP_TIMEOUT = 30.0
 SLOW_SQL = (
@@ -125,7 +120,6 @@ SCENARIOS = {
             "add_remove": 2,
             "replace_delete": 1,
             "db_close": 1,
-            "scratch": 3,
             "cancel_read": 1,
         },
     },
@@ -148,7 +142,6 @@ SCENARIOS = {
             "ddl": 1,
             "isolated": 1,
             "churn_slow": 1,
-            "scratch": 1,
             "cancel_read": 1,
         },
     },
@@ -257,7 +250,6 @@ SCENARIOS = {
             "churn_read": 2,
             "add_remove": 1,
             "replace_delete": 1,
-            "scratch": 2,
         },
     },
 }
@@ -370,7 +362,6 @@ class Torture:
         self.closed_at = None
         self.stop_at = None
         self.churn_seq = 0
-        self.scratch_seq = 0
         self.features = {}
         self.stable_names = []
         self.ext_names = []
@@ -404,25 +395,15 @@ class Torture:
         message = str(exc)
         if isinstance(exc, QueryInterrupted):
             return "QueryInterrupted"
-        if isinstance(exc, DatasetteClosedError) and (
-            group in ("churn", "scratch") or self.closing
-        ):
+        if isinstance(exc, DatasetteClosedError) and (group == "churn" or self.closing):
             return type(exc).__name__
         if self.closing and isinstance(exc, RuntimeError):
             # Work submitted to the executor after close() shut it down
             return "RuntimeError after close"
-        if scratch_module is not None and isinstance(
-            exc,
-            (
-                scratch_module.ScratchDatabaseNotFound,
-                scratch_module.ScratchDatabaseExists,
-            ),
-        ):
-            return type(exc).__name__
-        if isinstance(exc, KeyError) and group in ("churn", "scratch"):
+        if isinstance(exc, KeyError) and group == "churn":
             return "KeyError (database removed)"
         if isinstance(exc, sqlite3.Error):
-            if group in ("churn", "scratch"):
+            if group == "churn":
                 # Files replaced, deleted and closed underneath
                 return f"sqlite3 on {group}: {message[:40]}"
             if group == "mem" and "is locked" in message:
@@ -501,12 +482,6 @@ class Torture:
         kwargs = {}
         if spec.get("crossdb"):
             kwargs["crossdb"] = True
-        scratch_dir = os.path.join(self.tmp, "scratch")
-        self.features["scratch"] = (
-            "scratch_dir" in inspect.signature(Datasette.__init__).parameters
-        )
-        if self.features["scratch"]:
-            kwargs["scratch_dir"] = scratch_dir
         self.features["schema_watch"] = (
             "schema_watch" in inspect.signature(Datasette.add_database).parameters
         )
@@ -940,62 +915,6 @@ class Torture:
         db.close()
         self.count("Database.close")
 
-    async def op_scratch(self, w):
-        ds = self.ds
-        if not self.features["scratch"] or self.closing:
-            return
-        scratch = [n for n, g in list(self.groups.items()) if g == "scratch"]
-        roll = w.rng.random()
-        if not scratch or (roll < 0.3 and len(scratch) < 6):
-            with self.lock:
-                self.scratch_seq += 1
-                name = f"s{self.seed}_{self.scratch_seq}"
-            ok, db = await self.call(
-                "scratch_create", "scratch", ds.create_scratch_database(name)
-            )
-            if ok:
-                with self.lock:
-                    self.groups[db.name] = "scratch"
-                await self.call(
-                    "scratch_write",
-                    "scratch",
-                    db.execute_write("create table t (id integer primary key, v text)"),
-                )
-            return
-        name = w.rng.choice(scratch)
-        db = self.db(name)
-        if db is None:
-            return
-        if roll < 0.75:
-            if w.rng.random() < 0.5:
-                await self.call(
-                    "scratch_write",
-                    "scratch",
-                    db.execute_write("insert into t (v) values ('x')"),
-                )
-            else:
-                await self.call(
-                    "scratch_read", "scratch", db.execute("select count(*) from t")
-                )
-        elif roll < 0.9:
-            with self.lock:
-                self.scratch_seq += 1
-                new_name = f"s{self.seed}_{self.scratch_seq}"
-            ok, new_db = await self.call(
-                "scratch_rename", "scratch", ds.rename_scratch_database(name, new_name)
-            )
-            if ok:
-                with self.lock:
-                    self.groups.pop(name, None)
-                    self.groups[new_db.name] = "scratch"
-        else:
-            ok, _ = await self.call(
-                "scratch_delete", "scratch", ds.delete_scratch_database(name)
-            )
-            if ok:
-                with self.lock:
-                    self.groups.pop(name, None)
-
     # -- driving ---------------------------------------------------------
 
     async def worker(self, w, deadline):
@@ -1004,7 +923,7 @@ class Torture:
         weights = [ops[n] for n in names]
         while time.monotonic() < deadline:
             op = w.rng.choices(names, weights)[0]
-            if self.closing and op in ("add_remove", "scratch", "replace_delete"):
+            if self.closing and op in ("add_remove", "replace_delete"):
                 op = "read"
             try:
                 await getattr(self, f"op_{op}")(w)

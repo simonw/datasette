@@ -503,12 +503,6 @@ def uninstall(packages, yes):
     help="Path to a persistent Datasette internal SQLite database",
     envvar="DATASETTE_INTERNAL",
 )
-@click.option(
-    "--scratch-dir",
-    type=click.Path(file_okay=False),
-    help="Directory for scratch databases, which then survive a restart",
-    envvar="DATASETTE_SCRATCH_DIR",
-)
 def serve(
     files,
     immutable,
@@ -543,7 +537,6 @@ def serve(
     ssl_keyfile,
     ssl_certfile,
     internal,
-    scratch_dir=None,
     return_instance=False,
 ):
     """Serve up specified SQLite database files with a web UI"""
@@ -611,7 +604,6 @@ def serve(
         "nolock": nolock,
         "internal": internal,
         "default_deny": default_deny,
-        "scratch_dir": scratch_dir,
     }
 
     # Separate directories from files
@@ -917,8 +909,6 @@ async def check_databases(ds):
 
     instead of opening every database a second time.
 
-    Scratch databases are never checked: Datasette created them, and a
-    plugin's scratch database should not stop the server from starting.
     """
     await ds._refresh_schemas()
     to_check = await _databases_needing_check(ds)
@@ -945,13 +935,7 @@ async def check_databases(ds):
     # If --crossdb and more than SQLITE_LIMIT_ATTACHED show warning
     if (
         ds.crossdb
-        and len(
-            [
-                db
-                for db in ds.databases.values()
-                if not db.is_memory and not db.is_scratch
-            ]
-        )
+        and len([db for db in ds.databases.values() if not db.is_memory])
         > SQLITE_LIMIT_ATTACHED
     ):
         msg = f"Warning: --crossdb only works with the first {SQLITE_LIMIT_ATTACHED} attached databases"
@@ -960,9 +944,7 @@ async def check_databases(ds):
 
 async def _databases_needing_check(ds):
     restored_with_virtual_tables = set()
-    databases = [
-        (name, db) for name, db in list(ds.databases.items()) if not db.is_scratch
-    ]
+    databases = [(name, db) for name, db in list(ds.databases.items())]
     restored = [
         name
         for name, db in databases

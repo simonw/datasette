@@ -814,8 +814,8 @@ class SchemaWatcher:
         # Untracked: Database.close() on the event loop thread must not close
         # this connection while a worker thread is using it (that segfaults).
         # It is always closed by _close() in the same thread that opened it.
-        # It is counted instead, so that deleting a scratch database's files
-        # can wait for it (and raises once the database has been closed).
+        # Counted separately so database lifecycle operations can wait for
+        # scans without closing a connection while its thread is using it.
         db._untracked_connection_opened()
         try:
             conn = db.connect(track=False)

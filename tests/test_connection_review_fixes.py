@@ -6,7 +6,6 @@ Each test names the problem it pins down.
 
 import asyncio
 import gc
-import logging
 import os
 import sqlite3
 import threading
@@ -19,7 +18,6 @@ from datasette import schema_watcher as schema_watcher_module
 from datasette.app import Datasette
 from datasette.connection_pool import ConnectionLeaseError
 from datasette.database import Database
-from datasette.scratch import LOCK_FILENAME, REGISTRY_FILENAME
 
 
 def make_db(path, sql="create table t (id integer primary key, v text)"):
@@ -290,28 +288,14 @@ def test_block_false_write_from_closed_loop_reaches_catalog(owned_db):
     assert asyncio.run(later()) == ["added_nonblocking", "t"]
 
 
-def test_unclosed_datasette_releases_scratch_directory(tmp_path):
+def test_unclosed_datasette_is_collected():
     # C4: the temp internal database's atexit.register(bound method) pinned
-    # every Datasette, so the scratch directory lock was never released
-    scratch = tmp_path / "scratch"
-    ds = Datasette(scratch_dir=str(scratch))
+    # every Datasette even after the caller released its last reference.
+    ds = Datasette()
     ref = weakref.ref(ds)
     del ds
     gc.collect()
     assert ref() is None
-    Datasette(scratch_dir=str(scratch)).close()
-
-
-def test_failed_construction_releases_scratch_directory(tmp_path):
-    # C4: a Datasette() whose __init__ raised after loading the scratch
-    # directory kept it locked, with no object to close()
-    from datasette.utils import StartupError
-
-    scratch = tmp_path / "scratch"
-    with pytest.raises(StartupError):
-        Datasette(scratch_dir=str(scratch), settings={"default_schema_watch": "bogus"})
-    # No gc.collect(): the lock is taken last, after validation
-    Datasette(scratch_dir=str(scratch)).close()
 
 
 def test_closed_datasette_is_collected(tmp_path):
@@ -496,62 +480,6 @@ async def test_named_memory_database_out_of_band_changes(tmp_path):
         assert time.monotonic() < deadline, "restored_table never appeared"
         await asyncio.sleep(0.05)
     ds.close()
-
-
-def _config_dir(tmp_path):
-    config_dir = tmp_path / "cfg"
-    (config_dir / "scratch").mkdir(parents=True)
-    make_db(str(config_dir / "main.db"))
-    return config_dir
-
-
-def test_config_dir_user_scratch_folder_is_not_taken_over(tmp_path):
-    # Contract C3: an existing config_dir/scratch folder was adopted:
-    # its files were served, orphan sidecars deleted and the folder locked
-    config_dir = _config_dir(tmp_path)
-    make_db(str(config_dir / "scratch" / "private_notes.db"))
-    (config_dir / "scratch" / "other.db-wal").write_bytes(b"junk")
-    ds = Datasette(config_dir=config_dir)
-    assert "private_notes" not in ds.databases
-    assert ds.scratch_dir is None
-    ds.close()
-    assert sorted(os.listdir(config_dir / "scratch")) == [
-        "other.db-wal",
-        "private_notes.db",
-    ]
-
-
-@pytest.mark.asyncio
-async def test_config_dir_scratch_shared_by_two_instances(tmp_path):
-    # Contract C3: a Datasette-created config_dir/scratch locked out a
-    # second process on the same config dir (datasette cfg --get ...)
-    config_dir = _config_dir(tmp_path)
-    first = Datasette(config_dir=config_dir)
-    assert first.scratch_dir == str((config_dir / "scratch").resolve())
-    await first.create_scratch_database("notes")
-    assert (config_dir / "scratch" / REGISTRY_FILENAME).exists()
-    assert (config_dir / "scratch" / LOCK_FILENAME).exists()
-    second = Datasette(config_dir=config_dir)
-    assert "notes" not in second.databases
-    second.close()
-    first.close()
-    # Once the first has gone, the directory is used again
-    third = Datasette(config_dir=config_dir)
-    assert "notes" in third.databases
-    third.close()
-
-
-def test_first_use_of_explicit_scratch_dir_keeps_sidecars(tmp_path, caplog):
-    scratch = tmp_path / "scratch"
-    scratch.mkdir()
-    (scratch / "gone.db-wal").write_bytes(b"junk")
-    with caplog.at_level(logging.WARNING, logger="datasette.scratch"):
-        Datasette(scratch_dir=str(scratch)).close()
-    assert (scratch / "gone.db-wal").exists()
-    assert "gone.db-wal" in caplog.text
-    # The next start (the registry exists now) removes it
-    Datasette(scratch_dir=str(scratch)).close()
-    assert not (scratch / "gone.db-wal").exists()
 
 
 FTS_SETUP = """
@@ -757,7 +685,7 @@ async def test_execute_fn_may_return_generator_over_fetched_rows():
 @pytest.mark.asyncio
 async def test_index_survives_database_removed_mid_request(tmp_path, monkeypatch):
     # The index page looked databases up by name again after listing them:
-    # one removed meanwhile (remove_database(), a scratch delete or rename)
+    # one removed meanwhile (remove_database())
     # failed the whole page with a KeyError
     from datasette.views import index as index_module
 

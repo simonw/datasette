@@ -1175,20 +1175,19 @@ Here is an example that validates required plugin configuration. The server will
                 "my-plugin requires setting required-setting"
             )
 
-You can also return an async function, which will be awaited on startup. Use this option if you need to execute any database queries, for example this function which creates the ``my_table`` database table if it does not yet exist:
+The hook can be an ``async def`` function. Datasette awaits it before startup completes, so you can execute database queries directly. For example, this hook creates the ``my_table`` database table if it does not yet exist:
 
 .. code-block:: python
 
     @hookimpl
-    def startup(datasette):
-        async def inner():
-            db = datasette.get_database()
-            if "my_table" not in await db.table_names():
-                await db.execute_write("""
-                    create table my_table (mycol text)
-                """)
+    async def startup(datasette):
+        db = datasette.get_database()
+        if "my_table" not in await db.table_names():
+            await db.execute_write("""
+                create table my_table (mycol text)
+            """)
 
-        return inner
+A regular ``def startup(datasette)`` function can also return an async function or a coroutine, which Datasette will await. Exceptions raised by an async startup hook, including ``StartupError``, prevent startup in the same way as exceptions from a synchronous hook.
 
 Potential use-cases:
 

@@ -1,4 +1,6 @@
+import asyncio
 import json
+from types import SimpleNamespace
 from urllib.parse import parse_qsl, urlsplit
 
 import pytest
@@ -14,6 +16,8 @@ from datasette.facets import (
 )
 from datasette.utils import detect_json1
 from datasette.utils.asgi import Request
+from datasette.views.table import run_sequential
+from datasette.views.table_extras import SuggestedFacetsExtra
 
 from .fixtures import make_app_client
 
@@ -72,6 +76,132 @@ async def test_column_facet_suggest(ds_client):
             "toggle_url": "http://localhost/?_facet=complex_array",
         },
     ] == suggestions
+
+
+@pytest.mark.asyncio
+async def test_suggested_facets_stop_after_page_time_limit():
+    class SuggestingFacet:
+        def __init__(self, name, wait=False):
+            self.name = name
+            self.wait = wait
+            self.called = False
+            self.cancelled = False
+
+        async def suggest(self):
+            self.called = True
+            if self.wait:
+                self._suggestions_so_far = [{"name": self.name}]
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    self.cancelled = True
+                    raise
+            return [{"name": self.name}]
+
+    first = SuggestingFacet("first")
+    slow = SuggestingFacet("slow", wait=True)
+    last = SuggestingFacet("last")
+    settings = {
+        "suggest_facets": True,
+        "allow_facet": True,
+        "facet_suggest_time_limit_ms": 10,
+    }
+    context = SimpleNamespace(
+        datasette=SimpleNamespace(setting=settings.__getitem__),
+        next_arg=None,
+        nofacet=False,
+        nosuggest=False,
+        run_sequential=run_sequential,
+    )
+
+    suggestions = await asyncio.wait_for(
+        SuggestedFacetsExtra().resolve(context, [first, slow, last]), timeout=2
+    )
+
+    assert suggestions == [{"name": "first"}, {"name": "slow"}]
+    assert first.called and slow.called and slow.cancelled
+    assert not last.called
+
+
+@pytest.mark.asyncio
+async def test_suggested_facets_do_not_hide_facet_timeout():
+    class FailingFacet:
+        async def suggest(self):
+            raise asyncio.TimeoutError("facet failed")
+
+    settings = {
+        "suggest_facets": True,
+        "allow_facet": True,
+        "facet_suggest_time_limit_ms": 50,
+    }
+    context = SimpleNamespace(
+        datasette=SimpleNamespace(setting=settings.__getitem__),
+        next_arg=None,
+        nofacet=False,
+        nosuggest=False,
+        run_sequential=run_sequential,
+    )
+
+    with pytest.raises(asyncio.TimeoutError, match="facet failed"):
+        await SuggestedFacetsExtra().resolve(context, [FailingFacet()])
+
+
+@pytest.mark.asyncio
+async def test_suggested_facets_zero_time_limit_keeps_existing_behavior():
+    class FastFacet:
+        async def suggest(self):
+            return [{"name": "available"}]
+
+    settings = {
+        "suggest_facets": True,
+        "allow_facet": True,
+        "facet_suggest_time_limit_ms": 0,
+    }
+    context = SimpleNamespace(
+        datasette=SimpleNamespace(setting=settings.__getitem__),
+        next_arg=None,
+        nofacet=False,
+        nosuggest=False,
+        run_sequential=run_sequential,
+    )
+
+    suggestions = await SuggestedFacetsExtra().resolve(context, [FastFacet()])
+    assert suggestions == [{"name": "available"}]
+
+
+@pytest.mark.asyncio
+async def test_suggested_facets_keep_completed_columns_on_timeout(monkeypatch):
+    ds = Datasette([], memory=True, settings={"facet_suggest_time_limit_ms": 20})
+    db = ds.add_database(Database(ds, memory_name="suggest_deadline"))
+    await db.execute_write("create table items (first text, second text)")
+    for row in (("a", "x"), ("a", "y"), ("b", "y")):
+        await db.execute_write("insert into items values (?, ?)", row)
+
+    execute = ds.execute
+    suggestion_queries = 0
+
+    async def delay_second_suggestion(*args, **kwargs):
+        nonlocal suggestion_queries
+        sql = args[1].lower()
+        if "group by value" in sql and "select rowid as value" not in sql:
+            suggestion_queries += 1
+            if suggestion_queries == 2:
+                await asyncio.Event().wait()
+        return await execute(*args, **kwargs)
+
+    monkeypatch.setattr(ds, "execute", delay_second_suggestion)
+    try:
+        response = await asyncio.wait_for(
+            ds.client.get("/suggest_deadline/items.json?_extra=suggested_facets"),
+            timeout=3,
+        )
+        assert response.status_code == 200
+        assert [facet["name"] for facet in response.json()["suggested_facets"]] == [
+            "first"
+        ]
+        assert suggestion_queries == 2
+    finally:
+        ds.close()
 
 
 @pytest.mark.asyncio

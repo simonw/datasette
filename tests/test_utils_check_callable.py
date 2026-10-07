@@ -1,3 +1,5 @@
+import functools
+
 import pytest
 
 from datasette.utils.check_callable import check_callable
@@ -15,6 +17,14 @@ class NotAsyncClass:
 
 class ClassNoCall:
     pass
+
+
+class MethodHolder:
+    async def async_method(self):
+        pass
+
+    def sync_method(self):
+        pass
 
 
 async def async_func():
@@ -39,6 +49,12 @@ def non_async_func():
         ("", False, False),
         (1, False, False),
         (str, True, False),
+        # Bound methods and functools.partial objects are not types.FunctionType,
+        # but they are still async when the function they wrap is
+        (MethodHolder().async_method, True, True),
+        (MethodHolder().sync_method, True, False),
+        (functools.partial(async_func), True, True),
+        (functools.partial(non_async_func), True, False),
     ),
 )
 def test_check_callable(obj, expected_is_callable, expected_is_async_callable):

@@ -337,7 +337,7 @@ async def test_leased_connection_discarded_on_release_after_invalidation(tmp_pat
     assert await db.execute_fn(callback) == 1
     assert db._read_pool_state.open == 0
     assert pool.stats["discarded_stale"] == 1
-    with pytest.raises(sqlite3.ProgrammingError):
+    with pytest.raises(ConnectionLeaseError):
         seen["raw"].execute("select 1")
     assert (await db.execute("select count(*) from t")).single_value() == 1
     ds.close()

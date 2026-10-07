@@ -75,16 +75,17 @@ class LeasedConnection:
     C functions that require a real connection object (for example the
     *target* argument of ``Connection.backup()``) reject the proxy.
 
-    Not enforceable: a cursor created inside the callback and used after it
-    returns, and the raw connection reached through ``cursor.connection``.
+    Cursors and saved bound methods share the lease. All cursors are closed
+    on the owning thread before the connection is returned to the pool.
     """
 
-    __slots__ = ("_conn", "_db_name", "_kind")
+    __slots__ = ("_conn", "_db_name", "_kind", "_cursors")
 
     def __init__(self, conn, db_name, kind="read"):
         object.__setattr__(self, "_conn", conn)
         object.__setattr__(self, "_db_name", db_name)
         object.__setattr__(self, "_kind", kind)
+        object.__setattr__(self, "_cursors", [])
 
     def _live(self):
         conn = self._conn
@@ -99,7 +100,16 @@ class LeasedConnection:
         return conn
 
     def _expire(self):
+        for cursor in self._cursors:
+            _close_cursor(cursor)
+        self._cursors.clear()
         object.__setattr__(self, "_conn", None)
+
+    def _wrap(self, result):
+        if isinstance(result, sqlite3.Cursor):
+            self._cursors.append(result)
+            return LeasedCursor(result, self)
+        return result
 
     # isinstance(conn, sqlite3.Connection) checks keep working
     @property
@@ -107,7 +117,15 @@ class LeasedConnection:
         return sqlite3.Connection
 
     def __getattr__(self, name):
-        return getattr(self._live(), name)
+        value = getattr(self._live(), name)
+        if getattr(value, "__self__", None) is self._conn:
+            # Resolve the method again when called: caching a bound method
+            # must not bypass expiry or keep the raw connection alive.
+            def call(*args, **kwargs):
+                return self._wrap(getattr(self._live(), name)(*args, **kwargs))
+
+            return call
+        return value
 
     def __setattr__(self, name, value):
         setattr(self._live(), name, value)
@@ -129,10 +147,10 @@ class LeasedConnection:
 
     # Hot paths, to skip __getattr__
     def execute(self, *args, **kwargs):
-        return self._live().execute(*args, **kwargs)
+        return self._wrap(self._live().execute(*args, **kwargs))
 
     def cursor(self, *args, **kwargs):
-        return self._live().cursor(*args, **kwargs)
+        return self._wrap(self._live().cursor(*args, **kwargs))
 
     def close(self):
         conn = self._live()
@@ -152,6 +170,74 @@ class LeasedConnection:
     def __repr__(self):
         state = "expired" if self._conn is None else "active"
         return f"<LeasedConnection {self._kind} database={self._db_name!r} {state}>"
+
+
+class LeasedCursor:
+    """A cursor cannot outlive the callback that owns its connection.
+
+    Metadata remains readable after closure for execute_write_many() and
+    callbacks returning insertion cursors. cursor.connection never exposes
+    the raw SQLite connection.
+    """
+
+    __slots__ = ("_cursor", "_lease")
+
+    def __init__(self, cursor, lease):
+        object.__setattr__(self, "_cursor", cursor)
+        object.__setattr__(self, "_lease", lease)
+
+    @property
+    def __class__(self):
+        return sqlite3.Cursor
+
+    @property
+    def connection(self):
+        return self._lease
+
+    def _live(self):
+        self._lease._live()
+        return self._cursor
+
+    def __getattr__(self, name):
+        if name in ("rowcount", "lastrowid", "description"):
+            return getattr(self._cursor, name)
+        value = getattr(self._live(), name)
+        if getattr(value, "__self__", None) is self._cursor:
+
+            def call(*args, **kwargs):
+                result = getattr(self._live(), name)(*args, **kwargs)
+                return self if result is self._cursor else result
+
+            return call
+        return value
+
+    def __setattr__(self, name, value):
+        setattr(self._live(), name, value)
+
+    def __iter__(self):
+        self._live()
+        return self
+
+    def __next__(self):
+        return next(self._live())
+
+    def close(self):
+        self._live().close()
+
+
+def _contains_cursor(value, seen=None):
+    """Inspect ordinary containers without invoking arbitrary user iterators."""
+    seen = set() if seen is None else seen
+    if id(value) in seen:
+        return False
+    seen.add(id(value))
+    if isinstance(value, sqlite3.Cursor):
+        return True
+    if isinstance(value, dict):
+        return any(_contains_cursor(v, seen) for pair in value.items() for v in pair)
+    if isinstance(value, (tuple, list, set, frozenset)):
+        return any(_contains_cursor(v, seen) for v in value)
+    return False
 
 
 def close_cursors(value):
@@ -274,7 +360,7 @@ class ReadConnectionPool:
         rejected = False
         try:
             result = fn(lease)
-            if isinstance(result, sqlite3.Cursor) or _generator_uses_connection(result):
+            if _contains_cursor(result) or _generator_uses_connection(result):
                 rejected = True
                 close_cursors(result)
         except BaseException as e:
@@ -285,7 +371,7 @@ class ReadConnectionPool:
             self.release(entry)
         if rejected:
             raise ConnectionLeaseError(
-                f"An execute_fn() callback for database {db.name!r} returned a {type(result).__name__}, which "
+                f"An execute_fn() callback for database {db.name!r} returned a {result.__class__.__name__} containing database resources, which "
                 "would keep using the pooled connection after the callback "
                 "returned. Fetch the rows inside the callback instead"
             )

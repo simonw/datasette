@@ -1,0 +1,38 @@
+# Screenshots used by the documentation, taken using shot-scraper:
+# https://shot-scraper.datasette.io/en/stable/multi.html
+#
+# Run "just shots" from the repository root to create any that are
+# missing. Existing images are skipped, so delete an image to recreate it.
+#
+# Paths are relative to this docs/ directory.
+
+# Serves the JavaScript in docs/shots/ and loads it on every page.
+# List form means the datasette process is stopped directly when done.
+- server:
+  - datasette
+  - --memory
+  - --port
+  - 8755
+  - --static
+  - shots:shots
+  - -s
+  - extra_js_urls
+  - '["/shots/modal-example.js", "/shots/modal-classes.js"]'
+
+# javascript_plugins.rst - Reusable modal dialogs
+- output: images/modal-example.webp
+  url: http://localhost:8755/
+  javascript: |
+    document.querySelector('[aria-controls="my-plugin-dialog"]').click();
+  selector: "#my-plugin-dialog"
+  padding: 32
+  quality: 70
+
+- output: images/modal-classes.webp
+  url: http://localhost:8755/
+  javascript: |
+    document.querySelector('[aria-controls="export-dialog"]').click();
+    document.activeElement.blur();
+  selector: "#export-dialog"
+  padding: 32
+  quality: 70

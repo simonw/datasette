@@ -7,28 +7,41 @@ from datasette import hookimpl
 from datasette.column_types import ColumnType, SQLiteType
 from datasette.utils import truncate_url
 
+_HTTP_URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
+
+
+def _normalize_http_url(value):
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not _HTTP_URL_RE.fullmatch(normalized):
+        return None
+    return normalized
+
 
 class UrlColumnType(ColumnType):
     name = "url"
     description = "URL"
     sqlite_types = (SQLiteType.TEXT,)
 
-    async def render_cell(self, value, column, table, database, datasette, request):
+    async def render_cell(
+        self, value, column, table, database, datasette, request, truncate_cells=0
+    ):
         if not value or not isinstance(value, str):
             return None
-        url = value.strip()
-        escaped = markupsafe.escape(url)
-        truncated = markupsafe.escape(
-            truncate_url(url, datasette.setting("truncate_cells_html"))
-        )
-        return markupsafe.Markup(f'<a href="{escaped}">{truncated}</a>')
+        normalized = _normalize_http_url(value)
+        if normalized is None:
+            return markupsafe.escape(value.strip())
+        escaped = markupsafe.escape(normalized)
+        link_text = markupsafe.escape(truncate_url(normalized, truncate_cells))
+        return markupsafe.Markup(f'<a href="{escaped}">{link_text}</a>')
 
     async def validate(self, value, datasette):
         if value is None or value == "":
             return None
         if not isinstance(value, str):
             return "URL must be a string"
-        if not re.match(r"^https?://\S+$", value.strip()):
+        if _normalize_http_url(value) is None:
             return "Invalid URL"
         return None
 

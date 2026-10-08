@@ -6,6 +6,7 @@ Tests for permission endpoints:
 
 import pytest
 import pytest_asyncio
+
 from datasette.app import Datasette
 
 
@@ -432,8 +433,8 @@ async def test_execute_sql_requires_view_database():
     A user who has execute-sql permission but not view-database permission should not
     be able to execute SQL on that database.
     """
-    from datasette.permissions import PermissionSQL
     from datasette import hookimpl
+    from datasette.permissions import PermissionSQL
 
     class TestPermissionPlugin:
         __name__ = "TestPermissionPlugin"
@@ -493,3 +494,31 @@ async def test_execute_sql_requires_view_database():
         )
     finally:
         ds.pm.unregister(plugin)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/-/allowed", "/-/allowed.json?action=view-table"])
+async def test_allowed_requires_view_instance(path):
+    """
+    GHSA-hp2x-vx2r-6vxg: /-/allowed should be gated like its /-/rules sibling.
+
+    An actor who is denied view-instance gets 403 from / and /-/rules, but
+    /-/allowed (HTML and JSON) currently returns 200 to the same actor.
+    """
+    ds = Datasette(config={"allow": {"id": "alice"}})
+    await ds.invoke_startup()
+    db = ds.add_memory_database("live")
+    await db.execute_write("CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY)")
+    await ds.refresh_schemas()
+
+    assert (await ds.client.get("/")).status_code == 403
+    assert (await ds.client.get("/-/rules.json?action=view-table")).status_code == 403
+
+    response = await ds.client.get(path)
+    assert response.status_code == 403
+
+    # Alice is still allowed
+    response = await ds.client.get(
+        path, cookies={"ds_actor": ds.client.actor_cookie({"id": "alice"})}
+    )
+    assert response.status_code == 200

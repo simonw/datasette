@@ -26,8 +26,7 @@
             {% if database.show_table_row_counts %}{{ "{:,}".format(database.hidden_table_rows_sum) }} rows in {% endif %}{{ database.hidden_tables_count }} hidden table{% if database.hidden_tables_count != 1 %}s{% endif -%}
         {% endif -%}
         {% if database.views_count -%}
-            {% if database.tables_count or database.hidden_tables_count %}, {% endif -%}
-            {{ "{:,}".format(database.views_count) }} view{% if database.views_count != 1 %}s{% endif %}
+            , {{ "{:,}".format(database.views_count) }} view{% if database.views_count != 1 %}s{% endif %}
         {% endif %}
     </p>
     <p>{% for table in database.tables_and_views_truncated %}<a href="{{ urls.table(database.name, table.name) }}"{% if table.count %} title="{{ table.count }} rows"{% endif %}>{{ table.name }}</a>{% if table.private %} 🔒{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}{% if database.tables_and_views_more %}, <a href="{{ urls.database(database.name) }}">...</a>{% endif %}</p>

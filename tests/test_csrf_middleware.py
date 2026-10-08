@@ -44,7 +44,7 @@ async def _run_middleware(scope):
     await mw(scope, None, send)
     if inner_called:
         return ("allowed",)
-    start = [m for m in sent if m["type"] == "http.response.start"][0]
+    start = next(m for m in sent if m["type"] == "http.response.start")
     return ("blocked", start["status"])
 
 

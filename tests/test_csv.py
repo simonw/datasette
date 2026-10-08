@@ -1,7 +1,9 @@
-from datasette.app import Datasette
-from bs4 import BeautifulSoup as Soup
-import pytest
 import urllib.parse
+
+import pytest
+from bs4 import BeautifulSoup as Soup
+
+from datasette.app import Datasette
 
 EXPECTED_TABLE_CSV = """id,content
 1,hello
@@ -165,6 +167,66 @@ async def test_custom_sql_csv(ds_client):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("download", (False, True))
+@pytest.mark.parametrize(
+    "query_string,expected_error",
+    (
+        ("sql=select+blah", "no such column: blah"),
+        ("sql=select+*+from+missing", "no such table: missing"),
+        ("sql=select+from", 'near "from": syntax error'),
+        (
+            "sql=delete+from+simple_primary_key",
+            "Statement must be a SELECT",
+        ),
+        ("", "?sql= is required"),
+        (
+            "sql=select+sleep(0.01)&_timelimit=5",
+            (
+                "SQL query took too long. The time limit is"
+                " controlled by the sql_time_limit_ms setting."
+            ),
+        ),
+    ),
+)
+async def test_custom_sql_csv_errors(ds_client, query_string, expected_error, download):
+    if download:
+        query_string += "&_dl=1"
+    response = await ds_client.get(f"/fixtures/-/query.csv?{query_string}")
+    assert response.status_code == 400
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert "content-disposition" not in response.headers
+    assert response.text == expected_error
+
+
+@pytest.mark.asyncio
+async def test_custom_sql_csv_error_head(ds_client):
+    response = await ds_client.head("/fixtures/-/query.csv?sql=select+blah")
+    assert response.status_code == 400
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.content == b""
+
+
+@pytest.mark.asyncio
+async def test_custom_sql_csv_error_cors():
+    ds = Datasette(cors=True)
+    response = await ds.client.get("/_memory/-/query.csv?sql=select+blah")
+    assert response.status_code == 400
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.headers["access-control-allow-origin"] == "*"
+    assert response.text == "no such column: blah"
+
+
+@pytest.mark.asyncio
+async def test_table_csv_error(ds_client):
+    response = await ds_client.get(
+        "/fixtures/simple_primary_key.csv?_where=blah&_stream=1"
+    )
+    assert response.status_code == 400
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.text == "no such column: blah"
+
+
+@pytest.mark.asyncio
 async def test_table_csv_download(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key.csv?_dl=1")
     assert response.status_code == 200
@@ -225,6 +287,20 @@ async def test_table_csv_stream(ds_client):
         "/fixtures/compound_three_primary_keys.csv?_stream=1"
     )
     assert len([b for b in response.content.split(b"\r\n") if b]) == 1002
+
+
+@pytest.mark.asyncio
+async def test_view_csv_stream(ds_client):
+    # Without _stream should return header + 100 rows:
+    response = await ds_client.get("/fixtures/paginated_view.csv?_size=max")
+    assert len([b for b in response.content.split(b"\r\n") if b]) == 101
+    # With _stream=1 should paginate through all pages and return header + 202 rows
+    response = await ds_client.get("/fixtures/paginated_view.csv?_stream=1")
+    lines = [b for b in response.content.split(b"\r\n") if b]
+    assert len(lines) == 203
+    # Ensure there are no duplicate rows from looping
+    assert len(set(lines[1:])) == 202
+    assert lines[0] == b"content,content_extra"
 
 
 def test_csv_trace(app_client_with_trace):

@@ -26,7 +26,7 @@ The request object is passed to various plugin hooks. It represents an incoming 
     The request scheme - usually ``https`` or ``http``.
 
 ``.headers`` - dictionary (str -> str)
-    A dictionary of incoming HTTP request headers. Header names have been converted to lowercase.
+    A dictionary of incoming HTTP request headers. Header lookups using ``request.headers["Content-Type"]``, ``request.headers.get("Content-Type")`` and ``"Content-Type" in request.headers`` are case-insensitive. Header names are lowercase when iterating over the dictionary.
 
 ``.cookies`` - dictionary (str -> str)
     A dictionary of incoming cookies
@@ -147,7 +147,7 @@ And a class method that can be used to create fake request objects for use in te
 .. _internals_multiparams:
 
 The MultiParams class
-=====================
+---------------------
 
 ``request.args`` is a ``MultiParams`` object - a dictionary-like object which provides access to query string parameters that may have multiple values.
 
@@ -177,7 +177,7 @@ Consider the query string ``?foo=1&foo=2&bar=3`` - with two values for ``foo`` a
 .. _internals_formdata:
 
 The FormData class
-==================
+------------------
 
 ``await request.form()`` returns a ``FormData`` object - a dictionary-like object which provides access to form fields and uploaded files. It has a similar interface to ``MultiParams``.
 
@@ -205,7 +205,7 @@ The FormData class
 .. _internals_uploadedfile:
 
 The UploadedFile class
-======================
+----------------------
 
 When parsing multipart form data with ``files=True``, file uploads are returned as ``UploadedFile`` objects with the following properties and methods:
 
@@ -1403,7 +1403,31 @@ Release all resources held by this ``Datasette`` instance. This calls :ref:`data
 
 If a call to ``Database.close()`` on one of the attached databases raises an exception, ``Datasette.close()`` will continue trying to close the remaining databases and will re-raise the first exception after every database has been processed.
 
-When Datasette is being served over ASGI the ``close()`` method is wired up to the lifespan shutdown event, so resources are released cleanly on ``SIGTERM`` / ``SIGINT``.
+When Datasette is being served over ASGI the ``close()`` method is wired up to the lifespan shutdown event, so resources are released cleanly on ``SIGTERM`` / ``SIGINT``. See :ref:`datasette_lifecycle` for where ``close()`` fits into the full startup-to-shutdown sequence.
+
+.. _datasette_add_background_task:
+
+.add_background_task(func, name=None)
+-------------------------------------
+
+``func`` - async callable
+    A coroutine function taking one positional argument, the ``Datasette`` instance. Core calls ``await func(datasette)``.
+
+``name`` - string, optional
+    A name for the task, used to identify it in the ``/-/tasks`` introspection endpoint (:ref:`JsonDataView_tasks`) and in log messages. Defaults to ``func.__qualname__``. If the resulting name collides with an already-registered task, a ``-2``, ``-3``, ... suffix is appended.
+
+Registers supervised background work and returns a :ref:`BackgroundTask <BackgroundTask>` handle. Tasks registered during startup launch after all startup hooks finish; tasks registered after launch start immediately.
+
+See :ref:`internals_background_tasks` for examples, launch behavior, task supervision and cancellation.
+
+.. _datasette_start_background_tasks:
+
+await .start_background_tasks()
+-------------------------------
+
+Runs startup (if it has not already run) and launches every task registered with :ref:`datasette_add_background_task`.
+
+See :ref:`internals_background_tasks` for when tasks launch automatically, and :ref:`internals_background_tasks_explicit` for examples and startup considerations in tests and headless programs.
 
 .. _datasette_track_event:
 
@@ -1594,32 +1618,32 @@ datasette.client
 
 Plugins can make internal simulated HTTP requests to the Datasette instance within which they are running. This ensures that all of Datasette's external JSON APIs are also available to plugins, while avoiding the overhead of making an external HTTP call to access those APIs.
 
-The ``datasette.client`` object is a wrapper around the `HTTPX Python library <https://www.python-httpx.org/>`__, providing an async-friendly API that is similar to the widely used `Requests library <https://requests.readthedocs.io/>`__.
+The ``datasette.client`` object is a wrapper around the `HTTPX2 Python library <https://httpx2.pydantic.dev/>`__, providing an async-friendly API that is similar to the widely used `Requests library <https://requests.readthedocs.io/>`__.
 
 It offers the following methods:
 
-``await datasette.client.get(path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.get(path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal GET request against that path.
 
-``await datasette.client.post(path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.post(path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal POST request. Use ``data={"name": "value"}`` to pass form parameters.
 
-``await datasette.client.options(path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.options(path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal OPTIONS request.
 
-``await datasette.client.head(path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.head(path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal HEAD request.
 
-``await datasette.client.put(path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.put(path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal PUT request.
 
-``await datasette.client.patch(path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.patch(path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal PATCH request.
 
-``await datasette.client.delete(path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.delete(path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal DELETE request.
 
-``await datasette.client.request(method, path, **kwargs)`` - returns HTTPX Response
+``await datasette.client.request(method, path, **kwargs)`` - returns HTTPX2 Response
     Execute an internal request with the given HTTP method against that path.
 
 These methods can be used with :ref:`internals_datasette_urls` - for example:
@@ -1636,7 +1660,7 @@ These methods can be used with :ref:`internals_datasette_urls` - for example:
 
 ``datasette.client`` methods automatically take the current :ref:`setting_base_url` setting into account, whether or not you use the ``datasette.urls`` family of methods to construct the path.
 
-For documentation on available ``**kwargs`` options and the shape of the HTTPX Response object refer to the `HTTPX Async documentation <https://www.python-httpx.org/async/>`__.
+For documentation on available ``**kwargs`` options and the shape of the HTTPX2 Response object refer to the `HTTPX2 Async documentation <https://httpx2.pydantic.dev/async/>`__.
 
 .. _internals_datasette_client_actor:
 
@@ -1764,6 +1788,135 @@ These functions can be accessed via the ``{{ urls }}`` object in Datasette templ
 Use the ``format="json"`` (or ``"csv"`` or other formats supported by plugins) arguments to get back URLs to the JSON representation. This is the path with ``.json`` added on the end.
 
 These methods each return a ``datasette.utils.PrefixedUrlString`` object, which is a subclass of the Python ``str`` type. This allows the logic that considers the ``base_url`` setting to detect if that prefix has already been applied to the path.
+
+.. _datasette_lifecycle:
+
+Application lifecycle
+=====================
+
+Datasette guarantees a fixed sequence of events between the moment a ``Datasette`` instance is constructed and the moment its resources are released:
+
+1. ``Datasette(...)`` — the constructor runs synchronously and does not run plugin hooks.
+2. **Startup** — ``await datasette.invoke_startup()`` runs once: it populates the internal database's catalog of table schemas (:ref:`internals_internal`), loads canned queries and column type configuration, then calls every registered :ref:`plugin_hook_startup` hook, in plugin registration order. When Datasette is being served, table-count precomputation for immutable databases runs immediately before this, as part of the same startup sequence.
+3. **Background-task launch** — once *every* ``startup`` hook has finished (not before), every task registered with :ref:`datasette_add_background_task` — by any plugin — is launched. A task registered by one plugin's ``startup`` hook can safely depend on state set up by another plugin's ``startup`` hook, because launch only happens after the whole round of hooks completes.
+4. **Serving** — the instance handles requests (or, for headless or CLI use, does whatever the embedding program does with it).
+5. **Shutdown** — triggered by the ASGI ``lifespan.shutdown`` event (Ctrl-C, ``SIGTERM``) or the end of a ``datasette serve`` process: every :ref:`plugin_hook_shutdown` hook runs first, while background tasks are still alive, so a plugin can tell its own task to wind down gracefully; every still-running background task is then cancelled and given a five-second grace period to actually stop; finally every database connection is released via :ref:`datasette_close`.
+
+.. admonition:: Startup hooks run on the event loop that serves requests
+
+   In every trigger path below, ``startup`` hooks run on the same ``asyncio`` event loop that goes on to accept connections. It is safe to create loop-bound primitives — ``asyncio.Lock``, ``asyncio.Queue``, ``asyncio.Event``, a raw ``asyncio.create_task()`` call — inside a ``startup`` hook, and to register long-lived background work with :ref:`datasette_add_background_task` there.
+
+Three trigger paths
+-------------------
+
+- ``datasette serve`` (CLI) — startup and ``uvicorn.Server.serve()`` both run inside a single ``asyncio.run()`` call, so there is exactly one event loop for the whole life of the process.
+- **ASGI lifespan** — ``Datasette.app()`` wires startup and background-task launch into the ``on_startup`` list, and shutdown into the ``on_shutdown`` list, of an internal ``AsgiLifespan`` wrapper. A spec-compliant ASGI server (uvicorn, hypercorn, and others) sends the ``lifespan.startup`` message and waits for ``lifespan.startup.complete`` before delivering any ``http`` or ``websocket`` scope, so startup — including every plugin's own internal-database migrations — is guaranteed to have finished before any request reaches Datasette, including requests seen by plugin :ref:`asgi_wrapper <plugin_asgi_wrapper>` middleware. If a ``startup`` hook raises, ``AsgiLifespan`` sends ``lifespan.startup.failed`` with the exception message instead of hanging or crashing ambiguously, so the host can abort the boot cleanly.
+- **First-request fallback** — an internal ``AsgiRunOnFirstRequest`` wrapper runs the same startup work as a safety net for hosts that never send ASGI lifespan events at all: some ASGI mounts, a bare ``app()`` embedded inside another framework, and :ref:`datasette.client <internals_datasette_client>` / test clients, which drive requests directly over ``httpx2.ASGITransport`` without ever emitting ``lifespan.startup``. It runs startup exactly once, the first time any non-lifespan scope arrives, guarded by a lock so that concurrent early requests can't run it twice.
+
+All three paths call the same idempotent internal methods, so it is safe for more than one of them to fire — lifespan startup completing and then a first request arriving afterwards is a no-op the second time. A host that never sends lifespan events and never goes through the CLI degrades to first-request timing: startup runs on the first request instead of before it, exactly as Datasette always worked prior to this lifecycle guarantee. This is a deliberate fallback rather than a regression — see :ref:`internals_background_tasks` for how to opt out of launching background tasks (the ``--get`` CLI path) or drive startup and launch explicitly (tests, headless embedders).
+
+.. _internals_background_tasks:
+
+Background tasks
+================
+
+Datasette can supervise long-lived background work for plugins, such as polling for updates. Register work using :ref:`datasette_add_background_task` and use the returned :ref:`BackgroundTask <BackgroundTask>` handle to inspect or cancel it. See :ref:`datasette_lifecycle` for how background tasks fit into the application's startup and shutdown sequence.
+
+Registering tasks
+-----------------
+
+Use :ref:`datasette_add_background_task` to register an async callable, typically from a :ref:`plugin_hook_startup` hook. The callable takes one argument, the ``Datasette`` instance. Tasks can also be registered later, including from a request handler.
+
+Registration is separate from launch. Calling this from a ``startup`` hook — the common case — buffers the task; core launches every registered task once *all* ``startup`` hooks have completed, as described in :ref:`datasette_lifecycle`. Calling it after launch has already happened — for example from a request handler, to start a per-job task dynamically — starts the task immediately instead.
+
+.. code-block:: python
+
+    import asyncio
+    from datasette import hookimpl
+
+
+    async def poll_for_updates(datasette):
+        while True:
+            await do_one_poll(datasette)
+            await asyncio.sleep(60)
+
+
+    @hookimpl
+    def startup(datasette):
+        datasette.add_background_task(
+            poll_for_updates, name="my-plugin-poller"
+        )
+
+Datasette supervises each registered task:
+
+- Keeps the task alive.
+- Logs exceptions other than ``asyncio.CancelledError``, with their tracebacks, to the ``datasette.background_tasks`` logger. The exception is recorded on the handle's ``.exception``, and its ``.state`` becomes ``crashed``.
+- Cancels running tasks during shutdown and gives them five seconds to stop. See :ref:`datasette_lifecycle`.
+
+.. _internals_background_tasks_launch:
+
+Launch matrix
+-------------
+
+Whether registered tasks actually launch depends on how the instance is being run:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Trigger
+     - Launches registered tasks?
+   * - ASGI lifespan (real server deployments)
+     - Yes, after ``lifespan.startup`` completes
+   * - First-request fallback (lifespan-less hosts)
+     - Yes, on the first request — parity with the lifespan case
+   * - ``datasette serve --get``
+     - Never
+   * - Tests / headless embedders
+     - Only if you call :ref:`datasette_start_background_tasks` explicitly
+
+``datasette --get`` never launches background tasks, even though its one-shot request flows through the same first-request fallback as everything else: it sets an internal flag before making that request specifically to suppress the launch, since a one-shot CLI invocation has no server loop left running afterwards to keep any launched tasks alive.
+
+.. _internals_background_tasks_explicit:
+
+Starting tasks explicitly
+-------------------------
+
+Call :ref:`datasette_start_background_tasks` to run startup (if it has not already run) and launch every task registered with :ref:`datasette_add_background_task`. This is the explicit equivalent of what happens automatically via ASGI lifespan or the first-request fallback in a served deployment — the entry point for tests and headless embedders (a cron-style CLI command that wants supervised background work without running a server) that need background tasks without going through either of those paths.
+
+.. code-block:: python
+
+    datasette = Datasette(memory=True)
+    await datasette.start_background_tasks()
+
+.. _BackgroundTask:
+
+BackgroundTask objects
+----------------------
+
+:ref:`datasette_add_background_task` returns a ``BackgroundTask`` handle with the following attributes:
+
+``.name`` - string
+    The task's (unique) name.
+
+``.state`` - string
+    One of ``registered`` (added but not yet launched), ``running``, ``completed`` (returned cleanly), ``crashed`` (raised an exception) or ``cancelled``.
+
+``.task`` - ``asyncio.Task`` or ``None``
+    The underlying ``asyncio.Task``, once launched. ``None`` while still ``registered``.
+
+``.exception`` - ``BaseException`` or ``None``
+    The exception that crashed the task, if ``.state`` is ``crashed``.
+
+``.started_at`` - string or ``None``
+    ISO 8601 UTC timestamp of when the task was launched.
+
+``.function`` - string
+    The callable's dotted module and qualified name, for example ``my_plugin.jobs.poll_for_updates``.
+
+``.cancel()``
+    Cancel the task. If it has already launched, this cancels the underlying ``asyncio.Task`` — ``.state`` becomes ``cancelled`` once the cancellation is observed. If it has not launched yet, it is removed from the queue so it never runs.
+
+This is also the shape of each entry returned by the ``/-/tasks`` JSON introspection endpoint — see :ref:`JsonDataView_tasks`.
 
 .. _internals_permission_classes:
 
@@ -2021,10 +2174,12 @@ Example usage:
 
     version = await db.execute_fn(get_version)
 
+The call is traced as a ``db.query`` OpenTelemetry span carrying ``datasette.callback`` (the function's qualified name) rather than ``db.query.text``, since the SQL is whatever the function chooses to run - see :ref:`internals_telemetry`. Passing a named function gives the span a readable identity; a lambda reports ``<lambda>``.
+
 .. _database_execute_write:
 
-await db.execute_write(sql, params=None, block=True, request=None, return_all=False, returning_limit=10)
---------------------------------------------------------------------------------------------------------
+await db.execute_write(sql, params=None, block=True, request=None, return_all=False, returning_limit=10, transaction=True, time_limit_ms=2000)
+----------------------------------------------------------------------------------------------------------------------------------------------
 
 SQLite only allows one database connection to write at a time. Datasette handles this for you by maintaining a queue of writes to be executed against a given database. Plugins can submit write operations to this queue and they will be executed in the order in which they are received.
 
@@ -2059,7 +2214,16 @@ If you need to retrieve every row returned by a statement, pass ``return_all=Tru
 
 If you pass ``block=False`` this behavior changes to "fire and forget" - queries will be added to the write queue and executed in a separate thread while your code can continue to do other things. The method will return a UUID representing the queued task.
 
-Each call to ``execute_write()`` will be executed inside a transaction.
+Each call to ``execute_write()`` will be executed inside a transaction. Pass
+``transaction=False`` for statements such as ``VACUUM`` that cannot run inside
+a transaction.
+
+Write statements have a default time limit of 2,000ms. Pass a different value
+using ``time_limit_ms=`` or use ``time_limit_ms=None`` to allow the statement to
+run without a time limit.
+
+This write limit is independent of the ``sql_time_limit_ms`` setting used for
+read queries. Changing that setting does not change the default write limit.
 
 .. _database_execute_write_script:
 
@@ -2094,6 +2258,8 @@ await db.execute_write_fn(fn, block=True, transaction=True)
 This method works like ``.execute_write()``, but instead of a SQL statement you give it a callable Python function. Your function will be queued up and then called when the write connection is available, passing that connection as the argument to the function.
 
 The function can then perform multiple actions, safe in the knowledge that it has exclusive access to the single writable connection for as long as it is executing.
+
+Like ``execute_fn()``, the call is traced as a ``db.query`` OpenTelemetry span carrying ``datasette.callback`` rather than ``db.query.text``, above the write-queue spans - see :ref:`internals_telemetry`. A named function gives the span a readable identity; a lambda reports ``<lambda>``.
 
 .. warning::
 
@@ -2151,7 +2317,25 @@ The value returned from ``await database.execute_write_fn(...)`` will be the ret
 
 If your function raises an exception that exception will be propagated up to the ``await`` line.
 
-By default your function will be executed inside a transaction. You can pass ``transaction=False`` to disable this behavior, though if you do that you should be careful to manually apply transactions - ideally using the ``with conn:`` pattern, or you may see ``OperationalError: database table is locked`` errors.
+By default Datasette manages the transaction. For nested transactions, use `sqlite_utils.Database(conn).atomic() <https://sqlite-utils.datasette.io/en/stable/python-api.html#grouping-changes-with-db-atomic>`__. Pass ``transaction=False`` to manage transactions yourself.
+
+For example, archive an article and record the change in an audit log:
+
+.. code-block:: python
+
+    import sqlite_utils
+
+
+    def archive_article(conn):
+        db = sqlite_utils.Database(conn)
+        with db.atomic():
+            db["articles"].update(1, {"archived": True})
+            db["audit_log"].insert(
+                {"article_id": 1, "action": "archive"}
+            )
+
+
+    await database.execute_write_fn(archive_article)
 
 If you specify ``block=False`` the method becomes fire-and-forget, queueing your function to be executed and then allowing your code after the call to ``.execute_write_fn()`` to continue running while the underlying thread waits for an opportunity to run your function. A UUID representing the queued task will be returned. Any exceptions in your code will be silently swallowed.
 
@@ -2311,6 +2495,259 @@ The ``Database`` class also provides properties and methods for introspecting th
           }
         }
 
+.. _internals_telemetry:
+
+OpenTelemetry
+=============
+
+Datasette uses the `opentelemetry-api <https://pypi.org/project/opentelemetry-api/>`__ library to provide `OpenTelemetry <https://opentelemetry.io>`__ traces and metrics for Datasette applications.
+
+Datasette emits telemetry under the ``datasette`` instrumentation scope. To enable tracing, run Datasette under the ``opentelemetry-instrument`` agent.
+
+Plugins can emit their own spans and metrics alongside these, using the same registry classes and test helpers core uses - see :ref:`plugin_telemetry`.
+
+.. _internals_telemetry_turning_on:
+
+Turning tracing on
+------------------
+
+Install an OpenTelemetry SDK, an exporter and the instrumentation agent, then launch Datasette through ``opentelemetry-instrument``:
+
+.. code-block:: bash
+
+    pip install opentelemetry-distro opentelemetry-exporter-otlp
+
+    OTEL_SERVICE_NAME=datasette \
+    OTEL_METRICS_EXPORTER=console \
+    OTEL_LOGS_EXPORTER=console \
+    OTEL_TRACES_EXPORTER=console \
+      opentelemetry-instrument datasette mydb.db
+
+Or using ``uv run``:
+
+.. code-block:: bash
+
+    OTEL_SERVICE_NAME=datasette \
+    OTEL_METRICS_EXPORTER=console \
+    OTEL_LOGS_EXPORTER=console \
+    OTEL_TRACES_EXPORTER=console \
+    uv run \
+      --with opentelemetry-distro \
+      --with opentelemetry-exporter-otlp \
+      opentelemetry-instrument datasette mydb.db
+
+This will output pretty-printed JSON telemetry to your console, representing requests and database queries executed by Datasette.
+
+To use an exporter endpoint, set ``OTEL_EXPORTER_OTLP_ENDPOINT`` to a URL, set ``OTEL_TRACES_EXPORTER`` to ``otlp``, and set the other exporters to ``none``:
+
+.. code-block:: bash
+
+    OTEL_SERVICE_NAME=datasette \
+    OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 \
+    OTEL_METRICS_EXPORTER=none \
+    OTEL_LOGS_EXPORTER=none \
+    OTEL_TRACES_EXPORTER=otlp \
+      opentelemetry-instrument datasette mydb.db
+
+On macOS one easy option for a port 4317 OTLP endpoint is `otel-tui <https://github.com/ymtdzzz/otel-tui>`__:
+
+.. code-block:: bash
+
+    brew install ymtdzzz/tap/otel-tui
+    otel-tui
+
+Traces sent to port 4317 by Datasette will now display in a TUI in your terminal.
+
+A few things catch people out:
+
+- **You must use "opentelemetry-instrument datasette"**. Running just ``OTEL_TRACES_EXPORTER=console datasette mydb.db`` produces no telemetry.
+- **Spans do not appear immediately.** The SDK's default ``BatchSpanProcessor`` flushes on a timer, every 5 seconds. Either wait, or stop the process - shutdown triggers a final flush - or set ``OTEL_BSP_SCHEDULE_DELAY=1000`` while you are experimenting.
+- **Always set** ``OTEL_SERVICE_NAME``. Without it the SDK's default resource reports a ``service.name`` of ``unknown_service``, and your traces will be filed under that instead of under a name you can search for.
+
+.. _internals_telemetry_requests:
+
+Span reference
+--------------
+
+Datasette emits six spans. One covers the HTTP request, and is the root everything else raised while serving that request hangs from. Four describe the database layer - one per query, one for the work that query does inside a SQL worker thread, and two more for the write queue. The sixth covers startup. Attribute names use the ``datasette.*`` prefix for Datasette-specific data, alongside standard OpenTelemetry attributes such as ``db.system``.
+
+A request to a table page produces a span named, in full::
+
+    GET /(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)(\.(?P<format>\w+))?$
+
+.. [[[cog
+    from telemetry_doc import spans
+    spans(cog)
+.. ]]]
+
+``{http.request.method} {http.route}``
+    One span per HTTP request, containing spans from plugin middleware and database operations. Named for the HTTP method and matched route, or just the method if no route matches. Incoming ``traceparent`` headers are extracted using the global propagator to continue the caller's trace. Incoming ``baggage`` is not propagated into plugin or downstream context in this release. Set ``OTEL_PROPAGATORS=none`` to disable extraction. For public instances, strip trace context headers at your proxy if callers should not supply trace context.
+
+    Kind: ``SERVER``.
+
+    Attributes:
+
+    - ``http.request.method`` - The HTTP request method. Methods outside the nine defined by RFC 9110 and RFC 5789 are recorded as ``_OTHER``.
+    - ``http.route`` *(optional)* - The regular expression for the matched route, for example ``/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)(\.(?P<format>\w+))?$`` for a table page. Use this attribute to group requests by route. Omitted when no route matches.
+    - ``url.path`` - The URL path, excluding the query string.
+    - ``url.scheme`` - ``http`` or ``https``.
+    - ``server.address`` *(optional)* - The ``Host`` header, including any ``:port`` suffix. This value is supplied by the client.
+    - ``user_agent.original`` *(optional)* - The ``User-Agent`` header, verbatim. Omitted if the client sent none.
+    - ``http.response.status_code`` *(optional)* - The HTTP response status code. Omitted if no response was started.
+    - ``error.type`` *(optional)* - The exception class name for a failed operation. On HTTP spans, also set to the status code as a string for 5xx responses. A 4xx response alone does not set this attribute or an error status.
+    - ``datasette.internal_client`` *(optional)* - ``True`` for requests made through ``datasette.client``. Calls made inside another request produce a nested ``SERVER`` span. Filter on this attribute to exclude internal requests from request counts. Omitted for requests received over the network.
+
+``db.query``
+    A SQL operation, including time spent queued for a worker thread. For ``block=False`` writes, the span ends after the write is queued. Callback methods record ``datasette.callback`` in place of ``db.query.text``.
+
+    Kind: ``CLIENT``.
+
+    Attributes:
+
+    - ``db.system`` - Always ``sqlite``.
+    - ``db.namespace`` - Name of the database being queried.
+    - ``db.query.text`` *(optional)* - The SQL, truncated to 2048 characters. Bound parameter values are not recorded. For callback methods, ``datasette.callback`` is recorded instead.
+    - ``datasette.callback`` *(optional)* - The qualified name of the Python callable passed to ``execute_fn()``, ``execute_write_fn()`` or ``execute_isolated_fn()``, for example ``TableInsertView.post.<locals>.insert_or_upsert_rows``. Set instead of ``db.query.text``. Lambdas appear as ``<lambda>``; use a named function for a more descriptive span.
+    - ``db.operation.name`` *(optional)* - The statement's leading keyword, such as ``SELECT``, ``INSERT`` or ``CREATE``, if it matches the supported allowlist. Statements beginning with a common table expression report ``WITH``. Omitted for unrecognized keywords and ``execute_write_script()``.
+    - ``datasette.param_count`` *(optional)* - Number of bound parameters. Recorded instead of the values themselves.
+    - ``datasette.param_sets`` *(optional)* - Number of parameter sets consumed by ``execute_write_many()``. The parameter values are not recorded.
+    - ``datasette.time_limit_ms`` *(optional)* - Time limit applied to the read query, in milliseconds: :ref:`setting_sql_time_limit_ms` or a shorter ``custom_time_limit``.
+    - ``datasette.rows_returned`` *(optional)* - Number of rows returned by a successful read query.
+    - ``datasette.truncated`` *(optional)* - True if the result was cut short by :ref:`setting_max_returned_rows`.
+    - ``datasette.interrupted`` *(optional)* - True if the query exceeded its time limit. The span status is set to ``ERROR`` unless the caller used a ``custom_time_limit`` shorter than :ref:`setting_sql_time_limit_ms`, in which case the status is left unset.
+    - ``datasette.sql_error_suppressed`` *(optional)* - True for a non-timeout SQL error with ``log_sql_errors=False``. The exception is still raised, but the span status is left unset.
+    - ``datasette.executescript`` *(optional)* - True for ``execute_write_script()``, which runs multiple statements.
+    - ``datasette.executemany`` *(optional)* - True for ``execute_write_many()``, which runs one statement against many parameter sets.
+
+``db.query.execute``
+    The read executing inside a SQL worker thread. Child of ``db.query``; the gap between the two is time spent waiting for a thread.
+
+    No attributes.
+
+``db.write.queue_wait``
+    Time a write spent waiting in its database's write queue. For ``block=True``, this is a child of ``db.query``. For ``block=False``, it is a root span linked to the span that queued the write, since the write can outlive that request.
+
+    No attributes.
+
+``db.write.execute``
+    The write executing on the write thread. For ``block=True``, this is a child of ``db.query``. For ``block=False``, it is a root span linked to the span that queued the write.
+
+    Attributes:
+
+    - ``datasette.isolated_connection`` - True if the write ran on its own connection rather than the shared write connection.
+    - ``datasette.transaction`` - False for statements such as ``VACUUM`` that cannot run inside a transaction.
+
+``datasette.startup``
+    Startup work performed by ``invoke_startup()``, including registration hooks, schema catalog updates, saved queries, column type configuration and the ``startup`` hook. Runs during instance startup, either before serving requests or as part of the first request.
+
+    No attributes.
+
+.. [[[end]]]
+
+.. _internals_telemetry_metrics:
+
+Metric reference
+----------------
+
+Spans describe events; metrics describe levels and rates. Metrics can be used to answer questions like "Am I saturating my :ref:`setting_num_sql_threads` threads right now?". Trace sampling drops a portion of traces but does not drop any metrics.
+
+Datasette configures duration histograms in **seconds**. OpenTelemetry's default boundaries are tuned for milliseconds but these would file every SQLite query into a single bucket, making quantile queries meaningless.
+
+This reference is also generated from ``datasette/telemetry_registry.py``:
+
+.. [[[cog
+    from telemetry_doc import metrics
+    metrics(cog)
+.. ]]]
+
+``db.client.operation.duration``
+    Histogram, unit ``s``. Duration of a SQL operation, including callback-based calls such as ``execute_fn()``. For ``block=False`` writes, measures enqueue time.
+
+    Bucket boundaries: ``0.0001``, ``0.0005``, ``0.001``, ``0.005``, ``0.01``, ``0.05``, ``0.1``, ``0.5``, ``1``, ``5``, ``10``.
+
+    Attributes:
+
+    - ``db.system`` - Always ``sqlite``.
+    - ``db.namespace`` - Name of the database being queried.
+    - ``datasette.operation`` - Whether the operation was a read or a write. One of: ``read``, ``write``.
+    - ``error.type`` *(optional)* - The exception class name for a failed operation. On HTTP spans, also set to the status code as a string for 5xx responses. A 4xx response alone does not set this attribute or an error status.
+
+``datasette.write.queue_wait``
+    Histogram, unit ``s``. Time each write waited in its database's write queue.
+
+    Bucket boundaries: ``0.0001``, ``0.0005``, ``0.001``, ``0.005``, ``0.01``, ``0.05``, ``0.1``, ``0.5``, ``1``, ``5``, ``10``.
+
+    Attributes:
+
+    - ``db.namespace`` - Name of the database being queried.
+
+``datasette.sql.queries.interrupted``
+    Counter, unit ``{query}``. Queries cancelled for exceeding :ref:`setting_sql_time_limit_ms`. A rising rate can indicate that queries need optimization or a higher time limit. Caller-selected timeouts shorter than this limit, such as those used for facet suggestion, are excluded.
+
+    Attributes:
+
+    - ``db.namespace`` - Name of the database being queried.
+
+``datasette.sql.threads.limit``
+    Observable gauge, unit ``{thread}``. Maximum concurrent read queries, configured by :ref:`setting_num_sql_threads`. Not reported when ``num_sql_threads`` is ``0``.
+
+    No attributes.
+
+``datasette.sql.threads.queue_depth``
+    Observable gauge, unit ``{query}``. Read queries waiting for a free SQL thread. Sustained values above zero indicate a saturated read pool.
+
+    No attributes.
+
+``datasette.sql.queries.pending``
+    Observable gauge, unit ``{query}``. Read queries submitted to the pool and not yet complete. Sum across databases and compare with ``datasette.sql.threads.limit`` to assess pool usage.
+
+    Attributes:
+
+    - ``db.namespace`` - Name of the database being queried.
+
+``datasette.write.queue_depth``
+    Observable gauge, unit ``{write}``. Writes waiting for a database's single write thread. Increasing ``num_sql_threads`` does not increase write concurrency. Not reported for databases that have never been written to.
+
+    Attributes:
+
+    - ``db.namespace`` - Name of the database being queried.
+
+``datasette.connections.open``
+    Observable gauge, unit ``{connection}``. Open SQLite connections managed by Datasette.
+
+    Attributes:
+
+    - ``db.namespace`` - Name of the database being queried.
+
+.. [[[end]]]
+
+Exemplars
+~~~~~~~~~
+
+An OpenTelemetry `exemplar <https://opentelemetry.io/docs/specs/otel/metrics/data-model/#exemplars>`__ attaches a trace ID and span ID to one sample backing a histogram measurement. Where a spike in ``db.client.operation.duration`` alone tells you "queries were slow sometime in this minute", the exemplar attached to one of the samples in that spike gives you the trace ID of an actual slow query to open:
+
+.. code-block:: text
+
+    db.client.operation.duration count=4
+      exemplars: 4
+        value=0.001564s trace_id=ddfaf45fd4e14913497d7efeac95f381 span_id=fd5792bdbb01e533
+        value=0.006320s trace_id=34aea775ade11a3c5f716695731000fe span_id=25ed9e29dd84dbee
+        value=0.045253s trace_id=a65cb58d1460a179f0d04046ff51ed0d span_id=7f34d6378c85d062
+        value=0.305240s trace_id=6089f4c515c221c0ca7bb53667b37ac8 span_id=0516f4a6641eaa0b
+
+.. _internals_telemetry_privacy:
+
+Privacy and safety
+------------------
+
+Datasette does not configure a telemetry exporter itself. If you enable one, traces may contain sensitive information:
+
+- **SQL text is truncated to 2048 characters.** Literal values in that text are retained. Bound SQL parameter values are not added as attributes; ``datasette.param_count`` records only their count.
+- **Request spans include URL paths, host names and User-Agent headers.** Paths can include identifying values such as row primary keys. Core does not add actor identifiers, cookies, authorization headers, client IP addresses or a ``url.query`` attribute.
+- **Exception messages and tracebacks may be recorded.** These can contain data from requests or database operations.
+
+Review what your application and plugins record before exporting telemetry to an external service. Restrict access to exported data and configure redaction or filtering where needed.
+
 .. _internals_csrf:
 
 CSRF protection
@@ -2332,7 +2769,20 @@ No token, cookie, or hidden form field is needed. Any ``<form method="POST">`` i
 Datasette's internal database
 =============================
 
-Datasette maintains an "internal" SQLite database used for configuration, caching, and storage. Plugins can store configuration, settings, and other data inside this database. By default, Datasette will use a temporary in-memory SQLite database as the internal database, which is created at startup and destroyed at shutdown. Users of Datasette can optionally pass in a ``--internal`` flag to specify the path to a SQLite database to use as the internal database, which will persist internal data across Datasette instances.
+Datasette maintains an "internal" SQLite database used for configuration, caching, and storage. Plugins can store configuration, settings, and other data inside this database. By default, Datasette will use a temporary in-memory SQLite database as the internal database, which is created at startup and destroyed at shutdown.
+
+To persist internal data across Datasette instances, use the ``--internal`` option to specify the path to a SQLite database:
+
+.. code-block:: bash
+
+    datasette mydatabase.db --internal internal.db
+
+You can also set the ``DATASETTE_INTERNAL`` environment variable to specify this path without passing ``--internal`` each time:
+
+.. code-block:: bash
+
+    export DATASETTE_INTERNAL=/path/to/internal.db
+    datasette mydatabase.db
 
 Datasette maintains tables called ``catalog_databases``, ``catalog_tables``, ``catalog_views``, ``catalog_columns``, ``catalog_indexes``, ``catalog_foreign_keys`` with details of the attached databases and their schemas. These tables should not be considered a stable API - they may change between Datasette releases.
 
@@ -2621,12 +3071,12 @@ This example uses trace to record the start, end and duration of any HTTP GET re
 .. code-block:: python
 
     from datasette.tracer import trace
-    import httpx
+    import httpx2
 
 
     async def fetch_url(url):
         with trace("fetch-url", url=url):
-            async with httpx.AsyncClient() as client:
+            async with httpx2.AsyncClient() as client:
                 return await client.get(url)
 
 .. _internals_tracer_trace_child_tasks:

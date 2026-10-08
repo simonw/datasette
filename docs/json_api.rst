@@ -48,6 +48,7 @@ Some JSON endpoints are **exempt** from this promise:
   debug playground.
 - Debug and support endpoints are documented so you can use them, but their
   JSON shapes are not frozen: :ref:`/-/threads <JsonDataView_threads>`,
+  :ref:`/-/tasks <JsonDataView_tasks>`,
   :ref:`/-/actions <JsonDataView_actions>`,
   the :ref:`permission debug endpoints <PermissionsDebugView>`
   (``/-/allowed``, ``/-/rules``, ``/-/check``) and the
@@ -1326,6 +1327,23 @@ The following extras are available for arbitrary SQL query responses and stored,
 
 .. [[[end]]]
 
+.. _TableCountView:
+
+Counting all matching rows
+--------------------------
+
+``POST /<database>/<table>/-/count`` returns an exact count of the rows matching the table's query string filters::
+
+    POST /fixtures/facetable/-/count?state=CA
+
+    {"ok": true, "count": 10}
+
+The endpoint supports the same column, search and plugin filters as the table page. Pagination and display options such as ``_next``, ``_size`` and ``_sort`` do not affect the count.
+
+This requires ``view-table`` permission. ``execute-sql`` permission is only needed if using ``_where`` filters.
+
+Unlike the ``count`` extra, this count is not capped by the row count limit. The usual SQL time limit still applies; a timed-out count returns a 400 JSON error.
+
 .. _TableAutocompleteView:
 
 Table autocomplete
@@ -1660,6 +1678,8 @@ Datasette provides a write API for JSON data. This is a POST-only API that requi
 The request body is always parsed as JSON, regardless of the request's ``Content-Type`` header - a body that is not valid JSON returns a ``400`` error. Cross-site request forgery is prevented by Datasette's ``Origin`` and ``Sec-Fetch-Site`` header checks rather than by content type requirements.
 
 The row-based write APIs can write :ref:`binary values in JSON <binary_json_format>` using Datasette's Base64 representation for BLOB data.
+
+Structured inserts, upserts, updates and deletes only support ordinary SQLite tables. Virtual tables and their internal shadow tables are rejected, including when adding rows to an existing table through the create-table API. Writes to ordinary content tables can still update full-text search indexes through configured triggers.
 
 .. _ExecuteWriteView:
 

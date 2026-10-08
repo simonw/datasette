@@ -1,8 +1,10 @@
-from ..utils import StaticMount
-import click
 import os
 import shutil
 import sys
+
+import click
+
+from ..utils import StaticMount
 
 
 def add_common_publish_arguments_and_options(subcommand):
@@ -76,9 +78,7 @@ def fail_if_publish_binary_not_installed(binary, publish_target, install_link):
     """Exit (with error message) if ``binary` isn't installed"""
     if not shutil.which(binary):
         click.secho(
-            "Publishing to {publish_target} requires {binary} to be installed and configured".format(
-                publish_target=publish_target, binary=binary
-            ),
+            f"Publishing to {publish_target} requires {binary} to be installed and configured",
             bg="red",
             fg="white",
             bold=True,

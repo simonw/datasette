@@ -1,3 +1,13 @@
+import contextlib
+import json
+import os
+import pathlib
+import tempfile
+import textwrap
+
+import click
+import pytest
+
 from datasette.app import Datasette
 from datasette.fixtures import (
     EXTRA_DATABASE_SQL,
@@ -5,14 +15,6 @@ from datasette.fixtures import (
     write_fixture_database,
 )
 from datasette.utils.testing import TestClient
-import click
-import contextlib
-import json
-import os
-import pathlib
-import pytest
-import tempfile
-import textwrap
 
 # This temp file is used by one of the plugin config tests
 TEMP_PLUGIN_SECRET_FILE = os.path.join(tempfile.gettempdir(), "plugin-secret")
@@ -167,12 +169,10 @@ def make_app_client(
             template_dir=template_dir,
             crossdb=crossdb,
         )
-        yield TestClient(ds)
-        # Close as many database connections as possible
-        # to try and avoid too many open files error
-        for db in ds.databases.values():
-            if not db.is_memory:
-                db.close()
+        try:
+            yield TestClient(ds)
+        finally:
+            ds.close()
 
 
 @pytest.fixture(scope="session")
@@ -184,9 +184,10 @@ def app_client():
 @pytest.fixture(scope="session")
 def app_client_no_files():
     ds = Datasette([])
-    yield TestClient(ds)
-    for db in ds.databases.values():
-        db.close()
+    try:
+        yield TestClient(ds)
+    finally:
+        ds.close()
 
 
 @pytest.fixture(scope="session")

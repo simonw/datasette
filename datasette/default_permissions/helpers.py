@@ -5,7 +5,7 @@ Shared helper utilities for default permission implementations.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional, Set
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from datasette.app import Datasette
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 from datasette.permissions import PermissionSQL
 
 
-def get_action_name_variants(datasette: "Datasette", action: str) -> Set[str]:
+def get_action_name_variants(datasette: Datasette, action: str) -> set[str]:
     """
     Get all name variants for an action (full name and abbreviation).
 
@@ -27,7 +27,7 @@ def get_action_name_variants(datasette: "Datasette", action: str) -> Set[str]:
     return variants
 
 
-def action_in_list(datasette: "Datasette", action: str, action_list: list) -> bool:
+def action_in_list(datasette: Datasette, action: str, action_list: list) -> bool:
     """Check if an action (or its abbreviation) is in a list."""
     return bool(get_action_name_variants(datasette, action).intersection(action_list))
 
@@ -36,8 +36,8 @@ def action_in_list(datasette: "Datasette", action: str, action_list: list) -> bo
 class PermissionRow:
     """A single permission rule row."""
 
-    parent: Optional[str]
-    child: Optional[str]
+    parent: str | None
+    child: str | None
     allow: bool
     reason: str
 
@@ -46,14 +46,14 @@ class PermissionRowCollector:
     """Collects permission rows and converts them to PermissionSQL."""
 
     def __init__(self, prefix: str = "row"):
-        self.rows: List[PermissionRow] = []
+        self.rows: list[PermissionRow] = []
         self.prefix = prefix
 
     def add(
         self,
-        parent: Optional[str],
-        child: Optional[str],
-        allow: Optional[bool],
+        parent: str | None,
+        child: str | None,
+        allow: bool | None,
         reason: str,
         if_not_none: bool = False,
     ) -> None:
@@ -62,7 +62,7 @@ class PermissionRowCollector:
             return
         self.rows.append(PermissionRow(parent, child, allow, reason))
 
-    def to_permission_sql(self) -> Optional[PermissionSQL]:
+    def to_permission_sql(self) -> PermissionSQL | None:
         """Convert collected rows to a PermissionSQL object."""
         if not self.rows:
             return None

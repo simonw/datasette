@@ -1,15 +1,18 @@
-from bs4 import BeautifulSoup as Soup
-from datasette.app import Datasette
-from datasette.utils import allowed_pragmas
-from .fixtures import make_app_client
-from .utils import assert_footer_links, inner_html
 import copy
 import hashlib
 import json
 import pathlib
-import pytest
 import re
 import urllib.parse
+
+import pytest
+from bs4 import BeautifulSoup as Soup
+
+from datasette.app import Datasette
+from datasette.utils import allowed_pragmas
+
+from .fixtures import make_app_client
+from .utils import assert_footer_links, inner_html
 
 
 def test_homepage(app_client_two_attached_databases):
@@ -33,8 +36,10 @@ def test_homepage(app_client_two_attached_databases):
     h2 = soup.select("h2")[0]
     assert "extra database" == h2.text.strip()
     counts_p, links_p = h2.find_all_next("p")[:2]
+    # Shadow tables of the external-content index are denied, so they do not
+    # contribute to the table or row totals.
     assert (
-        "2 rows in 1 table, 5 rows in 4 hidden tables, 1 view" == counts_p.text.strip()
+        "2 rows in 1 table, 2 rows in 1 hidden table, 1 view" == counts_p.text.strip()
     )
     # We should only show visible, not hidden tables here:
     table_links = [
@@ -44,6 +49,36 @@ def test_homepage(app_client_two_attached_databases):
         {"href": r"/extra+database/searchable", "text": "searchable"},
         {"href": r"/extra+database/searchable_view", "text": "searchable_view"},
     ] == table_links
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "sql,expected",
+    (
+        (["create view one as select 1 as n"], "0 tables, 1 view"),
+        (
+            ["create view one as select 1 as n", "create view two as select 2 as n"],
+            "0 tables, 2 views",
+        ),
+        (
+            ["create table t (id integer primary key)", "create view v as select 1"],
+            "0 rows in 1 table, 1 view",
+        ),
+    ),
+)
+async def test_homepage_database_summary_separators(sql, expected):
+    # https://github.com/simonw/datasette/issues/2012
+    ds = Datasette()
+    await ds.invoke_startup()
+    db = ds.add_memory_database("summary_separators")
+    for statement in sql:
+        await db.execute_write(statement)
+    response = await ds.client.get("/")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    h2 = next(h2 for h2 in soup.select("h2") if h2.text.strip() == "summary_separators")
+    counts_p = h2.find_next("p")
+    assert " ".join(counts_p.text.split()) == expected
 
 
 @pytest.mark.asyncio
@@ -142,9 +177,7 @@ def test_static_mounts_hash_cache_control():
         )
 
         incorrect_hash = hashlib.sha256(b"incorrect").hexdigest()[:12]
-        response = client.get(
-            "/custom-static/test_html.py?_hash={}".format(incorrect_hash)
-        )
+        response = client.get(f"/custom-static/test_html.py?_hash={incorrect_hash}")
         assert response.status_code == 200
         assert "cache-control" not in response.headers
 
@@ -219,11 +252,9 @@ async def test_disallowed_custom_sql_pragma(ds_client):
         "/fixtures/-/query?sql=SELECT+*+FROM+pragma_not_on_allow_list('idx52')"
     )
     assert response.status_code == 400
-    pragmas = ", ".join("pragma_{}()".format(pragma) for pragma in allowed_pragmas)
+    pragmas = ", ".join(f"pragma_{pragma}()" for pragma in allowed_pragmas)
     assert (
-        "Statement contained a disallowed PRAGMA. Allowed pragma functions are {}".format(
-            pragmas
-        )
+        f"Statement contained a disallowed PRAGMA. Allowed pragma functions are {pragmas}"
         in response.text
     )
 
@@ -569,6 +600,52 @@ async def test_database_metadata_with_custom_sql(ds_client):
     # assert_footer_links(soup)TODO(alex) ensure
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,metadata,expected_text,expected_href",
+    (
+        ("/", {"about": "Instance about"}, "About: Instance about", None),
+        (
+            "/",
+            {"about_url": "https://example.com/"},
+            "About: https://example.com/",
+            "https://example.com/",
+        ),
+        (
+            "/data",
+            {"databases": {"data": {"about": "Database about"}}},
+            "About: Database about",
+            None,
+        ),
+        (
+            "/data/t",
+            {"databases": {"data": {"tables": {"t": {"about": "Table about"}}}}},
+            "About: Table about",
+            None,
+        ),
+    ),
+)
+async def test_about_without_source_or_license(
+    path, metadata, expected_text, expected_href
+):
+    # https://github.com/simonw/datasette/issues/512
+    ds = Datasette(metadata=metadata)
+    db = ds.add_memory_database("test_about_without_source_or_license", name="data")
+    await db.execute_write("create table if not exists t (id integer primary key)")
+    response = await ds.client.get(path)
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    about_p = soup.select_one("section.content p:-soup-contains('About:')")
+    assert about_p is not None
+    # No leading separator, since there is no license or source before it
+    assert " ".join(about_p.text.split()) == expected_text
+    links = about_p.find_all("a")
+    if expected_href:
+        assert [a["href"] for a in links] == [expected_href]
+    else:
+        assert links == []
+
+
 def test_database_download_for_immutable():
     with make_app_client(is_immutable=True) as client:
         assert not client.ds.databases["fixtures"].is_mutable
@@ -778,8 +855,8 @@ def test_stored_query_show_hide_metadata_option(
         },
         memory=True,
     ) as client:
-        expected_show_hide_fragment = '(<a href="{}">{}</a>)'.format(
-            expected_show_hide_link, expected_show_hide_text
+        expected_show_hide_fragment = (
+            f'(<a href="{expected_show_hide_link}">{expected_show_hide_text}</a>)'
         )
         response = client.get("/_memory/one" + querystring)
         html = response.text
@@ -788,10 +865,7 @@ def test_stored_query_show_hide_metadata_option(
         )[0]
         assert show_hide_fragment == expected_show_hide_fragment
         if expected_hidden:
-            assert (
-                '<input type="hidden" name="{}" value="1">'.format(expected_hidden)
-                in html
-            )
+            assert f'<input type="hidden" name="{expected_hidden}" value="1">' in html
         else:
             assert '<input type="hidden" ' not in html
 
@@ -916,6 +990,7 @@ def test_debug_context_includes_extra_template_vars():
         "/fixtures/-/query?sql=select+1",
         "/-/api",
         "/-/patterns",
+        "/-/patterns/menus",
     ],
 )
 @pytest.mark.parametrize("use_prefix", (True, False))
@@ -1194,13 +1269,9 @@ async def test_alternate_url_json(ds_client, path, expected):
     response = await ds_client.get(path)
     assert response.status_code == 200
     link = response.headers["link"]
-    assert link == '<{}>; rel="alternate"; type="application/json+datasette"'.format(
-        expected
-    )
+    assert link == f'<{expected}>; rel="alternate"; type="application/json+datasette"'
     assert (
-        '<link rel="alternate" type="application/json+datasette" href="{}">'.format(
-            expected
-        )
+        f'<link rel="alternate" type="application/json+datasette" href="{expected}">'
         in response.text
     )
 
@@ -1208,7 +1279,13 @@ async def test_alternate_url_json(ds_client, path, expected):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
-    ("/-/patterns", "/-/messages", "/-/allow-debug", "/fixtures.db"),
+    (
+        "/-/patterns",
+        "/-/patterns/menus",
+        "/-/messages",
+        "/-/allow-debug",
+        "/fixtures.db",
+    ),
 )
 async def test_no_alternate_url_json(ds_client, path):
     response = await ds_client.get(path)
@@ -1292,8 +1369,8 @@ async def test_database_color(ds_client):
     expected_color = ds_client.ds.get_database("fixtures").color
     # Should be something like #9403e5
     expected_fragments = (
-        "10px solid #{}".format(expected_color),
-        "border-color: #{}".format(expected_color),
+        f"10px solid #{expected_color}",
+        f"border-color: #{expected_color}",
     )
     assert len(expected_color) == 6
     for path in (

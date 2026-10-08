@@ -1,6 +1,8 @@
-from datasette.utils.asgi import Response
 import json
+
 import pytest
+
+from datasette.utils.asgi import Response
 
 
 def test_response_html():

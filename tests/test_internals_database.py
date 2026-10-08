@@ -3,16 +3,30 @@ Tests for the datasette.database.Database class
 """
 
 import asyncio
-from types import SimpleNamespace
-from datasette.app import Datasette
-from datasette.database import Database, ExecuteWriteResult, Results, MultipleValues
-from datasette.database import DatasetteClosedError
-from datasette.database import _deliver_write_result
-from datasette.utils.sqlite import sqlite3, supports_returning
-from datasette.utils import Column
-import pytest
-import time
+import threading
 import uuid
+from types import SimpleNamespace
+
+import pytest
+import sqlite_utils
+from opentelemetry import context as otel_context_api
+
+from datasette.app import Datasette
+from datasette.database import (
+    Database,
+    DatasetteClosedError,
+    ExecuteWriteResult,
+    MultipleValues,
+    QueryInterrupted,
+    Results,
+    _deliver_write_result,
+)
+from datasette.utils import Column
+from datasette.utils.sqlite import (
+    sqlite3,
+    sqlite_derived_table_dependencies,
+    supports_returning,
+)
 
 requires_sqlite_returning = pytest.mark.skipif(
     not supports_returning(), reason="SQLite does not support RETURNING"
@@ -32,6 +46,31 @@ async def test_execute(db):
 
 
 @pytest.mark.asyncio
+async def test_derived_dependency_cache_survives_failed_refresh(monkeypatch):
+    ds = Datasette(memory=True)
+    db = ds.add_memory_database(uuid.uuid4().hex, name="data")
+    await db.derived_table_dependencies()
+    previous_cache = db._cached_derived_table_dependencies
+    await db.execute_write("create table dependency_cache_refresh (id integer)")
+
+    class UnavailableSchema:
+        def execute(self, sql):
+            raise sqlite3.DatabaseError("schema temporarily unavailable")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            "datasette.database.sqlite_derived_table_dependencies",
+            lambda conn: sqlite_derived_table_dependencies(UnavailableSchema()),
+        )
+        with pytest.raises(sqlite3.DatabaseError, match="schema temporarily"):
+            await db.derived_table_dependencies()
+    assert db._cached_derived_table_dependencies == previous_cache
+
+    await db.derived_table_dependencies()
+    assert db._cached_derived_table_dependencies[0] != previous_cache[0]
+
+
+@pytest.mark.asyncio
 async def test_results_first(db):
     assert None is (await db.execute("select * from facetable where pk > 100")).first()
     results = await db.execute("select * from facetable")
@@ -43,7 +82,7 @@ async def test_results_first(db):
 @pytest.mark.parametrize("expected", (True, False))
 async def test_results_bool(db, expected):
     where = "" if expected else "where pk = 0"
-    results = await db.execute("select * from facetable {}".format(where))
+    results = await db.execute(f"select * from facetable {where}")
     assert bool(results) is expected
 
 
@@ -472,6 +511,28 @@ async def test_view_names(db):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("num_sql_threads", [0, 3])
+async def test_execute_write_zero_time_limit(num_sql_threads):
+    ds = Datasette(settings={"num_sql_threads": num_sql_threads})
+    db = ds.add_memory_database(uuid.uuid4().hex, name="write_limits")
+    try:
+        await ds.invoke_startup()
+        await db.execute_write("create table items(value integer)")
+        # Zero expires at the first SQLite progress callback, regardless of speed.
+        with pytest.raises(QueryInterrupted):
+            await db.execute_write(
+                "insert into items(value) values (1)", time_limit_ms=0
+            )
+        # No new timeout handler: the interrupted operation must have cleared it.
+        await db.execute_write(
+            "insert into items(value) values (2)", time_limit_ms=None
+        )
+        assert (await db.execute("select value from items")).single_value() == 2
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
 async def test_execute_write_block_true(db):
     result = await db.execute_write(
         "update roadside_attractions set name = ? where pk = ?", ["Mystery!", 1]
@@ -615,7 +676,7 @@ async def test_execute_write_block_false(db):
         "update roadside_attractions set name = ? where pk = ?",
         ["Mystery!", 1],
     )
-    time.sleep(0.1)
+    await asyncio.sleep(0.1)
     rows = await db.execute("select name from roadside_attractions where pk = 1")
     assert "Mystery!" == rows.rows[0][0]
 
@@ -633,7 +694,7 @@ async def test_execute_write_with_returning_block_false(db):
     )
 
     assert isinstance(task_id, uuid.UUID)
-    time.sleep(0.1)
+    await asyncio.sleep(0.1)
     assert (
         await db.execute("select name from write_returning_block_false")
     ).single_value() == "Cleo"
@@ -699,6 +760,33 @@ async def test_execute_write_fn_block_false(db):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("disable_threads", (False, True))
+async def test_execute_write_fn_block_false_returns_uuid(tmp_path, disable_threads):
+    # block=False is documented to return "a UUID representing the queued task".
+    # With num_sql_threads=0 there is no write thread, so the non-threaded branch
+    # has to satisfy the same contract as the threaded one.
+    settings = {"num_sql_threads": 0} if disable_threads else {}
+    ds = Datasette([], memory=True, settings=settings)
+    await ds.invoke_startup()
+    db = ds.add_memory_database("test_block_false")
+    await db.execute_write(
+        "create table if not exists t (id integer primary key, v text)"
+    )
+
+    def write_fn(conn):
+        conn.execute("insert into t (v) values ('a')")
+        # Returns None, like most write functions.
+
+    task_id = await db.execute_write_fn(write_fn, block=False)
+
+    assert isinstance(task_id, uuid.UUID)
+    # Distinct per call, so a caller can tell two queued tasks apart.
+    second = await db.execute_write_fn(write_fn, block=False)
+    assert isinstance(second, uuid.UUID)
+    assert second != task_id
+
+
+@pytest.mark.asyncio
 async def test_execute_write_fn_block_true(db):
     def write_fn(conn):
         conn.execute("delete from roadside_attractions where pk = 1;")
@@ -719,14 +807,50 @@ async def test_execute_write_fn_exception(db):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("num_sql_threads", (0, 1))
+async def test_execute_write_fn_sqlite_utils_transaction(tmp_path, num_sql_threads):
+    # A write inside a failing Datasette task must never become visible or
+    # survive the rollback. Exercise both the synchronous and writer-thread
+    # paths against a file-backed database so a second connection can observe
+    # committed state independently.
+    db_path = tmp_path / "test.db"
+    sqlite3.connect(db_path).close()
+    ds = Datasette([str(db_path)], settings={"num_sql_threads": num_sql_threads})
+    db = ds.get_database("test")
+    await db.execute_write("create table items (id integer primary key)")
+    # This reader is used inside the write callback, which may run on another
+    # thread, but it is never accessed concurrently.
+    reader = sqlite3.connect(db_path, check_same_thread=False)
+
+    def insert_then_fail(conn):
+        # Datasette must open the outer transaction before sqlite-utils writes.
+        assert conn.in_transaction
+        sqlite_utils.Database(conn)["items"].insert({"id": 1})
+        # If sqlite-utils committed its own transaction, this would return 1.
+        assert reader.execute("select count(*) from items").fetchone()[0] == 0
+        # Simulate a later step failing after the sqlite-utils write succeeded.
+        raise ValueError("deliberate")
+
+    try:
+        with pytest.raises(ValueError, match="deliberate"):
+            await db.execute_write_fn(insert_then_fail)
+        # The outer transaction must roll back the sqlite-utils write as well.
+        assert reader.execute("select count(*) from items").fetchone()[0] == 0
+    finally:
+        reader.close()
+        db.close()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("param_name", ["conn", "connection", "db", "c"])
 async def test_execute_write_fn_accepts_any_single_param_name(db, param_name):
     # Plugins historically relied on the fact that the callback was invoked
     # positionally, so any parameter name worked. Preserve that contract.
     scope = {}
-    exec(
-        "def write_fn({0}):\n"
-        "    return {0}.execute('select 1 + 1').fetchone()[0]".format(param_name),
+    # exec() is how we build a function with a parameterized argument name
+    exec(  # noqa: S102
+        f"def write_fn({param_name}):\n"
+        f"    return {param_name}.execute('select 1 + 1').fetchone()[0]",
         scope,
     )
     write_fn = scope["write_fn"]
@@ -750,7 +874,9 @@ async def test_execute_write_fn_with_track_event(db):
 
 
 @pytest.mark.asyncio
-@pytest.mark.timeout(1)
+# func_only so the budget covers the write-thread call under test, not the
+# one-off app_client fixture setup this test may be first to trigger
+@pytest.mark.timeout(1, func_only=True)
 async def test_execute_write_fn_connection_exception(tmpdir, app_client):
     path = str(tmpdir / "immutable.db")
     conn = sqlite3.connect(path)
@@ -1178,3 +1304,103 @@ async def test_database_close_is_idempotent(tmpdir):
     # Second call should be a no-op, not raise
     db.close()
     ds._internal_database.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("num_sql_threads", [0, 2])
+@pytest.mark.parametrize("named", [False, True])
+async def test_close_releases_memory_connections(num_sql_threads, named):
+    ds = Datasette(memory=True, settings={"num_sql_threads": num_sql_threads})
+    db = ds.add_memory_database(uuid.uuid4().hex) if named else ds.get_database()
+    read_connection = await db.execute_fn(lambda conn: conn)
+    write_connection = await db.execute_write_fn(lambda conn: conn)
+    ds.close()
+    for conn in (read_connection, write_connection):
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            conn.execute("select 1")
+
+
+_CONTEXT_LEAK_MARKER_KEY = "otel-context-leak-marker"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("num_sql_threads", (0, 1))
+async def test_write_thread_context_is_detached_between_tasks(
+    tmp_path, monkeypatch, num_sql_threads
+):
+    """
+    The write thread attaches each task's OpenTelemetry context and detaches
+    it before the next task, including when the task raises an exception.
+
+    Checks that each task sees the context from when it was queued, and that
+    the write thread's attach depth does not grow between tasks.
+    """
+    name = f"context_leak_test_{num_sql_threads}"
+    db_path = tmp_path / f"{name}.db"
+    sqlite3.connect(db_path).close()
+    ds = Datasette([str(db_path)], settings={"num_sql_threads": num_sql_threads})
+    db = ds.get_database(name)
+    await db.execute_write("create table t (id integer primary key)")
+
+    write_thread_name = f"_execute_writes for database {name}"
+    depth = {"value": 0}
+    real_attach = otel_context_api.attach
+    real_detach = otel_context_api.detach
+
+    def counting_attach(context):
+        token = real_attach(context)
+        if threading.current_thread().name == write_thread_name:
+            depth["value"] += 1
+        return token
+
+    def counting_detach(token):
+        real_detach(token)
+        if threading.current_thread().name == write_thread_name:
+            depth["value"] -= 1
+
+    # database.py and opentelemetry.trace both call these via the module
+    monkeypatch.setattr(otel_context_api, "attach", counting_attach)
+    monkeypatch.setattr(otel_context_api, "detach", counting_detach)
+
+    seen_markers = []
+    seen_depths = []
+
+    def probe(conn):
+        seen_markers.append(otel_context_api.get_value(_CONTEXT_LEAK_MARKER_KEY))
+        seen_depths.append(depth["value"])
+
+    def failing_probe(conn):
+        probe(conn)
+        raise ValueError("deliberate failure inside a write task")
+
+    try:
+        for i in range(5):
+            ctx = otel_context_api.set_value(_CONTEXT_LEAK_MARKER_KEY, f"marker-{i}")
+            token = real_attach(ctx)
+            try:
+                if i == 2:
+                    with pytest.raises(ValueError):
+                        await db.execute_write_fn(failing_probe)
+                else:
+                    await db.execute_write_fn(probe)
+            finally:
+                real_detach(token)
+
+        # No marker is set here, so the final probe should see None
+        assert otel_context_api.get_value(_CONTEXT_LEAK_MARKER_KEY) is None
+        await db.execute_write_fn(probe)
+    finally:
+        db.close()
+
+    assert seen_markers == [
+        "marker-0",
+        "marker-1",
+        "marker-2",
+        "marker-3",
+        "marker-4",
+        None,
+    ]
+    assert len(set(seen_depths)) == 1, (
+        f"write thread context stack grew across tasks: {seen_depths} - "
+        "a token was attached without being detached"
+    )

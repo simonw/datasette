@@ -46,7 +46,7 @@ def table_extras(cog):
     cog.out("\n")
     for scope, heading, intro, classes in classes_by_scope:
         cog.out("{}\n{}\n\n".format(heading, "~" * len(heading)))
-        cog.out("{}\n\n".format(intro))
+        cog.out(f"{intro}\n\n")
         for cls in classes:
             examples = _examples_for_scope(cls, scope)
             description = cls.description or ""
@@ -58,16 +58,16 @@ def table_extras(cog):
             if notes:
                 description = "{} ({})".format(description, " ".join(notes)).strip()
 
-            cog.out("``{}``\n".format(cls.key()))
-            cog.out("    {}\n\n".format(description))
+            cog.out(f"``{cls.key()}``\n")
+            cog.out(f"    {description}\n\n")
             for example in examples:
                 if example.path:
                     value = live_examples[(example.path, example.key or cls.key())]
-                    cog.out("    ``GET {}``\n\n".format(example.path))
+                    cog.out(f"    ``GET {example.path}``\n\n")
                 else:
                     value = example.value
                 if example.note:
-                    cog.out("    {}\n\n".format(example.note))
+                    cog.out(f"    {example.note}\n\n")
                 cog.out("    .. code-block:: json\n\n")
                 cog.out(textwrap.indent(json.dumps(value, indent=2), "        "))
                 cog.out("\n\n")
@@ -139,7 +139,7 @@ async def _fetch_live_examples(scoped_classes):
                     response = await datasette.client.get(example.path)
                     assert response.status_code == 200, example.path
                     data = response.json()
-                    assert key in data, "{} missing from {}".format(key, example.path)
+                    assert key in data, f"{key} missing from {example.path}"
                     examples[(example.path, key)] = data[key]
         finally:
             for db in datasette.databases.values():

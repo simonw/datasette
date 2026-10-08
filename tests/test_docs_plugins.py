@@ -1,9 +1,10 @@
 # fmt: off
 # -- start datasette_with_plugin_fixture --
-from datasette import hookimpl
-from datasette.app import Datasette
 import pytest
 import pytest_asyncio
+
+from datasette import hookimpl
+from datasette.app import Datasette
 
 
 @pytest_asyncio.fixture

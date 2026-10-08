@@ -25,7 +25,7 @@ If you use the template described in :ref:`writing_plugins_cookiecutter` your pl
         )
 
 
-This test uses the :ref:`internals_datasette_client` object to exercise a test instance of Datasette. ``datasette.client`` is a wrapper around the `HTTPX <https://www.python-httpx.org/>`__ Python library which can imitate HTTP requests using ASGI. This is the recommended way to write tests against a Datasette instance.
+This test uses the :ref:`internals_datasette_client` object to exercise a test instance of Datasette. ``datasette.client`` is a wrapper around the `HTTPX2 <https://httpx2.pydantic.dev/>`__ Python library which can imitate HTTP requests using ASGI. This is the recommended way to write tests against a Datasette instance.
 
 This test also uses the `pytest-asyncio <https://pypi.org/project/pytest-asyncio/>`__ package to add support for ``async def`` test functions running under pytest.
 
@@ -57,7 +57,7 @@ Then run the tests using pytest like so::
 Setting up a Datasette test instance
 ------------------------------------
 
-The above example shows the easiest way to start writing tests against a Datasette instance:
+Use :ref:`datasette.client <internals_datasette_client>` to make requests against a test instance. The first request runs startup hooks and launches registered background tasks automatically:
 
 .. code-block:: python
 
@@ -71,16 +71,24 @@ The above example shows the easiest way to start writing tests against a Dataset
         response = await datasette.client.get("/-/plugins.json")
         assert response.status_code == 200
 
-Creating a ``Datasette()`` instance like this as useful shortcut in tests, but there is one detail you need to be aware of. It's important to ensure that the async method ``.invoke_startup()`` is called on that instance. You can do that like this:
+If your test uses Datasette directly without making a request, call ``await datasette.invoke_startup()`` to initialize the instance and run its startup hooks:
 
 .. code-block:: python
 
     datasette = Datasette(memory=True)
     await datasette.invoke_startup()
 
-This method registers any :ref:`plugin_hook_startup` or :ref:`plugin_hook_prepare_jinja2_environment` plugins that might themselves need to make async calls.
+This runs the :ref:`plugin_hook_startup` and :ref:`plugin_hook_prepare_jinja2_environment` hooks on the same event loop as your test. It does not launch registered background tasks.
 
-If you are using ``await datasette.client.get()`` and similar methods then you don't need to worry about this - Datasette automatically calls ``invoke_startup()`` the first time it handles a request.
+To run tasks registered with :ref:`datasette_add_background_task` without making a request, use ``await datasette.start_background_tasks()``. This runs startup if needed and launches every registered task:
+
+.. code-block:: python
+
+    datasette = Datasette(memory=True)
+    await datasette.start_background_tasks()
+    # Tasks registered by startup() hooks have been launched
+
+See :ref:`datasette_lifecycle` for the full startup and shutdown sequence.
 
 .. _testing_plugins_datasette_fixtures_database:
 
@@ -154,7 +162,7 @@ If you need to opt out of this behavior, add the following to your ``pytest.ini`
 Using datasette.client in tests
 -------------------------------
 
-The :ref:`internals_datasette_client` mechanism is designed for use in tests. It provides access to a pre-configured `HTTPX async client <https://www.python-httpx.org/async/>`__ instance that can make GET, POST and other HTTP requests against a Datasette instance from inside a test.
+The :ref:`internals_datasette_client` mechanism is designed for use in tests. It provides access to a pre-configured `HTTPX2 async client <https://httpx2.pydantic.dev/async/>`__ instance that can make GET, POST and other HTTP requests against a Datasette instance from inside a test.
 
 A simple test looks like this:
 
@@ -273,22 +281,22 @@ If you want to create that test database repeatedly for every individual test fu
 
 .. _testing_plugins_pytest_httpx:
 
-Testing outbound HTTP calls with pytest-httpx
----------------------------------------------
+Testing outbound HTTP calls with pytest-httpx2
+----------------------------------------------
 
 If your plugin makes outbound HTTP calls - for example datasette-auth-github or datasette-import-table - you may need to mock those HTTP requests in your tests.
 
-The `pytest-httpx <https://pypi.org/project/pytest-httpx/>`__ package is a useful library for mocking calls. It can be tricky to use with Datasette though since it mocks all HTTPX requests, and Datasette's own testing mechanism uses HTTPX internally.
+The `pytest-httpx2 <https://pypi.org/project/pytest-httpx2/>`__ package provides a ``httpx2_mock`` fixture, built on `respx <https://lundberg.github.io/respx/>`__, for mocking outbound calls made using HTTPX2.
 
-To avoid breaking your tests, you can return ``["localhost"]`` from the ``non_mocked_hosts()`` fixture.
+Datasette's own ``datasette.client`` mechanism uses HTTPX2 internally too, but those requests are passed directly to the ASGI application rather than being sent over the network, so they are not affected by the mock.
 
-As an example, here's a very simple plugin which executes an HTTP response and returns the resulting content:
+As an example, here's a very simple plugin which executes an HTTP request and returns the resulting content:
 
 .. code-block:: python
 
     from datasette import hookimpl
     from datasette.utils.asgi import Response
-    import httpx
+    import httpx2
 
 
     @hookimpl
@@ -306,27 +314,18 @@ As an example, here's a very simple plugin which executes an HTTP response and r
             </form>""")
         vars = await request.post_vars()
         url = vars["url"]
-        return Response.text(httpx.get(url).text)
+        return Response.text(httpx2.get(url).text)
 
-Here's a test for that plugin that mocks the HTTPX outbound request:
+Here's a test for that plugin that mocks the HTTPX2 outbound request:
 
 .. code-block:: python
 
     from datasette.app import Datasette
-    import pytest
 
 
-    @pytest.fixture
-    def non_mocked_hosts():
-        # This ensures httpx-mock will not affect Datasette's own
-        # httpx calls made in the tests by datasette.client:
-        return ["localhost"]
-
-
-    async def test_outbound_http_call(httpx_mock):
-        httpx_mock.add_response(
-            url="https://www.example.com/",
-            text="Hello world",
+    async def test_outbound_http_call(httpx2_mock):
+        httpx2_mock.get("https://www.example.com/").respond(
+            text="Hello world"
         )
         datasette = Datasette([], memory=True)
         response = await datasette.client.post(
@@ -335,10 +334,12 @@ Here's a test for that plugin that mocks the HTTPX outbound request:
         )
         assert response.text == "Hello world"
 
-        outbound_request = httpx_mock.get_request()
+        outbound_request = httpx2_mock.calls.last.request
         assert (
             outbound_request.url == "https://www.example.com/"
         )
+
+If your plugin still makes its outbound calls using the original ``httpx`` library you can continue to mock those using `pytest-httpx <https://pypi.org/project/pytest-httpx/>`__.
 
 .. _testing_plugins_register_in_test:
 

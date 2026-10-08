@@ -20,7 +20,7 @@ def table_actions(datasette, actor, database, table, request):
                 "label": "Alter table",
                 "description": "Change columns and primary key for this table.",
                 "attrs": {
-                    "aria-label": "Alter table {}".format(table),
+                    "aria-label": f"Alter table {table}",
                     "data-table-action": "alter-table",
                 },
             }

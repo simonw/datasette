@@ -1,8 +1,10 @@
-from bs4 import BeautifulSoup as Soup
-from asgiref.sync import async_to_sync
 import json
-import pytest
 import re
+
+import pytest
+from asgiref.sync import async_to_sync
+from bs4 import BeautifulSoup as Soup
+
 from .fixtures import make_app_client
 
 
@@ -206,11 +208,12 @@ def test_custom_params(stored_write_client):
     )
 
 
-def test_stored_query_pages_no_vary_header(stored_write_client):
-    # These pages no longer embed per-cookie CSRF tokens, so they must not
-    # set Vary: Cookie - they should be cacheable across users.
-    assert "vary" not in stored_write_client.get("/data").headers
-    assert "vary" not in stored_write_client.get("/data/update_name").headers
+def test_stored_query_pages_vary_by_credentials(stored_write_client):
+    # Even without per-cookie CSRF tokens, anonymous pages must not be reused
+    # for authenticated users whose permissions or navigation can differ.
+    for path in ("/data", "/data/update_name"):
+        response = stored_write_client.get(path)
+        assert response.headers["vary"] == "Cookie, Authorization"
 
 
 def test_json_post_body(stored_write_client):

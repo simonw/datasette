@@ -1,6 +1,7 @@
+import pytest
+
 from datasette.app import Datasette
 from datasette.utils import PrefixedUrlString
-import pytest
 
 
 @pytest.fixture(scope="module")

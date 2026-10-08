@@ -1,7 +1,7 @@
 import pytest
 
-from datasette.utils.sqlite import sqlite3
 from datasette.utils.sql_analysis import analyze_sql_tables
+from datasette.utils.sqlite import sqlite3
 
 
 @pytest.fixture
@@ -439,7 +439,7 @@ def test_analyze_attached_database_tables(conn):
     }
 
 
-def test_analyze_clears_authorizer_on_error():
+def test_analyze_disables_authorizer_on_error():
     class FakeConnection:
         def __init__(self):
             self.authorizers = []
@@ -455,4 +455,5 @@ def test_analyze_clears_authorizer_on_error():
     with pytest.raises(sqlite3.OperationalError):
         analyze_sql_tables(conn, "bad SQL")
 
-    assert conn.authorizers[-1] is None
+    final_authorizer = conn.authorizers[-1]
+    assert final_authorizer is None or final_authorizer() == sqlite3.SQLITE_OK

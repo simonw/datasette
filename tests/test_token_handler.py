@@ -2,16 +2,17 @@
 Tests for the register_token_handler plugin hook.
 """
 
+import pytest
+
 from datasette.app import Datasette
 from datasette.hookspecs import hookimpl
 from datasette.plugins import pm
 from datasette.tokens import (
+    SignedTokenHandler,
     TokenHandler,
     TokenInvalid,
     TokenRestrictions,
-    SignedTokenHandler,
 )
-import pytest
 
 
 @pytest.fixture

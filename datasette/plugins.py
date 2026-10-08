@@ -1,19 +1,13 @@
 import importlib
+import importlib.metadata as importlib_metadata
+import importlib.resources as importlib_resources
 import os
-import pluggy
-from pprint import pprint
 import sys
+from pprint import pprint
+
+import pluggy
+
 from . import hookspecs
-
-if sys.version_info >= (3, 9):
-    import importlib.resources as importlib_resources
-else:
-    import importlib_resources
-if sys.version_info >= (3, 10):
-    import importlib.metadata as importlib_metadata
-else:
-    import importlib_metadata
-
 
 DEFAULT_PLUGINS = (
     "datasette.publish.heroku",
@@ -24,6 +18,7 @@ DEFAULT_PLUGINS = (
     "datasette.actor_auth_cookie",
     "datasette.default_permissions",
     "datasette.default_permissions.tokens",
+    "datasette.default_permissions.sqlite_statistics",
     "datasette.default_actions",
     "datasette.default_column_types",
     "datasette.default_magic_parameters",
@@ -85,7 +80,7 @@ if DATASETTE_LOAD_PLUGINS is not None:
                     # Ensure name can be found in plugin_to_distinfo later:
                     pm._plugin_distinfo.append((mod, distribution))
         except importlib_metadata.PackageNotFoundError:
-            sys.stderr.write("Plugin {} could not be found\n".format(package_name))
+            sys.stderr.write(f"Plugin {package_name} could not be found\n")
 
 
 # Load default plugins

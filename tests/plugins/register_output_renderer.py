@@ -1,6 +1,7 @@
+import json
+
 from datasette import hookimpl
 from datasette.utils.asgi import Response
-import json
 
 
 async def can_render(
@@ -18,9 +19,7 @@ async def can_render(
         "request": request,
         "view_name": view_name,
     }
-    if request.args.get("_no_can_render"):
-        return False
-    return True
+    return not request.args.get("_no_can_render")
 
 
 async def render_test_all_parameters(

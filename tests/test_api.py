@@ -1,13 +1,16 @@
+import pathlib
+import urllib
+
+import pytest
+
 from datasette.app import Datasette
 from datasette.plugins import DEFAULT_PLUGINS
-from datasette.utils import UNSTABLE_API_MESSAGE
+from datasette.resources import DatabaseResource, TableResource
+from datasette.utils import UNSTABLE_API_MESSAGE, escape_sqlite, tilde_encode
 from datasette.utils.sqlite import sqlite_version
 from datasette.version import __version__
-from .fixtures import make_app_client, EXPECTED_PLUGINS
-import pathlib
-import pytest
-import sys
-import urllib
+
+from .fixtures import EXPECTED_PLUGINS, make_app_client
 
 
 @pytest.mark.asyncio
@@ -16,7 +19,7 @@ async def test_homepage(ds_client):
     assert response.status_code == 200
     assert "application/json; charset=utf-8" == response.headers["content-type"]
     data = response.json()
-    assert sorted(list(data.get("metadata").keys())) == [
+    assert sorted(data.get("metadata").keys()) == [
         "about",
         "about_url",
         "description_html",
@@ -99,14 +102,11 @@ async def test_database_page(ds_client):
         "tags",
     }
 
-    # Expected hidden tables
+    # The external-content index is visible, but its shadow tables need a
+    # second dependency hop and are excluded by the one-hop permission policy.
     expected_hidden_tables = {
         "no_primary_key",
         "searchable_fts",
-        "searchable_fts_config",
-        "searchable_fts_data",
-        "searchable_fts_docsize",
-        "searchable_fts_idx",
     }
 
     # Verify all expected tables exist
@@ -384,9 +384,7 @@ async def test_row_pk_arity_mismatch_returns_400(ds_client, row_path, suffix):
     # because the SQL had one bind placeholder per PK column but params were
     # only bound for the supplied components. It should be a 400 instead,
     # mirroring the existing guard in datasette/views/table.py.
-    response = await ds_client.get(
-        "/fixtures/compound_primary_key/{}{}".format(row_path, suffix)
-    )
+    response = await ds_client.get(f"/fixtures/compound_primary_key/{row_path}{suffix}")
     assert response.status_code == 400
     if suffix == ".json":
         assert response.json()["ok"] is False
@@ -456,6 +454,67 @@ async def test_row_foreign_key_tables(ds_client):
             "link": "/fixtures/foreign_key_references?foreign_key_with_label=1",
         },
     ]
+
+
+@pytest.mark.asyncio
+async def test_row_foreign_key_tables_omit_denied_tables(request):
+    actor = {"id": "reader"}
+    ds = Datasette(
+        memory=True,
+        default_deny=True,
+        config={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "parents": {"permissions": {"view-table": True}},
+                        "private_children": {"permissions": {"view-table": False}},
+                    }
+                }
+            }
+        },
+    )
+    request.addfinalizer(ds.close)
+    db = ds.add_memory_database("fk_count_leak", name="data")
+    await db.execute_write("create table parents (id integer primary key, name text)")
+    await db.execute_write("""
+        create table private_children (
+            id integer primary key,
+            parent_id integer references parents(id)
+        )
+    """)
+    await db.execute_write("insert into parents values (1, 'Public parent')")
+    await db.execute_write("""
+        insert into private_children (id, parent_id) values
+            (1, 1),
+            (2, 1),
+            (3, 1)
+    """)
+    await ds.invoke_startup()
+
+    parent = TableResource(database="data", table="parents")
+    private_children = TableResource(database="data", table="private_children")
+    assert await ds.allowed(action="view-table", resource=parent, actor=actor)
+    assert not await ds.allowed(
+        action="view-table", resource=private_children, actor=actor
+    )
+    assert not await ds.allowed(
+        action="execute-sql",
+        resource=DatabaseResource(database="data"),
+        actor=actor,
+    )
+
+    direct_child = await ds.client.get("/data/private_children.json", actor=actor)
+    assert direct_child.status_code == 403
+    parent_response = await ds.client.get(
+        "/data/parents/1.json?_extra=foreign_key_tables", actor=actor
+    )
+    assert parent_response.status_code == 200
+
+    foreign_key_tables = parent_response.json().get("foreign_key_tables", [])
+    assert foreign_key_tables == [], (
+        "denied child table name, foreign-key column, and row count disclosed: "
+        f"{foreign_key_tables}"
+    )
 
 
 @pytest.mark.asyncio
@@ -600,8 +659,7 @@ async def test_threads_json(ds_client):
     finally:
         ds_client.ds.root_enabled = False
     expected_keys = {"ok", "threads", "num_threads"}
-    if sys.version_info >= (3, 7, 0):
-        expected_keys.update({"tasks", "num_tasks"})
+    expected_keys.update({"tasks", "num_tasks"})
     data = response.json()
     assert set(data.keys()) == expected_keys
     # Should be at least one _execute_writes thread for __INTERNAL__
@@ -614,13 +672,13 @@ async def test_plugins_json(ds_client):
     response = await ds_client.get("/-/plugins.json")
     # Filter out TrackEventPlugin
     actual_plugins = sorted(
-        [p for p in response.json()["plugins"] if p["name"] != "TrackEventPlugin"],
+        [p for p in response.json() if p["name"] != "TrackEventPlugin"],
         key=lambda p: p["name"],
     )
     assert EXPECTED_PLUGINS == actual_plugins
     # Try with ?all=1
     response = await ds_client.get("/-/plugins.json?all=1")
-    names = {p["name"] for p in response.json()["plugins"]}
+    names = {p["name"] for p in response.json()}
     assert names.issuperset(p["name"] for p in EXPECTED_PLUGINS)
     assert names.issuperset(DEFAULT_PLUGINS)
 
@@ -895,10 +953,7 @@ async def test_hidden_sqlite_stat1_table():
     await db.execute_write("analyze")
     data = (await ds.client.get("/db.json?_show_hidden=1")).json()
     tables = [(t["name"], t["hidden"]) for t in data["tables"]]
-    assert tables in (
-        [("normal", False), ("sqlite_stat1", True)],
-        [("normal", False), ("sqlite_stat1", True), ("sqlite_stat4", True)],
-    )
+    assert tables == [("normal", False)]
 
 
 @pytest.mark.asyncio
@@ -928,6 +983,33 @@ async def test_tilde_encoded_database_names(db_name):
     # And the JSON for that database
     response2 = await ds.client.get(path + ".json")
     assert response2.status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("table_name", ("[foo]", "foo]", "[foo]/bar"))
+async def test_table_with_reserved_characters_in_name(table_name):
+    # Table names containing characters such as "]" that cannot be escaped
+    # using SQLite [bracket] quoting used to break schema introspection and
+    # the table page - https://github.com/simonw/datasette/issues/2431
+    ds = Datasette()
+    db = ds.add_memory_database("test_reserved_table_names")
+    await db.execute_write(
+        f"create table {escape_sqlite(table_name)} (id integer primary key, name text)"
+    )
+    await db.execute_write(
+        f"insert into {escape_sqlite(table_name)} (id, name) values (1, 'one')"
+    )
+    # Schema introspection (populate_schema_tables) must not crash:
+    db_response = await ds.client.get("/test_reserved_table_names.json")
+    assert db_response.status_code == 200
+    tables = {t["name"]: t for t in db_response.json()["tables"]}
+    assert tables[table_name]["count"] == 1
+    # And the table page itself must load and return the row:
+    table_response = await ds.client.get(
+        f"/test_reserved_table_names/{tilde_encode(table_name)}.json?_shape=array"
+    )
+    assert table_response.status_code == 200
+    assert table_response.json() == [{"id": 1, "name": "one"}]
 
 
 @pytest.mark.asyncio

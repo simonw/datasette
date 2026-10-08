@@ -915,6 +915,7 @@ function showTableCreateDialogError(state, message) {
 
 function setTableCreateDialogSaving(state, isSaving) {
   state.isSaving = isSaving;
+  state.modal.busy = isSaving;
   state.columnList
     .querySelectorAll("input, select, button")
     .forEach(function (control) {
@@ -2043,8 +2044,7 @@ async function createTableFromDataPreview(state) {
     var tableUrl =
       responseData.table_url ||
       fallbackTableUrl(responseData.table || payload.table);
-    state.shouldRestoreFocus = false;
-    state.dialog.close();
+    state.modal.close({ restoreFocus: false });
     if (tableUrl) {
       location.href = tableUrl;
     } else {
@@ -2118,8 +2118,7 @@ async function saveTableCreateDialog(state) {
     var tableUrl =
       responseData.table_url ||
       fallbackTableUrl(responseData.table || payload.table);
-    state.shouldRestoreFocus = false;
-    state.dialog.close();
+    state.modal.close({ restoreFocus: false });
     if (tableUrl) {
       location.href = tableUrl;
     } else {
@@ -2141,18 +2140,6 @@ function confirmDiscardTableCreateChanges(state) {
   return window.confirm("Discard this new table?");
 }
 
-function closeTableCreateDialogIfConfirmed(state) {
-  if (!state || state.isSaving) {
-    return false;
-  }
-  if (!confirmDiscardTableCreateChanges(state)) {
-    return false;
-  }
-  state.shouldRestoreFocus = true;
-  state.dialog.close();
-  return true;
-}
-
 function ensureTableCreateDialog(manager) {
   if (tableCreateDialogState) {
     return tableCreateDialogState;
@@ -2161,7 +2148,8 @@ function ensureTableCreateDialog(manager) {
     return null;
   }
 
-  var dialog = document.createElement("dialog");
+  var modal = DatasetteModal.create();
+  var dialog = modal.dialog;
   dialog.id = TABLE_CREATE_DIALOG_ID;
   dialog.className = "table-create-dialog";
   dialog.setAttribute("aria-labelledby", "table-create-title");
@@ -2171,7 +2159,7 @@ function ensureTableCreateDialog(manager) {
     </div>
     <form class="table-create-form" method="post" novalidate>
       <p class="table-create-error" id="table-create-error" role="alert" tabindex="-1" hidden></p>
-      <div class="table-create-fields">
+      <div class="modal-body table-create-fields">
         <div class="table-create-field">
           <label class="table-create-label" for="table-create-name">Table name</label>
           <input class="table-create-input table-create-table-name" id="table-create-name" type="text" name="table" required autocomplete="off">
@@ -2198,14 +2186,15 @@ function ensureTableCreateDialog(manager) {
       <div class="modal-footer">
         <a href="#" class="table-create-mode-link table-create-from-data">Create table from data</a>
         <a href="#" class="table-create-mode-link table-create-manual" hidden>Create table manually</a>
-        <button type="button" class="btn btn-ghost table-create-cancel">Cancel</button>
-        <button type="submit" class="btn btn-primary table-create-save">Create table</button>
+        <button type="button" class="modal-btn modal-btn-ghost table-create-cancel">Cancel</button>
+        <button type="submit" class="modal-btn modal-btn-primary table-create-save">Create table</button>
       </div>
     </form>
   `;
-  document.body.appendChild(dialog);
+  document.body.appendChild(modal);
 
   tableCreateDialogState = {
+    modal: modal,
     dialog: dialog,
     form: dialog.querySelector(".table-create-form"),
     title: dialog.querySelector(".modal-title"),
@@ -2225,8 +2214,6 @@ function ensureTableCreateDialog(manager) {
     manualCreateLink: dialog.querySelector(".table-create-manual"),
     cancelButton: dialog.querySelector(".table-create-cancel"),
     saveButton: dialog.querySelector(".table-create-save"),
-    currentButton: null,
-    shouldRestoreFocus: true,
     isSaving: false,
     mode: "manual",
     dataPreviewRows: null,
@@ -2266,7 +2253,7 @@ function ensureTableCreateDialog(manager) {
       tableCreateDialogState.dataTextarea.focus();
       return;
     }
-    closeTableCreateDialogIfConfirmed(tableCreateDialogState);
+    modal.requestClose("cancel");
   });
 
   tableCreateDialogState.createFromDataLink.addEventListener(
@@ -2364,36 +2351,14 @@ function ensureTableCreateDialog(manager) {
     updateTableCreateDialogButtons(tableCreateDialogState);
   });
 
-  dialog.addEventListener("click", function (ev) {
-    if (ev.target === dialog) {
-      closeTableCreateDialogIfConfirmed(tableCreateDialogState);
-    }
-  });
-
-  dialog.addEventListener("keydown", function (ev) {
-    if (ev.key !== "Escape") {
-      return;
-    }
-    ev.preventDefault();
-    closeTableCreateDialogIfConfirmed(tableCreateDialogState);
-  });
-
-  dialog.addEventListener("cancel", function (ev) {
-    ev.preventDefault();
-    closeTableCreateDialogIfConfirmed(tableCreateDialogState);
-  });
+  modal.beforeClose = function (source) {
+    return confirmDiscardTableCreateChanges(tableCreateDialogState);
+  };
 
   dialog.addEventListener("close", function () {
     var state = tableCreateDialogState;
     clearTableCreateDialogError(state);
     setTableCreateDialogSaving(state, false);
-    if (
-      state.shouldRestoreFocus &&
-      state.currentButton &&
-      document.contains(state.currentButton)
-    ) {
-      state.currentButton.focus();
-    }
   });
 
   return tableCreateDialogState;
@@ -2414,15 +2379,12 @@ function openTableCreateDialog(button, manager) {
     menu.open = false;
   }
   state.manager = manager;
-  state.currentButton = button;
-  state.shouldRestoreFocus = true;
+
   state.title.textContent = "Create a table in " + data.databaseName;
   clearTableCreateDialogError(state);
   resetTableCreateDialog(state);
   loadTableCreateForeignKeyTargets(state);
-  if (!state.dialog.open) {
-    state.dialog.showModal();
-  }
+  state.modal.show({ returnFocusTo: button });
   state.tableName.focus();
 }
 
@@ -2448,6 +2410,7 @@ function initTableCreateActions(manager) {
 
 function setRowDeleteDialogBusy(state, isBusy) {
   state.isBusy = isBusy;
+  state.modal.busy = isBusy;
   state.confirmButton.disabled = isBusy;
   state.cancelButton.disabled = isBusy;
   state.confirmButton.textContent = isBusy ? "Deleting..." : "Delete row";
@@ -2694,6 +2657,7 @@ function showTableAlterDialogError(state, message) {
 
 function setTableAlterDialogSaving(state, isSaving) {
   state.isSaving = isSaving;
+  state.modal.busy = isSaving;
   state.cancelButton.disabled = isSaving;
   state.addColumnButton.disabled = isSaving;
   state.backButton.disabled = isSaving;
@@ -3829,8 +3793,7 @@ async function applyTableAlterChanges(state, result) {
       result.columnTypeAssignments || [],
       tableUrl,
     );
-    state.shouldRestoreFocus = false;
-    state.dialog.close();
+    state.modal.close({ restoreFocus: false });
     if (tableAlterResultRenamesTable(result) && tableUrl) {
       window.location.href = tableUrl;
     } else {
@@ -3891,8 +3854,7 @@ async function dropTableFromAlterDialog(state) {
     if (!response.ok || (responseData && responseData.ok === false)) {
       throw rowMutationRequestError(response, responseData);
     }
-    state.shouldRestoreFocus = false;
-    state.dialog.close();
+    state.modal.close({ restoreFocus: false });
     window.location.href = tableAlterDatabaseUrl() || "/";
   } catch (error) {
     setTableAlterDialogSaving(state, false);
@@ -3928,27 +3890,6 @@ function confirmDiscardTableAlterChanges(state) {
   return window.confirm("Discard table changes?");
 }
 
-function closeTableAlterDialogIfConfirmed(state) {
-  if (!state || state.isSaving) {
-    return false;
-  }
-  if (!confirmDiscardTableAlterChanges(state)) {
-    return false;
-  }
-  state.shouldRestoreFocus = true;
-  state.dialog.close();
-  return true;
-}
-
-function closeTableAlterDialog(state) {
-  if (!state || state.isSaving) {
-    return false;
-  }
-  state.shouldRestoreFocus = true;
-  state.dialog.close();
-  return true;
-}
-
 function ensureTableAlterDialog(manager) {
   if (tableAlterDialogState) {
     return tableAlterDialogState;
@@ -3957,7 +3898,8 @@ function ensureTableAlterDialog(manager) {
     return null;
   }
 
-  var dialog = document.createElement("dialog");
+  var modal = DatasetteModal.create();
+  var dialog = modal.dialog;
   dialog.id = TABLE_ALTER_DIALOG_ID;
   dialog.className = "table-alter-dialog";
   dialog.setAttribute("aria-labelledby", "table-alter-title");
@@ -3967,7 +3909,7 @@ function ensureTableAlterDialog(manager) {
     </div>
     <form class="table-alter-form" method="post" novalidate>
       <p class="table-alter-error" id="table-alter-error" role="alert" tabindex="-1" hidden></p>
-      <div class="table-alter-fields">
+      <div class="modal-body table-alter-fields">
         <div class="table-alter-columns">
           <div class="table-alter-column-headings" aria-hidden="true">
             <span>Column</span>
@@ -3986,18 +3928,19 @@ function ensureTableAlterDialog(manager) {
           </div>
         </details>
       </div>
-      <div class="table-alter-review" hidden></div>
+      <div class="modal-body table-alter-review" hidden></div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-danger table-alter-drop" hidden>Drop table</button>
-        <button type="button" class="btn btn-ghost table-alter-back" hidden>Back</button>
-        <button type="button" class="btn btn-ghost table-alter-cancel">Cancel</button>
-        <button type="submit" class="btn btn-primary table-alter-save">Review changes</button>
+        <button type="button" class="modal-btn modal-btn-danger table-alter-drop" hidden>Drop table</button>
+        <button type="button" class="modal-btn modal-btn-ghost table-alter-back" hidden>Back</button>
+        <button type="button" class="modal-btn modal-btn-ghost table-alter-cancel">Cancel</button>
+        <button type="submit" class="modal-btn modal-btn-primary table-alter-save">Review changes</button>
       </div>
     </form>
   `;
-  document.body.appendChild(dialog);
+  document.body.appendChild(modal);
 
   tableAlterDialogState = {
+    modal: modal,
     dialog: dialog,
     form: dialog.querySelector(".table-alter-form"),
     title: dialog.querySelector(".modal-title"),
@@ -4012,8 +3955,6 @@ function ensureTableAlterDialog(manager) {
     dropButton: dialog.querySelector(".table-alter-drop"),
     cancelButton: dialog.querySelector(".table-alter-cancel"),
     saveButton: dialog.querySelector(".table-alter-save"),
-    currentButton: null,
-    shouldRestoreFocus: true,
     isSaving: false,
     initialSignature: "",
     originalTableName: "",
@@ -4055,7 +3996,7 @@ function ensureTableAlterDialog(manager) {
   });
 
   tableAlterDialogState.cancelButton.addEventListener("click", function () {
-    closeTableAlterDialog(tableAlterDialogState);
+    modal.requestClose("cancel");
   });
 
   tableAlterDialogState.dropButton.addEventListener("click", function () {
@@ -4076,36 +4017,17 @@ function ensureTableAlterDialog(manager) {
     }
   });
 
-  dialog.addEventListener("click", function (ev) {
-    if (ev.target === dialog) {
-      closeTableAlterDialogIfConfirmed(tableAlterDialogState);
-    }
-  });
-
-  dialog.addEventListener("keydown", function (ev) {
-    if (ev.key !== "Escape") {
-      return;
-    }
-    ev.preventDefault();
-    closeTableAlterDialogIfConfirmed(tableAlterDialogState);
-  });
-
-  dialog.addEventListener("cancel", function (ev) {
-    ev.preventDefault();
-    closeTableAlterDialogIfConfirmed(tableAlterDialogState);
-  });
+  modal.beforeClose = function (source) {
+    return (
+      source === "cancel" ||
+      confirmDiscardTableAlterChanges(tableAlterDialogState)
+    );
+  };
 
   dialog.addEventListener("close", function () {
     var state = tableAlterDialogState;
     clearTableAlterDialogError(state);
     setTableAlterDialogSaving(state, false);
-    if (
-      state.shouldRestoreFocus &&
-      state.currentButton &&
-      document.contains(state.currentButton)
-    ) {
-      state.currentButton.focus();
-    }
   });
 
   return tableAlterDialogState;
@@ -4126,8 +4048,7 @@ function openTableAlterDialog(button, manager) {
     menu.open = false;
   }
   state.manager = manager;
-  state.currentButton = button;
-  state.shouldRestoreFocus = true;
+
   state.title.textContent = "Alter table " + data.tableName;
   clearTableAlterDialogError(state);
   resetTableAlterDialog(state, data);
@@ -4137,9 +4058,7 @@ function openTableAlterDialog(button, manager) {
     tableAlterForeignKeyTargetsUrl(),
     { filterByType: false },
   );
-  if (!state.dialog.open) {
-    state.dialog.showModal();
-  }
+  state.modal.show({ returnFocusTo: button });
   var firstName = state.columnList.querySelector(".table-alter-column-name");
   if (firstName) {
     firstName.focus();
@@ -4442,7 +4361,8 @@ function ensureRowDeleteDialog(manager) {
     return null;
   }
 
-  var dialog = document.createElement("dialog");
+  var modal = DatasetteModal.create();
+  var dialog = modal.dialog;
   dialog.id = ROW_DELETE_DIALOG_ID;
   dialog.className = "row-delete-dialog";
   dialog.setAttribute("aria-labelledby", "row-delete-title");
@@ -4454,13 +4374,14 @@ function ensureRowDeleteDialog(manager) {
     <p class="row-delete-message" id="row-delete-message">Delete row <span class="row-delete-id"></span>?</p>
     <p class="row-delete-error" role="alert" hidden></p>
     <div class="modal-footer">
-      <button type="button" class="btn btn-ghost row-delete-cancel">Cancel</button>
-      <button type="button" class="btn btn-primary row-delete-confirm">Delete row</button>
+      <button type="button" class="modal-btn modal-btn-ghost row-delete-cancel">Cancel</button>
+      <button type="button" class="modal-btn modal-btn-primary row-delete-confirm">Delete row</button>
     </div>
   `;
-  document.body.appendChild(dialog);
+  document.body.appendChild(modal);
 
   rowDeleteDialogState = {
+    modal: modal,
     dialog: dialog,
     title: dialog.querySelector(".modal-title"),
     message: dialog.querySelector(".row-delete-message"),
@@ -4473,21 +4394,10 @@ function ensureRowDeleteDialog(manager) {
     currentPkPath: null,
     manager: manager,
     isBusy: false,
-    shouldRestoreFocus: true,
   };
 
   rowDeleteDialogState.cancelButton.addEventListener("click", function () {
-    if (!rowDeleteDialogState.isBusy) {
-      rowDeleteDialogState.shouldRestoreFocus = true;
-      dialog.close();
-    }
-  });
-
-  dialog.addEventListener("click", function (ev) {
-    if (ev.target === dialog && !rowDeleteDialogState.isBusy) {
-      rowDeleteDialogState.shouldRestoreFocus = true;
-      dialog.close();
-    }
+    modal.requestClose("cancel");
   });
 
   dialog.addEventListener("keydown", function (ev) {
@@ -4499,25 +4409,6 @@ function ensureRowDeleteDialog(manager) {
       if (!rowDeleteDialogState.isBusy) {
         rowDeleteDialogState.confirmButton.click();
       }
-      return;
-    }
-    if (ev.key !== "Escape") {
-      return;
-    }
-    if (rowDeleteDialogState.isBusy) {
-      ev.preventDefault();
-      return;
-    }
-    ev.preventDefault();
-    rowDeleteDialogState.shouldRestoreFocus = true;
-    dialog.close();
-  });
-
-  dialog.addEventListener("cancel", function (ev) {
-    if (rowDeleteDialogState.isBusy) {
-      ev.preventDefault();
-    } else {
-      rowDeleteDialogState.shouldRestoreFocus = true;
     }
   });
 
@@ -4525,13 +4416,6 @@ function ensureRowDeleteDialog(manager) {
     var state = rowDeleteDialogState;
     clearRowDeleteDialogError(state);
     setRowDeleteDialogBusy(state, false);
-    if (
-      state.shouldRestoreFocus &&
-      state.currentButton &&
-      document.contains(state.currentButton)
-    ) {
-      state.currentButton.focus();
-    }
   });
 
   rowDeleteDialogState.confirmButton.addEventListener(
@@ -4558,8 +4442,7 @@ function ensureRowDeleteDialog(manager) {
           throw rowMutationRequestError(response, data);
         }
         if (data && data.redirect) {
-          state.shouldRestoreFocus = false;
-          state.dialog.close();
+          state.modal.close({ restoreFocus: false });
           location.href = data.redirect;
           return;
         }
@@ -4571,8 +4454,7 @@ function ensureRowDeleteDialog(manager) {
         var statusMessage = state.currentPkPath
           ? "Deleted row " + state.currentPkPath + "."
           : "Deleted row.";
-        state.shouldRestoreFocus = false;
-        state.dialog.close();
+        state.modal.close({ restoreFocus: false });
         state.currentRow.remove();
         showRowMutationStatus(state.manager, statusMessage, false);
         if (focusTarget && document.contains(focusTarget)) {
@@ -4601,11 +4483,9 @@ function openRowDeleteDialog(button, manager) {
   }
 
   state.manager = manager;
-  state.currentButton = button;
   state.currentRow = row;
   state.currentDeleteUrl = rowDeleteUrl(row);
   state.currentPkPath = rowDisplayLabel(row);
-  state.shouldRestoreFocus = true;
 
   clearRowDeleteDialogError(state);
   setRowDeleteDialogBusy(state, false);
@@ -4617,9 +4497,7 @@ function openRowDeleteDialog(button, manager) {
   );
   state.rowId.textContent = state.currentPkPath || "this row";
 
-  if (!state.dialog.open) {
-    state.dialog.showModal();
-  }
+  state.modal.show({ returnFocusTo: button });
   state.confirmButton.focus();
 }
 
@@ -5694,6 +5572,7 @@ function setRowEditDialogLoading(state, isLoading) {
 
 function setRowEditDialogSaving(state, isSaving) {
   state.isSaving = isSaving;
+  state.modal.busy = isSaving;
   updateRowEditDialogButtons(state);
 }
 
@@ -5909,18 +5788,6 @@ function confirmDiscardRowEditChanges(state) {
       ? "Discard this new row?"
       : "Discard unsaved changes to this row?";
   return window.confirm(message);
-}
-
-function closeRowEditDialogIfConfirmed(state) {
-  if (!state || state.isSaving) {
-    return false;
-  }
-  if (!confirmDiscardRowEditChanges(state)) {
-    return false;
-  }
-  state.shouldRestoreFocus = true;
-  state.dialog.close();
-  return true;
 }
 
 function setRowInsertDialogTitle(state) {
@@ -6748,38 +6615,6 @@ async function insertBulkPreviewRows(state) {
   }
 }
 
-function scheduleCloseRowEditDialogIfConfirmed(state) {
-  // Fix for an issue in Safari where hitting Esc would show
-  // the confirm() prompt asking if state should be discarded
-  // but the Esc key press would then cancel that dialog too.
-  // Wait for keyup, then move the confirm() to a fresh timer tick.
-  if (!state || state.isSaving || state.isClosePending) {
-    return false;
-  }
-  if (!rowEditDialogHasChanges(state)) {
-    state.shouldRestoreFocus = true;
-    state.dialog.close();
-    return true;
-  }
-  state.isClosePending = true;
-  var closeAfterKeyup = function () {
-    if (!state.isClosePending) {
-      return;
-    }
-    state.isClosePending = false;
-    closeRowEditDialogIfConfirmed(state);
-  };
-  var onKeyup = function (ev) {
-    if (ev.key !== "Escape") {
-      return;
-    }
-    document.removeEventListener("keyup", onKeyup, true);
-    setTimeout(closeAfterKeyup, 0);
-  };
-  document.addEventListener("keyup", onKeyup, true);
-  return true;
-}
-
 function findDataRowElement(root, rowId) {
   var elements = root.querySelectorAll("[data-row]");
   for (var i = 0; i < elements.length; i += 1) {
@@ -6869,9 +6704,8 @@ async function saveRowEditDialog(state) {
     }
     var formValues = collectRowFormValues(state);
     if (state.mode === "edit" && !Object.keys(formValues).length) {
-      state.shouldRestoreFocus = true;
       hideRowMutationStatus();
-      state.dialog.close();
+      state.modal.close();
       return;
     }
     var payload =
@@ -6904,9 +6738,8 @@ async function saveRowEditDialog(state) {
         insertedRowData,
         insertData.primaryKeys || [],
       );
-      state.shouldRestoreFocus = false;
       if (!insertedRowId) {
-        state.dialog.close();
+        state.modal.close({ restoreFocus: false });
         var missingIdStatus = showRowMutationStatus(
           state.manager,
           "Inserted row. Refresh the page to see it.",
@@ -6922,7 +6755,7 @@ async function saveRowEditDialog(state) {
       try {
         insertedRow = await fetchUpdatedRowElement(state);
       } catch (_error) {
-        state.dialog.close();
+        state.modal.close({ restoreFocus: false });
         var refreshFailedStatus = showRowMutationStatus(
           state.manager,
           "Inserted row, but could not refresh the table row. Refresh the page to see it.",
@@ -6937,7 +6770,7 @@ async function saveRowEditDialog(state) {
           rowTitleLabel(insertedRow),
         );
         var addedRow = addInsertedRowToPage(insertedRow);
-        state.dialog.close();
+        state.modal.close({ restoreFocus: false });
         showRowMutationStatus(state.manager, insertedStatusMessage, false);
         if (addedRow) {
           var insertedFocusTarget =
@@ -6946,7 +6779,7 @@ async function saveRowEditDialog(state) {
           insertedFocusTarget.focus();
         }
       } else {
-        state.dialog.close();
+        state.modal.close({ restoreFocus: false });
         var filteredStatus = showRowMutationStatus(
           state.manager,
           "Inserted row. It does not match the current filters.",
@@ -6958,8 +6791,7 @@ async function saveRowEditDialog(state) {
     }
 
     if (isRowPage()) {
-      state.shouldRestoreFocus = false;
-      state.dialog.close();
+      state.modal.close({ restoreFocus: false });
       location.reload();
       return;
     }
@@ -6995,8 +6827,7 @@ async function saveRowEditDialog(state) {
       );
     }
 
-    state.shouldRestoreFocus = false;
-    state.dialog.close();
+    state.modal.close({ restoreFocus: false });
     if (focusTarget && document.contains(focusTarget)) {
       focusTarget.focus();
     }
@@ -7140,7 +6971,8 @@ function ensureRowEditDialog(manager) {
     return null;
   }
 
-  var dialog = document.createElement("dialog");
+  var modal = DatasetteModal.create();
+  var dialog = modal.dialog;
   dialog.id = ROW_EDIT_DIALOG_ID;
   dialog.className = "row-edit-dialog";
   dialog.setAttribute("aria-labelledby", "row-edit-title");
@@ -7152,8 +6984,8 @@ function ensureRowEditDialog(manager) {
       <p class="row-edit-summary" id="row-edit-summary" hidden></p>
       <p class="row-edit-loading" role="status" aria-live="polite">Loading row...</p>
       <p class="row-edit-error" role="alert" tabindex="-1" hidden></p>
-      <div class="row-edit-fields"></div>
-      <div class="row-edit-bulk" hidden>
+      <div class="modal-body row-edit-fields"></div>
+      <div class="modal-body row-edit-bulk" hidden>
         <div class="row-edit-bulk-editor">
           <p class="row-edit-bulk-note"><label for="row-edit-bulk-textarea">Paste TSV, CSV, or JSON</label>. You can also <button type="button" class="button-as-link row-edit-bulk-open-file">open a file</button> or drop it onto this textarea</p>
           <input class="row-edit-bulk-file-input" type="file" accept=".csv,.tsv,.json,.txt,text/csv,text/tab-separated-values,application/json,text/plain" hidden>
@@ -7170,7 +7002,7 @@ function ensureRowEditDialog(manager) {
             </div>
           </div>
           <div class="row-edit-bulk-actions">
-            <button type="button" class="btn btn-ghost row-edit-copy-template"><span class="row-edit-copy-template-label-wide">Copy spreadsheet template</span><span class="row-edit-copy-template-label-narrow">Copy template</span></button>
+            <button type="button" class="modal-btn modal-btn-ghost row-edit-copy-template"><span class="row-edit-copy-template-label-wide">Copy spreadsheet template</span><span class="row-edit-copy-template-label-narrow">Copy template</span></button>
             <span class="row-edit-bulk-template-note"><span class="row-edit-bulk-template-note-wide">You can paste the template into Google Sheets or Excel.</span><span class="row-edit-bulk-template-note-narrow">Paste into Google Sheets or Excel</span></span>
           </div>
         </div>
@@ -7183,14 +7015,15 @@ function ensureRowEditDialog(manager) {
       <div class="modal-footer">
         <a href="#" class="row-edit-mode-link row-edit-bulk-insert" hidden>Insert multiple rows</a>
         <a href="#" class="row-edit-mode-link row-edit-single-insert" hidden>Insert single row</a>
-        <button type="button" class="btn btn-ghost row-edit-cancel">Cancel</button>
-        <button type="submit" class="btn btn-primary row-edit-save" disabled>Save</button>
+        <button type="button" class="modal-btn modal-btn-ghost row-edit-cancel">Cancel</button>
+        <button type="submit" class="modal-btn modal-btn-primary row-edit-save" disabled>Save</button>
       </div>
     </form>
   `;
-  document.body.appendChild(dialog);
+  document.body.appendChild(modal);
 
   rowEditDialogState = {
+    modal: modal,
     dialog: dialog,
     form: dialog.querySelector(".row-edit-form"),
     title: dialog.querySelector(".modal-title"),
@@ -7221,7 +7054,6 @@ function ensureRowEditDialog(manager) {
     singleInsertLink: dialog.querySelector(".row-edit-single-insert"),
     cancelButton: dialog.querySelector(".row-edit-cancel"),
     saveButton: dialog.querySelector(".row-edit-save"),
-    currentButton: null,
     currentRow: null,
     currentRowId: null,
     currentPkPath: null,
@@ -7249,9 +7081,7 @@ function ensureRowEditDialog(manager) {
     manager: manager,
     isLoading: false,
     isSaving: false,
-    isClosePending: false,
     hasLoaded: false,
-    shouldRestoreFocus: true,
   };
 
   rowEditDialogState.form.addEventListener("submit", function (ev) {
@@ -7271,10 +7101,7 @@ function ensureRowEditDialog(manager) {
       rowEditDialogState.bulkInsertTextarea.focus();
       return;
     }
-    if (!rowEditDialogState.isSaving) {
-      rowEditDialogState.shouldRestoreFocus = true;
-      dialog.close();
-    }
+    modal.requestClose("cancel");
   });
 
   rowEditDialogState.bulkInsertLink.addEventListener("click", function (ev) {
@@ -7393,31 +7220,17 @@ function ensureRowEditDialog(manager) {
     },
   );
 
-  dialog.addEventListener("click", function (ev) {
-    if (ev.target === dialog) {
-      closeRowEditDialogIfConfirmed(rowEditDialogState);
-    }
-  });
-
-  dialog.addEventListener("keydown", function (ev) {
-    if (ev.key !== "Escape") {
-      return;
-    }
-    ev.preventDefault();
-    scheduleCloseRowEditDialogIfConfirmed(rowEditDialogState);
-  });
-
-  dialog.addEventListener("cancel", function (ev) {
-    ev.preventDefault();
-    scheduleCloseRowEditDialogIfConfirmed(rowEditDialogState);
-  });
+  modal.beforeClose = function (source) {
+    return (
+      source === "cancel" || confirmDiscardRowEditChanges(rowEditDialogState)
+    );
+  };
 
   dialog.addEventListener("close", function () {
     var state = rowEditDialogState;
     var shouldReloadOnClose = state.shouldReloadOnClose;
     var redirectOnCloseUrl = state.redirectOnCloseUrl;
     state.loadId += 1;
-    state.isClosePending = false;
     state.bulkInsertLiveValidationError = null;
     state.shouldReloadOnClose = false;
     state.redirectOnCloseUrl = null;
@@ -7430,13 +7243,6 @@ function ensureRowEditDialog(manager) {
     destroyRowEditFields(state);
     setRowEditDialogLoading(state, false);
     setRowEditDialogSaving(state, false);
-    if (
-      state.shouldRestoreFocus &&
-      state.currentButton &&
-      document.contains(state.currentButton)
-    ) {
-      state.currentButton.focus();
-    }
     if (shouldReloadOnClose) {
       if (redirectOnCloseUrl) {
         location.href = redirectOnCloseUrl;
@@ -7461,7 +7267,6 @@ async function openRowEditDialog(button, manager) {
 
   state.manager = manager;
   state.mode = "edit";
-  state.currentButton = button;
   state.currentRow = row;
   state.currentRowId = row.getAttribute("data-row") || "";
   state.currentPkPath = rowDisplayLabel(row);
@@ -7478,7 +7283,7 @@ async function openRowEditDialog(button, manager) {
   } else {
     state.form.removeAttribute("action");
   }
-  state.shouldRestoreFocus = true;
+
   state.hasLoaded = false;
   state.loadId += 1;
   var loadId = state.loadId;
@@ -7497,9 +7302,7 @@ async function openRowEditDialog(button, manager) {
   state.summary.textContent = "";
   syncRowEditInsertModeUi(state);
 
-  if (!state.dialog.open) {
-    state.dialog.showModal();
-  }
+  state.modal.show({ returnFocusTo: button });
   state.cancelButton.focus();
 
   try {
@@ -7539,7 +7342,6 @@ function openRowInsertDialog(button, manager) {
 
   state.manager = manager;
   state.mode = "insert";
-  state.currentButton = button;
   state.currentRow = null;
   state.currentRowId = null;
   state.currentPkPath = null;
@@ -7554,7 +7356,7 @@ function openRowInsertDialog(button, manager) {
   state.shouldReloadOnClose = false;
   state.redirectOnCloseUrl = null;
   resetBulkInsertPreview(state);
-  state.shouldRestoreFocus = true;
+
   state.hasLoaded = false;
   state.loadId += 1;
 
@@ -7576,9 +7378,7 @@ function openRowInsertDialog(button, manager) {
   state.summary.textContent = "";
   syncRowEditInsertModeUi(state);
 
-  if (!state.dialog.open) {
-    state.dialog.showModal();
-  }
+  state.modal.show({ returnFocusTo: button });
   renderRowInsertFields(state, insertData);
 }
 

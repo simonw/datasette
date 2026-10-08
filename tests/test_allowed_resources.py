@@ -7,9 +7,10 @@ based on permission rules from plugins and configuration.
 
 import pytest
 import pytest_asyncio
+
+from datasette import hookimpl
 from datasette.app import Datasette
 from datasette.permissions import PermissionSQL
-from datasette import hookimpl
 
 
 # Test plugin that provides permission rules

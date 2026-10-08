@@ -1,6 +1,8 @@
+import sys
 from dataclasses import dataclass
 from typing import Literal
 
+from datasette.utils import escape_sqlite
 from datasette.utils.sqlite import SQLiteTableType, sqlite3, sqlite_table_type
 
 SQLOperation = Literal[
@@ -195,6 +197,16 @@ def _allow_authorizer_action(*args):
     return sqlite3.SQLITE_OK
 
 
+def _disable_authorizer(conn):
+    # Python 3.11 added support for unregistering an authorizer using None.
+    # On Python 3.10, None is installed as the callback instead, and the next
+    # statement fails with "not authorized" when sqlite3 tries to call it.
+    if sys.version_info >= (3, 11):
+        conn.set_authorizer(None)
+    else:
+        conn.set_authorizer(_allow_authorizer_action)
+
+
 def analyze_sql_tables(
     conn,
     sql: str,
@@ -208,7 +220,9 @@ def analyze_sql_tables(
 
     This function is synchronous and connection-based. It temporarily installs a
     SQLite authorizer, prepares ``EXPLAIN <sql>``, and returns the operation
-    callbacks observed while SQLite compiles the statement.
+    callbacks observed while SQLite compiles the statement. ``CREATE VIEW`` is
+    additionally executed inside a rolled-back savepoint so its source-table reads
+    can be discovered by analyzing a query against the temporary view.
     """
     operations: dict[OperationKey, set[str]] = {}
 
@@ -413,12 +427,12 @@ def analyze_sql_tables(
                 database=None,
                 table=None,
                 sqlite_schema=sqlite_schema,
-                target="{} {}".format(arg1, arg2) if arg2 is not None else arg1,
+                target=f"{arg1} {arg2}" if arg2 is not None else arg1,
                 source=source,
             )
             return sqlite3.SQLITE_OK
 
-        action_name = _AUTHORIZER_ACTION_NAMES.get(action, "SQLITE_{}".format(action))
+        action_name = _AUTHORIZER_ACTION_NAMES.get(action, f"SQLITE_{action}")
         record(
             "unknown",
             "unknown",
@@ -481,7 +495,7 @@ def analyze_sql_tables(
                         conn, key.table, schema=key.sqlite_schema
                     )
     finally:
-        conn.set_authorizer(None)
+        _disable_authorizer(conn)
 
     has_schema_operation = any(
         key.target_type in {"table", "index", "view", "trigger", "virtual-table"}
@@ -521,9 +535,7 @@ def analyze_sql_tables(
             and key.target in _SQLITE_INTERNAL_SCHEMA_FUNCTIONS
         ):
             return True
-        if key_is_drop_table_delete(key):
-            return True
-        return False
+        return bool(key_is_drop_table_delete(key))
 
     def table_kind_for(key: OperationKey) -> SQLiteTableType | None:
         if (
@@ -534,7 +546,7 @@ def analyze_sql_tables(
             return None
         return table_kind_cache[(key.sqlite_schema, key.table)]
 
-    return SQLAnalysis(
+    analysis = SQLAnalysis(
         operations=tuple(
             Operation(
                 operation=key.operation,
@@ -549,5 +561,60 @@ def analyze_sql_tables(
                 internal=operation_is_internal(key),
             )
             for key, columns in operations.items()
+        )
+    )
+
+    # SQLite does not resolve the SELECT body of a view when preparing CREATE
+    # VIEW, so its authorizer does not report reads from the view's source
+    # tables. Temporarily create the view, analyze a query against it (which
+    # does resolve the body), then roll the schema change back. Database-level
+    # callers use an isolated writable connection for this analysis.
+    create_view_operations = tuple(
+        operation
+        for operation in analysis.operations
+        if operation.operation == "create" and operation.target_type == "view"
+    )
+    if not create_view_operations:
+        return analysis
+
+    savepoint = "datasette_analyze_create_view"
+    conn.execute(f"SAVEPOINT {savepoint}")
+    try:
+        conn.execute(sql, params if params is not None else {})
+        dependency_reads = []
+        for view_operation in create_view_operations:
+            if view_operation.sqlite_schema is None or view_operation.table is None:
+                raise sqlite3.OperationalError(
+                    "Could not determine the created view name"
+                )
+            quoted_schema = escape_sqlite(view_operation.sqlite_schema)
+            quoted_view = escape_sqlite(view_operation.table)
+            qualified_view = f"{quoted_schema}.{quoted_view}"
+            view_analysis = analyze_sql_tables(
+                conn,
+                f"SELECT * FROM {qualified_view}",
+                database_name=database_name,
+                schema_to_database=schema_to_database,
+            )
+            dependency_reads.extend(
+                operation
+                for operation in view_analysis.operations
+                if operation.operation == "read"
+                and not (
+                    operation.sqlite_schema == view_operation.sqlite_schema
+                    and operation.table == view_operation.table
+                )
+            )
+    finally:
+        conn.execute(f"ROLLBACK TO {savepoint}")
+        conn.execute(f"RELEASE {savepoint}")
+
+    existing_operations = set(analysis.operations)
+    return SQLAnalysis(
+        operations=analysis.operations
+        + tuple(
+            operation
+            for operation in dependency_reads
+            if operation not in existing_operations
         )
     )

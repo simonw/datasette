@@ -1,10 +1,14 @@
+import pathlib
+import urllib.parse
+from types import SimpleNamespace
+
+import pytest
+from bs4 import BeautifulSoup as Soup
+
 from datasette.app import Datasette
 from datasette.database import Database
-from bs4 import BeautifulSoup as Soup
+
 from .fixtures import make_app_client
-import pathlib
-import pytest
-import urllib.parse
 from .utils import inner_html
 
 
@@ -12,9 +16,9 @@ def table_data_from_soup(soup):
     import json
     import re
 
-    table_script = [
+    table_script = next(
         s for s in soup.find_all("script") if "_datasetteTableData" in (s.string or "")
-    ][0]
+    )
     match = re.search(
         r"window\._datasetteTableData\s*=\s*({.*?});",
         table_script.string,
@@ -27,11 +31,11 @@ def database_data_from_soup(soup):
     import json
     import re
 
-    database_script = [
+    database_script = next(
         s
         for s in soup.find_all("script")
         if "_datasetteDatabaseData" in (s.string or "")
-    ][0]
+    )
     match = re.search(
         r"window\._datasetteDatabaseData\s*=\s*({.*?});",
         database_script.string,
@@ -67,6 +71,21 @@ DEFAULT_EXPRESSION_OPTIONS = [
         "sqliteType": "integer",
     },
 ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("table", ("simple_primary_key", "simple_view"))
+@pytest.mark.parametrize("duration", (0.125, 0.25))
+async def test_table_footer_query_ms(ds_client, monkeypatch, table, duration):
+    times = iter((10.0, 10.0 + duration))
+    # Only mock the table view's clock, leaving SQL time limits unaffected.
+    monkeypatch.setattr(
+        "datasette.views.table.time", SimpleNamespace(perf_counter=lambda: next(times))
+    )
+    response = await ds_client.get(f"/fixtures/{table}")
+    assert response.status_code == 200
+    footer = Soup(response.text, "html.parser").find("footer")
+    assert f"Queries took {duration * 1000}ms" in footer.get_text()
 
 
 @pytest.mark.asyncio
@@ -234,7 +253,7 @@ async def test_existing_filter_redirects(ds_client):
 )
 async def test_reflected_hidden_form_fields(ds_client, qs, expected_hidden):
     # https://github.com/simonw/datasette/issues/1527
-    response = await ds_client.get("/fixtures/facetable?{}".format(qs))
+    response = await ds_client.get(f"/fixtures/facetable?{qs}")
     # In this case we should NOT have a hidden _neighborhood__exact=Downtown field
     form = Soup(response.text, "html.parser").find("form")
     hidden_inputs = {
@@ -267,7 +286,8 @@ async def test_empty_search_parameter_gets_removed(ds_client):
 async def test_searchable_view_persists_fts_table(ds_client):
     # The search form should persist ?_fts_table as a hidden field
     response = await ds_client.get(
-        "/fixtures/searchable_view?_fts_table=searchable_fts&_fts_pk=pk"
+        "/fixtures/searchable_view_configured_by_metadata"
+        "?_fts_table=searchable_fts&_fts_pk=pk"
     )
     inputs = Soup(response.text, "html.parser").find("form").find_all("input")
     hiddens = [i for i in inputs if i["type"] == "hidden"]
@@ -395,6 +415,37 @@ async def test_sort_links(ds_client):
 
 
 @pytest.mark.asyncio
+async def test_sort_menu_excludes_unsortable_primary_key():
+    # https://github.com/simonw/datasette/issues/1980
+    ds = Datasette(
+        [],
+        metadata={
+            "databases": {
+                "data": {"tables": {"timezones": {"sortable_columns": ["tzid"]}}}
+            }
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_sort_menu_unsortable_pk"), name="data"
+        )
+        await db.execute_write_script("""
+            create table timezones (
+                id integer primary key,
+                tzid text
+            );
+            insert into timezones (id, tzid) values (133, 'Europe/London');
+        """)
+        response = await ds.client.get("/data/timezones")
+        assert response.status_code == 200
+        select = Soup(response.text, "html.parser").find("select", {"name": "_sort"})
+        options = [option["value"] for option in select.find_all("option")]
+        assert options == ["", "tzid"]
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
 async def test_facet_display(ds_client):
     response = await ds_client.get(
         "/fixtures/facetable?_facet=planet_int&_facet=_city_id&_facet=on_earth"
@@ -478,6 +529,31 @@ async def test_facet_display(ds_client):
             ],
         },
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "filters", ["state=CA", "state__exact=CA", "state=CA&state__exact=CA"]
+)
+async def test_facet_remove_exact_filter(ds_client, filters):
+    response = await ds_client.get(
+        f"/fixtures/facetable?_facet=state&{filters}&on_earth=1"
+    )
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    remove_link = soup.select_one('.facet-info[data-column="state"] li a.cross')
+    assert remove_link is not None
+    url = urllib.parse.urlsplit(remove_link["href"])
+    assert urllib.parse.parse_qsl(url.query) == [
+        ("_facet", "state"),
+        ("on_earth", "1"),
+    ]
+    unfiltered = await ds_client.get(f"{url.path}.json?{url.query}")
+    assert unfiltered.status_code == 200
+    rows = unfiltered.json()["rows"]
+    assert len(rows) == 14
+    assert all(row["on_earth"] == 1 for row in rows)
+    assert {row["state"] for row in rows} == {"CA", "MI"}
 
 
 @pytest.mark.asyncio
@@ -664,9 +740,7 @@ async def test_table_html_no_primary_key(ds_client):
     ]
     expected = [
         [
-            '<td class="col-Link type-pk"><a href="/fixtures/no_primary_key/{}">{}</a></td>'.format(
-                i, i
-            ),
+            f'<td class="col-Link type-pk"><a href="/fixtures/no_primary_key/{i}">{i}</a></td>',
             f'<td class="col-rowid type-int">{i}</td>',
             f'<td class="col-content type-str">{i}</td>',
             f'<td class="col-a type-str">a{i}</td>',
@@ -758,6 +832,39 @@ async def test_table_html_foreign_key_links(ds_client):
             '<td class="col-foreign_key_compound_pk2 type-none">\xa0</td>',
         ],
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("referenced_table", ("authors", "AuThOrS"))
+async def test_table_html_foreign_key_to_missing_table_is_not_linked(referenced_table):
+    # https://github.com/simonw/datasette/issues/1515
+    ds = Datasette([])
+    db = ds.add_database(
+        Database(ds, memory_name="test_foreign_key_to_missing_table"), name="data"
+    )
+    await db.execute_write_script(f"""
+        create table authors (id integer primary key, name text);
+        create table books (
+            id integer primary key,
+            author_id integer references {referenced_table}(id),
+            missing_id integer references missing_table(id)
+        );
+        insert into authors (id, name) values (1, 'Ada');
+        insert into books (id, author_id, missing_id) values (1, 1, 7);
+        """)
+    response = await ds.client.get("/data/books")
+    assert response.status_code == 200
+    table = Soup(response.text, "html.parser").find("table")
+    cells = {td["class"][0]: str(td) for td in table.select("tbody tr")[0].select("td")}
+    assert cells["col-author_id"] == (
+        '<td class="col-author_id type-int">'
+        f'<a href="/data/{referenced_table}/1">Ada</a> <em>1</em></td>'
+    )
+    assert cells["col-missing_id"] == '<td class="col-missing_id type-int">7</td>'
+    # The JSON labels are left alone as well
+    data = (await ds.client.get("/data/books.json?_labels=on")).json()
+    assert data["rows"][0]["missing_id"] == 7
+    assert data["rows"][0]["author_id"] == {"value": 1, "label": "Ada"}
 
 
 @pytest.mark.asyncio
@@ -1667,7 +1774,7 @@ async def test_row_update_sets_message():
         assert response.status_code == 200
         assert response.json()["rows"][0]["name"] == long_name
         assert ds.unsign(response.cookies["ds_messages"], "messages") == [
-            ["Updated row 1 ({})".format(truncated_name), ds.INFO]
+            [f"Updated row 1 ({truncated_name})", ds.INFO]
         ]
     finally:
         ds.close()
@@ -1680,9 +1787,9 @@ def test_table_data_uses_base_url(app_client_base_url_prefix):
     import re
 
     soup = Soup(response.text, "html.parser")
-    table_script = [
+    table_script = next(
         s for s in soup.find_all("script") if "_datasetteTableData" in (s.string or "")
-    ][0]
+    )
     match = re.search(
         r"window\._datasetteTableData\s*=\s*({.*?});",
         table_script.string,
@@ -1710,8 +1817,9 @@ def test_table_fragment_custom_table_include():
 
 @pytest.mark.asyncio
 async def test_table_fragment_uses_render_cell_hook():
-    from datasette import hookimpl
     from markupsafe import Markup
+
+    from datasette import hookimpl
 
     class TestRenderCellPlugin:
         __name__ = "TestRenderCellPlugin"
@@ -1719,7 +1827,7 @@ async def test_table_fragment_uses_render_cell_hook():
         @hookimpl
         def render_cell(self, value, column, table, database):
             if database == "data" and table == "items" and column == "name":
-                return Markup("<strong>{}</strong>".format(value))
+                return Markup(f"<strong>{value}</strong>")
             return None
 
     ds = Datasette(memory=True)
@@ -2258,18 +2366,16 @@ def test_allow_facet_off(allow_facet):
 )
 async def test_format_of_binary_links(size, title, length_bytes):
     ds = Datasette()
-    db_name = "binary-links-{}".format(size)
+    db_name = f"binary-links-{size}"
     db = ds.add_memory_database(db_name)
-    sql = "select zeroblob({}) as blob".format(size)
-    await db.execute_write("create table blobs as {}".format(sql))
-    response = await ds.client.get("/{}/blobs".format(db_name))
+    sql = f"select zeroblob({size}) as blob"
+    await db.execute_write(f"create table blobs as {sql}")
+    response = await ds.client.get(f"/{db_name}/blobs")
     assert response.status_code == 200
-    expected = "{}>&lt;Binary:&nbsp;{}&nbsp;bytes&gt;</a>".format(title, length_bytes)
+    expected = f"{title}>&lt;Binary:&nbsp;{length_bytes}&nbsp;bytes&gt;</a>"
     assert expected in response.text
     # And test with arbitrary SQL query too
-    sql_response = await ds.client.get(
-        "{}/-/query".format(db_name), params={"sql": sql}
-    )
+    sql_response = await ds.client.get(f"{db_name}/-/query", params={"sql": sql})
     assert sql_response.status_code == 200
     assert expected in sql_response.text
 

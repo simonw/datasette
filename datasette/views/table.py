@@ -1,50 +1,55 @@
 import asyncio
+import inspect
 import itertools
 import json
+import time
 import urllib
 import urllib.parse
+from dataclasses import dataclass, field
 
 import markupsafe
+import sqlite_utils
 
+from datasette import tracer
 from datasette.column_types import SQLiteType
-from datasette.extras import extra_names_from_request
-from datasette.plugins import pm
+from datasette.database import QueryInterrupted
 from datasette.events import (
     AlterTableEvent,
     DropTableEvent,
     InsertRowsEvent,
     UpsertRowsEvent,
 )
-from datasette.database import QueryInterrupted
-from datasette import tracer
+from datasette.extras import ExtraScope, extra_names_from_request
+from datasette.filters import Filters
+from datasette.plugins import pm
 from datasette.resources import DatabaseResource, TableResource
 from datasette.utils import (
-    add_cors_headers,
-    await_me_maybe,
-    call_with_supported_arguments,
     CustomJSONEncoder,
     CustomRow,
+    InvalidSql,
+    WriteJsonValueError,
+    add_cors_headers,
     append_querystring,
+    await_me_maybe,
+    call_with_supported_arguments,
     compound_keys_after_sql,
     decode_write_json_rows,
-    format_bytes,
-    make_slot_function,
-    tilde_encode,
     escape_sqlite,
     filters_should_redirect,
+    format_bytes,
     is_url,
+    make_slot_function,
     path_from_row_pks,
     path_with_added_args,
     path_with_format,
     path_with_removed_args,
     path_with_replaced_args,
+    sqlite3,
+    tilde_encode,
     to_css_class,
     truncate_url,
     urlsafe_components,
     value_as_boolean,
-    InvalidSql,
-    WriteJsonValueError,
-    sqlite3,
 )
 from datasette.utils.asgi import (
     BadRequest,
@@ -54,11 +59,8 @@ from datasette.utils.asgi import (
     Request,
     Response,
 )
-from datasette.filters import Filters
-import sqlite_utils
-from dataclasses import dataclass, field
+from datasette.utils.sqlite import check_structured_write_table
 
-from datasette.extras import ExtraScope
 from . import Context, from_extra
 from .base import BaseView, DatasetteError, stream_csv
 from .database import QueryView
@@ -536,7 +538,7 @@ async def _table_insert_ui(
         columns.append(column_data)
 
     data = {
-        "path": "{}/-/insert".format(datasette.urls.table(database_name, table_name)),
+        "path": f"{datasette.urls.table(database_name, table_name)}/-/insert",
         "tableName": table_name,
         "columns": columns,
         "bulkColumns": bulk_columns,
@@ -544,8 +546,8 @@ async def _table_insert_ui(
         "maxInsertRows": datasette.setting("max_insert_rows"),
     }
     if can_update:
-        data["upsertPath"] = "{}/-/upsert".format(
-            datasette.urls.table(database_name, table_name)
+        data["upsertPath"] = (
+            f"{datasette.urls.table(database_name, table_name)}/-/upsert"
         )
     return data
 
@@ -604,7 +606,7 @@ async def _table_alter_ui(
         columns.append(column_data)
 
     data = {
-        "path": "{}/-/alter".format(datasette.urls.table(database_name, table_name)),
+        "path": f"{datasette.urls.table(database_name, table_name)}/-/alter",
         "tableName": table_name,
         "columns": columns,
         "primaryKeys": pks,
@@ -630,9 +632,7 @@ async def _table_alter_ui(
         actor=request.actor,
     )
     if can_drop_table:
-        data["dropPath"] = "{}/-/drop".format(
-            datasette.urls.table(database_name, table_name)
-        )
+        data["dropPath"] = f"{datasette.urls.table(database_name, table_name)}/-/drop"
     return data
 
 
@@ -667,13 +667,20 @@ async def display_columns_and_rows(
 
     # Look up column types for this table
     column_types_map = await datasette.get_column_types(database_name, table_name)
+    # Column types can opt in to this page's truncation length by accepting
+    # a truncate_cells argument to their render_cell() method
+    truncate_cells_columns = {
+        column
+        for column, ct in column_types_map.items()
+        if "truncate_cells" in inspect.signature(ct.render_cell).parameters
+    }
 
     column_details = {
         col.name: col for col in await db.table_column_details(table_name)
     }
     pks = await db.primary_keys(table_name)
     pks_for_display = pks
-    if not pks_for_display:
+    if not pks_for_display and not await db.view_exists(table_name):
         pks_for_display = ["rowid"]
     label_column = None
     if link_column:
@@ -728,12 +735,10 @@ async def display_columns_and_rows(
             row_label = row_label_from_label_column(row, label_column)
             row_action_label = pk_path
             if row_label and row_label != pk_path:
-                row_action_label = "{} {}".format(pk_path, row_label)
+                row_action_label = f"{pk_path} {row_label}"
             table_path = datasette.urls.table(database_name, table_name)
-            row_link = '<a href="{table_path}/{flat_pks_quoted}">{flat_pks}</a>'.format(
-                table_path=table_path,
-                flat_pks=str(markupsafe.escape(pk_path)),
-                flat_pks_quoted=row_path,
+            row_link = (
+                f'<a href="{table_path}/{row_path}">{markupsafe.escape(pk_path)!s}</a>'
             )
             edit_icon = (
                 '<svg class="row-inline-action-icon" aria-hidden="true" '
@@ -760,22 +765,16 @@ async def display_columns_and_rows(
             if row_action_permissions.get("update-row"):
                 row_actions.append(
                     '<button type="button" class="row-inline-action row-inline-action-edit" '
-                    'aria-label="Edit row {row_label}" title="Edit row" '
+                    f'aria-label="Edit row {markupsafe.escape(row_action_label)}" title="Edit row" '
                     'data-row-action="edit">'
-                    "{edit_icon}</button>".format(
-                        edit_icon=edit_icon,
-                        row_label=markupsafe.escape(row_action_label),
-                    )
+                    f"{edit_icon}</button>"
                 )
             if row_action_permissions.get("delete-row"):
                 row_actions.append(
                     '<button type="button" class="row-inline-action row-inline-action-delete" '
-                    'aria-label="Delete row {row_label}" title="Delete row" '
+                    f'aria-label="Delete row {markupsafe.escape(row_action_label)}" title="Delete row" '
                     'data-row-action="delete">'
-                    "{delete_icon}</button>".format(
-                        delete_icon=delete_icon,
-                        row_label=markupsafe.escape(row_action_label),
-                    )
+                    f"{delete_icon}</button>"
                 )
             if row_actions:
                 row_link = (
@@ -805,6 +804,9 @@ async def display_columns_and_rows(
             plugin_display_value = None
             ct = column_types_map.get(column)
             if ct:
+                kwargs = {}
+                if column in truncate_cells_columns:
+                    kwargs["truncate_cells"] = truncate_cells
                 candidate = await ct.render_cell(
                     value=value,
                     column=column,
@@ -812,6 +814,7 @@ async def display_columns_and_rows(
                     database=database_name,
                     datasette=datasette,
                     request=request,
+                    **kwargs,
                 )
                 if candidate is not None:
                     plugin_display_value = candidate
@@ -843,11 +846,7 @@ async def display_columns_and_rows(
                             path_from_row_pks(row, pks, not pks),
                             column,
                         ),
-                        (
-                            ' title="{}"'.format(formatted)
-                            if "bytes" not in formatted
-                            else ""
-                        ),
+                        (f' title="{formatted}"' if "bytes" not in formatted else ""),
                         len(value),
                         "" if len(value) == 1 else "s",
                     )
@@ -916,7 +915,7 @@ async def display_columns_and_rows(
             columns = [col for col in columns if col["name"] != pks[0]]
             first_column = {
                 "name": pks[0],
-                "sortable": len(pks) == 1,
+                "sortable": pks[0] in sortable_columns,
                 "is_pk": True,
                 "type": column_details[pks[0]].type,
                 "notnull": column_details[pks[0]].notnull,
@@ -959,7 +958,7 @@ class TableInsertView(BaseView):
         try:
             data = await request.json()
         except json.JSONDecodeError as e:
-            return _errors(["Invalid JSON: {}".format(e)])
+            return _errors([f"Invalid JSON: {e}"])
         if not isinstance(data, dict):
             return _errors(["JSON must be a dictionary"])
         keys = data.keys()
@@ -987,9 +986,7 @@ class TableInsertView(BaseView):
         # Does this exceed max_insert_rows?
         max_insert_rows = self.ds.setting("max_insert_rows")
         if len(rows) > max_insert_rows:
-            return _errors(
-                ["Too many rows, maximum allowed is {}".format(max_insert_rows)]
-            )
+            return _errors([f"Too many rows, maximum allowed is {max_insert_rows}"])
 
         # Validate other parameters
         extras = {
@@ -1047,7 +1044,7 @@ class TableInsertView(BaseView):
         # Table must exist (may handle table creation in the future)
         db = self.ds.get_database(database_name)
         if not await db.table_exists(table_name):
-            return Response.error(["Table not found: {}".format(table_name)], 404)
+            return Response.error([f"Table not found: {table_name}"], 404)
 
         if upsert:
             # Must have insert-row AND upsert-row permissions
@@ -1143,6 +1140,7 @@ class TableInsertView(BaseView):
             row_pk_values_for_later = [tuple(row[pk] for pk in pks) for row in rows]
 
         def insert_or_upsert_rows(conn):
+            check_structured_write_table(conn, table_name)
             table = sqlite_utils.Database(conn)[table_name]
             kwargs = {}
             if upsert:
@@ -1170,20 +1168,36 @@ class TableInsertView(BaseView):
 
         try:
             rows = await db.execute_write_fn(insert_or_upsert_rows, request=request)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
+            # TODO: narrow to expected write errors so Datasette bugs surface as 500s
             return Response.error([str(e)])
         result = {"ok": True}
+        # Only read back and disclose stored rows if the actor is also
+        # allowed to view this table - insert-row/update-row alone must
+        # not be usable to read data the actor cannot otherwise see.
+        if should_return and not await self.ds.allowed(
+            action="view-table",
+            resource=TableResource(database=database_name, table=table_name),
+            actor=request.actor,
+        ):
+            should_return = False
         if should_return:
             if upsert:
                 # Fetch based on initial input IDs
                 where_clause = " OR ".join(
-                    ["({})".format(" AND ".join("{} = ?".format(pk) for pk in pks))]
+                    [
+                        "({})".format(
+                            " AND ".join(f"{escape_sqlite(pk)} = ?" for pk in pks)
+                        )
+                    ]
                     * len(row_pk_values_for_later)
                 )
                 args = list(itertools.chain.from_iterable(row_pk_values_for_later))
                 fetched_rows = await db.execute(
-                    "select {}* from [{}] where {}".format(
-                        "rowid, " if pks == ["rowid"] else "", table_name, where_clause
+                    "select {}* from {} where {}".format(
+                        "rowid, " if pks == ["rowid"] else "",
+                        escape_sqlite(table_name),
+                        where_clause,
                     ),
                     args,
                 )
@@ -1267,7 +1281,7 @@ class TableSetColumnTypeView(BaseView):
         try:
             data = await request.json()
         except json.JSONDecodeError as e:
-            return Response.error(["Invalid JSON: {}".format(e)], 400)
+            return Response.error([f"Invalid JSON: {e}"], 400)
         except PayloadTooLarge as e:
             return Response.error([str(e)], 413)
 
@@ -1294,7 +1308,7 @@ class TableSetColumnTypeView(BaseView):
             database_name, table_name
         )
         if column not in column_details:
-            return Response.error(["Column not found: {}".format(column)], 400)
+            return Response.error([f"Column not found: {column}"], 400)
 
         column_type_data = data["column_type"]
         if column_type_data is None:
@@ -1335,7 +1349,7 @@ class TableSetColumnTypeView(BaseView):
             return Response.error(['"column_type.config" must be a dictionary'], 400)
 
         if column_type not in self.ds._column_types:
-            return Response.error(["Unknown column type: {}".format(column_type)], 400)
+            return Response.error([f"Unknown column type: {column_type}"], 400)
 
         try:
             await self.ds.set_column_type(
@@ -1373,7 +1387,7 @@ class TableDropView(BaseView):
         # Table must exist
         db = self.ds.get_database(database_name)
         if not await db.table_exists(table_name):
-            return Response.error(["Table not found: {}".format(table_name)], 404)
+            return Response.error([f"Table not found: {table_name}"], 404)
         if not await self.ds.allowed(
             action="drop-table",
             resource=TableResource(database=database_name, table=table_name),
@@ -1398,7 +1412,9 @@ class TableDropView(BaseView):
                     "database": database_name,
                     "table": table_name,
                     "row_count": (
-                        await db.execute("select count(*) from [{}]".format(table_name))
+                        await db.execute(
+                            f"select count(*) from {escape_sqlite(table_name)}"
+                        )
                     ).single_value(),
                     "message": 'Pass "confirm": true to confirm',
                 },
@@ -1407,7 +1423,9 @@ class TableDropView(BaseView):
 
         # Drop table
         def drop_table(conn):
-            sqlite_utils.Database(conn)[table_name].drop()
+            table = sqlite_utils.Database(conn)[table_name]
+            table.disable_fts()
+            table.drop()
 
         await db.execute_write_fn(drop_table, request=request)
         await self.ds.track_event(
@@ -1417,10 +1435,46 @@ class TableDropView(BaseView):
         )
         self.ds.add_message(
             request,
-            "Table {} dropped".format(table_name),
+            f"Table {table_name} dropped",
             self.ds.WARNING,
         )
         return Response.json({"ok": True}, status=200)
+
+
+class TableCountView(BaseView):
+    name = "table-count"
+
+    async def post(self, request):
+        try:
+            return await self.count(request)
+        except (NotFound, Forbidden, BadRequest, DatasetteError) as ex:
+            return Response.error(str(ex), status=ex.status)
+
+    async def count(self, request):
+        resolved = await self.ds.resolve_table(request)
+        visible, _private = await self.ds.check_visibility(
+            request.actor,
+            action="view-table",
+            resource=TableResource(database=resolved.db.name, table=resolved.table),
+        )
+        if not visible:
+            raise Forbidden("You do not have permission to view this table")
+        _, where_clauses, params, _, _ = await _table_filters(
+            self.ds, request, resolved.db.name, resolved.table
+        )
+        sql = f"select count(*) from {escape_sqlite(resolved.table)}"
+        if where_clauses:
+            sql += " where " + " and ".join(where_clauses)
+        try:
+            results = await resolved.db.execute(sql, params)
+        except QueryInterrupted:
+            return Response.error("Count query timed out", status=400)
+        except (sqlite3.OperationalError, InvalidSql) as ex:
+            return Response.error(str(ex), status=400)
+        return Response.json(
+            {"ok": True, "count": results.single_value()},
+            headers={"Cache-Control": "no-store"},
+        )
 
 
 class TableFragmentView(BaseView):
@@ -1477,32 +1531,28 @@ def _prefix_range_end(value):
 
 
 def _autocomplete_like(column):
-    return "{} like :like escape char(92)".format(escape_sqlite(column))
+    return f"{escape_sqlite(column)} like :like escape char(92)"
 
 
 def _autocomplete_prefix_like(column):
-    return "{} like :prefix escape char(92)".format(escape_sqlite(column))
+    return f"{escape_sqlite(column)} like :prefix escape char(92)"
 
 
 def _autocomplete_order_by(pks, label_column, exact_pk, label_matches_first=True):
     clauses = []
     if exact_pk:
         clauses.append(
-            "case when cast({} as text) = :q then 0 else 1 end".format(
-                escape_sqlite(pks[0])
-            )
+            f"case when cast({escape_sqlite(pks[0])} as text) = :q then 0 else 1 end"
         )
     if label_column:
         label_like = _autocomplete_like(label_column)
         if label_matches_first:
-            clauses.append("case when {} then 0 else 1 end".format(label_like))
+            clauses.append(f"case when {label_like} then 0 else 1 end")
         clauses.append(
-            "case when {} then length(cast({} as text)) end".format(
-                label_like, escape_sqlite(label_column)
-            )
+            f"case when {label_like} then length(cast({escape_sqlite(label_column)} as text)) end"
         )
     else:
-        clauses.append("length(cast({} as text))".format(escape_sqlite(pks[0])))
+        clauses.append(f"length(cast({escape_sqlite(pks[0])} as text))")
     clauses.extend(escape_sqlite(pk) for pk in pks)
     return ", ".join(clauses)
 
@@ -1569,8 +1619,8 @@ class TableAutocompleteView(BaseView):
             return Response.json({"ok": True, "rows": []})
         params = {
             "q": q,
-            "like": "%{}%".format(_escape_like(q)),
-            "prefix": "{}%".format(_escape_like(q)),
+            "like": f"%{_escape_like(q)}%",
+            "prefix": f"{_escape_like(q)}%",
         }
 
         like_columns = pks[:]
@@ -1584,18 +1634,13 @@ class TableAutocompleteView(BaseView):
             where_sql = "1 = 1"
             order_by = _autocomplete_initial_order_by(pks)
 
-        sql = """
+        sql = f"""
             select {select_sql}
-            from {table}
-            where {where}
+            from {escape_sqlite(table_name)}
+            where {where_sql}
             order by {order_by}
             limit 10
-        """.format(
-            select_sql=select_sql,
-            table=escape_sqlite(table_name),
-            where=where_sql,
-            order_by=order_by,
-        )
+        """
 
         try:
             results = await db.execute(
@@ -1607,21 +1652,14 @@ class TableAutocompleteView(BaseView):
             if prefix_end:
                 params["prefix_end"] = prefix_end
                 first_pk = escape_sqlite(pks[0])
-                fallback_where = (
-                    "{first_pk} >= :q and {first_pk} < :prefix_end and {like}"
-                ).format(first_pk=first_pk, like=fallback_where)
-            fallback_sql = """
+                fallback_where = f"{first_pk} >= :q and {first_pk} < :prefix_end and {fallback_where}"
+            fallback_sql = f"""
                 select {select_sql}
-                from {table}
-                where {where}
-                order by {order_by}
+                from {escape_sqlite(table_name)}
+                where {fallback_where}
+                order by {_autocomplete_pk_order_by(pks)}
                 limit 10
-            """.format(
-                select_sql=select_sql,
-                table=escape_sqlite(table_name),
-                where=fallback_where,
-                order_by=_autocomplete_pk_order_by(pks),
-            )
+            """
             try:
                 results = await db.execute(
                     fallback_sql,
@@ -1725,13 +1763,22 @@ async def table_view(datasette, request):
     if ttl is None or not ttl.isdigit():
         ttl = datasette.setting("default_cache_ttl")
 
+    private = getattr(request, "_datasette_private_response", False)
+
     if datasette.cache_headers and response.status == 200:
-        ttl = int(ttl)
-        if ttl == 0:
-            ttl_header = "no-cache"
+        if private:
+            # This response is only visible to the current actor (denied to
+            # anonymous requests), so it must never be stored by a shared
+            # cache/CDN - and ?_ttl= must not be able to override that.
+            response.headers["Cache-Control"] = "private, no-store"
+            response.headers["Vary"] = "Cookie"
         else:
-            ttl_header = f"max-age={ttl}"
-        response.headers["Cache-Control"] = ttl_header
+            ttl = int(ttl)
+            if ttl == 0:
+                ttl_header = "no-cache"
+            else:
+                ttl_header = f"max-age={ttl}"
+            response.headers["Cache-Control"] = ttl_header
 
     # Referrer policy
     response.headers["Referrer-Policy"] = "no-referrer"
@@ -1767,6 +1814,7 @@ async def table_view_traced(datasette, request):
         context_for_html_hack = True
         default_labels = True
 
+    start = time.perf_counter()
     view_data = await table_view_data(
         datasette,
         request,
@@ -1777,7 +1825,8 @@ async def table_view_traced(datasette, request):
     )
     if isinstance(view_data, Response):
         return view_data
-    data, rows, columns, expanded_columns, sql, next_url = view_data
+    query_ms = (time.perf_counter() - start) * 1000
+    data, rows, columns, _expanded_columns, sql, next_url = view_data
 
     # Handle formats from plugins
     if format_ == "csv":
@@ -1788,8 +1837,8 @@ async def table_view_traced(datasette, request):
                 rows,
                 columns,
                 expanded_columns,
-                sql,
-                next_url,
+                _sql,
+                _next_url,
             ) = await table_view_data(
                 datasette,
                 request,
@@ -1806,7 +1855,7 @@ async def table_view_traced(datasette, request):
             return data, None, None
 
         return await stream_csv(datasette, fetch_data, request, resolved.db.name)
-    elif format_ in datasette.renderers.keys():
+    elif format_ in datasette.renderers:
         # Dispatch request to the correct output format renderer
         # (CSV is not handled here due to streaming)
         result = call_with_supported_arguments(
@@ -1864,9 +1913,7 @@ async def table_view_traced(datasette, request):
         )
         headers.update(
             {
-                "Link": '<{}>; rel="alternate"; type="application/json+datasette"'.format(
-                    alternate_url_json
-                )
+                "Link": f'<{alternate_url_json}>; rel="alternate"; type="application/json+datasette"'
             }
         )
         table_context = TableContext(
@@ -1925,7 +1972,7 @@ async def table_view_traced(datasette, request):
                 resource=DatabaseResource(database=resolved.db.name),
                 actor=request.actor,
             ),
-            query_ms=1.2,
+            query_ms=query_ms,
             select_templates=[
                 f"{'*' if template_name == template.name else ''}{template_name}"
                 for template_name in templates
@@ -1951,10 +1998,51 @@ async def table_view_traced(datasette, request):
             headers=headers,
         )
     else:
-        assert False, "Invalid format: {}".format(format_)
+        assert False, f"Invalid format: {format_}"
     if next_url:
         r.headers["link"] = f'<{next_url}>; rel="next"'
     return r
+
+
+async def _table_filters(datasette, request, database_name, table_name):
+    # Arguments that start with _ and don't contain a __ are
+    # special - things like ?_search= - and should not be
+    # treated as filters.
+    filter_args = []
+    for key in request.args:
+        if not (key.startswith("_") and "__" not in key):
+            for v in request.args.getlist(key):
+                filter_args.append((key, v))
+
+    # Build where clauses from query string arguments
+    filters = Filters(sorted(filter_args))
+    where_clauses, params = filters.build_where_clauses(table_name)
+
+    # Execute filters_from_request plugin hooks - including the default
+    # ones that live in datasette/filters.py
+    extra_context_from_filters = {}
+    extra_human_descriptions = []
+
+    for hook in pm.hook.filters_from_request(
+        request=request,
+        table=table_name,
+        database=database_name,
+        datasette=datasette,
+    ):
+        filter_arguments = await await_me_maybe(hook)
+        if filter_arguments:
+            where_clauses.extend(filter_arguments.where_clauses)
+            params.update(filter_arguments.params)
+            extra_human_descriptions.extend(filter_arguments.human_descriptions)
+            extra_context_from_filters.update(filter_arguments.extra_context)
+
+    return (
+        filters,
+        where_clauses,
+        params,
+        extra_human_descriptions,
+        extra_context_from_filters,
+    )
 
 
 async def table_view_data(
@@ -1981,6 +2069,10 @@ async def table_view_data(
     )
     if not visible:
         raise Forbidden("You do not have permission to view this table")
+    # Record whether this response is private (visible to this actor only)
+    # so the outer table_view() can set appropriate Cache-Control headers,
+    # regardless of which output format ends up being rendered.
+    request._datasette_private_response = private
 
     # Redirect based on request.args, if necessary
     redirect_response = await _redirect_if_needed(datasette, request, resolved)
@@ -2031,36 +2123,13 @@ async def table_view_data(
 
     table_metadata = await datasette.table_config(database_name, table_name)
 
-    # Arguments that start with _ and don't contain a __ are
-    # special - things like ?_search= - and should not be
-    # treated as filters.
-    filter_args = []
-    for key in request.args:
-        if not (key.startswith("_") and "__" not in key):
-            for v in request.args.getlist(key):
-                filter_args.append((key, v))
-
-    # Build where clauses from query string arguments
-    filters = Filters(sorted(filter_args))
-    where_clauses, params = filters.build_where_clauses(table_name)
-
-    # Execute filters_from_request plugin hooks - including the default
-    # ones that live in datasette/filters.py
-    extra_context_from_filters = {}
-    extra_human_descriptions = []
-
-    for hook in pm.hook.filters_from_request(
-        request=request,
-        table=table_name,
-        database=database_name,
-        datasette=datasette,
-    ):
-        filter_arguments = await await_me_maybe(hook)
-        if filter_arguments:
-            where_clauses.extend(filter_arguments.where_clauses)
-            params.update(filter_arguments.params)
-            extra_human_descriptions.extend(filter_arguments.human_descriptions)
-            extra_context_from_filters.update(filter_arguments.extra_context)
+    (
+        filters,
+        where_clauses,
+        params,
+        extra_human_descriptions,
+        extra_context_from_filters,
+    ) = await _table_filters(datasette, request, database_name, table_name)
 
     # Deal with custom sort orders
     sortable_columns = await _sortable_columns_for_table(
@@ -2142,9 +2211,7 @@ async def table_view_data(
                             extra_desc_only=(
                                 ""
                                 if sort
-                                else " or {column2} is null".format(
-                                    column2=escape_sqlite(sort or sort_desc)
-                                )
+                                else f" or {escape_sqlite(sort or sort_desc)} is null"
                             ),
                             next_clauses=" and ".join(next_by_pk_clauses),
                         )
@@ -2186,22 +2253,11 @@ async def table_view_data(
 
     # Facets are calculated against SQL without order by or limit
     sql_no_order_no_limit = (
-        "select {select_all_columns} from {table_name} {where}".format(
-            select_all_columns=select_all_columns,
-            table_name=escape_sqlite(table_name),
-            where=where_clause,
-        )
+        f"select {select_all_columns} from {escape_sqlite(table_name)} {where_clause}"
     )
 
     # This is the SQL that populates the main table on the page
-    sql = "select {select_specified_columns} from {table_name} {where}{order_by} limit {page_size}{offset}".format(
-        select_specified_columns=select_specified_columns,
-        table_name=escape_sqlite(table_name),
-        where=where_clause,
-        order_by=order_by,
-        page_size=page_size + 1,
-        offset=offset,
-    )
+    sql = f"select {select_specified_columns} from {escape_sqlite(table_name)} {where_clause}{order_by} limit {page_size + 1}{offset}"
 
     if request.args.get("_timelimit"):
         extra_args["custom_time_limit"] = int(request.args.get("_timelimit"))
@@ -2211,9 +2267,6 @@ async def table_view_data(
         results = await db.execute(sql, params, truncate=True, **extra_args)
     except (sqlite3.OperationalError, InvalidSql) as e:
         raise DatasetteError(str(e), title="Invalid SQL", status=400)
-
-    except sqlite3.OperationalError as e:
-        raise DatasetteError(str(e))
 
     columns = [r[0] for r in results.description]
     rows = list(results.rows)
@@ -2261,7 +2314,8 @@ async def table_view_data(
             new_rows = []
             for row in rows:
                 new_row = CustomRow(columns)
-                for column in row.keys():
+                # CustomRow/sqlite3.Row iterate over values, so .keys() is required
+                for column in row.keys():  # noqa: SIM118
                     value = row[column]
                     if (column, value) in expanded_labels and value is not None:
                         new_row[column] = {
@@ -2272,8 +2326,6 @@ async def table_view_data(
                         new_row[column] = value
                 new_rows.append(new_row)
             rows = new_rows
-
-    _next = request.args.get("_next")
 
     # Pagination next link
     next_value, next_url = await _next_value_and_url(
@@ -2298,7 +2350,7 @@ async def table_view_data(
         # Data formats reject unknown extras; the HTML path (which passes
         # extra_extras={"_html"}) resolves internal extras of its own
         table_extra_registry.validate_requested(extras, ExtraScope.TABLE)
-    if any(k for k in request.args.keys() if k == "_facet" or k.startswith("_facet_")):
+    if any(k for k in request.args if k == "_facet" or k.startswith("_facet_")):
         extras.add("facet_results")
     if request.args.get("_shape") == "object":
         extras.add("primary_keys")
@@ -2479,20 +2531,16 @@ async def _next_value_and_url(
             except IndexError:
                 # sort/sort_desc column missing from SELECT - look up value by PK instead
                 prefix_where_clause = " and ".join(
-                    "[{}] = :pk{}".format(pk, i) for i, pk in enumerate(pks)
+                    f"{escape_sqlite(pk)} = :pk{i}" for i, pk in enumerate(pks)
                 )
-                prefix_lookup_sql = "select [{}] from [{}] where {}".format(
-                    sort or sort_desc, table_name, prefix_where_clause
+                prefix_lookup_sql = (
+                    f"select {escape_sqlite(sort or sort_desc)} "
+                    f"from {escape_sqlite(table_name)} where {prefix_where_clause}"
                 )
                 prefix = (
                     await db.execute(
                         prefix_lookup_sql,
-                        {
-                            **{
-                                "pk{}".format(i): rows[-2][pk]
-                                for i, pk in enumerate(pks)
-                            }
-                        },
+                        {**{f"pk{i}": rows[-2][pk] for i, pk in enumerate(pks)}},
                     )
                 ).single_value()
             if isinstance(prefix, dict) and "value" in prefix:

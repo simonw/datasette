@@ -262,6 +262,15 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             ]
         },
         {
+            "name": "datasette.default_permissions.sqlite_statistics",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "permission_resources_sql"
+            ]
+        },
+        {
             "name": "datasette.default_permissions.tokens",
             "static": false,
             "templates": false,

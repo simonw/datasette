@@ -1,28 +1,30 @@
+import asyncio
 import json
-from typing import Optional
+import re
+from http.cookies import Morsel, SimpleCookie
+from mimetypes import guess_type
+from pathlib import Path
+from urllib.parse import parse_qs, parse_qsl, urlunparse
+
+import aiofiles
+import aiofiles.os
+
 from datasette.utils import MultiParams, calculate_etag, error_body, sha256_file
 from datasette.utils.multipart import (
-    parse_form_data,
-    MultipartParseError,
-    FormData,
-    DEFAULT_MAX_FILE_SIZE,
-    DEFAULT_MAX_REQUEST_SIZE,
-    DEFAULT_MAX_FIELDS,
-    DEFAULT_MAX_FILES,
-    DEFAULT_MAX_PARTS,
     DEFAULT_MAX_FIELD_SIZE,
+    DEFAULT_MAX_FIELDS,
+    DEFAULT_MAX_FILE_SIZE,
+    DEFAULT_MAX_FILES,
     DEFAULT_MAX_MEMORY_FILE_SIZE,
     DEFAULT_MAX_PART_HEADER_BYTES,
     DEFAULT_MAX_PART_HEADER_LINES,
+    DEFAULT_MAX_PARTS,
+    DEFAULT_MAX_REQUEST_SIZE,
     DEFAULT_MIN_FREE_DISK_BYTES,
+    FormData,
+    MultipartParseError,
+    parse_form_data,
 )
-from mimetypes import guess_type
-from urllib.parse import parse_qs, urlunparse, parse_qsl
-from pathlib import Path
-from http.cookies import SimpleCookie, Morsel
-import aiofiles
-import aiofiles.os
-import re
 
 # Workaround for adding samesite support to pre 3.8 python
 Morsel._reserved["samesite"] = "SameSite"
@@ -81,6 +83,19 @@ SAMESITE_VALUES = ("strict", "lax", "none")
 DEFAULT_MAX_POST_BODY_BYTES = 2 * 1024 * 1024  # 2MB
 
 
+class _RequestHeaders(dict):
+    """Incoming headers with lowercase keys and case-insensitive lookups."""
+
+    def __getitem__(self, key):
+        return super().__getitem__(key.lower())
+
+    def get(self, key, default=None):
+        return super().get(key.lower(), default)
+
+    def __contains__(self, key):
+        return super().__contains__(key.lower())
+
+
 class Request:
     def __init__(self, scope, receive, max_post_body_bytes=DEFAULT_MAX_POST_BODY_BYTES):
         self.scope = scope
@@ -88,7 +103,7 @@ class Request:
         self.max_post_body_bytes = max_post_body_bytes
 
     def __repr__(self):
-        return '<asgi.Request method="{}" url="{}">'.format(self.method, self.url)
+        return f'<asgi.Request method="{self.method}" url="{self.url}">'
 
     @property
     def method(self):
@@ -110,10 +125,10 @@ class Request:
 
     @property
     def headers(self):
-        return {
-            k.decode("latin-1").lower(): v.decode("latin-1")
+        return _RequestHeaders(
+            (k.decode("latin-1").lower(), v.decode("latin-1"))
             for k, v in self.scope.get("headers") or []
-        }
+        )
 
     @property
     def host(self):
@@ -167,7 +182,7 @@ class Request:
         if max_bytes is None:
             max_bytes = self.max_post_body_bytes
         too_large = PayloadTooLarge(
-            "Request body exceeded maximum size of {} bytes".format(max_bytes)
+            f"Request body exceeded maximum size of {max_bytes} bytes"
         )
         if max_bytes:
             # Reject early if the client declares an oversized body
@@ -206,7 +221,7 @@ class Request:
         max_request_size: int = DEFAULT_MAX_REQUEST_SIZE,
         max_fields: int = DEFAULT_MAX_FIELDS,
         max_files: int = DEFAULT_MAX_FILES,
-        max_parts: Optional[int] = DEFAULT_MAX_PARTS,
+        max_parts: int | None = DEFAULT_MAX_PARTS,
         max_field_size: int = DEFAULT_MAX_FIELD_SIZE,
         max_memory_file_size: int = DEFAULT_MAX_MEMORY_FILE_SIZE,
         max_part_header_bytes: int = DEFAULT_MAX_PART_HEADER_BYTES,
@@ -299,12 +314,24 @@ class AsgiLifespan:
             while True:
                 message = await receive()
                 if message["type"] == "lifespan.startup":
-                    for fn in self.on_startup:
-                        await fn()
+                    try:
+                        for fn in self.on_startup:
+                            await fn()
+                    except Exception as e:  # noqa: BLE001
+                        await send(
+                            {"type": "lifespan.startup.failed", "message": str(e)}
+                        )
+                        return
                     await send({"type": "lifespan.startup.complete"})
                 elif message["type"] == "lifespan.shutdown":
-                    for fn in self.on_shutdown:
-                        await fn()
+                    try:
+                        for fn in self.on_shutdown:
+                            await fn()
+                    except Exception as e:  # noqa: BLE001
+                        await send(
+                            {"type": "lifespan.shutdown.failed", "message": str(e)}
+                        )
+                        return
                     await send({"type": "lifespan.shutdown.complete"})
                     return
         else:
@@ -484,6 +511,8 @@ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
             await asgi_send_html(send, "404: File not found", 404)
             return
 
+    # Only the actual static-file handler can bypass dynamic response privacy.
+    inner_static._datasette_static = True
     return inner_static
 
 
@@ -529,9 +558,9 @@ class Response:
         httponly=False,
         samesite="lax",
     ):
-        assert samesite in SAMESITE_VALUES, "samesite should be one of {}".format(
-            SAMESITE_VALUES
-        )
+        assert (
+            samesite in SAMESITE_VALUES
+        ), f"samesite should be one of {SAMESITE_VALUES}"
         cookie = SimpleCookie()
         cookie[key] = value
         for prop_name, prop_value in (
@@ -623,10 +652,23 @@ class AsgiRunOnFirstRequest:
         self.asgi = asgi
         self.on_startup = on_startup
         self._started = False
+        # Guards against concurrent early requests interleaving with startup:
+        # without this, several requests could all observe `_started is
+        # False` and proceed before any of them finish running the hooks.
+        self._lock = asyncio.Lock()
 
     async def __call__(self, scope, receive, send):
-        if not self._started:
-            self._started = True
-            for hook in self.on_startup:
-                await hook()
+        # Leave "lifespan" scope events alone - this shim only exists as a
+        # fallback for hosts that never send them. It wraps AsgiLifespan, so
+        # if it ran on_startup here too, a startup exception would escape
+        # before AsgiLifespan's own try/except got a chance to turn it into
+        # a lifespan.startup.failed message.
+        if scope["type"] != "lifespan" and not self._started:
+            async with self._lock:
+                # Re-check: another request may have finished startup while
+                # we were waiting for the lock.
+                if not self._started:
+                    for hook in self.on_startup:
+                        await hook()
+                    self._started = True
         return await self.asgi(scope, receive, send)

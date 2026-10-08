@@ -64,14 +64,14 @@ class ColumnType:
         Return an HTML string to render this cell value, or None to
         fall through to the default render_cell plugin hook chain.
         """
-        return None
+        return
 
     async def validate(self, value, datasette):
         """
         Validate a value before it is written. Return None if valid,
         or a string error message if invalid.
         """
-        return None
+        return
 
     async def transform_value(self, value, datasette):
         """

@@ -9,13 +9,15 @@ import importlib
 import os
 import sqlite3
 import time
+
+import pytest
+from itsdangerous import BadSignature
+
 from datasette import Context
-from datasette.app import Datasette, Database, ResourcesSQL
+from datasette.app import Database, Datasette, ResourcesSQL
 from datasette.database import DatasetteClosedError
 from datasette.resources import DatabaseResource
 from datasette.utils import PrefixedUrlString
-from itsdangerous import BadSignature
-import pytest
 
 
 @pytest.fixture
@@ -77,9 +79,7 @@ async def test_static_template_function_hashes_core_asset(tmp_path, monkeypatch)
     template = ds.get_jinja_environment().from_string("{{ static('demo.js') }}")
     expected_hash = hashlib.sha256(b"const demo = true;").hexdigest()[:12]
 
-    assert await template.render_async() == "/-/static/demo.js?_hash={}".format(
-        expected_hash
-    )
+    assert await template.render_async() == f"/-/static/demo.js?_hash={expected_hash}"
     assert isinstance(ds.static("demo.js"), PrefixedUrlString)
 
 
@@ -101,7 +101,7 @@ def test_static_hash_recalculated_when_cache_headers_disabled(tmp_path, monkeypa
     asset_path.write_bytes(b"let a = 2;")
 
     expected_hash = hashlib.sha256(b"let a = 2;").hexdigest()[:12]
-    assert ds.static("demo.js") == "/-/static/demo.js?_hash={}".format(expected_hash)
+    assert ds.static("demo.js") == f"/-/static/demo.js?_hash={expected_hash}"
     assert ds.static("demo.js") != first_url
 
 
@@ -114,12 +114,12 @@ def test_static_hashes_mounted_static_file(tmp_path):
     expected_hash = hashlib.sha256(b"body { color: black; }").hexdigest()[:12]
 
     assert ds.static("styles.css", mount="assets") == (
-        "/assets/styles.css?_hash={}".format(expected_hash)
+        f"/assets/styles.css?_hash={expected_hash}"
     )
 
     ds._settings["base_url"] = "/prefix/"
     assert ds.static("styles.css", mount="assets") == (
-        "/prefix/assets/styles.css?_hash={}".format(expected_hash)
+        f"/prefix/assets/styles.css?_hash={expected_hash}"
     )
 
 
@@ -144,9 +144,7 @@ def test_static_hashes_plugin_static_file(tmp_path, monkeypatch):
     expected_hash = hashlib.sha256(b"console.log('plugin');").hexdigest()[:12]
 
     assert ds.static("plugin.js", plugin="datasette_cluster_map") == (
-        "/-/static-plugins/datasette_cluster_map/plugin.js?_hash={}".format(
-            expected_hash
-        )
+        f"/-/static-plugins/datasette_cluster_map/plugin.js?_hash={expected_hash}"
     )
 
 

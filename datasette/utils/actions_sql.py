@@ -29,6 +29,15 @@ from datasette.utils.permissions import gather_permission_sql_from_hooks
 
 if TYPE_CHECKING:
     from datasette.app import Datasette
+    from datasette.permissions import Action
+
+
+def _child_collation(action: "Action") -> str:
+    """Match resource identity without changing the spelling returned by SQL."""
+    resource_class = action.resource_class
+    if resource_class is not None and resource_class.case_insensitive_child:
+        return "NOCASE"
+    return "BINARY"
 
 
 async def build_allowed_resources_sql(
@@ -149,6 +158,7 @@ async def _build_single_action_sql(
         raise ValueError(f"Unknown action: {action}")
 
     # Get base resources SQL from the resource class
+    child_collation = _child_collation(action_obj)
     base_resources_sql = await action_obj.resource_class.resources_sql(
         datasette, actor=actor
     )
@@ -185,7 +195,7 @@ async def _build_single_action_sql(
         if permission_sql.sql is None:
             continue
         rule_sqls.append(f"""
-            SELECT parent, child, allow, reason, '{permission_sql.source}' AS source_plugin FROM (
+            SELECT parent, child COLLATE {child_collation} AS child, allow, reason, '{permission_sql.source}' AS source_plugin FROM (
                 {permission_sql.sql}
             )
             """.strip())
@@ -252,88 +262,62 @@ async def _build_single_action_sql(
                 ]
             )
 
-    # Continue with the cascading logic
-    query_parts.extend(
-        [
-            "child_lvl AS (",
-            "  SELECT b.parent, b.child,",
-            "         MAX(CASE WHEN ar.allow = 0 THEN 1 ELSE 0 END) AS any_deny,",
-            "         MAX(CASE WHEN ar.allow = 1 THEN 1 ELSE 0 END) AS any_allow,",
-            "         json_group_array(CASE WHEN ar.allow = 0 THEN ar.source_plugin || ': ' || ar.reason END) AS deny_reasons,",
-            "         json_group_array(CASE WHEN ar.allow = 1 THEN ar.source_plugin || ': ' || ar.reason END) AS allow_reasons",
-            "  FROM base b",
-            "  LEFT JOIN all_rules ar ON ar.parent = b.parent AND ar.child = b.child",
-            "  GROUP BY b.parent, b.child",
-            "),",
-            "parent_lvl AS (",
-            "  SELECT b.parent, b.child,",
-            "         MAX(CASE WHEN ar.allow = 0 THEN 1 ELSE 0 END) AS any_deny,",
-            "         MAX(CASE WHEN ar.allow = 1 THEN 1 ELSE 0 END) AS any_allow,",
-            "         json_group_array(CASE WHEN ar.allow = 0 THEN ar.source_plugin || ': ' || ar.reason END) AS deny_reasons,",
-            "         json_group_array(CASE WHEN ar.allow = 1 THEN ar.source_plugin || ': ' || ar.reason END) AS allow_reasons",
-            "  FROM base b",
-            "  LEFT JOIN all_rules ar ON ar.parent = b.parent AND ar.child IS NULL",
-            "  GROUP BY b.parent, b.child",
-            "),",
-            "global_lvl AS (",
-            "  SELECT b.parent, b.child,",
-            "         MAX(CASE WHEN ar.allow = 0 THEN 1 ELSE 0 END) AS any_deny,",
-            "         MAX(CASE WHEN ar.allow = 1 THEN 1 ELSE 0 END) AS any_allow,",
-            "         json_group_array(CASE WHEN ar.allow = 0 THEN ar.source_plugin || ': ' || ar.reason END) AS deny_reasons,",
-            "         json_group_array(CASE WHEN ar.allow = 1 THEN ar.source_plugin || ': ' || ar.reason END) AS allow_reasons",
-            "  FROM base b",
-            "  LEFT JOIN all_rules ar ON ar.parent IS NULL AND ar.child IS NULL",
-            "  GROUP BY b.parent, b.child",
-            "),",
+    # Continue with the cascading logic.
+    # Aggregate the RULES by cascade level (small), rather than grouping
+    # base x rules (which scales with the number of resources).
+    def _agg(select_key, where, group_by):
+        parts = [
+            f"  SELECT {select_key}",
+            "         MAX(CASE WHEN allow = 0 THEN 1 ELSE 0 END) AS any_deny,",
+            "         MAX(CASE WHEN allow = 1 THEN 1 ELSE 0 END) AS any_allow,",
+            "         json_group_array(CASE WHEN allow = 0 THEN source_plugin || ': ' || reason END) AS deny_reasons,",
+            "         json_group_array(CASE WHEN allow = 1 THEN source_plugin || ': ' || reason END) AS allow_reasons",
+            f"  FROM all_rules WHERE {where}",
         ]
+        if group_by:
+            parts.append(f"  GROUP BY {group_by}")
+        return parts
+
+    query_parts.extend(
+        ["child_agg AS ("]
+        + _agg(
+            "parent, child,",
+            "parent IS NOT NULL AND child IS NOT NULL",
+            "parent, child",
+        )
+        + ["),", "parent_agg AS ("]
+        + _agg("parent,", "parent IS NOT NULL AND child IS NULL", "parent")
+        + ["),", "global_agg AS ("]
+        + _agg("", "parent IS NULL AND child IS NULL", None)
+        + ["),"]
     )
 
     # Add anonymous decision logic if needed
     if include_is_private:
-        query_parts.extend(
-            [
-                "anon_child_lvl AS (",
-                "  SELECT b.parent, b.child,",
-                "         MAX(CASE WHEN ar.allow = 0 THEN 1 ELSE 0 END) AS any_deny,",
-                "         MAX(CASE WHEN ar.allow = 1 THEN 1 ELSE 0 END) AS any_allow",
-                "  FROM base b",
-                "  LEFT JOIN anon_rules ar ON ar.parent = b.parent AND ar.child = b.child",
-                "  GROUP BY b.parent, b.child",
-                "),",
-                "anon_parent_lvl AS (",
-                "  SELECT b.parent, b.child,",
-                "         MAX(CASE WHEN ar.allow = 0 THEN 1 ELSE 0 END) AS any_deny,",
-                "         MAX(CASE WHEN ar.allow = 1 THEN 1 ELSE 0 END) AS any_allow",
-                "  FROM base b",
-                "  LEFT JOIN anon_rules ar ON ar.parent = b.parent AND ar.child IS NULL",
-                "  GROUP BY b.parent, b.child",
-                "),",
-                "anon_global_lvl AS (",
-                "  SELECT b.parent, b.child,",
-                "         MAX(CASE WHEN ar.allow = 0 THEN 1 ELSE 0 END) AS any_deny,",
-                "         MAX(CASE WHEN ar.allow = 1 THEN 1 ELSE 0 END) AS any_allow",
-                "  FROM base b",
-                "  LEFT JOIN anon_rules ar ON ar.parent IS NULL AND ar.child IS NULL",
-                "  GROUP BY b.parent, b.child",
-                "),",
-                "anon_decisions AS (",
-                "  SELECT",
-                "    b.parent, b.child,",
-                "    CASE",
-                "      WHEN acl.any_deny = 1 THEN 0",
-                "      WHEN acl.any_allow = 1 THEN 1",
-                "      WHEN apl.any_deny = 1 THEN 0",
-                "      WHEN apl.any_allow = 1 THEN 1",
-                "      WHEN agl.any_deny = 1 THEN 0",
-                "      WHEN agl.any_allow = 1 THEN 1",
-                "      ELSE 0",
-                "    END AS anon_is_allowed",
-                "  FROM base b",
-                "  JOIN anon_child_lvl acl ON b.parent = acl.parent AND (b.child = acl.child OR (b.child IS NULL AND acl.child IS NULL))",
-                "  JOIN anon_parent_lvl apl ON b.parent = apl.parent AND (b.child = apl.child OR (b.child IS NULL AND apl.child IS NULL))",
-                "  JOIN anon_global_lvl agl ON b.parent = agl.parent AND (b.child = agl.child OR (b.child IS NULL AND agl.child IS NULL))",
-                "),",
+
+        def _anon_agg(select_key, where, group_by):
+            parts = [
+                f"  SELECT {select_key}",
+                "         MAX(CASE WHEN allow = 0 THEN 1 ELSE 0 END) AS any_deny,",
+                "         MAX(CASE WHEN allow = 1 THEN 1 ELSE 0 END) AS any_allow",
+                f"  FROM anon_rules WHERE {where}",
             ]
+            if group_by:
+                parts.append(f"  GROUP BY {group_by}")
+            return parts
+
+        query_parts.extend(
+            ["anon_child_agg AS ("]
+            + _anon_agg(
+                f"parent, child COLLATE {child_collation} AS child,",
+                "parent IS NOT NULL AND child IS NOT NULL",
+                f"parent, child COLLATE {child_collation}",
+            )
+            + ["),", "anon_parent_agg AS ("]
+            + _anon_agg("parent,", "parent IS NOT NULL AND child IS NULL", "parent")
+            + ["),", "anon_global_agg AS ("]
+            + _anon_agg("", "parent IS NULL AND child IS NULL", None)
+            + ["),"]
         )
 
     # Final decisions
@@ -342,31 +326,28 @@ async def _build_single_action_sql(
             "decisions AS (",
             "  SELECT",
             "    b.parent, b.child,",
-            "    -- Cascading permission logic: child → parent → global, DENY beats ALLOW at each level",
+            "    -- Cascading permission logic: child -> parent -> global, DENY beats ALLOW at each level",
             "    -- Priority order:",
-            "    --   1. Child-level deny (most specific, blocks access)",
-            "    --   2. Child-level allow (most specific, grants access)",
-            "    --   3. Parent-level deny (intermediate, blocks access)",
-            "    --   4. Parent-level allow (intermediate, grants access)",
-            "    --   5. Global-level deny (least specific, blocks access)",
-            "    --   6. Global-level allow (least specific, grants access)",
+            "    --   1. Child-level deny  2. Child-level allow",
+            "    --   3. Parent-level deny 4. Parent-level allow",
+            "    --   5. Global-level deny 6. Global-level allow",
             "    --   7. Default deny (no rules match)",
             "    CASE",
-            "      WHEN cl.any_deny = 1 THEN 0",
-            "      WHEN cl.any_allow = 1 THEN 1",
-            "      WHEN pl.any_deny = 1 THEN 0",
-            "      WHEN pl.any_allow = 1 THEN 1",
-            "      WHEN gl.any_deny = 1 THEN 0",
-            "      WHEN gl.any_allow = 1 THEN 1",
+            "      WHEN ca.any_deny = 1 THEN 0",
+            "      WHEN ca.any_allow = 1 THEN 1",
+            "      WHEN pa.any_deny = 1 THEN 0",
+            "      WHEN pa.any_allow = 1 THEN 1",
+            "      WHEN ga.any_deny = 1 THEN 0",
+            "      WHEN ga.any_allow = 1 THEN 1",
             "      ELSE 0",
             "    END AS is_allowed,",
             "    CASE",
-            "      WHEN cl.any_deny = 1 THEN cl.deny_reasons",
-            "      WHEN cl.any_allow = 1 THEN cl.allow_reasons",
-            "      WHEN pl.any_deny = 1 THEN pl.deny_reasons",
-            "      WHEN pl.any_allow = 1 THEN pl.allow_reasons",
-            "      WHEN gl.any_deny = 1 THEN gl.deny_reasons",
-            "      WHEN gl.any_allow = 1 THEN gl.allow_reasons",
+            "      WHEN ca.any_deny = 1 THEN ca.deny_reasons",
+            "      WHEN ca.any_allow = 1 THEN ca.allow_reasons",
+            "      WHEN pa.any_deny = 1 THEN pa.deny_reasons",
+            "      WHEN pa.any_allow = 1 THEN pa.allow_reasons",
+            "      WHEN ga.any_deny = 1 THEN ga.deny_reasons",
+            "      WHEN ga.any_allow = 1 THEN ga.allow_reasons",
             "      ELSE '[]'",
             "    END AS reason",
         ]
@@ -374,21 +355,34 @@ async def _build_single_action_sql(
 
     if include_is_private:
         query_parts.append(
-            "    , CASE WHEN ad.anon_is_allowed = 0 THEN 1 ELSE 0 END AS is_private"
+            "    , CASE WHEN ("
+            "CASE"
+            " WHEN aca.any_deny = 1 THEN 0"
+            " WHEN aca.any_allow = 1 THEN 1"
+            " WHEN apa.any_deny = 1 THEN 0"
+            " WHEN apa.any_allow = 1 THEN 1"
+            " WHEN aga.any_deny = 1 THEN 0"
+            " WHEN aga.any_allow = 1 THEN 1"
+            " ELSE 0 END"
+            ") = 0 THEN 1 ELSE 0 END AS is_private"
         )
 
     query_parts.extend(
         [
             "  FROM base b",
-            "  JOIN child_lvl cl ON b.parent = cl.parent AND (b.child = cl.child OR (b.child IS NULL AND cl.child IS NULL))",
-            "  JOIN parent_lvl pl ON b.parent = pl.parent AND (b.child = pl.child OR (b.child IS NULL AND pl.child IS NULL))",
-            "  JOIN global_lvl gl ON b.parent = gl.parent AND (b.child = gl.child OR (b.child IS NULL AND gl.child IS NULL))",
+            "  LEFT JOIN child_agg ca ON ca.parent = b.parent AND ca.child = b.child",
+            "  LEFT JOIN parent_agg pa ON pa.parent = b.parent",
+            "  CROSS JOIN global_agg ga",
         ]
     )
 
     if include_is_private:
-        query_parts.append(
-            "  JOIN anon_decisions ad ON b.parent = ad.parent AND (b.child = ad.child OR (b.child IS NULL AND ad.child IS NULL))"
+        query_parts.extend(
+            [
+                "  LEFT JOIN anon_child_agg aca ON aca.parent = b.parent AND aca.child = b.child",
+                "  LEFT JOIN anon_parent_agg apa ON apa.parent = b.parent",
+                "  CROSS JOIN anon_global_agg aga",
+            ]
         )
 
     query_parts.append(")")
@@ -398,10 +392,31 @@ async def _build_single_action_sql(
         # Wrap each restriction_sql in a subquery to avoid operator precedence issues
         # with UNION ALL inside the restriction SQL statements
         restriction_intersect = "\nINTERSECT\n".join(
-            f"SELECT * FROM ({sql})" for sql in restriction_sqls
+            f"SELECT parent, child COLLATE {child_collation} AS child FROM ({sql})"
+            for sql in restriction_sqls
         )
+        # Decompose by NULL-pattern so the final filter can use pure-equality
+        # EXISTS lookups (satisfiable via automatic indexes) instead of a
+        # correlated OR-scan over the whole list.
         query_parts.extend(
-            [",", "restriction_list AS (", f"  {restriction_intersect}", ")"]
+            [
+                ",",
+                "restriction_list AS (",
+                f"  {restriction_intersect}",
+                "),",
+                "restriction_exact AS (",
+                "  SELECT parent, child FROM restriction_list WHERE parent IS NOT NULL AND child IS NOT NULL",
+                "),",
+                "restriction_parent_any AS (",
+                "  SELECT DISTINCT parent FROM restriction_list WHERE parent IS NOT NULL AND child IS NULL",
+                "),",
+                "restriction_child_any AS (",
+                "  SELECT DISTINCT child FROM restriction_list WHERE parent IS NULL AND child IS NOT NULL",
+                "),",
+                "restriction_all AS (",
+                "  SELECT 1 AS matched FROM restriction_list WHERE parent IS NULL AND child IS NULL LIMIT 1",
+                ")",
+            ]
         )
 
     # Final SELECT
@@ -416,10 +431,11 @@ async def _build_single_action_sql(
     # Add restriction filter if there are restrictions
     if restriction_sqls:
         query_parts.append("""
-  AND EXISTS (
-    SELECT 1 FROM restriction_list r
-    WHERE (r.parent = decisions.parent OR r.parent IS NULL)
-      AND (r.child = decisions.child OR r.child IS NULL)
+  AND (
+    EXISTS (SELECT 1 FROM restriction_all)
+    OR EXISTS (SELECT 1 FROM restriction_parent_any r WHERE r.parent = decisions.parent)
+    OR EXISTS (SELECT 1 FROM restriction_child_any r WHERE r.child = decisions.child)
+    OR EXISTS (SELECT 1 FROM restriction_exact r WHERE r.parent = decisions.parent AND r.child = decisions.child)
   )""")
 
     # Add parent filter if specified
@@ -475,6 +491,7 @@ async def build_permission_rules_sql(
     union_parts = []
     all_params = {}
     restriction_sqls = []
+    child_collation = _child_collation(action_obj)
 
     for permission_sql in permission_sqls:
         all_params.update(permission_sql.params or {})
@@ -488,7 +505,7 @@ async def build_permission_rules_sql(
             continue
 
         union_parts.append(f"""
-            SELECT parent, child, allow, reason, '{permission_sql.source}' AS source_plugin FROM (
+            SELECT parent, child COLLATE {child_collation} AS child, allow, reason, '{permission_sql.source}' AS source_plugin FROM (
                 {permission_sql.sql}
             )
             """.strip())
@@ -559,6 +576,7 @@ async def check_permissions_for_actions(
     verdicts = {}
 
     for i, (action, permission_sqls) in enumerate(zip(unique_actions, gathered)):
+        child_collation = _child_collation(datasette.actions[action])
         prefix = f"a{i}_"
         rule_parts = []
         restriction_parts = []
@@ -584,7 +602,7 @@ async def check_permissions_for_actions(
             if sql is None:
                 continue
             rule_parts.append(
-                f"SELECT parent, child, allow, reason, '{permission_sql.source}' AS source_plugin FROM (\n{sql}\n)"
+                f"SELECT parent, child COLLATE {child_collation} AS child, allow, reason, '{permission_sql.source}' AS source_plugin FROM (\n{sql}\n)"
             )
 
         if not rule_parts:
@@ -618,7 +636,8 @@ async def check_permissions_for_actions(
         if restriction_parts:
             # Database-level restrictions (parent, NULL) match all children
             restriction_intersect = "\nINTERSECT\n".join(
-                f"SELECT * FROM ({sql})" for sql in restriction_parts
+                f"SELECT parent, child COLLATE {child_collation} AS child FROM ({sql})"
+                for sql in restriction_parts
             )
             ctes.append(f"a{i}_restriction AS (\n{restriction_intersect}\n)")
             verdict_sql = f"""({verdict_sql}) AND EXISTS (
@@ -673,3 +692,240 @@ async def check_permission_for_resource(
         child=child,
     )
     return results[action]
+
+
+async def explain_permission_for_resource(
+    *,
+    datasette: "Datasette",
+    actor: dict | None,
+    action: str,
+    parent: str | None,
+    child: str | None,
+) -> dict:
+    """Explain a permission decision for one action and resource.
+
+    This is intended for Datasette's permission debugging tools. It uses the
+    same ``permission_resources_sql`` hook results and the same resolution
+    rules as :func:`check_permissions_for_actions`, but also returns the
+    matching rules, actor restriction results and ``also_requires`` chain.
+
+    The returned dictionary is part of Datasette's unstable debugging API.
+    """
+
+    action_obj = datasette.actions.get(action)
+    if action_obj is None:
+        raise ValueError(f"Unknown action: {action}")
+
+    explanation = await _explain_single_action(
+        datasette=datasette,
+        actor=actor,
+        action=action,
+        parent=parent,
+        child=child,
+    )
+
+    required_actions = []
+    if action_obj.also_requires:
+        required = await explain_permission_for_resource(
+            datasette=datasette,
+            actor=actor,
+            action=action_obj.also_requires,
+            parent=parent,
+            child=child,
+        )
+        required_actions.append(required)
+
+    explanation["required_actions"] = required_actions
+    explanation["allowed"] = bool(
+        explanation["rule_allowed"]
+        and explanation["restriction_allowed"]
+        and all(required["allowed"] for required in required_actions)
+    )
+    explanation["summary"] = _permission_explanation_summary(explanation)
+    return explanation
+
+
+async def _explain_single_action(
+    *,
+    datasette: "Datasette",
+    actor: dict | None,
+    action: str,
+    parent: str | None,
+    child: str | None,
+) -> dict:
+    """Return matching rules and restrictions for a single action."""
+    from datasette.utils.permissions import SKIP_PERMISSION_CHECKS
+
+    permission_sqls = await gather_permission_sql_from_hooks(
+        datasette=datasette,
+        actor=actor,
+        action=action,
+    )
+
+    if permission_sqls is SKIP_PERMISSION_CHECKS:
+        return {
+            "action": action,
+            "rule_allowed": True,
+            "restriction_allowed": True,
+            "winning_scope": "global",
+            "matched_rules": [
+                {
+                    "scope": "global",
+                    "effect": "allow",
+                    "source": "skip_permission_checks",
+                    "reason": "Permission checks were explicitly skipped",
+                    "decisive": True,
+                    "ignored_because": None,
+                }
+            ],
+            "restrictions": [],
+        }
+
+    db = datasette.get_internal_database()
+    matched_rules = []
+    restrictions = []
+    child_collation = _child_collation(datasette.actions[action])
+
+    for permission_sql in permission_sqls:
+        params = dict(permission_sql.params or {})
+        parent_param = _unused_parameter_name(params, "_explain_parent")
+        params[parent_param] = parent
+        child_param = _unused_parameter_name(params, "_explain_child")
+        params[child_param] = child
+
+        if permission_sql.sql:
+            rows = await db.execute(
+                f"""
+                SELECT parent, child, allow, reason
+                FROM ({permission_sql.sql}) AS permission_rules
+                WHERE (parent IS NULL OR parent = :{parent_param})
+                  AND (child IS NULL OR child COLLATE {child_collation} = :{child_param})
+                """,
+                params,
+            )
+            for row in rows:
+                specificity = (
+                    2
+                    if row["child"] is not None
+                    else 1 if row["parent"] is not None else 0
+                )
+                matched_rules.append(
+                    {
+                        "scope": ("resource", "parent", "global")[2 - specificity],
+                        "effect": "allow" if row["allow"] else "deny",
+                        "source": permission_sql.source,
+                        "reason": row["reason"],
+                        "_specificity": specificity,
+                    }
+                )
+
+        if permission_sql.restriction_sql:
+            restriction_row = (
+                await db.execute(
+                    f"""
+                    SELECT EXISTS(
+                        SELECT 1 FROM ({permission_sql.restriction_sql}) AS restriction_rules
+                        WHERE (parent IS NULL OR parent = :{parent_param})
+                          AND (child IS NULL OR child COLLATE {child_collation} = :{child_param})
+                    ) AS resource_is_in_allowlist
+                    """,
+                    params,
+                )
+            ).first()
+            restriction_allowed = bool(restriction_row[0])
+            restrictions.append(
+                {
+                    "source": permission_sql.source,
+                    "allowed": restriction_allowed,
+                    "reason": params.get("deny")
+                    or (
+                        "Resource is included in this restriction allowlist"
+                        if restriction_allowed
+                        else "Resource is not included in this restriction allowlist"
+                    ),
+                }
+            )
+
+    matched_rules.sort(
+        key=lambda rule: (
+            -rule["_specificity"],
+            0 if rule["effect"] == "deny" else 1,
+            rule["source"] or "",
+            rule["reason"] or "",
+        )
+    )
+
+    if matched_rules:
+        winning_specificity = matched_rules[0]["_specificity"]
+        winning_rules = [
+            rule
+            for rule in matched_rules
+            if rule["_specificity"] == winning_specificity
+        ]
+        rule_allowed = not any(rule["effect"] == "deny" for rule in winning_rules)
+        winning_scope = winning_rules[0]["scope"]
+    else:
+        winning_specificity = None
+        rule_allowed = False
+        winning_scope = None
+
+    for rule in matched_rules:
+        specificity = rule.pop("_specificity")
+        if specificity != winning_specificity:
+            rule["decisive"] = False
+            rule["ignored_because"] = "A more specific rule matched"
+        elif not rule_allowed and rule["effect"] == "allow":
+            rule["decisive"] = False
+            rule["ignored_because"] = "A deny rule matched at the same scope"
+        else:
+            rule["decisive"] = True
+            rule["ignored_because"] = None
+
+    return {
+        "action": action,
+        "rule_allowed": rule_allowed,
+        "restriction_allowed": all(
+            restriction["allowed"] for restriction in restrictions
+        ),
+        "winning_scope": winning_scope,
+        "matched_rules": matched_rules,
+        "restrictions": restrictions,
+    }
+
+
+def _unused_parameter_name(params: dict, preferred: str) -> str:
+    """Return a SQL parameter name that is not already in ``params``."""
+    candidate = preferred
+    suffix = 2
+    while candidate in params:
+        candidate = f"{preferred}_{suffix}"
+        suffix += 1
+    return candidate
+
+
+def _permission_explanation_summary(explanation: dict) -> str:
+    denied_requirement = next(
+        (
+            required
+            for required in explanation["required_actions"]
+            if not required["allowed"]
+        ),
+        None,
+    )
+    if denied_requirement:
+        return (
+            f"Denied because {explanation['action']} also requires "
+            f"{denied_requirement['action']}, which was denied."
+        )
+    if not explanation["matched_rules"]:
+        return "Denied because no permission rule matched this actor and resource."
+    if not explanation["rule_allowed"]:
+        return (
+            f"Denied by a {explanation['winning_scope']}-level rule. "
+            "Deny rules take precedence over allow rules at the same scope."
+        )
+    if not explanation["restriction_allowed"]:
+        return (
+            "Denied because the resource is not included in the actor's restrictions."
+        )
+    return f"Allowed by the matching {explanation['winning_scope']}-level rule."

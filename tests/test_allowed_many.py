@@ -10,6 +10,8 @@ Layer 3: table/database views precompute all registered actions before
 
 import pytest
 import pytest_asyncio
+
+from datasette import hookimpl
 from datasette.app import Datasette
 from datasette.permissions import (
     Action,
@@ -18,7 +20,6 @@ from datasette.permissions import (
     _permission_check_cache,
 )
 from datasette.resources import DatabaseResource, TableResource
-from datasette import hookimpl
 
 
 class CountingRulesPlugin:
@@ -114,7 +115,7 @@ async def test_allowed_not_memoized_without_cache(counting_ds):
 async def test_cache_keyed_on_full_actor_identity(counting_ds):
     """Interleaved checks for different actors never share cache entries."""
     # Uses drop-table because default permissions deny it to non-root actors
-    ds, plugin = counting_ds
+    ds, _plugin = counting_ds
     resource = TableResource("analytics", "users")
     token = _permission_check_cache.set({})
     try:
@@ -180,7 +181,7 @@ async def test_cache_keyed_on_resource(counting_ds):
 
 @pytest.mark.asyncio
 async def test_skip_permission_checks_bypasses_cache(counting_ds):
-    ds, plugin = counting_ds
+    ds, _plugin = counting_ds
     resource = TableResource("analytics", "users")
     token = _permission_check_cache.set({})
     try:

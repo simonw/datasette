@@ -1,49 +1,56 @@
-from dataclasses import asdict, dataclass, field
-from urllib.parse import parse_qsl, urlencode
 import asyncio
 import hashlib
 import itertools
 import json
-import markupsafe
 import os
 import textwrap
+from dataclasses import asdict, dataclass, field
+from urllib.parse import parse_qsl, urlencode
 
-from datasette.extras import extra_names_from_request, ExtraScope
+import markupsafe
+
 from datasette.database import QueryInterrupted
+from datasette.extras import ExtraScope, extra_names_from_request
+from datasette.plugins import pm
 from datasette.resources import DatabaseResource, QueryResource
 from datasette.stored_queries import StoredQuery, stored_query_to_dict
-from datasette.write_sql import QueryWriteRejected
 from datasette.utils import (
+    InvalidSql,
     add_cors_headers,
     await_me_maybe,
-    error_body,
     call_with_supported_arguments,
-    named_parameters as derive_named_parameters,
+    error_body,
     format_bytes,
-    make_slot_function,
-    tilde_decode,
-    to_css_class,
-    validate_sql_select,
     is_url,
+    make_slot_function,
     path_with_added_args,
     path_with_format,
     path_with_removed_args,
     sqlite3,
+    tilde_decode,
+    to_css_class,
     truncate_url,
-    InvalidSql,
+    validate_sql_select,
 )
-from datasette.utils.asgi import AsgiFileDownload, NotFound, Response, Forbidden
-from datasette.plugins import pm
+from datasette.utils import (
+    named_parameters as derive_named_parameters,
+)
+from datasette.utils.asgi import AsgiFileDownload, Forbidden, NotFound, Response
+from datasette.write_sql import QueryWriteRejected
 
+from . import Context
 from .base import DatasetteError, View, stream_csv
-from .query_helpers import _ensure_stored_query_execution_permissions, _table_columns
+from .query_helpers import (
+    _block_framing,
+    _ensure_stored_query_execution_permissions,
+    _table_columns,
+)
+from .table_create_alter import _create_table_ui_context
 from .table_extras import (
     QueryExtraContext,
     resolve_query_extras,
     table_extra_registry,
 )
-from .table_create_alter import _create_table_ui_context
-from . import Context
 
 
 @dataclass
@@ -100,7 +107,7 @@ class DatabaseView(View):
             return response
 
         if format_ not in ("html", "json"):
-            raise NotFound("Invalid format: {}".format(format_))
+            raise NotFound(f"Invalid format: {format_}")
 
         metadata = await datasette.get_database_metadata(database)
 
@@ -164,7 +171,7 @@ class DatabaseView(View):
                         "label": "Create table",
                         "description": "Create a new table in this database.",
                         "attrs": {
-                            "aria-label": "Create table in {}".format(database),
+                            "aria-label": f"Create table in {database}",
                             "data-database-action": "create-table",
                         },
                     }
@@ -271,9 +278,7 @@ class DatabaseView(View):
                 view_name="database",
             ),
             headers={
-                "Link": '<{}>; rel="alternate"; type="application/json+datasette"'.format(
-                    alternate_url_json
-                )
+                "Link": f'<{alternate_url_json}>; rel="alternate"; type="application/json+datasette"'
             },
         )
 
@@ -556,7 +561,7 @@ async def database_download(request, datasette):
     if datasette.cors:
         add_cors_headers(headers)
     if db.hash:
-        etag = '"{}"'.format(db.hash)
+        etag = f'"{db.hash}"'
         headers["Etag"] = etag
         # Has user seen this already?
         if_none_match = request.headers.get("if-none-match")
@@ -643,8 +648,15 @@ class QueryView(View):
         ok = None
         redirect_url = None
         try:
+            execute_write_kwargs = {"request": request}
+            if stored_query.is_trusted:
+                analysis = await db.analyze_sql(stored_query.sql, params_for_query)
+                if any(
+                    operation.operation == "vacuum" for operation in analysis.operations
+                ):
+                    execute_write_kwargs["transaction"] = False
             cursor = await db.execute_write(
-                stored_query.sql, params_for_query, request=request
+                stored_query.sql, params_for_query, **execute_write_kwargs
             )
             # success message can come from on_success_message or on_success_message_sql
             message = None
@@ -657,8 +669,9 @@ class QueryView(View):
                     ).first()
                     if message_result:
                         message = message_result[0]
-                except Exception as ex:
-                    message = "Error running on_success_message_sql: {}".format(ex)
+                except Exception as ex:  # noqa: BLE001
+                    # Stored-query on_success_message_sql is user-authored
+                    message = f"Error running on_success_message_sql: {ex}"
                     message_type = datasette.ERROR
             if not message:
                 if stored_query.on_success_message:
@@ -672,7 +685,8 @@ class QueryView(View):
 
             redirect_url = stored_query.on_success_redirect
             ok = True
-        except Exception as ex:
+        except Exception as ex:  # noqa: BLE001
+            # Stored-query execution is user-authored SQL
             message = stored_query.on_error_message or str(ex)
             message_type = datasette.ERROR
             redirect_url = stored_query.on_error_redirect
@@ -806,16 +820,16 @@ class QueryView(View):
                 rows = results.rows
             except QueryInterrupted as ex:
                 raise DatasetteError(
-                    textwrap.dedent("""
+                    textwrap.dedent(f"""
                     <p>SQL query took too long. The time limit is controlled by the
                     <a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>
                     configuration option.</p>
-                    <textarea style="width: 90%">{}</textarea>
+                    <textarea style="width: 90%">{markupsafe.escape(ex.sql)}</textarea>
                     <script>
                     let ta = document.querySelector("textarea");
                     ta.style.height = ta.scrollHeight + "px";
                     </script>
-                """.format(markupsafe.escape(ex.sql))).strip(),
+                """).strip(),
                     title="SQL Interrupted",
                     status=400,
                     message_is_html=True,
@@ -831,8 +845,6 @@ class QueryView(View):
                 columns = []
             except (sqlite3.OperationalError, InvalidSql) as ex:
                 raise DatasetteError(str(ex), title="Invalid SQL", status=400)
-            except sqlite3.OperationalError as ex:
-                raise DatasetteError(str(ex))
             except DatasetteError:
                 raise
 
@@ -849,12 +861,13 @@ class QueryView(View):
                 raise DatasetteError("?sql= is required", status=400)
 
             async def fetch_data_for_csv(request, _next=None):
-                results = await db.execute(sql, params, truncate=True)
+                # Reuse the trusted magic parameter values prepared above.
+                results = await db.execute(sql, params_for_query, truncate=True)
                 data = {"rows": results.rows, "columns": results.columns}
                 return data, None, None
 
             return await stream_csv(datasette, fetch_data_for_csv, request, db.name)
-        elif format_ in datasette.renderers.keys():
+        elif format_ in datasette.renderers:
             if not sql:
                 raise DatasetteError("?sql= is required", status=400)
             data = {"ok": True, "rows": rows, "columns": columns}
@@ -946,9 +959,7 @@ class QueryView(View):
             }
             headers.update(
                 {
-                    "Link": '<{}>; rel="alternate"; type="application/json+datasette"'.format(
-                        alternate_url_json
-                    )
+                    "Link": f'<{alternate_url_json}>; rel="alternate"; type="application/json+datasette"'
                 }
             )
             metadata = await query_metadata()
@@ -1029,9 +1040,7 @@ class QueryView(View):
                         + "?"
                         + urlencode(
                             {
-                                **{
-                                    "sql": sql,
-                                },
+                                "sql": sql,
                                 **named_parameter_values,
                             }
                         )
@@ -1133,9 +1142,11 @@ class QueryView(View):
                 headers=headers,
             )
         else:
-            assert False, "Invalid format: {}".format(format_)
+            assert False, f"Invalid format: {format_}"
         if datasette.cors:
             add_cors_headers(r.headers)
+        if stored_query_write and format_ == "html":
+            _block_framing(r)
         return r
 
 
@@ -1234,7 +1245,7 @@ async def display_rows(datasette, database, request, rows, columns):
                         '<a class="blob-download" href="{}"{}>&lt;Binary:&nbsp;{:,}&nbsp;byte{}&gt;</a>'.format(
                             blob_url,
                             (
-                                ' title="{}"'.format(formatted)
+                                f' title="{formatted}"'
                                 if "bytes" not in formatted
                                 else ""
                             ),

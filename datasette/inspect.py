@@ -1,13 +1,13 @@
 import hashlib
 
 from .utils import (
-    detect_spatialite,
     detect_fts,
     detect_primary_keys,
+    detect_spatialite,
     escape_sqlite,
     get_all_foreign_keys,
-    table_columns,
     sqlite3,
+    table_columns,
 )
 
 HASH_BLOCK_SIZE = 1024 * 1024
@@ -95,10 +95,10 @@ def inspect_tables(conn, database_metadata):
                 """)
         ]
 
-    for t in tables.keys():
+    for t, table_info in tables.items():
         for hidden_table in hidden_tables:
             if t == hidden_table or t.startswith(hidden_table):
-                tables[t]["hidden"] = True
+                table_info["hidden"] = True
                 continue
 
     return tables

@@ -1,10 +1,13 @@
-from datasette.utils import detect_json1
-from datasette.utils.sqlite import sqlite_version
-from datasette.fixtures import generate_compound_rows, generate_sortable_rows
-from .fixtures import make_app_client
 import json
-import pytest
 import urllib
+
+import pytest
+
+from datasette.fixtures import generate_compound_rows, generate_sortable_rows
+from datasette.utils import detect_json1, tilde_encode
+from datasette.utils.sqlite import sqlite_version
+
+from .fixtures import make_app_client
 
 
 @pytest.mark.asyncio
@@ -616,7 +619,10 @@ def test_searchmode(table_metadata, querystring, expected_rows):
             ],
         ),
         (
-            "/fixtures/searchable_view.json?_shape=arrays&_search=weasel&_fts_table=searchable_fts&_fts_pk=pk",
+            (
+                "/fixtures/searchable_view_configured_by_metadata.json"
+                "?_shape=arrays&_search=weasel&_fts_table=searchable_fts&_fts_pk=pk"
+            ),
             [[2, "terry dog", "sara weasel", "puma"]],
         ),
     ],
@@ -684,6 +690,34 @@ async def test_table_filter_queries_multiple_of_same_type(ds_client):
         [4, "RENDER_CELL_DEMO"],
         [5, "RENDER_CELL_ASYNC"],
     ] == response.json()["rows"]
+
+
+@pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
+def test_table_filters_quote_identifiers():
+    with make_app_client(
+        extra_databases={"demo.db": """
+                create table "items]bracket" (
+                    id integer primary key,
+                    "name""quote" text,
+                    "tags]bracket" text
+                );
+                insert into "items]bracket" values (1, 'Alice', '["red"]');
+            """},
+    ) as client:
+        table_path = tilde_encode("items]bracket")
+        exact_query = urllib.parse.urlencode(
+            {'name"quote__exact': "Alice", "_shape": "arrays"}
+        )
+        exact_response = client.get(f"/demo/{table_path}.json?{exact_query}")
+        assert exact_response.status == 200
+        assert exact_response.json["rows"] == [[1, "Alice", '["red"]']]
+
+        array_query = urllib.parse.urlencode(
+            {"tags]bracket__arraycontains": "red", "_shape": "arrays"}
+        )
+        array_response = client.get(f"/demo/{table_path}.json?{array_query}")
+        assert array_response.status == 200
+        assert array_response.json["rows"] == [[1, "Alice", '["red"]']]
 
 
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
@@ -1747,3 +1781,34 @@ async def test_next_url_included_by_default(ds_client):
         data = response.json()
     assert data["next"] is None
     assert data["next_url"] is None
+
+
+@pytest.mark.asyncio
+async def test_table_through_requires_view_table_on_through_table():
+    # GHSA-53fc-rhfg-h7qp issue 3: ?_through= runs a sub-select against the
+    # caller-supplied through table, so the actor must be allowed to view it.
+    # Otherwise it is an equality oracle over any column of a denied table.
+    from datasette.app import Datasette
+
+    ds = Datasette(
+        memory=True,
+        config={"databases": {"data": {"tables": {"salaries": {"allow": False}}}}},
+    )
+    db = ds.add_memory_database("table_through_denied", name="data")
+    await db.execute_write("create table people (id integer primary key, name text)")
+    await db.execute_write(
+        "create table salaries (id integer primary key, "
+        "person_id integer references people(id), note text)"
+    )
+    await db.execute_write("insert into people values (1, 'alice'), (2, 'bob')")
+    await db.execute_write("insert into salaries values (1, 1, 'TOPSECRET-A')")
+    await ds.invoke_startup()
+
+    # Sanity: anonymous cannot read salaries directly
+    assert (await ds.client.get("/data/salaries.json")).status_code == 403
+
+    response = await ds.client.get(
+        "/data/people.json?_shape=array"
+        '&_through={"table":"salaries","column":"note","value":"TOPSECRET-A"}'
+    )
+    assert response.status_code == 403, response.text

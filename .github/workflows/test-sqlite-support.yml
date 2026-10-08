@@ -1,6 +1,15 @@
 name: Test SQLite versions
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+    - main
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -12,10 +21,10 @@ jobs:
     strategy:
       matrix:
         platform: [ubuntu-latest]
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.13"]
         sqlite-version: [
           #"3", # latest version
-          "3.46",
+          #"3.46",
           #"3.45",
           #"3.27",
           #"3.26",

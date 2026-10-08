@@ -1,8 +1,10 @@
-from datasette.views.base import View
+import json
+
+import pytest
+
 from datasette import Request, Response
 from datasette.app import Datasette
-import json
-import pytest
+from datasette.views.base import View
 
 
 class GetView(View):

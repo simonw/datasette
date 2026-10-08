@@ -1,6 +1,7 @@
-from datasette.filters import Filters, through_filters, where_filters, search_filters
-from datasette.utils.asgi import Request
 import pytest
+
+from datasette.filters import Filters, search_filters, through_filters, where_filters
+from datasette.utils.asgi import Request
 
 
 @pytest.mark.parametrize(
@@ -65,12 +66,12 @@ import pytest
         # JSON arraycontains, arraynotcontains
         (
             (("Availability+Info__arraycontains", "yes"),),
-            [":p0 in (select value from json_each([table].[Availability+Info]))"],
+            [':p0 in (select value from json_each("table"."Availability+Info"))'],
             ["yes"],
         ),
         (
             (("Availability+Info__arraynotcontains", "yes"),),
-            [":p0 not in (select value from json_each([table].[Availability+Info]))"],
+            [':p0 not in (select value from json_each("table"."Availability+Info"))'],
             ["yes"],
         ),
     ],
@@ -80,6 +81,35 @@ def test_build_where(args, expected_where, expected_params):
     sql_bits, actual_params = f.build_where_clauses("table")
     assert expected_where == sql_bits
     assert {f"p{i}": param for i, param in enumerate(expected_params)} == actual_params
+
+
+@pytest.mark.parametrize(
+    "key,expected_where",
+    (
+        (
+            'has"quote__exact',
+            '"has""quote" = :p0',
+        ),
+        (
+            'has"quote__isnull',
+            '"has""quote" is null',
+        ),
+        (
+            "has]bracket__arraycontains",
+            ':p0 in (select value from json_each("table"."has]bracket"))',
+        ),
+    ),
+)
+def test_build_where_escapes_column_names(key, expected_where):
+    filters = Filters(((key, "value"),))
+    sql_bits, _ = filters.build_where_clauses("table")
+    assert sql_bits == [expected_where]
+
+
+def test_build_where_escapes_table_name():
+    filters = Filters((("tags__arraycontains", "value"),))
+    sql_bits, _ = filters.build_where_clauses("items]bracket")
+    assert sql_bits == [':p0 in (select value from json_each("items]bracket"."tags"))']
 
 
 @pytest.mark.asyncio

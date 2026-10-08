@@ -1,23 +1,25 @@
 import json
 import logging
+import secrets
+import urllib
+
+from datasette.events import CreateTokenEvent, LoginEvent, LogoutEvent
 from datasette.jump import JumpSQL, namespace_sql_params
 from datasette.plugins import pm
-from datasette.events import LogoutEvent, LoginEvent, CreateTokenEvent
 from datasette.resources import DatabaseResource, TableResource
-from datasette.utils.asgi import Response, Forbidden
 from datasette.utils import (
     UNSTABLE_API_MESSAGE,
     actor_matches_allow,
-    parse_size_limit,
     add_cors_headers,
     await_me_maybe,
     error_body,
-    tilde_encode,
+    parse_size_limit,
     tilde_decode,
+    tilde_encode,
 )
+from datasette.utils.asgi import Forbidden, Response
+
 from .base import BaseView, View
-import secrets
-import urllib
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +91,11 @@ class PatternPortfolioView(View):
         await datasette.ensure_permission(action="view-instance", actor=request.actor)
         return Response.html(
             await datasette.render_template(
-                "patterns.html",
+                (
+                    "patterns_menus.html"
+                    if request.url_vars.get("pattern") == "menus"
+                    else "patterns.html"
+                ),
                 request=request,
                 view_name="patterns",
             )
@@ -179,9 +185,7 @@ class AutocompleteDebugView(BaseView):
                     )
                     context.update(
                         {
-                            "autocomplete_url": "{}/-/autocomplete".format(
-                                self.ds.urls.table(database_name, table_name)
-                            ),
+                            "autocomplete_url": f"{self.ds.urls.table(database_name, table_name)}/-/autocomplete",
                             "label_column": await db.label_column_for_table(table_name),
                         }
                     )
@@ -311,6 +315,7 @@ class AllowedResourcesView(BaseView):
     has_json_alternate = False
 
     async def get(self, request):
+        await self.ds.ensure_permission(action="view-instance", actor=request.actor)
         await self.ds.refresh_schemas()
 
         # Check if user has permissions-debug (to show sensitive fields)
@@ -420,8 +425,11 @@ class AllowedResourcesView(BaseView):
                     row["reason"] = resource.reasons
 
                 allowed_rows.append(row)
-        except Exception:
-            # If catalog tables don't exist yet, return empty results
+        except Exception:  # noqa: BLE001
+            # Returns empty results if the catalog tables don't exist yet, but
+            # also swallows the AttributeError raised for instance-level actions
+            # such as view-instance, which have no resource_class.
+            # TODO: handle that case explicitly and narrow this to sqlite3.Error
             return (
                 {
                     "ok": True,
@@ -523,7 +531,7 @@ class PermissionRulesView(BaseView):
 
         from datasette.utils.actions_sql import build_permission_rules_sql
 
-        union_sql, union_params, restriction_sqls = await build_permission_rules_sql(
+        union_sql, union_params, _restriction_sqls = await build_permission_rules_sql(
             self.ds, actor, action
         )
         await self.ds.refresh_schemas()
@@ -600,7 +608,7 @@ class PermissionRulesView(BaseView):
 
 
 async def _check_permission_for_actor(ds, action, parent, child, actor):
-    """Shared logic for checking permissions. Returns a dict with check results."""
+    """Shared logic for checking and explaining a permission decision."""
     if action not in ds.actions:
         return error_body(f"Unknown action: {action}", 404), 404
 
@@ -629,15 +637,28 @@ async def _check_permission_for_actor(ds, action, parent, child, actor):
 
     allowed = await ds.allowed(action=action, resource=resource_obj, actor=actor)
 
+    from datasette.utils.actions_sql import explain_permission_for_resource
+
+    explanation = await explain_permission_for_resource(
+        datasette=ds,
+        actor=actor,
+        action=action,
+        parent=parent,
+        child=child,
+    )
+
     response = {
         "ok": True,
+        "unstable": UNSTABLE_API_MESSAGE,
         "action": action,
         "allowed": bool(allowed),
+        "actor": actor,
         "resource": {
             "parent": parent,
             "child": child,
             "path": _resource_path(parent, child),
         },
+        "explanation": explanation,
     }
 
     if actor and "id" in actor:
@@ -655,11 +676,25 @@ class PermissionCheckView(BaseView):
         as_format = request.url_vars.get("format")
 
         if not as_format:
+            actions = [
+                {
+                    "name": action.name,
+                    "description": action.description,
+                    "takes_parent": action.takes_parent,
+                    "takes_child": action.takes_child,
+                    "also_requires": action.also_requires,
+                }
+                for action in sorted(
+                    self.ds.actions.values(), key=lambda action: action.name
+                )
+            ]
             return await self.render(
                 ["debug_check.html"],
                 request,
                 {
-                    "sorted_actions": sorted(self.ds.actions.keys()),
+                    "actions": actions,
+                    "actor_json": request.args.get("actor")
+                    or json.dumps(request.actor, indent=2),
                     "has_debug_permission": True,
                 },
             )
@@ -671,9 +706,18 @@ class PermissionCheckView(BaseView):
 
         parent = request.args.get("parent")
         child = request.args.get("child")
+        actor = request.actor
+        actor_json = request.args.get("actor")
+        if actor_json is not None:
+            try:
+                actor = json.loads(actor_json)
+            except json.JSONDecodeError as ex:
+                return Response.error(f"Invalid actor JSON: {ex}", 400)
+            if actor is not None and not isinstance(actor, dict):
+                return Response.error("actor must be a JSON object or null", 400)
 
         response, status = await _check_permission_for_actor(
-            self.ds, action, parent, child, request.actor
+            self.ds, action, parent, child, actor
         )
         return Response.json(response, status=status)
 
@@ -757,6 +801,8 @@ class CreateTokenView(BaseView):
             raise Forbidden(
                 "Token authentication cannot be used to create additional tokens"
             )
+        if "_r" in request.actor:
+            raise Forbidden("Restricted actors cannot create API tokens")
 
     async def shared(self, request):
         self.check_permission(request)
@@ -834,6 +880,11 @@ class CreateTokenView(BaseView):
                 else:
                     errors.append("Invalid expire duration unit")
 
+        if errors:
+            context = await self.shared(request)
+            context["errors"] = errors
+            return await self.render(["create_token.html"], request, context)
+
         # Are there any restrictions?
         from datasette.tokens import TokenRestrictions
 
@@ -900,7 +951,7 @@ class ApiExplorerView(BaseView):
                 tables.append({"name": table, "links": table_links})
                 table_links.append(
                     {
-                        "label": "Get rows for {}".format(table),
+                        "label": f"Get rows for {table}",
                         "method": "GET",
                         "path": self.ds.urls.table(name, table, format="json"),
                     }
@@ -920,7 +971,7 @@ class ApiExplorerView(BaseView):
                             {
                                 "path": self.ds.urls.table(name, table) + "/-/insert",
                                 "method": "POST",
-                                "label": "Insert rows into {}".format(table),
+                                "label": f"Insert rows into {table}",
                                 "json": {
                                     "rows": [
                                         {
@@ -934,7 +985,7 @@ class ApiExplorerView(BaseView):
                             {
                                 "path": self.ds.urls.table(name, table) + "/-/upsert",
                                 "method": "POST",
-                                "label": "Upsert rows into {}".format(table),
+                                "label": f"Upsert rows into {table}",
                                 "json": {
                                     "rows": [
                                         {
@@ -964,7 +1015,7 @@ class ApiExplorerView(BaseView):
                     table_links.append(
                         {
                             "path": self.ds.urls.table(name, table) + "/-/drop",
-                            "label": "Drop table {}".format(table),
+                            "label": f"Drop table {table}",
                             "json": {"confirm": False},
                             "method": "POST",
                         }
@@ -981,7 +1032,7 @@ class ApiExplorerView(BaseView):
                 database_links.append(
                     {
                         "path": self.ds.urls.database(name) + "/-/create",
-                        "label": "Create table in {}".format(name),
+                        "label": f"Create table in {name}",
                         "json": {
                             "table": "new_table",
                             "columns": [
@@ -1222,14 +1273,21 @@ class SchemaBaseView(BaseView):
 
     has_json_alternate = False
 
-    async def get_database_schema(self, database_name):
+    async def get_database_schema(self, database_name, actor):
         """Get schema SQL for a database."""
         db = self.ds.databases[database_name]
-        result = await db.execute(
-            "select group_concat(sql, ';' || CHAR(10)) as schema from sqlite_master where sql is not null"
+        allowed_tables_page = await self.ds.allowed_resources(
+            "view-table", actor, parent=database_name
         )
-        row = result.first()
-        return row["schema"] if row and row["schema"] else ""
+        allowed_table_names = {
+            resource.child async for resource in allowed_tables_page.all()
+        }
+        result = await db.execute(
+            "select tbl_name, sql from sqlite_master where sql is not null"
+        )
+        return ";\n".join(
+            row["sql"] for row in result.rows if row["tbl_name"] in allowed_table_names
+        )
 
     def format_json_response(self, data):
         """Format data as JSON response with CORS headers if needed."""
@@ -1291,7 +1349,7 @@ class InstanceSchemaView(SchemaBaseView):
         # Get schema for each database
         schemas = []
         for database_name in allowed_databases:
-            schema = await self.get_database_schema(database_name)
+            schema = await self.get_database_schema(database_name, request.actor)
             schemas.append({"database": database_name, "schema": schema})
 
         if format_ == "json":
@@ -1332,7 +1390,7 @@ class DatabaseSchemaView(SchemaBaseView):
         if database_name not in self.ds.databases:
             return self.format_error_response("Database not found", format_)
 
-        schema = await self.get_database_schema(database_name)
+        schema = await self.get_database_schema(database_name, request.actor)
 
         if format_ == "json":
             return self.format_json_response(
@@ -1371,7 +1429,8 @@ class TableSchemaView(SchemaBaseView):
         # Get schema for the table
         db = self.ds.databases[database_name]
         result = await db.execute(
-            "select sql from sqlite_master where name = ? and sql is not null",
+            "select sql from sqlite_master where name = ? "
+            "and type in ('table', 'view') and sql is not null",
             [table_name],
         )
         row = result.first()

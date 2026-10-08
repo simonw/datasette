@@ -1,7 +1,8 @@
 import json
 import textwrap
-from yaml import safe_dump
+
 from ruamel.yaml import YAML
+from yaml import safe_dump
 
 
 def metadata_example(cog, data=None, yaml=None):
@@ -33,10 +34,10 @@ def config_example(
     else:
         data = input
         output_yaml = safe_dump(input, sort_keys=False)
-    cog.out("\n.. tab:: {}\n\n".format(yaml_title))
+    cog.out(f"\n.. tab:: {yaml_title}\n\n")
     cog.out("    .. code-block:: yaml\n\n")
     cog.out(textwrap.indent(output_yaml, "        "))
-    cog.out("\n\n.. tab:: {}\n\n".format(json_title))
+    cog.out(f"\n\n.. tab:: {json_title}\n\n")
     cog.out("    .. code-block:: json\n\n")
     cog.out(textwrap.indent(json.dumps(data, indent=2), "        "))
     cog.out("\n")
@@ -44,8 +45,10 @@ def config_example(
 
 def internal_schema(cog):
     import asyncio
-    from datasette.app import Datasette
+
     from sqlite_utils import Database
+
+    from datasette.app import Datasette
 
     ds = Datasette()
     db = ds.get_internal_database()

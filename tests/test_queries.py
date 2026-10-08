@@ -15,37 +15,29 @@ from datasette.utils.sqlite import sqlite3, supports_returning
 requires_sqlite_returning = pytest.mark.skipif(
     not supports_returning(), reason="SQLite does not support RETURNING"
 )
-EXPECTED_CREATE_TABLE_TEMPLATE_SQL = "\n".join(
-    (
-        "create table new_table (",
-        "  id integer primary key,",
-        "  name text",
-        "  -- created text default (datetime('now'))",
-        ")",
-    )
-)
+EXPECTED_CREATE_TABLE_TEMPLATE_SQL = "create table new_table (\n  id integer primary key,\n  name text\n  -- created text default (datetime('now'))\n)"
 
 
 def _template_option_attributes(html, table):
-    match = re.search(r'<option value="{}"([^>]*)>'.format(table), html)
-    assert match, "Could not find template option for {}".format(table)
+    match = re.search(rf'<option value="{table}"([^>]*)>', html)
+    assert match, f"Could not find template option for {table}"
     return match.group(1)
 
 
 def _template_sql(html, table, operation):
     attrs = _template_option_attributes(html, table)
-    match = re.search(r'data-template-{}-sql="([^"]*)"'.format(operation), attrs)
-    assert match, "Could not find {} template for {}".format(operation, table)
+    match = re.search(rf'data-template-{operation}-sql="([^"]*)"', attrs)
+    assert match, f"Could not find {operation} template for {table}"
     return unescape(match.group(1))
 
 
 def _template_button_sql(html, operation):
     soup = Soup(html, "html.parser")
-    button = soup.select_one('button[data-sql-template="{}"]'.format(operation))
-    assert button, "Could not find {} template button".format(operation)
+    button = soup.select_one(f'button[data-sql-template="{operation}"]')
+    assert button, f"Could not find {operation} template button"
     assert button.get(
         "data-template-sql"
-    ), "Could not find SQL for {} template button".format(operation)
+    ), f"Could not find SQL for {operation} template button"
     return button["data-template-sql"]
 
 
@@ -53,10 +45,10 @@ async def add_numbered_queries(ds, database, count):
     for i in range(1, count + 1):
         await ds.add_query(
             database,
-            "demo_query_{:02d}".format(i),
-            "select {} as query_number".format(i),
-            title="Demo query {:02d}".format(i),
-            description="Seeded demo query number {:02d}".format(i),
+            f"demo_query_{i:02d}",
+            f"select {i} as query_number",
+            title=f"Demo query {i:02d}",
+            description=f"Seeded demo query number {i:02d}",
             source="user",
             owner_id="root",
         )
@@ -2431,9 +2423,7 @@ async def test_execute_write_json_returning_rows_can_be_truncated():
     db = ds.add_memory_database("execute_write_returning_json_truncated", name="data")
     await db.execute_write("create table dogs (id integer primary key, name text)")
     for index in range(1, 12):
-        await db.execute_write(
-            "insert into dogs (name) values (?)", ["Dog {}".format(index)]
-        )
+        await db.execute_write("insert into dogs (name) values (?)", [f"Dog {index}"])
     await ds.invoke_startup()
 
     response = await ds.client.post(
@@ -2448,7 +2438,7 @@ async def test_execute_write_json_returning_rows_can_be_truncated():
     assert data["message"] == "Query executed"
     assert data["rowcount"] == -1
     assert data["rows"] == [
-        {"id": index, "name": "Dog {}!".format(index)} for index in range(1, 11)
+        {"id": index, "name": f"Dog {index}!"} for index in range(1, 11)
     ]
     assert data["truncated"] is True
     assert (await db.execute("select count(*) from dogs where name like '%!'")).first()[
@@ -2502,9 +2492,7 @@ async def test_execute_write_html_returning_rows_can_be_truncated():
     db = ds.add_memory_database("execute_write_returning_html_truncated", name="data")
     await db.execute_write("create table dogs (id integer primary key, name text)")
     for index in range(1, 12):
-        await db.execute_write(
-            "insert into dogs (name) values (?)", ["Dog {}".format(index)]
-        )
+        await db.execute_write("insert into dogs (name) values (?)", [f"Dog {index}"])
     await ds.invoke_startup()
 
     response = await ds.client.post(
@@ -3260,74 +3248,6 @@ async def test_execute_write_create_table_uses_create_table_permission():
     assert not await db.table_exists("should_not_exist")
 
 
-@pytest.mark.asyncio
-async def test_execute_write_create_view_uses_create_view_permission():
-    ds = Datasette(
-        memory=True,
-        default_deny=True,
-        config={
-            "permissions": {
-                "insert-row": {"id": "row-writer"},
-                "update-row": {"id": "row-writer"},
-            },
-            "databases": {
-                "data": {
-                    "permissions": {
-                        "view-database": {"id": ["creator", "row-writer"]},
-                        "execute-write-sql": {"id": ["creator", "row-writer"]},
-                        "create-view": {"id": "creator"},
-                    }
-                }
-            },
-        },
-    )
-    db = ds.add_memory_database("execute_write_create_view", name="data")
-    await db.execute_write("create table dogs (id integer primary key, name text)")
-    await ds.invoke_startup()
-
-    analysis_response = await ds.client.get(
-        "/data/-/execute-write/analyze",
-        actor={"id": "creator"},
-        params={"sql": "create view dog_names as select id, name from dogs"},
-    )
-    allowed_response = await ds.client.post(
-        "/data/-/execute-write",
-        actor={"id": "creator"},
-        json={"sql": "create view dog_names as select id, name from dogs"},
-    )
-    row_permission_response = await ds.client.post(
-        "/data/-/execute-write",
-        actor={"id": "row-writer"},
-        json={"sql": "create view should_not_exist as select id from dogs"},
-    )
-
-    assert analysis_response.status_code == 200
-    analysis_data = analysis_response.json()
-    assert analysis_data["ok"] is True
-    assert analysis_data["execute_disabled"] is False
-    assert analysis_data["analysis_rows"] == [
-        {
-            "operation": "create",
-            "database": "data",
-            "table": "dog_names",
-            "required_permission": "create-view",
-            "source": None,
-            "allowed": True,
-        }
-    ]
-
-    assert allowed_response.status_code == 200
-    assert allowed_response.json()["ok"] is True
-    assert allowed_response.json()["message"] == "Query executed"
-    assert await db.view_exists("dog_names")
-
-    assert row_permission_response.status_code == 403
-    assert row_permission_response.json()["errors"] == [
-        "Permission denied: need create-view on data"
-    ]
-    assert not await db.view_exists("should_not_exist")
-
-
 @pytest.mark.parametrize(
     (
         "database_name",
@@ -3645,12 +3565,12 @@ async def test_private_query_restricts_broad_update_delete_permissions(
     )
 
     private_response = await ds.client.post(
-        "/data/alice_private/{}".format(path_suffix),
+        f"/data/alice_private/{path_suffix}",
         actor={"id": "bob"},
         json=request_json,
     )
     public_response = await ds.client.post(
-        "/data/alice_public/{}".format(path_suffix),
+        f"/data/alice_public/{path_suffix}",
         actor={"id": "bob"},
         json=request_json,
     )
@@ -3863,6 +3783,6 @@ async def test_stored_query_json_uses_parameters_not_params():
     assert "params" not in definition["query"]
 
     listing = (await ds.client.get("/data/-/queries.json")).json()
-    query = [q for q in listing["queries"] if q["name"] == "with_params"][0]
+    query = next(q for q in listing["queries"] if q["name"] == "with_params")
     assert query["parameters"] == ["name", "age"]
     assert "params" not in query

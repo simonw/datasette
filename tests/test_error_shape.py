@@ -17,8 +17,10 @@ present and the legacy "title" key must not be.
 https://github.com/simonw/datasette/issues - 1.0 API consistency
 """
 
-import pytest
 import time
+
+import pytest
+
 from datasette.app import Datasette
 from datasette.utils import sqlite3
 
@@ -86,7 +88,7 @@ async def test_write_api_validation_error_shape(ds_error_shape):
         "/data/docs/-/insert",
         json={"rows": [{"nope": 1}, {"also_nope": 2}]},
         headers={
-            "Authorization": "Bearer {}".format(token),
+            "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         },
     )
@@ -410,7 +412,7 @@ async def test_expired_token_returns_401(ds_error_shape):
         )
     )
     response = await ds_error_shape.client.get(
-        "/-/actor.json", headers={"Authorization": "Bearer {}".format(token)}
+        "/-/actor.json", headers={"Authorization": f"Bearer {token}"}
     )
     data = assert_canonical_error(response, 401)
     assert "expired" in data["error"].lower()
@@ -446,7 +448,7 @@ async def test_valid_token_still_authenticates(ds_error_shape):
         )
     )
     response = await ds_error_shape.client.get(
-        "/-/actor.json", headers={"Authorization": "Bearer {}".format(token)}
+        "/-/actor.json", headers={"Authorization": f"Bearer {token}"}
     )
     assert response.status_code == 200
     assert response.json()["actor"]["id"] == "root"
@@ -477,7 +479,7 @@ async def test_token_when_signed_tokens_disabled_returns_401(tmp_path_factory):
             ds.sign({"a": "root", "t": int(time.time())}, namespace="token")
         )
         response = await ds.client.get(
-            "/-/actor.json", headers={"Authorization": "Bearer {}".format(token)}
+            "/-/actor.json", headers={"Authorization": f"Bearer {token}"}
         )
         data = assert_canonical_error(response, 401)
         assert "not enabled" in data["error"]
@@ -642,7 +644,7 @@ async def test_query_list_size_rejects_non_integer(ds_client):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("endpoint", ("allowed", "rules"))
 async def test_debug_endpoints_use_size_and_page_parameters(ds_error_shape, endpoint):
-    base = "/-/{}.json?action=view-instance".format(endpoint)
+    base = f"/-/{endpoint}.json?action=view-instance"
     ok = await ds_error_shape.client.get(
         base + "&_size=1&_page=1", actor={"id": "root"}
     )

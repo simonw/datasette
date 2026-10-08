@@ -1,33 +1,71 @@
 import asyncio
 import atexit
-from collections import namedtuple
+import contextvars
 import inspect
 import os
-from pathlib import Path
 import queue
-import sqlite_utils
 import sys
 import tempfile
 import threading
+import time
 import uuid
+from collections import namedtuple
+from pathlib import Path
 
+import sqlite_utils
+from opentelemetry import context as otel_context_api
+from opentelemetry.trace import Status, StatusCode
+
+from .inspect import inspect_hash
+from .telemetry import (
+    callback_name,
+    linked_root_span_kwargs,
+    record_operation_duration,
+    record_query_interrupted,
+    record_write_queue_wait,
+    sql_attribute,
+    sql_operation_name,
+    tracer,
+)
+from .telemetry_registry import (
+    CALLBACK,
+    DB_NAMESPACE,
+    DB_OPERATION_NAME,
+    DB_QUERY,
+    DB_QUERY_EXECUTE,
+    DB_QUERY_TEXT,
+    DB_SYSTEM,
+    DB_WRITE_EXECUTE,
+    DB_WRITE_QUEUE_WAIT,
+    EXECUTEMANY,
+    EXECUTESCRIPT,
+    INTERRUPTED,
+    ISOLATED_CONNECTION,
+    PARAM_COUNT,
+    PARAM_SETS,
+    ROWS_RETURNED,
+    SQL_ERROR_SUPPRESSED,
+    TIME_LIMIT_MS,
+    TRANSACTION,
+    TRUNCATED,
+)
 from .tracer import trace
 from .utils import (
     call_with_supported_arguments,
     detect_fts,
     detect_primary_keys,
     detect_spatialite,
+    escape_sqlite,
     get_all_foreign_keys,
     get_outbound_foreign_keys,
     md5_not_usedforsecurity,
-    sqlite_timelimit,
     sqlite3,
-    table_columns,
+    sqlite_timelimit,
     table_column_details,
+    table_columns,
 )
 from .utils.sql_analysis import SQLAnalysis, analyze_sql_tables
-from .utils.sqlite import sqlite_hidden_table_names
-from .inspect import inspect_hash
+from .utils.sqlite import sqlite_derived_table_dependencies, sqlite_hidden_table_names
 
 connections = threading.local()
 
@@ -83,6 +121,7 @@ class Database:
         self.cached_hash = None
         self.cached_size = None
         self._cached_table_counts = None
+        self._cached_derived_table_dependencies = None
         self._write_thread = None
         self._write_queue = None
         self._closed = False
@@ -91,16 +130,15 @@ class Database:
         # These are used when in non-threaded mode:
         self._read_connection = None
         self._write_connection = None
-        # This is used to track all file connections so they can be closed
-        self._all_file_connections = []
+        # Track file and memory connections, including reads on worker threads,
+        # so close() can release all of them from the calling thread.
+        self._all_connections = []
         if not is_temp_disk:
             self.mode = mode
 
     def _check_not_closed(self):
         if self._closed:
-            raise DatasetteClosedError(
-                "Database {!r} has been closed".format(self.name)
-            )
+            raise DatasetteClosedError(f"Database {self.name!r} has been closed")
 
     def _remove_pending_execute_future(self, future):
         with self._pending_execute_futures_lock:
@@ -139,15 +177,18 @@ class Database:
         if write:
             extra_kwargs["isolation_level"] = "IMMEDIATE"
         if self.memory_name:
-            uri = "file:{}?mode=memory&cache=shared".format(self.memory_name)
+            uri = f"file:{self.memory_name}?mode=memory&cache=shared"
             conn = sqlite3.connect(
                 uri, uri=True, check_same_thread=False, **extra_kwargs
             )
             if not write:
                 conn.execute("PRAGMA query_only=1")
+            self._all_connections.append(conn)
             return conn
         if self.is_memory:
-            return sqlite3.connect(":memory:", uri=True)
+            conn = sqlite3.connect(":memory:", uri=True, check_same_thread=False)
+            self._all_connections.append(conn)
+            return conn
 
         # mode=ro or immutable=1?
         if self.is_mutable:
@@ -164,7 +205,7 @@ class Database:
         conn = sqlite3.connect(
             f"file:{self.path}{qs}", uri=True, check_same_thread=False, **extra_kwargs
         )
-        self._all_file_connections.append(conn)
+        self._all_connections.append(conn)
         if self.is_temp_disk and not self._wal_enabled:
             conn.execute("PRAGMA journal_mode=WAL")
             self._wal_enabled = True
@@ -192,23 +233,22 @@ class Database:
             write_thread.join(timeout=10)
             if write_thread.is_alive():
                 sys.stderr.write(
-                    "Datasette: write thread for {!r} did not exit within 10s\n".format(
-                        self.name
-                    )
+                    f"Datasette: write thread for {self.name!r} did not exit within 10s\n"
                 )
                 sys.stderr.flush()
         for future in pending_execute_futures:
             try:
                 future.result()
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
+                # Shutdown teardown - a failed pending write must not block close()
                 pass
-        # Close anything still tracked in _all_file_connections
-        for connection in self._all_file_connections:
+        # Close anything still tracked in _all_connections
+        for connection in self._all_connections:
             try:
                 connection.close()
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 pass
-        self._all_file_connections = []
+        self._all_connections = []
         # Drop per-thread cached read connections we can reach
         try:
             delattr(connections, self._thread_local_id)
@@ -218,13 +258,13 @@ class Database:
         if self._read_connection is not None:
             try:
                 self._read_connection.close()
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 pass
             self._read_connection = None
         if self._write_connection is not None:
             try:
                 self._write_connection.close()
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 pass
             self._write_connection = None
         if self.is_temp_disk:
@@ -246,19 +286,46 @@ class Database:
         request=None,
         return_all=False,
         returning_limit=EXECUTE_WRITE_RETURNING_LIMIT,
+        transaction=True,
+        time_limit_ms=2000,
     ):
         self._check_not_closed()
         if returning_limit < 0:
             raise ValueError("returning_limit must be >= 0")
 
-        def _inner(conn):
+        def execute_sql(conn):
             cursor = conn.execute(sql, params or [])
             return ExecuteWriteResult.from_cursor(
                 cursor, return_all=return_all, returning_limit=returning_limit
             )
 
-        with trace("sql", database=self.name, sql=sql.strip(), params=params):
-            results = await self.execute_write_fn(_inner, block=block, request=request)
+        def _inner(conn):
+            try:
+                if time_limit_ms is None:
+                    return execute_sql(conn)
+                with sqlite_timelimit(conn, time_limit_ms):
+                    return execute_sql(conn)
+            except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+                if e.args == ("interrupted",):
+                    raise QueryInterrupted(e, sql, params)
+                raise
+
+        with trace(  # noqa: SIM117
+            "sql", database=self.name, sql=sql.strip(), params=params
+        ):
+            with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
+                span.set_attribute(DB_SYSTEM, "sqlite")
+                span.set_attribute(DB_NAMESPACE, self.name)
+                span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
+                operation_name = sql_operation_name(sql)
+                if operation_name:
+                    span.set_attribute(DB_OPERATION_NAME, operation_name)
+                if params:
+                    span.set_attribute(PARAM_COUNT, len(params))
+                with record_operation_duration(self.name, "write"):
+                    results = await self._execute_write_fn(
+                        _inner, block=block, request=request, transaction=transaction
+                    )
         return results
 
     async def execute_write_script(self, sql, block=True, request=None):
@@ -267,10 +334,19 @@ class Database:
         def _inner(conn):
             return conn.executescript(sql)
 
-        with trace("sql", database=self.name, sql=sql.strip(), executescript=True):
-            results = await self.execute_write_fn(
-                _inner, block=block, transaction=False, request=request
-            )
+        with trace(  # noqa: SIM117
+            "sql", database=self.name, sql=sql.strip(), executescript=True
+        ):
+            # No db.operation.name, since the script can contain multiple statements
+            with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
+                span.set_attribute(DB_SYSTEM, "sqlite")
+                span.set_attribute(DB_NAMESPACE, self.name)
+                span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
+                span.set_attribute(EXECUTESCRIPT, True)
+                with record_operation_duration(self.name, "write"):
+                    results = await self._execute_write_fn(
+                        _inner, block=block, transaction=False, request=request
+                    )
         return results
 
     async def execute_write_many(self, sql, params_seq, block=True, request=None):
@@ -290,9 +366,19 @@ class Database:
         with trace(
             "sql", database=self.name, sql=sql.strip(), executemany=True
         ) as kwargs:
-            results, count = await self.execute_write_fn(
-                _inner, block=block, request=request
-            )
+            with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
+                span.set_attribute(DB_SYSTEM, "sqlite")
+                span.set_attribute(DB_NAMESPACE, self.name)
+                span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
+                span.set_attribute(EXECUTEMANY, True)
+                operation_name = sql_operation_name(sql)
+                if operation_name:
+                    span.set_attribute(DB_OPERATION_NAME, operation_name)
+                with record_operation_duration(self.name, "write"):
+                    results, count = await self._execute_write_fn(
+                        _inner, block=block, request=request
+                    )
+                span.set_attribute(PARAM_SETS, count)
             kwargs["count"] = count
         return results
 
@@ -309,31 +395,58 @@ class Database:
             finally:
                 isolated_connection.close()
                 try:
-                    self._all_file_connections.remove(isolated_connection)
+                    self._all_connections.remove(isolated_connection)
                 except ValueError:
-                    # Was probably a memory connection
+                    # May already have been cleared by close().
                     pass
 
-        if self.ds.executor is None:
-            # non-threaded mode
-            return _run()
-        if not write:
-            # Immutable database - no writes can ever occur, so there is no
-            # write queue to block; run against a fresh read-only connection
-            return await asyncio.get_running_loop().run_in_executor(
-                self.ds.executor, _run
-            )
-        # Threaded mode - send to write thread
-        return await self._send_to_write_thread(fn, isolated_connection=True)
+        with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
+            span.set_attribute(DB_SYSTEM, "sqlite")
+            span.set_attribute(DB_NAMESPACE, self.name)
+            span.set_attribute(CALLBACK, callback_name(fn))
+            # Immutable databases run this on the read pool, not the write queue
+            with record_operation_duration(self.name, "write" if write else "read"):
+                if self.ds.executor is None:
+                    # non-threaded mode
+                    return _run()
+                if not write:
+                    # Immutable database - no writes can ever occur, so there
+                    # is no write queue to block; run against a fresh
+                    # read-only connection
+                    ctx = contextvars.copy_context()
+                    return await asyncio.get_running_loop().run_in_executor(
+                        self.ds.executor, ctx.run, _run
+                    )
+                # Threaded mode - send to write thread
+                return await self._send_to_write_thread(fn, isolated_connection=True)
 
     async def analyze_sql(self, sql, params=None) -> SQLAnalysis:
         self._check_not_closed()
 
-        return await self.execute_isolated_fn(
-            lambda conn: analyze_sql_tables(conn, sql, params, database_name=self.name)
-        )
+        def _analyze_sql(conn):
+            return analyze_sql_tables(conn, sql, params, database_name=self.name)
+
+        return await self.execute_isolated_fn(_analyze_sql)
 
     async def execute_write_fn(self, fn, block=True, transaction=True, request=None):
+        """Run `fn(conn)` on the write connection, traced as a `db.query` span.
+
+        The SQL-string write methods call `_execute_write_fn()` directly to
+        avoid creating a second span.
+        """
+        self._check_not_closed()
+        # Record the name before _wrap_fn_with_hooks() wraps fn
+        name = callback_name(fn)
+        with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
+            span.set_attribute(DB_SYSTEM, "sqlite")
+            span.set_attribute(DB_NAMESPACE, self.name)
+            span.set_attribute(CALLBACK, name)
+            with record_operation_duration(self.name, "write"):
+                return await self._execute_write_fn(
+                    fn, block=block, transaction=transaction, request=request
+                )
+
+    async def _execute_write_fn(self, fn, block=True, transaction=True, request=None):
         self._check_not_closed()
         pending_events = []
 
@@ -348,9 +461,19 @@ class Database:
                 self.ds._prepare_connection(self._write_connection, self.name)
             if transaction:
                 with self._write_connection:
+                    self._write_connection.execute("BEGIN IMMEDIATE")
                     result = fn(self._write_connection)
             else:
                 result = fn(self._write_connection)
+            if not block:
+                # There is no write thread here, so the write has already
+                # finished. Hand back the same (task_id, reply_future) shape
+                # _send_to_write_thread() returns, with the future already
+                # resolved, so the block=False path below is identical in
+                # both modes.
+                reply_future = asyncio.get_running_loop().create_future()
+                reply_future.set_result(result)
+                result = (uuid.uuid4(), reply_future)
         else:
             result = await self._send_to_write_thread(
                 fn, block=block, transaction=transaction
@@ -366,7 +489,8 @@ class Database:
             async def _dispatch_events_after_write():
                 try:
                     await reply_future
-                except Exception:
+                except Exception:  # noqa: BLE001
+                    # The write failed; skip success events regardless of why
                     # if the write failed, don't emit success events
                     return
                 for event in pending_events:
@@ -419,15 +543,24 @@ class Database:
             self._write_thread = threading.Thread(
                 target=self._execute_writes, daemon=True
             )
-            self._write_thread.name = "_execute_writes for database {}".format(
-                self.name
-            )
+            self._write_thread.name = f"_execute_writes for database {self.name}"
             self._write_thread.start()
-        task_id = uuid.uuid5(uuid.NAMESPACE_DNS, "datasette.io")
+        task_id = uuid.uuid4()
         loop = asyncio.get_running_loop()
         reply_future = loop.create_future()
+        # Capture the OpenTelemetry context and enqueue time for the write thread
         self._write_queue.put(
-            WriteTask(fn, task_id, loop, reply_future, isolated_connection, transaction)
+            WriteTask(
+                fn,
+                task_id,
+                loop,
+                reply_future,
+                isolated_connection,
+                transaction,
+                otel_context_api.get_current(),
+                time.time_ns(),
+                block,
+            )
         )
         if block:
             return await reply_future
@@ -441,8 +574,11 @@ class Database:
         conn = None
         try:
             conn = self.connect(write=True)
+            # Threads do not inherit the caller's context, so any spans
+            # created by prepare_connection hooks here are root spans
             self.ds._prepare_connection(conn, self.name)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
+            # Stored and re-raised to whoever queues the next write
             conn_exception = e
         while True:
             task = self._write_queue.get()
@@ -450,43 +586,105 @@ class Database:
                 if conn is not None:
                     try:
                         conn.close()
-                    except Exception:
+                    except Exception:  # noqa: BLE001, S110
+                        # Best-effort close as the write thread exits
                         pass
                 return
-            exception = None
-            result = None
-            if conn_exception is not None:
-                exception = conn_exception
-            elif task.isolated_connection:
-                try:
-                    isolated_connection = self.connect(write=True)
-                    try:
-                        result = task.fn(isolated_connection)
-                    finally:
-                        isolated_connection.close()
-                        try:
-                            self._all_file_connections.remove(isolated_connection)
-                        except ValueError:
-                            # Was probably a memory connection
-                            pass
-                except Exception as e:
-                    sys.stderr.write("{}\n".format(e))
-                    sys.stderr.flush()
-                    exception = e
+            # block=True: the caller awaits the result, so the write spans
+            # are children of the caller's span. The token must be detached
+            # in the finally block or the context leaks into later writes.
+            # block=False: the caller may finish first, so the write spans
+            # are root spans with a link back to the caller's span.
+            token = None
+            write_span_kwargs = {}
+            if task.block:
+                token = otel_context_api.attach(task.otel_context)
             else:
-                try:
-                    if task.transaction:
-                        with conn:
-                            result = task.fn(conn)
-                    else:
-                        result = task.fn(conn)
-                except Exception as e:
-                    sys.stderr.write("{}\n".format(e))
-                    sys.stderr.flush()
-                    exception = e
-            _deliver_write_result(task, result, exception)
+                write_span_kwargs = linked_root_span_kwargs(task.otel_context)
+            try:
+                exception = None
+                result = None
+                # Span covers the time from enqueue to dequeue
+                dequeued_at_ns = time.time_ns()
+                tracer.start_span(
+                    DB_WRITE_QUEUE_WAIT,
+                    start_time=task.enqueued_at_ns,
+                    **write_span_kwargs,
+                ).end(end_time=dequeued_at_ns)
+                record_write_queue_wait(self.name, dequeued_at_ns - task.enqueued_at_ns)
+                if conn_exception is not None:
+                    exception = conn_exception
+                elif task.isolated_connection:
+                    try:
+                        with tracer.start_as_current_span(
+                            DB_WRITE_EXECUTE, **write_span_kwargs
+                        ) as span:
+                            span.set_attribute(
+                                ISOLATED_CONNECTION,
+                                task.isolated_connection,
+                            )
+                            span.set_attribute(TRANSACTION, task.transaction)
+                            isolated_connection = self.connect(write=True)
+                            try:
+                                result = task.fn(isolated_connection)
+                            finally:
+                                isolated_connection.close()
+                                try:
+                                    self._all_connections.remove(isolated_connection)
+                                except ValueError:
+                                    # May already have been cleared by close().
+                                    pass
+                    except Exception as e:  # noqa: BLE001
+                        # Write thread must survive any task failure or the database wedges
+                        sys.stderr.write(f"{e}\n")
+                        sys.stderr.flush()
+                        exception = e
+                else:
+                    try:
+                        with tracer.start_as_current_span(
+                            DB_WRITE_EXECUTE, **write_span_kwargs
+                        ) as span:
+                            span.set_attribute(
+                                ISOLATED_CONNECTION,
+                                task.isolated_connection,
+                            )
+                            span.set_attribute(TRANSACTION, task.transaction)
+                            if task.transaction:
+                                with conn:
+                                    conn.execute("BEGIN IMMEDIATE")
+                                    result = task.fn(conn)
+                            else:
+                                result = task.fn(conn)
+                    except Exception as e:  # noqa: BLE001
+                        sys.stderr.write(f"{e}\n")
+                        sys.stderr.flush()
+                        exception = e
+                _deliver_write_result(task, result, exception)
+            finally:
+                if token is not None:
+                    otel_context_api.detach(token)
 
     async def execute_fn(self, fn):
+        """Run `fn(conn)` on a read connection, traced as a `db.query` span.
+
+        `execute()` calls `_execute_fn()` directly to avoid creating a second
+        span.
+        """
+        self._check_not_closed()
+
+        def fn_in_execute_span(conn):
+            # Runs on the worker thread
+            with tracer.start_as_current_span(DB_QUERY_EXECUTE):
+                return fn(conn)
+
+        with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
+            span.set_attribute(DB_SYSTEM, "sqlite")
+            span.set_attribute(DB_NAMESPACE, self.name)
+            span.set_attribute(CALLBACK, callback_name(fn))
+            with record_operation_duration(self.name, "read"):
+                return await self._execute_fn(fn_in_execute_span)
+
+    async def _execute_fn(self, fn):
         self._check_not_closed()
         if self.ds.executor is None:
             # non-threaded mode
@@ -506,7 +704,11 @@ class Database:
 
         with self._pending_execute_futures_lock:
             self._check_not_closed()
-            future = self.ds.executor.submit(in_thread)
+            # Run in a copy of the caller's context so spans created in the
+            # thread have the correct parent. This needs a fresh copy for
+            # each submit, since a Context cannot be entered concurrently.
+            ctx = contextvars.copy_context()
+            future = self.ds.executor.submit(ctx.run, in_thread)
             self._pending_execute_futures.add(future)
         future.add_done_callback(self._remove_pending_execute_future)
         return await asyncio.wrap_future(future)
@@ -523,46 +725,101 @@ class Database:
         """Executes sql against db_name in a thread"""
         self._check_not_closed()
         page_size = page_size or self.ds.page_size
+        time_limit_ms = self.ds.sql_time_limit_ms
+        # Callers that pass a shorter custom_time_limit, such as table counts
+        # and facet suggestions, expect timeouts, so they are not span errors
+        timeout_expected = bool(custom_time_limit) and custom_time_limit < time_limit_ms
+        if timeout_expected:
+            time_limit_ms = custom_time_limit
 
         def sql_operation_in_thread(conn):
-            time_limit_ms = self.ds.sql_time_limit_ms
-            if custom_time_limit and custom_time_limit < time_limit_ms:
-                time_limit_ms = custom_time_limit
-
-            with sqlite_timelimit(conn, time_limit_ms):
+            # Expected timeouts and errors with log_sql_errors=False are not
+            # recorded as span errors, so exceptions are handled explicitly
+            with tracer.start_as_current_span(
+                DB_QUERY_EXECUTE,
+                record_exception=False,
+                set_status_on_exception=False,
+            ) as execute_span:
                 try:
-                    cursor = conn.cursor()
-                    cursor.execute(sql, params if params is not None else {})
-                    max_returned_rows = self.ds.max_returned_rows
-                    if max_returned_rows == page_size:
-                        max_returned_rows += 1
-                    if max_returned_rows and truncate:
-                        rows = cursor.fetchmany(max_returned_rows + 1)
-                        truncated = len(rows) > max_returned_rows
-                        rows = rows[:max_returned_rows]
-                    else:
-                        rows = cursor.fetchall()
-                        truncated = False
-                except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
-                    if e.args == ("interrupted",):
-                        raise QueryInterrupted(e, sql, params)
+                    with sqlite_timelimit(conn, time_limit_ms):
+                        try:
+                            cursor = conn.cursor()
+                            cursor.execute(sql, params if params is not None else {})
+                            max_returned_rows = self.ds.max_returned_rows
+                            if max_returned_rows == page_size:
+                                max_returned_rows += 1
+                            if max_returned_rows and truncate:
+                                rows = cursor.fetchmany(max_returned_rows + 1)
+                                truncated = len(rows) > max_returned_rows
+                                rows = rows[:max_returned_rows]
+                            else:
+                                rows = cursor.fetchall()
+                                truncated = False
+                        except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+                            if e.args == ("interrupted",):
+                                raise QueryInterrupted(e, sql, params)
+                            if log_sql_errors:
+                                sys.stderr.write(
+                                    f"ERROR: conn={conn}, sql = {sql!r}, params = {params}: {e}\n"
+                                )
+                                sys.stderr.flush()
+                            raise
+                except QueryInterrupted as e:
+                    if not timeout_expected:
+                        execute_span.record_exception(e)
+                        execute_span.set_status(Status(StatusCode.ERROR, str(e)))
+                    raise
+                except Exception as e:
                     if log_sql_errors:
-                        sys.stderr.write(
-                            "ERROR: conn={}, sql = {}, params = {}: {}\n".format(
-                                conn, repr(sql), params, e
-                            )
-                        )
-                        sys.stderr.flush()
+                        execute_span.record_exception(e)
+                        execute_span.set_status(Status(StatusCode.ERROR, str(e)))
                     raise
 
-            if truncate:
-                return Results(rows, truncated, cursor.description)
+                if truncate:
+                    return Results(rows, truncated, cursor.description)
 
-            else:
-                return Results(rows, False, cursor.description)
+                else:
+                    return Results(rows, False, cursor.description)
 
-        with trace("sql", database=self.name, sql=sql.strip(), params=params):
-            results = await self.execute_fn(sql_operation_in_thread)
+        with trace(  # noqa: SIM117
+            "sql", database=self.name, sql=sql.strip(), params=params
+        ):
+            with tracer.start_as_current_span(
+                DB_QUERY,
+                kind=DB_QUERY.kind,
+                record_exception=False,
+                set_status_on_exception=False,
+            ) as span:
+                span.set_attribute(DB_SYSTEM, "sqlite")
+                span.set_attribute(DB_NAMESPACE, self.name)
+                span.set_attribute(DB_QUERY_TEXT, sql_attribute(sql))
+                span.set_attribute(TIME_LIMIT_MS, time_limit_ms)
+                operation_name = sql_operation_name(sql)
+                if operation_name:
+                    span.set_attribute(DB_OPERATION_NAME, operation_name)
+                if params:
+                    span.set_attribute(PARAM_COUNT, len(params))
+                try:
+                    with record_operation_duration(self.name, "read"):
+                        results = await self._execute_fn(sql_operation_in_thread)
+                except QueryInterrupted as e:
+                    span.set_attribute(INTERRUPTED, True)
+                    if not timeout_expected:
+                        span.set_status(Status(StatusCode.ERROR, str(e)))
+                        span.record_exception(e)
+                        record_query_interrupted(self.name)
+                    raise
+                except Exception as e:
+                    # log_sql_errors=False callers, such as facet suggestion,
+                    # expect some queries to fail
+                    if log_sql_errors:
+                        span.record_exception(e)
+                        span.set_status(Status(StatusCode.ERROR, str(e)))
+                    else:
+                        span.set_attribute(SQL_ERROR_SUPPRESSED, True)
+                    raise
+                span.set_attribute(TRUNCATED, results.truncated)
+                span.set_attribute(ROWS_RETURNED, len(results.rows))
         return results
 
     @property
@@ -603,7 +860,7 @@ class Database:
             try:
                 table_count = (
                     await self.execute(
-                        f"select count(*) from (select * from [{table}] limit {self.count_limit + 1})",
+                        f"select count(*) from (select * from {escape_sqlite(table)} limit {self.count_limit + 1})",
                         custom_time_limit=limit,
                     )
                 ).rows[0][0]
@@ -653,17 +910,32 @@ class Database:
         )
         return [r[0] for r in results.rows]
 
+    # Named functions rather than lambdas give more useful datasette.callback
+    # span attributes
+
     async def table_columns(self, table):
-        return await self.execute_fn(lambda conn: table_columns(conn, table))
+        def _table_columns(conn):
+            return table_columns(conn, table)
+
+        return await self.execute_fn(_table_columns)
 
     async def table_column_details(self, table):
-        return await self.execute_fn(lambda conn: table_column_details(conn, table))
+        def _table_column_details(conn):
+            return table_column_details(conn, table)
+
+        return await self.execute_fn(_table_column_details)
 
     async def primary_keys(self, table):
-        return await self.execute_fn(lambda conn: detect_primary_keys(conn, table))
+        def _primary_keys(conn):
+            return detect_primary_keys(conn, table)
+
+        return await self.execute_fn(_primary_keys)
 
     async def fts_table(self, table):
-        return await self.execute_fn(lambda conn: detect_fts(conn, table))
+        def _fts_table(conn):
+            return detect_fts(conn, table)
+
+        return await self.execute_fn(_fts_table)
 
     async def label_column_for_table(self, table):
         explicit_label_column = (await self.ds.table_config(self.name, table)).get(
@@ -707,9 +979,9 @@ class Database:
             column_names
             and len(column_names) == 2
             and ("id" in column_names or "pk" in column_names)
-            and not set(column_names) == {"id", "pk"}
+            and set(column_names) != {"id", "pk"}
         ):
-            return [c for c in column_names if c not in ("id", "pk")][0]
+            return next(c for c in column_names if c not in ("id", "pk"))
         # Couldn't find a label:
         return None
 
@@ -754,6 +1026,17 @@ class Database:
             ]
 
         return hidden_tables
+
+    async def derived_table_dependencies(self):
+        """Return implementation tables and the tables they derive from."""
+        schema_version = (await self.execute("PRAGMA schema_version")).first()[0]
+        if (
+            self._cached_derived_table_dependencies is None
+            or self._cached_derived_table_dependencies[0] != schema_version
+        ):
+            dependencies = await self.execute_fn(sqlite_derived_table_dependencies)
+            self._cached_derived_table_dependencies = (schema_version, dependencies)
+        return self._cached_derived_table_dependencies[1]
 
     async def view_names(self):
         results = await self.execute("select name from sqlite_master where type='view'")
@@ -850,16 +1133,28 @@ def _apply_write_wrapper(fn, wrapper_factory, track_event):
 
 class WriteTask:
     __slots__ = (
+        "block",
+        "enqueued_at_ns",
         "fn",
-        "task_id",
-        "loop",
-        "reply_future",
         "isolated_connection",
+        "loop",
+        "otel_context",
+        "reply_future",
+        "task_id",
         "transaction",
     )
 
     def __init__(
-        self, fn, task_id, loop, reply_future, isolated_connection, transaction
+        self,
+        fn,
+        task_id,
+        loop,
+        reply_future,
+        isolated_connection,
+        transaction,
+        otel_context,
+        enqueued_at_ns,
+        block,
     ):
         self.fn = fn
         self.task_id = task_id
@@ -867,6 +1162,9 @@ class WriteTask:
         self.reply_future = reply_future
         self.isolated_connection = isolated_connection
         self.transaction = transaction
+        self.otel_context = otel_context
+        self.enqueued_at_ns = enqueued_at_ns
+        self.block = block
 
 
 def _deliver_write_result(task, result, exception):
@@ -895,7 +1193,7 @@ class QueryInterrupted(Exception):
         self.params = params
 
     def __str__(self):
-        return "QueryInterrupted: {}".format(self.e)
+        return f"QueryInterrupted: {self.e}"
 
 
 class MultipleValues(Exception):

@@ -217,7 +217,7 @@ Extra template variables that should be made available in the rendered template 
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
 
-This hook can return one of three different types:
+This hook supports the following return values:
 
 Dictionary
     If you return a dictionary its keys and values will be merged into the template context.
@@ -227,6 +227,9 @@ Function that returns a dictionary
 
 Function that returns an awaitable function that returns a dictionary
     You can also return a function which returns an awaitable function which returns a dictionary.
+
+``None``
+    The hook itself, or a function or awaitable it returns, can return ``None`` when no extra variables are needed. Variables returned by other plugins are still included.
 
 Datasette runs Jinja2 in `async mode <https://jinja.palletsprojects.com/en/2.10.x/api/#async-support>`__, which means you can add awaitable functions to the template scope and they will be automatically awaited when they are rendered by the template.
 
@@ -254,8 +257,6 @@ This example returns an awaitable function which adds a list of ``hidden_table_n
                 return {
                     "hidden_table_names": await db.hidden_table_names()
                 }
-            else:
-                return {}
 
         return hidden_table_names
 
@@ -495,10 +496,10 @@ Lets you customize the display of values within table cells in the HTML table vi
     The name of the column being rendered
 
 ``table`` - string or None
-    The name of the table - or ``None`` if this is a custom SQL query
+    The name of the table or view - or ``None`` if this is a custom SQL query
 
 ``pks`` - list of strings
-    The primary key column names for the table being rendered. For tables without an explicitly defined primary key, this will be ``["rowid"]``. For custom SQL queries and views (where ``table`` is ``None``), this will be an empty list ``[]``.
+    The primary key column names for the table being rendered. For tables without an explicitly defined primary key, this will be ``["rowid"]``. For custom SQL queries and views, this will be an empty list ``[]``.
 
 ``database`` - string
     The name of the database
@@ -1107,7 +1108,7 @@ Return an `ASGI <https://asgi.readthedocs.io/>`__ middleware wrapper function th
 
 This is a very powerful hook. You can use it to manipulate the entire Datasette response, or even to configure new URL routes that will be handled by your own custom code.
 
-You can write your ASGI code directly against the low-level specification, or you can use the middleware utilities provided by an ASGI framework such as `Starlette <https://www.starlette.io/middleware/>`__.
+You can write your ASGI code directly against the low-level specification, or you can use the middleware utilities provided by an ASGI framework such as `Starlette <https://starlette.dev/middleware/>`__.
 
 This example plugin adds a ``x-databases`` HTTP header listing the currently attached databases:
 
@@ -1157,7 +1158,7 @@ Examples: `datasette-cors <https://datasette.io/plugins/datasette-cors>`__, `dat
 startup(datasette)
 ------------------
 
-This hook fires when the Datasette application server first starts up.
+This hook fires when the Datasette application server first starts up. It runs on the same event loop that goes on to serve requests, so it is safe to create loop-bound primitives and register background work here — see :ref:`datasette_lifecycle` for the full guarantee and the three ways startup can be triggered.
 
 Here is an example that validates required plugin configuration. The server will fail to start and show an error if the validation check fails:
 
@@ -1195,6 +1196,7 @@ Potential use-cases:
 * Create database tables that a plugin needs on startup
 * Validate the configuration for a plugin on startup, and raise an error if it is invalid
 * Raise a ``datasette.utils.StartupError("message")`` exception to prevent Datasette from starting and display that message to the user.
+* Register supervised long-lived background work using :ref:`datasette_add_background_task`, which core launches once every plugin's ``startup()`` hook has finished.
 
 .. note::
 
@@ -1210,6 +1212,31 @@ Potential use-cases:
             # Rest of test goes here
 
 Examples: `datasette-saved-queries <https://datasette.io/plugins/datasette-saved-queries>`__, `datasette-init <https://datasette.io/plugins/datasette-init>`__
+
+.. _plugin_hook_shutdown:
+
+shutdown(datasette)
+-------------------
+
+This hook fires once, when the Datasette application server is shutting down gracefully - triggered by the ASGI ``lifespan.shutdown`` event, which includes pressing Ctrl-C or sending ``SIGTERM`` to a ``datasette serve`` process. It is not called on a hard kill (``SIGKILL``), since there is no opportunity to run any code in that case.
+
+Like ``startup()``, this can be a regular function or it can return an async function to be awaited.
+
+It runs before Datasette cancels any background tasks it is supervising (see :ref:`datasette_add_background_task`) and before it closes its database connections, so you can use it to tell your plugin's own background work to stop gracefully while a database connection is still available to write out any final state. See :ref:`datasette_lifecycle` for exactly where this fits into the full startup-to-shutdown sequence:
+
+.. code-block:: python
+
+    @hookimpl
+    def shutdown(datasette):
+        async def inner():
+            db = datasette.get_database()
+            await db.execute_write(
+                "insert into shutdown_log (at) values (datetime('now'))"
+            )
+
+        return inner
+
+If your ``shutdown()`` hook raises an exception it will be logged but not re-raised, so one plugin's broken shutdown code cannot prevent other plugins - or Datasette itself - from finishing their own teardown.
 
 .. _plugin_hook_actor_from_request:
 

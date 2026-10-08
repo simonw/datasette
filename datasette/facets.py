@@ -1,12 +1,13 @@
 import json
 import urllib
+
 from datasette import hookimpl
 from datasette.database import QueryInterrupted
 from datasette.utils import (
+    detect_json1,
     escape_sqlite,
     path_with_added_args,
     path_with_removed_args,
-    detect_json1,
     sqlite3,
 )
 
@@ -30,7 +31,7 @@ def load_facet_configs(request, table_config):
             assert (
                 len(facet_config.values()) == 1
             ), "Metadata config dicts should be {type: config}"
-            type, facet_config = list(facet_config.items())[0]
+            type, facet_config = next(iter(facet_config.items()))
             if isinstance(facet_config, str):
                 facet_config = {"simple": facet_config}
         facet_configs.setdefault(type, []).append(
@@ -38,7 +39,7 @@ def load_facet_configs(request, table_config):
         )
     qs_pairs = urllib.parse.parse_qs(request.query_string, keep_blank_values=True)
     for key, values in qs_pairs.items():
-        if key.startswith("_facet"):
+        if key == "_facet" or key.startswith("_facet_"):
             # Figure out the facet type
             if key == "_facet":
                 type = "column"
@@ -85,7 +86,7 @@ class Facet:
         self.database = database
         # For foreign key expansion. Can be None for e.g. stored SQL queries:
         self.table = table
-        self.sql = sql or f"select * from [{table}]"
+        self.sql = sql or f"select * from {escape_sqlite(table)}"
         self.params = params or []
         self.table_config = table_config
         # row_count can be None, in which case we calculate it ourselves:
@@ -160,18 +161,13 @@ class ColumnFacet(Facet):
         for column in columns:
             if column in already_enabled:
                 continue
-            suggested_facet_sql = """
-                with limited as (select * from ({sql}) limit {suggest_consider})
-                select {column} as value, count(*) as n from limited
+            suggested_facet_sql = f"""
+                with limited as (select * from ({self.sql}) limit {self.suggest_consider})
+                select {escape_sqlite(column)} as value, count(*) as n from limited
                 where value is not null
                 group by value
-                limit {limit}
-            """.format(
-                column=escape_sqlite(column),
-                sql=self.sql,
-                limit=facet_size + 1,
-                suggest_consider=self.suggest_consider,
-            )
+                limit {facet_size + 1}
+            """
             distinct_values = None
             try:
                 distinct_values = await self.ds.execute(
@@ -267,11 +263,16 @@ class ColumnFacet(Facet):
                 for row in facet_rows:
                     column_qs = column
                     if column.startswith("_"):
-                        column_qs = "{}__exact".format(column)
-                    selected = (column_qs, str(row["value"])) in qs_pairs
+                        column_qs = f"{column}__exact"
+                    selected_args = {
+                        key: str(row["value"])
+                        for key in (column_qs, f"{column}__exact")
+                        if (key, str(row["value"])) in qs_pairs
+                    }
+                    selected = bool(selected_args)
                     if selected:
                         toggle_path = path_with_removed_args(
-                            self.request, {column_qs: str(row["value"])}
+                            self.request, selected_args
                         )
                     else:
                         toggle_path = path_with_added_args(
@@ -342,12 +343,12 @@ class ArrayFacet(Facet):
                         for v in await self.ds.execute(
                             self.database,
                             (
-                                "select {column} from ({sql}) "
-                                "where {column} is not null "
-                                "and {column} != '' "
-                                "and json_array_length({column}) > 0 "
+                                f"select {escape_sqlite(column)} from ({self.sql}) "
+                                f"where {escape_sqlite(column)} is not null "
+                                f"and {escape_sqlite(column)} != '' "
+                                f"and json_array_length({escape_sqlite(column)}) > 0 "
                                 "limit 100"
-                            ).format(column=escape_sqlite(column), sql=self.sql),
+                            ),
                             self.params,
                             truncate=False,
                             custom_time_limit=self.ds.setting(
@@ -388,14 +389,14 @@ class ArrayFacet(Facet):
             source = source_and_config["source"]
             column = config.get("column") or config["simple"]
             # https://github.com/simonw/datasette/issues/448
-            facet_sql = """
-                with inner as ({sql}),
+            facet_sql = f"""
+                with inner as ({self.sql}),
                 deduped_array_items as (
                     select
                         distinct j.value,
                         inner.*
                     from
-                        json_each([inner].{col}) j
+                        json_each([inner].{escape_sqlite(column)}) j
                         join inner
                 )
                 select
@@ -406,12 +407,8 @@ class ArrayFacet(Facet):
                 group by
                     value
                 order by
-                    count(*) desc, value limit {limit}
-            """.format(
-                col=escape_sqlite(column),
-                sql=self.sql,
-                limit=facet_size + 1,
-            )
+                    count(*) desc, value limit {facet_size + 1}
+            """
             try:
                 facet_rows_results = await self.ds.execute(
                     self.database,

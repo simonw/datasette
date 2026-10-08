@@ -19,7 +19,7 @@ The table page and table view API
 
 Table views that support full-text search can be queried using the ``?_search=TERMS`` query string parameter. This will run the search against content from all of the columns that have been included in the index.
 
-Try this example: `fara.datasettes.com/fara/FARA_All_ShortForms?_search=manafort <https://fara.datasettes.com/fara/FARA_All_ShortForms?_search=manafort>`__
+Try `searching Datasette ecosystem repositories for "csv" <https://datasette.io/content/repos?_search=csv>`__ to find tools for working with CSV files.
 
 SQLite full-text search supports wildcards. This means you can easily implement prefix auto-complete by including an asterisk at the end of the search term - for example::
 
@@ -52,11 +52,11 @@ Configuring full-text search for a table or view
 
 If a table has a corresponding FTS table set up using the ``content=`` argument to ``CREATE VIRTUAL TABLE`` shown below, Datasette will detect it automatically and add a search interface to the table page for that table.
 
-You can also manually configure which table should be used for full-text search using query string parameters or table configuration in ``datasette.yaml`` (see :ref:`table_configuration_fts`). You can set the associated FTS table for a specific table and you can also set one for a view - if you do that, the page for that SQL view will offer a search option.
+You can also manually configure which table should be used for full-text search using table configuration in ``datasette.yaml`` (see :ref:`table_configuration_fts`). You can set the associated FTS table for a specific table and you can also set one for a view - if you do that, the page for that SQL view will offer a search option.
 
-Use ``?_fts_table=x`` to over-ride the FTS table for a specific page. If the primary key was something other than ``rowid`` you can use ``?_fts_pk=col`` to set that as well. This is particularly useful for views, for example:
+The legacy ``?_fts_table=x`` and ``?_fts_pk=col`` query string parameters are accepted only if they exactly match the configured or automatically detected FTS mapping. They cannot be used to select a different FTS table or primary key. This prevents a public table from being used to probe the contents of a private FTS table.
 
-https://latest.datasette.io/fixtures/searchable_view?_fts_table=searchable_fts&_fts_pk=pk
+Searching also requires the current actor to have ``view-table`` permission for the FTS table itself, in addition to permission to view the table or view being searched.
 
 The ``fts_table`` metadata property can be used to specify an associated FTS table. If the primary key column in your table which was used to populate the FTS table is something other than ``rowid``, you can specify the column to use with the ``fts_pk`` property.
 
@@ -120,41 +120,31 @@ Searches using custom SQL
 
 You can include full-text search results in custom SQL queries. The general pattern with SQLite search is to run the search as a sub-select that returns rowid values, then include those rowids in another part of the query.
 
-You can see the syntax for a basic search by running that search on a table page and then clicking "View and edit SQL" to see the underlying SQL. For example, consider this search for `manafort is the US FARA database <https://fara.datasettes.com/fara/FARA_All_ShortForms?_search=manafort>`_::
+You can see the syntax for a basic search by running that search on a table page and then clicking "View and edit SQL" to see the underlying SQL. For example, consider this search for `repositories mentioning "csv" <https://datasette.io/content/repos?_search=csv>`_::
 
-    /fara/FARA_All_ShortForms?_search=manafort
+    /content/repos?_search=csv
 
-If you click `View and edit SQL <https://fara.datasettes.com/fara?sql=select%0D%0A++rowid%2C%0D%0A++Short_Form_Termination_Date%2C%0D%0A++Short_Form_Date%2C%0D%0A++Short_Form_Last_Name%2C%0D%0A++Short_Form_First_Name%2C%0D%0A++Registration_Number%2C%0D%0A++Registration_Date%2C%0D%0A++Registrant_Name%2C%0D%0A++Address_1%2C%0D%0A++Address_2%2C%0D%0A++City%2C%0D%0A++State%2C%0D%0A++Zip%0D%0Afrom%0D%0A++FARA_All_ShortForms%0D%0Awhere%0D%0A++rowid+in+%28%0D%0A++++select%0D%0A++++++rowid%0D%0A++++from%0D%0A++++++FARA_All_ShortForms_fts%0D%0A++++where%0D%0A++++++FARA_All_ShortForms_fts+match+escape_fts%28%3Asearch%29%0D%0A++%29%0D%0Aorder+by%0D%0A++rowid%0D%0Alimit%0D%0A++101&search=manafort>`_ you'll see that the underlying SQL looks like this:
+The generated SQL selects all columns in the table. This simplified version selects just the repository ID, full name and description, using the same full-text search condition. `Run this query <https://datasette.io/content?sql=select%0A++id%2C%0A++full_name%2C%0A++description%0Afrom%0A++repos%0Awhere%0A++rowid+in+%28%0A++++select%0A++++++rowid%0A++++from%0A++++++repos_fts%0A++++where%0A++++++repos_fts+match+escape_fts%28%3Asearch%29%0A++%29%0Aorder+by%0A++id%0Alimit%0A++101&search=csv>`_ with ``search`` set to ``csv``:
 
 .. code-block:: sql
 
     select
-      rowid,
-      Short_Form_Termination_Date,
-      Short_Form_Date,
-      Short_Form_Last_Name,
-      Short_Form_First_Name,
-      Registration_Number,
-      Registration_Date,
-      Registrant_Name,
-      Address_1,
-      Address_2,
-      City,
-      State,
-      Zip
+      id,
+      full_name,
+      description
     from
-      FARA_All_ShortForms
+      repos
     where
       rowid in (
         select
           rowid
         from
-          FARA_All_ShortForms_fts
+          repos_fts
         where
-          FARA_All_ShortForms_fts match escape_fts(:search)
+          repos_fts match escape_fts(:search)
       )
     order by
-      rowid
+      id
     limit
       101
 

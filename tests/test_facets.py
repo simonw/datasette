@@ -1,11 +1,49 @@
+import json
+from urllib.parse import parse_qsl, urlsplit
+
+import pytest
+
 from datasette.app import Datasette
 from datasette.database import Database
-from datasette.facets import Facet, ColumnFacet, ArrayFacet, DateFacet
-from datasette.utils.asgi import Request
+from datasette.facets import (
+    ArrayFacet,
+    ColumnFacet,
+    DateFacet,
+    Facet,
+    load_facet_configs,
+)
 from datasette.utils import detect_json1
+from datasette.utils.asgi import Request
+
 from .fixtures import make_app_client
-import json
-import pytest
+
+
+@pytest.mark.parametrize(
+    "query_string",
+    ("_facets=ignored", "_facet=state&_facets=ignored", "_facets=ignored&_facet=state"),
+)
+@pytest.mark.parametrize("table_config", ({}, {"facets": ["state"]}))
+def test_facet_configs_ignore_unrelated_prefixes(query_string, table_config):
+    expected = load_facet_configs(
+        Request.fake("/?_facet=state" if "_facet=" in query_string else "/"),
+        table_config,
+    )
+    assert (
+        load_facet_configs(Request.fake("/?" + query_string), table_config) == expected
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "query_string",
+    ("_facet=state&_facets=ignored", "_facets=ignored&_facet=state"),
+)
+async def test_facet_ignores_unrelated_prefixes(ds_client, query_string):
+    response = await ds_client.get("/fixtures/facetable.json?" + query_string)
+    assert response.status_code == 200
+    facets = response.json()["facet_results"]["results"]
+    assert set(facets) == {"state"}
+    assert facets["state"]["results"]
 
 
 @pytest.mark.asyncio
@@ -146,6 +184,63 @@ async def test_column_facet_results(ds_client):
             "truncated": False,
         }
     ] == buckets
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "column,filters,remaining",
+    [
+        ("COUNTY", "COUNTY=Lee", []),
+        ("COUNTY", "COUNTY__exact=Lee", []),
+        ("COUNTY", "COUNTY=Lee&COUNTY__exact=Lee", []),
+        ("COUNTY", "COUNTY__exact=Lee&COUNTY__exact=Lee", []),
+        (
+            "COUNTY",
+            "COUNTY__exact=Lee&COUNTY__exact=Polk",
+            [("COUNTY__exact", "Polk")],
+        ),
+        ("_county", "_county__exact=Lee", []),
+        ("_county", "_county__exact=Lee&_county=Lee", [("_county", "Lee")]),
+    ],
+)
+async def test_column_facet_selected_exact_filters(
+    ds_client, column, filters, remaining
+):
+    facet = ColumnFacet(
+        ds_client.ds,
+        Request.fake(f"/?_facet={column}&{filters}&other=keep&_sort={column}"),
+        database="fixtures",
+        sql=f"select 'Lee' as {column}",
+    )
+    buckets, timed_out = await facet.facet_results()
+    assert not timed_out
+    result = buckets[0]["results"][0]
+    assert result["selected"] is True
+    assert parse_qsl(urlsplit(result["toggle_url"]).query) == [
+        ("_facet", column),
+        *remaining,
+        ("other", "keep"),
+        ("_sort", column),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_column_facet_underscore_argument_is_not_a_filter(ds_client):
+    facet = ColumnFacet(
+        ds_client.ds,
+        Request.fake("/?_facet=_county&_county=Lee"),
+        database="fixtures",
+        sql="select 'Lee' as _county",
+    )
+    buckets, timed_out = await facet.facet_results()
+    assert not timed_out
+    result = buckets[0]["results"][0]
+    assert result["selected"] is False
+    assert parse_qsl(urlsplit(result["toggle_url"]).query) == [
+        ("_facet", "_county"),
+        ("_county", "Lee"),
+        ("_county__exact", "Lee"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -537,7 +632,7 @@ async def test_facet_size():
         for j in range(1, 4):
             await db.execute_write(
                 "insert into neighbourhoods (city, neighbourhood) values (?, ?)",
-                ["City {}".format(i), "Neighbourhood {}".format(j)],
+                [f"City {i}", f"Neighbourhood {j}"],
             )
     response = await ds.client.get(
         "/test_facet_size/neighbourhoods.json?_extra=suggested_facets"

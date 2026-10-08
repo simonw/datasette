@@ -1,14 +1,17 @@
+from collections.abc import Callable
+
 import pytest
+
 from datasette.app import Datasette
 from datasette.permissions import PermissionSQL
 from datasette.utils.permissions import resolve_permissions_from_catalog
-from typing import Callable, List
 
 
 @pytest.fixture
 def db():
     ds = Datasette()
     import tempfile
+
     from datasette.database import Database
 
     path = tempfile.mktemp(suffix="demo.db")
@@ -127,7 +130,7 @@ def plugin_root_deny_for_all() -> Callable[[str], PermissionSQL]:
 
 def plugin_conflicting_same_child_rules(
     user: str, parent: str, child: str
-) -> List[Callable[[str], PermissionSQL]]:
+) -> list[Callable[[str], PermissionSQL]]:
     def allow_provider(action: str) -> PermissionSQL:
         return PermissionSQL(
             """
@@ -277,9 +280,7 @@ async def test_alice_global_allow_with_specific_denies_catalog(db):
     # Alice can see everything except accounting/sales and hr/*
     assert "/accounting/sales" in res_denied(rows)
     for r in rows:
-        if r["parent"] == "hr":
-            assert r["allow"] == 0
-        elif r["resource"] == "/accounting/sales":
+        if r["parent"] == "hr" or r["resource"] == "/accounting/sales":
             assert r["allow"] == 0
         else:
             assert r["allow"] == 1

@@ -2,13 +2,14 @@
 Tests for the canonical JSON success envelope.
 
 Every JSON object returned by a Datasette endpoint on success should include
-"ok": true. (Endpoints that return a top-level array are being converted to
-objects separately - see /-/plugins, /-/databases, /-/actions.)
+"ok": true. /-/plugins intentionally returns a top-level array instead, while
+/-/databases and /-/actions use the object envelope.
 """
 
 import pytest
+
 from datasette.app import Datasette
-from datasette.utils import sqlite3, UNSTABLE_API_MESSAGE
+from datasette.utils import UNSTABLE_API_MESSAGE, sqlite3
 
 
 @pytest.fixture
@@ -58,6 +59,7 @@ async def test_success_object_has_ok_true(ds_client, path):
         "/-/rules.json?action=view-instance",
         "/-/check.json?action=view-instance",
         "/-/threads.json",
+        "/-/tasks.json",
     ),
 )
 async def test_permission_debug_success_has_ok_true(ds_envelope, path):
@@ -79,17 +81,16 @@ async def test_permissions_post_success_has_ok_true(ds_envelope):
 
 
 @pytest.mark.asyncio
-async def test_plugins_json_is_object(ds_client):
+async def test_plugins_json_is_array(ds_client):
     response = await ds_client.get("/-/plugins.json")
     assert response.status_code == 200
     data = response.json()
-    assert set(data.keys()) == {"ok", "plugins"}
-    assert data["ok"] is True
-    assert isinstance(data["plugins"], list)
+    assert isinstance(data, list)
+    assert all(isinstance(plugin, dict) for plugin in data)
     # ?all=1 should include Datasette's default plugins in the same shape
     response_all = await ds_client.get("/-/plugins.json?all=1")
-    all_plugins = response_all.json()["plugins"]
-    assert len(all_plugins) > len(data["plugins"])
+    all_plugins = response_all.json()
+    assert len(all_plugins) > len(data)
 
 
 @pytest.mark.asyncio

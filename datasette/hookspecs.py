@@ -1,5 +1,4 @@
-from pluggy import HookimplMarker
-from pluggy import HookspecMarker
+from pluggy import HookimplMarker, HookspecMarker
 
 hookspec = HookspecMarker("datasette")
 hookimpl = HookimplMarker("datasette")
@@ -8,6 +7,11 @@ hookimpl = HookimplMarker("datasette")
 @hookspec
 def startup(datasette):
     """Fires directly after Datasette first starts running"""
+
+
+@hookspec
+def shutdown(datasette):
+    """Called once when the Datasette server is shutting down"""
 
 
 @hookspec
@@ -46,7 +50,7 @@ def extra_body_script(
 def extra_template_vars(
     template, database, table, columns, view_name, request, datasette
 ):
-    """Extra template variables to be made available to the template - can return dict or callable or awaitable"""
+    """Extra template variables to be made available to the template - can return dict, None, callable or awaitable"""
 
 
 @hookspec

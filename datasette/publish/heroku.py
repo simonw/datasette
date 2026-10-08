@@ -1,19 +1,21 @@
-from contextlib import contextmanager
-from datasette import hookimpl
-import click
 import json
 import os
 import pathlib
 import shlex
 import shutil
-from subprocess import call, check_output
 import tempfile
+from contextlib import contextmanager
+from subprocess import call, check_output
+
+import click
+
+from datasette import hookimpl
+from datasette.utils import link_or_copy, link_or_copy_directory, parse_metadata
 
 from .common import (
     add_common_publish_arguments_and_options,
     fail_if_publish_binary_not_installed,
 )
-from datasette.utils import link_or_copy, link_or_copy_directory, parse_metadata
 
 
 @hookimpl
@@ -234,7 +236,7 @@ def temporary_heroku_directory(
             extras.extend(["--static", f"{mount_point}:{mount_point}"])
 
         quoted_files = " ".join(
-            ["-i {}".format(shlex.quote(file_name)) for file_name in file_names]
+            [f"-i {shlex.quote(file_name)}" for file_name in file_names]
         )
         procfile_cmd = "web: datasette serve --host 0.0.0.0 {quoted_files} --cors --port $PORT --inspect-file inspect-data.json {extras}".format(
             quoted_files=quoted_files, extras=" ".join(extras)

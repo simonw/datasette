@@ -2,22 +2,25 @@
 Tests for various datasette helper functions.
 """
 
-from datasette.app import Datasette
-from datasette import utils
-from datasette.utils.asgi import Request
-from datasette.utils.sqlite import (
-    sqlite3,
-    sqlite_hidden_table_names,
-    sqlite_table_type,
-    supports_returning,
-)
 import hashlib
 import json
 import os
 import pathlib
-import pytest
 import tempfile
 from unittest.mock import patch
+
+import pytest
+
+from datasette import utils
+from datasette.app import Datasette
+from datasette.utils.asgi import Request
+from datasette.utils.sqlite import (
+    sqlite3,
+    sqlite_derived_table_dependencies,
+    sqlite_hidden_table_names,
+    sqlite_table_type,
+    supports_returning,
+)
 
 
 @pytest.mark.parametrize(
@@ -194,7 +197,7 @@ def test_validate_sql_select_good(good_sql):
 
 @pytest.mark.parametrize("open_quote,close_quote", [('"', '"'), ("[", "]")])
 def test_detect_fts(open_quote, close_quote):
-    sql = """
+    sql = f"""
     CREATE TABLE "Dumb_Table" (
       "TreeID" INTEGER,
       "qSpecies" TEXT
@@ -209,9 +212,9 @@ def test_detect_fts(open_quote, close_quote):
       "qCaretaker" TEXT
     );
     CREATE VIEW Test_View AS SELECT * FROM Dumb_Table;
-    CREATE VIRTUAL TABLE {open}Street_Tree_List_fts{close} USING FTS4 ("qAddress", "qCaretaker", "qSpecies", content={open}Street_Tree_List{close});
+    CREATE VIRTUAL TABLE {open_quote}Street_Tree_List_fts{close_quote} USING FTS4 ("qAddress", "qCaretaker", "qSpecies", content={open_quote}Street_Tree_List{close_quote});
     CREATE VIRTUAL TABLE r USING rtree(a, b, c);
-    """.format(open=open_quote, close=close_quote)
+    """
     conn = utils.sqlite3.connect(":memory:")
     conn.executescript(sql)
     assert None is utils.detect_fts(conn, "Dumb_Table")
@@ -225,6 +228,8 @@ def test_detect_fts(open_quote, close_quote):
     "identifier,expected",
     (
         ("plain", "plain"),
+        ("plain\n", '"plain\n"'),
+        ("select\n", '"select\n"'),
         ("select", '"select"'),
         ("has space", '"has space"'),
         ("has'quote", '"has\'quote"'),
@@ -262,8 +267,8 @@ def test_escape_sqlite_prevents_injection():
     conn.execute("CREATE TABLE users (id INTEGER, password TEXT)")
     conn.execute("INSERT INTO users VALUES (1, 'super_secret_password')")
     malicious = "users] UNION SELECT password FROM users--"
-    conn.execute('CREATE TABLE "{}" (id INTEGER)'.format(malicious))
-    sql = "select count(*) from {}".format(utils.escape_sqlite(malicious))
+    conn.execute(f'CREATE TABLE "{malicious}" (id INTEGER)')
+    sql = f"select count(*) from {utils.escape_sqlite(malicious)}"
     results = conn.execute(sql).fetchall()
     conn.close()
     # The injected UNION must not execute - only the empty malicious table
@@ -273,16 +278,16 @@ def test_escape_sqlite_prevents_injection():
 
 @pytest.mark.parametrize("table", ("regular", "has'single quote"))
 def test_detect_fts_different_table_names(table):
-    sql = """
+    sql = f"""
     CREATE TABLE [{table}] (
       "TreeID" INTEGER,
       "qSpecies" TEXT
     );
     CREATE VIRTUAL TABLE [{table}_fts] USING FTS4 ("qSpecies", content="{table}");
-    """.format(table=table)
+    """
     conn = utils.sqlite3.connect(":memory:")
     conn.executescript(sql)
-    assert "{table}_fts".format(table=table) == utils.detect_fts(conn, table)
+    assert f"{table}_fts" == utils.detect_fts(conn, table)
     conn.close()
 
 
@@ -363,6 +368,46 @@ def test_sqlite_hidden_table_names_hides_multiline_content_fts_table():
         """)
 
         assert "searchable_fts" in sqlite_hidden_table_names(conn)
+    finally:
+        conn.close()
+
+
+def test_sqlite_derived_table_dependencies():
+    conn = utils.sqlite3.connect(":memory:")
+    try:
+        conn.executescript("""
+            create table docs(id integer primary key, body text);
+            create virtual table external_fts5 using fts5(
+                body, content='docs', content_rowid='id'
+            );
+            create virtual table internal_fts5 using fts5(body);
+            create virtual table contentless_fts5 using fts5(body, content='');
+            create virtual table external_fts4 using fts4(body, content="docs");
+            create virtual table internal_fts4 using fts4(body);
+            create virtual table contentless_fts4 using fts4(body, content="");
+            create table [docs, archive](body text);
+            create virtual table commented_fts5 using fts5(
+                body, tokenize='porter unicode61',
+                /* Comments and commas in quoted values must not confuse parsing. */
+                content='docs, archive'
+            );
+            create virtual table boxes using rtree(id, minx, maxx, miny, maxy);
+        """)
+
+        dependencies = sqlite_derived_table_dependencies(conn)
+
+        assert dependencies["external_fts5"] == "docs"
+        assert dependencies["external_fts4"] == "docs"
+        assert dependencies["commented_fts5"] == "docs, archive"
+        assert "contentless_fts5" not in dependencies
+        assert "contentless_fts4" not in dependencies
+        assert dependencies["internal_fts5_content"] == "internal_fts5"
+        assert dependencies["internal_fts4_content"] == "internal_fts4"
+        assert dependencies["external_fts5_data"] == "external_fts5"
+        assert dependencies["external_fts4_segments"] == "external_fts4"
+        assert dependencies["boxes_node"] == "boxes"
+        assert dependencies["boxes_parent"] == "boxes"
+        assert dependencies["boxes_rowid"] == "boxes"
     finally:
         conn.close()
 
@@ -689,7 +734,6 @@ def test_resolve_env_secrets(config, expected):
     "actor,expected",
     [
         ({"id": "blah"}, "blah"),
-        ({"id": "blah", "login": "l"}, "l"),
         ({"id": "blah", "login": "l"}, "l"),
         ({"id": "blah", "login": "l", "username": "u"}, "u"),
         ({"login": "l", "name": "n"}, "n"),

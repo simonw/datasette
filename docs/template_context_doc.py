@@ -21,14 +21,12 @@ def template_context(cog):
         ),
     )
     for name, doc in TEMPLATE_BASE_CONTEXT.items():
-        cog.out("``{}``\n".format(name))
-        cog.out("    {}\n\n".format(doc))
+        cog.out(f"``{name}``\n")
+        cog.out(f"    {doc}\n\n")
 
     for klass in PAGES.values():
         title = "{} page".format(klass.__name__.removesuffix("Context"))
-        intro = "{} Rendered using the ``{}`` template.".format(
-            klass.__doc__, klass.documented_template
-        )
+        intro = f"{klass.__doc__} Rendered using the ``{klass.documented_template}`` template."
         _section(cog, title, intro)
         if klass.extras_scope is not None:
             cog.out(
@@ -36,10 +34,10 @@ def template_context(cog):
                 "<json_api>` for this page.\n\n"
             )
         for f in sorted(klass.documented_fields(), key=lambda f: f.name):
-            cog.out("``{}`` - ``{}``\n".format(f.name, f.type_name))
-            cog.out("    {}\n\n".format(f.help))
+            cog.out(f"``{f.name}`` - ``{f.type_name}``\n")
+            cog.out(f"    {f.help}\n\n")
 
 
 def _section(cog, title, intro):
     cog.out("{}\n{}\n\n".format(title, "-" * len(title)))
-    cog.out("{}\n\n".format(intro))
+    cog.out(f"{intro}\n\n")

@@ -1,15 +1,18 @@
-import httpx
 import importlib.metadata
 import os
 import pathlib
-import pytest
-import pytest_asyncio
 import re
+import socket
 import subprocess
 import sys
 import tempfile
 import time
 from dataclasses import dataclass
+
+import httpx2
+import pytest
+import pytest_asyncio
+
 from datasette import Event, hookimpl
 
 try:
@@ -30,15 +33,39 @@ UNDOCUMENTED_PERMISSIONS = {
 }
 
 
-def wait_until_responds(url, timeout=5.0, client=httpx, **kwargs):
+def wait_until_responds(url, timeout=5.0, client=httpx2, process=None, **kwargs):
     start = time.time()
     while time.time() - start < timeout:
+        # If the server died there is no point waiting out the timeout - fail
+        # now, with its output, instead of after `timeout` seconds of silence
+        if process is not None and process.poll() is not None:
+            raise AssertionError(
+                "Server exited early with returncode {}\n{}".format(
+                    process.returncode, process.stdout.read().decode("utf-8")
+                )
+            )
         try:
             client.get(url, **kwargs)
             return
-        except httpx.ConnectError:
+        except httpx2.TransportError:
             time.sleep(0.1)
-    raise AssertionError("Timed out waiting for {} to respond".format(url))
+    raise AssertionError(f"Timed out waiting for {url} to respond")
+
+
+def find_free_port():
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+from datasette.telemetry_testing import (  # noqa: F401
+    MetricsCollector,
+    otel_meter_provider,
+    otel_metrics,
+    otel_provider,
+    otel_reset,
+    otel_spans,
+)
 
 
 @pytest.fixture
@@ -54,10 +81,12 @@ def bare_ds():
 
 @pytest_asyncio.fixture(scope="session")
 async def ds_client():
+    import secrets
+
     from datasette.app import Datasette
     from datasette.database import Database
+
     from .fixtures import CONFIG, METADATA, PLUGINS_DIR
-    import secrets
 
     ds = Datasette(
         metadata=METADATA,
@@ -87,7 +116,10 @@ async def ds_client():
 
     await db.execute_write_fn(prepare)
     await ds.invoke_startup()
-    return ds.client
+    try:
+        yield ds.client
+    finally:
+        ds.close()
 
 
 def pytest_report_header(config):
@@ -96,8 +128,8 @@ def pytest_report_header(config):
     conn.close()
     sqlite_utils_version = importlib.metadata.version("sqlite-utils")
     headers = [
-        "SQLite: {}".format(version),
-        "sqlite-utils: {}".format(sqlite_utils_version),
+        f"SQLite: {version}",
+        f"sqlite-utils: {sqlite_utils_version}",
     ]
     if config.getoption("--playwright"):
         try:
@@ -149,6 +181,11 @@ def pytest_collection_modifyitems(config, items):
     move_to_front(items, "test_spatialite_error_if_attempt_to_open_spatialite")
     move_to_front(items, "test_package")
     move_to_front(items, "test_package_with_port")
+    # These start subprocesses, which can crash on macOS/CPython 3.13 late in
+    # a test run once the pytest process has started many threads
+    move_to_front(items, "test_datasette_package_never_imports_the_sdk")
+    move_to_front(items, "test_kit_module_itself_never_imports_the_sdk")
+    move_to_front(items, "test_no_provider_takes_the_fast_path")
 
 
 def move_to_front(items, test_name):
@@ -175,8 +212,8 @@ def restore_working_directory(tmpdir, request):
 
 @pytest.fixture(scope="session", autouse=True)
 def check_actions_are_documented():
-    from datasette.plugins import pm
     from datasette.default_actions import register_actions as default_register_actions
+    from datasette.plugins import pm
 
     content = (
         pathlib.Path(__file__).parent.parent / "docs" / "authentication.rst"
@@ -202,7 +239,7 @@ def check_actions_are_documented():
             if kwargs["action"] in core_actions:
                 assert (
                     action in documented_actions
-                ), "Undocumented permission action: {}".format(action)
+                ), f"Undocumented permission action: {action}"
 
     pm.add_hookcall_monitoring(
         before=before, after=lambda outcome, hook_name, hook_impls, kwargs: None
@@ -247,12 +284,24 @@ def ds_localhost_http_server():
         # Avoid FileNotFoundError: [Errno 2] No such file or directory:
         cwd=tempfile.gettempdir(),
     )
-    wait_until_responds("http://localhost:8041/")
-    # Check it started successfully
-    assert not ds_proc.poll(), ds_proc.stdout.read().decode("utf-8")
-    yield ds_proc
-    # Shut it down at the end of the pytest session
-    ds_proc.terminate()
+    try:
+        wait_until_responds("http://localhost:8041/", process=ds_proc)
+        yield ds_proc
+    finally:
+        stop_process(ds_proc)
+
+
+def stop_process(proc):
+    try:
+        if proc.poll() is None:
+            proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+    finally:
+        proc.stdout.close()
 
 
 @pytest.fixture(scope="session")
@@ -273,11 +322,27 @@ def ds_unix_domain_socket_server(tmp_path_factory):
         cwd=tempfile.gettempdir(),
     )
     # Poll until available
-    transport = httpx.HTTPTransport(uds=uds)
-    client = httpx.Client(transport=transport)
+    transport = httpx2.HTTPTransport(uds=uds)
+    client = httpx2.Client(transport=transport)
     try:
+        # Probe with a socket we own: the HTTP transport can leak a socket
+        # when connect() fails before the UDS server has started listening.
+        start = time.monotonic()
+        while True:
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+                    probe.settimeout(0.1)
+                    probe.connect(uds)
+                break
+            except OSError:
+                if ds_proc.poll() is not None or time.monotonic() - start > 30:
+                    raise
+                time.sleep(0.1)
         wait_until_responds(
-            "http://localhost/_memory.json", timeout=30.0, client=client
+            "http://localhost/_memory.json",
+            timeout=30.0,
+            client=client,
+            process=ds_proc,
         )
         # Check it started successfully
         assert not ds_proc.poll(), ds_proc.stdout.read().decode("utf-8")
@@ -285,20 +350,75 @@ def ds_unix_domain_socket_server(tmp_path_factory):
     finally:
         client.close()
         # Shut it down at the end of the pytest session
-        ds_proc.terminate()
-        try:
-            ds_proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            ds_proc.kill()
-            ds_proc.wait()
+        stop_process(ds_proc)
         try:
             os.unlink(uds)
         except FileNotFoundError:
             pass
 
 
+@pytest.fixture
+def serve_with_plugins(tmp_path):
+    """Factory fixture for starting ``datasette serve`` in a subprocess with
+    plugins written to a temporary ``--plugins-dir``.
+
+    For tests that need the real serve path: event-loop wiring, exit codes,
+    signals. The usual in-process ``pm.register`` plugin pattern can't reach
+    a subprocess, so plugin source is written out as importable files instead.
+
+    Unlike ``ds_localhost_http_server`` this is function-scoped and takes a
+    fresh port each time, because each test needs its own plugins. Call it as::
+
+        proc, port = serve_with_plugins({"my_plugin": PLUGIN_SOURCE})
+
+    ``plugins`` maps module name to Python source. Pass
+    ``wait_for_startup=False`` when the server is expected to fail during
+    startup rather than begin serving. Extra CLI arguments are passed through.
+    Every process started is terminated when the test ends.
+    """
+    processes = []
+
+    def start(plugins, *extra_args, wait_for_startup=True):
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir(exist_ok=True)
+        for module_name, source in plugins.items():
+            (plugins_dir / f"{module_name}.py").write_text(source, "utf-8")
+        port = find_free_port()
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "datasette",
+                "--memory",
+                "--plugins-dir",
+                str(plugins_dir),
+                "-h",
+                "127.0.0.1",
+                "-p",
+                str(port),
+                *extra_args,
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            # Avoid FileNotFoundError: [Errno 2] No such file or directory:
+            cwd=tempfile.gettempdir(),
+        )
+        processes.append(proc)
+        if wait_for_startup:
+            wait_until_responds(
+                f"http://127.0.0.1:{port}/-/versions.json", process=proc
+            )
+        return proc, port
+
+    yield start
+
+    for proc in processes:
+        stop_process(proc)
+
+
 # Import fixtures from fixtures.py to make them available
-from .fixtures import (  # noqa: E402, F401
+from .fixtures import (  # noqa: F401
+    TEMP_PLUGIN_SECRET_FILE,
     app_client,
     app_client_base_url_prefix,
     app_client_conflicting_database_names,
@@ -315,5 +435,4 @@ from .fixtures import (  # noqa: E402, F401
     app_client_with_dot,
     app_client_with_trace,
     make_app_client,
-    TEMP_PLUGIN_SECRET_FILE,
 )

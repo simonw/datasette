@@ -1,16 +1,21 @@
-from datasette import hookimpl, Response
+import traceback
+
+from markupsafe import Markup
+
+from datasette import Response, hookimpl
+
 from .utils import add_cors_headers, error_body
 from .utils.asgi import (
     Base400,
 )
 from .views.base import DatasetteError
-from markupsafe import Markup
-import traceback
 
+# Debugger imports are deliberate - they back the "pdb" setting, which drops
+# into a debugger on unhandled exceptions
 try:
-    import ipdb as pdb
+    import ipdb as pdb  # noqa: T100
 except ImportError:
-    import pdb
+    import pdb  # noqa: T100
 
 try:
     import rich
@@ -54,6 +59,10 @@ def handle_exception(datasette, request, exception):
             body = dict(info)
             body.update(error_body(plain_message or message, status))
             return Response.json(body, status=status, headers=headers)
+        if request.path.split("?")[0].endswith(".csv"):
+            return Response.text(
+                plain_message or message, status=status, headers=headers
+            )
         info.update(
             {
                 "ok": False,
@@ -69,7 +78,7 @@ def handle_exception(datasette, request, exception):
                 dict(
                     info,
                     urls=datasette.urls,
-                    menu_links=lambda: [],
+                    menu_links=list,
                 )
             ),
             status=status,

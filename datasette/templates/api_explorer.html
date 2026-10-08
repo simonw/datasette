@@ -3,7 +3,6 @@
 {% block title %}API Explorer{% endblock %}
 
 {% block extra_head %}
-<script src="{{ static('json-format-highlight-1.0.1.js') }}"></script>
 {% endblock %}
 
 {% block content %}
@@ -126,7 +125,7 @@ getForm.addEventListener("submit", (ev) => {
     document.getElementById('response-status').textContent = response.status;
     return response.json();
   }).then((data) => {
-    output.querySelector('pre').innerHTML = jsonFormatHighlight(data);
+    output.querySelector('pre').textContent = JSON.stringify(data, null, 2);
     errorList.style.display = 'none';
   }).catch((error) => {
     alert(error);
@@ -174,7 +173,7 @@ postForm.addEventListener("submit", (ev) => {
     } else {
       errorList.style.display = 'none';
     }
-    output.querySelector('pre').innerHTML = jsonFormatHighlight(data);
+    output.querySelector('pre').textContent = JSON.stringify(data, null, 2);
     output.style.display = 'block';
   }).catch(err => {
     alert("Error: " + err);

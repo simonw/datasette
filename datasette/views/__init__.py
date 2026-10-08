@@ -1,7 +1,7 @@
-from dataclasses import dataclass
 import dataclasses
 import types
 import typing
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -74,16 +74,14 @@ class Context:
             extra_class = table_extra_registry.classes_by_name[name]
         except KeyError:
             raise KeyError(
-                "{}.{} is declared with from_extra() but there is no "
-                "registered extra of that name".format(cls.__name__, name)
+                f"{cls.__name__}.{name} is declared with from_extra() but there is no "
+                "registered extra of that name"
             )
         if cls.extras_scope is not None and not extra_class.available_for(
             cls.extras_scope
         ):
             raise ValueError(
-                "{}.{} is declared with from_extra() but the {} extra is "
-                "not available for scope {}".format(
-                    cls.__name__, name, name, cls.extras_scope
-                )
+                f"{cls.__name__}.{name} is declared with from_extra() but the {name} extra is "
+                f"not available for scope {cls.extras_scope}"
             )
         return extra_class.description or ""

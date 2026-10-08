@@ -1,15 +1,17 @@
-from datasette import hookimpl
-import click
 import json
 import os
 import re
 from subprocess import CalledProcessError, check_call, check_output
 
+import click
+
+from datasette import hookimpl
+
+from ..utils import temporary_docker_directory
 from .common import (
     add_common_publish_arguments_and_options,
     fail_if_publish_binary_not_installed,
 )
-from ..utils import temporary_docker_directory
 
 
 @hookimpl
@@ -219,7 +221,7 @@ def publish_subcommand(publish):
 
             check_call(
                 "gcloud builds submit --tag {}{}".format(
-                    image_id, " --timeout {}".format(timeout) if timeout else ""
+                    image_id, f" --timeout {timeout}" if timeout else ""
                 ),
                 shell=True,
             )
@@ -231,7 +233,7 @@ def publish_subcommand(publish):
             ("--min-instances", min_instances),
         ):
             if value is not None:
-                extra_deploy_options.append("{} {}".format(option, value))
+                extra_deploy_options.append(f"{option} {value}")
         check_call(
             "gcloud run deploy --allow-unauthenticated --platform=managed --image {} {}{}".format(
                 image_id,
@@ -258,24 +260,16 @@ def _ensure_artifact_registry(artifact_project, artifact_region, artifact_reposi
         ) from exc
 
     describe_cmd = (
-        "gcloud artifacts repositories describe {repo} --project {project} "
-        "--location {location} --quiet"
-    ).format(
-        repo=artifact_repository,
-        project=artifact_project,
-        location=artifact_region,
+        f"gcloud artifacts repositories describe {artifact_repository} --project {artifact_project} "
+        f"--location {artifact_region} --quiet"
     )
     try:
         check_call(describe_cmd, shell=True)
         return
     except CalledProcessError:
         create_cmd = (
-            "gcloud artifacts repositories create {repo} --repository-format=docker "
-            '--location {location} --project {project} --description "Datasette Cloud Run images" --quiet'
-        ).format(
-            repo=artifact_repository,
-            location=artifact_region,
-            project=artifact_project,
+            f"gcloud artifacts repositories create {artifact_repository} --repository-format=docker "
+            f'--location {artifact_region} --project {artifact_project} --description "Datasette Cloud Run images" --quiet'
         )
         try:
             check_call(create_cmd, shell=True)

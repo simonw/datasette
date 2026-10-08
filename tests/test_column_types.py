@@ -1,7 +1,11 @@
 import json
 import logging
+import time
 
+import markupsafe
+import pytest
 from bs4 import BeautifulSoup as Soup
+
 from datasette.app import Datasette
 from datasette.column_types import (
     ColumnType,
@@ -9,11 +13,7 @@ from datasette.column_types import (
 )
 from datasette.hookspecs import hookimpl
 from datasette.plugins import pm
-from datasette.utils import error_body, sqlite3
-from datasette.utils import StartupError
-import markupsafe
-import pytest
-import time
+from datasette.utils import StartupError, error_body, sqlite3
 
 
 @pytest.fixture
@@ -31,6 +31,7 @@ def ds_ct(tmp_path_factory):
         "'https://example.com', '{\"key\": \"value\"}')"
     )
     db.commit()
+    db.close()
     ds = Datasette(
         [db_path],
         config={
@@ -70,6 +71,7 @@ def ds_ct_editor_permission(tmp_path_factory):
         "'https://example.com', '{\"key\": \"value\"}')"
     )
     db.commit()
+    db.close()
     ds = Datasette(
         [db_path],
         config={
@@ -104,7 +106,7 @@ def write_token(ds, actor_id="root", permissions=None):
 
 def _headers(token):
     return {
-        "Authorization": "Bearer {}".format(token),
+        "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
 
@@ -569,44 +571,6 @@ async def test_url_render_cell(ds_ct):
 
 
 @pytest.mark.asyncio
-async def test_url_render_cell_truncates(tmp_path_factory):
-    # truncate_cells_html should also truncate the displayed text of url
-    # column type links, while keeping the full URL in the href - refs #1805
-    db_directory = tmp_path_factory.mktemp("dbs")
-    db_path = str(db_directory / "data.db")
-    db = sqlite3.connect(db_path)
-    db.execute("create table posts (id integer primary key, website text)")
-    long_url = (
-        "https://images.openfoodfacts.org/images/products/000/000/000/088/"
-        "nutrition_fr.5.200.jpg"
-    )
-    db.execute("insert into posts values (1, ?)", [long_url])
-    db.commit()
-    db.close()
-    ds = Datasette(
-        [db_path],
-        settings={"truncate_cells_html": 30},
-        config={
-            "databases": {
-                "data": {"tables": {"posts": {"column_types": {"website": "url"}}}}
-            }
-        },
-    )
-    await ds.invoke_startup()
-    response = await ds.client.get("/data/posts.json?_extra=render_cell")
-    assert response.status_code == 200
-    rendered = response.json()["render_cell"][0]["website"]
-    # The full URL is preserved in the href
-    assert f'href="{long_url}"' in rendered
-    # ...but the visible link text is truncated
-    soup = Soup(rendered, "html.parser")
-    link_text = soup.find("a").text
-    assert link_text != long_url
-    assert "…" in link_text
-    ds.close()
-
-
-@pytest.mark.asyncio
 async def test_email_render_cell(ds_ct):
     await ds_ct.invoke_startup()
     response = await ds_ct.client.get("/data/posts.json?_extra=render_cell")
@@ -948,6 +912,90 @@ async def test_html_table_page_rendering(ds_ct):
     html = response.text
     assert "mailto:test@example.com" in html
     assert 'href="https://example.com"' in html
+
+
+# --- url column type link text truncation, refs #1805 ---
+
+LONG_URL = (
+    "https://images.openfoodfacts.org/images/products/000/000/000/088/"
+    "nutrition_fr.5.200.jpg"
+)
+
+
+@pytest.fixture
+def ds_long_url(tmp_path_factory):
+    db_path = str(tmp_path_factory.mktemp("dbs") / "data.db")
+    db = sqlite3.connect(db_path)
+    db.execute("create table posts (id integer primary key, website text)")
+    db.execute("insert into posts values (1, ?)", [LONG_URL])
+    db.execute("insert into posts values (2, 'not a url')")
+    db.commit()
+    db.close()
+    ds = Datasette(
+        [db_path],
+        settings={"truncate_cells_html": 30},
+        config={
+            "databases": {
+                "data": {"tables": {"posts": {"column_types": {"website": "url"}}}}
+            }
+        },
+    )
+    yield ds
+    ds.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "truncate_cells_html,expected_text",
+    (
+        (30, "https://images.openfoodfac….jpg"),
+        # 0 disables truncation
+        (0, LONG_URL),
+    ),
+)
+async def test_url_column_type_truncates_link_text(
+    ds_long_url, truncate_cells_html, expected_text
+):
+    # The table page truncates the link text but the href keeps the full URL
+    ds_long_url._settings["truncate_cells_html"] = truncate_cells_html
+    await ds_long_url.invoke_startup()
+    response = await ds_long_url.client.get("/data/posts")
+    assert response.status_code == 200
+    link = Soup(response.text, "html.parser").select_one("td.col-website a")
+    assert link["href"] == LONG_URL
+    assert link.text == expected_text
+
+
+@pytest.mark.asyncio
+async def test_url_column_type_full_link_text_on_row_page(ds_long_url):
+    # Row pages show full values, so the link text is not truncated there
+    await ds_long_url.invoke_startup()
+    response = await ds_long_url.client.get("/data/posts/1")
+    assert response.status_code == 200
+    link = Soup(response.text, "html.parser").select_one("td.col-website a")
+    assert link["href"] == LONG_URL
+    assert link.text == LONG_URL
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ("/data/posts.json", "/data/posts/1.json"))
+async def test_url_column_type_full_link_text_in_json(ds_long_url, path):
+    # truncate_cells_html only applies to the HTML table view
+    await ds_long_url.invoke_startup()
+    response = await ds_long_url.client.get(path + "?_extra=render_cell")
+    assert response.status_code == 200
+    rendered = response.json()["render_cell"][0]["website"]
+    assert rendered == f'<a href="{LONG_URL}">{LONG_URL}</a>'
+
+
+@pytest.mark.asyncio
+async def test_url_column_type_non_http_value_unchanged(ds_long_url):
+    await ds_long_url.invoke_startup()
+    response = await ds_long_url.client.get("/data/posts")
+    assert response.status_code == 200
+    td = Soup(response.text, "html.parser").select("td.col-website")[1]
+    assert td.find("a") is None
+    assert td.text == "not a url"
 
 
 @pytest.mark.asyncio

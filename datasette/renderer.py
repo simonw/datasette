@@ -1,12 +1,13 @@
 import json
+
 from datasette.extras import extra_names_from_request
 from datasette.utils import (
-    error_body,
-    value_as_boolean,
-    remove_infinites,
     CustomJSONEncoder,
+    error_body,
     path_from_row_pks,
+    remove_infinites,
     sqlite3,
+    value_as_boolean,
 )
 from datasette.utils.asgi import Response
 

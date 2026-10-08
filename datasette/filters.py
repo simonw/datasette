@@ -1,8 +1,12 @@
-from datasette import hookimpl
-from datasette.resources import DatabaseResource
-from datasette.views.base import DatasetteError
-from datasette.utils.asgi import BadRequest
 import json
+import math
+from typing import ClassVar
+
+from datasette import hookimpl
+from datasette.resources import DatabaseResource, TableResource
+from datasette.utils.asgi import BadRequest
+from datasette.views.base import DatasetteError
+
 from .utils import detect_json1, escape_sqlite, path_with_removed_args
 
 
@@ -48,13 +52,20 @@ def search_filters(request, database, table, datasette):
         human_descriptions = []
         extra_context = {}
 
-        # Figure out which fts_table to use
+        # Figure out which trusted fts_table to use. Query string parameters can
+        # repeat this mapping (for backwards compatibility), but must not select
+        # a different table or primary key.
         table_metadata = await datasette.table_config(database, table)
         db = datasette.get_database(database)
-        fts_table = request.args.get("_fts_table")
-        fts_table = fts_table or table_metadata.get("fts_table")
+        fts_table = table_metadata.get("fts_table")
         fts_table = fts_table or await db.fts_table(table)
-        fts_pk = request.args.get("_fts_pk", table_metadata.get("fts_pk", "rowid"))
+        fts_pk = table_metadata.get("fts_pk", "rowid")
+        requested_fts_table = request.args.get("_fts_table")
+        requested_fts_pk = request.args.get("_fts_pk")
+        if (requested_fts_table and requested_fts_table != fts_table) or (
+            requested_fts_pk and requested_fts_pk != fts_pk
+        ):
+            raise BadRequest("Invalid _fts_table or _fts_pk")
         search_args = {
             key: request.args[key]
             for key in request.args
@@ -72,6 +83,11 @@ def search_filters(request, database, table, datasette):
         extra_context["supports_search"] = bool(fts_table)
 
         if fts_table and search_args:
+            await datasette.ensure_permission(
+                action="view-table",
+                resource=TableResource(database=database, table=fts_table),
+                actor=request.actor,
+            )
             if "_search" in search_args:
                 # Simple ?_search=xxx
                 search = search_args["_search"]
@@ -99,9 +115,9 @@ def search_filters(request, database, table, datasette):
                             fts_table=escape_sqlite(fts_table),
                             search_col=escape_sqlite(search_col),
                             match_clause=(
-                                ":search_{}".format(i)
+                                f":search_{i}"
                                 if search_mode_raw
-                                else "escape_fts(:search_{})".format(i)
+                                else f"escape_fts(:search_{i})"
                             ),
                         )
                     )
@@ -132,13 +148,18 @@ def through_filters(request, database, table, datasette):
                 through_table = through_data["table"]
                 other_column = through_data["column"]
                 value = through_data["value"]
+                await datasette.ensure_permission(
+                    action="view-table",
+                    resource=TableResource(database=database, table=through_table),
+                    actor=request.actor,
+                )
                 db = datasette.get_database(database)
                 outgoing_foreign_keys = await db.foreign_keys_for_table(through_table)
-                try:
-                    fk_to_us = [
-                        fk for fk in outgoing_foreign_keys if fk["other_table"] == table
-                    ][0]
-                except IndexError:
+                fk_to_us = next(
+                    (fk for fk in outgoing_foreign_keys if fk["other_table"] == table),
+                    None,
+                )
+                if fk_to_us is None:
                     raise DatasetteError(
                         "Invalid _through - could not find corresponding foreign key"
                     )
@@ -182,6 +203,17 @@ class Filter:
         raise NotImplementedError
 
 
+def _coerce_numeric_filter_value(value):
+    try:
+        return int(value)
+    except ValueError:
+        try:
+            converted = float(value)
+        except ValueError:
+            return value
+        return converted if math.isfinite(converted) else value
+
+
 class TemplatedFilter(Filter):
     def __init__(
         self,
@@ -203,13 +235,17 @@ class TemplatedFilter(Filter):
 
     def where_clause(self, table, column, value, param_counter):
         converted = self.format.format(value)
-        if self.numeric and converted.isdigit():
-            converted = int(converted)
+        if self.numeric:
+            converted = _coerce_numeric_filter_value(converted)
         if self.no_argument:
-            kwargs = {"c": column}
+            kwargs = {"c": _quote_sqlite_identifier(column)}
             converted = None
         else:
-            kwargs = {"c": column, "p": f"p{param_counter}", "t": table}
+            kwargs = {
+                "c": _quote_sqlite_identifier(column),
+                "p": f"p{param_counter}",
+                "t": _quote_sqlite_identifier(table),
+            }
         return self.sql_template.format(**kwargs), converted
 
     def human_clause(self, column, value):
@@ -221,6 +257,14 @@ class TemplatedFilter(Filter):
             return template.format(c=column)
         else:
             return template.format(c=column, v=value)
+
+
+def _quote_sqlite_identifier(identifier):
+    # Preserve the historic always-quoted SQL generated by TemplatedFilter.
+    escaped = escape_sqlite(identifier)
+    if escaped == identifier:
+        return f'"{identifier}"'
+    return escaped
 
 
 class InFilter(Filter):
@@ -264,56 +308,56 @@ class Filters:
             TemplatedFilter(
                 "exact",
                 "=",
-                '"{c}" = :{p}',
+                "{c} = :{p}",
                 lambda c, v: "{c} = {v}" if v.isdigit() else '{c} = "{v}"',
             ),
             TemplatedFilter(
                 "not",
                 "!=",
-                '"{c}" != :{p}',
+                "{c} != :{p}",
                 lambda c, v: "{c} != {v}" if v.isdigit() else '{c} != "{v}"',
             ),
             TemplatedFilter(
                 "contains",
                 "contains",
-                '"{c}" like :{p}',
+                "{c} like :{p}",
                 '{c} contains "{v}"',
                 format="%{}%",
             ),
             TemplatedFilter(
                 "notcontains",
                 "does not contain",
-                '"{c}" not like :{p}',
+                "{c} not like :{p}",
                 '{c} does not contain "{v}"',
                 format="%{}%",
             ),
             TemplatedFilter(
                 "endswith",
                 "ends with",
-                '"{c}" like :{p}',
+                "{c} like :{p}",
                 '{c} ends with "{v}"',
                 format="%{}",
             ),
             TemplatedFilter(
                 "startswith",
                 "starts with",
-                '"{c}" like :{p}',
+                "{c} like :{p}",
                 '{c} starts with "{v}"',
                 format="{}%",
             ),
-            TemplatedFilter("gt", ">", '"{c}" > :{p}', "{c} > {v}", numeric=True),
+            TemplatedFilter("gt", ">", "{c} > :{p}", "{c} > {v}", numeric=True),
             TemplatedFilter(
-                "gte", "\u2265", '"{c}" >= :{p}', "{c} \u2265 {v}", numeric=True
+                "gte", "\u2265", "{c} >= :{p}", "{c} \u2265 {v}", numeric=True
             ),
-            TemplatedFilter("lt", "<", '"{c}" < :{p}', "{c} < {v}", numeric=True),
+            TemplatedFilter("lt", "<", "{c} < :{p}", "{c} < {v}", numeric=True),
             TemplatedFilter(
-                "lte", "\u2264", '"{c}" <= :{p}', "{c} \u2264 {v}", numeric=True
+                "lte", "\u2264", "{c} <= :{p}", "{c} \u2264 {v}", numeric=True
             ),
-            TemplatedFilter("like", "like", '"{c}" like :{p}', '{c} like "{v}"'),
+            TemplatedFilter("like", "like", "{c} like :{p}", '{c} like "{v}"'),
             TemplatedFilter(
-                "notlike", "not like", '"{c}" not like :{p}', '{c} not like "{v}"'
+                "notlike", "not like", "{c} not like :{p}", '{c} not like "{v}"'
             ),
-            TemplatedFilter("glob", "glob", '"{c}" glob :{p}', '{c} glob "{v}"'),
+            TemplatedFilter("glob", "glob", "{c} glob :{p}", '{c} glob "{v}"'),
             InFilter(),
             NotInFilter(),
         ]
@@ -322,13 +366,13 @@ class Filters:
                 TemplatedFilter(
                     "arraycontains",
                     "array contains",
-                    """:{p} in (select value from json_each([{t}].[{c}]))""",
+                    """:{p} in (select value from json_each({t}.{c}))""",
                     '{c} contains "{v}"',
                 ),
                 TemplatedFilter(
                     "arraynotcontains",
                     "array does not contain",
-                    """:{p} not in (select value from json_each([{t}].[{c}]))""",
+                    """:{p} not in (select value from json_each({t}.{c}))""",
                     '{c} does not contain "{v}"',
                 ),
             ]
@@ -336,36 +380,34 @@ class Filters:
             else []
         )
         + [
+            TemplatedFilter("date", "date", "date({c}) = :{p}", '"{c}" is on date {v}'),
             TemplatedFilter(
-                "date", "date", 'date("{c}") = :{p}', '"{c}" is on date {v}'
-            ),
-            TemplatedFilter(
-                "isnull", "is null", '"{c}" is null', "{c} is null", no_argument=True
+                "isnull", "is null", "{c} is null", "{c} is null", no_argument=True
             ),
             TemplatedFilter(
                 "notnull",
                 "is not null",
-                '"{c}" is not null',
+                "{c} is not null",
                 "{c} is not null",
                 no_argument=True,
             ),
             TemplatedFilter(
                 "isblank",
                 "is blank",
-                '("{c}" is null or "{c}" = "")',
+                "({c} is null or {c} = '')",
                 "{c} is blank",
                 no_argument=True,
             ),
             TemplatedFilter(
                 "notblank",
                 "is not blank",
-                '("{c}" is not null and "{c}" != "")',
+                "({c} is not null and {c} != '')",
                 "{c} is not blank",
                 no_argument=True,
             ),
         ]
     )
-    _filters_by_key = {f.key: f for f in _filters}
+    _filters_by_key: ClassVar[dict[str, Filter]] = {f.key: f for f in _filters}
 
     def __init__(self, pairs):
         self.pairs = pairs

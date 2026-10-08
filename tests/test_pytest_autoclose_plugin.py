@@ -20,6 +20,7 @@ def _run_pytest(tmp_path: Path) -> subprocess.CompletedProcess:
         cwd=str(tmp_path),
         capture_output=True,
         text=True,
+        check=False,
     )
 
 

@@ -4,6 +4,146 @@
 Changelog
 =========
 
+.. _v1_0_a41:
+
+1.0a41 (2026-09-24)
+-------------------
+
+OpenTelemetry support, a new JavaScript API for creating modal dialogs, and several smaller bug fixes.
+
+OpenTelemetry
+~~~~~~~~~~~~~
+
+Datasette now supports `OpenTelemetry <https://opentelemetry.io/>`__ traces and metrics for monitoring application performance. Thanks, `Alex Garcia <https://github.com/asg017>`__. (:issue:`1730`, :issue:`2867`)
+
+- Traces cover HTTP requests, database queries and startup, including time spent waiting for SQL threads and queued writes.
+- Metrics report query latency, time-limit interruptions, SQL thread usage, write queues and open connections.
+- New :ref:`tools for plugin authors <plugin_telemetry>` help plugins add their own traces and metrics, with shared registry classes and pytest helpers.
+
+To collect telemetry, configure an OpenTelemetry SDK and exporter, then run Datasette using ``opentelemetry-instrument``. See :ref:`internals_telemetry` for setup instructions.
+
+Other features
+~~~~~~~~~~~~~~
+
+- New :ref:`DatasetteModal JavaScript API <javascript_plugins_modals>` for plugins to create dialogs with Datasette's shared styles, keyboard behavior and focus handling. Datasette's built-in dialogs use the same API. (:issue:`2790`, :pr:`2948`)
+
+Bug fixes
+~~~~~~~~~
+
+- Table pages now show measured query timings instead of always displaying 1.2ms. (:issue:`2446`)
+- Facet loading now ignores unrelated query parameters such as ``?_facets=x``, instead of returning a 500 error. Thanks, `Peng Boyu <https://github.com/pengboyu-dev>`__. (:pr:`2949`)
+- Foreign key values no longer link to tables that do not exist. Thanks, `Dipak Chaudhari <https://github.com/dchaudhari7177>`__. (:issue:`1515`, :pr:`2952`)
+- Fixed missing punctuation between table and view counts on the homepage, such as ``0 tables1 view``. Thanks, `Dipak Chaudhari <https://github.com/dchaudhari7177>`__. (:issue:`2012`, :pr:`2951`)
+- The sort menu now excludes primary keys that are not included in :ref:`sortable_columns <table_configuration_sortable_columns>`. Thanks, `Sanjay Santhanam <https://github.com/Sanjays2402>`__. (:issue:`1980`, :pr:`2858`)
+
+.. _v1_0_a40:
+
+1.0a40 (2026-09-16)
+-------------------
+
+A security fix, a new set of APIs providing background tasks for plugins, an endpoint for counting matching rows, and a collection of bug fixes.
+
+Security fix
+~~~~~~~~~~~~
+
+- Fixed a security issue where a trailing newline in a requested table name could bypass table permissions and expose private rows. Thanks for the report, `dpfkdlemtp <https://github.com/dpfkdlemtp>`__. `GHSA-h547-rmjf-5m2m <https://github.com/simonw/datasette/security/advisories/GHSA-h547-rmjf-5m2m>`__
+
+Background tasks
+~~~~~~~~~~~~~~~~
+
+Datasette plugins can now use **background tasks** to run code independent of the Datasette request/response cycle.
+
+- New :ref:`datasette_add_background_task` API: plugins register supervised, long-lived background work - typically from a ``startup`` hook - and these will be launched after every ``startup`` hook has run. Tasks are cancelled (with a five-second grace period) on shutdown.
+- New ``/-/tasks`` JSON debug endpoint lists every supervised background task and its state, in the style of ``/-/threads``. See :ref:`JsonDataView_tasks`. It requires the ``permissions-debug`` permission.
+- New :ref:`plugin_hook_shutdown` plugin hook, called during graceful shutdown (Ctrl-C, ``SIGTERM``) before background tasks are cancelled and before database connections are closed. It is not called on a hard kill (``SIGKILL``).
+- Plugin ``asgi_wrapper`` middleware now always runs *after* startup has completed.
+- If your plugin uses ``asgi_wrapper`` to start background tasks on the first incoming request, you should migrate to ``datasette.add_background_task()`` instead. `datasette-cron <https://datasette.io/plugins/datasette-cron>`__ and `datasette-enrichments <https://datasette.io/plugins/datasette-enrichments>`__ are being migrated to this pattern.
+
+Other features
+~~~~~~~~~~~~~~
+
+- New :ref:`POST count endpoint <TableCountView>` for counting filtered table rows, now used by the **count all** button. (:issue:`2914`)
+- Datasette now uses `httpx2 <https://httpx2.pydantic.dev/>`__, the Pydantic-maintained continuation of `httpx <https://www.python-httpx.org/>`__, in place of ``httpx``. The public API is the same, but responses returned by :ref:`internals_datasette_client` are now ``httpx2.Response`` objects rather than ``httpx.Response``. Plugins that use ``isinstance()`` checks against ``httpx.Response`` should be updated to use ``httpx2``. **Plugins that use httpx without explicitly depending on it** will need to add an explicit dependency or switch to `httpx2`.
+
+Bug fixes
+~~~~~~~~~
+
+- Column facets now show the remove-filter link for filters using ``column__exact=value``, as well as ``column=value``. (:issue:`1695`)
+- The :ref:`alter-table API <TableAlterView>` now rolls back schema changes when a :ref:`write_wrapper <plugin_hook_write_wrapper>` raises after the write. (:issue:`2924`, :pr:`2925`)
+- The :ref:`extra_template_vars() <plugin_hook_extra_template_vars>` plugin hook can now return a function or awaitable that resolves to ``None`` when no extra variables are needed. (:issue:`2005`)
+- :ref:`request.headers <internals_request>` now supports case-insensitive header lookups, so ``request.headers.get("Content-Type")`` works as well as ``request.headers.get("content-type")``. (:issue:`1861`)
+- CSV endpoints now return plain-text error messages for SQL errors. (:issue:`2129`)
+- The :ref:`render_cell() <plugin_hook_render_cell>` plugin hook now receives an empty ``pks`` list when rendering SQL views in HTML, matching the JSON ``?_extra=render_cell`` behavior. (:issue:`2639`)
+- Numeric comparison filters now correctly handle decimal values, negative numbers and scientific notation when filtering computed columns and SQL views. Thanks, `Rami Abdelrazzaq <https://github.com/RamiNoodle733>`__. (:issue:`1681`, :pr:`2876`)
+- Fixed CSV streaming with ``?_stream=on`` on SQL views repeating the second page of results until the CSV size limit was reached. Thanks, `Ankita Advitot <https://github.com/AnkitaAdvitot>`__. (:issue:`2902`, :pr:`2903`)
+
+.. _v1_0_a39:
+
+1.0a39 (2026-09-10)
+-------------------
+
+This alpha release includes security fixes for permissions, SQL construction, HTML rendering, authentication and caching, plus improvements to application startup and write execution.
+
+See `0.65.4 <https://docs.datasette.io/en/stable/changelog.html#v0-65-4>`__ for fixes that have been backported to the stable 0.65.x branch.
+
+The Datasette blog `has more details on these releases <https://datasette.io/blog/2026/september-security-releases/>`__.
+
+Some of the security fixes include:
+
+- Table and view permission checks now take SQLite's case-insensitive names into account. See :ref:`authentication_permissions_explained`.
+- Viewing a full-text search index table now checks you have permission to view the table from which it draws its content.
+- Viewing SQLite statistics tables (``sqlite_stat1`` through ``sqlite_stat4``) is now denied by a default.
+- Table schema display now obeys the ``view-table`` permission.
+- Table filters using ``?_through=`` require permission to view the intermediate table.
+- Foreign-key target and suggestion APIs, incoming foreign-key relationships and their row counts now respect ``view-table`` permission.
+- Row endpoints check permissions before resolving primary keys, to avoid revealing the existence of an otherwise invisible primary key.
+- Improved permission checks for the create-table API. See :ref:`json_api_write`.
+- The write SQL interface now checks ``view-table`` permission for tables referenced by ``CREATE VIEW`` statements.
+- Fixed SQL identifier escaping for column names from untrusted database schemas.
+- Fixed HTML escaping for column names from untrusted database schemas.
+- URL columns now render links only for validated HTTP or HTTPS URLs.
+- Private and personalized dynamic responses now use ``Cache-Control: private, no-store``. Anonymous dynamic responses vary by ``Cookie`` and ``Authorization``.
+- Actor cookies now respect ``expire_after``.
+- Restricted actors can no longer create API tokens.
+- Stored-query create, edit and delete forms now block framing to prevent clickjacking.
+- Configuration secret redaction now matches key names case-insensitively.
+- SQLite extension loading is disabled after extensions supplied using ``--load-extension`` have been loaded.
+
+Other improvements and fixes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- :ref:`db.execute_write() <database_execute_write>` now has a default execution time limit of 2,000ms. Plugins can override this using ``time_limit_ms=`` or disable it using ``time_limit_ms=None``. This limit is independent of the ``sql_time_limit_ms`` setting for read queries.
+- Application startup now runs through ASGI lifespan events before requests are accepted, with a first-request fallback for hosts without lifespan support. Thanks, `Alex Garcia <https://github.com/asg017>`__. (:pr:`2887`)
+- ``datasette serve`` now runs startup hooks and Uvicorn on the same event loop, preserving background tasks started by plugins. The minimum Uvicorn version is now 0.29. Thanks, `Alex Garcia <https://github.com/asg017>`__. (:pr:`2886`)
+- Non-blocking writes using ``execute_write_fn(..., block=False)`` now return a distinct task UUID for every call and work correctly with ``num_sql_threads=0``. Thanks, `Zain Dana Harper <https://github.com/HarperZ9>`__. (:issue:`2860`, :issue:`2859`)
+- Dropping a table now disables its full-text search index first. (:issue:`2874`)
+- Fixed ``CREATE VIEW`` SQL analysis on Python 3.10.
+
+.. _v1_0_a38:
+
+1.0a38 (2026-08-06)
+-------------------
+
+This release fixes a **SQL injection** security issue that affects Datasette instances that serve a **mixture of public and private tables** in the same database, with access configured using the :ref:`Datasette permissions system <authentication>`.
+
+Site administrators who serve private tables in this way are advised to disable the :ref:`execute-sql permission <actions_execute_sql>` on that database to prevent users from accessing private tables using raw SQL queries. The bug that has been fixed would have allowed users with access to any public table to execute SQL injection attacks despite that restriction, giving them read-only access to data in private tables in the same database.
+
+This fix is also available in Datasette 0.65.3.
+
+.. _v1_0_a37:
+
+1.0a37 (2026-07-14)
+-------------------
+
+Performance improvement for SQL-backed permission checks, plus an improved permission debugging interface.
+
+- SQL used to resolve permission checks now aggregates permission rules before joining them to resources, improving performance on instances with large schemas. (:issue:`2832`)
+- The :ref:`PermissionCheckView` permission debugger now explains why a decision was allowed or denied, including the matching rules. The interactive form can also test a hypothetical actor supplied as JSON, and the :ref:`permissions documentation <authentication_permissions_explained>` now describes resolution rules in more detail. (:issue:`2841`)
+- :ref:`db.execute_write(sql, ..., transaction=True) <database_execute_write>` has a new ``transaction=`` parameter, which can be set to ``False`` for statements such as ``VACUUM`` that cannot run inside a transaction. Write tasks now start their transactions using ``BEGIN IMMEDIATE``, which also ensures that writes are rolled back if the task fails. (:issue:`2831`)
+- Refreshing a database's schema in Datasette's internal catalog is now performed as a single atomic operation. (:issue:`2831`)
+- Fixed schema introspection, table pages, facets and table counts for tables with names containing a ``]`` character. Thanks, `TowyTowy <https://github.com/TowyTowy>`__. (:issue:`2431`, :pr:`2846`)
+- ``/-/plugins.json`` once again returns a top-level JSON array of plugin objects, reverting the object envelope introduced in 1.0a36. This should fix a large number of trivial test failures in existing plugins. (:issue:`2842`, :pr:`2843`)
+
 .. _v1_0_a36:
 
 1.0a36 (2026-07-07)
@@ -93,7 +233,6 @@ The edit interface takes :ref:`custom column types <table_configuration_column_t
 - Permission checks are now cached on a per-request basis, speeding up table pages with multiple plugins that check permissions in order to populate the :ref:`table actions menu <plugin_hook_table_actions>`.
 - Fixed a warning about ``gen.throw(*sys.exc_info())``. (:issue:`2776`)
 - New default custom column type ``textarea`` for multi-line text content. This is rendered as a ``<textarea>`` input in the edit UI.
-- Links rendered by the ``url`` :ref:`custom column type <table_configuration_column_types>` now have their displayed text truncated according to the :ref:`setting_truncate_cells_html` setting, while still linking to the full URL. (:issue:`1805`)
 - The ``json`` column type now implements client-side validation in the edit UI.
 - The :ref:`makeColumnField() <javascript_plugins_makeColumnField>` JavaScript plugin hook allows plugins to define custom fields in the edit interface for their custom column types.
 - New UI for inserting, editing, and deleting rows within Datasette. (:issue:`2780`)
@@ -1068,7 +1207,7 @@ Features
 - New ``--nolock`` option for ignoring file locks when opening read-only databases. (:issue:`1744`)
 - Spaces in the database names in URLs are now encoded as ``+`` rather than ``~20``. (:issue:`1701`)
 - ``<Binary: 2427344 bytes>`` is now displayed as ``<Binary: 2,427,344 bytes>`` and is accompanied by tooltip showing "2.3MB". (:issue:`1712`)
-- The base Docker image used by ``datasette publish cloudrun``, ``datasette package`` and the `official Datasette image <https://hub.docker.com/datasetteproject/datasette>`__ has been upgraded to ``3.10.6-slim-bullseye``.  (:issue:`1768`)
+- The base Docker image used by ``datasette publish cloudrun``, ``datasette package`` and the `official Datasette image <https://hub.docker.com/r/datasetteproject/datasette>`__ has been upgraded to ``3.10.6-slim-bullseye``.  (:issue:`1768`)
 - Canned writable queries against immutable databases now show a warning message. (:issue:`1728`)
 - ``datasette publish cloudrun`` has a new ``--timeout`` option which can be used to increase the time limit applied by the Google Cloud build environment. Thanks, Tim Sherratt. (:pr:`1717`)
 - ``datasette publish cloudrun`` has new ``--min-instances`` and ``--max-instances`` options. (:issue:`1779`)
@@ -2097,7 +2236,7 @@ If you are still running Python 3.5 you should stick with ``0.30.2``, which you 
 - Removed obsolete ``?_group_count=col`` feature (:issue:`504`)
 - Improved user interface and documentation for ``datasette publish cloudrun`` (:issue:`608`)
 - Tables with indexes now show the ``CREATE INDEX`` statements on the table page (:issue:`618`)
-- Current version of `uvicorn <https://www.uvicorn.org/>`__ is now shown on ``/-/versions``
+- Current version of `uvicorn <https://uvicorn.dev/>`__ is now shown on ``/-/versions``
 - Python 3.8 is now supported! (:issue:`622`)
 - Python 3.5 is no longer supported.
 
@@ -2148,7 +2287,7 @@ If you are still running Python 3.5 you should stick with ``0.30.2``, which you 
 0.29.2 (2019-07-13)
 -------------------
 
-- Bumped `Uvicorn <https://www.uvicorn.org/>`__ to 0.8.4, fixing a bug where the query string was not included in the server logs. (:issue:`559`)
+- Bumped `Uvicorn <https://uvicorn.dev/>`__ to 0.8.4, fixing a bug where the query string was not included in the server logs. (:issue:`559`)
 - Fixed bug where the navigation breadcrumbs were not displayed correctly on the page for a custom query. (:issue:`558`)
 - Fixed bug where custom query names containing unicode characters caused errors.
 
@@ -2170,7 +2309,7 @@ ASGI, new plugin hooks, facet by date and much, much more...
 ASGI
 ~~~~
 
-`ASGI <https://asgi.readthedocs.io/>`__ is the Asynchronous Server Gateway Interface standard. I've been wanting to convert Datasette into an ASGI application for over a year - `Port Datasette to ASGI #272 <https://github.com/simonw/datasette/issues/272>`__ tracks thirteen months of intermittent development - but with Datasette 0.29 the change is finally released. This also means Datasette now runs on top of `Uvicorn <https://www.uvicorn.org/>`__ and no longer depends on `Sanic <https://github.com/huge-success/sanic>`__.
+`ASGI <https://asgi.readthedocs.io/>`__ is the Asynchronous Server Gateway Interface standard. I've been wanting to convert Datasette into an ASGI application for over a year - `Port Datasette to ASGI #272 <https://github.com/simonw/datasette/issues/272>`__ tracks thirteen months of intermittent development - but with Datasette 0.29 the change is finally released. This also means Datasette now runs on top of `Uvicorn <https://uvicorn.dev/>`__ and no longer depends on `Sanic <https://github.com/huge-success/sanic>`__.
 
 I wrote about the significance of this change in `Porting Datasette to ASGI, and Turtles all the way down <https://simonwillison.net/2019/Jun/23/datasette-asgi/>`__.
 
@@ -2584,7 +2723,7 @@ Miscellaneous
   as a string.
 * If you just want an array of the first value of each row, use the new
   ``?_shape=arrayfirst`` option - `example
-  <https://latest.datasette.io/fixtures.json?sql=select+neighborhood+from+facetable+order+by+pk+limit+101&_shape=arrayfirst>`_.
+  <https://latest.datasette.io/fixtures.json?sql=select+_neighborhood+from+facetable+order+by+pk+limit+101&_shape=arrayfirst>`_.
 
 0.22.1 (2018-05-23)
 -------------------

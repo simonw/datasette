@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from datasette.permissions import Resource
     from datasette.tokens import TokenRestrictions
 import collections
+import copy
 import dataclasses
 import datetime
 import functools
@@ -49,6 +50,11 @@ from .events import Event
 from .plugins import DEFAULT_PLUGINS, get_plugins, pm
 from .renderer import json_renderer
 from .resources import DatabaseResource, TableResource
+from .schema_watcher import (
+    FILES_DEFAULT,
+    SchemaWatcher,
+    store_closing_fingerprints,
+)
 from .telemetry import (
     TelemetryMiddleware,
     _in_datasette_client,
@@ -108,7 +114,9 @@ from .utils.asgi import (
     asgi_send_redirect,
     asgi_static,
 )
-from .utils.internal_db import init_internal_db, populate_schema_tables
+from .utils.catalog import all_derived_table_dependencies
+from .utils.inflight import InFlight, wait_for_concurrent
+from .utils.internal_db import init_internal_db
 from .utils.sqlite import (
     sqlite3,
     using_pysqlite3,
@@ -229,6 +237,33 @@ SETTINGS = (
         "num_sql_threads",
         3,
         "Number of threads in the thread pool for executing SQLite queries",
+    ),
+    Setting(
+        "max_open_connections",
+        32,
+        "Maximum number of pooled read connections open across all databases - 0 for no limit",
+    ),
+    Setting("max_write_connections", 8, "Maximum concurrent user database writers"),
+    Setting(
+        "max_pending_writes", 256, "Maximum queued user writes across all databases"
+    ),
+    Setting(
+        "write_queue_timeout_ms", 5000, "Maximum wait before a queued write starts"
+    ),
+    Setting(
+        "connection_idle_timeout_ms",
+        30000,
+        "Close read connections, and stop write threads, that have been idle for this many milliseconds - 0 to keep them open",
+    ),
+    Setting(
+        "schema_watch_interval_ms",
+        1000,
+        "How often to check external database files for schema changes - 0 to disable polling",
+    ),
+    Setting(
+        "default_schema_watch",
+        "external",
+        "Schema watch mode for database files and named in-memory databases without a mode of their own: external (poll for changes made outside Datasette) or owned (only Datasette changes them)",
     ),
     Setting("sql_time_limit_ms", 1000, "Time limit for a SQL query in milliseconds"),
     Setting(
@@ -466,32 +501,38 @@ class Datasette:
         self._column_types = {}  # .invoke_startup() will populate this
         self._setup_db_done = False
         self._suppress_background_tasks = False
-        try:
-            self._refresh_schemas_lock = asyncio.Lock()
-            self._startup_lock = asyncio.Lock()
-        except RuntimeError as rex:
-            # Workaround for intermittent test failure, see:
-            # https://github.com/simonw/datasette/issues/1802
-            if "There is no current event loop in thread" in str(rex):
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                self._refresh_schemas_lock = asyncio.Lock()
-                self._startup_lock = asyncio.Lock()
-            else:
-                raise
+        # A threading.Lock only ever acquired without blocking: one
+        # Datasette can be driven by several event loops, and an
+        # asyncio.Lock binds to whichever loop first waits on it
+        self._refresh_schemas_lock = threading.Lock()
+        # invoke_startup() in progress (datasette.utils.inflight.InFlight),
+        # claimed under this lock: concurrent callers on any event loop wait
+        # for it. Not an asyncio.Lock, which binds to one event loop
+        self._startup_running = None
+        self._startup_state_lock = threading.Lock()
         self._background_tasks = BackgroundTaskSupervisor(self)
         self.crossdb = crossdb
         self.nolock = nolock
+        self.internal_db_created = False
+        self._schema_watcher = SchemaWatcher(self)
+        # (catalog generation, derived-table dependency map) - see
+        # datasette.utils.catalog.all_derived_table_dependencies()
+        self._catalog_derived_cache = None
+        # SQLite version/extension details for /-/versions, computed once
+        self._sqlite_versions_info = None
         if memory or crossdb or not self.files:
             self.add_database(
                 Database(self, is_mutable=False, is_memory=True), name="_memory"
             )
         for file in self.files:
+            is_mutable = file not in self.immutables
             self.add_database(
-                Database(self, file, is_mutable=file not in self.immutables)
+                Database(self, file, is_mutable=is_mutable),
+                # Files named on the command line or in files= use the
+                # default_schema_watch setting (external unless configured)
+                schema_watch=FILES_DEFAULT if is_mutable else "immutable",
             )
 
-        self.internal_db_created = False
         if internal is None:
             self._internal_database = Database(self, is_temp_disk=True)
         else:
@@ -595,6 +636,13 @@ class Datasette:
             self.executor = futures.ThreadPoolExecutor(
                 max_workers=self.setting("num_sql_threads")
             )
+        for name in (
+            "max_write_connections",
+            "max_pending_writes",
+            "write_queue_timeout_ms",
+        ):
+            if self.setting(name) <= 0:
+                raise StartupError(f"{name} must be greater than zero")
         self.max_returned_rows = self.setting("max_returned_rows")
         self.sql_time_limit_ms = self.setting("sql_time_limit_ms")
         self.page_size = self.setting("default_page_size")
@@ -651,6 +699,8 @@ class Datasette:
         self.root_enabled = False
         self.default_deny = default_deny
         self.client = DatasetteClient(self)
+        # ds.config is available now: resolve per-database schema_watch modes
+        self._schema_watcher.configure()
         # Last, so metric callbacks never see a partially initialized instance
         register_datasette(self)
 
@@ -713,66 +763,48 @@ class Datasette:
         return None
 
     async def refresh_schemas(self, *, force=False):
-        # Throttle schema refreshes to at most once per second
+        """Bring the _internal catalog up to date with every attached database.
+
+        Uses the SchemaWatcher stat() prefilter, so it only opens connections
+        to databases whose files changed. Not called on the request path any
+        more - the watcher polls external databases in the background and
+        the write path catches schema changes made through Datasette.
+        """
+        # Throttle non-forced refreshes to at most once per second
         if (
             not force
             and time.monotonic() - getattr(self, "_last_schema_refresh", 0) < 1.0
         ):
             return
         self._last_schema_refresh = time.monotonic()
-        if self._refresh_schemas_lock.locked():
-            return
-        async with self._refresh_schemas_lock:
+        if not self._refresh_schemas_lock.acquire(blocking=False):
+            if not force:
+                return
+            # A refresh is already running, maybe on another event loop.
+            # A forced refresh must see changes made before it was called,
+            # so run another sweep now rather than wait for that one (sweeps
+            # are safe to overlap: catalog writes go through the internal
+            # database's write queue)
             await self._refresh_schemas()
+            return
+        try:
+            await self._refresh_schemas()
+        finally:
+            self._refresh_schemas_lock.release()
 
-    async def _refresh_schemas(self):
+    async def _refresh_schemas(self, *, background=False):
         internal_db = self.get_internal_database()
         if not self.internal_db_created:
+            if background:
+                return
             await init_internal_db(internal_db)
             await self.apply_metadata_json()
             self.internal_db_created = True
-        current_schema_versions = {
-            row["database_name"]: row["schema_version"]
-            for row in await internal_db.execute(
-                "select database_name, schema_version from catalog_databases"
-            )
-        }
-        catalog_table_names = (
-            "catalog_columns",
-            "catalog_foreign_keys",
-            "catalog_indexes",
-            "catalog_views",
-            "catalog_tables",
-            "catalog_databases",
-        )
-        # Delete stale entries for databases that are no longer attached
-        catalog_database_names = set(current_schema_versions.keys())
-        for table in catalog_table_names[:-1]:
-            catalog_database_names.update(
-                row["database_name"]
-                for row in await internal_db.execute(
-                    f"select distinct database_name from {table}"
-                )
-                if row["database_name"] is not None
-            )
-        stale_databases = catalog_database_names - set(self.databases.keys())
-        if stale_databases:
-
-            def delete_stale_database_catalog(conn):
-                for stale_db_name in stale_databases:
-                    for table in catalog_table_names:
-                        conn.execute(
-                            f"DELETE FROM {table} WHERE database_name = ?",
-                            [stale_db_name],
-                        )
-
-            await internal_db.execute_write_fn(delete_stale_database_catalog)
-        for database_name, db in self.databases.items():
-            schema_version = (await db.execute("PRAGMA schema_version")).first()[0]
-            # Compare schema versions to see if we should skip it
-            if schema_version == current_schema_versions.get(database_name):
-                continue
-            await populate_schema_tables(internal_db, db, schema_version)
+            # Full catalog build (skips files whose persisted fingerprint
+            # shows they are unchanged when --internal is a real file)
+            await self._schema_watcher.initial_scan()
+            return
+        await self._schema_watcher.sweep(background=background)
 
     @property
     def urls(self):
@@ -790,9 +822,41 @@ class Datasette:
         return pm
 
     async def invoke_startup(self):
-        # This must be called for Datasette to be in a usable state
-        if self._startup_invoked:
+        # This must be called for Datasette to be in a usable state.
+        # Several event loops (threads) may call it at once: one runs
+        # startup, the others wait for it to finish - and try again
+        # themselves if it failed or its event loop went away.
+        while not self._startup_invoked:
+            loop = asyncio.get_running_loop()
+            task = asyncio.current_task()
+            with self._startup_state_lock:
+                running = self._startup_running
+                if running is not None and (running.done() or running.abandoned()):
+                    running.finish()
+                    running = self._startup_running = None
+                if running is None:
+                    running = self._startup_running = InFlight(loop, task)
+                    mine = True
+                elif running.task is task:
+                    # Called from inside startup itself (a startup hook
+                    # making a request through datasette.client)
+                    return
+                else:
+                    mine = False
+            if not mine:
+                await wait_for_concurrent(running.future)
+                continue
+            try:
+                await self._invoke_startup()
+            finally:
+                with self._startup_state_lock:
+                    if self._startup_running is running:
+                        self._startup_running = None
+                running.finish()
             return
+
+    async def _invoke_startup(self):
+        self._warn_connection_headroom()
         # Group spans created during startup under a single parent span
         with tracer.start_as_current_span(STARTUP):
             # Register event classes
@@ -940,7 +1004,16 @@ class Datasette:
             name = next(iter(self.databases.keys()))
         return self.databases[name]
 
-    def add_database(self, db, name=None, route=None):
+    def add_database(self, db, name=None, route=None, schema_watch=None):
+        """Attach a database.
+
+        ``schema_watch`` is how the _internal catalog is kept current for it:
+        ``"owned"`` (default - schema changes come through Datasette's write
+        methods), ``"external"`` (other processes may change the file, poll
+        it) or ``"immutable"`` (scan once). ``databases.<name>.schema_watch``
+        in datasette.yaml overrides it. Databases that are not mutable are
+        always ``"immutable"``.
+        """
         new_databases = self.databases.copy()
         if name is None:
             # Pick a unique name for this database
@@ -957,7 +1030,21 @@ class Datasette:
         new_databases[name] = db
         # don't mutate! that causes race conditions with live import
         self.databases = new_databases
+        self._schema_watcher.register(
+            db, schema_watch or getattr(db, "schema_watch", None)
+        )
+        self._crossdb_attachments_changed(db)
         return db
+
+    def _crossdb_attachments_changed(self, db):
+        # --crossdb: each pooled _memory connection ATTACHed the databases
+        # that existed when it was opened. Discard them so the next query
+        # sees databases added since, and none removed since
+        if not self.crossdb or db.is_memory:
+            return
+        memory = self.databases.get("_memory")
+        if memory is not None and memory is not db:
+            memory._invalidate_connections()
 
     def add_memory_database(self, memory_name, name=None, route=None):
         return self.add_database(
@@ -965,10 +1052,20 @@ class Datasette:
         )
 
     def remove_database(self, name):
-        self.get_database(name).close()
+        db = self._detach_database(name)
+        db.close()
+
+    def _detach_database(self, name):
+        # remove_database() without the close()
+        db = self.get_database(name)
         new_databases = self.databases.copy()
         new_databases.pop(name)
         self.databases = new_databases
+        # Deletes this database's catalog rows (explicitly - there is no
+        # periodic stale-catalog scan any more)
+        self._schema_watcher.unregister(name)
+        self._crossdb_attachments_changed(db)
+        return db
 
     def close(self):
         """Release all resources held by this Datasette instance.
@@ -980,17 +1077,45 @@ class Datasette:
         if self._closed:
             return
         self._closed = True
+        self._schema_watcher.stop()
         # Stop reporting metrics before closing databases
         unregister_datasette(self)
         first_exception = None
-        dbs = list(self.databases.values()) + [self._internal_database]
-        for db in dbs:
+        databases = list(self.databases.values())
+        # Release every user database's idle or pinned writer before
+        # waiting for accepted work to obtain the global writer budget.
+        # The internal catalog remains available until user drains finish.
+        for db in databases:
+            db._begin_close()
+        for db in databases:
             try:
                 db.close()
             except Exception as e:  # noqa: BLE001
                 # Collect the first failure and re-raise after every close() has run
                 if first_exception is None:
                     first_exception = e
+        internal = self._internal_database
+        closing_fingerprints = []
+        if self.internal_db_created and not internal.is_temp_disk:
+            # Owned databases are closed now: record their final
+            # fingerprints so a restart does not rescan them
+            try:
+                closing_fingerprints = self._schema_watcher.closing_fingerprints()
+            except Exception:
+                logger.exception("Could not fingerprint databases at close")
+        try:
+            internal.close()
+        except Exception as e:  # noqa: BLE001
+            if first_exception is None:
+                first_exception = e
+        if closing_fingerprints:
+            try:
+                store_closing_fingerprints(internal.path, closing_fingerprints)
+            except Exception:
+                logger.exception("Could not store fingerprints at close")
+        read_pool = self._read_pool_or_none
+        if read_pool is not None:
+            read_pool.close()
         if self.executor is not None:
             try:
                 self.executor.shutdown(wait=True, cancel_futures=True)
@@ -1002,6 +1127,70 @@ class Datasette:
 
     def setting(self, key):
         return self._settings.get(key, None)
+
+    @property
+    def _write_budget(self):
+        from .write_budget import WriteBudget
+
+        budget = self.__dict__.get("_write_budget_instance")
+        if budget is None:
+            budget = WriteBudget(
+                self.setting("max_write_connections"),
+                self.setting("max_pending_writes"),
+                self.setting("write_queue_timeout_ms"),
+            )
+            budget = self.__dict__.setdefault("_write_budget_instance", budget)
+        return budget
+
+    @property
+    def _read_pool(self):
+        pool = self.__dict__.get("_read_pool_instance")
+        if pool is None:
+            from .connection_pool import ReadConnectionPool
+
+            pool = ReadConnectionPool(
+                self._prepare_connection,
+                max_open=self._effective_max_open_connections(),
+                idle_timeout=self._connection_idle_timeout_s(),
+            )
+            pool = self.__dict__.setdefault("_read_pool_instance", pool)
+        return pool
+
+    def _warn_connection_headroom(self):
+        try:
+            import resource
+
+            limit, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
+        except (ImportError, OSError, ValueError):
+            return
+        reads = self._effective_max_open_connections()
+        writes = self.setting("max_write_connections")
+        attachments = min(10, len(self.databases)) if self.crossdb else 0
+        estimate = 64 + 3 * (reads * (1 + attachments) + writes + 2)
+        if limit != resource.RLIM_INFINITY and (not reads or estimate > limit):
+            logging.getLogger(__name__).warning(
+                "Connection settings may exceed the file descriptor limit (%s): "
+                "read limit %s, writer limit %s, estimated descriptors including "
+                "WAL, attachments and headroom %s. Reduce connection limits or "
+                "increase the OS limit. This estimate excludes plugin allocations.",
+                limit,
+                reads,
+                writes,
+                estimate,
+            )
+
+    def _effective_max_open_connections(self):
+        """Configured read cap; do not silently increase it with thread count."""
+        return max(self.setting("max_open_connections") or 0, 0)
+
+    def _connection_idle_timeout_s(self):
+        "connection_idle_timeout_ms in seconds; 0 means never close idle ones."
+        timeout_ms = self.setting("connection_idle_timeout_ms") or 0
+        return max(timeout_ms, 0) / 1000
+
+    @property
+    def _read_pool_or_none(self):
+        return self.__dict__.get("_read_pool_instance")
 
     def settings_dict(self):
         # Returns a fully resolved settings dictionary, useful for templates
@@ -1549,7 +1738,7 @@ class Datasette:
         separator = "&" if "?" in url else "?"
         return url + separator + urllib.parse.urlencode({"_hash": hash_value})
 
-    def _prepare_connection(self, conn, database):
+    def _prepare_connection(self, conn, database, *, crossdb=True):
         conn.row_factory = sqlite3.Row
         conn.text_factory = lambda x: str(x, "utf-8", "replace")
         if self.sqlite_extensions and database != INTERNAL_DB_NAME:
@@ -1581,7 +1770,7 @@ class Datasette:
         if database != INTERNAL_DB_NAME:
             pm.hook.prepare_connection(conn=conn, database=database, datasette=self)
         # If self.crossdb and this is _memory, connect the first SQLITE_LIMIT_ATTACHED databases
-        if self.crossdb and database == "_memory":
+        if crossdb and self.crossdb and database == "_memory":
             count = 0
             for db_name, db in self.databases.items():
                 if count >= SQLITE_LIMIT_ATTACHED or db.is_memory:
@@ -1806,19 +1995,34 @@ class Datasette:
         parent,
         include_is_private,
     ):
-        databases = (
-            [(parent, self.databases[parent])]
-            if parent in self.databases
-            else ([] if parent is not None else list(self.databases.items()))
-        )
-        dependency_maps = dict(
-            zip(
-                (name for name, _ in databases),
-                await asyncio.gather(
-                    *(db.derived_table_dependencies() for _, db in databases)
-                ),
+        if parent is not None:
+            dependency_maps = (
+                {parent: await self.databases[parent].derived_table_dependencies()}
+                if parent in self.databases
+                else {}
             )
-        )
+        else:
+            # Every database: read the dependencies from the catalog (cached
+            # until it changes) rather than asking each database in turn -
+            # that was a query against every attached database for every
+            # page of allowed_resources(). The listing being filtered comes
+            # from the same catalog rows. Only databases the SchemaWatcher
+            # does not track fall back to live introspection.
+            dependency_maps = dict(await all_derived_table_dependencies(self))
+            unwatched = [
+                (name, db)
+                for name, db in self.databases.items()
+                if db._watch_state is None
+            ]
+            if unwatched:
+                dependency_maps.update(
+                    zip(
+                        (name for name, _ in unwatched),
+                        await asyncio.gather(
+                            *(db.derived_table_dependencies() for _, db in unwatched)
+                        ),
+                    )
+                )
         dependencies = [
             (database_name, child, source)
             for database_name, dependency_map in dependency_maps.items()
@@ -1968,7 +2172,29 @@ ORDER BY allowed.parent, allowed.child
 
         # Validate and cap limit
         limit = min(max(1, limit), 1000)
+        return await self._allowed_resources_page(
+            action,
+            actor,
+            parent=parent,
+            include_is_private=include_is_private,
+            include_reasons=include_reasons,
+            limit=limit,
+            next=next,
+        )
 
+    async def _allowed_resources_page(
+        self,
+        action,
+        actor,
+        *,
+        parent,
+        include_is_private,
+        include_reasons,
+        limit,
+        next,
+    ):
+        """allowed_resources() without the limit cap: ``limit=None`` returns
+        every remaining resource in one query (PaginatedResources.all())."""
         # Get base SQL query
         query, params = await self.allowed_resources_sql(
             action=action,
@@ -1998,15 +2224,16 @@ ORDER BY allowed.parent, allowed.child
 
         # Add LIMIT (fetch limit+1 to detect if there are more results)
         # Note: query from allowed_resources_sql() already includes ORDER BY parent, child
-        query = f"{query} LIMIT :limit"
-        params["limit"] = limit + 1
+        if limit is not None:
+            query = f"{query} LIMIT :limit"
+            params["limit"] = limit + 1
 
         # Execute query
         result = await self.get_internal_database().execute(query, params)
         rows = list(result.rows)
 
         # Check if truncated (got more than limit rows)
-        truncated = len(rows) > limit
+        truncated = limit is not None and len(rows) > limit
         if truncated:
             rows = rows[:limit]  # Remove the extra row
 
@@ -2353,7 +2580,7 @@ ORDER BY allowed.parent, allowed.child
             url = "https://" + url[len("http://") :]
         return url
 
-    def _connected_databases(self):
+    def _connected_databases(self, names=None):
         return [
             {
                 "name": d.name,
@@ -2365,23 +2592,58 @@ ORDER BY allowed.parent, allowed.child
                 "hash": d.hash,
             }
             for name, d in self.databases.items()
+            if names is None or name in names
         ]
 
     async def _connected_databases_for_actor(self, actor):
         page = await self.allowed_resources("view-database", actor)
         allowed_names = {resource.parent async for resource in page.all()}
-        return [
-            database
-            for database in self._connected_databases()
-            if database["name"] in allowed_names
-        ]
+        # Only stat (size) and hash (a full read of an immutable file, the
+        # first time) the databases this actor may see
+        return self._connected_databases(allowed_names)
 
     async def _databases_data(self, request):
         return {"databases": await self._connected_databases_for_actor(request.actor)}
 
     def _versions(self):
+        if self._sqlite_versions_info is None:
+            self._sqlite_versions_info = self._sqlite_versions()
+        sqlite_info, pysqlite3_version = self._sqlite_versions_info
+        datasette_version = {"version": __version__}
+        if self.version_note:
+            datasette_version["note"] = self.version_note
+
+        try:
+            # Optional import to avoid breaking Pyodide
+            # https://github.com/simonw/datasette/issues/1733#issuecomment-1115268245
+            import uvicorn
+
+            uvicorn_version = uvicorn.__version__
+        except ImportError:
+            uvicorn_version = None
+        info = {
+            "python": {
+                "version": ".".join(map(str, sys.version_info[:3])),
+                "full": sys.version,
+            },
+            "datasette": datasette_version,
+            "asgi": "3.0",
+            "uvicorn": uvicorn_version,
+            "sqlite": copy.deepcopy(sqlite_info),
+        }
+        if pysqlite3_version is not None:
+            info["pysqlite3"] = pysqlite3_version
+        return info
+
+    def _sqlite_versions(self):
+        """SQLite version, extensions, FTS versions and compile options, as
+        seen by a fully prepared connection. They cannot change while the
+        process runs, so /-/versions computes this once per instance rather
+        than preparing (loading extensions into) a connection per request.
+        crossdb=False: ATTACHing every --crossdb database is not needed to
+        report versions."""
         conn = sqlite3.connect(":memory:")
-        self._prepare_connection(conn, "_memory")
+        self._prepare_connection(conn, "_memory", crossdb=False)
         sqlite_version = conn.execute("select sqlite_version()").fetchone()[0]
         sqlite_extensions = {"json1": detect_json1(conn)}
         for extension, testsql, hasversion in (
@@ -2415,44 +2677,24 @@ ORDER BY allowed.parent, allowed.child
                 fts_versions.append(fts)
             except sqlite3.OperationalError:
                 continue
-        datasette_version = {"version": __version__}
-        if self.version_note:
-            datasette_version["note"] = self.version_note
-
-        try:
-            # Optional import to avoid breaking Pyodide
-            # https://github.com/simonw/datasette/issues/1733#issuecomment-1115268245
-            import uvicorn
-
-            uvicorn_version = uvicorn.__version__
-        except ImportError:
-            uvicorn_version = None
-        info = {
-            "python": {
-                "version": ".".join(map(str, sys.version_info[:3])),
-                "full": sys.version,
-            },
-            "datasette": datasette_version,
-            "asgi": "3.0",
-            "uvicorn": uvicorn_version,
-            "sqlite": {
-                "version": sqlite_version,
-                "fts_versions": fts_versions,
-                "extensions": sqlite_extensions,
-                "compile_options": [
-                    r[0] for r in conn.execute("pragma compile_options;").fetchall()
-                ],
-            },
+        sqlite_info = {
+            "version": sqlite_version,
+            "fts_versions": fts_versions,
+            "extensions": sqlite_extensions,
+            "compile_options": [
+                r[0] for r in conn.execute("pragma compile_options;").fetchall()
+            ],
         }
+        conn.close()
+        pysqlite3_version = None
         if using_pysqlite3:
             for package in ("pysqlite3", "pysqlite3-binary"):
                 try:
-                    info["pysqlite3"] = importlib.metadata.version(package)
+                    pysqlite3_version = importlib.metadata.version(package)
                     break
                 except importlib.metadata.PackageNotFoundError:
                     pass
-        conn.close()
-        return info
+        return sqlite_info, pysqlite3_version
 
     def _plugins(self, request=None, all=False):
         ps = list(get_plugins())
@@ -3068,17 +3310,13 @@ ORDER BY allowed.parent, allowed.child
         """
         if self._startup_invoked and self._setup_db_done:
             return
-        async with self._startup_lock:
-            if self._startup_invoked and self._setup_db_done:
-                return
-            if not self._setup_db_done:
-                # First time server starts up, calculate table counts for
-                # immutable databases
-                for database in self.databases.values():
-                    if not database.is_mutable:
-                        await database.table_counts(limit=60 * 60 * 1000)
-                self._setup_db_done = True
-            await self.invoke_startup()
+        # Immutable databases used to have their table counts computed
+        # here, opening every one of them at startup. They are now computed
+        # the first time a page needs them (see Database.table_counts()) and
+        # cached from then on. invoke_startup() makes concurrent callers -
+        # on any event loop - wait for the one running it.
+        self._setup_db_done = True
+        await self.invoke_startup()
 
     def add_background_task(self, func, name=None) -> BackgroundTask:
         """Register a piece of supervised background work, typically from
@@ -3114,6 +3352,7 @@ ORDER BY allowed.parent, allowed.child
         """
         await self.invoke_startup()
         await self._background_tasks.launch_all()
+        await self._schema_watcher.start()
 
     async def _launch_background_tasks(self):
         """Idempotently launch every registered background task. Private:
@@ -3136,6 +3375,7 @@ ORDER BY allowed.parent, allowed.child
         if self._suppress_background_tasks:
             return
         await self._background_tasks.launch_all()
+        await self._schema_watcher.start()
 
     async def invoke_shutdown(self):
         """Run the graceful teardown sequence: plugin ``shutdown`` hooks,
@@ -3151,6 +3391,7 @@ ORDER BY allowed.parent, allowed.child
             except Exception:
                 logging.getLogger("datasette").exception("shutdown hook failed")
         await self._background_tasks.cancel_all(grace=5.0)
+        await self._schema_watcher.astop()
         self.close()
 
     def app(self):

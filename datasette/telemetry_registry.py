@@ -311,7 +311,9 @@ DB_WRITE_QUEUE_WAIT = SpanName(
     "Time a write spent waiting in its database's write queue. For "
     "``block=True``, this is a child of ``db.query``. For ``block=False``, "
     "it is a root span linked to the span that queued the write, since the "
-    "write can outlive that request.",
+    "write can outlive that request. For the first write after the write "
+    "thread was stopped for being idle, this includes opening and preparing "
+    "a new write connection.",
 )
 
 DB_WRITE_EXECUTE = SpanName(
@@ -429,7 +431,9 @@ M_WRITE_QUEUE_WAIT = MetricName(
     "datasette.write.queue_wait",
     HISTOGRAM,
     "s",
-    "Time each write waited in its database's write queue.",
+    "Time each write waited in its database's write queue, including "
+    "opening a new write connection for the first write after the write "
+    "thread was stopped for being idle.",
     (DB_NAMESPACE,),
     buckets=DURATION_BUCKETS,
 )
@@ -476,9 +480,10 @@ M_WRITE_QUEUE_DEPTH = MetricName(
     "datasette.write.queue_depth",
     GAUGE,
     "{write}",
-    "Writes waiting for a database's single write thread. Increasing "
-    "``num_sql_threads`` does not increase write concurrency. Not reported for "
-    "databases that have never been written to.",
+    "Writes waiting for a database's write thread. Each database has at "
+    "most one, so increasing ``num_sql_threads`` does not increase write "
+    "concurrency; it stops after ``connection_idle_timeout_ms`` without "
+    "writes. Not reported for databases that have never been written to.",
     (DB_NAMESPACE,),
 )
 
@@ -486,7 +491,11 @@ M_CONNECTIONS_OPEN = MetricName(
     "datasette.connections.open",
     GAUGE,
     "{connection}",
-    "Open SQLite connections managed by Datasette.",
+    "Open SQLite connections managed by Datasette: pooled read connections "
+    "(capped across databases by ``max_open_connections``), the write "
+    "connection while the database's write thread is running, and isolated "
+    "connections in use. Short-lived connections used to check for schema "
+    "changes are not counted.",
     (DB_NAMESPACE,),
 )
 

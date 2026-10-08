@@ -116,7 +116,7 @@ class BaseView:
 
     async def dispatch_request(self, request):
         if self.ds:
-            await self.ds.refresh_schemas()
+            await self.ds._schema_watcher.on_request()
         handler = getattr(self, request.method.lower(), None)
         response = await handler(request)
         if self.ds.cors:

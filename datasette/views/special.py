@@ -18,6 +18,7 @@ from datasette.utils import (
     tilde_encode,
 )
 from datasette.utils.asgi import Forbidden, Response
+from datasette.utils.catalog import catalog_summaries, catalog_table_details
 
 from .base import BaseView, View
 
@@ -110,16 +111,27 @@ class AutocompleteDebugView(BaseView):
         scanned = 0
         reached_scan_limit = False
         suggestions = []
-        for database_name, db in self.ds.databases.items():
+        # The first 100 tables, in database order then by name, from the
+        # _internal catalog rather than each database's sqlite_master
+        names = list(self.ds.databases)
+        candidates = await self.ds.get_internal_database().execute(
+            """
+            select database_name, table_name
+            from catalog_tables
+            join json_each(:names) as j on j.value = catalog_tables.database_name
+            order by j.key, table_name
+            limit 100
+            """,
+            {"names": json.dumps(names)},
+        )
+        by_database = {}
+        for database_name, table_name in candidates.rows:
+            by_database.setdefault(database_name, []).append(table_name)
+        for database_name, table_names in by_database.items():
             if scanned >= 100 or len(suggestions) >= 5:
                 break
-            remaining = 100 - scanned
-            results = await db.execute(
-                "select name from sqlite_master where type = 'table' order by name limit ?",
-                [remaining],
-            )
-            for row in results.rows:
-                table_name = row["name"]
+            db = self.ds.databases[database_name]
+            for table_name in table_names:
                 scanned += 1
                 if scanned >= 100:
                     reached_scan_limit = True
@@ -316,7 +328,7 @@ class AllowedResourcesView(BaseView):
 
     async def get(self, request):
         await self.ds.ensure_permission(action="view-instance", actor=request.actor)
-        await self.ds.refresh_schemas()
+        await self.ds._schema_watcher.on_request()
 
         # Check if user has permissions-debug (to show sensitive fields)
         has_debug_permission = await self.ds.allowed(
@@ -534,7 +546,7 @@ class PermissionRulesView(BaseView):
         union_sql, union_params, _restriction_sqls = await build_permission_rules_sql(
             self.ds, actor, action
         )
-        await self.ds.refresh_schemas()
+        await self.ds._schema_watcher.on_request()
         db = self.ds.get_internal_database()
 
         count_query = f"""
@@ -928,24 +940,32 @@ class ApiExplorerView(BaseView):
     has_json_alternate = False
 
     async def example_links(self, request):
+        # Which databases and tables the actor can see, and their columns,
+        # come from the _internal catalog: building this page must not open
+        # every attached database
+        database_page = await self.ds.allowed_resources("view-database", request.actor)
+        visible_databases = {r.parent async for r in database_page.all()}
+        table_page = await self.ds.allowed_resources("view-table", request.actor)
+        visible_tables = {}
+        async for resource in table_page.all():
+            visible_tables.setdefault(resource.parent, []).append(resource.child)
+        names = [name for name in self.ds.databases if name in visible_databases]
+        summaries = await catalog_summaries(self.ds, names)
+        mutable_tables = [
+            (name, table)
+            for name in names
+            if self.ds.databases[name].is_mutable
+            for table in visible_tables.get(name, [])
+            if table not in summaries[name].views
+        ]
+        details = await catalog_table_details(self.ds, mutable_tables)
+
         databases = []
-        for name, db in self.ds.databases.items():
-            database_visible, _ = await self.ds.check_visibility(
-                request.actor,
-                action="view-database",
-                resource=DatabaseResource(database=name),
-            )
-            if not database_visible:
-                continue
+        for name in names:
+            db = self.ds.databases[name]
             tables = []
-            table_names = await db.table_names()
-            for table in table_names:
-                visible, _ = await self.ds.check_visibility(
-                    request.actor,
-                    action="view-table",
-                    resource=TableResource(database=name, table=table),
-                )
-                if not visible:
+            for table in visible_tables.get(name, []):
+                if table in summaries[name].views:
                     continue
                 table_links = []
                 tables.append({"name": table, "links": table_links})
@@ -965,7 +985,8 @@ class ApiExplorerView(BaseView):
                     resource=TableResource(database=name, table=table),
                     actor=request.actor,
                 ):
-                    pks = await db.primary_keys(table)
+                    pks = details[(name, table)]["primary_keys"]
+                    table_columns = details[(name, table)]["columns"]
                     table_links.extend(
                         [
                             {
@@ -976,7 +997,7 @@ class ApiExplorerView(BaseView):
                                     "rows": [
                                         {
                                             column: None
-                                            for column in await db.table_columns(table)
+                                            for column in table_columns
                                             if column not in pks
                                         }
                                     ]
@@ -999,7 +1020,7 @@ class ApiExplorerView(BaseView):
                                             )
                                             for column in (
                                                 (["rowid"] if not pks else [])
-                                                + await db.table_columns(table)
+                                                + table_columns
                                             )
                                         }
                                     ]
@@ -1273,15 +1294,16 @@ class SchemaBaseView(BaseView):
 
     has_json_alternate = False
 
-    async def get_database_schema(self, database_name, actor):
+    async def get_database_schema(self, database_name, actor, allowed_table_names=None):
         """Get schema SQL for a database."""
         db = self.ds.databases[database_name]
-        allowed_tables_page = await self.ds.allowed_resources(
-            "view-table", actor, parent=database_name
-        )
-        allowed_table_names = {
-            resource.child async for resource in allowed_tables_page.all()
-        }
+        if allowed_table_names is None:
+            allowed_tables_page = await self.ds.allowed_resources(
+                "view-table", actor, parent=database_name
+            )
+            allowed_table_names = {
+                resource.child async for resource in allowed_tables_page.all()
+            }
         result = await db.execute(
             "select tbl_name, sql from sqlite_master where sql is not null"
         )
@@ -1346,10 +1368,30 @@ class InstanceSchemaView(SchemaBaseView):
         )
         allowed_databases = [r.parent async for r in allowed_databases_page.all()]
 
-        # Get schema for each database
+        # One permission query for every table, not one per database
+        allowed_tables_page = await self.ds.allowed_resources(
+            "view-table", request.actor
+        )
+        allowed_tables = {}
+        async for resource in allowed_tables_page.all():
+            allowed_tables.setdefault(resource.parent, set()).add(resource.child)
+
+        # Get schema for each database. This page is a dump of every
+        # database the actor can see, so it reads each one's sqlite_master
+        # (the catalog has no index or trigger SQL) - but it skips databases
+        # with no visible tables or views instead of opening them.
         schemas = []
         for database_name in allowed_databases:
-            schema = await self.get_database_schema(database_name, request.actor)
+            if database_name not in self.ds.databases:
+                continue
+            visible = allowed_tables.get(database_name, set())
+            schema = (
+                await self.get_database_schema(
+                    database_name, request.actor, allowed_table_names=visible
+                )
+                if visible
+                else ""
+            )
             schemas.append({"database": database_name, "schema": schema})
 
         if format_ == "json":

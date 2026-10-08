@@ -4,6 +4,22 @@
 Changelog
 =========
 
+.. _changelog_unreleased:
+
+Unreleased
+----------
+
+Connection management
+~~~~~~~~~~~~~~~~~~~~~
+
+Datasette now pools read connections and bounds writer threads and queued writes across the instance, allowing it to serve many database files without keeping each one open. (:pr:`2989`)
+
+- New settings default to :ref:`32 pooled file read connections <setting_max_open_connections>`, :ref:`8 user database writers <setting_max_write_connections>`, :ref:`256 pending writes <setting_max_pending_writes>` and a :ref:`five-second write queue timeout <setting_write_queue_timeout_ms>`. Connections and writer threads retire after :ref:`30 seconds idle <setting_connection_idle_timeout_ms>` or under capacity pressure. These limits do not impose a hard cap on total memory or file descriptors. Named in-memory databases retain writer slots to preserve their contents.
+- Index and database listings use the internal schema catalog. The new :ref:`schema watch settings <setting_schema_watch_interval_ms>` control detection of changes made outside Datasette. Immutable table row counts are now calculated when needed instead of at startup.
+- Connections, cursors, blob handles and dump iterators supplied to plugin callbacks expire when the callback finishes. Using an expired resource, or returning a live resource from ``execute_fn()``, raises ``datasette.database.ConnectionLeaseError``. Fetch results inside the callback and use :ref:`plugin_hook_prepare_connection` for setup needed on every managed connection. See :ref:`database_connection_leases` for details.
+- Full write queues and admission timeouts now raise explicit :ref:`resource errors <database_resource_errors>`, with HTTP 503 responses for requests. The new :ref:`plugin_hook_write_task_completed` hook reports completion or failure of accepted non-blocking writes. Plugins that create background tasks should observe their results so admission failures are handled.
+- Graceful shutdown drains accepted writes subject to their admission deadlines and a per-database shutdown timeout. Running callbacks retain ownership of their connections until they finish; see :ref:`database_close`.
+
 .. _v1_0_a41:
 
 1.0a41 (2026-09-24)

@@ -36,6 +36,11 @@ from datasette.utils import (
     named_parameters as derive_named_parameters,
 )
 from datasette.utils.asgi import AsgiFileDownload, Forbidden, NotFound, Response
+from datasette.utils.catalog import (
+    catalog_all_foreign_keys,
+    catalog_summaries,
+    catalog_table_details,
+)
 from datasette.write_sql import QueryWriteRejected
 
 from . import Context
@@ -80,7 +85,7 @@ class DatabaseView(View):
     async def get(self, request, datasette):
         format_ = request.url_vars.get("format") or "html"
 
-        await datasette.refresh_schemas()
+        await datasette._schema_watcher.on_request()
 
         db = await datasette.resolve_database(request)
         database = db.name
@@ -497,25 +502,39 @@ async def get_tables(datasette, request, db, allowed_dict) -> list[DatabaseTable
     """
     tables = []
     table_counts = await db.table_counts(100)
-    hidden_table_names = set(await db.hidden_table_names())
-    all_foreign_keys = await db.get_all_foreign_keys()
+    # Everything except the row counts comes from the _internal catalog - the
+    # same catalog allowed_dict was built from - in a few queries, instead of
+    # three introspection round trips per table (and an O(tables^2)
+    # hidden-table check) against the database itself
+    summary = (await catalog_summaries(datasette, [db.name]))[db.name]
+    db_config = datasette.config.get("databases", {}).get(db.name, {})
+    config_hidden = {
+        t
+        for t, table_config in db_config.get("tables", {}).items()
+        if table_config.get("hidden")
+    }
+    all_foreign_keys = await catalog_all_foreign_keys(datasette, db.name)
+    shown = [table for table in table_counts if table in allowed_dict]
+    details = await catalog_table_details(
+        datasette, [(db.name, table) for table in shown]
+    )
 
-    for table in table_counts:
-        if table not in allowed_dict:
+    for table in shown:
+        if table not in all_foreign_keys:
+            # Not in the catalog (yet), so not in allowed_dict either
             continue
-
-        table_columns = await db.table_columns(table)
+        table_details = details[(db.name, table)]
         tables.append(
             DatabaseTable(
                 name=table,
-                columns=table_columns,
-                primary_keys=await db.primary_keys(table),
+                columns=table_details["columns"],
+                primary_keys=table_details["primary_keys"],
                 count=table_counts[table],
                 count_truncated=_table_count_truncated(
                     datasette, db, table, table_counts[table]
                 ),
-                hidden=table in hidden_table_names,
-                fts_table=await db.fts_table(table),
+                hidden=summary.is_hidden(table, config_hidden),
+                fts_table=table_details["fts_table"],
                 foreign_keys=all_foreign_keys[table],
                 private=allowed_dict[table].private,
             )
@@ -711,7 +730,7 @@ class QueryView(View):
     async def get(self, request, datasette):
         from datasette.app import TableNotFound
 
-        await datasette.refresh_schemas()
+        await datasette._schema_watcher.on_request()
 
         db = await datasette.resolve_database(request)
         database = db.name

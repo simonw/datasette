@@ -3,6 +3,7 @@ import urllib
 
 import pytest
 
+from datasette.app import Datasette
 from datasette.fixtures import generate_compound_rows, generate_sortable_rows
 from datasette.utils import detect_json1, tilde_encode
 from datasette.utils.sqlite import sqlite_version
@@ -1613,6 +1614,53 @@ async def test_col_nocol_errors(ds_client, path, expected_error):
     response = await ds_client.get(path)
     assert response.status_code == 400
     assert response.json()["error"] == expected_error
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "query_string,expected_order",
+    (
+        ("_sort=b&_nocol=b", list(range(1, 26))),
+        ("_sort=b&_col=c", list(range(1, 26))),
+        ("_sort_desc=b&_nocol=b", list(range(25, 0, -1))),
+    ),
+)
+async def test_sort_excluded_column_rowid_table(query_string, expected_order):
+    # Tables with no explicit primary key paginate on rowid, so the
+    # "look the sort value up by primary key" fallback - which exists so that
+    # sorting works when the sort column is not in the SELECT, added for #1773 -
+    # has to fall back to rowid too.
+    # https://github.com/simonw/datasette/issues/2974
+    ds = Datasette(settings={"default_page_size": 10, "max_returned_rows": 1000})
+    db = ds.add_memory_database("rowid_pagination")
+    # c mirrors b and is never excluded, so it can be used to check the
+    # order the rows were paginated in. Values are zero-padded so that
+    # string order matches numeric order.
+    await db.execute_write("create table items (a text, b text, c text)")
+    for i in range(1, 26):
+        await db.execute_write(
+            "insert into items (a, b, c) values (?, ?, ?)",
+            (f"a{i:02d}", f"b{i:02d}", f"c{i:02d}"),
+        )
+    await ds.invoke_startup()
+
+    fetched = []
+    path = f"/rowid_pagination/items.json?_shape=objects&{query_string}"
+    for _ in range(100):
+        response = await ds.client.get(path)
+        assert response.status_code == 200, response.text
+        data = response.json()
+        fetched.extend(data["rows"])
+        path = data["next_url"]
+        if not path:
+            break
+        path = path.replace("http://localhost", "")
+    else:
+        assert False, "pagination did not terminate"
+
+    # Every row visited exactly once, in the requested order, with no rows
+    # skipped or repeated at a page boundary
+    assert [row["c"] for row in fetched] == [f"c{i:02d}" for i in expected_order]
 
 
 @pytest.mark.asyncio

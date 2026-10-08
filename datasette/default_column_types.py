@@ -5,6 +5,7 @@ import markupsafe
 
 from datasette import hookimpl
 from datasette.column_types import ColumnType, SQLiteType
+from datasette.utils import truncate_url
 
 _HTTP_URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 
@@ -23,14 +24,17 @@ class UrlColumnType(ColumnType):
     description = "URL"
     sqlite_types = (SQLiteType.TEXT,)
 
-    async def render_cell(self, value, column, table, database, datasette, request):
+    async def render_cell(
+        self, value, column, table, database, datasette, request, truncate_cells=0
+    ):
         if not value or not isinstance(value, str):
             return None
         normalized = _normalize_http_url(value)
         if normalized is None:
             return markupsafe.escape(value.strip())
         escaped = markupsafe.escape(normalized)
-        return markupsafe.Markup(f'<a href="{escaped}">{escaped}</a>')
+        link_text = markupsafe.escape(truncate_url(normalized, truncate_cells))
+        return markupsafe.Markup(f'<a href="{escaped}">{link_text}</a>')
 
     async def validate(self, value, datasette):
         if value is None or value == "":

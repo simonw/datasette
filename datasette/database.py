@@ -620,6 +620,10 @@ class Database:
                                     None,
                                 )
                                 self._forget_connection(old)
+                            if self.memory_name:
+                                # The isolated connection must not be the last
+                                # connection keeping a named memory DB alive.
+                                self._non_threaded_write_connection()
                             result = _run()
                     else:
                         result = self.ds._read_pool.run(self, fn, isolated=True)
@@ -919,7 +923,13 @@ class Database:
                 and not self.is_memory
             ):
                 writer.close()
-            if not task.isolated_connection and (
+            # File-backed isolated tasks only need their temporary connection.
+            # Named memory databases also need a retained keeper, including
+            # when their very first operation is isolated.
+            needs_retained_connection = not task.isolated_connection or bool(
+                self.memory_name
+            )
+            if needs_retained_connection and (
                 writer.generation != self._conn_generation or not writer.usable()
             ):
                 # The file was replaced or deleted since this connection was
@@ -952,7 +962,7 @@ class Database:
                     **write_span_kwargs,
                 ).end(end_time=dequeued_at_ns)
                 record_write_queue_wait(self.name, dequeued_at_ns - task.enqueued_at_ns)
-                if writer.exception is not None and not task.isolated_connection:
+                if writer.exception is not None and needs_retained_connection:
                     exception = writer.exception
                 elif task.isolated_connection:
                     try:

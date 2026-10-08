@@ -75,17 +75,20 @@ class LeasedConnection:
     C functions that require a real connection object (for example the
     *target* argument of ``Connection.backup()``) reject the proxy.
 
-    Cursors and saved bound methods share the lease. All cursors are closed
-    on the owning thread before the connection is returned to the pool.
+    Cursors, blobs, dump iterators and saved bound methods share the lease.
+    Resources are closed on the owning thread before the connection is
+    returned to the pool or the write transaction commits.
     """
 
-    __slots__ = ("_conn", "_cursors", "_db_name", "_kind")
+    __slots__ = ("_blobs", "_conn", "_cursors", "_db_name", "_iterators", "_kind")
 
     def __init__(self, conn, db_name, kind="read"):
         object.__setattr__(self, "_conn", conn)
         object.__setattr__(self, "_db_name", db_name)
         object.__setattr__(self, "_kind", kind)
         object.__setattr__(self, "_cursors", [])
+        object.__setattr__(self, "_blobs", [])
+        object.__setattr__(self, "_iterators", [])
 
     def _live(self):
         conn = self._conn
@@ -94,12 +97,18 @@ class LeasedConnection:
                 f"A {self._kind} connection to database {self._db_name!r} was used "
                 f"after the {_CALLBACK_NAMES.get(self._kind, 'callback')} callback "
                 "it was passed to had returned. Connections are only valid inside "
-                "the callback: do not store the connection (or a cursor) for "
+                "the callback: do not store the connection or its resources for "
                 "later use"
             )
         return conn
 
     def _expire(self):
+        for iterator in self._iterators:
+            close_cursors(iterator)
+        self._iterators.clear()
+        for blob in self._blobs:
+            _close_cursor(blob)
+        self._blobs.clear()
         for cursor in self._cursors:
             _close_cursor(cursor)
         self._cursors.clear()
@@ -109,6 +118,17 @@ class LeasedConnection:
         if isinstance(result, sqlite3.Cursor):
             self._cursors.append(result)
             return LeasedCursor(result, self)
+        # Incremental BLOB access was added in Python 3.11.
+        blob_type = getattr(sqlite3, "Blob", None)
+        if blob_type is not None and isinstance(result, blob_type):
+            self._blobs.append(result)
+            return LeasedBlob(result, self)
+        if inspect.isgenerator(result):
+            # iterdump() holds a raw connection, then a raw cursor once it
+            # starts. Track even unstarted or stashed iterators so neither
+            # the iterator nor its read lock can outlive this callback.
+            self._iterators.append(result)
+            return LeasedIterator(result, self)
         return result
 
     # isinstance(conn, sqlite3.Connection) checks keep working
@@ -225,18 +245,94 @@ class LeasedCursor:
         self._live().close()
 
 
-def _contains_cursor(value, seen=None):
+class LeasedBlob:
+    """Incremental BLOB access lasts only as long as its connection lease."""
+
+    __slots__ = ("_blob", "_lease")
+
+    def __init__(self, blob, lease):
+        self._blob = blob
+        self._lease = lease
+
+    @property
+    def __class__(self):
+        return sqlite3.Blob
+
+    def _live(self):
+        self._lease._live()
+        return self._blob
+
+    def __getattr__(self, name):
+        value = getattr(self._live(), name)
+        if getattr(value, "__self__", None) is self._blob:
+
+            def call(*args, **kwargs):
+                return getattr(self._live(), name)(*args, **kwargs)
+
+            return call
+        return value
+
+    def __len__(self):
+        return len(self._live())
+
+    def __getitem__(self, key):
+        return self._live()[key]
+
+    def __setitem__(self, key, value):
+        self._live()[key] = value
+
+    def __enter__(self):
+        self._live().__enter__()
+        return self
+
+    def __exit__(self, *args):
+        return self._live().__exit__(*args)
+
+
+class LeasedIterator:
+    """An iterator returned by SQLite cannot resume after its lease ends."""
+
+    __slots__ = ("_iterator", "_lease")
+
+    def __init__(self, iterator, lease):
+        self._iterator = iterator
+        self._lease = lease
+
+    def _live(self):
+        self._lease._live()
+        return self._iterator
+
+    def __iter__(self):
+        self._live()
+        return self
+
+    def __next__(self):
+        return next(self._live())
+
+    def send(self, value):
+        return self._live().send(value)
+
+    def throw(self, *args):
+        return self._live().throw(*args)
+
+    def close(self):
+        return self._live().close()
+
+
+def _contains_database_resource(value, seen=None):
     """Inspect ordinary containers without invoking arbitrary user iterators."""
     seen = set() if seen is None else seen
     if id(value) in seen:
         return False
     seen.add(id(value))
-    if isinstance(value, sqlite3.Cursor):
+    if isinstance(value, (sqlite3.Cursor, LeasedBlob, LeasedIterator)):
         return True
     if isinstance(value, dict):
-        return any(_contains_cursor(v, seen) for pair in value.items() for v in pair)
+        return any(
+            _contains_database_resource(v, seen) for pair in value.items() for v in pair
+        )
     if isinstance(value, (tuple, list, set, frozenset)):
-        return any(_contains_cursor(v, seen) for v in value)
+        return any(_contains_database_resource(v, seen) for v in value)
     return False
 
 
@@ -303,7 +399,10 @@ def _generator_uses_connection(result):
         values = inspect.getgeneratorlocals(result).values()
     except Exception:  # noqa: BLE001
         return False
-    return any(isinstance(v, (sqlite3.Connection, sqlite3.Cursor)) for v in values)
+    return any(
+        isinstance(v, (sqlite3.Connection, sqlite3.Cursor, LeasedBlob, LeasedIterator))
+        for v in values
+    )
 
 
 class _Entry:
@@ -364,7 +463,9 @@ class ReadConnectionPool:
         try:
             with callback_scope():
                 result = fn(lease)
-            if _contains_cursor(result) or _generator_uses_connection(result):
+            if _contains_database_resource(result) or _generator_uses_connection(
+                result
+            ):
                 rejected = True
                 close_cursors(result)
         except BaseException as e:

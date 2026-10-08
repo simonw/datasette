@@ -1081,7 +1081,13 @@ class Datasette:
         # Stop reporting metrics before closing databases
         unregister_datasette(self)
         first_exception = None
-        for db in list(self.databases.values()):
+        databases = list(self.databases.values())
+        # Release every user database's idle or pinned writer before
+        # waiting for accepted work to obtain the global writer budget.
+        # The internal catalog remains available until user drains finish.
+        for db in databases:
+            db._begin_close()
+        for db in databases:
             try:
                 db.close()
             except Exception as e:  # noqa: BLE001

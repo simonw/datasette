@@ -6,7 +6,6 @@ import time
 import pytest
 
 from datasette.app import Datasette
-from datasette.database import DatasetteClosedError
 from datasette.write_budget import (
     DatabaseAdmissionTimeout,
     DatabaseQueueFull,
@@ -126,8 +125,10 @@ async def test_queue_full_expiration_and_internal_progress(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_close_waiting_database_releases_pending(tmp_path):
-    ds, dbs = make_databases(tmp_path, max_write_connections=1)
+async def test_close_waiting_database_preserves_admission_deadline(tmp_path):
+    ds, dbs = make_databases(
+        tmp_path, max_write_connections=1, write_queue_timeout_ms=50
+    )
     entered, release = threading.Event(), threading.Event()
 
     def slow(conn):
@@ -142,7 +143,7 @@ async def test_close_waiting_database_releases_pending(tmp_path):
         )
         await wait_for(lambda: ds._write_budget.snapshot()["pending"] == 1)
         dbs[1].close()
-        with pytest.raises(DatasetteClosedError):
+        with pytest.raises(DatabaseAdmissionTimeout):
             await pending
         assert ds._write_budget.snapshot()["pending"] == 0
     finally:

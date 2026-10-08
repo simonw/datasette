@@ -195,6 +195,27 @@ class WriteBudget:
         with self._condition:
             self._condition.notify_all()
 
+    def drain_database(self, db, timeout):
+        """Wait for accepted work and its owning threads, including admission.
+
+        The caller has stopped submissions and queued the shutdown sentinel.
+        Normal admission deadlines still apply. If shutdown itself times out,
+        only callbacks that have not started are cancelled; running callbacks
+        keep ownership of their connections until they return.
+        """
+        with self._condition:
+            drained = self._condition.wait_for(
+                lambda: db not in self._active
+                and not any(owner is db for owner, _ in self._pending.values()),
+                timeout=timeout,
+            )
+        if not drained:
+            self.cancel_database(db)
+        else:
+            with self._inline_lock:
+                self._inline.pop(db, None)
+        return drained
+
     def cancel_database(self, db):
         from .database import DatasetteClosedError
 
@@ -262,6 +283,9 @@ class WriteBudget:
                     stop = True
                 else:
                     stop = False
+                # close() may be waiting for a starting or retiring worker,
+                # not just for callbacks to complete.
+                self._condition.notify_all()
             for task in expired:
                 self._fail(
                     task,
@@ -272,12 +296,11 @@ class WriteBudget:
             for db in start:
                 try:
                     with db._write_thread_lock:
-                        if db._closed:
-                            self.cancel_database(db)
-                            thread = None
-                        else:
-                            db._start_write_thread()
-                            thread = db._write_thread
+                        # close() rejects new submissions, but accepted work
+                        # remains eligible for this normally budgeted slot.
+                        # Its shutdown sentinel follows the accepted tasks.
+                        db._start_write_thread()
+                        thread = db._write_thread
                     with self._condition:
                         if thread is None:
                             self._active.pop(db, None)

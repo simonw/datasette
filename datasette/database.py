@@ -86,6 +86,7 @@ from .write_budget import (
 logger = logging.getLogger(__name__)
 
 EXECUTE_WRITE_RETURNING_LIMIT = 10
+WRITE_SHUTDOWN_TIMEOUT = 10
 
 AttachedDatabase = namedtuple("AttachedDatabase", ("seq", "name", "file"))
 
@@ -95,6 +96,7 @@ class DatasetteClosedError(RuntimeError):
 
 
 _SHUTDOWN = object()
+_write_connection_owner = contextvars.ContextVar("write_connection_owner", default=None)
 
 
 class Database:
@@ -163,6 +165,10 @@ class Database:
         self._write_threads_started = 0
         self._write_thread_exits_averted = 0
         self._closed = False
+        self._close_lock = threading.RLock()
+        self._close_complete = False
+        self._closing_execute_futures = ()
+        self._cleanup_temp_file_on_writer_exit = False
         self._pending_execute_futures = set()
         self._pending_execute_futures_lock = threading.Lock()
         # The write connection in non-threaded mode (reads go through
@@ -228,6 +234,21 @@ class Database:
             self._all_connections.remove(conn)
         except ValueError:
             pass
+
+    def _connect_write_thread(self):
+        # Publish the connection only after marking its owning writer. A
+        # timed-out close() must never see a half-registered write connection
+        # and close it before the callback can use it.
+        token = _write_connection_owner.set(self)
+        try:
+            return self.connect(write=True)
+        finally:
+            _write_connection_owner.reset(token)
+
+    def _track_connection(self, conn):
+        if _write_connection_owner.get() is self:
+            self._write_thread_connections.add(conn)
+        self._all_connections.append(conn)
 
     def _untracked_connection_opened(self):
         """Call before opening a connection with ``connect(track=False)``.
@@ -361,12 +382,12 @@ class Database:
             if not write:
                 conn.execute("PRAGMA query_only=1")
             if track:
-                self._all_connections.append(conn)
+                self._track_connection(conn)
             return conn
         if self.is_memory:
             conn = sqlite3.connect(":memory:", uri=True, check_same_thread=False)
             if track:
-                self._all_connections.append(conn)
+                self._track_connection(conn)
             return conn
 
         # mode=ro or immutable=1?
@@ -397,7 +418,7 @@ class Database:
         )
         self._file_seen = True
         if track:
-            self._all_connections.append(conn)
+            self._track_connection(conn)
         if self.is_temp_disk and not self._wal_enabled:
             conn.execute("PRAGMA journal_mode=WAL")
             self._wal_enabled = True
@@ -407,45 +428,63 @@ class Database:
         """Release all resources held by this database.
 
         Idempotent. After close() further calls to execute()/execute_fn()/
-        execute_write()/execute_write_fn() raise DatasetteClosedError.
+        execute_write()/execute_write_fn() raise DatasetteClosedError. Accepted
+        writes drain through normal admission, with their existing deadlines.
+        Budgeted writes still awaiting admission after ten seconds are
+        cancelled; running writers retain their connections until finished.
         """
-        if self._closed:
-            return
-        with self._pending_execute_futures_lock, self._untracked_cond:
+        with self._close_lock:
+            if self._close_complete:
+                return
+            self._begin_close()
+            self._finish_close()
+            self._close_complete = True
+
+    def _begin_close(self):
+        # Datasette begins closing every user database before waiting for
+        # any one of them, releasing pinned writers needed by queued work.
+        with self._close_lock:
             if self._closed:
                 return
-            self._closed = True
-            pending_execute_futures = tuple(self._pending_execute_futures)
-        # Shut down the write thread, if any, via a sentinel. The thread
-        # drains any writes already queued before the sentinel and then
-        # closes its own write connection and returns. _closed is already
-        # set, so once we hold the lock no further task can be enqueued.
+            with self._pending_execute_futures_lock, self._untracked_cond:
+                self._closed = True
+                self._closing_execute_futures = tuple(self._pending_execute_futures)
+            with self._write_thread_lock:
+                # Include writers awaiting admission: the scheduler must
+                # drain accepted tasks before consuming this sentinel.
+                if self._write_queue is not None:
+                    self._write_queue.put(_SHUTDOWN)
+
+    def _finish_close(self):
+        budget = self.ds.__dict__.get("_write_budget_instance")
+        still_running = False
+        if self._budgeted_writer and budget is not None:
+            still_running = not budget.drain_database(self, WRITE_SHUTDOWN_TIMEOUT)
         with self._write_thread_lock:
             write_thread = self._write_thread
             retiring_threads = tuple(self._retiring_write_threads)
-            if write_thread is not None and write_thread.is_alive():
-                self._write_queue.put(_SHUTDOWN)
-            elif self._budgeted_writer:
-                self.ds._write_budget.cancel_database(self)
-        still_running = False
-        for thread in ((write_thread,) if write_thread else ()) + retiring_threads:
-            thread.join(timeout=10)
-            if thread.is_alive():
-                still_running = True
-                sys.stderr.write(
-                    f"Datasette: write thread for {self.name!r} did not exit within 10s\n"
-                )
-                sys.stderr.flush()
+        if not self._budgeted_writer:
+            deadline = time.monotonic() + WRITE_SHUTDOWN_TIMEOUT
+            for thread in ((write_thread,) if write_thread else ()) + retiring_threads:
+                thread.join(timeout=max(0, deadline - time.monotonic()))
+                still_running = still_running or thread.is_alive()
+        if still_running:
+            sys.stderr.write(
+                f"Datasette: write thread for {self.name!r} did not exit within "
+                f"{WRITE_SHUTDOWN_TIMEOUT:g}s\n"
+            )
+            sys.stderr.flush()
         # A write thread that is still running owns its connection and closes
         # it when it finishes; closing it here could free it mid-query
         # (membership tests only: copying the set could race the thread)
         in_use = self._write_thread_connections if still_running else ()
-        for future in pending_execute_futures:
+        for future in self._closing_execute_futures:
             try:
                 future.result()
             except Exception:  # noqa: BLE001, S110
                 # Shutdown teardown - a failed pending write must not block close()
                 pass
+        self._closing_execute_futures = ()
         # Close idle pooled read connections; any still leased are closed
         # by the pool when they are released
         read_pool = getattr(self.ds, "_read_pool_or_none", None)
@@ -468,7 +507,13 @@ class Database:
                 pass
             self._write_connection = None
         if self.is_temp_disk:
-            self._cleanup_temp_file()
+            with self._write_thread_lock:
+                if (
+                    self._write_thread is not None and self._write_thread.is_alive()
+                ) or self._retiring_write_threads:
+                    self._cleanup_temp_file_on_writer_exit = True
+                else:
+                    self._cleanup_temp_file()
 
     def _cleanup_temp_file(self):
         if self.is_temp_disk and self.path:
@@ -884,6 +929,14 @@ class Database:
                     self._write_thread = None
                     if not self._closed and not self._write_queue.empty():
                         self._start_write_thread()
+                if self._closed and self._write_thread is current:
+                    self._write_thread = None
+                if (
+                    self._cleanup_temp_file_on_writer_exit
+                    and self._write_thread is None
+                    and not self._retiring_write_threads
+                ):
+                    self._cleanup_temp_file()
 
     def _process_write_queue(self, writer):
         configured_idle_timeout = self._write_thread_idle_timeout()
@@ -913,7 +966,11 @@ class Database:
                         self._write_thread = None
                     self._retiring_write_threads.add(current)
                 return
-            if task is _SHUTDOWN or task is RETIRE_WRITER:
+            if task is _SHUTDOWN:
+                return
+            if task is RETIRE_WRITER:
+                if self._closed:
+                    continue
                 return
             if self._budgeted_writer and not self.ds._write_budget.take(self, task):
                 continue
@@ -974,10 +1031,9 @@ class Database:
                                 task.isolated_connection,
                             )
                             span.set_attribute(TRANSACTION, task.transaction)
-                            isolated_connection = self.connect(write=True)
+                            isolated_connection = self._connect_write_thread()
                             # Owned by this thread: close() must not close it
                             # if this thread outlives close()'s join timeout
-                            self._write_thread_connections.add(isolated_connection)
                             try:
                                 result = _call_with_lease(
                                     task.fn, isolated_connection, self.name, "isolated"
@@ -1627,8 +1683,7 @@ class _WriteConnection:
         self.generation = db._conn_generation
         self.exception = None
         try:
-            self.conn = db.connect(write=True)
-            db._write_thread_connections.add(self.conn)
+            self.conn = db._connect_write_thread()
             _pin_write_connection_pragmas(self.conn)
             # Threads do not inherit the caller's context, so any spans
             # created by prepare_connection hooks here are root spans

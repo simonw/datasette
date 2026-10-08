@@ -258,8 +258,11 @@ def _is_transient(error):
     if isinstance(error, OSError):
         return error.errno in (errno.EMFILE, errno.ENFILE, errno.ENOMEM, errno.EAGAIN)
     if isinstance(error, sqlite3.OperationalError):
-        code = getattr(error, "sqlite_errorcode", 0) & 0xFF
-        if code in (sqlite3.SQLITE_CANTOPEN, sqlite3.SQLITE_NOMEM):
+        code = getattr(error, "sqlite_errorcode", None)
+        if code is not None and code & 0xFF in (
+            getattr(sqlite3, "SQLITE_CANTOPEN", None),
+            getattr(sqlite3, "SQLITE_NOMEM", None),
+        ):
             return True
         message = str(error).lower()
         return any(
@@ -269,6 +272,7 @@ def _is_transient(error):
                 "busy",
                 "unable to open database file",
                 "too many open files",
+                "out of memory",
             )
         )
     return False

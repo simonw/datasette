@@ -65,8 +65,17 @@ def connect_with_retry(db, connect):
                 errno.ENFILE,
                 errno.ENOMEM,
             )
-            cantopen = (
-                getattr(error, "sqlite_errorcode", None) == sqlite3.SQLITE_CANTOPEN
+            # Python 3.10 exposes neither SQLite result constants nor
+            # sqlite_errorcode. Keep its open-error recovery path working.
+            code = getattr(error, "sqlite_errorcode", None)
+            cantopen_code = getattr(sqlite3, "SQLITE_CANTOPEN", None)
+            cantopen = isinstance(error, sqlite3.OperationalError) and (
+                (
+                    code is not None
+                    and cantopen_code is not None
+                    and code & 0xFF == cantopen_code
+                )
+                or "unable to open database file" in str(error).lower()
             )
             if not pressure and (not cantopen or not os.path.exists(db.path)):
                 raise

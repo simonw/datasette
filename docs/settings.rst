@@ -248,7 +248,7 @@ Default: ``8``
 
 Maximum simultaneous user database writer threads and their retained connections. Must be greater than zero. Each database preserves FIFO write order. When other databases are waiting, a writer closes its connection and releases its slot after its current callback completes. A retiring writer counts against the limit until its thread exits. Idle writers also release their slots under pressure, even if :ref:`setting_connection_idle_timeout_ms` is 0.
 
-The internal catalog has a separate writer, and file schema scans are serialized. Mutable isolated callbacks occupy a writer slot without retaining an additional ordinary file connection. Named in-memory writers occupy non-evictable slots to preserve their data; waiting writes can time out if these consume all capacity. In non-threaded mode, the same setting bounds retained writer connections, evicting an idle file connection before opening another.
+The internal catalog has a separate writer, and file schema scans are serialized. Mutable isolated callbacks occupy a writer slot without retaining an additional ordinary file connection. Named in-memory writers occupy non-evictable slots to preserve their data; waiting writes can time out if these consume all capacity. Schema catalog scans also use these writers, so serving read-only queries to named in-memory databases can consume writer slots. Allow capacity for those databases plus any file writers that need to run alongside them. In non-threaded mode, the same setting bounds retained writer connections, evicting an idle file connection before opening another.
 
 .. _setting_max_pending_writes:
 
@@ -326,7 +326,7 @@ Default: ``1000``
 Datasette keeps a catalog of every attached database's tables, columns, indexes and foreign keys in its :ref:`internal database <internals_internal>`. Each database has a *schema watch mode* that decides how that catalog is kept current:
 
 ``owned``
-    Only Datasette changes this database's schema. After every write Datasette makes to it, Datasette checks whether the schema changed and, if it did, updates the catalog before the write call returns. Owned databases are never polled.
+    Only Datasette changes this database's schema. After every write Datasette makes to it, Datasette checks whether the schema changed. Blocking writes normally refresh a changed schema in the catalog before returning. If a refresh fails transiently, Datasette retains the previous catalog and retries later; the write may already have committed. Owned databases are never polled.
 ``external``
     Other processes may change the file too - for example ``sqlite-utils`` adding a table while Datasette is serving it. On top of the checks after Datasette's own writes, the file is polled every ``schema_watch_interval_ms`` milliseconds. Each check is a ``stat()`` of the database file and its ``-wal`` and ``-journal`` files; a database is only opened if those changed, and its catalog is only rebuilt if its schema changed. Databases whose file is replaced (for example by renaming another file over it) or deleted are noticed too: open connections to the old file are discarded and the catalog is updated.
 ``immutable``

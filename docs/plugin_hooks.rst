@@ -57,9 +57,9 @@ arguments and can be called like this::
 
     select random_integer(1, 10);
 
-``prepare_connection()`` hooks are not called for Datasette's :ref:`internal database <internals_internal>`.
+``prepare_connection()`` hooks are not called for Datasette's :ref:`internal database <internals_internal>`, :ref:`isolated callbacks <database_execute_isolated_fn>` or the brief connections used only to check a file's schema version.
 
-The hook runs exactly once for every connection Datasette opens: pooled read connections, write connections and the short-lived connections used to rebuild the schema catalog. Datasette closes connections that have been idle for :ref:`setting_connection_idle_timeout_ms` and caps the number of open read connections with :ref:`setting_max_open_connections`, opening new ones as they are needed, so expect the hook to run many times over the life of a server - keep it fast. Anything a plugin needs on every connection (functions, collations, authorizers, ``PRAGMA`` settings) belongs here rather than in a write function, because connections are not shared and do not live forever.
+For pooled read connections, managed write connections and the short-lived connections used to rebuild the schema catalog, the hook runs once when each connection is opened. Datasette closes connections that have been idle for :ref:`setting_connection_idle_timeout_ms` and caps read connections with :ref:`setting_max_open_connections` and writers with :ref:`setting_max_write_connections`, opening new ones as needed, so expect the hook to run many times over the life of a server - keep it fast. Anything a plugin needs on every managed connection (functions, collations, authorizers, ``PRAGMA`` settings) belongs here rather than in a write function, because connections are not shared and do not live forever.
 
 Examples: `datasette-jellyfish <https://datasette.io/plugins/datasette-jellyfish>`__, `datasette-jq <https://datasette.io/plugins/datasette-jq>`__, `datasette-haversine <https://datasette.io/plugins/datasette-haversine>`__, `datasette-rure <https://datasette.io/plugins/datasette-rure>`__
 
@@ -2612,5 +2612,7 @@ write_task_completed(datasette, database, task_id, exception)
 -------------------------------------------------------------
 
 Called after an accepted ``execute_write_fn(..., block=False)`` task finishes, fails, or expires before execution. ``database`` is the database name and ``task_id`` is the UUID returned on acceptance. ``exception`` is ``None`` on success, otherwise the exception describing the failure. ``DatabaseAdmissionTimeout`` means execution never started; other execution failures must not be assumed safe to retry. An immediately rejected submission does not trigger this hook because no task was accepted.
+
+Success means the callback and its transaction completed; it does not guarantee catalog refresh or delivery of events queued with ``track_event``. With :ref:`setting_num_sql_threads` set to ``0``, the callback runs inline: failures raise directly from the call, and successful calls return a task ID and schedule this notification.
 
 The hook may return an awaitable. Delivery runs on the submitting event loop and is not durable: stopping that loop or the process can prevent notification. Failures are also logged with ``database``, ``task_id`` and ``error_code`` fields. A failing completion hook is logged and does not retry the write or change its result.

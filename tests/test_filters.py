@@ -165,3 +165,33 @@ async def test_search_filters_from_request(ds_client):
     assert filter_args.params == {"search": "bobcat"}
     assert filter_args.human_descriptions == ['search matches "bobcat"']
     assert filter_args.extra_context == {"supports_search": True, "search": "bobcat"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("key", ("_searchfoo", "_search2"))
+async def test_search_invalid_parameter(ds_client, key):
+    # ?_searchfoo= used to crash with an IndexError from
+    # key.split("_search_", 1)[1] - it should return a 400 like every other
+    # invalid search parameter
+    response = await ds_client.get(f"/fixtures/searchable.json?{key}=bobcat")
+    assert response.status_code == 400
+    assert response.json() == {
+        "ok": False,
+        "error": f"Invalid _search parameter: {key}",
+        "errors": [f"Invalid _search parameter: {key}"],
+        "status": 400,
+    }
+
+
+@pytest.mark.asyncio
+async def test_search_valid_parameters_still_work(ds_client):
+    # The three documented search parameters keep working
+    response = await ds_client.get(
+        "/fixtures/searchable.json?_shape=arrays&_search=weasel&_searchmode=raw"
+    )
+    assert response.status_code == 200
+    assert response.json()["rows"] == [[2, "terry dog", "sara weasel", "puma"]]
+    response = await ds_client.get(
+        "/fixtures/searchable.json?_shape=arrays&_search_text2=dog"
+    )
+    assert response.status_code == 200

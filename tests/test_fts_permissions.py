@@ -95,6 +95,11 @@ async def test_derived_permission_discovery_error_is_retried(monkeypatch, listin
             action="view-table", resource=TableResource("data", "documents")
         )
 
+    # While the catalog is current, dependencies come from its rows and
+    # nothing is discovered live. Live discovery - the path that can fail -
+    # happens while a rescan of the database is pending.
+    db._watch_state.needs_scan = True
+    db._cached_derived_table_dependencies = None
     token = _permission_check_cache.set({})
     try:
         with monkeypatch.context() as patch:

@@ -267,3 +267,8 @@ def write_wrapper(datasette, database, request, transaction):
 
     Return ``None`` to skip wrapping.
     """
+
+
+@hookspec
+def write_task_completed(datasette, database, task_id, exception):
+    """Completion of an accepted block=False write, including admission expiry."""

@@ -1315,8 +1315,8 @@ Removes the column type assignment for the specified column.
 
 .. _datasette_add_database:
 
-.add_database(db, name=None, route=None)
-----------------------------------------
+.add_database(db, name=None, route=None, schema_watch=None)
+-----------------------------------------------------------
 
 ``db`` - datasette.database.Database instance
     The database to be attached.
@@ -1326,6 +1326,9 @@ Removes the column type assignment for the specified column.
 
 ``route`` - string, optional
     This will be used in the URL path. If not specified, it will default to the same thing as the ``name``.
+
+``schema_watch`` - string, optional
+    How Datasette keeps its catalog of this database's tables current: ``"owned"`` (only Datasette's own writes change the schema), ``"external"`` (other code may change it too - another process, or a plugin's own connection - so it is polled) or ``"immutable"``. The default for a database file or a named in-memory database is the :ref:`setting_default_schema_watch` setting, ``"external"`` unless configured. Pass ``"owned"`` if every change to the database goes through Datasette's write methods: it is then never polled. A ``schema_watch`` setting for this database in ``datasette.yaml`` takes precedence. See :ref:`setting_schema_watch_interval_ms`.
 
 The ``datasette.add_database(db)`` method lets you add a new database to the current Datasette instance.
 
@@ -1342,7 +1345,7 @@ The ``db`` parameter should be an instance of the ``datasette.database.Database`
         )
     )
 
-This will add a mutable database and serve it at ``/my-new-database``.
+This will add a mutable database and serve it at ``/my-new-database``. If the file does not exist yet, the first write to the database creates it.
 
 Use ``is_mutable=False`` to add an immutable database.
 
@@ -1397,7 +1400,7 @@ This removes a database that has been previously added. ``name=`` is the unique 
 .close()
 --------
 
-Release all resources held by this ``Datasette`` instance. This calls :ref:`database_close` on every attached database (including the internal database), shuts down the thread pool executor used to run SQL queries, and unlinks the temporary file used to back the internal database if one was created.
+Release resources held by this ``Datasette`` instance. This stops new submissions to every user database before draining their accepted writes, then closes the internal database and shuts down the thread pool executor used to run SQL queries. Each database follows the deadlines and cleanup rules in :ref:`database_close`, including deferring cleanup of connections and temporary files still owned by running write callbacks.
 
 ``close()`` is synchronous, idempotent and one-way: after a call to ``close()`` any attempt to use the Datasette instance to execute SQL will raise a ``datasette.database.DatasetteClosedError`` exception. A closed ``Datasette`` cannot be reopened — callers that need a fresh instance should construct a new one.
 
@@ -1797,10 +1800,10 @@ Application lifecycle
 Datasette guarantees a fixed sequence of events between the moment a ``Datasette`` instance is constructed and the moment its resources are released:
 
 1. ``Datasette(...)`` — the constructor runs synchronously and does not run plugin hooks.
-2. **Startup** — ``await datasette.invoke_startup()`` runs once: it populates the internal database's catalog of table schemas (:ref:`internals_internal`), loads canned queries and column type configuration, then calls every registered :ref:`plugin_hook_startup` hook, in plugin registration order. When Datasette is being served, table-count precomputation for immutable databases runs immediately before this, as part of the same startup sequence.
+2. **Startup** — ``await datasette.invoke_startup()`` runs once, even if several event loops call it at the same time (the others wait for it to finish): it populates the internal database's catalog of table schemas (:ref:`internals_internal`), loads canned queries and column type configuration, then calls every registered :ref:`plugin_hook_startup` hook, in plugin registration order. Immutable table counts are calculated when first requested, unless supplied using :ref:`performance_inspect`.
 3. **Background-task launch** — once *every* ``startup`` hook has finished (not before), every task registered with :ref:`datasette_add_background_task` — by any plugin — is launched. A task registered by one plugin's ``startup`` hook can safely depend on state set up by another plugin's ``startup`` hook, because launch only happens after the whole round of hooks completes.
 4. **Serving** — the instance handles requests (or, for headless or CLI use, does whatever the embedding program does with it).
-5. **Shutdown** — triggered by the ASGI ``lifespan.shutdown`` event (Ctrl-C, ``SIGTERM``) or the end of a ``datasette serve`` process: every :ref:`plugin_hook_shutdown` hook runs first, while background tasks are still alive, so a plugin can tell its own task to wind down gracefully; every still-running background task is then cancelled and given a five-second grace period to actually stop; finally every database connection is released via :ref:`datasette_close`.
+5. **Shutdown** — triggered by the ASGI ``lifespan.shutdown`` event (Ctrl-C, ``SIGTERM``) or the end of a ``datasette serve`` process: every :ref:`plugin_hook_shutdown` hook runs first, while background tasks are still alive, so a plugin can tell its own task to wind down gracefully; every still-running background task is then cancelled and given a five-second grace period to actually stop; finally database resources are cleaned up via :ref:`datasette_close`.
 
 .. admonition:: Startup hooks run on the event loop that serves requests
 
@@ -2051,6 +2054,66 @@ Database class
 
 Instances of the ``Database`` class can be used to execute queries against attached SQLite databases, and to run introspection against their schemas.
 
+.. _database_connections:
+
+Connections and threads
+-----------------------
+
+Datasette is designed to serve anything from one database to thousands of database files from one process, without holding connections open to all of them. You do not normally need to know how connections are managed, but plugins that use the connection-level APIs (:ref:`database_execute_fn`, :ref:`database_execute_write_fn` and :ref:`database_execute_isolated_fn`) should follow the rule in :ref:`database_connection_leases`.
+
+**Reads** run on a shared pool of :ref:`setting_num_sql_threads` threads. Each read borrows a connection from a pool for the duration of one query or one ``execute_fn()`` callback, then returns it. At most :ref:`setting_max_open_connections` pooled read connections are open at once across all databases; when a new one is needed the least recently used idle connection is closed first, and connections idle for longer than :ref:`setting_connection_idle_timeout_ms` are closed. Read connections to the database files Datasette serves are read-only.
+
+**Writes** to each database are run one at a time, in the order they were submitted, by a write thread dedicated to that database and holding its single write connection. At most :ref:`setting_max_write_connections` user writers exist at once. The thread stops, closing its connection, after :ref:`setting_connection_idle_timeout_ms` without writes, or after a callback when another database needs its slot; the next write waits for capacity and starts a new one. Queued writes are bounded by :ref:`setting_max_pending_writes` and :ref:`setting_write_queue_timeout_ms`. The internal catalog uses its own writer.
+
+**Isolated functions** (:ref:`database_execute_isolated_fn`) get a connection of their own that is opened and closed for that one call.
+
+**Schema changes** made by Datasette's own writes are detected as soon as the write finishes, and databases that other processes may change are polled - see :ref:`setting_schema_watch_interval_ms`. If a database file is replaced (for example by renaming a new file over it) or deleted, connections to the old file are discarded. Once Datasette has seen a database file exist it will not create it again: writes to a deleted file fail with an error rather than silently creating a new empty database. A database added with :ref:`datasette_add_database` whose file does not exist yet is created by its first write.
+
+**Pages that cover many databases** - the index page, ``allowed_resources()`` listings and their derived-table permission rules, ``/-/api`` and the like - read what they need about each database's tables from the :ref:`catalog tables in the internal database <internals_internal>` instead of opening every database. Plugins that summarise many databases should do the same: querying ``catalog_tables``, ``catalog_columns`` or ``catalog_foreign_keys`` avoids opening each database, while calling methods such as ``db.table_names()`` on every database needs a connection to each of them. Catalog queries still cost time and memory according to the data they process, and plugins must apply appropriate permission checks before exposing catalog data to an actor. Use the live methods on a single :ref:`Database <internals_database>` when you need the database's own current answer.
+
+With :ref:`setting_num_sql_threads` set to ``0`` (for example in Pyodide) there are no threads: reads and writes run on the event loop, read connections are still pooled and closed when idle, and retained write connections are bounded by :ref:`setting_max_write_connections`. Idle file write connections can be evicted when another database needs capacity; named in-memory connections are retained to preserve their contents.
+
+Every new connection is set up by the :ref:`plugin_hook_prepare_connection` plugin hook, except isolated connections, the brief connections used to check a file's schema version, and connections to the internal database. Because connections are opened and closed as needed, anything set up on a connection - functions, temporary tables, ``ATTACH``, ``PRAGMA`` settings - only lasts as long as that connection, and is not seen by other connections to the same database. Use ``prepare_connection`` for anything every connection needs.
+
+.. _database_connection_leases:
+
+Connections are only valid inside your function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``conn`` passed to an ``execute_fn()``, ``execute_write_fn()`` or ``execute_isolated_fn()`` function - and to :ref:`plugin_hook_write_wrapper` hooks - is lent to that function for the duration of the call. It behaves like a ``sqlite3.Connection`` (``isinstance(conn, sqlite3.Connection)`` is ``True`` and it works with ``sqlite_utils.Database(conn)``), but once the function returns it stops working: any further use raises ``datasette.database.ConnectionLeaseError``. Do not store the connection on an object, in a global or in a closure for later use. Do everything you need inside the function and return plain Python values.
+
+``execute_fn()`` also raises ``ConnectionLeaseError`` if your function returns a cursor, a blob handle, a dump iterator, or a generator that holds the connection or one of those resources (for example ``(row for row in conn.execute(...))``), since those would keep reading from the connection after it had been returned to the pool. This also checks resources in ordinary containers such as lists and dictionaries. A generator over rows already fetched inside the function is fine.
+
+The write connection belongs to Datasette: calling ``conn.close()`` inside an ``execute_write_fn()`` function raises ``ConnectionLeaseError``. Closing the connection passed to an ``execute_fn()`` or ``execute_isolated_fn()`` function is allowed.
+
+Cursors, blob handles from ``conn.blobopen()`` (Python 3.11 and later), and iterators from ``conn.iterdump()`` share the connection's lifetime. Using any of them after the function returns raises ``ConnectionLeaseError``, including through a saved method such as ``read = blob.read``. ``cursor.connection`` returns the same leased connection. Datasette closes these resources on the owning thread before returning a read connection to the pool or committing the write transaction, even if the function stores them elsewhere or raises an exception. This releases their locks and prevents an unfinished dump iterator or open blob from blocking later writes.
+
+Write functions may return a cursor (``lambda conn: conn.execute(...)`` is a common pattern), and reading attributes such as ``.lastrowid``, ``.rowcount`` and ``.description`` afterwards is fine; fetching rows from it is not. This includes cursors returned by ``execute_write_many()`` and ``execute_write_script()``. Consume dump iterators and read or modify blobs inside the function, then return ordinary Python values.
+
+Do not rely on state set up on the connection by an earlier call (see above). Lease proxies enforce normal API use; they are not a sandbox for untrusted Python code.
+
+The lent connection cannot be used as the *target* of another connection's ``backup()`` method, because that C function needs the real connection object. Using it as the source, ``conn.backup(other)``, works.
+
+.. _database_resource_errors:
+
+Resource errors and retries
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The exceptions in ``datasette.write_budget`` distinguish capacity failures before execution from errors raised after a callback has started:
+
+``DatabaseResourceError``
+    Base class for resource admission failures. Its ``code`` is ``"database_resource_unavailable"`` and ``execution_started`` is ``False``. Reads raise this with the message ``"Timed out waiting for a read connection"`` if they cannot obtain pooled connection capacity within five seconds. Connection opening can also raise it for resource exhaustion before preparation or execution starts.
+``DatabaseQueueFull``
+    A subclass of ``DatabaseResourceError`` with ``code="database_queue_full"`` and message ``"Too many queued database writes; try again later"``. The pending write limit was reached, so this submission was not accepted.
+``DatabaseAdmissionTimeout``
+    A subclass of ``DatabaseResourceError`` with ``code="database_admission_timeout"`` and message ``"Write expired before execution started"``. A queued write was accepted but expired before execution started.
+``DatabaseReentrancyError``
+    A ``RuntimeError`` with ``code="database_reentrant_operation"``. A callback attempted a nested Datasette database operation that could deadlock with finite capacity. Move the dependent operation outside the callback instead of retrying it in place.
+
+Resource admission errors become HTTP 503 responses with ``Retry-After: 1``; JSON responses include ``code`` and ``execution_started: false``. A caller can retry the database operation after an admission error because it has not started. This guarantee applies to that database operation, not to earlier work in the same request. Plugins that create background tasks must observe their results and handle errors; an exception in an unobserved task cannot produce a useful error response for its caller.
+
+Other errors do not carry that guarantee. A transaction may already have committed when catalog refresh or event dispatch fails. Cancelling a calling request after execution starts does not cancel the write. Datasette never automatically retries a callback; only connection opening can be retried once, before preparation hooks or the callback run.
+
 .. _database_constructor:
 
 Database(ds, path=None, is_mutable=True, is_memory=False, memory_name=None, is_temp_disk=False)
@@ -2160,7 +2223,7 @@ The ``Results`` object also has the following properties and methods:
 await db.execute_fn(fn)
 -----------------------
 
-Executes a given callback function against a read-only database connection running in a thread. The function will be passed a SQLite connection, and the return value from the function will be returned by the ``await``.
+Executes a given callback function against a read connection, in one of the SQL threads. The function will be passed a SQLite connection, and the return value from the function will be returned by the ``await``. Read connections to the database files Datasette serves are opened read-only (the internal database is an exception).
 
 Example usage:
 
@@ -2173,6 +2236,10 @@ Example usage:
 
 
     version = await db.execute_fn(get_version)
+
+The connection is borrowed from a pool for the duration of the call (see :ref:`database_connections`) and is only valid inside the function. Using it after the function has returned - for example by storing it on an object - raises a ``datasette.database.ConnectionLeaseError``. Returning a cursor, or a generator that is still reading from the connection, raises the same error: fetch the rows you need before returning. See :ref:`database_connection_leases`.
+
+Calls to ``execute_fn()`` are not guaranteed to use the same connection, so temporary tables, ``ATTACH`` statements and functions created inside one call may not be visible in the next.
 
 The call is traced as a ``db.query`` OpenTelemetry span carrying ``datasette.callback`` (the function's qualified name) rather than ``db.query.text``, since the SQL is whatever the function chooses to run - see :ref:`internals_telemetry`. Passing a named function gives the span a readable identity; a lambda reports ``<lambda>``.
 
@@ -2259,6 +2326,10 @@ This method works like ``.execute_write()``, but instead of a SQL statement you 
 
 The function can then perform multiple actions, safe in the knowledge that it has exclusive access to the single writable connection for as long as it is executing.
 
+The connection is only valid while your function is running: using it after the function has returned raises ``datasette.database.ConnectionLeaseError`` - see :ref:`database_connection_leases`. The write connection is closed after :ref:`setting_connection_idle_timeout_ms` without writes, so temporary tables, ``ATTACH`` statements and functions created by one write function may be gone by the next. Every new write connection has ``PRAGMA recursive_triggers`` turned on (before any :ref:`plugin_hook_prepare_connection` hook runs), which is what ``sqlite-utils`` sets and what the triggers it creates to keep full-text search indexes current rely on for ``INSERT OR REPLACE``.
+
+If your function raises an exception, ``execute_write_fn()`` raises it too and the transaction is rolled back. An exception that is not a subclass of ``Exception``, such as ``SystemExit``, is raised as a ``RuntimeError`` whose ``__cause__`` is the original exception.
+
 Like ``execute_fn()``, the call is traced as a ``db.query`` OpenTelemetry span carrying ``datasette.callback`` rather than ``db.query.text``, above the write-queue spans - see :ref:`internals_telemetry`. A named function gives the span a readable identity; a lambda reports ``<lambda>``.
 
 .. warning::
@@ -2282,6 +2353,8 @@ For example:
         )
     except Exception as e:
         print("An error occurred:", e)
+
+With ``transaction=False``, finish any transaction you start before returning. An unfinished transaction is rolled back and raises ``ConnectionLeaseError``. A connection can be retired between callbacks, so transaction state and connection-local state must not span callbacks. Do not synchronously wait for another Datasette database operation inside a callback: finite connection limits can deadlock that pattern. Straightforward nested calls raise ``DatabaseReentrancyError``; schedule dependent operations after the callback has returned.
 
 Your function can optionally accept a ``track_event`` parameter in addition to ``conn``.  If it does, it will be passed a callable that can be used to queue events for dispatch after the write transaction commits successfully.  Events queued this way are discarded if the write raises an exception.
 
@@ -2337,14 +2410,14 @@ For example, archive an article and record the change in an audit log:
 
     await database.execute_write_fn(archive_article)
 
-If you specify ``block=False`` the method becomes fire-and-forget, queueing your function to be executed and then allowing your code after the call to ``.execute_write_fn()`` to continue running while the underlying thread waits for an opportunity to run your function. A UUID representing the queued task will be returned. Any exceptions in your code will be silently swallowed.
+With ``block=False``, a UUID is returned when the task is accepted into the queue; this does not mean that the write has succeeded. A full queue raises ``DatabaseQueueFull`` immediately. Later failures are logged, and accepted tasks report success or failure through :ref:`plugin_hook_write_task_completed`, including expiration before execution. Delivery requires the submitting event loop to remain running and is not durable. With :ref:`setting_num_sql_threads` set to ``0``, the write runs inline before the UUID is returned and failures can raise directly from the call. See :ref:`database_resource_errors` before implementing retries.
 
 .. _database_execute_isolated_fn:
 
 await db.execute_isolated_fn(fn)
 --------------------------------
 
-This method works is similar to :ref:`execute_write_fn() <database_execute_write_fn>` but executes the provided function in an entirely isolated SQLite connection, which is opened, used and then closed again in a single call to this method.
+This method works is similar to :ref:`execute_write_fn() <database_execute_write_fn>` but executes the provided function in an entirely isolated SQLite connection, which is opened, used and then closed again in a single call to this method. As with the other methods, the connection is only valid inside the function - see :ref:`database_connection_leases`.
 
 The :ref:`prepare_connection() <plugin_hook_prepare_connection>` plugin hook is not executed against this connection.
 
@@ -2354,7 +2427,7 @@ Running ``VACUUM`` using this method also ensures it won't trigger incorrect :cl
 
 Plugins can also use this method to load potentially dangerous SQLite extensions, use them to perform an operation and then have them safely unloaded at the end of the call, without risk of exposing them to other connections.
 
-Functions run using ``execute_isolated_fn()`` share the same queue as ``execute_write_fn()``, which guarantees that no writes can be executed at the same time as the isolated function is executing.
+Functions run using ``execute_isolated_fn()`` share the same queue as ``execute_write_fn()``, which guarantees that no writes can be executed at the same time as the isolated function is executing. For immutable databases, which have no write queue, the function runs on a read-only connection in one of the SQL threads.
 
 The return value of the function will be returned by this method. Any exceptions raised by the function will be raised out of the ``await`` line as well.
 
@@ -2363,7 +2436,11 @@ The return value of the function will be returned by this method. Any exceptions
 db.close()
 ----------
 
-Release all resources held by this ``Database`` instance. This shuts down the background write thread (if one was started by a previous call to :ref:`database_execute_write_fn` or similar), closes the write connection, and closes any cached read connections.
+Stop accepting new work and release resources held by this ``Database`` instance. Accepted writes continue in FIFO order through normal writer admission, including tasks still waiting for their first writer. Their existing :ref:`admission deadlines <setting_write_queue_timeout_ms>` remain in effect, so accepted writes can still expire before starting.
+
+Shutdown waits up to ten seconds per database for writers to drain. At that deadline, queued user writes that have not started are cancelled with ``DatasetteClosedError``. A callback already running is not interrupted: its thread keeps ownership of its connection and closes it when the callback finishes. Temporary database files are retained until their owning writer exits. A shutdown timeout is reported to standard error.
+
+Running read queries are waited for separately before their connections are closed, so the ten-second writer deadline is not a deadline for the entire ``close()`` call. Database shutdown does not make the write queue durable; process termination can still prevent queued work and completion notifications from finishing.
 
 After ``db.close()`` has been called, any further call to :ref:`database_execute`, :ref:`database_execute_fn`, :ref:`database_execute_write`, :ref:`database_execute_write_fn`, :ref:`database_execute_write_many`, :ref:`database_execute_write_script` or :ref:`database_execute_isolated_fn` will raise a ``datasette.database.DatasetteClosedError`` exception.
 
@@ -2625,7 +2702,7 @@ A request to a table page produces a span named, in full::
     No attributes.
 
 ``db.write.queue_wait``
-    Time a write spent waiting in its database's write queue. For ``block=True``, this is a child of ``db.query``. For ``block=False``, it is a root span linked to the span that queued the write, since the write can outlive that request.
+    Time a write spent waiting in its database's write queue. For ``block=True``, this is a child of ``db.query``. For ``block=False``, it is a root span linked to the span that queued the write, since the write can outlive that request. For the first write after the write thread was stopped for being idle, this includes opening and preparing a new write connection.
 
     No attributes.
 
@@ -2673,7 +2750,7 @@ This reference is also generated from ``datasette/telemetry_registry.py``:
     - ``error.type`` *(optional)* - The exception class name for a failed operation. On HTTP spans, also set to the status code as a string for 5xx responses. A 4xx response alone does not set this attribute or an error status.
 
 ``datasette.write.queue_wait``
-    Histogram, unit ``s``. Time each write waited in its database's write queue.
+    Histogram, unit ``s``. Time each write waited in its database's write queue, including opening a new write connection for the first write after the write thread was stopped for being idle.
 
     Bucket boundaries: ``0.0001``, ``0.0005``, ``0.001``, ``0.005``, ``0.01``, ``0.05``, ``0.1``, ``0.5``, ``1``, ``5``, ``10``.
 
@@ -2706,14 +2783,14 @@ This reference is also generated from ``datasette/telemetry_registry.py``:
     - ``db.namespace`` - Name of the database being queried.
 
 ``datasette.write.queue_depth``
-    Observable gauge, unit ``{write}``. Writes waiting for a database's single write thread. Increasing ``num_sql_threads`` does not increase write concurrency. Not reported for databases that have never been written to.
+    Observable gauge, unit ``{write}``. Writes waiting for a database's write thread. Each database has at most one, so increasing ``num_sql_threads`` does not increase write concurrency; it stops after ``connection_idle_timeout_ms`` without writes. Not reported for databases that have never been written to.
 
     Attributes:
 
     - ``db.namespace`` - Name of the database being queried.
 
 ``datasette.connections.open``
-    Observable gauge, unit ``{connection}``. Open SQLite connections managed by Datasette.
+    Observable gauge, unit ``{connection}``. Open SQLite connections managed by Datasette: pooled read connections (capped across databases by ``max_open_connections``), the write connection while the database's write thread is running, and isolated connections in use. Short-lived connections used to check for schema changes are not counted.
 
     Attributes:
 
@@ -2769,7 +2846,7 @@ No token, cookie, or hidden form field is needed. Any ``<form method="POST">`` i
 Datasette's internal database
 =============================
 
-Datasette maintains an "internal" SQLite database used for configuration, caching, and storage. Plugins can store configuration, settings, and other data inside this database. By default, Datasette will use a temporary in-memory SQLite database as the internal database, which is created at startup and destroyed at shutdown.
+Datasette maintains an "internal" SQLite database used for configuration, caching, and storage. Plugins can store configuration, settings, and other data inside this database. By default, Datasette will use a temporary file-backed SQLite database as the internal database, which is created at startup and destroyed at shutdown.
 
 To persist internal data across Datasette instances, use the ``--internal`` option to specify the path to a SQLite database:
 
@@ -2784,7 +2861,7 @@ You can also set the ``DATASETTE_INTERNAL`` environment variable to specify this
     export DATASETTE_INTERNAL=/path/to/internal.db
     datasette mydatabase.db
 
-Datasette maintains tables called ``catalog_databases``, ``catalog_tables``, ``catalog_views``, ``catalog_columns``, ``catalog_indexes``, ``catalog_foreign_keys`` with details of the attached databases and their schemas. These tables should not be considered a stable API - they may change between Datasette releases.
+Datasette maintains tables called ``catalog_databases``, ``catalog_tables``, ``catalog_views``, ``catalog_columns``, ``catalog_indexes``, ``catalog_foreign_keys`` with details of the attached databases and their schemas. ``catalog_tables.type`` is the type ``PRAGMA table_list`` reports for each table (``table``, ``virtual`` or ``shadow``), or ``NULL`` if unknown. These tables should not be considered a stable API - they may change between Datasette releases.
 
 Metadata is stored in tables ``metadata_instance``, ``metadata_databases``, ``metadata_resources`` and ``metadata_columns``. Plugins can interact with these tables via the :ref:`get_*_metadata() and set_*_metadata() methods <datasette_get_set_metadata>`.
 
@@ -2796,7 +2873,7 @@ Plugin authors are asked to practice good etiquette when using the internal data
 
 1. Use a unique prefix when creating tables, indices, and triggers in the internal database. If your plugin is called ``datasette-xyz``, then prefix names with ``datasette_xyz_*``.
 2. Avoid long-running write statements that may stall or block other plugins that are trying to write at the same time.
-3. Use temporary tables or shared in-memory attached databases when possible.
+3. Use temporary tables or shared in-memory attached databases when possible. Temporary tables only exist on the connection that created them, and connections are not kept forever (see :ref:`database_connections`), so create and use them inside a single function call.
 4. Avoid implementing features that could expose private data stored in the internal database by other plugins.
 
 .. _internals_internal_schema:
@@ -2826,12 +2903,12 @@ The internal database schema is as follows:
         path TEXT,
         is_memory INTEGER,
         schema_version INTEGER
-    );
+    , fingerprint TEXT);
     CREATE TABLE catalog_tables (
         database_name TEXT,
         table_name TEXT,
         rootpage INTEGER,
-        sql TEXT,
+        sql TEXT, type TEXT,
         PRIMARY KEY (database_name, table_name),
         FOREIGN KEY (database_name) REFERENCES catalog_databases(database_name)
     );

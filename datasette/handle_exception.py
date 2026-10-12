@@ -9,6 +9,7 @@ from .utils.asgi import (
     Base400,
 )
 from .views.base import DatasetteError
+from .write_budget import DatabaseResourceError
 
 # Debugger imports are deliberate - they back the "pdb" setting, which drops
 # into a debugger on unhandled exceptions
@@ -34,7 +35,11 @@ def handle_exception(datasette, request, exception):
 
         title = None
         plain_message = None
-        if isinstance(exception, Base400):
+        if isinstance(exception, DatabaseResourceError):
+            status = 503
+            info = {"code": exception.code, "execution_started": False}
+            message = str(exception)
+        elif isinstance(exception, Base400):
             status = exception.status
             info = {}
             message = exception.args[0]
@@ -52,7 +57,9 @@ def handle_exception(datasette, request, exception):
             message = str(exception)
             traceback.print_exc()
         templates = [f"{status}.html", "error.html"]
-        headers = {}
+        headers = (
+            {"Retry-After": "1"} if isinstance(exception, DatabaseResourceError) else {}
+        )
         if datasette.cors:
             add_cors_headers(headers)
         if request.path.split("?")[0].endswith(".json"):

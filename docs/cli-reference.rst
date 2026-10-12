@@ -251,6 +251,26 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
                                    this limit (default=2097152)
       num_sql_threads              Number of threads in the thread pool for
                                    executing SQLite queries (default=3)
+      max_open_connections         Maximum number of pooled read connections open
+                                   across all databases - 0 for no limit
+                                   (default=32)
+      max_write_connections        Maximum concurrent user database writers
+                                   (default=8)
+      max_pending_writes           Maximum queued user writes across all databases
+                                   (default=256)
+      write_queue_timeout_ms       Maximum wait before a queued write starts
+                                   (default=5000)
+      connection_idle_timeout_ms   Close read connections, and stop write threads,
+                                   that have been idle for this many milliseconds -
+                                   0 to keep them open (default=30000)
+      schema_watch_interval_ms     How often to check external database files for
+                                   schema changes - 0 to disable polling
+                                   (default=1000)
+      default_schema_watch         Schema watch mode for database files and named
+                                   in-memory databases without a mode of their own:
+                                   external (poll for changes made outside
+                                   Datasette) or owned (only Datasette changes them)
+                                   (default=external)
       sql_time_limit_ms            Time limit for a SQL query in milliseconds
                                    (default=1000)
       default_facet_size           Number of values to return for requested facets

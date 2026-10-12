@@ -209,13 +209,6 @@ async def _create_table_template_sql(datasette, db, actor):
     return None
 
 
-def _analysis_changes_schema(analysis):
-    return any(
-        operation.operation in {"create", "alter", "drop"}
-        for operation in analysis.operations
-    )
-
-
 class ExecuteWriteView(BaseView):
     name = "execute-write"
     has_json_alternate = False
@@ -400,8 +393,10 @@ class ExecuteWriteView(BaseView):
                 status=400,
             )
 
-        if _analysis_changes_schema(analysis):
-            await self.ds.refresh_schemas(force=True)
+        # No refresh_schemas() here: execute_write() already rebuilt this
+        # database's catalog rows before returning if the SQL changed its
+        # schema (the SchemaWatcher's post-write check), and a forced
+        # refresh would stat every attached database on every write
 
         if cursor.rowcount == -1:
             message = "Query executed"

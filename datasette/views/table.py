@@ -1738,7 +1738,7 @@ async def _sort_order(table_metadata, sortable_columns, request, order_by):
 
 
 async def table_view(datasette, request):
-    await datasette.refresh_schemas()
+    await datasette._schema_watcher.on_request()
     with tracer.trace_child_tasks():
         response = await table_view_traced(datasette, request)
 

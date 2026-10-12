@@ -215,18 +215,15 @@ async def test_concurrent_first_requests_all_wait_for_slow_startup():
 
 
 @pytest.mark.asyncio
-async def test_setup_db_still_runs_when_invoke_startup_ran_first(tmp_path, monkeypatch):
-    # Regression test: `datasette serve` (cli.py _serve_async) calls
-    # ds.invoke_startup() directly, before uvicorn ever sends a
-    # lifespan.startup event that drives _startup_sequence(). If
-    # _startup_sequence()'s fast path only checked `_startup_invoked`, it
-    # would see startup already done and skip the immutable-database
-    # table-count precompute (setup_db) entirely - a silent regression
-    # versus main, where AsgiRunOnFirstRequest ran setup_db unconditionally
-    # on request #1.
+async def test_immutable_table_counts_computed_when_first_needed(tmp_path, monkeypatch):
+    # Immutable databases used to have their table counts precomputed by
+    # _startup_sequence(), opening every immutable database at startup.
+    # They are now computed the first time a page needs them, with the same
+    # generous time limit, and cached.
     db_path = tmp_path / "immutable.db"
     conn = sqlite3.connect(str(db_path))
     conn.execute("create table t (id integer primary key)")
+    conn.execute("insert into t default values")
     conn.commit()
     conn.close()
 
@@ -241,22 +238,22 @@ async def test_setup_db_still_runs_when_invoke_startup_ran_first(tmp_path, monke
 
     monkeypatch.setattr(Database, "table_counts", counting_table_counts)
 
-    # Simulate the CLI path: invoke_startup() runs directly and completes
-    # BEFORE _startup_sequence() ever gets a chance to run setup_db.
     await ds.invoke_startup()
+    await ds._startup_sequence()
     assert ds._startup_invoked is True
-    assert call_count["n"] == 0
-
-    # The lifespan/first-request path (or the CLI itself, per the fix)
-    # calling the shared entry point afterwards must still precompute
-    # table counts for immutable databases.
-    await ds._startup_sequence()
-    assert call_count["n"] == 1
     assert ds._setup_db_done is True
+    assert call_count["n"] == 0
+    assert ds.get_database("immutable").cached_table_counts is None
 
-    # Idempotency: a second call must not recompute.
-    await ds._startup_sequence()
+    response = await ds.client.get("/.json")
+    assert response.json()["databases"][0]["table_rows_sum"] == 1
     assert call_count["n"] == 1
+    assert ds.get_database("immutable").cached_table_counts == {"t": 1}
+
+    # Cached from then on
+    await ds.client.get("/immutable.json")
+    assert ds.get_database("immutable").cached_table_counts == {"t": 1}
+    ds.close()
 
 
 @pytest.mark.asyncio

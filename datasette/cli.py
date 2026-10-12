@@ -896,9 +896,23 @@ pm.hook.register_commands(cli=cli)
 
 
 async def check_databases(ds):
-    # Run check_connection against every connected database
-    # to confirm they are all usable
-    for database in list(ds.databases.values()):
+    """Confirm every connected database is usable before serving.
+
+    Building the _internal catalog already opens every database with a
+    prepared connection and reads every table's columns, which is what
+    check_connection() checks. So build it first, then re-check only:
+
+    * databases whose catalog scan failed, to turn the failure into a
+      helpful error (SpatiaLite not loaded, not a database...)
+    * databases restored from a persisted catalog without being opened that
+      contain virtual tables, whose modules may no longer be loaded
+
+    instead of opening every database a second time.
+
+    """
+    await ds._refresh_schemas()
+    to_check = await _databases_needing_check(ds)
+    for database in to_check:
         try:
             await database.execute_fn(check_connection)
         except SpatialiteConnectionProblem:
@@ -926,3 +940,37 @@ async def check_databases(ds):
     ):
         msg = f"Warning: --crossdb only works with the first {SQLITE_LIMIT_ATTACHED} attached databases"
         click.echo(click.style(msg, bold=True, fg="yellow"), err=True)
+
+
+async def _databases_needing_check(ds):
+    restored_with_virtual_tables = set()
+    databases = [(name, db) for name, db in list(ds.databases.items())]
+    restored = [
+        name
+        for name, db in databases
+        if db._watch_state is not None
+        and db._watch_state.error is None
+        and db._watch_state.stats["scans"] == 0
+        and db._watch_state.catalog_version is not None
+    ]
+    if restored:
+        rows = await ds.get_internal_database().execute(
+            """
+            select distinct database_name from catalog_tables
+            where coalesce(rootpage, 0) = 0
+              and database_name in (select value from json_each(:names))
+            """,
+            {"names": json.dumps(restored)},
+        )
+        restored_with_virtual_tables = {row[0] for row in rows.rows}
+    to_check = []
+    for name, db in databases:
+        state = db._watch_state
+        if (
+            state is None
+            or state.error is not None
+            or name in restored_with_virtual_tables
+            or (state.catalog_version is None and not state.missing)
+        ):
+            to_check.append(db)
+    return to_check

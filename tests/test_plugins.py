@@ -624,9 +624,48 @@ async def test_hook_register_output_renderer_all_parameters(ds_client):
         "database": "fixtures",
         "table": "facetable",
         "request": '<asgi.Request method="GET" url="http://localhost/fixtures/facetable.testall">',
+        "path": "/fixtures/facetable",
+        "full_path": "/fixtures/facetable",
         "view_name": "table",
         "1+1": 2,
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,expected_path,expected_full_path",
+    (
+        (
+            "/fixtures/facetable.testall?_sort_desc=pk&_size=2",
+            "/fixtures/facetable",
+            "/fixtures/facetable?_sort_desc=pk&_size=2",
+        ),
+        (
+            "/fixtures/simple_primary_key/1.testall",
+            "/fixtures/simple_primary_key/1",
+            "/fixtures/simple_primary_key/1",
+        ),
+        (
+            "/fixtures/-/query.testall?sql=select+1",
+            "/fixtures/-/query",
+            "/fixtures/-/query?sql=select+1",
+        ),
+        (
+            "/fixtures/pragma_cache_size.testall",
+            "/fixtures/pragma_cache_size",
+            "/fixtures/pragma_cache_size",
+        ),
+    ),
+)
+async def test_hook_register_output_renderer_path_and_full_path(
+    ds_client, path, expected_path, expected_full_path
+):
+    # https://github.com/simonw/datasette/issues/1179
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    data = json.loads(response.text)
+    assert data["path"] == expected_path
+    assert data["full_path"] == expected_full_path
 
 
 @pytest.mark.asyncio
@@ -701,8 +740,32 @@ async def test_hook_register_output_renderer_can_render(ds_client):
         "query_name": None,
         "database": "fixtures",
         "table": "facetable",
+        "path": "/fixtures/facetable",
+        "full_path": "/fixtures/facetable?_no_can_render=1",
         "view_name": "table",
     }.items() <= ds_client.ds._can_render_saw.items()
+
+
+@pytest.mark.asyncio
+async def test_hook_register_output_renderer_renderers_extra_links(ds_client):
+    # https://github.com/simonw/datasette/issues/1179
+    # Links from a .json page previously came out as
+    # /fixtures/facetable.json?_format=testall - which returned JSON
+    response = await ds_client.get("/fixtures/facetable.json?_extra=renderers")
+    assert response.status_code == 200
+    renderers = response.json()["renderers"]
+    assert renderers["json"] == "/fixtures/facetable.json?_extra=renderers&_labels=on"
+    assert (
+        renderers["testall"]
+        == "/fixtures/facetable.testall?_extra=renderers&_labels=on"
+    )
+    saw = ds_client.ds._can_render_saw
+    assert saw["path"] == "/fixtures/facetable"
+    assert saw["full_path"] == "/fixtures/facetable?_extra=renderers"
+    # Following the link should run the renderer
+    response = await ds_client.get(renderers["testall"])
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "text/plain"
 
 
 @pytest.mark.asyncio

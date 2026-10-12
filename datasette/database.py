@@ -1,6 +1,7 @@
 import asyncio
 import atexit
 import contextvars
+import hashlib
 import inspect
 import os
 import queue
@@ -58,7 +59,6 @@ from .utils import (
     escape_sqlite,
     get_all_foreign_keys,
     get_outbound_foreign_keys,
-    md5_not_usedforsecurity,
     sqlite3,
     sqlite_timelimit,
     table_column_details,
@@ -160,7 +160,9 @@ class Database:
     def color(self):
         if self.hash:
             return self.hash[:6]
-        return md5_not_usedforsecurity(self.name)[:6]
+        return hashlib.md5(self.name.encode("utf8"), usedforsecurity=False).hexdigest()[
+            :6
+        ]
 
     def suggest_name(self):
         if self.is_temp_disk:

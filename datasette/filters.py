@@ -66,11 +66,12 @@ def search_filters(request, database, table, datasette):
             requested_fts_pk and requested_fts_pk != fts_pk
         ):
             raise BadRequest("Invalid _fts_table or _fts_pk")
-        search_args = {
-            key: request.args[key]
-            for key in request.args
-            if key.startswith("_search") and key != "_searchmode"
-        }
+        search_args = {}
+        for key in request.args:
+            if key == "_search" or key.startswith("_search_"):
+                search_args[key] = request.args[key]
+            elif key != "_searchmode" and key.startswith("_search"):
+                raise BadRequest(f"Invalid _search parameter: {key}")
         search = ""
         search_mode_raw = table_metadata.get("searchmode") == "raw"
         # Or set search mode from the querystring

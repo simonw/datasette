@@ -17,7 +17,6 @@ import sqlite_utils
 from opentelemetry import context as otel_context_api
 from opentelemetry.trace import Status, StatusCode
 
-from .inspect import inspect_hash
 from .telemetry import (
     callback_name,
     linked_root_span_kwargs,
@@ -835,7 +834,8 @@ class Database:
             return self.cached_hash
         else:
             p = Path(self.path)
-            self.cached_hash = inspect_hash(p)
+            with p.open("rb") as fp:
+                self.cached_hash = hashlib.file_digest(fp, "sha256").hexdigest()
             return self.cached_hash
 
     @property

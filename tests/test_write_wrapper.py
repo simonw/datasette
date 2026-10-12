@@ -523,7 +523,7 @@ async def test_write_wrapper_set_authorizer(datasette, actor, table, should_deny
                 try:
                     yield
                 finally:
-                    conn.set_authorizer(lambda *args: sqlite3.SQLITE_OK)
+                    conn.set_authorizer(None)
 
             return wrapper
 

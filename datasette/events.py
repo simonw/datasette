@@ -1,6 +1,6 @@
 from abc import ABC, abstractproperty
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from datasette.hookspecs import hookimpl
 
@@ -11,9 +11,7 @@ class Event(ABC):
     def name(self):
         pass
 
-    created: datetime = field(
-        init=False, default_factory=lambda: datetime.now(timezone.utc)
-    )
+    created: datetime = field(init=False, default_factory=lambda: datetime.now(UTC))
     actor: dict | None
 
     def properties(self):

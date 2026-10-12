@@ -1727,7 +1727,7 @@ async def test_hook_track_event():
     # Should have a recent created as well
     created = event.created
     assert isinstance(created, datetime.datetime)
-    assert created.tzinfo == datetime.timezone.utc
+    assert created.tzinfo == datetime.UTC
 
 
 @pytest.mark.asyncio

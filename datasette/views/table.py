@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import itertools
 import json
 import time
@@ -666,6 +667,13 @@ async def display_columns_and_rows(
 
     # Look up column types for this table
     column_types_map = await datasette.get_column_types(database_name, table_name)
+    # Column types can opt in to this page's truncation length by accepting
+    # a truncate_cells argument to their render_cell() method
+    truncate_cells_columns = {
+        column
+        for column, ct in column_types_map.items()
+        if "truncate_cells" in inspect.signature(ct.render_cell).parameters
+    }
 
     column_details = {
         col.name: col for col in await db.table_column_details(table_name)
@@ -796,6 +804,9 @@ async def display_columns_and_rows(
             plugin_display_value = None
             ct = column_types_map.get(column)
             if ct:
+                kwargs = {}
+                if column in truncate_cells_columns:
+                    kwargs["truncate_cells"] = truncate_cells
                 candidate = await ct.render_cell(
                     value=value,
                     column=column,
@@ -803,6 +814,7 @@ async def display_columns_and_rows(
                     database=database_name,
                     datasette=datasette,
                     request=request,
+                    **kwargs,
                 )
                 if candidate is not None:
                     plugin_display_value = candidate

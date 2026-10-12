@@ -455,5 +455,4 @@ def test_analyze_disables_authorizer_on_error():
     with pytest.raises(sqlite3.OperationalError):
         analyze_sql_tables(conn, "bad SQL")
 
-    final_authorizer = conn.authorizers[-1]
-    assert final_authorizer is None or final_authorizer() == sqlite3.SQLITE_OK
+    assert conn.authorizers[-1] is None

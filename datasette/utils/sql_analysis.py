@@ -1,4 +1,3 @@
-import sys
 from dataclasses import dataclass
 from typing import Literal
 
@@ -191,20 +190,6 @@ _AUTHORIZER_ACTION_NAMES = {
     )
     if hasattr(sqlite3, name)
 }
-
-
-def _allow_authorizer_action(*args):
-    return sqlite3.SQLITE_OK
-
-
-def _disable_authorizer(conn):
-    # Python 3.11 added support for unregistering an authorizer using None.
-    # On Python 3.10, None is installed as the callback instead, and the next
-    # statement fails with "not authorized" when sqlite3 tries to call it.
-    if sys.version_info >= (3, 11):
-        conn.set_authorizer(None)
-    else:
-        conn.set_authorizer(_allow_authorizer_action)
 
 
 def analyze_sql_tables(
@@ -451,9 +436,7 @@ def analyze_sql_tables(
         explain_rows = conn.execute(
             "EXPLAIN " + sql, params if params is not None else {}
         ).fetchall()
-        # Passing None before these lookups leaves a failing callback installed
-        # on Python 3.10, so use a permissive callback until they are complete.
-        conn.set_authorizer(_allow_authorizer_action)
+        conn.set_authorizer(None)
 
         if not operations:
             vacuum_row = next((row for row in explain_rows if row[1] == "Vacuum"), None)
@@ -495,7 +478,7 @@ def analyze_sql_tables(
                         conn, key.table, schema=key.sqlite_schema
                     )
     finally:
-        _disable_authorizer(conn)
+        conn.set_authorizer(None)
 
     has_schema_operation = any(
         key.target_type in {"table", "index", "view", "trigger", "virtual-table"}

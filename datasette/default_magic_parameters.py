@@ -25,12 +25,9 @@ def now(key, request):
     if key == "epoch":
         return int(time.time())
     elif key == "date_utc":
-        return datetime.datetime.now(datetime.timezone.utc).date().isoformat()
+        return datetime.datetime.now(datetime.UTC).date().isoformat()
     elif key == "datetime_utc":
-        return (
-            datetime.datetime.now(datetime.timezone.utc).strftime(r"%Y-%m-%dT%H:%M:%S")
-            + "Z"
-        )
+        return datetime.datetime.now(datetime.UTC).strftime(r"%Y-%m-%dT%H:%M:%S") + "Z"
     else:
         raise KeyError
 

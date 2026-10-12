@@ -19,6 +19,7 @@ import urllib
 from collections import Counter, OrderedDict, namedtuple
 from collections.abc import Iterable
 from contextlib import contextmanager
+from shutil import copytree
 
 import aiofiles
 import click
@@ -26,7 +27,6 @@ import markupsafe
 import mergedeep
 import yaml
 
-from .shutil_backport import copytree
 from .sqlite import sqlite3, supports_table_xinfo
 
 if typing.TYPE_CHECKING:

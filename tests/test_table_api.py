@@ -1303,6 +1303,24 @@ async def test_infinity_returned_as_invalid_json_if_requested(ds_client):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "shape,expected",
+    (
+        ("arrays", {"ok": True, "rows": [[None], [None], [1.5]], "truncated": False}),
+        ("arrayfirst", [None, None, 1.5]),
+    ),
+)
+async def test_infinity_with_array_shapes(ds_client, shape, expected):
+    # Rows containing infinity are lists rather than sqlite3.Row objects
+    response = await ds_client.get(
+        "/fixtures/-/query.json?sql=select+value+from+infinity+order+by+rowid"
+        "&_shape=" + shape
+    )
+    assert response.status_code == 200
+    assert response.json() == expected
+
+
+@pytest.mark.asyncio
 async def test_custom_query_with_unicode_characters(ds_client):
     # /fixtures/𝐜𝐢𝐭𝐢𝐞𝐬.json
     response = await ds_client.get(

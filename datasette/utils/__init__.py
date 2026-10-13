@@ -649,7 +649,7 @@ CMD {cmd}""".format(
             [f"ENV {key} '{value}'" for key, value in environment_variables.items()]
         ),
         install_from=" ".join(install),
-        files=" ".join(files),
+        files=" ".join(shlex.quote(f) for f in files),
         port=port,
         cmd=cmd,
     ).strip()

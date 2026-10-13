@@ -240,7 +240,77 @@ and the database page −45%.
 
 ## End-to-end under `datasette serve`
 
-E2E_PLACEHOLDER
+These runs use a real `datasette serve` on the same 4-vCPU VM. A
+stdlib-only keep-alive load generator (`tools/load.py`) runs in separate
+processes with 8 connections. Each figure is the median of 5 interleaved
+rounds of 6 seconds. "Server CPU per request" is the server process's
+user+system CPU from `/proc`, divided by requests served, and is the
+steadier of the two metrics. Run it with `tools/e2e_bench.py`.
+
+| Endpoint | Server | req/s | Server CPU per request | vs base |
+|---|---|---:|---:|---:|
+| `/-/actor.json + cookie` | cf113a5, stock serve (h11, access log) | 1,493 | 659 µs | – |
+| `/-/actor.json + cookie` | cf113a5 + httptools | 2,162 | 461 µs | −30% |
+| `/-/actor.json + cookie` | cf113a5, no access log | 1,805 | 560 µs | −15% |
+| `/-/actor.json + cookie` | All patches, stock serve | 1,954 | 503 µs | −24% |
+| `/-/actor.json + cookie` | All patches + httptools | 3,053 | 324 µs | −51% |
+| `/-/actor.json + cookie` | All patches + httptools, no access log, Content-Length | 4,379 | 226 µs | −66% |
+| `/-/versions.json` | cf113a5, stock serve (h11, access log) | 412 | 2,944 µs | – |
+| `/-/versions.json` | cf113a5 + httptools | 446 | 2,761 µs | −6% |
+| `/-/versions.json` | cf113a5, no access log | 432 | 2,825 µs | −4% |
+| `/-/versions.json` | All patches, stock serve | 723 | 1,478 µs | −50% |
+| `/-/versions.json` | All patches + httptools | 847 | 1,304 µs | −56% |
+| `/-/versions.json` | All patches + httptools, no access log, Content-Length | 987 | 1,128 µs | −62% |
+| `/-/static/app.css` | cf113a5, stock serve (h11, access log) | 166 | 6,954 µs | – |
+| `/-/static/app.css` | cf113a5 + httptools | 190 | 6,034 µs | −13% |
+| `/-/static/app.css` | cf113a5, no access log | 172 | 6,708 µs | −4% |
+| `/-/static/app.css` | All patches, stock serve | 1,765 | 558 µs | −92% |
+| `/-/static/app.css` | All patches + httptools | 2,314 | 424 µs | −94% |
+| `/-/static/app.css` | All patches + httptools, no access log, Content-Length | 3,117 | 320 µs | −95% |
+| `/fixtures/facetable.json?_size=5` | cf113a5, stock serve (h11, access log) | 79 | 15,866 µs | – |
+| `/fixtures/facetable.json?_size=5` | cf113a5 + httptools | 80 | 15,952 µs | +1% |
+| `/fixtures/facetable.json?_size=5` | cf113a5, no access log | 77 | 16,133 µs | +2% |
+| `/fixtures/facetable.json?_size=5` | All patches, stock serve | 133 | 9,044 µs | −43% |
+| `/fixtures/facetable.json?_size=5` | All patches + httptools | 139 | 8,713 µs | −45% |
+| `/fixtures/facetable.json?_size=5` | All patches + httptools, no access log, Content-Length | 136 | 8,674 µs | −45% |
+
+Latency with a single connection (p50):
+
+| Endpoint | cf113a5 | All patches | All patches + httptools, no access log |
+|---|---:|---:|---:|
+| `/-/actor.json + cookie` | 681 µs | 582 µs | 334 µs |
+| `/-/versions.json` | 2,403 µs | 988 µs | 772 µs |
+| `/-/static/app.css` | 5,924 µs | 681 µs | 489 µs |
+| `/fixtures/facetable.json?_size=5` | 6,393 µs | 3,832 µs | 3,781 µs |
+
+What this shows:
+
+- **The HTTP server is half the cost of a light request.** Profiling the
+  live server in `attach` mode showed uvicorn's layers taking 53–64% of
+  server CPU on `/-/actor.json` with stock `datasette serve`: h11 parsing
+  and serialising about 20%, socket I/O 15–18%, the access log 8–10%, and
+  uvicorn's protocol code 8–11%. Datasette's ASGI app was 26–38% and GC
+  5–7%. So the patches' −61% in-process becomes −24% end to end on that
+  request. After the patches the HTTP layer is about two-thirds of what is
+  left.
+- **Datasette runs on pure-Python h11 by default.** It depends on plain
+  `uvicorn`, so httptools is never installed. With httptools installed,
+  uvicorn's `http="auto"` picks it up with no code change. That alone cut
+  server CPU per request by 30% on `/-/actor.json`, or 36% once the patches
+  are applied. httptools 0.9.0 and uvloop 0.23.0 have cp315 wheels and
+  install cleanly on 3.15.0b4.
+- **The uvicorn access log**, which is always on under `datasette serve`,
+  costs about 24 µs per request: 8–15% of a light request.
+- **Static files gain the most**: 166 → 1,765 req/s with the patches on a
+  stock server, and 3,117 req/s with the server changes too. The 4 KB
+  thread-hop chunking was about 70% of static-asset cost under a real
+  server, more than in-process.
+- **The table endpoint is limited by SQL thread round trips**, so it gains
+  from the DB-adjacent patches (79 → 133 req/s) and not from the HTTP
+  server changes.
+- The `patched_best` variant's Content-Length change is an experiment,
+  monkeypatched in `tools/serve_variant.py`. It is not in `ALL-combined.diff`
+  and contributes about 3%.
 
 ## Bugs found along the way
 

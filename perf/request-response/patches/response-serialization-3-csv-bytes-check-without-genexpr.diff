@@ -1,0 +1,31 @@
+diff --git a/datasette/views/base.py b/datasette/views/base.py
+index 7262edb..e773000 100644
+--- a/datasette/views/base.py
++++ b/datasette/views/base.py
+@@ -1,6 +1,7 @@
+ import csv
+ import hashlib
+ import sys
++from itertools import repeat
+ 
+ from datasette.utils import (
+     EscapeHtmlWriter,
+@@ -247,6 +248,9 @@ async def stream_csv(datasette, fetch_data, request, database):
+             writer = csv.writer(limited_writer)
+         first = True
+         next = None
++        # Infinite iterator: any(map(isinstance, row, repeat_bytes)) checks
++        # each cell of a row for bytes without a per-row Python generator
++        repeat_bytes = repeat(bytes)
+         while first or (next and stream):
+             try:
+                 kwargs = {}
+@@ -260,7 +264,7 @@ async def stream_csv(datasette, fetch_data, request, database):
+                     first = False
+                 next = data.get("next")
+                 for row in data["rows"]:
+-                    if any(isinstance(r, bytes) for r in row):
++                    if any(map(isinstance, row, repeat_bytes)):
+                         new_row = []
+                         for column, cell in zip(headings, row):
+                             if isinstance(cell, bytes):

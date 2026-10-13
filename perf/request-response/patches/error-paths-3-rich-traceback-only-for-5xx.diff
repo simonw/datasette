@@ -1,0 +1,58 @@
+diff --git a/datasette/handle_exception.py b/datasette/handle_exception.py
+index ef6c7b7..c02d152 100644
+--- a/datasette/handle_exception.py
++++ b/datasette/handle_exception.py
+@@ -29,7 +29,13 @@ def handle_exception(datasette, request, exception):
+         if datasette.pdb:
+             pdb.post_mortem(exception.__traceback__)
+ 
+-        if rich is not None:
++        # Rich tracebacks with locals can take most of a second to render,
++        # so only print them for server errors, not for expected 4xx errors
++        # such as NotFound
++        is_client_error = (
++            isinstance(exception, (Base400, DatasetteError)) and exception.status < 500
++        )
++        if rich is not None and not is_client_error:
+             rich.get_console().print_exception(show_locals=True)
+ 
+         title = None
+diff --git a/tests/test_plugins.py b/tests/test_plugins.py
+index 1084d27..a0432ed 100644
+--- a/tests/test_plugins.py
++++ b/tests/test_plugins.py
+@@ -1123,6 +1123,34 @@ async def test_hook_handle_exception_custom_response(ds_client, param):
+     assert response.text == param
+ 
+ 
++@pytest.mark.asyncio
++async def test_handle_exception_rich_traceback_only_for_server_errors(
++    ds_client, monkeypatch
++):
++    from datasette import handle_exception
++
++    printed = []
++
++    class FakeConsole:
++        def print_exception(self, **kwargs):
++            printed.append(kwargs)
++
++    class FakeRich:
++        @staticmethod
++        def get_console():
++            return FakeConsole()
++
++    monkeypatch.setattr(handle_exception, "rich", FakeRich)
++    # A NotFound raised by a view, and a path that matches no route at all
++    for path in ("/fixtures/no_such_table", "/fixtures/nope/nope/nope/nope"):
++        response = await ds_client.get(path)
++        assert response.status_code == 404
++    assert printed == []
++    response = await ds_client.get("/trigger-error")
++    assert response.status_code == 500
++    assert printed == [{"show_locals": True}]
++
++
+ @pytest.mark.asyncio
+ async def test_hook_menu_links(ds_client):
+     def get_menu_links(html):

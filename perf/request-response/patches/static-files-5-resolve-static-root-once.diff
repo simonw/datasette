@@ -1,0 +1,109 @@
+diff --git a/datasette/utils/asgi.py b/datasette/utils/asgi.py
+index 2d4a6cf..980d003 100644
+--- a/datasette/utils/asgi.py
++++ b/datasette/utils/asgi.py
+@@ -1,5 +1,6 @@
+ import asyncio
+ import json
++import os
+ import re
+ from http.cookies import Morsel, SimpleCookie
+ from mimetypes import guess_type
+@@ -470,15 +471,34 @@ HASHED_STATIC_CACHE_CONTROL = "max-age=31536000, immutable, public"
+ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
+     root_path = Path(root_path)
+     static_headers = {}
++    # (dev, inode) of the resolved root directory, and its resolved path
++    resolved_root = [None, None]
+ 
+     if headers:
+         static_headers = headers.copy()
+ 
++    def resolve_root():
++        # Resolving walks every path component, so reuse the last result for
++        # as long as the root still points at the same directory - a symlinked
++        # root that is re-pointed while Datasette is running is resolved again
++        try:
++            stat = os.stat(root_path)
++        except OSError:
++            return root_path.resolve()
++        if resolved_root[0] != (stat.st_dev, stat.st_ino):
++            resolved = root_path.resolve()
++            try:
++                stat = os.stat(resolved)
++            except OSError:
++                return resolved
++            resolved_root[:] = [(stat.st_dev, stat.st_ino), resolved]
++        return resolved_root[1]
++
+     async def inner_static(request, send):
+         path = request.scope["url_route"]["kwargs"]["path"]
+         headers = static_headers.copy()
+         try:
+-            full_path = (root_path / path).resolve().absolute()
++            full_path = (root_path / path).resolve()
+         except FileNotFoundError:
+             await asgi_send_html(send, "404: Directory not found", 404)
+             return
+@@ -487,7 +507,7 @@ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
+             return
+         # Ensure full_path is within root_path to avoid weird "../" tricks
+         try:
+-            full_path.relative_to(root_path.resolve())
++            full_path.relative_to(resolve_root())
+         except ValueError:
+             await asgi_send_html(send, "404: Path not inside root path", 404)
+             return
+diff --git a/tests/test_html.py b/tests/test_html.py
+index 4dbcf5c..e2d3e54 100644
+--- a/tests/test_html.py
++++ b/tests/test_html.py
+@@ -167,6 +167,48 @@ def test_static_mounts():
+         assert response.status_code == 404
+ 
+ 
++@pytest.mark.asyncio
++async def test_static_mounts_symlinked_root_repointed(tmp_path):
++    # A symlinked --static root that is switched to a new directory while
++    # Datasette is running serves the new directory, and only that directory
++    (tmp_path / "v1").mkdir()
++    (tmp_path / "v2").mkdir()
++    (tmp_path / "v1" / "a.txt").write_text("one")
++    (tmp_path / "v1" / "old.txt").write_text("old")
++    (tmp_path / "v2" / "a.txt").write_text("two")
++    (tmp_path / "current").symlink_to("v1")
++    ds = Datasette(static_mounts=[("assets", str(tmp_path / "current"))])
++    app = ds.app()
++
++    async def get(path):
++        messages = []
++
++        async def receive():
++            return {"type": "http.request", "body": b"", "more_body": False}
++
++        async def send(message):
++            messages.append(message)
++
++        scope = {
++            "type": "http",
++            "http_version": "1.1",
++            "method": "GET",
++            "path": path,
++            "raw_path": path.encode(),
++            "query_string": b"",
++            "headers": [],
++        }
++        await app(scope, receive, send)
++        body = b"".join(m.get("body", b"") for m in messages[1:])
++        return messages[0]["status"], body
++
++    assert await get("/assets/a.txt") == (200, b"one")
++    (tmp_path / "next").symlink_to("v2")
++    (tmp_path / "next").replace(tmp_path / "current")
++    assert await get("/assets/a.txt") == (200, b"two")
++    assert (await get("/assets/../v1/old.txt"))[0] == 404
++
++
+ def test_static_mounts_hash_cache_control():
+     mount_path = pathlib.Path(__file__).parent
+     with make_app_client(static_mounts=[("custom-static", str(mount_path))]) as client:

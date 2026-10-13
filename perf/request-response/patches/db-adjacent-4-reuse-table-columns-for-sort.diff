@@ -1,0 +1,30 @@
+diff --git a/datasette/views/table.py b/datasette/views/table.py
+index 0a908c6..5e34f6a 100644
+--- a/datasette/views/table.py
++++ b/datasette/views/table.py
+@@ -1697,11 +1697,15 @@ async def _columns_to_select(table_columns, pks, request):
+     return columns
+ 
+ 
+-async def _sortable_columns_for_table(datasette, database_name, table_name, use_rowid):
++async def _sortable_columns_for_table(
++    datasette, database_name, table_name, use_rowid, table_columns=None
++):
+     db = datasette.databases[database_name]
+     table_metadata = await datasette.table_config(database_name, table_name)
+     if "sortable_columns" in table_metadata:
+         sortable_columns = set(table_metadata["sortable_columns"])
++    elif table_columns is not None:
++        sortable_columns = set(table_columns)
+     else:
+         sortable_columns = set(await db.table_columns(table_name))
+     if use_rowid:
+@@ -2121,7 +2125,7 @@ async def table_view_data(
+ 
+     # Deal with custom sort orders
+     sortable_columns = await _sortable_columns_for_table(
+-        datasette, database_name, table_name, use_rowid
++        datasette, database_name, table_name, use_rowid, table_columns
+     )
+ 
+     sort, sort_desc, order_by = await _sort_order(

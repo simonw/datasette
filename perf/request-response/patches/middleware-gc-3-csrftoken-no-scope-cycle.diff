@@ -1,0 +1,89 @@
+diff --git a/datasette/csrf.py b/datasette/csrf.py
+index a62f947..e15eb62 100644
+--- a/datasette/csrf.py
++++ b/datasette/csrf.py
+@@ -49,19 +49,33 @@ def _origin_tuple(value):
+     return scheme, host, port
+ 
+ 
++class _LegacyCsrfToken:
++    """
++    Returns the same random token every time it is called.
++
++    This keeps the token itself rather than storing it in the scope, since a
++    closure over the scope stored in that scope would be a reference cycle,
++    keeping every request's scope alive until the garbage collector runs.
++    """
++
++    __slots__ = ("token",)
++
++    def __init__(self):
++        self.token = None
++
++    def __call__(self):
++        if self.token is None:
++            self.token = secrets.token_urlsafe(32)
++        return self.token
++
++
+ def _install_legacy_csrftoken(scope):
+     """
+     Populate ``scope["csrftoken"]`` with a callable returning a per-request
+     random token. Provided for plugin compatibility only - core no longer
+     uses this value for CSRF enforcement.
+     """
+-
+-    def csrftoken():
+-        if "_datasette_legacy_csrftoken" not in scope:
+-            scope["_datasette_legacy_csrftoken"] = secrets.token_urlsafe(32)
+-        return scope["_datasette_legacy_csrftoken"]
+-
+-    scope["csrftoken"] = csrftoken
++    scope["csrftoken"] = _LegacyCsrfToken()
+ 
+ 
+ class CrossOriginProtectionMiddleware:
+diff --git a/tests/test_csrf_middleware.py b/tests/test_csrf_middleware.py
+index 6c78f69..302c607 100644
+--- a/tests/test_csrf_middleware.py
++++ b/tests/test_csrf_middleware.py
+@@ -7,6 +7,9 @@ in Go 1.25's http.CrossOriginProtection. This replaces the previous
+ token-based asgi-csrf mechanism.
+ """
+ 
++import gc
++import weakref
++
+ import pluggy
+ import pytest
+ 
+@@ -213,6 +216,29 @@ def test_legacy_csrftoken_stable_within_request():
+     scope = {}
+     _install_legacy_csrftoken(scope)
+     assert scope["csrftoken"]() == scope["csrftoken"]()
++    # Including from a copy of the scope made before the first call
++    scope = {}
++    _install_legacy_csrftoken(scope)
++    copied = dict(scope)
++    assert copied["csrftoken"]() == scope["csrftoken"]()
++
++
++def test_legacy_csrftoken_does_not_keep_the_scope_alive():
++    # The scope must be freed by reference counting, not left for the
++    # garbage collector as part of a reference cycle
++    class Scope(dict):
++        pass
++
++    scope = Scope()
++    _install_legacy_csrftoken(scope)
++    scope["csrftoken"]()
++    scope_ref = weakref.ref(scope)
++    gc.disable()
++    try:
++        del scope
++        assert scope_ref() is None
++    finally:
++        gc.enable()
+ 
+ 
+ @pytest.mark.asyncio

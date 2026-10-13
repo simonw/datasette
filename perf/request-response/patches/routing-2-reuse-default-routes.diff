@@ -1,0 +1,64 @@
+diff --git a/datasette/app.py b/datasette/app.py
+index 001ce9b..5e4849c 100644
+--- a/datasette/app.py
++++ b/datasette/app.py
+@@ -547,6 +547,8 @@ class Datasette:
+         if config_dir and (config_dir / "static").is_dir() and not static_mounts:
+             static_mounts = [("static", str((config_dir / "static").resolve()))]
+         self.static_mounts = static_mounts or []
++        self._default_routes_key = None
++        self._default_routes = None
+         if config_dir and (config_dir / "datasette.json").exists() and not config:
+             config = json.loads((config_dir / "datasette.json").read_text())
+ 
+@@ -2738,6 +2740,22 @@ ORDER BY allowed.parent, allowed.child
+             for regex, view_fn in routes_to_add:
+                 routes.append((regex, wrap_view(view_fn, self)))
+ 
++        # Reuse the default routes rather than rebuilding them for every
++        # datasette.client request. They are rebuilt when the registered
++        # plugins (whose static/ directories they mount) or static_mounts
++        # change. Anything else they capture when built (module globals such
++        # as app_root, bound methods such as self._versions, which plugin
++        # static/ directories exist on disk) is fixed from then on, just as
++        # it is for a server that calls app() once.
++        key = (pm.list_name_plugin(), list(self.static_mounts))
++        if key != self._default_routes_key:
++            self._default_routes = _compile_routes(self._build_default_routes())
++            self._default_routes_key = key
++        return _compile_routes(routes) + self._default_routes
++
++    def _build_default_routes(self):
++        routes = []
++
+         def add_route(view, regex):
+             routes.append((regex, view))
+ 
+@@ -3011,11 +3029,7 @@ ORDER BY allowed.parent, allowed.child
+             RowUpdateView.as_view(self),
+             r"/(?P<database>[^\/\.]+)/(?P<table>[^/]+?)/(?P<pks>[^/]+?)/-/update$",
+         )
+-        return [
+-            # Compile any strings to regular expressions
+-            ((re.compile(pattern) if isinstance(pattern, str) else pattern), view)
+-            for pattern, view in routes
+-        ]
++        return routes
+ 
+     async def resolve_database(self, request):
+         database_route = tilde_decode(request.url_vars["database"])
+@@ -3472,6 +3486,14 @@ def _cleaner_task_str(task):
+     return _cleaner_task_str_re.sub("", s)
+ 
+ 
++def _compile_routes(routes):
++    return [
++        # Compile any strings to regular expressions
++        ((re.compile(pattern) if isinstance(pattern, str) else pattern), view)
++        for pattern, view in routes
++    ]
++
++
+ def wrap_view(view_fn_or_class, datasette):
+     is_function = isinstance(view_fn_or_class, types.FunctionType)
+     if is_function:

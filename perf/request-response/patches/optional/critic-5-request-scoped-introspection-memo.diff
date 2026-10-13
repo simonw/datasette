@@ -1,0 +1,120 @@
+diff --git a/datasette/app.py b/datasette/app.py
+index 4c2e1c3..26e84aa 100644
+--- a/datasette/app.py
++++ b/datasette/app.py
+@@ -48,6 +48,7 @@ from .csrf import CrossOriginProtectionMiddleware
+ from .database import Database, QueryInterrupted
+ from .events import Event
+ from .permissions import _permission_check_cache
++from .database import _request_schema_cache
+ from .plugins import DATASETTE_TRACE_PLUGINS, DEFAULT_PLUGINS, get_plugins, pm
+ from .renderer import json_renderer
+ from .resources import DatabaseResource, TableResource
+@@ -3130,9 +3131,13 @@ ORDER BY allowed.parent, allowed.child
+         table_name = tilde_decode(request.url_vars["table"])
+         # Table must exist
+         is_view = False
+-        table_exists = await db.table_exists(table_name)
+-        if not table_exists:
+-            is_view = await db.view_exists(table_name)
++        prefetched = await db.prefetch_table_schema(table_name)
++        if prefetched is not None:
++            table_exists, is_view = prefetched
++        else:
++            table_exists = await db.table_exists(table_name)
++            if not table_exists:
++                is_view = await db.view_exists(table_name)
+         if not (table_exists or is_view):
+             raise TableNotFound(db.name, table_name)
+         return ResolvedTable(db, table_name, is_view)
+@@ -3303,9 +3308,11 @@ class DatasetteRouter:
+         # datasette.allowed() checks within the request are memoized but
+         # results never persist beyond it
+         cache_token = _permission_check_cache.set({})
++        schema_token = _request_schema_cache.set({})
+         try:
+             return await self.route_path(scope, receive, send, path)
+         finally:
++            _request_schema_cache.reset(schema_token)
+             _permission_check_cache.reset(cache_token)
+ 
+     async def route_path(self, scope, receive, send, path):
+diff --git a/datasette/database.py b/datasette/database.py
+index eee5d12..ebc5d9e 100644
+--- a/datasette/database.py
++++ b/datasette/database.py
+@@ -82,6 +82,13 @@ class DatasetteClosedError(RuntimeError):
+ _SHUTDOWN = object()
+ 
+ 
++# Per-request memo of schema introspection for mutable databases, set by
++# DatasetteRouter for the duration of each request
++_request_schema_cache = contextvars.ContextVar(
++    "_request_schema_cache", default=None
++)
++
++
+ class Database:
+     # For table counts stop at this many rows:
+     count_limit = 10000
+@@ -924,7 +931,15 @@ class Database:
+         # Only names that exist in the schema are cached, so table names
+         # taken from the URL (e.g. ?_through=) cannot grow the cache.
+         if not self._schema_is_immutable:
+-            return await compute()
++            request_cache = _request_schema_cache.get()
++            if request_cache is None:
++                return await compute()
++            cache_key = (id(self), key)
++            future = request_cache.get(cache_key)
++            if future is None:
++                # Shared so concurrent lookups in one request make one trip
++                future = request_cache[cache_key] = asyncio.ensure_future(compute())
++            return copy.deepcopy(await asyncio.shield(future))
+         self._check_not_closed()
+         try:
+             result = self._immutable_schema_cache[key]
+@@ -937,6 +952,43 @@ class Database:
+     async def _execute_fn_cached_if_immutable(self, key, fn):
+         return await self._cached_if_immutable(key, lambda: self.execute_fn(fn))
+ 
++    async def prefetch_table_schema(self, table):
++        """Within a request, introspect a table in one thread-pool trip and
++        seed the request-scoped schema memo. Returns (table_exists, view_exists)."""
++        request_cache = _request_schema_cache.get()
++        if self._schema_is_immutable or request_cache is None:
++            return None
++
++        def _prefetch(conn):
++            kind = conn.execute(
++                "select type from sqlite_master where name = ? and type in ('table', 'view')",
++                (table,),
++            ).fetchone()
++            kind = kind[0] if kind else None
++            out = {"kind": kind}
++            if kind is not None:
++                out["table_columns"] = table_columns(conn, table)
++                out["table_column_details"] = table_column_details(conn, table)
++                out["primary_keys"] = detect_primary_keys(conn, table)
++                out["fts_table"] = detect_fts(conn, table)
++                out["foreign_keys_for_table"] = get_outbound_foreign_keys(conn, table)
++            return out
++
++        out = await self.execute_fn(_prefetch)
++        loop = asyncio.get_running_loop()
++        for key in (
++            "table_columns",
++            "table_column_details",
++            "primary_keys",
++            "fts_table",
++            "foreign_keys_for_table",
++        ):
++            if key in out:
++                future = loop.create_future()
++                future.set_result(out[key])
++                request_cache.setdefault((id(self), (key, table)), future)
++        return out["kind"] == "table", out["kind"] == "view"
++
+     async def table_exists(self, table):
+         if self._schema_is_immutable:
+             self._check_not_closed()

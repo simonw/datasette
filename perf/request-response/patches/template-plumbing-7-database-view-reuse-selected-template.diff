@@ -1,0 +1,13 @@
+diff --git a/datasette/views/database.py b/datasette/views/database.py
+index da20760..a4f978e 100644
+--- a/datasette/views/database.py
++++ b/datasette/views/database.py
+@@ -235,7 +235,7 @@ class DatabaseView(View):
+         template = environment.select_template(templates)
+         return Response.html(
+             await datasette.render_template(
+-                templates,
++                template,
+                 DatabaseContext(
+                     database=database,
+                     private=private,

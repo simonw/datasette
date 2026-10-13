@@ -1,0 +1,48 @@
+diff --git a/datasette/telemetry.py b/datasette/telemetry.py
+index 2fd5a9d..d459738 100644
+--- a/datasette/telemetry.py
++++ b/datasette/telemetry.py
+@@ -145,7 +145,13 @@ class _ScopeHeadersGetter(Getter):
+ 
+     def get(self, carrier, key):
+         wanted = key.lower().encode("latin-1")
+-        values = [v.decode("latin-1") for k, v in carrier if k.lower() == wanted]
++        size = len(wanted)
++        # Comparing lengths first avoids lowercasing most header names
++        values = [
++            v.decode("latin-1")
++            for k, v in carrier
++            if len(k) == size and k.lower() == wanted
++        ]
+         return values or None
+ 
+     def keys(self, carrier):
+diff --git a/tests/test_http_span.py b/tests/test_http_span.py
+index 1fcc93b..c3bccf2 100644
+--- a/tests/test_http_span.py
++++ b/tests/test_http_span.py
+@@ -27,6 +27,7 @@ from opentelemetry.trace import (
+ from datasette import hookimpl
+ from datasette.app import Datasette
+ from datasette.telemetry import (
++    _HEADERS_GETTER,
+     REQUEST_SPAN_SCOPE_KEY,
+     TelemetryMiddleware,
+     request_span,
+@@ -737,3 +738,16 @@ async def test_internal_client_requests_are_marked(ds, otel_spans):
+     server = _server_spans(otel_spans)
+     assert server
+     assert all("datasette.internal_client" not in span.attributes for span in server)
++
++
++def test_headers_getter_matches_names_case_insensitively():
++    headers = [
++        (b"host", b"localhost"),
++        (b"TraceParent", b"first"),
++        (b"traceparentx", b"not-this"),
++        (b"traceparent", b"second"),
++    ]
++    assert _HEADERS_GETTER.get(headers, "traceparent") == ["first", "second"]
++    assert _HEADERS_GETTER.get(headers, "TRACEPARENT") == ["first", "second"]
++    assert _HEADERS_GETTER.get(headers, "baggage") is None
++    assert _HEADERS_GETTER.get([], "traceparent") is None

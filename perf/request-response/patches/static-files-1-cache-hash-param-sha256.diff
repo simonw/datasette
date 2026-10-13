@@ -1,0 +1,79 @@
+diff --git a/datasette/utils/__init__.py b/datasette/utils/__init__.py
+index 669d04c..7843b9b 100644
+--- a/datasette/utils/__init__.py
++++ b/datasette/utils/__init__.py
+@@ -1779,6 +1779,22 @@ def sha256_file(filepath, chunk_size=4096):
+     return hasher.hexdigest()
+ 
+ 
++_sha256_cache = {}
++
++
++def cached_sha256_file(filepath, chunk_size=4096):
++    # Re-hash only if the file has changed. st_ctime_ns cannot be set by
++    # tools that preserve mtime (cp -p, tar), st_ino catches replaced files
++    stat = os.stat(filepath)
++    key = (stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
++    cached = _sha256_cache.get(filepath)
++    if cached is not None and cached[0] == key:
++        return cached[1]
++    digest = sha256_file(filepath, chunk_size=chunk_size)
++    _sha256_cache[filepath] = (key, digest)
++    return digest
++
++
+ async def calculate_etag(filepath, chunk_size=4096):
+     if filepath in _etag_cache:
+         return _etag_cache[filepath]
+diff --git a/datasette/utils/asgi.py b/datasette/utils/asgi.py
+index 2d4a6cf..64d47be 100644
+--- a/datasette/utils/asgi.py
++++ b/datasette/utils/asgi.py
+@@ -9,7 +9,12 @@ from urllib.parse import parse_qs, parse_qsl, urlunparse
+ import aiofiles
+ import aiofiles.os
+ 
+-from datasette.utils import MultiParams, calculate_etag, error_body, sha256_file
++from datasette.utils import (
++    MultiParams,
++    cached_sha256_file,
++    calculate_etag,
++    error_body,
++)
+ from datasette.utils.multipart import (
+     DEFAULT_MAX_FIELD_SIZE,
+     DEFAULT_MAX_FIELDS,
+@@ -496,7 +501,8 @@ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
+             hash_value = request.args.get("_hash")
+             if (
+                 hash_value
+-                and hash_value == sha256_file(full_path, chunk_size=chunk_size)[:12]
++                and hash_value
++                == cached_sha256_file(full_path, chunk_size=chunk_size)[:12]
+             ):
+                 headers["Cache-Control"] = HASHED_STATIC_CACHE_CONTROL
+             etag = await calculate_etag(full_path, chunk_size=chunk_size)
+diff --git a/tests/test_utils.py b/tests/test_utils.py
+index 68d4a50..2de1d51 100644
+--- a/tests/test_utils.py
++++ b/tests/test_utils.py
+@@ -923,6 +923,19 @@ def test_sha256_file(tmp_path):
+     assert utils.sha256_file(path, chunk_size=2) == hashlib.sha256(b"hello").hexdigest()
+ 
+ 
++def test_cached_sha256_file(tmp_path):
++    path = tmp_path / "test.txt"
++    path.write_text("hello")
++    assert utils.cached_sha256_file(path) == hashlib.sha256(b"hello").hexdigest()
++    key, _ = utils._sha256_cache[path]
++    utils._sha256_cache[path] = (key, "cached")
++    assert utils.cached_sha256_file(path) == "cached"
++    # Modifying the file invalidates the cached hash
++    path.write_text("hello!")
++    assert utils.cached_sha256_file(path) == hashlib.sha256(b"hello!").hexdigest()
++    utils._sha256_cache.clear()
++
++
+ @pytest.mark.asyncio
+ async def test_calculate_etag(tmp_path):
+     path = tmp_path / "test.txt"

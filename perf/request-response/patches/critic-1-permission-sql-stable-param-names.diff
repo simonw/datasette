@@ -1,0 +1,24 @@
+diff --git a/datasette/utils/actions_sql.py b/datasette/utils/actions_sql.py
+index fb28d3a..917e3a4 100644
+--- a/datasette/utils/actions_sql.py
++++ b/datasette/utils/actions_sql.py
+@@ -600,14 +600,15 @@ async def check_permissions_for_actions(
+         rule_parts = []
+         restriction_parts = []
+ 
+-        for permission_sql in permission_sqls:
++        for j, permission_sql in enumerate(permission_sqls):
+             sql = permission_sql.sql
+             restriction_sql = permission_sql.restriction_sql
+             # Namespace this block's params so identical names used for
+-            # different actions cannot collide
++            # different actions cannot collide. Positional names keep the
++            # SQL text stable across requests (sqlite3 statement cache)
+             renames = {}
+-            for key in permission_sql.params or {}:
+-                new_key = prefix + key
++            for n, key in enumerate(permission_sql.params or {}):
++                new_key = f"{prefix}b{j}_{n}"
+                 params[new_key] = permission_sql.params[key]
+                 renames[key] = new_key
+             if renames:

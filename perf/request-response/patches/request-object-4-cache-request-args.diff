@@ -1,0 +1,49 @@
+diff --git a/datasette/utils/asgi.py b/datasette/utils/asgi.py
+index 2d4a6cf..5a6fa68 100644
+--- a/datasette/utils/asgi.py
++++ b/datasette/utils/asgi.py
+@@ -160,9 +160,20 @@ class Request:
+         qs = self.query_string
+         return "{}{}".format(self.path, ("?" + qs) if qs else "")
+ 
++    # Parsed query string, cached against the query string it was parsed from
++    _args_query_string = None
++    _parsed_args = None
++
+     @property
+     def args(self):
+-        return MultiParams(parse_qs(qs=self.query_string, keep_blank_values=True))
++        query_string = self.query_string
++        if query_string != self._args_query_string:
++            self._parsed_args = parse_qs(qs=query_string, keep_blank_values=True)
++            self._args_query_string = query_string
++        # Copy the lists, so callers cannot modify the cached values
++        return MultiParams(
++            {key: list(values) for key, values in self._parsed_args.items()}
++        )
+ 
+     @property
+     def actor(self):
+diff --git a/tests/test_internals_request.py b/tests/test_internals_request.py
+index 91ef368..7382f24 100644
+--- a/tests/test_internals_request.py
++++ b/tests/test_internals_request.py
+@@ -327,6 +327,18 @@ def test_request_blank_values():
+     assert request.args._data == {"a": ["b"], "foo": ["bar", "bar2"], "baz": [""]}
+ 
+ 
++def test_request_args_follow_scope_changes():
++    request = Request.fake("/?a=1&a=2")
++    # Modifying the returned lists does not affect later lookups
++    request.args.getlist("a").append("3")
++    assert request.args.getlist("a") == ["1", "2"]
++    # Replacing request.scope, or modifying it in place
++    request.scope = dict(request.scope, query_string=b"b=3")
++    assert request.args._data == {"b": ["3"]}
++    request.scope["query_string"] = b"c=4"
++    assert request.args._data == {"c": ["4"]}
++
++
+ def test_json_in_query_string_name():
+     query_string = (
+         '?_through.["roadside_attraction_characteristics"%2C"characteristic_id"]=1'

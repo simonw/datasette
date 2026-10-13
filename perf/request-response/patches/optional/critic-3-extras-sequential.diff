@@ -1,0 +1,13 @@
+diff --git a/datasette/extras.py b/datasette/extras.py
+index fb8c2e0..c9b500d 100644
+--- a/datasette/extras.py
++++ b/datasette/extras.py
+@@ -96,7 +96,7 @@ class ExtraRegistry:
+     def _registry_for_scope(self, scope):
+         registry = self._scope_registries.get(scope)
+         if registry is None:
+-            registry = Registry()
++            registry = Registry(parallel=False)
+             for cls in self.classes_for_scope(scope):
+                 registry.register(cls().resolve, name=cls.key())
+             self._scope_registries[scope] = registry

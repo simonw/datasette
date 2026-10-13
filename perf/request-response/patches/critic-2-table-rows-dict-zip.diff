@@ -1,0 +1,21 @@
+diff --git a/datasette/views/table.py b/datasette/views/table.py
+index 92473bc..1aa5d10 100644
+--- a/datasette/views/table.py
++++ b/datasette/views/table.py
+@@ -2420,8 +2420,14 @@ async def table_view_data(
+     # Apply transform_value for columns with assigned types
+     ct_map = await datasette.get_column_types(database_name, table_name)
+     transformed_rows = []
+-    for r in raw_sqlite_rows:
+-        row_dict = dict(r)
++    row_keys = raw_sqlite_rows[0].keys() if raw_sqlite_rows else []
++    # dict(sqlite3.Row) looks every key up by name (a linear,
++    # case-insensitive scan), so zip with the keys when they are unique
++    if len({k.lower() for k in row_keys}) == len(row_keys):
++        dict_rows = (dict(zip(row_keys, r)) for r in raw_sqlite_rows)
++    else:
++        dict_rows = (dict(r) for r in raw_sqlite_rows)
++    for row_dict in dict_rows:
+         for col_name, ct in ct_map.items():
+             if col_name in row_dict:
+                 row_dict[col_name] = await ct.transform_value(

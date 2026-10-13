@@ -1,0 +1,21 @@
+--- a/datasette/app.py
++++ b/datasette/app.py
+@@ -3256,12 +3256,12 @@
+             await original_send(message)
+ 
+         # Populate request_messages if ds_messages cookie is present
+-        try:
+-            request._messages = self.ds.unsign(
+-                request.cookies.get("ds_messages", ""), "messages"
+-            )
+-        except BadSignature:
+-            pass
++        messages_cookie = request.cookies.get("ds_messages")
++        if messages_cookie:
++            try:
++                request._messages = self.ds.unsign(messages_cookie, "messages")
++            except BadSignature:
++                pass
+ 
+         scope_modifications = {}
+         # Apply force_https_urls, if set

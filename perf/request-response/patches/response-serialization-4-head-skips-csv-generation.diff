@@ -1,0 +1,14 @@
+diff --git a/datasette/views/base.py b/datasette/views/base.py
+index 7262edb..f2d63aa 100644
+--- a/datasette/views/base.py
++++ b/datasette/views/base.py
+@@ -335,4 +335,9 @@ async def stream_csv(datasette, fetch_data, request, database):
+         )
+         headers["content-disposition"] = disposition
+ 
++    if request.method == "HEAD":
++        # A HEAD response has no body, so don't generate (and paginate) the CSV
++        async def stream_fn(r):
++            pass
++
+     return AsgiStream(stream_fn, headers=headers, content_type=content_type)

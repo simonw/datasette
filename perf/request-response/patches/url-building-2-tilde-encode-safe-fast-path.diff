@@ -1,0 +1,45 @@
+diff --git a/datasette/utils/__init__.py b/datasette/utils/__init__.py
+index 669d04c..f22cf99 100644
+--- a/datasette/utils/__init__.py
++++ b/datasette/utils/__init__.py
+@@ -1523,12 +1523,17 @@ class TildeEncoder(dict):
+ 
+ 
+ _tilde_encoder = TildeEncoder().__getitem__
++# Matches strings made entirely of _TILDE_ENCODING_SAFE characters
++_tilde_encoding_safe_re = re.compile(r"[A-Za-z0-9_\-]*")
+ 
+ 
+ @documented
+ def tilde_encode(s: str) -> str:
+     "Returns tilde-encoded string - for example ``/foo/bar`` -> ``~2Ffoo~2Fbar``"
+-    return "".join(_tilde_encoder(char) for char in s.encode("utf-8"))
++    # Most names and primary keys need no encoding, so skip the per-byte loop
++    if type(s) is str and _tilde_encoding_safe_re.fullmatch(s):
++        return s
++    return "".join(map(_tilde_encoder, s.encode("utf-8")))
+ 
+ 
+ @documented
+diff --git a/tests/test_utils.py b/tests/test_utils.py
+index 68d4a50..7608dc9 100644
+--- a/tests/test_utils.py
++++ b/tests/test_utils.py
+@@ -838,11 +838,17 @@ async def test_named_parameters(sql, expected, use_async_version):
+         (r"%~-/", "~25~7E-~2F"),
+         ("~25~7E~2D~2F", "~7E25~7E7E~7E2D~7E2F"),
+         ("with space", "with+space"),
++        ("", ""),
++        ("AZaz09_-", "AZaz09_-"),
++        ("café", "caf~C3~A9"),
++        ("line\n", "line~0A"),
+     ),
+ )
+ def test_tilde_encoding(original, expected):
+     actual = utils.tilde_encode(original)
+     assert actual == expected
++    assert type(actual) is str
++    assert type(utils.tilde_encode(utils.PrefixedUrlString(original))) is str
+     # And test round-trip
+     assert original == utils.tilde_decode(actual)
+ 

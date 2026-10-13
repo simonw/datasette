@@ -1,0 +1,84 @@
+diff --git a/datasette/app.py b/datasette/app.py
+index 001ce9b..d8a089d 100644
+--- a/datasette/app.py
++++ b/datasette/app.py
+@@ -46,7 +46,7 @@ from .column_types import SQLiteType
+ from .csrf import CrossOriginProtectionMiddleware
+ from .database import Database, QueryInterrupted
+ from .events import Event
+-from .plugins import DEFAULT_PLUGINS, get_plugins, pm
++from .plugins import DATASETTE_TRACE_PLUGINS, DEFAULT_PLUGINS, get_plugins, pm
+ from .renderer import json_renderer
+ from .resources import DatabaseResource, TableResource
+ from .telemetry import (
+@@ -359,6 +359,16 @@ def _template_context_json_default(value):
+     return repr(value)
+ 
+ 
++def _call_hook_if_implemented(hook, **kwargs):
++    # Calling a pluggy hook costs a couple of µs even when no plugin
++    # implements it, and render_template() calls several on every page.
++    # Keep calling it when DATASETTE_TRACE_PLUGINS is set so the trace
++    # still shows every call
++    if not DATASETTE_TRACE_PLUGINS and not hook.get_hookimpls():
++        return []
++    return hook(**kwargs)
++
++
+ @pass_context
+ def _legacy_template_csrftoken(context):
+     request = context.get("request")
+@@ -694,8 +704,11 @@ class Datasette:
+     def get_jinja_environment(self, request: Request = None) -> Environment:
+         environment = self._jinja_env
+         if request:
+-            for hook_environment in pm.hook.jinja2_environment_from_request(
+-                datasette=self, request=request, env=environment
++            for hook_environment in _call_hook_if_implemented(
++                pm.hook.jinja2_environment_from_request,
++                datasette=self,
++                request=request,
++                env=environment,
+             ):
+                 environment = hook_environment
+         return environment
+@@ -2585,7 +2598,8 @@ ORDER BY allowed.parent, allowed.child
+             }
+         body_scripts = []
+         # pylint: disable=no-member
+-        for extra_script in pm.hook.extra_body_script(
++        for extra_script in _call_hook_if_implemented(
++            pm.hook.extra_body_script,
+             template=template.name,
+             database=context.get("database"),
+             table=context.get("table"),
+@@ -2605,7 +2619,8 @@ ORDER BY allowed.parent, allowed.child
+ 
+         extra_template_vars = {}
+         # pylint: disable=no-member
+-        for extra_vars in pm.hook.extra_template_vars(
++        for extra_vars in _call_hook_if_implemented(
++            pm.hook.extra_template_vars,
+             template=template.name,
+             database=context.get("database"),
+             table=context.get("table"),
+@@ -2624,7 +2639,8 @@ ORDER BY allowed.parent, allowed.child
+ 
+         async def menu_links():
+             links = []
+-            for hook in pm.hook.menu_links(
++            for hook in _call_hook_if_implemented(
++                pm.hook.menu_links,
+                 datasette=self,
+                 actor=request.actor if request else None,
+                 request=request or None,
+@@ -2690,7 +2706,8 @@ ORDER BY allowed.parent, allowed.child
+         # Flatten list-of-lists from plugins:
+         seen_urls = set()
+         collected = []
+-        for hook in getattr(pm.hook, key)(
++        for hook in _call_hook_if_implemented(
++            getattr(pm.hook, key),
+             template=template.name,
+             database=context.get("database"),
+             table=context.get("table"),

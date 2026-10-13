@@ -1,0 +1,87 @@
+diff --git a/datasette/tracer.py b/datasette/tracer.py
+index 1fbda6f..8e8af1a 100644
+--- a/datasette/tracer.py
++++ b/datasette/tracer.py
+@@ -2,7 +2,7 @@ import asyncio
+ import json
+ import time
+ import traceback
+-from contextlib import contextmanager
++from contextlib import ContextDecorator, contextmanager
+ from contextvars import ContextVar
+ 
+ from markupsafe import escape
+@@ -34,11 +34,39 @@ def trace_child_tasks():
+         trace_task_id.reset(token)
+ 
+ 
+-@contextmanager
++class _NotCapturing(ContextDecorator):
++    """
++    Returned by trace() when no request is capturing traces.
++
++    Used as a decorator, it checks again on each call.
++    """
++
++    def __init__(self, trace_type, kwargs):
++        self.trace_type = trace_type
++        self.kwargs = kwargs
++
++    def __enter__(self):
++        return self.kwargs
++
++    def __exit__(self, *exc_info):
++        return None
++
++    def _recreate_cm(self):
++        return trace(self.trace_type, **self.kwargs)
++
++
+ def trace(trace_type, **kwargs):
+     assert not TRACE_RESERVED_KEYS.intersection(
+         kwargs.keys()
+     ), f".trace() keyword parameters cannot include {TRACE_RESERVED_KEYS}"
++    if not tracers:
++        # No request is capturing traces, so there is nothing to record
++        return _NotCapturing(trace_type, kwargs)
++    return _trace(trace_type, kwargs)
++
++
++@contextmanager
++def _trace(trace_type, kwargs):
+     task_id = get_task_id()
+     if task_id is None:
+         yield kwargs
+diff --git a/tests/test_tracer.py b/tests/test_tracer.py
+index 21cfa95..2afa29e 100644
+--- a/tests/test_tracer.py
++++ b/tests/test_tracer.py
+@@ -96,3 +96,28 @@ def test_trace_parallel_queries():
+     one, two = traces
+     # "two" should have started before "one" ended
+     assert two["start"] < one["end"]
++
++
++@pytest.mark.asyncio
++async def test_trace_records_only_while_capturing():
++    from datasette.tracer import capture_traces, trace
++
++    # Nothing is capturing, so the keyword arguments are passed straight through
++    with trace("custom", foo=1) as kwargs:
++        assert kwargs == {"foo": 1}
++
++    @trace("decorated", foo=2)
++    def decorated():
++        return "result"
++
++    # A decorated function checks whether traces are being captured each call
++    assert decorated() == "result"
++    traces = []
++    with capture_traces(traces):
++        assert decorated() == "result"
++        with trace("custom", foo=1):
++            pass
++    assert [(t["type"], t["foo"]) for t in traces] == [
++        ("decorated", 2),
++        ("custom", 1),
++    ]

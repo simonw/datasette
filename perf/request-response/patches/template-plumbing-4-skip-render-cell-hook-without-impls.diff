@@ -1,0 +1,131 @@
+diff --git a/datasette/views/database.py b/datasette/views/database.py
+index da20760..14ffa2a 100644
+--- a/datasette/views/database.py
++++ b/datasette/views/database.py
+@@ -11,7 +11,7 @@ import markupsafe
+ 
+ from datasette.database import QueryInterrupted
+ from datasette.extras import ExtraScope, extra_names_from_request
+-from datasette.plugins import pm
++from datasette.plugins import DATASETTE_TRACE_PLUGINS, pm
+ from datasette.resources import DatabaseResource, QueryResource
+ from datasette.stored_queries import StoredQuery, stored_query_to_dict
+ from datasette.utils import (
+@@ -1195,6 +1195,12 @@ class MagicParameters(dict):
+ async def display_rows(datasette, database, request, rows, columns):
+     display_rows = []
+     truncate_cells = datasette.setting("truncate_cells_html")
++    # Calling a hook costs a few µs even with no implementations, and this
++    # would otherwise happen once per cell. Keep calling it when
++    # DATASETTE_TRACE_PLUGINS is set so the trace still shows every call
++    has_render_cell_hooks = bool(
++        DATASETTE_TRACE_PLUGINS or pm.hook.render_cell.get_hookimpls()
++    )
+     for row in rows:
+         display_row = []
+         for column, value in zip(columns, row):
+@@ -1202,21 +1208,22 @@ async def display_rows(datasette, database, request, rows, columns):
+             # Let the plugins have a go
+             # pylint: disable=no-member
+             plugin_display_value = None
+-            for candidate in pm.hook.render_cell(
+-                row=row,
+-                value=value,
+-                column=column,
+-                table=None,
+-                pks=[],
+-                database=database,
+-                datasette=datasette,
+-                request=request,
+-                column_type=None,
+-            ):
+-                candidate = await await_me_maybe(candidate)
+-                if candidate is not None:
+-                    plugin_display_value = candidate
+-                    break
++            if has_render_cell_hooks:
++                for candidate in pm.hook.render_cell(
++                    row=row,
++                    value=value,
++                    column=column,
++                    table=None,
++                    pks=[],
++                    database=database,
++                    datasette=datasette,
++                    request=request,
++                    column_type=None,
++                ):
++                    candidate = await await_me_maybe(candidate)
++                    if candidate is not None:
++                        plugin_display_value = candidate
++                        break
+             if plugin_display_value is not None:
+                 display_value = plugin_display_value
+             else:
+diff --git a/datasette/views/table.py b/datasette/views/table.py
+index 0a908c6..f7c1876 100644
+--- a/datasette/views/table.py
++++ b/datasette/views/table.py
+@@ -20,7 +20,7 @@ from datasette.events import (
+ )
+ from datasette.extras import ExtraScope, extra_names_from_request
+ from datasette.filters import Filters
+-from datasette.plugins import pm
++from datasette.plugins import DATASETTE_TRACE_PLUGINS, pm
+ from datasette.resources import DatabaseResource, TableResource
+ from datasette.utils import (
+     CustomJSONEncoder,
+@@ -716,6 +716,12 @@ async def display_columns_and_rows(
+ 
+     cell_rows = []
+     base_url = datasette.setting("base_url")
++    # Calling a hook costs a few µs even with no implementations, and this
++    # would otherwise happen once per cell. Keep calling it when
++    # DATASETTE_TRACE_PLUGINS is set so the trace still shows every call
++    has_render_cell_hooks = bool(
++        DATASETTE_TRACE_PLUGINS or pm.hook.render_cell.get_hookimpls()
++    )
+     for row in rows:
+         cells = []
+         # Unless we are a view, the first column is a link - either to the rowid
+@@ -806,7 +812,7 @@ async def display_columns_and_rows(
+                 )
+                 if candidate is not None:
+                     plugin_display_value = candidate
+-            if plugin_display_value is None:
++            if plugin_display_value is None and has_render_cell_hooks:
+                 for candidate in pm.hook.render_cell(
+                     row=row,
+                     value=value,
+diff --git a/datasette/views/table_extras.py b/datasette/views/table_extras.py
+index 6f3437d..4f82651 100644
+--- a/datasette/views/table_extras.py
++++ b/datasette/views/table_extras.py
+@@ -5,7 +5,7 @@ from typing import ClassVar
+ from datasette.column_types import SQLiteType
+ from datasette.database import QueryInterrupted
+ from datasette.extras import Extra, ExtraExample, ExtraRegistry, ExtraScope, Provider
+-from datasette.plugins import pm
++from datasette.plugins import DATASETTE_TRACE_PLUGINS, pm
+ from datasette.resources import DatabaseResource, TableResource
+ from datasette.utils import (
+     await_me_maybe,
+@@ -686,6 +686,9 @@ class RenderCellExtra(Extra):
+             else {}
+         )
+         rendered_rows = []
++        has_render_cell_hooks = bool(
++            DATASETTE_TRACE_PLUGINS or pm.hook.render_cell.get_hookimpls()
++        )
+         for row in context.rows:
+             rendered_row = {}
+             for value, column in zip(row, context.columns):
+@@ -702,7 +705,7 @@ class RenderCellExtra(Extra):
+                     )
+                     if candidate is not None:
+                         plugin_display_value = candidate
+-                if plugin_display_value is None:
++                if plugin_display_value is None and has_render_cell_hooks:
+                     for candidate in pm.hook.render_cell(
+                         row=row,
+                         value=value,

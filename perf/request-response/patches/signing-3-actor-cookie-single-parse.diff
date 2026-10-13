@@ -1,0 +1,18 @@
+diff --git a/datasette/actor_auth_cookie.py b/datasette/actor_auth_cookie.py
+index 7503f1d..0685fa5 100644
+--- a/datasette/actor_auth_cookie.py
++++ b/datasette/actor_auth_cookie.py
+@@ -8,10 +8,11 @@ from datasette.utils import baseconv
+ 
+ @hookimpl
+ def actor_from_request(datasette, request):
+-    if "ds_actor" not in request.cookies:
++    ds_actor = request.cookies.get("ds_actor")
++    if not ds_actor:
+         return None
+     try:
+-        decoded = datasette.unsign(request.cookies["ds_actor"], "actor")
++        decoded = datasette.unsign(ds_actor, "actor")
+         # If it has "e" and "a" keys process the "e" expiry
+         if not isinstance(decoded, dict) or "a" not in decoded:
+             return None

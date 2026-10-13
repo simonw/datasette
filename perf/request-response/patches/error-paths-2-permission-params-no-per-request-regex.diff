@@ -1,0 +1,74 @@
+diff --git a/datasette/utils/actions_sql.py b/datasette/utils/actions_sql.py
+index 297f5ae..fb28d3a 100644
+--- a/datasette/utils/actions_sql.py
++++ b/datasette/utils/actions_sql.py
+@@ -32,6 +32,25 @@ if TYPE_CHECKING:
+     from datasette.permissions import Action
+ 
+ 
++_param_reference_re = re.compile(r":([A-Za-z0-9_]+)")
++_simple_param_name_re = re.compile(r"[A-Za-z0-9_]+")
++
++
++def _rename_params(sql: str, renames: dict[str, str]) -> str:
++    """Rewrite each :key parameter reference in sql to :renames[key]"""
++    if all(_simple_param_name_re.fullmatch(key) for key in renames):
++        # A single pass with a precompiled pattern - PermissionSQL.allow()
++        # invents a new :reason_N name on every call, so compiling a pattern
++        # per name would miss the re module cache on every request
++        return _param_reference_re.sub(
++            lambda m: ":" + renames.get(m.group(1), m.group(1)), sql
++        )
++    for key, new_key in renames.items():
++        pattern = re.compile(":" + re.escape(key) + r"(?![A-Za-z0-9_])")
++        sql = pattern.sub(":" + new_key, sql)
++    return sql
++
++
+ def _child_collation(action: "Action") -> str:
+     """Match resource identity without changing the spelling returned by SQL."""
+     resource_class = action.resource_class
+@@ -586,14 +605,16 @@ async def check_permissions_for_actions(
+             restriction_sql = permission_sql.restriction_sql
+             # Namespace this block's params so identical names used for
+             # different actions cannot collide
++            renames = {}
+             for key in permission_sql.params or {}:
+                 new_key = prefix + key
+                 params[new_key] = permission_sql.params[key]
+-                pattern = re.compile(":" + re.escape(key) + r"(?![A-Za-z0-9_])")
++                renames[key] = new_key
++            if renames:
+                 if sql:
+-                    sql = pattern.sub(":" + new_key, sql)
++                    sql = _rename_params(sql, renames)
+                 if restriction_sql:
+-                    restriction_sql = pattern.sub(":" + new_key, restriction_sql)
++                    restriction_sql = _rename_params(restriction_sql, renames)
+ 
+             if restriction_sql:
+                 restriction_parts.append(restriction_sql)
+diff --git a/tests/test_actions_sql.py b/tests/test_actions_sql.py
+index 76320bd..3c4df1c 100644
+--- a/tests/test_actions_sql.py
++++ b/tests/test_actions_sql.py
+@@ -17,6 +17,19 @@ from datasette.permissions import PermissionSQL
+ from datasette.resources import DatabaseResource, QueryResource, TableResource
+ 
+ 
++def test_rename_params():
++    from datasette.utils.actions_sql import _rename_params
++
++    sql = "SELECT :reason_12 AS reason, :reason_1 AS r, :reason_12x AS x"
++    assert _rename_params(sql, {"reason_12": "a0_reason_12"}) == (
++        "SELECT :a0_reason_12 AS reason, :reason_1 AS r, :reason_12x AS x"
++    )
++    # Names using other characters fall back to a pattern per name
++    assert _rename_params("SELECT :x$y, :x", {"x$y": "a0_x$y"}) == (
++        "SELECT :a0_x$y, :x"
++    )
++
++
+ def test_resource_string_representations():
+     assert str(DatabaseResource("content")) == "content"
+     assert repr(DatabaseResource("content")) == (

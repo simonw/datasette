@@ -1,0 +1,2804 @@
+diff --git a/datasette/actor_auth_cookie.py b/datasette/actor_auth_cookie.py
+index 7503f1d..0685fa5 100644
+--- a/datasette/actor_auth_cookie.py
++++ b/datasette/actor_auth_cookie.py
+@@ -8,10 +8,11 @@ from datasette.utils import baseconv
+ 
+ @hookimpl
+ def actor_from_request(datasette, request):
+-    if "ds_actor" not in request.cookies:
++    ds_actor = request.cookies.get("ds_actor")
++    if not ds_actor:
+         return None
+     try:
+-        decoded = datasette.unsign(request.cookies["ds_actor"], "actor")
++        decoded = datasette.unsign(ds_actor, "actor")
+         # If it has "e" and "a" keys process the "e" expiry
+         if not isinstance(decoded, dict) or "a" not in decoded:
+             return None
+diff --git a/datasette/app.py b/datasette/app.py
+index 001ce9b..4c2e1c3 100644
+--- a/datasette/app.py
++++ b/datasette/app.py
+@@ -8,6 +8,7 @@ if TYPE_CHECKING:
+     from datasette.permissions import Resource
+     from datasette.tokens import TokenRestrictions
+ import collections
++import copy
+ import dataclasses
+ import datetime
+ import functools
+@@ -46,7 +47,8 @@ from .column_types import SQLiteType
+ from .csrf import CrossOriginProtectionMiddleware
+ from .database import Database, QueryInterrupted
+ from .events import Event
+-from .plugins import DEFAULT_PLUGINS, get_plugins, pm
++from .permissions import _permission_check_cache
++from .plugins import DATASETTE_TRACE_PLUGINS, DEFAULT_PLUGINS, get_plugins, pm
+ from .renderer import json_renderer
+ from .resources import DatabaseResource, TableResource
+ from .telemetry import (
+@@ -104,7 +106,6 @@ from .utils.asgi import (
+     RowNotFound,
+     TableNotFound,
+     asgi_send,
+-    asgi_send_file,
+     asgi_send_redirect,
+     asgi_static,
+ )
+@@ -328,13 +329,38 @@ def _permission_cache_key(actor, action, parent, child):
+     return (actor_key, action.name, parent, action.normalize_child(child))
+ 
+ 
++@functools.lru_cache(maxsize=64)
++def _cached_url_safe_serializer(secret, namespace):
++    return URLSafeSerializer(secret, namespace)
++
++
++def _url_safe_serializer(secret, namespace):
++    # Serializers are not mutated by dumps()/loads(), so one per
++    # (secret, namespace) can be shared. Constructing them is not free:
++    # itsdangerous runs json.dumps() to detect the serializer type.
++    try:
++        return _cached_url_safe_serializer(secret, namespace)
++    except TypeError:
++        # Unhashable secret, e.g. a list of keys for itsdangerous key rotation
++        return URLSafeSerializer(secret, namespace)
++
++
++@functools.cache
++def _favicon_body():
++    # Bundled package file, so it is safe to read it just once
++    return FAVICON_PATH.read_bytes()
++
++
+ async def favicon(request, send):
+-    await asgi_send_file(
+-        send,
+-        str(FAVICON_PATH),
++    body = _favicon_body()
++    await Response(
++        body,
++        headers={
++            "Cache-Control": "max-age=3600, public",
++            "content-length": str(len(body)),
++        },
+         content_type="image/png",
+-        headers={"Cache-Control": "max-age=3600, public"},
+-    )
++    ).asgi_send(send)
+ 
+ 
+ ResolvedTable = collections.namedtuple("ResolvedTable", ("db", "table", "is_view"))
+@@ -359,6 +385,16 @@ def _template_context_json_default(value):
+     return repr(value)
+ 
+ 
++def _call_hook_if_implemented(hook, **kwargs):
++    # Calling a pluggy hook costs a couple of µs even when no plugin
++    # implements it, and render_template() calls several on every page.
++    # Keep calling it when DATASETTE_TRACE_PLUGINS is set so the trace
++    # still shows every call
++    if not DATASETTE_TRACE_PLUGINS and not hook.get_hookimpls():
++        return []
++    return hook(**kwargs)
++
++
+ @pass_context
+ def _legacy_template_csrftoken(context):
+     request = context.get("request")
+@@ -500,6 +536,7 @@ class Datasette:
+ 
+         self.cache_headers = cache_headers
+         self._static_asset_hashes = {}
++        self._static_urls = {}
+         self.cors = cors
+         config_files = []
+         metadata_files = []
+@@ -547,6 +584,8 @@ class Datasette:
+         if config_dir and (config_dir / "static").is_dir() and not static_mounts:
+             static_mounts = [("static", str((config_dir / "static").resolve()))]
+         self.static_mounts = static_mounts or []
++        self._default_routes_key = None
++        self._default_routes = None
+         if config_dir and (config_dir / "datasette.json").exists() and not config:
+             config = json.loads((config_dir / "datasette.json").read_text())
+ 
+@@ -589,6 +628,7 @@ class Datasette:
+         self._settings = dict(DEFAULT_SETTINGS, **(config_settings), **(settings or {}))
+         self.renderers = {}  # File extension -> (renderer, can_render) functions
+         self.version_note = version_note
++        self._versions_cache = None
+         if self.setting("num_sql_threads") == 0:
+             self.executor = None
+         else:
+@@ -694,8 +734,11 @@ class Datasette:
+     def get_jinja_environment(self, request: Request = None) -> Environment:
+         environment = self._jinja_env
+         if request:
+-            for hook_environment in pm.hook.jinja2_environment_from_request(
+-                datasette=self, request=request, env=environment
++            for hook_environment in _call_hook_if_implemented(
++                pm.hook.jinja2_environment_from_request,
++                datasette=self,
++                request=request,
++                env=environment,
+             ):
+                 environment = hook_environment
+         return environment
+@@ -731,12 +774,6 @@ class Datasette:
+             await init_internal_db(internal_db)
+             await self.apply_metadata_json()
+             self.internal_db_created = True
+-        current_schema_versions = {
+-            row["database_name"]: row["schema_version"]
+-            for row in await internal_db.execute(
+-                "select database_name, schema_version from catalog_databases"
+-            )
+-        }
+         catalog_table_names = (
+             "catalog_columns",
+             "catalog_foreign_keys",
+@@ -745,16 +782,30 @@ class Datasette:
+             "catalog_tables",
+             "catalog_databases",
+         )
+-        # Delete stale entries for databases that are no longer attached
+-        catalog_database_names = set(current_schema_versions.keys())
+-        for table in catalog_table_names[:-1]:
+-            catalog_database_names.update(
+-                row["database_name"]
+-                for row in await internal_db.execute(
+-                    f"select distinct database_name from {table}"
++
++        def read_catalog_database_names(conn):
++            # One thread-pool round trip for all of the catalog reads
++            current_schema_versions = {
++                row["database_name"]: row["schema_version"]
++                for row in conn.execute(
++                    "select database_name, schema_version from catalog_databases"
+                 )
+-                if row["database_name"] is not None
+-            )
++            }
++            catalog_database_names = set(current_schema_versions.keys())
++            for table in catalog_table_names[:-1]:
++                catalog_database_names.update(
++                    row["database_name"]
++                    for row in conn.execute(
++                        f"select distinct database_name from {table}"
++                    )
++                    if row["database_name"] is not None
++                )
++            return current_schema_versions, catalog_database_names
++
++        current_schema_versions, catalog_database_names = await internal_db.execute_fn(
++            read_catalog_database_names
++        )
++        # Delete stale entries for databases that are no longer attached
+         stale_databases = catalog_database_names - set(self.databases.keys())
+         if stale_databases:
+ 
+@@ -850,10 +901,10 @@ class Datasette:
+             self._startup_invoked = True
+ 
+     def sign(self, value, namespace="default"):
+-        return URLSafeSerializer(self._secret, namespace).dumps(value)
++        return _url_safe_serializer(self._secret, namespace).dumps(value)
+ 
+     def unsign(self, signed, namespace="default"):
+-        return URLSafeSerializer(self._secret, namespace).loads(signed)
++        return _url_safe_serializer(self._secret, namespace).loads(signed)
+ 
+     def in_client(self) -> bool:
+         """Check if the current code is executing within a datasette.client request.
+@@ -1410,8 +1461,11 @@ class Datasette:
+             "WHERE database_name = ? AND resource_name = ?",
+             [database, resource],
+         )
+-        column_details = await self._get_resource_column_details(database, resource)
+         result = {}
++        if not rows.rows:
++            # No column types assigned: skip introspecting the columns
++            return result
++        column_details = await self._get_resource_column_details(database, resource)
+         for row in rows.rows:
+             col_name, ct_name, config = row
+             ct_cls = self._column_types.get(ct_name)
+@@ -1537,6 +1591,13 @@ class Datasette:
+     def static(self, path, plugin=None, mount=None):
+         if plugin and mount:
+             raise ValueError("Use either plugin= or mount=, not both")
++        # Resolving the path costs several filesystem calls, and templates
++        # call this for every asset on every page, so cache the result
++        cache_key = (path, plugin, mount, self.setting("base_url"))
++        if self.cache_headers:
++            cached = self._static_urls.get(cache_key)
++            if cached is not None:
++                return cached
+         if plugin:
+             filepath = self._static_plugin_asset_path(plugin, path)
+             url = self.urls.static_plugins(plugin, path)
+@@ -1547,7 +1608,11 @@ class Datasette:
+             url = self.urls.static(path)
+         hash_value = self._static_asset_hash(filepath)
+         separator = "&" if "?" in url else "?"
+-        return url + separator + urllib.parse.urlencode({"_hash": hash_value})
++        static_url = url + separator + urllib.parse.urlencode({"_hash": hash_value})
++        # Bounded in case a template passes arbitrary input to static()
++        if self.cache_headers and len(self._static_urls) < 1000:
++            self._static_urls[cache_key] = static_url
++        return static_url
+ 
+     def _prepare_connection(self, conn, database):
+         conn.row_factory = sqlite3.Row
+@@ -2348,6 +2413,10 @@ ORDER BY allowed.parent, allowed.child
+         return labeled_fks
+ 
+     def absolute_url(self, request, path):
++        if isinstance(path, PrefixedUrlString):
++            # urljoin() calls many str methods on path, each of which is
++            # much slower on PrefixedUrlString than on a plain str
++            path = str(path)
+         url = urllib.parse.urljoin(request.url, path)
+         if url.startswith("http://") and self.setting("force_https_urls"):
+             url = "https://" + url[len("http://") :]
+@@ -2380,6 +2449,22 @@ ORDER BY allowed.parent, allowed.child
+         return {"databases": await self._connected_databases_for_actor(request.actor)}
+ 
+     def _versions(self):
++        # Probing SQLite (opening a connection, running every
++        # prepare_connection hook, creating FTS virtual tables) is slow and
++        # the answer only changes if the configured extensions, the
++        # registered prepare_connection hooks or the version note change.
++        cache_key = (
++            tuple(self.sqlite_extensions),
++            tuple(pm.hook.prepare_connection.get_hookimpls()),
++            self.version_note,
++        )
++        cached = self._versions_cache
++        if cached is None or cached[0] != cache_key:
++            cached = (cache_key, self._versions_uncached())
++            self._versions_cache = cached
++        return copy.deepcopy(cached[1])
++
++    def _versions_uncached(self):
+         conn = sqlite3.connect(":memory:")
+         self._prepare_connection(conn, "_memory")
+         sqlite_version = conn.execute("select sqlite_version()").fetchone()[0]
+@@ -2585,7 +2670,8 @@ ORDER BY allowed.parent, allowed.child
+             }
+         body_scripts = []
+         # pylint: disable=no-member
+-        for extra_script in pm.hook.extra_body_script(
++        for extra_script in _call_hook_if_implemented(
++            pm.hook.extra_body_script,
+             template=template.name,
+             database=context.get("database"),
+             table=context.get("table"),
+@@ -2605,7 +2691,8 @@ ORDER BY allowed.parent, allowed.child
+ 
+         extra_template_vars = {}
+         # pylint: disable=no-member
+-        for extra_vars in pm.hook.extra_template_vars(
++        for extra_vars in _call_hook_if_implemented(
++            pm.hook.extra_template_vars,
+             template=template.name,
+             database=context.get("database"),
+             table=context.get("table"),
+@@ -2624,7 +2711,8 @@ ORDER BY allowed.parent, allowed.child
+ 
+         async def menu_links():
+             links = []
+-            for hook in pm.hook.menu_links(
++            for hook in _call_hook_if_implemented(
++                pm.hook.menu_links,
+                 datasette=self,
+                 actor=request.actor if request else None,
+                 request=request or None,
+@@ -2690,7 +2778,8 @@ ORDER BY allowed.parent, allowed.child
+         # Flatten list-of-lists from plugins:
+         seen_urls = set()
+         collected = []
+-        for hook in getattr(pm.hook, key)(
++        for hook in _call_hook_if_implemented(
++            getattr(pm.hook, key),
+             template=template.name,
+             database=context.get("database"),
+             table=context.get("table"),
+@@ -2738,6 +2827,22 @@ ORDER BY allowed.parent, allowed.child
+             for regex, view_fn in routes_to_add:
+                 routes.append((regex, wrap_view(view_fn, self)))
+ 
++        # Reuse the default routes rather than rebuilding them for every
++        # datasette.client request. They are rebuilt when the registered
++        # plugins (whose static/ directories they mount) or static_mounts
++        # change. Anything else they capture when built (module globals such
++        # as app_root, bound methods such as self._versions, which plugin
++        # static/ directories exist on disk) is fixed from then on, just as
++        # it is for a server that calls app() once.
++        key = (pm.list_name_plugin(), list(self.static_mounts))
++        if key != self._default_routes_key:
++            self._default_routes = _compile_routes(self._build_default_routes())
++            self._default_routes_key = key
++        return _compile_routes(routes) + self._default_routes
++
++    def _build_default_routes(self):
++        routes = []
++
+         def add_route(view, regex):
+             routes.append((regex, view))
+ 
+@@ -3011,11 +3116,7 @@ ORDER BY allowed.parent, allowed.child
+             RowUpdateView.as_view(self),
+             r"/(?P<database>[^\/\.]+)/(?P<table>[^/]+?)/(?P<pks>[^/]+?)/-/update$",
+         )
+-        return [
+-            # Compile any strings to regular expressions
+-            ((re.compile(pattern) if isinstance(pattern, str) else pattern), view)
+-            for pattern, view in routes
+-        ]
++        return routes
+ 
+     async def resolve_database(self, request):
+         database_route = tilde_decode(request.url_vars["database"])
+@@ -3037,6 +3138,12 @@ ORDER BY allowed.parent, allowed.child
+         return ResolvedTable(db, table_name, is_view)
+ 
+     async def resolve_row(self, request):
++        resolved, _ = await self._resolve_row_with_results(request)
++        return resolved
++
++    async def _resolve_row_with_results(self, request):
++        # Also returns the Results, so the row page can reuse them rather
++        # than running the same query a second time
+         db, table_name, _ = await self.resolve_table(request)
+         pk_values = urlsafe_components(request.url_vars["pks"])
+         sql, params, pks = await row_sql_params_pks(db, table_name, pk_values)
+@@ -3048,7 +3155,10 @@ ORDER BY allowed.parent, allowed.child
+         row = results.first()
+         if row is None:
+             raise RowNotFound(db.name, table_name, pk_values)
+-        return ResolvedRow(db, table_name, sql, params, pks, pk_values, results.first())
++        return (
++            ResolvedRow(db, table_name, sql, params, pks, pk_values, results.first()),
++            results,
++        )
+ 
+     async def _startup_sequence(self):
+         """Idempotently run the full startup sequence: table counts for
+@@ -3192,8 +3302,6 @@ class DatasetteRouter:
+         # Give each request a fresh permission check cache, so repeated
+         # datasette.allowed() checks within the request are memoized but
+         # results never persist beyond it
+-        from datasette.permissions import _permission_check_cache
+-
+         cache_token = _permission_check_cache.set({})
+         try:
+             return await self.route_path(scope, receive, send, path)
+@@ -3222,46 +3330,57 @@ class DatasetteRouter:
+                 # Decide privacy after rendering, including for streaming responses
+                 # and error handlers. A public primary resource can still include
+                 # private labels, actor navigation, or cookie-dependent content.
+-                headers = list(message.get("headers", []))
+-                personalized = (
+-                    request.actor is not None
+-                    or "cookie" in request.headers
+-                    or "authorization" in request.headers
+-                    or any(key.lower() == b"set-cookie" for key, _ in headers)
+-                )
++                personalized = request.actor is not None
++                if not personalized:
++                    request_headers = request.headers
++                    personalized = (
++                        "cookie" in request_headers
++                        or "authorization" in request_headers
++                    )
++                # One pass over the response headers: collect (and remove) any
++                # vary headers, and look for set-cookie and cache-control
++                headers = []
++                vary = []
++                has_cache_control = False
++                for key, value in message.get("headers", []):
++                    lower_key = key.lower()
++                    if lower_key == b"vary":
++                        vary.extend(
++                            part.strip() for part in value.split(b",") if part.strip()
++                        )
++                        continue
++                    if lower_key == b"set-cookie":
++                        personalized = True
++                    elif lower_key == b"cache-control":
++                        has_cache_control = True
++                    headers.append((key, value))
+                 if personalized:
+-                    headers = [
+-                        (key, value)
+-                        for key, value in headers
+-                        if key.lower() != b"cache-control"
+-                    ]
++                    if has_cache_control:
++                        headers = [
++                            (key, value)
++                            for key, value in headers
++                            if key.lower() != b"cache-control"
++                        ]
+                     headers.append((b"cache-control", b"private, no-store"))
+ 
+                 # Anonymous responses must not be reused for credentialed requests.
+                 # Preserve any additional variation specified by views or plugins.
+-                vary = [
+-                    part.strip()
+-                    for key, value in headers
+-                    if key.lower() == b"vary"
+-                    for part in value.split(b",")
+-                    if part.strip()
+-                ]
+                 if b"*" not in vary:
++                    lower_vary = {part.lower() for part in vary}
+                     for name in (b"Cookie", b"Authorization"):
+-                        if name.lower() not in {part.lower() for part in vary}:
++                        if name.lower() not in lower_vary:
+                             vary.append(name)
+-                headers = [(k, v) for k, v in headers if k.lower() != b"vary"]
+                 headers.append((b"vary", b", ".join(vary)))
+                 message = dict(message, headers=headers)
+             await original_send(message)
+ 
+         # Populate request_messages if ds_messages cookie is present
+-        try:
+-            request._messages = self.ds.unsign(
+-                request.cookies.get("ds_messages", ""), "messages"
+-            )
+-        except BadSignature:
+-            pass
++        messages_cookie = request.cookies.get("ds_messages")
++        if messages_cookie:
++            try:
++                request._messages = self.ds.unsign(messages_cookie, "messages")
++            except BadSignature:
++                pass
+ 
+         scope_modifications = {}
+         # Apply force_https_urls, if set
+@@ -3293,6 +3412,9 @@ class DatasetteRouter:
+         if token_error is not None:
+             return await self.handle_401(request, send, token_error)
+         scope_modifications["actor"] = actor or default_actor
++        if match is not None:
++            scope_modifications["url_route"] = {"kwargs": match.groupdict()}
++        # A single copy of the scope, rather than one per modification
+         scope = dict(scope, **scope_modifications)
+         request.scope = scope
+ 
+@@ -3306,8 +3428,6 @@ class DatasetteRouter:
+             span.set_attribute(HTTP_ROUTE, route)
+             span.update_name(f"{clamp_http_method(request.method)} {route}")
+ 
+-        new_scope = dict(scope, url_route={"kwargs": match.groupdict()})
+-        request.scope = new_scope
+         try:
+             response = await view(request, send)
+             if response:
+@@ -3367,22 +3487,18 @@ class DatasetteRouter:
+             route_path = request.scope.get("route_path", request.scope["path"])
+             # Jinja requires template names to use "/" even on Windows
+             template_name = "pages" + route_path + ".html"
+-            # Build a list of pages/blah/{name}.html matching expressions
+             environment = self.ds.get_jinja_environment(request)
+-            pattern_templates = [
+-                filepath
+-                for filepath in environment.list_templates()
+-                if "{" in filepath and filepath.startswith("pages/")
+-            ]
+-            page_routes = [
+-                (route_pattern_from_filepath(filepath[len("pages/") :]), filepath)
+-                for filepath in pattern_templates
+-            ]
+             try:
+                 template = environment.select_template([template_name])
+             except TemplateNotFound:
+                 template = None
+             if template is None:
++                # Build a list of pages/blah/{name}.html matching expressions
++                page_routes = [
++                    (route_pattern_from_filepath(filepath[len("pages/") :]), filepath)
++                    for filepath in _list_page_templates(environment.loader)
++                    if "{" in filepath
++                ]
+                 # Try for a pages/blah/{name}.html template match
+                 for regex, wildcard_template in page_routes:
+                     match = regex.match(route_path)
+@@ -3472,6 +3588,14 @@ def _cleaner_task_str(task):
+     return _cleaner_task_str_re.sub("", s)
+ 
+ 
++def _compile_routes(routes):
++    return [
++        # Compile any strings to regular expressions
++        ((re.compile(pattern) if isinstance(pattern, str) else pattern), view)
++        for pattern, view in routes
++    ]
++
++
+ def wrap_view(view_fn_or_class, datasette):
+     is_function = isinstance(view_fn_or_class, types.FunctionType)
+     if is_function:
+@@ -3509,9 +3633,11 @@ def wrap_view_class(view_class, datasette):
+ 
+ 
+ def wrap_view_function(view_fn, datasette):
++    is_coroutine = inspect.iscoroutinefunction(view_fn)
++
+     @functools.wraps(view_fn)
+     async def async_view_fn(request, send):
+-        if inspect.iscoroutinefunction(view_fn):
++        if is_coroutine:
+             response = await async_call_with_supported_arguments(
+                 view_fn,
+                 scope=request.scope,
+@@ -3554,6 +3680,42 @@ def permanent_redirect(path, forward_query_string=False, forward_rest=False):
+     return wrap_view(view, datasette=None)
+ 
+ 
++def _list_page_templates(loader):
++    """
++    Same as [t for t in loader.list_templates() if t.startswith("pages/")]
++    but for Jinja's built-in loaders only walks the pages/ directories,
++    not every template directory - this runs on every 404
++    """
++    if type(loader) is ChoiceLoader:
++        found = set()
++        for child in loader.loaders:
++            found.update(_list_page_templates(child))
++        return sorted(found)
++    if type(loader) is FileSystemLoader:
++        found = set()
++        for searchpath in loader.searchpath:
++            pages_dir = os.path.join(searchpath, "pages")
++            # os.walk(searchpath) only descends into a symlink if followlinks
++            if not loader.followlinks and os.path.islink(pages_dir):
++                continue
++            pages_loader = FileSystemLoader(pages_dir, followlinks=loader.followlinks)
++            found.update("pages/" + name for name in pages_loader.list_templates())
++        return sorted(found)
++    if type(loader) is PrefixLoader:
++        found = []
++        for prefix, child in loader.mapping.items():
++            start = prefix + loader.delimiter
++            # Skip loaders whose prefix means no name can start with pages/
++            if start.startswith("pages/") or "pages/".startswith(start):
++                found.extend(
++                    start + name
++                    for name in child.list_templates()
++                    if (start + name).startswith("pages/")
++                )
++        return found
++    return [name for name in loader.list_templates() if name.startswith("pages/")]
++
++
+ _curly_re = re.compile(r"({.*?})")
+ 
+ 
+diff --git a/datasette/csrf.py b/datasette/csrf.py
+index a62f947..e15eb62 100644
+--- a/datasette/csrf.py
++++ b/datasette/csrf.py
+@@ -49,19 +49,33 @@ def _origin_tuple(value):
+     return scheme, host, port
+ 
+ 
++class _LegacyCsrfToken:
++    """
++    Returns the same random token every time it is called.
++
++    This keeps the token itself rather than storing it in the scope, since a
++    closure over the scope stored in that scope would be a reference cycle,
++    keeping every request's scope alive until the garbage collector runs.
++    """
++
++    __slots__ = ("token",)
++
++    def __init__(self):
++        self.token = None
++
++    def __call__(self):
++        if self.token is None:
++            self.token = secrets.token_urlsafe(32)
++        return self.token
++
++
+ def _install_legacy_csrftoken(scope):
+     """
+     Populate ``scope["csrftoken"]`` with a callable returning a per-request
+     random token. Provided for plugin compatibility only - core no longer
+     uses this value for CSRF enforcement.
+     """
+-
+-    def csrftoken():
+-        if "_datasette_legacy_csrftoken" not in scope:
+-            scope["_datasette_legacy_csrftoken"] = secrets.token_urlsafe(32)
+-        return scope["_datasette_legacy_csrftoken"]
+-
+-    scope["csrftoken"] = csrftoken
++    scope["csrftoken"] = _LegacyCsrfToken()
+ 
+ 
+ class CrossOriginProtectionMiddleware:
+diff --git a/datasette/database.py b/datasette/database.py
+index 542b301..279e518 100644
+--- a/datasette/database.py
++++ b/datasette/database.py
+@@ -1,6 +1,7 @@
+ import asyncio
+ import atexit
+ import contextvars
++import copy
+ import inspect
+ import os
+ import queue
+@@ -25,6 +26,7 @@ from .telemetry import (
+     record_write_queue_wait,
+     sql_attribute,
+     sql_operation_name,
++    start_as_current_span,
+     tracer,
+ )
+ from .telemetry_registry import (
+@@ -122,6 +124,8 @@ class Database:
+         self.cached_size = None
+         self._cached_table_counts = None
+         self._cached_derived_table_dependencies = None
++        self._immutable_schema_cache = {}
++        self._cached_immutable_schema_objects = None
+         self._write_thread = None
+         self._write_queue = None
+         self._closed = False
+@@ -674,10 +678,10 @@ class Database:
+ 
+         def fn_in_execute_span(conn):
+             # Runs on the worker thread
+-            with tracer.start_as_current_span(DB_QUERY_EXECUTE):
++            with start_as_current_span(DB_QUERY_EXECUTE):
+                 return fn(conn)
+ 
+-        with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
++        with start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
+             span.set_attribute(DB_SYSTEM, "sqlite")
+             span.set_attribute(DB_NAMESPACE, self.name)
+             span.set_attribute(CALLBACK, callback_name(fn))
+@@ -735,7 +739,7 @@ class Database:
+         def sql_operation_in_thread(conn):
+             # Expected timeouts and errors with log_sql_errors=False are not
+             # recorded as span errors, so exceptions are handled explicitly
+-            with tracer.start_as_current_span(
++            with start_as_current_span(
+                 DB_QUERY_EXECUTE,
+                 record_exception=False,
+                 set_status_on_exception=False,
+@@ -784,7 +788,7 @@ class Database:
+         with trace(  # noqa: SIM117
+             "sql", database=self.name, sql=sql.strip(), params=params
+         ):
+-            with tracer.start_as_current_span(
++            with start_as_current_span(
+                 DB_QUERY,
+                 kind=DB_QUERY.kind,
+                 record_exception=False,
+@@ -892,13 +896,61 @@ class Database:
+             if row["seq"] > 0 and row["name"] != "temp"
+         ]
+ 
++    @property
++    def _schema_is_immutable(self):
++        # Files opened with ?immutable=1 are assumed by SQLite to never change
++        return not self.is_mutable and not self.is_memory and self.mode is None
++
++    async def _immutable_schema_objects(self):
++        # {name: type} for every table and view, read once
++        if self._cached_immutable_schema_objects is None:
++
++            def _schema_objects(conn):
++                return {
++                    row[0]: row[1]
++                    for row in conn.execute(
++                        "select name, type from sqlite_master "
++                        "where type in ('table', 'view')"
++                    )
++                }
++
++            self._cached_immutable_schema_objects = await self.execute_fn(
++                _schema_objects
++            )
++        return self._cached_immutable_schema_objects
++
++    async def _cached_if_immutable(self, key, compute):
++        # Schema introspection results for immutable databases cannot go
++        # stale, so cache them rather than making a thread-pool round trip.
++        # Only names that exist in the schema are cached, so table names
++        # taken from the URL (e.g. ?_through=) cannot grow the cache.
++        if not self._schema_is_immutable:
++            return await compute()
++        self._check_not_closed()
++        try:
++            result = self._immutable_schema_cache[key]
++        except KeyError:
++            result = await compute()
++            if key[1] in await self._immutable_schema_objects():
++                self._immutable_schema_cache[key] = result
++        return copy.deepcopy(result)
++
++    async def _execute_fn_cached_if_immutable(self, key, fn):
++        return await self._cached_if_immutable(key, lambda: self.execute_fn(fn))
++
+     async def table_exists(self, table):
++        if self._schema_is_immutable:
++            self._check_not_closed()
++            return (await self._immutable_schema_objects()).get(table) == "table"
+         results = await self.execute(
+             "select 1 from sqlite_master where type='table' and name=?", params=(table,)
+         )
+         return bool(results.rows)
+ 
+     async def view_exists(self, table):
++        if self._schema_is_immutable:
++            self._check_not_closed()
++            return (await self._immutable_schema_objects()).get(table) == "view"
+         results = await self.execute(
+             "select 1 from sqlite_master where type='view' and name=?", params=(table,)
+         )
+@@ -917,25 +969,33 @@ class Database:
+         def _table_columns(conn):
+             return table_columns(conn, table)
+ 
+-        return await self.execute_fn(_table_columns)
++        return await self._execute_fn_cached_if_immutable(
++            ("table_columns", table), _table_columns
++        )
+ 
+     async def table_column_details(self, table):
+         def _table_column_details(conn):
+             return table_column_details(conn, table)
+ 
+-        return await self.execute_fn(_table_column_details)
++        return await self._execute_fn_cached_if_immutable(
++            ("table_column_details", table), _table_column_details
++        )
+ 
+     async def primary_keys(self, table):
+         def _primary_keys(conn):
+             return detect_primary_keys(conn, table)
+ 
+-        return await self.execute_fn(_primary_keys)
++        return await self._execute_fn_cached_if_immutable(
++            ("primary_keys", table), _primary_keys
++        )
+ 
+     async def fts_table(self, table):
+         def _fts_table(conn):
+             return detect_fts(conn, table)
+ 
+-        return await self.execute_fn(_fts_table)
++        return await self._execute_fn_cached_if_immutable(
++            ("fts_table", table), _fts_table
++        )
+ 
+     async def label_column_for_table(self, table):
+         explicit_label_column = (await self.ds.table_config(self.name, table)).get(
+@@ -959,7 +1019,9 @@ class Database:
+                 details[name] = (columns[name], is_unique)
+             return details
+ 
+-        column_details = await self.execute_fn(column_details)
++        column_details = await self._execute_fn_cached_if_immutable(
++            ("label_column_details", table), column_details
++        )
+         # Is there just one unique column that's text?
+         unique_text_columns = [
+             name
+@@ -986,8 +1048,9 @@ class Database:
+         return None
+ 
+     async def foreign_keys_for_table(self, table):
+-        return await self.execute_fn(
+-            lambda conn: get_outbound_foreign_keys(conn, table)
++        return await self._execute_fn_cached_if_immutable(
++            ("foreign_keys_for_table", table),
++            lambda conn: get_outbound_foreign_keys(conn, table),
+         )
+ 
+     async def hidden_table_names(self):
+@@ -1029,6 +1092,12 @@ class Database:
+ 
+     async def derived_table_dependencies(self):
+         """Return implementation tables and the tables they derive from."""
++        if (
++            self._schema_is_immutable
++            and self._cached_derived_table_dependencies is not None
++        ):
++            self._check_not_closed()
++            return self._cached_derived_table_dependencies[1]
+         schema_version = (await self.execute("PRAGMA schema_version")).first()[0]
+         if (
+             self._cached_derived_table_dependencies is None
+diff --git a/datasette/handle_exception.py b/datasette/handle_exception.py
+index ef6c7b7..c02d152 100644
+--- a/datasette/handle_exception.py
++++ b/datasette/handle_exception.py
+@@ -29,7 +29,13 @@ def handle_exception(datasette, request, exception):
+         if datasette.pdb:
+             pdb.post_mortem(exception.__traceback__)
+ 
+-        if rich is not None:
++        # Rich tracebacks with locals can take most of a second to render,
++        # so only print them for server errors, not for expected 4xx errors
++        # such as NotFound
++        is_client_error = (
++            isinstance(exception, (Base400, DatasetteError)) and exception.status < 500
++        )
++        if rich is not None and not is_client_error:
+             rich.get_console().print_exception(show_locals=True)
+ 
+         title = None
+diff --git a/datasette/renderer.py b/datasette/renderer.py
+index 0e01f52..f3cf8ac 100644
+--- a/datasette/renderer.py
++++ b/datasette/renderer.py
+@@ -32,6 +32,28 @@ def convert_specific_columns_to_json(rows, columns, json_cols):
+ 
+ def json_renderer(request, args, data, error, truncated=None):
+     """Render a response as JSON"""
++    # unless _json_infinity=1 requested, replace infinity with None
++    if "rows" in data and not value_as_boolean(args.get("_json_infinity", "0")):
++        # Infinite values are rare, so rather than checking every value of
++        # every row first, render with allow_nan=False - which raises
++        # ValueError if there are any - and only then replace them and retry
++        original_data = dict(data)
++        try:
++            return _json_renderer(
++                request, args, data, error, truncated, allow_nan=False
++            )
++        except ValueError:
++            data.clear()
++            data.update(original_data)
++            return _json_renderer(
++                request, args, data, error, truncated, replace_infinity=True
++            )
++    return _json_renderer(request, args, data, error, truncated)
++
++
++def _json_renderer(
++    request, args, data, error, truncated, allow_nan=True, replace_infinity=False
++):
+     status_code = 200
+ 
+     # Handle the _json= parameter which may modify data["rows"]
+@@ -43,8 +65,7 @@ def json_renderer(request, args, data, error, truncated=None):
+             data["rows"], data["columns"], json_cols
+         )
+ 
+-    # unless _json_infinity=1 requested, replace infinity with None
+-    if "rows" in data and not value_as_boolean(args.get("_json_infinity", "0")):
++    if replace_infinity:
+         data["rows"] = [remove_infinites(row) for row in data["rows"]]
+ 
+     # Deal with the _shape option
+@@ -112,10 +133,13 @@ def json_renderer(request, args, data, error, truncated=None):
+     # Handle _nl option for _shape=array
+     nl = args.get("_nl", "")
+     if nl and shape == "array":
+-        body = "\n".join(json.dumps(item, cls=CustomJSONEncoder) for item in data)
++        body = "\n".join(
++            json.dumps(item, cls=CustomJSONEncoder, allow_nan=allow_nan)
++            for item in data
++        )
+         content_type = "text/plain"
+     else:
+-        body = json.dumps(data, cls=CustomJSONEncoder)
++        body = json.dumps(data, cls=CustomJSONEncoder, allow_nan=allow_nan)
+         content_type = "application/json; charset=utf-8"
+     headers = {}
+     return Response(
+diff --git a/datasette/telemetry.py b/datasette/telemetry.py
+index 2fd5a9d..8c17615 100644
+--- a/datasette/telemetry.py
++++ b/datasette/telemetry.py
+@@ -10,14 +10,22 @@ import re
+ import threading
+ import time
+ import weakref
+-from contextlib import contextmanager
++from contextlib import contextmanager, nullcontext
+ 
+ from opentelemetry import context as otel_context_api
+ from opentelemetry import metrics as otel_metrics
+ from opentelemetry import trace as otel_trace
+ from opentelemetry.propagate import extract
+ from opentelemetry.propagators.textmap import Getter
+-from opentelemetry.trace import Link, SpanKind, Status, StatusCode, get_current_span
++from opentelemetry.trace import (
++    INVALID_SPAN,
++    Link,
++    NonRecordingSpan,
++    SpanKind,
++    Status,
++    StatusCode,
++    get_current_span,
++)
+ 
+ from .telemetry_registry import (
+     DB_NAMESPACE,
+@@ -54,6 +62,31 @@ SCHEMA_URL = "https://opentelemetry.io/schemas/1.29.0"
+ tracer = otel_trace.get_tracer("datasette", __version__, schema_url=SCHEMA_URL)
+ meter = otel_metrics.get_meter("datasette", __version__, schema_url=SCHEMA_URL)
+ 
++
++def tracer_provider_installed():
++    """
++    False while no `TracerProvider` has been installed, when every span is a
++    no-op. Check this each time, since a provider can be installed later.
++    """
++    return not isinstance(
++        otel_trace.get_tracer_provider(), otel_trace.ProxyTracerProvider
++    )
++
++
++def start_as_current_span(name, **kwargs):
++    """
++    `tracer.start_as_current_span()`, minus the cost of a no-op span.
++
++    With no provider installed the no-op tracer would make the current
++    `NonRecordingSpan` current again, so that span is used directly.
++    """
++    if "context" not in kwargs and not tracer_provider_installed():
++        span = get_current_span()
++        if isinstance(span, NonRecordingSpan):
++            return nullcontext(span)
++    return tracer.start_as_current_span(name, **kwargs)
++
++
+ MAX_SQL_LENGTH = 2048
+ 
+ 
+@@ -145,7 +178,13 @@ class _ScopeHeadersGetter(Getter):
+ 
+     def get(self, carrier, key):
+         wanted = key.lower().encode("latin-1")
+-        values = [v.decode("latin-1") for k, v in carrier if k.lower() == wanted]
++        size = len(wanted)
++        # Comparing lengths first avoids lowercasing most header names
++        values = [
++            v.decode("latin-1")
++            for k, v in carrier
++            if len(k) == size and k.lower() == wanted
++        ]
+         return values or None
+ 
+     def keys(self, carrier):
+@@ -230,6 +269,15 @@ class TelemetryMiddleware:
+         headers = scope.get("headers") or []
+         # Uses the global propagator, configured with OTEL_PROPAGATORS
+         context = extract(headers, getter=_HEADERS_GETTER)
++        if (
++            not tracer_provider_installed()
++            and get_current_span(context) is INVALID_SPAN
++            and get_current_span() is INVALID_SPAN
++        ):
++            # The no-op tracer would make INVALID_SPAN current, which is
++            # already the current span, so skip creating it
++            await self.app(scope, receive, send)
++            return
+         method = clamp_http_method(scope.get("method", ""))
+         # Renamed to include the route once routing has happened
+         with tracer.start_as_current_span(
+diff --git a/datasette/templates/_query_results.html b/datasette/templates/_query_results.html
+index 5e1e2f7..3a77af3 100644
+--- a/datasette/templates/_query_results.html
++++ b/datasette/templates/_query_results.html
+@@ -1,4 +1,4 @@
+-{% if display_rows %}
++{# Rendering into a variable and outputting it once is much faster than yielding every fragment up through the async include/block/extends generators #}{% set results_html %}{% if display_rows %}
+ <div class="table-wrapper"><table class="rows-and-columns">
+     <thead>
+         <tr>
+@@ -17,4 +17,4 @@
+ </table></div>
+ {% elif show_zero_results %}
+     <p class="zero-results">0 results</p>
+-{% endif %}
++{% endif %}{% endset %}{{ results_html }}
+diff --git a/datasette/templates/_table.html b/datasette/templates/_table.html
+index 171b644..748c07e 100644
+--- a/datasette/templates/_table.html
++++ b/datasette/templates/_table.html
+@@ -1,6 +1,6 @@
+ <!-- above-table-panel is a hook node for plugins to attach to . Displays even if no data available -->
+ <div class="above-table-panel"> </div>
+-{% if display_columns %}
++{# Rendering into a variable and outputting it once is much faster than yielding every fragment up through the async include/block/extends generators #}{% set table_html %}{% if display_columns %}
+ <div class="table-wrapper">
+     <table class="rows-and-columns">
+         <thead>
+@@ -24,7 +24,7 @@
+         {% for row in display_rows %}
+             <tr{% if row.pk_path is not none %} data-row="{{ row.row_path }}"{% if row.row_label %} data-row-label="{{ row.row_label }}"{% endif %}{% endif %}>
+                 {% for cell in row %}
+-                    <td class="col-{{ cell.column|to_css_class }} type-{{ cell.value_type }}">{{ cell.value }}</td>
++                    <td class="col-{{ cell["column"]|to_css_class }} type-{{ cell["value_type"] }}">{{ cell["value"] }}</td>
+                 {% endfor %}
+             </tr>
+         {% endfor %}
+@@ -34,4 +34,4 @@
+ {% endif %}
+ {% if not display_rows %}
+     <p class="zero-results">0 records</p>
+-{% endif %}
++{% endif %}{% endset %}{{ table_html }}
+diff --git a/datasette/templates/base.html b/datasette/templates/base.html
+index 1c5b833..cff9c82 100644
+--- a/datasette/templates/base.html
++++ b/datasette/templates/base.html
+@@ -34,8 +34,8 @@
+ {% endblock %}
+ 
+ <section class="content">
+-{% block content %}
+-{% endblock %}
++{# Rendering into a variable and outputting it once is much faster than yielding every fragment up through the async block/extends generators. The with block keeps content_html out of the template context, so it cannot shadow a content_html variable used by later blocks #}{% with %}{% set content_html %}{% block content %}
++{% endblock %}{% endset %}{{ content_html }}{% endwith %}
+ </section>
+ </div>
+ <footer class="ft">{% block footer %}{% include "_footer.html" %}{% endblock %}</footer>
+diff --git a/datasette/tracer.py b/datasette/tracer.py
+index 1fbda6f..8e8af1a 100644
+--- a/datasette/tracer.py
++++ b/datasette/tracer.py
+@@ -2,7 +2,7 @@ import asyncio
+ import json
+ import time
+ import traceback
+-from contextlib import contextmanager
++from contextlib import ContextDecorator, contextmanager
+ from contextvars import ContextVar
+ 
+ from markupsafe import escape
+@@ -34,11 +34,39 @@ def trace_child_tasks():
+         trace_task_id.reset(token)
+ 
+ 
+-@contextmanager
++class _NotCapturing(ContextDecorator):
++    """
++    Returned by trace() when no request is capturing traces.
++
++    Used as a decorator, it checks again on each call.
++    """
++
++    def __init__(self, trace_type, kwargs):
++        self.trace_type = trace_type
++        self.kwargs = kwargs
++
++    def __enter__(self):
++        return self.kwargs
++
++    def __exit__(self, *exc_info):
++        return None
++
++    def _recreate_cm(self):
++        return trace(self.trace_type, **self.kwargs)
++
++
+ def trace(trace_type, **kwargs):
+     assert not TRACE_RESERVED_KEYS.intersection(
+         kwargs.keys()
+     ), f".trace() keyword parameters cannot include {TRACE_RESERVED_KEYS}"
++    if not tracers:
++        # No request is capturing traces, so there is nothing to record
++        return _NotCapturing(trace_type, kwargs)
++    return _trace(trace_type, kwargs)
++
++
++@contextmanager
++def _trace(trace_type, kwargs):
+     task_id = get_task_id()
+     if task_id is None:
+         yield kwargs
+diff --git a/datasette/utils/__init__.py b/datasette/utils/__init__.py
+index 669d04c..e8e5707 100644
+--- a/datasette/utils/__init__.py
++++ b/datasette/utils/__init__.py
+@@ -16,6 +16,7 @@ import time
+ import types
+ import typing
+ import urllib
++import weakref
+ from collections import Counter, OrderedDict, namedtuple
+ from collections.abc import Iterable
+ from contextlib import contextmanager
+@@ -851,19 +852,26 @@ def detect_fts_sql(table):
+     )
+ 
+ 
++_cached_detect_json1 = None
++
++
+ def detect_json1(conn=None):
+-    close_conn = False
++    global _cached_detect_json1
+     if conn is None:
+-        conn = sqlite3.connect(":memory:")
+-        close_conn = True
++        # Without a connection this probes the SQLite library itself, which
++        # cannot change within a process, so only open a connection once
++        if _cached_detect_json1 is None:
++            conn = sqlite3.connect(":memory:")
++            try:
++                _cached_detect_json1 = detect_json1(conn)
++            finally:
++                conn.close()
++        return _cached_detect_json1
+     try:
+         conn.execute("SELECT json('{}')")
+         return True
+     except sqlite3.Error:
+         return False
+-    finally:
+-        if close_conn:
+-            conn.close()
+ 
+ 
+ def table_columns(conn, table):
+@@ -1247,8 +1255,31 @@ def parse_metadata(content: str) -> dict:
+             raise BadMetadataError("Metadata is not valid JSON or YAML")
+ 
+ 
++# inspect.signature() costs 5-10us, and these helpers run on every request
++# (view functions, output renderers), so cache the parameter names. Weak
++# keys so that per-request closures are not kept alive. A bound method's
++# signature depends only on its __func__, so methods are cached by that.
++_function_parameters = weakref.WeakKeyDictionary()
++_method_parameters = weakref.WeakKeyDictionary()
++
++
++def _signature_parameters(fn):
++    if type(fn) is types.FunctionType:
++        cache, key = _function_parameters, fn
++    elif type(fn) is types.MethodType and type(fn.__func__) is types.FunctionType:
++        cache, key = _method_parameters, fn.__func__
++    else:
++        return tuple(inspect.signature(fn).parameters)
++    parameters = cache.get(key)
++    if parameters is None:
++        # Computed outside of any except block, so that a signature error
++        # does not get a misleading KeyError attached as its __context__
++        parameters = cache[key] = tuple(inspect.signature(fn).parameters)
++    return parameters
++
++
+ def _gather_arguments(fn, kwargs):
+-    parameters = inspect.signature(fn).parameters.keys()
++    parameters = _signature_parameters(fn)
+     call_with = []
+     for parameter in parameters:
+         if parameter not in kwargs:
+@@ -1379,23 +1410,38 @@ class PrefixedUrlString(str):
+     def __str__(self):
+         return super().__str__()
+ 
+-    def __getattribute__(self, name):
+-        if not name.startswith("__") and name in dir(str):
+-
+-            def method(self, *args, **kwargs):
+-                value = getattr(super(), name)(*args, **kwargs)
+-                if isinstance(value, str):
+-                    return type(self)(value)
+-                elif isinstance(value, list):
+-                    return [type(self)(i) for i in value]
+-                elif isinstance(value, tuple):
+-                    return tuple(type(self)(i) for i in value)
+-                else:
+-                    return value
+-
+-            return method.__get__(self)
++
++def _prefixed_url_string_method(str_method):
++    def method(self, *args, **kwargs):
++        value = str_method(self, *args, **kwargs)
++        if isinstance(value, str):
++            return type(self)(value)
++        elif isinstance(value, list):
++            return [type(self)(i) for i in value]
++        elif isinstance(value, tuple):
++            return tuple(type(self)(i) for i in value)
+         else:
+-            return super().__getattribute__(name)
++            return value
++
++    method.__name__ = str_method.__name__
++    method.__qualname__ = f"PrefixedUrlString.{str_method.__name__}"
++    method.__doc__ = str_method.__doc__
++    return method
++
++
++# Wrap str methods so that the strings they return stay PrefixedUrlString.
++# These are set on the class once, rather than built in __getattribute__ on
++# every attribute access, because urljoin() and friends call many str
++# methods on a URL. maketrans() is a staticmethod returning a dict, so it is
++# inherited unchanged.
++for _name in dir(str):
++    if not _name.startswith("__") and _name != "maketrans":
++        setattr(
++            PrefixedUrlString,
++            _name,
++            _prefixed_url_string_method(getattr(str, _name)),
++        )
++del _name
+ 
+ 
+ class StartupError(Exception):
+@@ -1523,17 +1569,25 @@ class TildeEncoder(dict):
+ 
+ 
+ _tilde_encoder = TildeEncoder().__getitem__
++# Matches strings made entirely of _TILDE_ENCODING_SAFE characters
++_tilde_encoding_safe_re = re.compile(r"[A-Za-z0-9_\-]*")
+ 
+ 
+ @documented
+ def tilde_encode(s: str) -> str:
+     "Returns tilde-encoded string - for example ``/foo/bar`` -> ``~2Ffoo~2Fbar``"
+-    return "".join(_tilde_encoder(char) for char in s.encode("utf-8"))
++    # Most names and primary keys need no encoding, so skip the per-byte loop
++    if type(s) is str and _tilde_encoding_safe_re.fullmatch(s):
++        return s
++    return "".join(map(_tilde_encoder, s.encode("utf-8")))
+ 
+ 
+ @documented
+ def tilde_decode(s: str) -> str:
+     "Decodes a tilde-encoded string, so ``~2Ffoo~2Fbar`` -> ``/foo/bar``"
++    # Without "~" or "+" there is nothing to decode - skip the random token
++    if type(s) is str and "~" not in s and "+" not in s:
++        return s
+     # Avoid accidentally decoding a %2f style sequence
+     temp = secrets.token_hex(16)
+     s = s.replace("%", temp)
+@@ -1779,6 +1833,22 @@ def sha256_file(filepath, chunk_size=4096):
+     return hasher.hexdigest()
+ 
+ 
++_sha256_cache = {}
++
++
++def cached_sha256_file(filepath, chunk_size=4096):
++    # Re-hash only if the file has changed. st_ctime_ns cannot be set by
++    # tools that preserve mtime (cp -p, tar), st_ino catches replaced files
++    stat = os.stat(filepath)
++    key = (stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
++    cached = _sha256_cache.get(filepath)
++    if cached is not None and cached[0] == key:
++        return cached[1]
++    digest = sha256_file(filepath, chunk_size=chunk_size)
++    _sha256_cache[filepath] = (key, digest)
++    return digest
++
++
+ async def calculate_etag(filepath, chunk_size=4096):
+     if filepath in _etag_cache:
+         return _etag_cache[filepath]
+diff --git a/datasette/utils/actions_sql.py b/datasette/utils/actions_sql.py
+index 297f5ae..917e3a4 100644
+--- a/datasette/utils/actions_sql.py
++++ b/datasette/utils/actions_sql.py
+@@ -32,6 +32,25 @@ if TYPE_CHECKING:
+     from datasette.permissions import Action
+ 
+ 
++_param_reference_re = re.compile(r":([A-Za-z0-9_]+)")
++_simple_param_name_re = re.compile(r"[A-Za-z0-9_]+")
++
++
++def _rename_params(sql: str, renames: dict[str, str]) -> str:
++    """Rewrite each :key parameter reference in sql to :renames[key]"""
++    if all(_simple_param_name_re.fullmatch(key) for key in renames):
++        # A single pass with a precompiled pattern - PermissionSQL.allow()
++        # invents a new :reason_N name on every call, so compiling a pattern
++        # per name would miss the re module cache on every request
++        return _param_reference_re.sub(
++            lambda m: ":" + renames.get(m.group(1), m.group(1)), sql
++        )
++    for key, new_key in renames.items():
++        pattern = re.compile(":" + re.escape(key) + r"(?![A-Za-z0-9_])")
++        sql = pattern.sub(":" + new_key, sql)
++    return sql
++
++
+ def _child_collation(action: "Action") -> str:
+     """Match resource identity without changing the spelling returned by SQL."""
+     resource_class = action.resource_class
+@@ -581,19 +600,22 @@ async def check_permissions_for_actions(
+         rule_parts = []
+         restriction_parts = []
+ 
+-        for permission_sql in permission_sqls:
++        for j, permission_sql in enumerate(permission_sqls):
+             sql = permission_sql.sql
+             restriction_sql = permission_sql.restriction_sql
+             # Namespace this block's params so identical names used for
+-            # different actions cannot collide
+-            for key in permission_sql.params or {}:
+-                new_key = prefix + key
++            # different actions cannot collide. Positional names keep the
++            # SQL text stable across requests (sqlite3 statement cache)
++            renames = {}
++            for n, key in enumerate(permission_sql.params or {}):
++                new_key = f"{prefix}b{j}_{n}"
+                 params[new_key] = permission_sql.params[key]
+-                pattern = re.compile(":" + re.escape(key) + r"(?![A-Za-z0-9_])")
++                renames[key] = new_key
++            if renames:
+                 if sql:
+-                    sql = pattern.sub(":" + new_key, sql)
++                    sql = _rename_params(sql, renames)
+                 if restriction_sql:
+-                    restriction_sql = pattern.sub(":" + new_key, restriction_sql)
++                    restriction_sql = _rename_params(restriction_sql, renames)
+ 
+             if restriction_sql:
+                 restriction_parts.append(restriction_sql)
+diff --git a/datasette/utils/asgi.py b/datasette/utils/asgi.py
+index 2d4a6cf..af94b9a 100644
+--- a/datasette/utils/asgi.py
++++ b/datasette/utils/asgi.py
+@@ -1,5 +1,7 @@
+ import asyncio
++import functools
+ import json
++import os
+ import re
+ from http.cookies import Morsel, SimpleCookie
+ from mimetypes import guess_type
+@@ -7,9 +9,13 @@ from pathlib import Path
+ from urllib.parse import parse_qs, parse_qsl, urlunparse
+ 
+ import aiofiles
+-import aiofiles.os
+ 
+-from datasette.utils import MultiParams, calculate_etag, error_body, sha256_file
++from datasette.utils import (
++    MultiParams,
++    cached_sha256_file,
++    calculate_etag,
++    error_body,
++)
+ from datasette.utils.multipart import (
+     DEFAULT_MAX_FIELD_SIZE,
+     DEFAULT_MAX_FIELDS,
+@@ -96,6 +102,19 @@ class _RequestHeaders(dict):
+         return super().__contains__(key.lower())
+ 
+ 
++def _parse_cookie_header(cookie_header):
++    cookies = SimpleCookie()
++    cookies.load(cookie_header)
++    return {key: value.value for key, value in cookies.items()}
++
++
++# Browsers send the same Cookie header on every request, and the header is
++# read several times per request (router, actor_from_request, templates).
++# Longer headers are not memoized, so the memo cannot pin much memory.
++_MEMOIZED_COOKIE_HEADER_MAX_LENGTH = 8192
++_memoized_parse_cookie_header = functools.lru_cache(maxsize=128)(_parse_cookie_header)
++
++
+ class Request:
+     def __init__(self, scope, receive, max_post_body_bytes=DEFAULT_MAX_POST_BODY_BYTES):
+         self.scope = scope
+@@ -123,22 +142,38 @@ class Request:
+     def scheme(self):
+         return self.scope.get("scheme") or "http"
+ 
++    # Decoded headers are cached against a snapshot of the raw scope headers
++    # they came from, so they stay correct if request.scope is replaced (as
++    # DatasetteRouter.route_path does) or scope["headers"] is modified
++    _raw_headers = None
++    _decoded_headers = None
++
++    def _headers(self):
++        raw_headers = list(self.scope.get("headers") or [])
++        if self._decoded_headers is None or raw_headers != self._raw_headers:
++            self._decoded_headers = _RequestHeaders(
++                (k.decode("latin-1").lower(), v.decode("latin-1"))
++                for k, v in raw_headers
++            )
++            self._raw_headers = raw_headers
++        return self._decoded_headers
++
+     @property
+     def headers(self):
+-        return _RequestHeaders(
+-            (k.decode("latin-1").lower(), v.decode("latin-1"))
+-            for k, v in self.scope.get("headers") or []
+-        )
++        # A copy, so callers cannot modify the cached headers
++        return _RequestHeaders(self._headers())
+ 
+     @property
+     def host(self):
+-        return self.headers.get("host") or "localhost"
++        return self._headers().get("host") or "localhost"
+ 
+     @property
+     def cookies(self):
+-        cookies = SimpleCookie()
+-        cookies.load(self.headers.get("cookie", ""))
+-        return {key: value.value for key, value in cookies.items()}
++        cookie_header = self.headers.get("cookie", "")
++        if len(cookie_header) > _MEMOIZED_COOKIE_HEADER_MAX_LENGTH:
++            return _parse_cookie_header(cookie_header)
++        # A copy, so callers cannot modify the memoized result
++        return dict(_memoized_parse_cookie_header(cookie_header))
+ 
+     @property
+     def path(self):
+@@ -160,9 +195,20 @@ class Request:
+         qs = self.query_string
+         return "{}{}".format(self.path, ("?" + qs) if qs else "")
+ 
++    # Parsed query string, cached against the query string it was parsed from
++    _args_query_string = None
++    _parsed_args = None
++
+     @property
+     def args(self):
+-        return MultiParams(parse_qs(qs=self.query_string, keep_blank_values=True))
++        query_string = self.query_string
++        if query_string != self._args_query_string:
++            self._parsed_args = parse_qs(qs=query_string, keep_blank_values=True)
++            self._args_query_string = query_string
++        # Copy the lists, so callers cannot modify the cached values
++        return MultiParams(
++            {key: list(values) for key, values in self._parsed_args.items()}
++        )
+ 
+     @property
+     def actor(self):
+@@ -437,23 +483,40 @@ async def asgi_start(send, status, headers=None, content_type="text/plain"):
+     )
+ 
+ 
++# Files up to this size are read in a single thread-pool call
++SEND_FILE_READ_WHOLE_MAX_SIZE = 1024 * 1024
++
++
++def _read_small_file(filepath, max_size):
++    with open(filepath, "rb") as fp:
++        if os.fstat(fp.fileno()).st_size <= max_size:
++            return fp.read()
++    return None
++
++
+ async def asgi_send_file(
+-    send, filepath, filename=None, content_type=None, chunk_size=4096, headers=None
++    send, filepath, filename=None, content_type=None, chunk_size=65536, headers=None
+ ):
+     headers = headers or {}
+     if filename:
+         headers["content-disposition"] = f'attachment; filename="{filename}"'
+ 
++    content_type = content_type or guess_type(str(filepath))[0] or "text/plain"
++    body = await asyncio.get_running_loop().run_in_executor(
++        None, _read_small_file, str(filepath), SEND_FILE_READ_WHOLE_MAX_SIZE
++    )
++    if body is not None:
++        headers["content-length"] = str(len(body))
++        await asgi_start(send, 200, headers, content_type)
++        await send({"type": "http.response.body", "body": body})
++        return
++
+     first = True
+-    headers["content-length"] = str((await aiofiles.os.stat(str(filepath))).st_size)
+     async with aiofiles.open(str(filepath), mode="rb") as fp:
++        # fstat() of the already-open file avoids a separate thread-pool hop
++        headers["content-length"] = str(os.fstat(fp.fileno()).st_size)
+         if first:
+-            await asgi_start(
+-                send,
+-                200,
+-                headers,
+-                content_type or guess_type(str(filepath))[0] or "text/plain",
+-            )
++            await asgi_start(send, 200, headers, content_type)
+             first = False
+         more_body = True
+         while more_body:
+@@ -466,19 +529,70 @@ async def asgi_send_file(
+ 
+ HASHED_STATIC_CACHE_CONTROL = "max-age=31536000, immutable, public"
+ 
+-
+-def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
++# Small static files are served from memory, re-read if the file changes
++STATIC_FILE_CACHE_MAX_FILE_SIZE = 1024 * 1024
++STATIC_FILE_CACHE_MAX_TOTAL_SIZE = 16 * 1024 * 1024
++_static_file_cache = {}
++_static_file_cache_size = 0
++
++
++async def _cached_static_file(full_path):
++    global _static_file_cache_size
++    stat = os.stat(full_path)
++    if stat.st_size > STATIC_FILE_CACHE_MAX_FILE_SIZE:
++        return None
++    # st_ctime_ns cannot be set by tools that preserve mtime (cp -p, tar) and
++    # changes on chmod, st_ino catches files replaced by a rename
++    key = (stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
++    cached = _static_file_cache.get(full_path)
++    if cached is not None and cached[0] == key:
++        return cached[1]
++    body = await asyncio.get_running_loop().run_in_executor(None, full_path.read_bytes)
++    if len(body) != stat.st_size:
++        # Changed while it was being read, so don't cache it
++        return body
++    # Looked up again as another request may have replaced it during the read
++    previous = _static_file_cache.get(full_path)
++    new_size = _static_file_cache_size + len(body)
++    if previous is not None:
++        new_size -= len(previous[1])
++    if new_size <= STATIC_FILE_CACHE_MAX_TOTAL_SIZE:
++        _static_file_cache[full_path] = (key, body)
++        _static_file_cache_size = new_size
++    return body
++
++
++def asgi_static(root_path, chunk_size=65536, headers=None, content_type=None):
+     root_path = Path(root_path)
+     static_headers = {}
++    # (dev, inode) of the resolved root directory, and its resolved path
++    resolved_root = [None, None]
+ 
+     if headers:
+         static_headers = headers.copy()
+ 
++    def resolve_root():
++        # Resolving walks every path component, so reuse the last result for
++        # as long as the root still points at the same directory - a symlinked
++        # root that is re-pointed while Datasette is running is resolved again
++        try:
++            stat = os.stat(root_path)
++        except OSError:
++            return root_path.resolve()
++        if resolved_root[0] != (stat.st_dev, stat.st_ino):
++            resolved = root_path.resolve()
++            try:
++                stat = os.stat(resolved)
++            except OSError:
++                return resolved
++            resolved_root[:] = [(stat.st_dev, stat.st_ino), resolved]
++        return resolved_root[1]
++
+     async def inner_static(request, send):
+         path = request.scope["url_route"]["kwargs"]["path"]
+         headers = static_headers.copy()
+         try:
+-            full_path = (root_path / path).resolve().absolute()
++            full_path = (root_path / path).resolve()
+         except FileNotFoundError:
+             await asgi_send_html(send, "404: Directory not found", 404)
+             return
+@@ -487,7 +601,7 @@ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
+             return
+         # Ensure full_path is within root_path to avoid weird "../" tricks
+         try:
+-            full_path.relative_to(root_path.resolve())
++            full_path.relative_to(resolve_root())
+         except ValueError:
+             await asgi_send_html(send, "404: Path not inside root path", 404)
+             return
+@@ -496,7 +610,8 @@ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
+             hash_value = request.args.get("_hash")
+             if (
+                 hash_value
+-                and hash_value == sha256_file(full_path, chunk_size=chunk_size)[:12]
++                and hash_value
++                == cached_sha256_file(full_path, chunk_size=chunk_size)[:12]
+             ):
+                 headers["Cache-Control"] = HASHED_STATIC_CACHE_CONTROL
+             etag = await calculate_etag(full_path, chunk_size=chunk_size)
+@@ -504,9 +619,17 @@ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
+             if_none_match = request.headers.get("if-none-match")
+             if if_none_match and if_none_match == etag:
+                 return await asgi_send(send, "", 304, headers=headers)
+-            await asgi_send_file(
+-                send, full_path, chunk_size=chunk_size, headers=headers
++            body = await _cached_static_file(full_path)
++            if body is None:
++                await asgi_send_file(
++                    send, full_path, chunk_size=chunk_size, headers=headers
++                )
++                return
++            headers["content-length"] = str(len(body))
++            await asgi_start(
++                send, 200, headers, guess_type(str(full_path))[0] or "text/plain"
+             )
++            await send({"type": "http.response.body", "body": body})
+         except FileNotFoundError:
+             await asgi_send_html(send, "404: File not found", 404)
+             return
+diff --git a/datasette/views/base.py b/datasette/views/base.py
+index 7262edb..b9cc439 100644
+--- a/datasette/views/base.py
++++ b/datasette/views/base.py
+@@ -1,6 +1,7 @@
+ import csv
+ import hashlib
+ import sys
++from itertools import repeat
+ 
+ from datasette.utils import (
+     EscapeHtmlWriter,
+@@ -18,6 +19,31 @@ from datasette.utils.asgi import (
+     Response,
+ )
+ 
++# Streamed CSV rows are collected into chunks of at least this many characters
++# so each ASGI message carries many rows rather than one
++CSV_CHUNK_SIZE = 64 * 1024
++
++
++class _ChunkedWriter:
++    def __init__(self, writer, chunk_size=CSV_CHUNK_SIZE):
++        self.writer = writer
++        self.chunk_size = chunk_size
++        self.parts = []
++        self.size = 0
++
++    async def write(self, content):
++        self.parts.append(content)
++        self.size += len(content)
++        if self.size >= self.chunk_size:
++            await self.flush()
++
++    async def flush(self):
++        chunk = "".join(self.parts)
++        self.parts = []
++        self.size = 0
++        if chunk:
++            await self.writer.write(chunk)
++
+ 
+ class DatasetteError(Exception):
+     def __init__(
+@@ -239,6 +265,7 @@ async def stream_csv(datasette, fetch_data, request, database):
+ 
+     async def stream_fn(r):
+         nonlocal data, trace
++        r = _ChunkedWriter(r)
+         limited_writer = LimitedWriter(r, datasette.setting("max_csv_mb"))
+         if trace:
+             await limited_writer.write(preamble)
+@@ -247,6 +274,9 @@ async def stream_csv(datasette, fetch_data, request, database):
+             writer = csv.writer(limited_writer)
+         first = True
+         next = None
++        # Infinite iterator: any(map(isinstance, row, repeat_bytes)) checks
++        # each cell of a row for bytes without a per-row Python generator
++        repeat_bytes = repeat(bytes)
+         while first or (next and stream):
+             try:
+                 kwargs = {}
+@@ -260,7 +290,7 @@ async def stream_csv(datasette, fetch_data, request, database):
+                     first = False
+                 next = data.get("next")
+                 for row in data["rows"]:
+-                    if any(isinstance(r, bytes) for r in row):
++                    if any(map(isinstance, row, repeat_bytes)):
+                         new_row = []
+                         for column, cell in zip(headings, row):
+                             if isinstance(cell, bytes):
+@@ -316,13 +346,17 @@ async def stream_csv(datasette, fetch_data, request, database):
+                             else:
+                                 new_row.append(cell)
+                         await writer.writerow(new_row)
++                # Send each page before fetching the next one
++                await r.flush()
+             except Exception as ex:  # noqa: BLE001
+                 # Streaming CSV: report the error into the response body and stop
+                 sys.stderr.write(f"Caught this error: {ex}\n")
+                 sys.stderr.flush()
+                 await r.write(str(ex))
++                await r.flush()
+                 return
+         await limited_writer.write(postamble)
++        await r.flush()
+ 
+     headers = {}
+     if datasette.cors:
+@@ -335,4 +369,9 @@ async def stream_csv(datasette, fetch_data, request, database):
+         )
+         headers["content-disposition"] = disposition
+ 
++    if request.method == "HEAD":
++        # A HEAD response has no body, so don't generate (and paginate) the CSV
++        async def stream_fn(r):
++            pass
++
+     return AsgiStream(stream_fn, headers=headers, content_type=content_type)
+diff --git a/datasette/views/database.py b/datasette/views/database.py
+index da20760..2c87f71 100644
+--- a/datasette/views/database.py
++++ b/datasette/views/database.py
+@@ -11,7 +11,7 @@ import markupsafe
+ 
+ from datasette.database import QueryInterrupted
+ from datasette.extras import ExtraScope, extra_names_from_request
+-from datasette.plugins import pm
++from datasette.plugins import DATASETTE_TRACE_PLUGINS, pm
+ from datasette.resources import DatabaseResource, QueryResource
+ from datasette.stored_queries import StoredQuery, stored_query_to_dict
+ from datasette.utils import (
+@@ -235,7 +235,7 @@ class DatabaseView(View):
+         template = environment.select_template(templates)
+         return Response.html(
+             await datasette.render_template(
+-                templates,
++                template,
+                 DatabaseContext(
+                     database=database,
+                     private=private,
+@@ -1195,6 +1195,12 @@ class MagicParameters(dict):
+ async def display_rows(datasette, database, request, rows, columns):
+     display_rows = []
+     truncate_cells = datasette.setting("truncate_cells_html")
++    # Calling a hook costs a few µs even with no implementations, and this
++    # would otherwise happen once per cell. Keep calling it when
++    # DATASETTE_TRACE_PLUGINS is set so the trace still shows every call
++    has_render_cell_hooks = bool(
++        DATASETTE_TRACE_PLUGINS or pm.hook.render_cell.get_hookimpls()
++    )
+     for row in rows:
+         display_row = []
+         for column, value in zip(columns, row):
+@@ -1202,21 +1208,22 @@ async def display_rows(datasette, database, request, rows, columns):
+             # Let the plugins have a go
+             # pylint: disable=no-member
+             plugin_display_value = None
+-            for candidate in pm.hook.render_cell(
+-                row=row,
+-                value=value,
+-                column=column,
+-                table=None,
+-                pks=[],
+-                database=database,
+-                datasette=datasette,
+-                request=request,
+-                column_type=None,
+-            ):
+-                candidate = await await_me_maybe(candidate)
+-                if candidate is not None:
+-                    plugin_display_value = candidate
+-                    break
++            if has_render_cell_hooks:
++                for candidate in pm.hook.render_cell(
++                    row=row,
++                    value=value,
++                    column=column,
++                    table=None,
++                    pks=[],
++                    database=database,
++                    datasette=datasette,
++                    request=request,
++                    column_type=None,
++                ):
++                    candidate = await await_me_maybe(candidate)
++                    if candidate is not None:
++                        plugin_display_value = candidate
++                        break
+             if plugin_display_value is not None:
+                 display_value = plugin_display_value
+             else:
+diff --git a/datasette/views/row.py b/datasette/views/row.py
+index 92e7519..333eded 100644
+--- a/datasette/views/row.py
++++ b/datasette/views/row.py
+@@ -426,11 +426,8 @@ class RowView(BaseView):
+         # headers, regardless of which output format ends up being rendered.
+         request._datasette_private_response = private
+ 
+-        resolved = await self.ds.resolve_row(request)
++        resolved, results = await self.ds._resolve_row_with_results(request)
+         pk_values = resolved.pk_values
+-        results = await resolved.db.execute(
+-            resolved.sql, resolved.params, truncate=True
+-        )
+         columns = [r[0] for r in results.description]
+         rows = list(results.rows)
+         if not rows:
+diff --git a/datasette/views/table.py b/datasette/views/table.py
+index 0a908c6..1aa5d10 100644
+--- a/datasette/views/table.py
++++ b/datasette/views/table.py
+@@ -20,7 +20,7 @@ from datasette.events import (
+ )
+ from datasette.extras import ExtraScope, extra_names_from_request
+ from datasette.filters import Filters
+-from datasette.plugins import pm
++from datasette.plugins import DATASETTE_TRACE_PLUGINS, pm
+ from datasette.resources import DatabaseResource, TableResource
+ from datasette.utils import (
+     CustomJSONEncoder,
+@@ -677,6 +677,8 @@ async def display_columns_and_rows(
+     label_column = None
+     if link_column:
+         label_column = await db.label_column_for_table(table_name)
++        # Same for every row, so build it once rather than once per row
++        table_path = datasette.urls.table(database_name, table_name)
+     row_action_permissions = {}
+     if link_column and request is not None and db.is_mutable:
+         row_action_permissions = await datasette.allowed_many(
+@@ -716,6 +718,12 @@ async def display_columns_and_rows(
+ 
+     cell_rows = []
+     base_url = datasette.setting("base_url")
++    # Calling a hook costs a few µs even with no implementations, and this
++    # would otherwise happen once per cell. Keep calling it when
++    # DATASETTE_TRACE_PLUGINS is set so the trace still shows every call
++    has_render_cell_hooks = bool(
++        DATASETTE_TRACE_PLUGINS or pm.hook.render_cell.get_hookimpls()
++    )
+     for row in rows:
+         cells = []
+         # Unless we are a view, the first column is a link - either to the rowid
+@@ -728,7 +736,6 @@ async def display_columns_and_rows(
+             row_action_label = pk_path
+             if row_label and row_label != pk_path:
+                 row_action_label = f"{pk_path} {row_label}"
+-            table_path = datasette.urls.table(database_name, table_name)
+             row_link = (
+                 f'<a href="{table_path}/{row_path}">{markupsafe.escape(pk_path)!s}</a>'
+             )
+@@ -806,7 +813,7 @@ async def display_columns_and_rows(
+                 )
+                 if candidate is not None:
+                     plugin_display_value = candidate
+-            if plugin_display_value is None:
++            if plugin_display_value is None and has_render_cell_hooks:
+                 for candidate in pm.hook.render_cell(
+                     row=row,
+                     value=value,
+@@ -1697,11 +1704,15 @@ async def _columns_to_select(table_columns, pks, request):
+     return columns
+ 
+ 
+-async def _sortable_columns_for_table(datasette, database_name, table_name, use_rowid):
++async def _sortable_columns_for_table(
++    datasette, database_name, table_name, use_rowid, table_columns=None
++):
+     db = datasette.databases[database_name]
+     table_metadata = await datasette.table_config(database_name, table_name)
+     if "sortable_columns" in table_metadata:
+         sortable_columns = set(table_metadata["sortable_columns"])
++    elif table_columns is not None:
++        sortable_columns = set(table_columns)
+     else:
+         sortable_columns = set(await db.table_columns(table_name))
+     if use_rowid:
+@@ -2121,7 +2132,7 @@ async def table_view_data(
+ 
+     # Deal with custom sort orders
+     sortable_columns = await _sortable_columns_for_table(
+-        datasette, database_name, table_name, use_rowid
++        datasette, database_name, table_name, use_rowid, table_columns
+     )
+ 
+     sort, sort_desc, order_by = await _sort_order(
+@@ -2261,11 +2272,8 @@ async def table_view_data(
+ 
+     # Expand labeled columns if requested
+     expanded_columns = []
+-    # List of (fk_dict, label_column-or-None) pairs for that table
+-    expandable_columns = []
+-    for fk in await db.foreign_keys_for_table(table_name):
+-        label_column = await db.label_column_for_table(fk["other_table"])
+-        expandable_columns.append((fk, label_column))
++    # Label columns are looked up by expand_foreign_keys(), only when needed
++    foreign_keys = await db.foreign_keys_for_table(table_name)
+ 
+     columns_to_expand = None
+     try:
+@@ -2277,11 +2285,11 @@ async def table_view_data(
+         columns_to_expand = request.args.getlist("_label")
+     if columns_to_expand is None and all_labels:
+         # expand all columns with foreign keys
+-        columns_to_expand = [fk["column"] for fk, _ in expandable_columns]
++        columns_to_expand = [fk["column"] for fk in foreign_keys]
+ 
+     if columns_to_expand:
+         expanded_labels = {}
+-        for fk, _ in expandable_columns:
++        for fk in foreign_keys:
+             column = fk["column"]
+             if column not in columns_to_expand:
+                 continue
+@@ -2412,8 +2420,14 @@ async def table_view_data(
+     # Apply transform_value for columns with assigned types
+     ct_map = await datasette.get_column_types(database_name, table_name)
+     transformed_rows = []
+-    for r in raw_sqlite_rows:
+-        row_dict = dict(r)
++    row_keys = raw_sqlite_rows[0].keys() if raw_sqlite_rows else []
++    # dict(sqlite3.Row) looks every key up by name (a linear,
++    # case-insensitive scan), so zip with the keys when they are unique
++    if len({k.lower() for k in row_keys}) == len(row_keys):
++        dict_rows = (dict(zip(row_keys, r)) for r in raw_sqlite_rows)
++    else:
++        dict_rows = (dict(r) for r in raw_sqlite_rows)
++    for row_dict in dict_rows:
+         for col_name, ct in ct_map.items():
+             if col_name in row_dict:
+                 row_dict[col_name] = await ct.transform_value(
+diff --git a/datasette/views/table_extras.py b/datasette/views/table_extras.py
+index 6f3437d..4f82651 100644
+--- a/datasette/views/table_extras.py
++++ b/datasette/views/table_extras.py
+@@ -5,7 +5,7 @@ from typing import ClassVar
+ from datasette.column_types import SQLiteType
+ from datasette.database import QueryInterrupted
+ from datasette.extras import Extra, ExtraExample, ExtraRegistry, ExtraScope, Provider
+-from datasette.plugins import pm
++from datasette.plugins import DATASETTE_TRACE_PLUGINS, pm
+ from datasette.resources import DatabaseResource, TableResource
+ from datasette.utils import (
+     await_me_maybe,
+@@ -686,6 +686,9 @@ class RenderCellExtra(Extra):
+             else {}
+         )
+         rendered_rows = []
++        has_render_cell_hooks = bool(
++            DATASETTE_TRACE_PLUGINS or pm.hook.render_cell.get_hookimpls()
++        )
+         for row in context.rows:
+             rendered_row = {}
+             for value, column in zip(row, context.columns):
+@@ -702,7 +705,7 @@ class RenderCellExtra(Extra):
+                     )
+                     if candidate is not None:
+                         plugin_display_value = candidate
+-                if plugin_display_value is None:
++                if plugin_display_value is None and has_render_cell_hooks:
+                     for candidate in pm.hook.render_cell(
+                         row=row,
+                         value=value,
+diff --git a/tests/test_actions_sql.py b/tests/test_actions_sql.py
+index 76320bd..3c4df1c 100644
+--- a/tests/test_actions_sql.py
++++ b/tests/test_actions_sql.py
+@@ -17,6 +17,19 @@ from datasette.permissions import PermissionSQL
+ from datasette.resources import DatabaseResource, QueryResource, TableResource
+ 
+ 
++def test_rename_params():
++    from datasette.utils.actions_sql import _rename_params
++
++    sql = "SELECT :reason_12 AS reason, :reason_1 AS r, :reason_12x AS x"
++    assert _rename_params(sql, {"reason_12": "a0_reason_12"}) == (
++        "SELECT :a0_reason_12 AS reason, :reason_1 AS r, :reason_12x AS x"
++    )
++    # Names using other characters fall back to a pattern per name
++    assert _rename_params("SELECT :x$y, :x", {"x$y": "a0_x$y"}) == (
++        "SELECT :a0_x$y, :x"
++    )
++
++
+ def test_resource_string_representations():
+     assert str(DatabaseResource("content")) == "content"
+     assert repr(DatabaseResource("content")) == (
+diff --git a/tests/test_csrf_middleware.py b/tests/test_csrf_middleware.py
+index 6c78f69..302c607 100644
+--- a/tests/test_csrf_middleware.py
++++ b/tests/test_csrf_middleware.py
+@@ -7,6 +7,9 @@ in Go 1.25's http.CrossOriginProtection. This replaces the previous
+ token-based asgi-csrf mechanism.
+ """
+ 
++import gc
++import weakref
++
+ import pluggy
+ import pytest
+ 
+@@ -213,6 +216,29 @@ def test_legacy_csrftoken_stable_within_request():
+     scope = {}
+     _install_legacy_csrftoken(scope)
+     assert scope["csrftoken"]() == scope["csrftoken"]()
++    # Including from a copy of the scope made before the first call
++    scope = {}
++    _install_legacy_csrftoken(scope)
++    copied = dict(scope)
++    assert copied["csrftoken"]() == scope["csrftoken"]()
++
++
++def test_legacy_csrftoken_does_not_keep_the_scope_alive():
++    # The scope must be freed by reference counting, not left for the
++    # garbage collector as part of a reference cycle
++    class Scope(dict):
++        pass
++
++    scope = Scope()
++    _install_legacy_csrftoken(scope)
++    scope["csrftoken"]()
++    scope_ref = weakref.ref(scope)
++    gc.disable()
++    try:
++        del scope
++        assert scope_ref() is None
++    finally:
++        gc.enable()
+ 
+ 
+ @pytest.mark.asyncio
+diff --git a/tests/test_custom_pages.py b/tests/test_custom_pages.py
+index 32cfc43..46ca9da 100644
+--- a/tests/test_custom_pages.py
++++ b/tests/test_custom_pages.py
+@@ -2,6 +2,8 @@ import pathlib
+ 
+ import pytest
+ 
++from datasette.app import _list_page_templates
++
+ from .fixtures import make_app_client
+ 
+ TEST_TEMPLATE_DIRS = str(pathlib.Path(__file__).parent / "test_templates")
+@@ -101,6 +103,17 @@ def test_custom_route_pattern_404(custom_pages_client):
+     assert ">Oh no</" in response.text
+ 
+ 
++def test_list_page_templates_matches_list_templates(custom_pages_client):
++    # The 404 handler only walks pages/ directories - check that finds the
++    # same templates, in the same order, as filtering list_templates()
++    environment = custom_pages_client.ds.get_jinja_environment()
++    expected = [
++        name for name in environment.list_templates() if name.startswith("pages/")
++    ]
++    assert "pages/topic_{topic}/{slug}.html" in expected
++    assert _list_page_templates(environment.loader) == expected
++
++
+ def test_custom_route_pattern_with_slash_slash_302(custom_pages_client):
+     # https://github.com/simonw/datasette/issues/2429
+     response = custom_pages_client.get("//example.com/")
+diff --git a/tests/test_html.py b/tests/test_html.py
+index 4dbcf5c..df579a0 100644
+--- a/tests/test_html.py
++++ b/tests/test_html.py
+@@ -1,6 +1,7 @@
+ import copy
+ import hashlib
+ import json
++import os
+ import pathlib
+ import re
+ import urllib.parse
+@@ -167,6 +168,78 @@ def test_static_mounts():
+         assert response.status_code == 404
+ 
+ 
++@pytest.mark.asyncio
++async def test_static_mounts_symlinked_root_repointed(tmp_path):
++    # A symlinked --static root that is switched to a new directory while
++    # Datasette is running serves the new directory, and only that directory
++    (tmp_path / "v1").mkdir()
++    (tmp_path / "v2").mkdir()
++    (tmp_path / "v1" / "a.txt").write_text("one")
++    (tmp_path / "v1" / "old.txt").write_text("old")
++    (tmp_path / "v2" / "a.txt").write_text("two")
++    (tmp_path / "current").symlink_to("v1")
++    ds = Datasette(static_mounts=[("assets", str(tmp_path / "current"))])
++    app = ds.app()
++
++    async def get(path):
++        messages = []
++
++        async def receive():
++            return {"type": "http.request", "body": b"", "more_body": False}
++
++        async def send(message):
++            messages.append(message)
++
++        scope = {
++            "type": "http",
++            "http_version": "1.1",
++            "method": "GET",
++            "path": path,
++            "raw_path": path.encode(),
++            "query_string": b"",
++            "headers": [],
++        }
++        await app(scope, receive, send)
++        body = b"".join(m.get("body", b"") for m in messages[1:])
++        return messages[0]["status"], body
++
++    assert await get("/assets/a.txt") == (200, b"one")
++    (tmp_path / "next").symlink_to("v2")
++    (tmp_path / "next").replace(tmp_path / "current")
++    assert await get("/assets/a.txt") == (200, b"two")
++    assert (await get("/assets/../v1/old.txt"))[0] == 404
++
++
++@pytest.mark.asyncio
++async def test_static_mounts_serve_modified_files(tmp_path, monkeypatch):
++    from datasette.utils import asgi
++
++    monkeypatch.setattr(asgi, "STATIC_FILE_CACHE_MAX_FILE_SIZE", 10)
++    (tmp_path / "small.txt").write_text("one")
++    (tmp_path / "large.txt").write_text("a large file")
++    ds = Datasette(static_mounts=[("assets", str(tmp_path))])
++    for filename, before, after in (
++        ("small.txt", "one", "three"),
++        ("large.txt", "a large file", "a larger file"),
++    ):
++        response = await ds.client.get(f"/assets/{filename}")
++        assert response.text == before
++        (tmp_path / filename).write_text(after)
++        response = await ds.client.get(f"/assets/{filename}")
++        assert response.text == after
++        assert response.headers["content-length"] == str(len(after))
++    # A same-size edit that keeps the old modification time (cp -p, tar)
++    path = tmp_path / "small.txt"
++    stat = path.stat()
++    path.write_text("four!")
++    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
++    response = await ds.client.get("/assets/small.txt")
++    assert response.text == "four!"
++    assert asgi._static_file_cache_size == sum(
++        len(body) for _, body in asgi._static_file_cache.values()
++    )
++
++
+ def test_static_mounts_hash_cache_control():
+     mount_path = pathlib.Path(__file__).parent
+     with make_app_client(static_mounts=[("custom-static", str(mount_path))]) as client:
+diff --git a/tests/test_http_span.py b/tests/test_http_span.py
+index 1fcc93b..d32017e 100644
+--- a/tests/test_http_span.py
++++ b/tests/test_http_span.py
+@@ -27,6 +27,7 @@ from opentelemetry.trace import (
+ from datasette import hookimpl
+ from datasette.app import Datasette
+ from datasette.telemetry import (
++    _HEADERS_GETTER,
+     REQUEST_SPAN_SCOPE_KEY,
+     TelemetryMiddleware,
+     request_span,
+@@ -636,14 +637,29 @@ def test_request_span_skips_a_valid_but_non_recording_span():
+ NO_PROVIDER_PROGRAM = textwrap.dedent("""
+     import asyncio, json, sys
+ 
+-    from datasette.telemetry import TelemetryMiddleware
++    from opentelemetry import trace
++    from opentelemetry.propagate import extract
++
++    from datasette.telemetry import _HEADERS_GETTER, TelemetryMiddleware
+ 
+     seen = {}
++    HEADERS = ([], [(b"traceparent", b"00-" + b"a" * 32 + b"-" + b"b" * 16 + b"-01")])
++
++
++    def noop_trace_id(headers):
++        # The span the no-op tracer makes current. Before opentelemetry-api
++        # 1.40 that ignores an inbound traceparent, from 1.40 it keeps it.
++        context = extract(headers, getter=_HEADERS_GETTER)
++        with trace.NoOpTracer().start_as_current_span("GET", context=context):
++            return trace.get_current_span().get_span_context().trace_id
+ 
+ 
+     async def inner(scope, receive, send):
+         seen.setdefault("sends", []).append(send)
+         seen.setdefault("scopes", []).append(scope)
++        seen.setdefault("trace_ids", []).append(
++            trace.get_current_span().get_span_context().trace_id
++        )
+         await send({"type": "http.response.start", "status": 200, "headers": []})
+         await send({"type": "http.response.body", "body": b""})
+ 
+@@ -654,7 +670,7 @@ NO_PROVIDER_PROGRAM = textwrap.dedent("""
+ 
+     async def main():
+         middleware = TelemetryMiddleware(inner)
+-        for headers in ([], [(b"traceparent", b"00-" + b"a" * 32 + b"-" + b"b" * 16 + b"-01")]):
++        for headers in HEADERS:
+             await middleware(
+                 {
+                     "type": "http",
+@@ -678,6 +694,8 @@ NO_PROVIDER_PROGRAM = textwrap.dedent("""
+                     "sdk_imported": any(
+                         name.startswith("opentelemetry.sdk") for name in sys.modules
+                     ),
++                    "trace_ids": [hex(trace_id) for trace_id in seen["trace_ids"]],
++                    "noop_trace_ids": [hex(noop_trace_id(h)) for h in HEADERS],
+                 }
+             )
+         )
+@@ -710,6 +728,10 @@ def test_no_provider_takes_the_fast_path():
+     )
+     # Nothing is stored in the scope either.
+     assert report["scope_keys"] == [False, False]
++    # The application sees the same current span as it would if the no-op
++    # tracer had run, including for an inbound traceparent
++    assert report["trace_ids"] == report["noop_trace_ids"]
++    assert report["trace_ids"][0] == "0x0"
+ 
+ 
+ @pytest.mark.asyncio
+@@ -737,3 +759,16 @@ async def test_internal_client_requests_are_marked(ds, otel_spans):
+     server = _server_spans(otel_spans)
+     assert server
+     assert all("datasette.internal_client" not in span.attributes for span in server)
++
++
++def test_headers_getter_matches_names_case_insensitively():
++    headers = [
++        (b"host", b"localhost"),
++        (b"TraceParent", b"first"),
++        (b"traceparentx", b"not-this"),
++        (b"traceparent", b"second"),
++    ]
++    assert _HEADERS_GETTER.get(headers, "traceparent") == ["first", "second"]
++    assert _HEADERS_GETTER.get(headers, "TRACEPARENT") == ["first", "second"]
++    assert _HEADERS_GETTER.get(headers, "baggage") is None
++    assert _HEADERS_GETTER.get([], "traceparent") is None
+diff --git a/tests/test_internals_datasette.py b/tests/test_internals_datasette.py
+index ed2aeaf..f965a2a 100644
+--- a/tests/test_internals_datasette.py
++++ b/tests/test_internals_datasette.py
+@@ -93,6 +93,22 @@ def test_static_hash_cached_when_cache_headers_enabled(tmp_path, monkeypatch):
+     assert ds.static("demo.js") == first_url
+ 
+ 
++def test_static_url_cached_when_cache_headers_enabled(tmp_path, monkeypatch):
++    _setup_static_app_root(tmp_path, monkeypatch, "demo.js", b"let a = 1;")
++    ds = Datasette(cache_headers=True)
++    first_url = ds.static("demo.js")
++    # Rejected paths are not cached, so they are rejected every time
++    for _ in range(2):
++        with pytest.raises(ValueError, match="cannot escape static root"):
++            ds.static("../secret.js")
++
++    def fail(path):
++        raise AssertionError("static() should have used its cache")
++
++    monkeypatch.setattr(ds, "_static_asset_path", fail)
++    assert ds.static("demo.js") is first_url
++
++
+ def test_static_hash_recalculated_when_cache_headers_disabled(tmp_path, monkeypatch):
+     asset_path = _setup_static_app_root(tmp_path, monkeypatch, "demo.js", b"let a = 1;")
+     ds = Datasette(cache_headers=False)
+diff --git a/tests/test_internals_request.py b/tests/test_internals_request.py
+index 91ef368..824ac95 100644
+--- a/tests/test_internals_request.py
++++ b/tests/test_internals_request.py
+@@ -80,6 +80,25 @@ def test_request_headers_missing(scope):
+         headers["Content-Type"]
+ 
+ 
++def test_request_headers_follow_scope_changes():
++    scope = {"headers": [(b"host", b"example.com"), (b"x-one", b"1")]}
++    request = Request(scope, None)
++    headers = request.headers
++    assert headers == {"host": "example.com", "x-one": "1"}
++    # Modifying the returned headers does not affect later lookups
++    headers["x-one"] = "changed"
++    assert request.headers["x-one"] == "1"
++    # Replacing request.scope, as DatasetteRouter.route_path does
++    request.scope = dict(scope, headers=[(b"host", b"other.com")])
++    assert request.headers == {"host": "other.com"}
++    assert request.host == "other.com"
++    # Modifying scope["headers"] in place
++    request.scope["headers"].append((b"x-two", b"2"))
++    assert request.headers == {"host": "other.com", "x-two": "2"}
++    request.scope["headers"][0] = (b"host", b"third.com")
++    assert request.host == "third.com"
++
++
+ @pytest.mark.asyncio
+ async def test_request_post_vars():
+     scope = {
+@@ -299,6 +318,26 @@ def test_request_url_vars():
+     ).url_vars
+ 
+ 
++def test_request_cookies():
++    scope = {"headers": [(b"cookie", b"a=1; b=two")]}
++    request = Request(scope, None)
++    cookies = request.cookies
++    assert cookies == {"a": "1", "b": "two"}
++    # Modifying the returned cookies does not affect later lookups
++    cookies["a"] = "changed"
++    assert request.cookies == {"a": "1", "b": "two"}
++    assert Request(dict(scope), None).cookies == {"a": "1", "b": "two"}
++    request.scope = dict(scope, headers=[(b"cookie", b"c=3")])
++    assert request.cookies == {"c": "3"}
++    assert Request({}, None).cookies == {}
++    # Very long Cookie headers are parsed but not memoized
++    long_value = "x" * 10000
++    long_request = Request(
++        {"headers": [(b"cookie", f"big={long_value}".encode())]}, None
++    )
++    assert long_request.cookies == {"big": long_value}
++
++
+ @pytest.mark.parametrize(
+     "path,query_string,expected_full_path",
+     [("/", "", "/"), ("/", "foo=bar", "/?foo=bar"), ("/foo", "bar", "/foo?bar")],
+@@ -327,6 +366,18 @@ def test_request_blank_values():
+     assert request.args._data == {"a": ["b"], "foo": ["bar", "bar2"], "baz": [""]}
+ 
+ 
++def test_request_args_follow_scope_changes():
++    request = Request.fake("/?a=1&a=2")
++    # Modifying the returned lists does not affect later lookups
++    request.args.getlist("a").append("3")
++    assert request.args.getlist("a") == ["1", "2"]
++    # Replacing request.scope, or modifying it in place
++    request.scope = dict(request.scope, query_string=b"b=3")
++    assert request.args._data == {"b": ["3"]}
++    request.scope["query_string"] = b"c=4"
++    assert request.args._data == {"c": ["4"]}
++
++
+ def test_json_in_query_string_name():
+     query_string = (
+         '?_through.["roadside_attraction_characteristics"%2C"characteristic_id"]=1'
+diff --git a/tests/test_internals_urls.py b/tests/test_internals_urls.py
+index 50c6199..714ca4b 100644
+--- a/tests/test_internals_urls.py
++++ b/tests/test_internals_urls.py
+@@ -149,3 +149,21 @@ def test_row(ds, ds_base_url, format, expected):
+     actual = ds.urls.row("_memory", "facetable", "1", format=format)
+     assert actual == expected
+     assert isinstance(actual, PrefixedUrlString)
++
++
++def test_prefixed_url_string_str_methods():
++    url = PrefixedUrlString("/prefix/db/table?_size=1")
++    for value in (
++        url.replace("table", "other"),
++        url.strip("/"),
++        url + "&_sort=id",
++        *url.split("?"),
++        *url.partition("?"),
++    ):
++        assert isinstance(value, PrefixedUrlString)
++    # Methods that do not return strings are unaffected
++    assert url.startswith("/prefix/") is True
++    assert url.find("?") == 16
++    assert url.encode() == b"/prefix/db/table?_size=1"
++    assert url.maketrans("a", "b") == {97: 98}
++    assert type(str(url)) is str
+diff --git a/tests/test_plugins.py b/tests/test_plugins.py
+index 1084d27..a0432ed 100644
+--- a/tests/test_plugins.py
++++ b/tests/test_plugins.py
+@@ -1123,6 +1123,34 @@ async def test_hook_handle_exception_custom_response(ds_client, param):
+     assert response.text == param
+ 
+ 
++@pytest.mark.asyncio
++async def test_handle_exception_rich_traceback_only_for_server_errors(
++    ds_client, monkeypatch
++):
++    from datasette import handle_exception
++
++    printed = []
++
++    class FakeConsole:
++        def print_exception(self, **kwargs):
++            printed.append(kwargs)
++
++    class FakeRich:
++        @staticmethod
++        def get_console():
++            return FakeConsole()
++
++    monkeypatch.setattr(handle_exception, "rich", FakeRich)
++    # A NotFound raised by a view, and a path that matches no route at all
++    for path in ("/fixtures/no_such_table", "/fixtures/nope/nope/nope/nope"):
++        response = await ds_client.get(path)
++        assert response.status_code == 404
++    assert printed == []
++    response = await ds_client.get("/trigger-error")
++    assert response.status_code == 500
++    assert printed == [{"show_locals": True}]
++
++
+ @pytest.mark.asyncio
+ async def test_hook_menu_links(ds_client):
+     def get_menu_links(html):
+diff --git a/tests/test_response_privacy_headers.py b/tests/test_response_privacy_headers.py
+new file mode 100644
+index 0000000..430e12f
+--- /dev/null
++++ b/tests/test_response_privacy_headers.py
+@@ -0,0 +1,142 @@
++from urllib.parse import urlencode
++
++import pytest
++import pytest_asyncio
++
++from datasette import hookimpl
++from datasette.app import Datasette
++
++
++@pytest_asyncio.fixture
++async def ds_raw_headers():
++    class RawHeadersPlugin:
++        __name__ = "RawHeadersPlugin"
++
++        @hookimpl
++        def register_routes(self):
++            async def raw_headers(request, send):
++                headers = [
++                    [part.encode("latin-1") for part in header.split(":", 1)]
++                    for header in request.args.getlist("h")
++                ]
++                await send(
++                    {"type": "http.response.start", "status": 200, "headers": headers}
++                )
++                await send({"type": "http.response.body", "body": b""})
++
++            return [(r"^/-/raw-headers$", raw_headers)]
++
++    datasette = Datasette(memory=True)
++    datasette.pm.register(RawHeadersPlugin(), name="raw_headers")
++    try:
++        await datasette.invoke_startup()
++        yield datasette
++    finally:
++        datasette.pm.unregister(name="raw_headers")
++        datasette.close()
++
++
++async def _response_headers(datasette, response_headers, request_headers):
++    app = datasette.app()
++    query_string = urlencode([("h", header) for header in response_headers])
++    messages = []
++
++    async def receive():
++        return {"type": "http.request", "body": b"", "more_body": False}
++
++    async def send(message):
++        messages.append(message)
++
++    await app(
++        {
++            "type": "http",
++            "http_version": "1.1",
++            "method": "GET",
++            "scheme": "http",
++            "path": "/-/raw-headers",
++            "raw_path": b"/-/raw-headers",
++            "query_string": query_string.encode("latin-1"),
++            "root_path": "",
++            "headers": [(b"host", b"localhost")]
++            + [
++                (name.encode("latin-1"), value.encode("latin-1"))
++                for name, value in request_headers
++            ],
++        },
++        receive,
++        send,
++    )
++    # Ignore headers added by asgi_wrapper() plugins registered by other tests
++    return [
++        (name.decode("latin-1"), value.decode("latin-1"))
++        for name, value in messages[0]["headers"]
++        if name.lower() in RELEVANT_HEADERS
++    ]
++
++
++RELEVANT_HEADERS = {b"content-type", b"cache-control", b"vary", b"set-cookie", b"x-a"}
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize(
++    "request_headers,response_headers,expected",
++    (
++        # Anonymous: cache-control is kept, vary gains Cookie and Authorization
++        (
++            [],
++            ["content-type:text/plain", "Cache-Control:max-age=5"],
++            [
++                ("content-type", "text/plain"),
++                ("Cache-Control", "max-age=5"),
++                ("vary", "Cookie, Authorization"),
++            ],
++        ),
++        # Existing vary headers are merged, de-duplicated case-insensitively
++        (
++            [],
++            ["Vary:Accept, cookie", "x-a:1", "VARY: authorization ,, Origin "],
++            [("x-a", "1"), ("vary", "Accept, cookie, authorization, Origin")],
++        ),
++        (
++            [],
++            ["Vary:*", "x-a:1"],
++            [("x-a", "1"), ("vary", "*")],
++        ),
++        # Cookie or Authorization request headers make the response private
++        (
++            [("cookie", "")],
++            ["Cache-Control:max-age=5", "x-a:1", "cache-control:public"],
++            [
++                ("x-a", "1"),
++                ("cache-control", "private, no-store"),
++                ("vary", "Cookie, Authorization"),
++            ],
++        ),
++        (
++            [("Authorization", "Basic eDp5")],
++            ["x-a:1"],
++            [
++                ("x-a", "1"),
++                ("cache-control", "private, no-store"),
++                ("vary", "Cookie, Authorization"),
++            ],
++        ),
++        # So does setting a cookie, wherever the set-cookie header appears
++        (
++            [],
++            ["Cache-Control:max-age=5", "Vary:Accept", "Set-Cookie:a=b"],
++            [
++                ("Set-Cookie", "a=b"),
++                ("cache-control", "private, no-store"),
++                ("vary", "Accept, Cookie, Authorization"),
++            ],
++        ),
++    ),
++)
++async def test_response_privacy_headers(
++    ds_raw_headers, request_headers, response_headers, expected
++):
++    assert (
++        await _response_headers(ds_raw_headers, response_headers, request_headers)
++        == expected
++    )
+diff --git a/tests/test_table_api.py b/tests/test_table_api.py
+index 58a5ddc..ae5f528 100644
+--- a/tests/test_table_api.py
++++ b/tests/test_table_api.py
+@@ -1302,6 +1302,28 @@ async def test_infinity_returned_as_invalid_json_if_requested(ds_client):
+     ]
+ 
+ 
++@pytest.mark.asyncio
++@pytest.mark.parametrize(
++    "path,expected",
++    [
++        # Infinity in a column that _shape=arrayfirst does not output - this
++        # used to fail with a 500 because the infinity scan turned the first
++        # sqlite3.Row into a list
++        ("/fixtures/-/query.json?sql=select+1+as+a,+9e999+as+b&_shape=arrayfirst", [1]),
++        ("/fixtures/infinity/1.json?_shape=arrayfirst", [1]),
++        # Infinity in the output column is still replaced with null
++        (
++            "/fixtures/-/query.json?sql=select+1+as+a+union+all+select+9e999&_shape=arrayfirst",
++            [1, None],
++        ),
++    ],
++)
++async def test_infinity_arrayfirst(ds_client, path, expected):
++    response = await ds_client.get(path)
++    assert response.status_code == 200
++    assert response.json() == expected
++
++
+ @pytest.mark.asyncio
+ async def test_custom_query_with_unicode_characters(ds_client):
+     # /fixtures/𝐜𝐢𝐭𝐢𝐞𝐬.json
+diff --git a/tests/test_telemetry.py b/tests/test_telemetry.py
+index 801876d..dda85d0 100644
+--- a/tests/test_telemetry.py
++++ b/tests/test_telemetry.py
+@@ -9,7 +9,7 @@ import pytest
+ import sqlite_utils
+ from opentelemetry import context as otel_context_api
+ from opentelemetry import trace as otel_trace
+-from opentelemetry.trace import SpanKind, StatusCode
++from opentelemetry.trace import NonRecordingSpan, SpanContext, SpanKind, StatusCode
+ 
+ from datasette.app import Datasette
+ from datasette.database import Database, QueryInterrupted
+@@ -18,7 +18,9 @@ from datasette.telemetry import (
+     SCHEMA_URL,
+     sql_attribute,
+     sql_operation_name,
++    start_as_current_span,
+     tracer,
++    tracer_provider_installed,
+ )
+ from datasette.version import __version__
+ 
+@@ -1021,3 +1023,34 @@ async def test_execute_fn_exception_marks_span_error(otel_spans):
+     assert len(spans) == 1
+     assert spans[0].status.status_code == StatusCode.ERROR
+     assert any(event.name == "exception" for event in spans[0].events)
++
++
++def test_start_as_current_span_without_a_provider_keeps_the_current_span(
++    monkeypatch,
++):
++    # The suite installs a provider, so pretend that it has not
++    monkeypatch.setattr(
++        otel_trace, "get_tracer_provider", lambda: otel_trace.ProxyTracerProvider()
++    )
++    assert not tracer_provider_installed()
++    with start_as_current_span("db.query") as span:
++        assert span is otel_trace.INVALID_SPAN
++        assert otel_trace.get_current_span() is otel_trace.INVALID_SPAN
++    # A remote parent stays current, as it would with the no-op tracer
++    remote = NonRecordingSpan(SpanContext(trace_id=1, span_id=2, is_remote=True))
++    token = otel_context_api.attach(otel_trace.set_span_in_context(remote))
++    try:
++        with start_as_current_span("db.query", kind=SpanKind.CLIENT) as span:
++            assert span is remote
++            assert otel_trace.get_current_span() is remote
++    finally:
++        otel_context_api.detach(token)
++
++
++@pytest.mark.asyncio
++async def test_start_as_current_span_with_a_provider_records_spans(otel_spans):
++    assert tracer_provider_installed()
++    otel_spans.clear()
++    with start_as_current_span("test.helper") as span:
++        assert span.is_recording()
++    assert [s.name for s in otel_spans.get_finished_spans()] == ["test.helper"]
+diff --git a/tests/test_tracer.py b/tests/test_tracer.py
+index 21cfa95..2afa29e 100644
+--- a/tests/test_tracer.py
++++ b/tests/test_tracer.py
+@@ -96,3 +96,28 @@ def test_trace_parallel_queries():
+     one, two = traces
+     # "two" should have started before "one" ended
+     assert two["start"] < one["end"]
++
++
++@pytest.mark.asyncio
++async def test_trace_records_only_while_capturing():
++    from datasette.tracer import capture_traces, trace
++
++    # Nothing is capturing, so the keyword arguments are passed straight through
++    with trace("custom", foo=1) as kwargs:
++        assert kwargs == {"foo": 1}
++
++    @trace("decorated", foo=2)
++    def decorated():
++        return "result"
++
++    # A decorated function checks whether traces are being captured each call
++    assert decorated() == "result"
++    traces = []
++    with capture_traces(traces):
++        assert decorated() == "result"
++        with trace("custom", foo=1):
++            pass
++    assert [(t["type"], t["foo"]) for t in traces] == [
++        ("decorated", 2),
++        ("custom", 1),
++    ]
+diff --git a/tests/test_utils.py b/tests/test_utils.py
+index 68d4a50..2d7333c 100644
+--- a/tests/test_utils.py
++++ b/tests/test_utils.py
+@@ -838,15 +838,37 @@ async def test_named_parameters(sql, expected, use_async_version):
+         (r"%~-/", "~25~7E-~2F"),
+         ("~25~7E~2D~2F", "~7E25~7E7E~7E2D~7E2F"),
+         ("with space", "with+space"),
++        ("", ""),
++        ("AZaz09_-", "AZaz09_-"),
++        ("café", "caf~C3~A9"),
++        ("line\n", "line~0A"),
+     ),
+ )
+ def test_tilde_encoding(original, expected):
+     actual = utils.tilde_encode(original)
+     assert actual == expected
++    assert type(actual) is str
++    assert type(utils.tilde_encode(utils.PrefixedUrlString(original))) is str
+     # And test round-trip
+     assert original == utils.tilde_decode(actual)
+ 
+ 
++@pytest.mark.parametrize(
++    "encoded,expected",
++    (
++        ("abc", "abc"),
++        ("", ""),
++        ("abc%2Fdef", "abc%2Fdef"),
++        ("a+b", "a b"),
++        ("~2Fabc%2F", "/abc%2F"),
++    ),
++)
++def test_tilde_decode(encoded, expected):
++    actual = utils.tilde_decode(encoded)
++    assert actual == expected
++    assert type(actual) is str
++
++
+ @pytest.mark.parametrize(
+     "url,length,expected",
+     (
+@@ -917,12 +939,51 @@ def test_pairs_to_nested_config(pairs, expected):
+     assert actual == expected
+ 
+ 
++@pytest.mark.asyncio
++@pytest.mark.parametrize("size", [0, 10, 65536, 1024 * 1024, 1024 * 1024 + 1, 3000000])
++async def test_asgi_send_file(tmp_path, size):
++    from datasette.utils.asgi import asgi_send_file
++
++    path = tmp_path / "file.bin"
++    content = (bytes(range(256)) * (size // 256 + 1))[:size]
++    path.write_bytes(content)
++    messages = []
++
++    async def send(message):
++        messages.append(message)
++
++    await asgi_send_file(send, path, headers={"x-test": "1"})
++    start, *body_messages = messages
++    assert start["status"] == 200
++    assert dict(start["headers"]) == {
++        b"x-test": b"1",
++        b"content-length": str(size).encode(),
++        b"content-type": b"application/octet-stream",
++    }
++    assert b"".join(m["body"] for m in body_messages) == content
++    assert not body_messages[-1].get("more_body")
++    assert all(m.get("more_body") for m in body_messages[:-1])
++
++
+ def test_sha256_file(tmp_path):
+     path = tmp_path / "test.txt"
+     path.write_text("hello")
+     assert utils.sha256_file(path, chunk_size=2) == hashlib.sha256(b"hello").hexdigest()
+ 
+ 
++def test_cached_sha256_file(tmp_path):
++    path = tmp_path / "test.txt"
++    path.write_text("hello")
++    assert utils.cached_sha256_file(path) == hashlib.sha256(b"hello").hexdigest()
++    key, _ = utils._sha256_cache[path]
++    utils._sha256_cache[path] = (key, "cached")
++    assert utils.cached_sha256_file(path) == "cached"
++    # Modifying the file invalidates the cached hash
++    path.write_text("hello!")
++    assert utils.cached_sha256_file(path) == hashlib.sha256(b"hello!").hexdigest()
++    utils._sha256_cache.clear()
++
++
+ @pytest.mark.asyncio
+ async def test_calculate_etag(tmp_path):
+     path = tmp_path / "test.txt"

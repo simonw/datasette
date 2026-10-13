@@ -1,0 +1,40 @@
+diff --git a/datasette/app.py b/datasette/app.py
+index 001ce9b..ad4fd58 100644
+--- a/datasette/app.py
++++ b/datasette/app.py
+@@ -104,7 +104,6 @@ from .utils.asgi import (
+     RowNotFound,
+     TableNotFound,
+     asgi_send,
+-    asgi_send_file,
+     asgi_send_redirect,
+     asgi_static,
+ )
+@@ -328,13 +327,22 @@ def _permission_cache_key(actor, action, parent, child):
+     return (actor_key, action.name, parent, action.normalize_child(child))
+ 
+ 
++@functools.cache
++def _favicon_body():
++    # Bundled package file, so it is safe to read it just once
++    return FAVICON_PATH.read_bytes()
++
++
+ async def favicon(request, send):
+-    await asgi_send_file(
+-        send,
+-        str(FAVICON_PATH),
++    body = _favicon_body()
++    await Response(
++        body,
++        headers={
++            "Cache-Control": "max-age=3600, public",
++            "content-length": str(len(body)),
++        },
+         content_type="image/png",
+-        headers={"Cache-Control": "max-age=3600, public"},
+-    )
++    ).asgi_send(send)
+ 
+ 
+ ResolvedTable = collections.namedtuple("ResolvedTable", ("db", "table", "is_view"))

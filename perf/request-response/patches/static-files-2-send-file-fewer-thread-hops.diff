@@ -1,0 +1,114 @@
+diff --git a/datasette/utils/asgi.py b/datasette/utils/asgi.py
+index 2d4a6cf..c748ce4 100644
+--- a/datasette/utils/asgi.py
++++ b/datasette/utils/asgi.py
+@@ -1,5 +1,6 @@
+ import asyncio
+ import json
++import os
+ import re
+ from http.cookies import Morsel, SimpleCookie
+ from mimetypes import guess_type
+@@ -7,7 +8,6 @@ from pathlib import Path
+ from urllib.parse import parse_qs, parse_qsl, urlunparse
+ 
+ import aiofiles
+-import aiofiles.os
+ 
+ from datasette.utils import MultiParams, calculate_etag, error_body, sha256_file
+ from datasette.utils.multipart import (
+@@ -437,23 +437,40 @@ async def asgi_start(send, status, headers=None, content_type="text/plain"):
+     )
+ 
+ 
++# Files up to this size are read in a single thread-pool call
++SEND_FILE_READ_WHOLE_MAX_SIZE = 1024 * 1024
++
++
++def _read_small_file(filepath, max_size):
++    with open(filepath, "rb") as fp:
++        if os.fstat(fp.fileno()).st_size <= max_size:
++            return fp.read()
++    return None
++
++
+ async def asgi_send_file(
+-    send, filepath, filename=None, content_type=None, chunk_size=4096, headers=None
++    send, filepath, filename=None, content_type=None, chunk_size=65536, headers=None
+ ):
+     headers = headers or {}
+     if filename:
+         headers["content-disposition"] = f'attachment; filename="{filename}"'
+ 
++    content_type = content_type or guess_type(str(filepath))[0] or "text/plain"
++    body = await asyncio.get_running_loop().run_in_executor(
++        None, _read_small_file, str(filepath), SEND_FILE_READ_WHOLE_MAX_SIZE
++    )
++    if body is not None:
++        headers["content-length"] = str(len(body))
++        await asgi_start(send, 200, headers, content_type)
++        await send({"type": "http.response.body", "body": body})
++        return
++
+     first = True
+-    headers["content-length"] = str((await aiofiles.os.stat(str(filepath))).st_size)
+     async with aiofiles.open(str(filepath), mode="rb") as fp:
++        # fstat() of the already-open file avoids a separate thread-pool hop
++        headers["content-length"] = str(os.fstat(fp.fileno()).st_size)
+         if first:
+-            await asgi_start(
+-                send,
+-                200,
+-                headers,
+-                content_type or guess_type(str(filepath))[0] or "text/plain",
+-            )
++            await asgi_start(send, 200, headers, content_type)
+             first = False
+         more_body = True
+         while more_body:
+@@ -467,7 +484,7 @@ async def asgi_send_file(
+ HASHED_STATIC_CACHE_CONTROL = "max-age=31536000, immutable, public"
+ 
+ 
+-def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
++def asgi_static(root_path, chunk_size=65536, headers=None, content_type=None):
+     root_path = Path(root_path)
+     static_headers = {}
+ 
+diff --git a/tests/test_utils.py b/tests/test_utils.py
+index 68d4a50..bdce444 100644
+--- a/tests/test_utils.py
++++ b/tests/test_utils.py
+@@ -917,6 +917,32 @@ def test_pairs_to_nested_config(pairs, expected):
+     assert actual == expected
+ 
+ 
++@pytest.mark.asyncio
++@pytest.mark.parametrize("size", [0, 10, 65536, 1024 * 1024, 1024 * 1024 + 1, 3000000])
++async def test_asgi_send_file(tmp_path, size):
++    from datasette.utils.asgi import asgi_send_file
++
++    path = tmp_path / "file.bin"
++    content = (bytes(range(256)) * (size // 256 + 1))[:size]
++    path.write_bytes(content)
++    messages = []
++
++    async def send(message):
++        messages.append(message)
++
++    await asgi_send_file(send, path, headers={"x-test": "1"})
++    start, *body_messages = messages
++    assert start["status"] == 200
++    assert dict(start["headers"]) == {
++        b"x-test": b"1",
++        b"content-length": str(size).encode(),
++        b"content-type": b"application/octet-stream",
++    }
++    assert b"".join(m["body"] for m in body_messages) == content
++    assert not body_messages[-1].get("more_body")
++    assert all(m.get("more_body") for m in body_messages[:-1])
++
++
+ def test_sha256_file(tmp_path):
+     path = tmp_path / "test.txt"
+     path.write_text("hello")

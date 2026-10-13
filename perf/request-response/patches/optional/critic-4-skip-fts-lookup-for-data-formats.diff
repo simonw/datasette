@@ -1,0 +1,20 @@
+diff --git a/datasette/filters.py b/datasette/filters.py
+index 0499d08..5de8a84 100644
+--- a/datasette/filters.py
++++ b/datasette/filters.py
+@@ -58,7 +58,14 @@ def search_filters(request, database, table, datasette):
+         table_metadata = await datasette.table_config(database, table)
+         db = datasette.get_database(database)
+         fts_table = table_metadata.get("fts_table")
+-        fts_table = fts_table or await db.fts_table(table)
++        # supports_search is only used by the HTML page, so data formats
++        # only need the FTS lookup when a search argument is present
++        needs_fts = (request.url_vars.get("format") or "html") == "html" or any(
++            key.startswith("_search") or key in ("_fts_table", "_fts_pk")
++            for key in request.args
++        )
++        if not fts_table and needs_fts:
++            fts_table = await db.fts_table(table)
+         fts_pk = table_metadata.get("fts_pk", "rowid")
+         requested_fts_table = request.args.get("_fts_table")
+         requested_fts_pk = request.args.get("_fts_pk")

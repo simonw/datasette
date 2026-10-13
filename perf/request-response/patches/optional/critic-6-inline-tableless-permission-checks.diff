@@ -1,0 +1,56 @@
+diff --git a/datasette/utils/actions_sql.py b/datasette/utils/actions_sql.py
+index 917e3a4..fafeb6e 100644
+--- a/datasette/utils/actions_sql.py
++++ b/datasette/utils/actions_sql.py
+@@ -23,6 +23,8 @@ The core pattern is:
+ 
+ import asyncio
+ import re
++import sqlite3
++import threading
+ from typing import TYPE_CHECKING
+ 
+ from datasette.utils.permissions import gather_permission_sql_from_hooks
+@@ -679,12 +681,40 @@ async def check_permissions_for_actions(
+         query = (
+             "WITH\n" + ",\n".join(ctes) + "\nSELECT action_idx, is_allowed FROM results"
+         )
+-        result = await datasette.get_internal_database().execute(query, params)
+-        for row in result.rows:
++        rows = _execute_table_free(query, params)
++        if rows is None:
++            result = await datasette.get_internal_database().execute(query, params)
++            rows = result.rows
++        for row in rows:
+             verdicts[unique_actions[row[0]]] = bool(row[1])
+     return verdicts
+ 
+ 
++_table_free = threading.local()
++
++
++def _table_free_authorizer(action, arg1, arg2, db_name, trigger):
++    # Allow only SELECT and function calls: any read of a real table
++    # (including sqlite_master), pragma or attach must use the internal DB
++    if action in (sqlite3.SQLITE_SELECT, sqlite3.SQLITE_FUNCTION):
++        return sqlite3.SQLITE_OK
++    return sqlite3.SQLITE_DENY
++
++
++def _execute_table_free(query, params):
++    """Run permission SQL that reads no tables on a private in-memory
++    connection, on the calling thread. Returns None if the SQL needs a table."""
++    conn = getattr(_table_free, "conn", None)
++    if conn is None:
++        conn = sqlite3.connect(":memory:")
++        conn.set_authorizer(_table_free_authorizer)
++        _table_free.conn = conn
++    try:
++        return conn.execute(query, params).fetchall()
++    except sqlite3.DatabaseError:
++        return None
++
++
+ async def check_permission_for_resource(
+     *,
+     datasette: "Datasette",

@@ -1,0 +1,23 @@
+diff --git a/datasette/cli.py b/datasette/cli.py
+index e83de93..9885708 100644
+--- a/datasette/cli.py
++++ b/datasette/cli.py
+@@ -1,5 +1,6 @@
+ import asyncio
+ import functools
++import gc
+ import json
+ import os
+ import pathlib
+@@ -757,6 +758,11 @@ def serve(
+         if ssl_certfile:
+             uvicorn_kwargs["ssl_certfile"] = ssl_certfile
+         server = uvicorn.Server(uvicorn.Config(ds.app(), **uvicorn_kwargs))
++        # Objects created during startup live as long as the server, so
++        # move them out of the garbage collector's view: full collections
++        # then only scan objects created while serving requests
++        gc.collect()
++        gc.freeze()
+         await server.serve()
+ 
+     asyncio.run(_serve_async())

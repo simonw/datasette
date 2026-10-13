@@ -1,0 +1,220 @@
+diff --git a/datasette/app.py b/datasette/app.py
+index 001ce9b..e05ee66 100644
+--- a/datasette/app.py
++++ b/datasette/app.py
+@@ -3222,35 +3222,46 @@ class DatasetteRouter:
+                 # Decide privacy after rendering, including for streaming responses
+                 # and error handlers. A public primary resource can still include
+                 # private labels, actor navigation, or cookie-dependent content.
+-                headers = list(message.get("headers", []))
+-                personalized = (
+-                    request.actor is not None
+-                    or "cookie" in request.headers
+-                    or "authorization" in request.headers
+-                    or any(key.lower() == b"set-cookie" for key, _ in headers)
+-                )
++                personalized = request.actor is not None
++                if not personalized:
++                    request_headers = request.headers
++                    personalized = (
++                        "cookie" in request_headers
++                        or "authorization" in request_headers
++                    )
++                # One pass over the response headers: collect (and remove) any
++                # vary headers, and look for set-cookie and cache-control
++                headers = []
++                vary = []
++                has_cache_control = False
++                for key, value in message.get("headers", []):
++                    lower_key = key.lower()
++                    if lower_key == b"vary":
++                        vary.extend(
++                            part.strip() for part in value.split(b",") if part.strip()
++                        )
++                        continue
++                    if lower_key == b"set-cookie":
++                        personalized = True
++                    elif lower_key == b"cache-control":
++                        has_cache_control = True
++                    headers.append((key, value))
+                 if personalized:
+-                    headers = [
+-                        (key, value)
+-                        for key, value in headers
+-                        if key.lower() != b"cache-control"
+-                    ]
++                    if has_cache_control:
++                        headers = [
++                            (key, value)
++                            for key, value in headers
++                            if key.lower() != b"cache-control"
++                        ]
+                     headers.append((b"cache-control", b"private, no-store"))
+ 
+                 # Anonymous responses must not be reused for credentialed requests.
+                 # Preserve any additional variation specified by views or plugins.
+-                vary = [
+-                    part.strip()
+-                    for key, value in headers
+-                    if key.lower() == b"vary"
+-                    for part in value.split(b",")
+-                    if part.strip()
+-                ]
+                 if b"*" not in vary:
++                    lower_vary = {part.lower() for part in vary}
+                     for name in (b"Cookie", b"Authorization"):
+-                        if name.lower() not in {part.lower() for part in vary}:
++                        if name.lower() not in lower_vary:
+                             vary.append(name)
+-                headers = [(k, v) for k, v in headers if k.lower() != b"vary"]
+                 headers.append((b"vary", b", ".join(vary)))
+                 message = dict(message, headers=headers)
+             await original_send(message)
+diff --git a/tests/test_response_privacy_headers.py b/tests/test_response_privacy_headers.py
+new file mode 100644
+index 0000000..430e12f
+--- /dev/null
++++ b/tests/test_response_privacy_headers.py
+@@ -0,0 +1,142 @@
++from urllib.parse import urlencode
++
++import pytest
++import pytest_asyncio
++
++from datasette import hookimpl
++from datasette.app import Datasette
++
++
++@pytest_asyncio.fixture
++async def ds_raw_headers():
++    class RawHeadersPlugin:
++        __name__ = "RawHeadersPlugin"
++
++        @hookimpl
++        def register_routes(self):
++            async def raw_headers(request, send):
++                headers = [
++                    [part.encode("latin-1") for part in header.split(":", 1)]
++                    for header in request.args.getlist("h")
++                ]
++                await send(
++                    {"type": "http.response.start", "status": 200, "headers": headers}
++                )
++                await send({"type": "http.response.body", "body": b""})
++
++            return [(r"^/-/raw-headers$", raw_headers)]
++
++    datasette = Datasette(memory=True)
++    datasette.pm.register(RawHeadersPlugin(), name="raw_headers")
++    try:
++        await datasette.invoke_startup()
++        yield datasette
++    finally:
++        datasette.pm.unregister(name="raw_headers")
++        datasette.close()
++
++
++async def _response_headers(datasette, response_headers, request_headers):
++    app = datasette.app()
++    query_string = urlencode([("h", header) for header in response_headers])
++    messages = []
++
++    async def receive():
++        return {"type": "http.request", "body": b"", "more_body": False}
++
++    async def send(message):
++        messages.append(message)
++
++    await app(
++        {
++            "type": "http",
++            "http_version": "1.1",
++            "method": "GET",
++            "scheme": "http",
++            "path": "/-/raw-headers",
++            "raw_path": b"/-/raw-headers",
++            "query_string": query_string.encode("latin-1"),
++            "root_path": "",
++            "headers": [(b"host", b"localhost")]
++            + [
++                (name.encode("latin-1"), value.encode("latin-1"))
++                for name, value in request_headers
++            ],
++        },
++        receive,
++        send,
++    )
++    # Ignore headers added by asgi_wrapper() plugins registered by other tests
++    return [
++        (name.decode("latin-1"), value.decode("latin-1"))
++        for name, value in messages[0]["headers"]
++        if name.lower() in RELEVANT_HEADERS
++    ]
++
++
++RELEVANT_HEADERS = {b"content-type", b"cache-control", b"vary", b"set-cookie", b"x-a"}
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize(
++    "request_headers,response_headers,expected",
++    (
++        # Anonymous: cache-control is kept, vary gains Cookie and Authorization
++        (
++            [],
++            ["content-type:text/plain", "Cache-Control:max-age=5"],
++            [
++                ("content-type", "text/plain"),
++                ("Cache-Control", "max-age=5"),
++                ("vary", "Cookie, Authorization"),
++            ],
++        ),
++        # Existing vary headers are merged, de-duplicated case-insensitively
++        (
++            [],
++            ["Vary:Accept, cookie", "x-a:1", "VARY: authorization ,, Origin "],
++            [("x-a", "1"), ("vary", "Accept, cookie, authorization, Origin")],
++        ),
++        (
++            [],
++            ["Vary:*", "x-a:1"],
++            [("x-a", "1"), ("vary", "*")],
++        ),
++        # Cookie or Authorization request headers make the response private
++        (
++            [("cookie", "")],
++            ["Cache-Control:max-age=5", "x-a:1", "cache-control:public"],
++            [
++                ("x-a", "1"),
++                ("cache-control", "private, no-store"),
++                ("vary", "Cookie, Authorization"),
++            ],
++        ),
++        (
++            [("Authorization", "Basic eDp5")],
++            ["x-a:1"],
++            [
++                ("x-a", "1"),
++                ("cache-control", "private, no-store"),
++                ("vary", "Cookie, Authorization"),
++            ],
++        ),
++        # So does setting a cookie, wherever the set-cookie header appears
++        (
++            [],
++            ["Cache-Control:max-age=5", "Vary:Accept", "Set-Cookie:a=b"],
++            [
++                ("Set-Cookie", "a=b"),
++                ("cache-control", "private, no-store"),
++                ("vary", "Accept, Cookie, Authorization"),
++            ],
++        ),
++    ),
++)
++async def test_response_privacy_headers(
++    ds_raw_headers, request_headers, response_headers, expected
++):
++    assert (
++        await _response_headers(ds_raw_headers, response_headers, request_headers)
++        == expected
++    )

@@ -1,0 +1,32 @@
+diff --git a/datasette/views/table.py b/datasette/views/table.py
+index 0a908c6..31d5edd 100644
+--- a/datasette/views/table.py
++++ b/datasette/views/table.py
+@@ -2261,11 +2261,8 @@ async def table_view_data(
+ 
+     # Expand labeled columns if requested
+     expanded_columns = []
+-    # List of (fk_dict, label_column-or-None) pairs for that table
+-    expandable_columns = []
+-    for fk in await db.foreign_keys_for_table(table_name):
+-        label_column = await db.label_column_for_table(fk["other_table"])
+-        expandable_columns.append((fk, label_column))
++    # Label columns are looked up by expand_foreign_keys(), only when needed
++    foreign_keys = await db.foreign_keys_for_table(table_name)
+ 
+     columns_to_expand = None
+     try:
+@@ -2277,11 +2274,11 @@ async def table_view_data(
+         columns_to_expand = request.args.getlist("_label")
+     if columns_to_expand is None and all_labels:
+         # expand all columns with foreign keys
+-        columns_to_expand = [fk["column"] for fk, _ in expandable_columns]
++        columns_to_expand = [fk["column"] for fk in foreign_keys]
+ 
+     if columns_to_expand:
+         expanded_labels = {}
+-        for fk, _ in expandable_columns:
++        for fk in foreign_keys:
+             column = fk["column"]
+             if column not in columns_to_expand:
+                 continue

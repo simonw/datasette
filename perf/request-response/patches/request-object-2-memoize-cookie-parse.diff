@@ -1,0 +1,76 @@
+diff --git a/datasette/utils/asgi.py b/datasette/utils/asgi.py
+index 2d4a6cf..8c8eaa0 100644
+--- a/datasette/utils/asgi.py
++++ b/datasette/utils/asgi.py
+@@ -1,4 +1,5 @@
+ import asyncio
++import functools
+ import json
+ import re
+ from http.cookies import Morsel, SimpleCookie
+@@ -96,6 +97,19 @@ class _RequestHeaders(dict):
+         return super().__contains__(key.lower())
+ 
+ 
++def _parse_cookie_header(cookie_header):
++    cookies = SimpleCookie()
++    cookies.load(cookie_header)
++    return {key: value.value for key, value in cookies.items()}
++
++
++# Browsers send the same Cookie header on every request, and the header is
++# read several times per request (router, actor_from_request, templates).
++# Longer headers are not memoized, so the memo cannot pin much memory.
++_MEMOIZED_COOKIE_HEADER_MAX_LENGTH = 8192
++_memoized_parse_cookie_header = functools.lru_cache(maxsize=128)(_parse_cookie_header)
++
++
+ class Request:
+     def __init__(self, scope, receive, max_post_body_bytes=DEFAULT_MAX_POST_BODY_BYTES):
+         self.scope = scope
+@@ -136,9 +150,11 @@ class Request:
+ 
+     @property
+     def cookies(self):
+-        cookies = SimpleCookie()
+-        cookies.load(self.headers.get("cookie", ""))
+-        return {key: value.value for key, value in cookies.items()}
++        cookie_header = self.headers.get("cookie", "")
++        if len(cookie_header) > _MEMOIZED_COOKIE_HEADER_MAX_LENGTH:
++            return _parse_cookie_header(cookie_header)
++        # A copy, so callers cannot modify the memoized result
++        return dict(_memoized_parse_cookie_header(cookie_header))
+ 
+     @property
+     def path(self):
+diff --git a/tests/test_internals_request.py b/tests/test_internals_request.py
+index 91ef368..276f996 100644
+--- a/tests/test_internals_request.py
++++ b/tests/test_internals_request.py
+@@ -299,6 +299,26 @@ def test_request_url_vars():
+     ).url_vars
+ 
+ 
++def test_request_cookies():
++    scope = {"headers": [(b"cookie", b"a=1; b=two")]}
++    request = Request(scope, None)
++    cookies = request.cookies
++    assert cookies == {"a": "1", "b": "two"}
++    # Modifying the returned cookies does not affect later lookups
++    cookies["a"] = "changed"
++    assert request.cookies == {"a": "1", "b": "two"}
++    assert Request(dict(scope), None).cookies == {"a": "1", "b": "two"}
++    request.scope = dict(scope, headers=[(b"cookie", b"c=3")])
++    assert request.cookies == {"c": "3"}
++    assert Request({}, None).cookies == {}
++    # Very long Cookie headers are parsed but not memoized
++    long_value = "x" * 10000
++    long_request = Request(
++        {"headers": [(b"cookie", f"big={long_value}".encode())]}, None
++    )
++    assert long_request.cookies == {"big": long_value}
++
++
+ @pytest.mark.parametrize(
+     "path,query_string,expected_full_path",
+     [("/", "", "/"), ("/", "foo=bar", "/?foo=bar"), ("/foo", "bar", "/foo?bar")],

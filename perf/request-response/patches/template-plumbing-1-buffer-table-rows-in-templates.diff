@@ -1,0 +1,43 @@
+diff --git a/datasette/templates/_query_results.html b/datasette/templates/_query_results.html
+index 5e1e2f7..3a77af3 100644
+--- a/datasette/templates/_query_results.html
++++ b/datasette/templates/_query_results.html
+@@ -1,4 +1,4 @@
+-{% if display_rows %}
++{# Rendering into a variable and outputting it once is much faster than yielding every fragment up through the async include/block/extends generators #}{% set results_html %}{% if display_rows %}
+ <div class="table-wrapper"><table class="rows-and-columns">
+     <thead>
+         <tr>
+@@ -17,4 +17,4 @@
+ </table></div>
+ {% elif show_zero_results %}
+     <p class="zero-results">0 results</p>
+-{% endif %}
++{% endif %}{% endset %}{{ results_html }}
+diff --git a/datasette/templates/_table.html b/datasette/templates/_table.html
+index 171b644..748c07e 100644
+--- a/datasette/templates/_table.html
++++ b/datasette/templates/_table.html
+@@ -1,6 +1,6 @@
+ <!-- above-table-panel is a hook node for plugins to attach to . Displays even if no data available -->
+ <div class="above-table-panel"> </div>
+-{% if display_columns %}
++{# Rendering into a variable and outputting it once is much faster than yielding every fragment up through the async include/block/extends generators #}{% set table_html %}{% if display_columns %}
+ <div class="table-wrapper">
+     <table class="rows-and-columns">
+         <thead>
+@@ -24,7 +24,7 @@
+         {% for row in display_rows %}
+             <tr{% if row.pk_path is not none %} data-row="{{ row.row_path }}"{% if row.row_label %} data-row-label="{{ row.row_label }}"{% endif %}{% endif %}>
+                 {% for cell in row %}
+-                    <td class="col-{{ cell.column|to_css_class }} type-{{ cell.value_type }}">{{ cell.value }}</td>
++                    <td class="col-{{ cell["column"]|to_css_class }} type-{{ cell["value_type"] }}">{{ cell["value"] }}</td>
+                 {% endfor %}
+             </tr>
+         {% endfor %}
+@@ -34,4 +34,4 @@
+ {% endif %}
+ {% if not display_rows %}
+     <p class="zero-results">0 records</p>
+-{% endif %}
++{% endif %}{% endset %}{{ table_html }}

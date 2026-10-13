@@ -1,0 +1,85 @@
+diff --git a/datasette/utils/__init__.py b/datasette/utils/__init__.py
+index 669d04c..8a78771 100644
+--- a/datasette/utils/__init__.py
++++ b/datasette/utils/__init__.py
+@@ -1379,23 +1379,38 @@ class PrefixedUrlString(str):
+     def __str__(self):
+         return super().__str__()
+ 
+-    def __getattribute__(self, name):
+-        if not name.startswith("__") and name in dir(str):
+-
+-            def method(self, *args, **kwargs):
+-                value = getattr(super(), name)(*args, **kwargs)
+-                if isinstance(value, str):
+-                    return type(self)(value)
+-                elif isinstance(value, list):
+-                    return [type(self)(i) for i in value]
+-                elif isinstance(value, tuple):
+-                    return tuple(type(self)(i) for i in value)
+-                else:
+-                    return value
+-
+-            return method.__get__(self)
++
++def _prefixed_url_string_method(str_method):
++    def method(self, *args, **kwargs):
++        value = str_method(self, *args, **kwargs)
++        if isinstance(value, str):
++            return type(self)(value)
++        elif isinstance(value, list):
++            return [type(self)(i) for i in value]
++        elif isinstance(value, tuple):
++            return tuple(type(self)(i) for i in value)
+         else:
+-            return super().__getattribute__(name)
++            return value
++
++    method.__name__ = str_method.__name__
++    method.__qualname__ = f"PrefixedUrlString.{str_method.__name__}"
++    method.__doc__ = str_method.__doc__
++    return method
++
++
++# Wrap str methods so that the strings they return stay PrefixedUrlString.
++# These are set on the class once, rather than built in __getattribute__ on
++# every attribute access, because urljoin() and friends call many str
++# methods on a URL. maketrans() is a staticmethod returning a dict, so it is
++# inherited unchanged.
++for _name in dir(str):
++    if not _name.startswith("__") and _name != "maketrans":
++        setattr(
++            PrefixedUrlString,
++            _name,
++            _prefixed_url_string_method(getattr(str, _name)),
++        )
++del _name
+ 
+ 
+ class StartupError(Exception):
+diff --git a/tests/test_internals_urls.py b/tests/test_internals_urls.py
+index 50c6199..714ca4b 100644
+--- a/tests/test_internals_urls.py
++++ b/tests/test_internals_urls.py
+@@ -149,3 +149,21 @@ def test_row(ds, ds_base_url, format, expected):
+     actual = ds.urls.row("_memory", "facetable", "1", format=format)
+     assert actual == expected
+     assert isinstance(actual, PrefixedUrlString)
++
++
++def test_prefixed_url_string_str_methods():
++    url = PrefixedUrlString("/prefix/db/table?_size=1")
++    for value in (
++        url.replace("table", "other"),
++        url.strip("/"),
++        url + "&_sort=id",
++        *url.split("?"),
++        *url.partition("?"),
++    ):
++        assert isinstance(value, PrefixedUrlString)
++    # Methods that do not return strings are unaffected
++    assert url.startswith("/prefix/") is True
++    assert url.find("?") == 16
++    assert url.encode() == b"/prefix/db/table?_size=1"
++    assert url.maketrans("a", "b") == {97: 98}
++    assert type(str(url)) is str

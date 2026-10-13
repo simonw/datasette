@@ -1,0 +1,40 @@
+diff --git a/datasette/app.py b/datasette/app.py
+index 001ce9b..f891929 100644
+--- a/datasette/app.py
++++ b/datasette/app.py
+@@ -328,6 +328,22 @@ def _permission_cache_key(actor, action, parent, child):
+     return (actor_key, action.name, parent, action.normalize_child(child))
+ 
+ 
++@functools.lru_cache(maxsize=64)
++def _cached_url_safe_serializer(secret, namespace):
++    return URLSafeSerializer(secret, namespace)
++
++
++def _url_safe_serializer(secret, namespace):
++    # Serializers are not mutated by dumps()/loads(), so one per
++    # (secret, namespace) can be shared. Constructing them is not free:
++    # itsdangerous runs json.dumps() to detect the serializer type.
++    try:
++        return _cached_url_safe_serializer(secret, namespace)
++    except TypeError:
++        # Unhashable secret, e.g. a list of keys for itsdangerous key rotation
++        return URLSafeSerializer(secret, namespace)
++
++
+ async def favicon(request, send):
+     await asgi_send_file(
+         send,
+@@ -850,10 +866,10 @@ class Datasette:
+             self._startup_invoked = True
+ 
+     def sign(self, value, namespace="default"):
+-        return URLSafeSerializer(self._secret, namespace).dumps(value)
++        return _url_safe_serializer(self._secret, namespace).dumps(value)
+ 
+     def unsign(self, signed, namespace="default"):
+-        return URLSafeSerializer(self._secret, namespace).loads(signed)
++        return _url_safe_serializer(self._secret, namespace).loads(signed)
+ 
+     def in_client(self) -> bool:
+         """Check if the current code is executing within a datasette.client request.

@@ -1,0 +1,21 @@
+diff --git a/datasette/views/table.py b/datasette/views/table.py
+index 0a908c6..9e64808 100644
+--- a/datasette/views/table.py
++++ b/datasette/views/table.py
+@@ -677,6 +677,8 @@ async def display_columns_and_rows(
+     label_column = None
+     if link_column:
+         label_column = await db.label_column_for_table(table_name)
++        # Same for every row, so build it once rather than once per row
++        table_path = datasette.urls.table(database_name, table_name)
+     row_action_permissions = {}
+     if link_column and request is not None and db.is_mutable:
+         row_action_permissions = await datasette.allowed_many(
+@@ -728,7 +730,6 @@ async def display_columns_and_rows(
+             row_action_label = pk_path
+             if row_label and row_label != pk_path:
+                 row_action_label = f"{pk_path} {row_label}"
+-            table_path = datasette.urls.table(database_name, table_name)
+             row_link = (
+                 f'<a href="{table_path}/{row_path}">{markupsafe.escape(pk_path)!s}</a>'
+             )

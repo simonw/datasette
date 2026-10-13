@@ -1,0 +1,66 @@
+diff --git a/datasette/app.py b/datasette/app.py
+index 001ce9b..6a9c55e 100644
+--- a/datasette/app.py
++++ b/datasette/app.py
+@@ -500,6 +500,7 @@ class Datasette:
+ 
+         self.cache_headers = cache_headers
+         self._static_asset_hashes = {}
++        self._static_urls = {}
+         self.cors = cors
+         config_files = []
+         metadata_files = []
+@@ -1537,6 +1538,13 @@ class Datasette:
+     def static(self, path, plugin=None, mount=None):
+         if plugin and mount:
+             raise ValueError("Use either plugin= or mount=, not both")
++        # Resolving the path costs several filesystem calls, and templates
++        # call this for every asset on every page, so cache the result
++        cache_key = (path, plugin, mount, self.setting("base_url"))
++        if self.cache_headers:
++            cached = self._static_urls.get(cache_key)
++            if cached is not None:
++                return cached
+         if plugin:
+             filepath = self._static_plugin_asset_path(plugin, path)
+             url = self.urls.static_plugins(plugin, path)
+@@ -1547,7 +1555,11 @@ class Datasette:
+             url = self.urls.static(path)
+         hash_value = self._static_asset_hash(filepath)
+         separator = "&" if "?" in url else "?"
+-        return url + separator + urllib.parse.urlencode({"_hash": hash_value})
++        static_url = url + separator + urllib.parse.urlencode({"_hash": hash_value})
++        # Bounded in case a template passes arbitrary input to static()
++        if self.cache_headers and len(self._static_urls) < 1000:
++            self._static_urls[cache_key] = static_url
++        return static_url
+ 
+     def _prepare_connection(self, conn, database):
+         conn.row_factory = sqlite3.Row
+diff --git a/tests/test_internals_datasette.py b/tests/test_internals_datasette.py
+index ed2aeaf..f965a2a 100644
+--- a/tests/test_internals_datasette.py
++++ b/tests/test_internals_datasette.py
+@@ -93,6 +93,22 @@ def test_static_hash_cached_when_cache_headers_enabled(tmp_path, monkeypatch):
+     assert ds.static("demo.js") == first_url
+ 
+ 
++def test_static_url_cached_when_cache_headers_enabled(tmp_path, monkeypatch):
++    _setup_static_app_root(tmp_path, monkeypatch, "demo.js", b"let a = 1;")
++    ds = Datasette(cache_headers=True)
++    first_url = ds.static("demo.js")
++    # Rejected paths are not cached, so they are rejected every time
++    for _ in range(2):
++        with pytest.raises(ValueError, match="cannot escape static root"):
++            ds.static("../secret.js")
++
++    def fail(path):
++        raise AssertionError("static() should have used its cache")
++
++    monkeypatch.setattr(ds, "_static_asset_path", fail)
++    assert ds.static("demo.js") is first_url
++
++
+ def test_static_hash_recalculated_when_cache_headers_disabled(tmp_path, monkeypatch):
+     asset_path = _setup_static_app_root(tmp_path, monkeypatch, "demo.js", b"let a = 1;")
+     ds = Datasette(cache_headers=False)

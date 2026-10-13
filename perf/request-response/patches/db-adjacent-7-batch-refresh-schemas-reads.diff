@@ -1,0 +1,57 @@
+diff --git a/datasette/app.py b/datasette/app.py
+index 001ce9b..22af622 100644
+--- a/datasette/app.py
++++ b/datasette/app.py
+@@ -731,12 +731,6 @@ class Datasette:
+             await init_internal_db(internal_db)
+             await self.apply_metadata_json()
+             self.internal_db_created = True
+-        current_schema_versions = {
+-            row["database_name"]: row["schema_version"]
+-            for row in await internal_db.execute(
+-                "select database_name, schema_version from catalog_databases"
+-            )
+-        }
+         catalog_table_names = (
+             "catalog_columns",
+             "catalog_foreign_keys",
+@@ -745,16 +739,30 @@ class Datasette:
+             "catalog_tables",
+             "catalog_databases",
+         )
+-        # Delete stale entries for databases that are no longer attached
+-        catalog_database_names = set(current_schema_versions.keys())
+-        for table in catalog_table_names[:-1]:
+-            catalog_database_names.update(
+-                row["database_name"]
+-                for row in await internal_db.execute(
+-                    f"select distinct database_name from {table}"
++
++        def read_catalog_database_names(conn):
++            # One thread-pool round trip for all of the catalog reads
++            current_schema_versions = {
++                row["database_name"]: row["schema_version"]
++                for row in conn.execute(
++                    "select database_name, schema_version from catalog_databases"
+                 )
+-                if row["database_name"] is not None
+-            )
++            }
++            catalog_database_names = set(current_schema_versions.keys())
++            for table in catalog_table_names[:-1]:
++                catalog_database_names.update(
++                    row["database_name"]
++                    for row in conn.execute(
++                        f"select distinct database_name from {table}"
++                    )
++                    if row["database_name"] is not None
++                )
++            return current_schema_versions, catalog_database_names
++
++        current_schema_versions, catalog_database_names = await internal_db.execute_fn(
++            read_catalog_database_names
++        )
++        # Delete stale entries for databases that are no longer attached
+         stale_databases = catalog_database_names - set(self.databases.keys())
+         if stale_databases:
+ 

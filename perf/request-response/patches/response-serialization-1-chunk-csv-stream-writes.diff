@@ -1,0 +1,62 @@
+diff --git a/datasette/views/base.py b/datasette/views/base.py
+index 7262edb..1d66290 100644
+--- a/datasette/views/base.py
++++ b/datasette/views/base.py
+@@ -18,6 +18,31 @@ from datasette.utils.asgi import (
+     Response,
+ )
+ 
++# Streamed CSV rows are collected into chunks of at least this many characters
++# so each ASGI message carries many rows rather than one
++CSV_CHUNK_SIZE = 64 * 1024
++
++
++class _ChunkedWriter:
++    def __init__(self, writer, chunk_size=CSV_CHUNK_SIZE):
++        self.writer = writer
++        self.chunk_size = chunk_size
++        self.parts = []
++        self.size = 0
++
++    async def write(self, content):
++        self.parts.append(content)
++        self.size += len(content)
++        if self.size >= self.chunk_size:
++            await self.flush()
++
++    async def flush(self):
++        chunk = "".join(self.parts)
++        self.parts = []
++        self.size = 0
++        if chunk:
++            await self.writer.write(chunk)
++
+ 
+ class DatasetteError(Exception):
+     def __init__(
+@@ -239,6 +264,7 @@ async def stream_csv(datasette, fetch_data, request, database):
+ 
+     async def stream_fn(r):
+         nonlocal data, trace
++        r = _ChunkedWriter(r)
+         limited_writer = LimitedWriter(r, datasette.setting("max_csv_mb"))
+         if trace:
+             await limited_writer.write(preamble)
+@@ -316,13 +342,17 @@ async def stream_csv(datasette, fetch_data, request, database):
+                             else:
+                                 new_row.append(cell)
+                         await writer.writerow(new_row)
++                # Send each page before fetching the next one
++                await r.flush()
+             except Exception as ex:  # noqa: BLE001
+                 # Streaming CSV: report the error into the response body and stop
+                 sys.stderr.write(f"Caught this error: {ex}\n")
+                 sys.stderr.flush()
+                 await r.write(str(ex))
++                await r.flush()
+                 return
+         await limited_writer.write(postamble)
++        await r.flush()
+ 
+     headers = {}
+     if datasette.cors:

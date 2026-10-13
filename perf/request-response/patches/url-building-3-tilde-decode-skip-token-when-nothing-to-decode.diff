@@ -1,0 +1,41 @@
+diff --git a/datasette/utils/__init__.py b/datasette/utils/__init__.py
+index 669d04c..55c5872 100644
+--- a/datasette/utils/__init__.py
++++ b/datasette/utils/__init__.py
+@@ -1534,6 +1534,9 @@ def tilde_encode(s: str) -> str:
+ @documented
+ def tilde_decode(s: str) -> str:
+     "Decodes a tilde-encoded string, so ``~2Ffoo~2Fbar`` -> ``/foo/bar``"
++    # Without "~" or "+" there is nothing to decode - skip the random token
++    if type(s) is str and "~" not in s and "+" not in s:
++        return s
+     # Avoid accidentally decoding a %2f style sequence
+     temp = secrets.token_hex(16)
+     s = s.replace("%", temp)
+diff --git a/tests/test_utils.py b/tests/test_utils.py
+index 68d4a50..92cb59e 100644
+--- a/tests/test_utils.py
++++ b/tests/test_utils.py
+@@ -847,6 +847,22 @@ def test_tilde_encoding(original, expected):
+     assert original == utils.tilde_decode(actual)
+ 
+ 
++@pytest.mark.parametrize(
++    "encoded,expected",
++    (
++        ("abc", "abc"),
++        ("", ""),
++        ("abc%2Fdef", "abc%2Fdef"),
++        ("a+b", "a b"),
++        ("~2Fabc%2F", "/abc%2F"),
++    ),
++)
++def test_tilde_decode(encoded, expected):
++    actual = utils.tilde_decode(encoded)
++    assert actual == expected
++    assert type(actual) is str
++
++
+ @pytest.mark.parametrize(
+     "url,length,expected",
+     (

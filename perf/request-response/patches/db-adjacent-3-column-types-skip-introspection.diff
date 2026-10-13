@@ -1,0 +1,17 @@
+diff --git a/datasette/app.py b/datasette/app.py
+index 001ce9b..9cdc8a7 100644
+--- a/datasette/app.py
++++ b/datasette/app.py
+@@ -1410,8 +1410,11 @@ class Datasette:
+             "WHERE database_name = ? AND resource_name = ?",
+             [database, resource],
+         )
+-        column_details = await self._get_resource_column_details(database, resource)
+         result = {}
++        if not rows.rows:
++            # No column types assigned: skip introspecting the columns
++            return result
++        column_details = await self._get_resource_column_details(database, resource)
+         for row in rows.rows:
+             col_name, ct_name, config = row
+             ct_cls = self._column_types.get(ct_name)

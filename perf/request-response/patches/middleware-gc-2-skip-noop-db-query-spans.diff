@@ -1,0 +1,161 @@
+diff --git a/datasette/database.py b/datasette/database.py
+index 542b301..ea1ff97 100644
+--- a/datasette/database.py
++++ b/datasette/database.py
+@@ -25,6 +25,7 @@ from .telemetry import (
+     record_write_queue_wait,
+     sql_attribute,
+     sql_operation_name,
++    start_as_current_span,
+     tracer,
+ )
+ from .telemetry_registry import (
+@@ -674,10 +675,10 @@ class Database:
+ 
+         def fn_in_execute_span(conn):
+             # Runs on the worker thread
+-            with tracer.start_as_current_span(DB_QUERY_EXECUTE):
++            with start_as_current_span(DB_QUERY_EXECUTE):
+                 return fn(conn)
+ 
+-        with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
++        with start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
+             span.set_attribute(DB_SYSTEM, "sqlite")
+             span.set_attribute(DB_NAMESPACE, self.name)
+             span.set_attribute(CALLBACK, callback_name(fn))
+@@ -735,7 +736,7 @@ class Database:
+         def sql_operation_in_thread(conn):
+             # Expected timeouts and errors with log_sql_errors=False are not
+             # recorded as span errors, so exceptions are handled explicitly
+-            with tracer.start_as_current_span(
++            with start_as_current_span(
+                 DB_QUERY_EXECUTE,
+                 record_exception=False,
+                 set_status_on_exception=False,
+@@ -784,7 +785,7 @@ class Database:
+         with trace(  # noqa: SIM117
+             "sql", database=self.name, sql=sql.strip(), params=params
+         ):
+-            with tracer.start_as_current_span(
++            with start_as_current_span(
+                 DB_QUERY,
+                 kind=DB_QUERY.kind,
+                 record_exception=False,
+diff --git a/datasette/telemetry.py b/datasette/telemetry.py
+index 2fd5a9d..caa5fa6 100644
+--- a/datasette/telemetry.py
++++ b/datasette/telemetry.py
+@@ -10,14 +10,21 @@ import re
+ import threading
+ import time
+ import weakref
+-from contextlib import contextmanager
++from contextlib import contextmanager, nullcontext
+ 
+ from opentelemetry import context as otel_context_api
+ from opentelemetry import metrics as otel_metrics
+ from opentelemetry import trace as otel_trace
+ from opentelemetry.propagate import extract
+ from opentelemetry.propagators.textmap import Getter
+-from opentelemetry.trace import Link, SpanKind, Status, StatusCode, get_current_span
++from opentelemetry.trace import (
++    Link,
++    NonRecordingSpan,
++    SpanKind,
++    Status,
++    StatusCode,
++    get_current_span,
++)
+ 
+ from .telemetry_registry import (
+     DB_NAMESPACE,
+@@ -54,6 +61,31 @@ SCHEMA_URL = "https://opentelemetry.io/schemas/1.29.0"
+ tracer = otel_trace.get_tracer("datasette", __version__, schema_url=SCHEMA_URL)
+ meter = otel_metrics.get_meter("datasette", __version__, schema_url=SCHEMA_URL)
+ 
++
++def tracer_provider_installed():
++    """
++    False while no `TracerProvider` has been installed, when every span is a
++    no-op. Check this each time, since a provider can be installed later.
++    """
++    return not isinstance(
++        otel_trace.get_tracer_provider(), otel_trace.ProxyTracerProvider
++    )
++
++
++def start_as_current_span(name, **kwargs):
++    """
++    `tracer.start_as_current_span()`, minus the cost of a no-op span.
++
++    With no provider installed the no-op tracer would make the current
++    `NonRecordingSpan` current again, so that span is used directly.
++    """
++    if "context" not in kwargs and not tracer_provider_installed():
++        span = get_current_span()
++        if isinstance(span, NonRecordingSpan):
++            return nullcontext(span)
++    return tracer.start_as_current_span(name, **kwargs)
++
++
+ MAX_SQL_LENGTH = 2048
+ 
+ 
+diff --git a/tests/test_telemetry.py b/tests/test_telemetry.py
+index 801876d..dda85d0 100644
+--- a/tests/test_telemetry.py
++++ b/tests/test_telemetry.py
+@@ -9,7 +9,7 @@ import pytest
+ import sqlite_utils
+ from opentelemetry import context as otel_context_api
+ from opentelemetry import trace as otel_trace
+-from opentelemetry.trace import SpanKind, StatusCode
++from opentelemetry.trace import NonRecordingSpan, SpanContext, SpanKind, StatusCode
+ 
+ from datasette.app import Datasette
+ from datasette.database import Database, QueryInterrupted
+@@ -18,7 +18,9 @@ from datasette.telemetry import (
+     SCHEMA_URL,
+     sql_attribute,
+     sql_operation_name,
++    start_as_current_span,
+     tracer,
++    tracer_provider_installed,
+ )
+ from datasette.version import __version__
+ 
+@@ -1021,3 +1023,34 @@ async def test_execute_fn_exception_marks_span_error(otel_spans):
+     assert len(spans) == 1
+     assert spans[0].status.status_code == StatusCode.ERROR
+     assert any(event.name == "exception" for event in spans[0].events)
++
++
++def test_start_as_current_span_without_a_provider_keeps_the_current_span(
++    monkeypatch,
++):
++    # The suite installs a provider, so pretend that it has not
++    monkeypatch.setattr(
++        otel_trace, "get_tracer_provider", lambda: otel_trace.ProxyTracerProvider()
++    )
++    assert not tracer_provider_installed()
++    with start_as_current_span("db.query") as span:
++        assert span is otel_trace.INVALID_SPAN
++        assert otel_trace.get_current_span() is otel_trace.INVALID_SPAN
++    # A remote parent stays current, as it would with the no-op tracer
++    remote = NonRecordingSpan(SpanContext(trace_id=1, span_id=2, is_remote=True))
++    token = otel_context_api.attach(otel_trace.set_span_in_context(remote))
++    try:
++        with start_as_current_span("db.query", kind=SpanKind.CLIENT) as span:
++            assert span is remote
++            assert otel_trace.get_current_span() is remote
++    finally:
++        otel_context_api.detach(token)
++
++
++@pytest.mark.asyncio
++async def test_start_as_current_span_with_a_provider_records_spans(otel_spans):
++    assert tracer_provider_installed()
++    otel_spans.clear()
++    with start_as_current_span("test.helper") as span:
++        assert span.is_recording()
++    assert [s.name for s in otel_spans.get_finished_spans()] == ["test.helper"]

@@ -1,0 +1,15 @@
+diff --git a/datasette/templates/base.html b/datasette/templates/base.html
+index 1c5b833..cff9c82 100644
+--- a/datasette/templates/base.html
++++ b/datasette/templates/base.html
+@@ -34,8 +34,8 @@
+ {% endblock %}
+ 
+ <section class="content">
+-{% block content %}
+-{% endblock %}
++{# Rendering into a variable and outputting it once is much faster than yielding every fragment up through the async block/extends generators. The with block keeps content_html out of the template context, so it cannot shadow a content_html variable used by later blocks #}{% with %}{% set content_html %}{% block content %}
++{% endblock %}{% endset %}{{ content_html }}{% endwith %}
+ </section>
+ </div>
+ <footer class="ft">{% block footer %}{% include "_footer.html" %}{% endblock %}</footer>

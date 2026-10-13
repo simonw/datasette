@@ -1,0 +1,62 @@
+diff --git a/datasette/app.py b/datasette/app.py
+index 001ce9b..e7c35ea 100644
+--- a/datasette/app.py
++++ b/datasette/app.py
+@@ -3509,9 +3509,11 @@ def wrap_view_class(view_class, datasette):
+ 
+ 
+ def wrap_view_function(view_fn, datasette):
++    is_coroutine = inspect.iscoroutinefunction(view_fn)
++
+     @functools.wraps(view_fn)
+     async def async_view_fn(request, send):
+-        if inspect.iscoroutinefunction(view_fn):
++        if is_coroutine:
+             response = await async_call_with_supported_arguments(
+                 view_fn,
+                 scope=request.scope,
+diff --git a/datasette/utils/__init__.py b/datasette/utils/__init__.py
+index 669d04c..7f9baed 100644
+--- a/datasette/utils/__init__.py
++++ b/datasette/utils/__init__.py
+@@ -16,6 +16,7 @@ import time
+ import types
+ import typing
+ import urllib
++import weakref
+ from collections import Counter, OrderedDict, namedtuple
+ from collections.abc import Iterable
+ from contextlib import contextmanager
+@@ -1247,8 +1248,31 @@ def parse_metadata(content: str) -> dict:
+             raise BadMetadataError("Metadata is not valid JSON or YAML")
+ 
+ 
++# inspect.signature() costs 5-10us, and these helpers run on every request
++# (view functions, output renderers), so cache the parameter names. Weak
++# keys so that per-request closures are not kept alive. A bound method's
++# signature depends only on its __func__, so methods are cached by that.
++_function_parameters = weakref.WeakKeyDictionary()
++_method_parameters = weakref.WeakKeyDictionary()
++
++
++def _signature_parameters(fn):
++    if type(fn) is types.FunctionType:
++        cache, key = _function_parameters, fn
++    elif type(fn) is types.MethodType and type(fn.__func__) is types.FunctionType:
++        cache, key = _method_parameters, fn.__func__
++    else:
++        return tuple(inspect.signature(fn).parameters)
++    parameters = cache.get(key)
++    if parameters is None:
++        # Computed outside of any except block, so that a signature error
++        # does not get a misleading KeyError attached as its __context__
++        parameters = cache[key] = tuple(inspect.signature(fn).parameters)
++    return parameters
++
++
+ def _gather_arguments(fn, kwargs):
+-    parameters = inspect.signature(fn).parameters.keys()
++    parameters = _signature_parameters(fn)
+     call_with = []
+     for parameter in parameters:
+         if parameter not in kwargs:

@@ -1,0 +1,37 @@
+diff --git a/datasette/utils/__init__.py b/datasette/utils/__init__.py
+index 669d04c..f56b7a2 100644
+--- a/datasette/utils/__init__.py
++++ b/datasette/utils/__init__.py
+@@ -851,19 +851,26 @@ def detect_fts_sql(table):
+     )
+ 
+ 
++_cached_detect_json1 = None
++
++
+ def detect_json1(conn=None):
+-    close_conn = False
++    global _cached_detect_json1
+     if conn is None:
+-        conn = sqlite3.connect(":memory:")
+-        close_conn = True
++        # Without a connection this probes the SQLite library itself, which
++        # cannot change within a process, so only open a connection once
++        if _cached_detect_json1 is None:
++            conn = sqlite3.connect(":memory:")
++            try:
++                _cached_detect_json1 = detect_json1(conn)
++            finally:
++                conn.close()
++        return _cached_detect_json1
+     try:
+         conn.execute("SELECT json('{}')")
+         return True
+     except sqlite3.Error:
+         return False
+-    finally:
+-        if close_conn:
+-            conn.close()
+ 
+ 
+ def table_columns(conn, table):

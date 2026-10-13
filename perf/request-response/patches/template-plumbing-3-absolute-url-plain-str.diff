@@ -1,0 +1,15 @@
+diff --git a/datasette/app.py b/datasette/app.py
+index 001ce9b..e770922 100644
+--- a/datasette/app.py
++++ b/datasette/app.py
+@@ -2348,6 +2348,10 @@ ORDER BY allowed.parent, allowed.child
+         return labeled_fks
+ 
+     def absolute_url(self, request, path):
++        if isinstance(path, PrefixedUrlString):
++            # urljoin() calls many str methods on path, each of which is
++            # much slower on PrefixedUrlString than on a plain str
++            path = str(path)
+         url = urllib.parse.urljoin(request.url, path)
+         if url.startswith("http://") and self.setting("force_https_urls"):
+             url = "https://" + url[len("http://") :]

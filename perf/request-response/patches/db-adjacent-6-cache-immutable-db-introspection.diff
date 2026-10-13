@@ -1,0 +1,157 @@
+diff --git a/datasette/database.py b/datasette/database.py
+index 542b301..eee5d12 100644
+--- a/datasette/database.py
++++ b/datasette/database.py
+@@ -1,6 +1,7 @@
+ import asyncio
+ import atexit
+ import contextvars
++import copy
+ import inspect
+ import os
+ import queue
+@@ -122,6 +123,8 @@ class Database:
+         self.cached_size = None
+         self._cached_table_counts = None
+         self._cached_derived_table_dependencies = None
++        self._immutable_schema_cache = {}
++        self._cached_immutable_schema_objects = None
+         self._write_thread = None
+         self._write_queue = None
+         self._closed = False
+@@ -892,13 +895,61 @@ class Database:
+             if row["seq"] > 0 and row["name"] != "temp"
+         ]
+ 
++    @property
++    def _schema_is_immutable(self):
++        # Files opened with ?immutable=1 are assumed by SQLite to never change
++        return not self.is_mutable and not self.is_memory and self.mode is None
++
++    async def _immutable_schema_objects(self):
++        # {name: type} for every table and view, read once
++        if self._cached_immutable_schema_objects is None:
++
++            def _schema_objects(conn):
++                return {
++                    row[0]: row[1]
++                    for row in conn.execute(
++                        "select name, type from sqlite_master "
++                        "where type in ('table', 'view')"
++                    )
++                }
++
++            self._cached_immutable_schema_objects = await self.execute_fn(
++                _schema_objects
++            )
++        return self._cached_immutable_schema_objects
++
++    async def _cached_if_immutable(self, key, compute):
++        # Schema introspection results for immutable databases cannot go
++        # stale, so cache them rather than making a thread-pool round trip.
++        # Only names that exist in the schema are cached, so table names
++        # taken from the URL (e.g. ?_through=) cannot grow the cache.
++        if not self._schema_is_immutable:
++            return await compute()
++        self._check_not_closed()
++        try:
++            result = self._immutable_schema_cache[key]
++        except KeyError:
++            result = await compute()
++            if key[1] in await self._immutable_schema_objects():
++                self._immutable_schema_cache[key] = result
++        return copy.deepcopy(result)
++
++    async def _execute_fn_cached_if_immutable(self, key, fn):
++        return await self._cached_if_immutable(key, lambda: self.execute_fn(fn))
++
+     async def table_exists(self, table):
++        if self._schema_is_immutable:
++            self._check_not_closed()
++            return (await self._immutable_schema_objects()).get(table) == "table"
+         results = await self.execute(
+             "select 1 from sqlite_master where type='table' and name=?", params=(table,)
+         )
+         return bool(results.rows)
+ 
+     async def view_exists(self, table):
++        if self._schema_is_immutable:
++            self._check_not_closed()
++            return (await self._immutable_schema_objects()).get(table) == "view"
+         results = await self.execute(
+             "select 1 from sqlite_master where type='view' and name=?", params=(table,)
+         )
+@@ -917,25 +968,33 @@ class Database:
+         def _table_columns(conn):
+             return table_columns(conn, table)
+ 
+-        return await self.execute_fn(_table_columns)
++        return await self._execute_fn_cached_if_immutable(
++            ("table_columns", table), _table_columns
++        )
+ 
+     async def table_column_details(self, table):
+         def _table_column_details(conn):
+             return table_column_details(conn, table)
+ 
+-        return await self.execute_fn(_table_column_details)
++        return await self._execute_fn_cached_if_immutable(
++            ("table_column_details", table), _table_column_details
++        )
+ 
+     async def primary_keys(self, table):
+         def _primary_keys(conn):
+             return detect_primary_keys(conn, table)
+ 
+-        return await self.execute_fn(_primary_keys)
++        return await self._execute_fn_cached_if_immutable(
++            ("primary_keys", table), _primary_keys
++        )
+ 
+     async def fts_table(self, table):
+         def _fts_table(conn):
+             return detect_fts(conn, table)
+ 
+-        return await self.execute_fn(_fts_table)
++        return await self._execute_fn_cached_if_immutable(
++            ("fts_table", table), _fts_table
++        )
+ 
+     async def label_column_for_table(self, table):
+         explicit_label_column = (await self.ds.table_config(self.name, table)).get(
+@@ -959,7 +1018,9 @@ class Database:
+                 details[name] = (columns[name], is_unique)
+             return details
+ 
+-        column_details = await self.execute_fn(column_details)
++        column_details = await self._execute_fn_cached_if_immutable(
++            ("label_column_details", table), column_details
++        )
+         # Is there just one unique column that's text?
+         unique_text_columns = [
+             name
+@@ -986,8 +1047,9 @@ class Database:
+         return None
+ 
+     async def foreign_keys_for_table(self, table):
+-        return await self.execute_fn(
+-            lambda conn: get_outbound_foreign_keys(conn, table)
++        return await self._execute_fn_cached_if_immutable(
++            ("foreign_keys_for_table", table),
++            lambda conn: get_outbound_foreign_keys(conn, table),
+         )
+ 
+     async def hidden_table_names(self):
+@@ -1029,6 +1091,12 @@ class Database:
+ 
+     async def derived_table_dependencies(self):
+         """Return implementation tables and the tables they derive from."""
++        if (
++            self._schema_is_immutable
++            and self._cached_derived_table_dependencies is not None
++        ):
++            self._check_not_closed()
++            return self._cached_derived_table_dependencies[1]
+         schema_version = (await self.execute("PRAGMA schema_version")).first()[0]
+         if (
+             self._cached_derived_table_dependencies is None

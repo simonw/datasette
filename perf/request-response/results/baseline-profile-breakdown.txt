@@ -1,0 +1,13 @@
+redirect_dash      idle  0.8% | datasette/other python 34%, inspect/signature 17%, GC 16%, itsdangerous sign/unsign 10%, Request.headers dict rebuild 6%, pluggy hook dispatch 6%, cookie parse (SimpleCookie) 5%
+static_css_304     idle  0.7% | datasette/other python 63%, GC 12%, itsdangerous sign/unsign 7%, pluggy hook dispatch 4%, Request.headers dict rebuild 4%, cookie parse (SimpleCookie) 4%, opentelemetry 3%
+actor_json_cookie  idle  1.4% | cookie parse (SimpleCookie) 27%, datasette/other python 23%, itsdangerous sign/unsign 21%, GC 11%, Request.headers dict rebuild 5%, pluggy hook dispatch 4%, opentelemetry 4%
+favicon            idle 58.1% | thread-pool handoff 37%, asyncio machinery 26%, datasette/other python 11%, GC 7%, static file IO (aiofiles) 6%, itsdangerous sign/unsign 4%, opentelemetry 2%
+not_found          idle  0.7% | jinja2 render 79%, datasette/other python 8%, GC 3%, routing 3%, url building/parsing 2%, itsdangerous sign/unsign 2%, pluggy hook dispatch 1%
+versions_json      idle 21.5% | sqlite/db execution 67%, permissions 6%, datasette/other python 5%, routing 5%, asyncio machinery 4%, thread-pool handoff 4%, GC 2%
+versions_html      idle 18.8% | sqlite/db execution 44%, jinja2 render 24%, url building/parsing 7%, datasette/other python 5%, permissions 5%, routing 3%, asyncio machinery 3%
+row_json           idle 59.4% | thread-pool handoff 19%, asyncio machinery 14%, datasette/other python 14%, sqlite/db execution 11%, permissions 11%, routing 9%, GC 5%
+table_json         idle 77.3% | asyncio machinery 29%, thread-pool handoff 25%, datasette/other python 14%, inspect/signature 7%, GC 4%, json encode/decode 4%, routing 3%
+static_css         idle 59.8% | thread-pool handoff 44%, asyncio machinery 30%, datasette/other python 11%, static file IO (aiofiles) 9%, GC 2%, itsdangerous sign/unsign 1%, Request.headers dict rebuild 1%
+index_html         idle 78.1% | thread-pool handoff 28%, asyncio machinery 22%, sqlite/db execution 17%, jinja2 render 10%, datasette/other python 6%, opentelemetry 6%, permissions 5%
+table_html         idle 63.0% | thread-pool handoff 25%, asyncio machinery 25%, jinja2 render 16%, url building/parsing 14%, sqlite/db execution 10%, datasette/other python 2%, permissions 2%
+database_html      idle 74.4% | thread-pool handoff 26%, asyncio machinery 19%, sqlite/db execution 15%, jinja2 render 12%, datasette/other python 9%, permissions 7%, opentelemetry 5%

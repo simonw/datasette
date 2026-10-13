@@ -1,0 +1,70 @@
+diff --git a/datasette/utils/asgi.py b/datasette/utils/asgi.py
+index 2d4a6cf..0bf7ca1 100644
+--- a/datasette/utils/asgi.py
++++ b/datasette/utils/asgi.py
+@@ -123,16 +123,30 @@ class Request:
+     def scheme(self):
+         return self.scope.get("scheme") or "http"
+ 
++    # Decoded headers are cached against a snapshot of the raw scope headers
++    # they came from, so they stay correct if request.scope is replaced (as
++    # DatasetteRouter.route_path does) or scope["headers"] is modified
++    _raw_headers = None
++    _decoded_headers = None
++
++    def _headers(self):
++        raw_headers = list(self.scope.get("headers") or [])
++        if self._decoded_headers is None or raw_headers != self._raw_headers:
++            self._decoded_headers = _RequestHeaders(
++                (k.decode("latin-1").lower(), v.decode("latin-1"))
++                for k, v in raw_headers
++            )
++            self._raw_headers = raw_headers
++        return self._decoded_headers
++
+     @property
+     def headers(self):
+-        return _RequestHeaders(
+-            (k.decode("latin-1").lower(), v.decode("latin-1"))
+-            for k, v in self.scope.get("headers") or []
+-        )
++        # A copy, so callers cannot modify the cached headers
++        return _RequestHeaders(self._headers())
+ 
+     @property
+     def host(self):
+-        return self.headers.get("host") or "localhost"
++        return self._headers().get("host") or "localhost"
+ 
+     @property
+     def cookies(self):
+diff --git a/tests/test_internals_request.py b/tests/test_internals_request.py
+index 91ef368..f1ef381 100644
+--- a/tests/test_internals_request.py
++++ b/tests/test_internals_request.py
+@@ -80,6 +80,25 @@ def test_request_headers_missing(scope):
+         headers["Content-Type"]
+ 
+ 
++def test_request_headers_follow_scope_changes():
++    scope = {"headers": [(b"host", b"example.com"), (b"x-one", b"1")]}
++    request = Request(scope, None)
++    headers = request.headers
++    assert headers == {"host": "example.com", "x-one": "1"}
++    # Modifying the returned headers does not affect later lookups
++    headers["x-one"] = "changed"
++    assert request.headers["x-one"] == "1"
++    # Replacing request.scope, as DatasetteRouter.route_path does
++    request.scope = dict(scope, headers=[(b"host", b"other.com")])
++    assert request.headers == {"host": "other.com"}
++    assert request.host == "other.com"
++    # Modifying scope["headers"] in place
++    request.scope["headers"].append((b"x-two", b"2"))
++    assert request.headers == {"host": "other.com", "x-two": "2"}
++    request.scope["headers"][0] = (b"host", b"third.com")
++    assert request.host == "third.com"
++
++
+ @pytest.mark.asyncio
+ async def test_request_post_vars():
+     scope = {

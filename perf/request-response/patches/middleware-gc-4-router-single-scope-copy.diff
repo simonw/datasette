@@ -1,0 +1,40 @@
+diff --git a/datasette/app.py b/datasette/app.py
+index 001ce9b..2c2407c 100644
+--- a/datasette/app.py
++++ b/datasette/app.py
+@@ -46,6 +46,7 @@ from .column_types import SQLiteType
+ from .csrf import CrossOriginProtectionMiddleware
+ from .database import Database, QueryInterrupted
+ from .events import Event
++from .permissions import _permission_check_cache
+ from .plugins import DEFAULT_PLUGINS, get_plugins, pm
+ from .renderer import json_renderer
+ from .resources import DatabaseResource, TableResource
+@@ -3192,8 +3193,6 @@ class DatasetteRouter:
+         # Give each request a fresh permission check cache, so repeated
+         # datasette.allowed() checks within the request are memoized but
+         # results never persist beyond it
+-        from datasette.permissions import _permission_check_cache
+-
+         cache_token = _permission_check_cache.set({})
+         try:
+             return await self.route_path(scope, receive, send, path)
+@@ -3293,6 +3292,9 @@ class DatasetteRouter:
+         if token_error is not None:
+             return await self.handle_401(request, send, token_error)
+         scope_modifications["actor"] = actor or default_actor
++        if match is not None:
++            scope_modifications["url_route"] = {"kwargs": match.groupdict()}
++        # A single copy of the scope, rather than one per modification
+         scope = dict(scope, **scope_modifications)
+         request.scope = scope
+ 
+@@ -3306,8 +3308,6 @@ class DatasetteRouter:
+             span.set_attribute(HTTP_ROUTE, route)
+             span.update_name(f"{clamp_http_method(request.method)} {route}")
+ 
+-        new_scope = dict(scope, url_route={"kwargs": match.groupdict()})
+-        request.scope = new_scope
+         try:
+             response = await view(request, send)
+             if response:

@@ -1,0 +1,107 @@
+diff --git a/datasette/app.py b/datasette/app.py
+index 001ce9b..60ff704 100644
+--- a/datasette/app.py
++++ b/datasette/app.py
+@@ -3367,22 +3367,18 @@ class DatasetteRouter:
+             route_path = request.scope.get("route_path", request.scope["path"])
+             # Jinja requires template names to use "/" even on Windows
+             template_name = "pages" + route_path + ".html"
+-            # Build a list of pages/blah/{name}.html matching expressions
+             environment = self.ds.get_jinja_environment(request)
+-            pattern_templates = [
+-                filepath
+-                for filepath in environment.list_templates()
+-                if "{" in filepath and filepath.startswith("pages/")
+-            ]
+-            page_routes = [
+-                (route_pattern_from_filepath(filepath[len("pages/") :]), filepath)
+-                for filepath in pattern_templates
+-            ]
+             try:
+                 template = environment.select_template([template_name])
+             except TemplateNotFound:
+                 template = None
+             if template is None:
++                # Build a list of pages/blah/{name}.html matching expressions
++                page_routes = [
++                    (route_pattern_from_filepath(filepath[len("pages/") :]), filepath)
++                    for filepath in _list_page_templates(environment.loader)
++                    if "{" in filepath
++                ]
+                 # Try for a pages/blah/{name}.html template match
+                 for regex, wildcard_template in page_routes:
+                     match = regex.match(route_path)
+@@ -3554,6 +3550,42 @@ def permanent_redirect(path, forward_query_string=False, forward_rest=False):
+     return wrap_view(view, datasette=None)
+ 
+ 
++def _list_page_templates(loader):
++    """
++    Same as [t for t in loader.list_templates() if t.startswith("pages/")]
++    but for Jinja's built-in loaders only walks the pages/ directories,
++    not every template directory - this runs on every 404
++    """
++    if type(loader) is ChoiceLoader:
++        found = set()
++        for child in loader.loaders:
++            found.update(_list_page_templates(child))
++        return sorted(found)
++    if type(loader) is FileSystemLoader:
++        found = set()
++        for searchpath in loader.searchpath:
++            pages_dir = os.path.join(searchpath, "pages")
++            # os.walk(searchpath) only descends into a symlink if followlinks
++            if not loader.followlinks and os.path.islink(pages_dir):
++                continue
++            pages_loader = FileSystemLoader(pages_dir, followlinks=loader.followlinks)
++            found.update("pages/" + name for name in pages_loader.list_templates())
++        return sorted(found)
++    if type(loader) is PrefixLoader:
++        found = []
++        for prefix, child in loader.mapping.items():
++            start = prefix + loader.delimiter
++            # Skip loaders whose prefix means no name can start with pages/
++            if start.startswith("pages/") or "pages/".startswith(start):
++                found.extend(
++                    start + name
++                    for name in child.list_templates()
++                    if (start + name).startswith("pages/")
++                )
++        return found
++    return [name for name in loader.list_templates() if name.startswith("pages/")]
++
++
+ _curly_re = re.compile(r"({.*?})")
+ 
+ 
+diff --git a/tests/test_custom_pages.py b/tests/test_custom_pages.py
+index 32cfc43..46ca9da 100644
+--- a/tests/test_custom_pages.py
++++ b/tests/test_custom_pages.py
+@@ -2,6 +2,8 @@ import pathlib
+ 
+ import pytest
+ 
++from datasette.app import _list_page_templates
++
+ from .fixtures import make_app_client
+ 
+ TEST_TEMPLATE_DIRS = str(pathlib.Path(__file__).parent / "test_templates")
+@@ -101,6 +103,17 @@ def test_custom_route_pattern_404(custom_pages_client):
+     assert ">Oh no</" in response.text
+ 
+ 
++def test_list_page_templates_matches_list_templates(custom_pages_client):
++    # The 404 handler only walks pages/ directories - check that finds the
++    # same templates, in the same order, as filtering list_templates()
++    environment = custom_pages_client.ds.get_jinja_environment()
++    expected = [
++        name for name in environment.list_templates() if name.startswith("pages/")
++    ]
++    assert "pages/topic_{topic}/{slug}.html" in expected
++    assert _list_page_templates(environment.loader) == expected
++
++
+ def test_custom_route_pattern_with_slash_slash_302(custom_pages_client):
+     # https://github.com/simonw/datasette/issues/2429
+     response = custom_pages_client.get("//example.com/")

@@ -1,0 +1,118 @@
+diff --git a/datasette/telemetry.py b/datasette/telemetry.py
+index 2fd5a9d..91debd5 100644
+--- a/datasette/telemetry.py
++++ b/datasette/telemetry.py
+@@ -17,7 +17,14 @@ from opentelemetry import metrics as otel_metrics
+ from opentelemetry import trace as otel_trace
+ from opentelemetry.propagate import extract
+ from opentelemetry.propagators.textmap import Getter
+-from opentelemetry.trace import Link, SpanKind, Status, StatusCode, get_current_span
++from opentelemetry.trace import (
++    INVALID_SPAN,
++    Link,
++    SpanKind,
++    Status,
++    StatusCode,
++    get_current_span,
++)
+ 
+ from .telemetry_registry import (
+     DB_NAMESPACE,
+@@ -54,6 +61,17 @@ SCHEMA_URL = "https://opentelemetry.io/schemas/1.29.0"
+ tracer = otel_trace.get_tracer("datasette", __version__, schema_url=SCHEMA_URL)
+ meter = otel_metrics.get_meter("datasette", __version__, schema_url=SCHEMA_URL)
+ 
++
++def tracer_provider_installed():
++    """
++    False while no `TracerProvider` has been installed, when every span is a
++    no-op. Check this each time, since a provider can be installed later.
++    """
++    return not isinstance(
++        otel_trace.get_tracer_provider(), otel_trace.ProxyTracerProvider
++    )
++
++
+ MAX_SQL_LENGTH = 2048
+ 
+ 
+@@ -230,6 +248,15 @@ class TelemetryMiddleware:
+         headers = scope.get("headers") or []
+         # Uses the global propagator, configured with OTEL_PROPAGATORS
+         context = extract(headers, getter=_HEADERS_GETTER)
++        if (
++            not tracer_provider_installed()
++            and get_current_span(context) is INVALID_SPAN
++            and get_current_span() is INVALID_SPAN
++        ):
++            # The no-op tracer would make INVALID_SPAN current, which is
++            # already the current span, so skip creating it
++            await self.app(scope, receive, send)
++            return
+         method = clamp_http_method(scope.get("method", ""))
+         # Renamed to include the route once routing has happened
+         with tracer.start_as_current_span(
+diff --git a/tests/test_http_span.py b/tests/test_http_span.py
+index 1fcc93b..c8c584b 100644
+--- a/tests/test_http_span.py
++++ b/tests/test_http_span.py
+@@ -636,14 +636,29 @@ def test_request_span_skips_a_valid_but_non_recording_span():
+ NO_PROVIDER_PROGRAM = textwrap.dedent("""
+     import asyncio, json, sys
+ 
+-    from datasette.telemetry import TelemetryMiddleware
++    from opentelemetry import trace
++    from opentelemetry.propagate import extract
++
++    from datasette.telemetry import _HEADERS_GETTER, TelemetryMiddleware
+ 
+     seen = {}
++    HEADERS = ([], [(b"traceparent", b"00-" + b"a" * 32 + b"-" + b"b" * 16 + b"-01")])
++
++
++    def noop_trace_id(headers):
++        # The span the no-op tracer makes current. Before opentelemetry-api
++        # 1.40 that ignores an inbound traceparent, from 1.40 it keeps it.
++        context = extract(headers, getter=_HEADERS_GETTER)
++        with trace.NoOpTracer().start_as_current_span("GET", context=context):
++            return trace.get_current_span().get_span_context().trace_id
+ 
+ 
+     async def inner(scope, receive, send):
+         seen.setdefault("sends", []).append(send)
+         seen.setdefault("scopes", []).append(scope)
++        seen.setdefault("trace_ids", []).append(
++            trace.get_current_span().get_span_context().trace_id
++        )
+         await send({"type": "http.response.start", "status": 200, "headers": []})
+         await send({"type": "http.response.body", "body": b""})
+ 
+@@ -654,7 +669,7 @@ NO_PROVIDER_PROGRAM = textwrap.dedent("""
+ 
+     async def main():
+         middleware = TelemetryMiddleware(inner)
+-        for headers in ([], [(b"traceparent", b"00-" + b"a" * 32 + b"-" + b"b" * 16 + b"-01")]):
++        for headers in HEADERS:
+             await middleware(
+                 {
+                     "type": "http",
+@@ -678,6 +693,8 @@ NO_PROVIDER_PROGRAM = textwrap.dedent("""
+                     "sdk_imported": any(
+                         name.startswith("opentelemetry.sdk") for name in sys.modules
+                     ),
++                    "trace_ids": [hex(trace_id) for trace_id in seen["trace_ids"]],
++                    "noop_trace_ids": [hex(noop_trace_id(h)) for h in HEADERS],
+                 }
+             )
+         )
+@@ -710,6 +727,10 @@ def test_no_provider_takes_the_fast_path():
+     )
+     # Nothing is stored in the scope either.
+     assert report["scope_keys"] == [False, False]
++    # The application sees the same current span as it would if the no-op
++    # tracer had run, including for an inbound traceparent
++    assert report["trace_ids"] == report["noop_trace_ids"]
++    assert report["trace_ids"][0] == "0x0"
+ 
+ 
+ @pytest.mark.asyncio

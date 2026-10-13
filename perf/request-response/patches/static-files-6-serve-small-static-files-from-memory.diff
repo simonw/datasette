@@ -1,0 +1,119 @@
+diff --git a/datasette/utils/asgi.py b/datasette/utils/asgi.py
+index 2d4a6cf..16e92fe 100644
+--- a/datasette/utils/asgi.py
++++ b/datasette/utils/asgi.py
+@@ -1,5 +1,6 @@
+ import asyncio
+ import json
++import os
+ import re
+ from http.cookies import Morsel, SimpleCookie
+ from mimetypes import guess_type
+@@ -466,6 +467,38 @@ async def asgi_send_file(
+ 
+ HASHED_STATIC_CACHE_CONTROL = "max-age=31536000, immutable, public"
+ 
++# Small static files are served from memory, re-read if the file changes
++STATIC_FILE_CACHE_MAX_FILE_SIZE = 1024 * 1024
++STATIC_FILE_CACHE_MAX_TOTAL_SIZE = 16 * 1024 * 1024
++_static_file_cache = {}
++_static_file_cache_size = 0
++
++
++async def _cached_static_file(full_path):
++    global _static_file_cache_size
++    stat = os.stat(full_path)
++    if stat.st_size > STATIC_FILE_CACHE_MAX_FILE_SIZE:
++        return None
++    # st_ctime_ns cannot be set by tools that preserve mtime (cp -p, tar) and
++    # changes on chmod, st_ino catches files replaced by a rename
++    key = (stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
++    cached = _static_file_cache.get(full_path)
++    if cached is not None and cached[0] == key:
++        return cached[1]
++    body = await asyncio.get_running_loop().run_in_executor(None, full_path.read_bytes)
++    if len(body) != stat.st_size:
++        # Changed while it was being read, so don't cache it
++        return body
++    # Looked up again as another request may have replaced it during the read
++    previous = _static_file_cache.get(full_path)
++    new_size = _static_file_cache_size + len(body)
++    if previous is not None:
++        new_size -= len(previous[1])
++    if new_size <= STATIC_FILE_CACHE_MAX_TOTAL_SIZE:
++        _static_file_cache[full_path] = (key, body)
++        _static_file_cache_size = new_size
++    return body
++
+ 
+ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
+     root_path = Path(root_path)
+@@ -504,9 +537,17 @@ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
+             if_none_match = request.headers.get("if-none-match")
+             if if_none_match and if_none_match == etag:
+                 return await asgi_send(send, "", 304, headers=headers)
+-            await asgi_send_file(
+-                send, full_path, chunk_size=chunk_size, headers=headers
++            body = await _cached_static_file(full_path)
++            if body is None:
++                await asgi_send_file(
++                    send, full_path, chunk_size=chunk_size, headers=headers
++                )
++                return
++            headers["content-length"] = str(len(body))
++            await asgi_start(
++                send, 200, headers, guess_type(str(full_path))[0] or "text/plain"
+             )
++            await send({"type": "http.response.body", "body": body})
+         except FileNotFoundError:
+             await asgi_send_html(send, "404: File not found", 404)
+             return
+diff --git a/tests/test_html.py b/tests/test_html.py
+index 4dbcf5c..31134e1 100644
+--- a/tests/test_html.py
++++ b/tests/test_html.py
+@@ -1,6 +1,7 @@
+ import copy
+ import hashlib
+ import json
++import os
+ import pathlib
+ import re
+ import urllib.parse
+@@ -167,6 +168,36 @@ def test_static_mounts():
+         assert response.status_code == 404
+ 
+ 
++@pytest.mark.asyncio
++async def test_static_mounts_serve_modified_files(tmp_path, monkeypatch):
++    from datasette.utils import asgi
++
++    monkeypatch.setattr(asgi, "STATIC_FILE_CACHE_MAX_FILE_SIZE", 10)
++    (tmp_path / "small.txt").write_text("one")
++    (tmp_path / "large.txt").write_text("a large file")
++    ds = Datasette(static_mounts=[("assets", str(tmp_path))])
++    for filename, before, after in (
++        ("small.txt", "one", "three"),
++        ("large.txt", "a large file", "a larger file"),
++    ):
++        response = await ds.client.get(f"/assets/{filename}")
++        assert response.text == before
++        (tmp_path / filename).write_text(after)
++        response = await ds.client.get(f"/assets/{filename}")
++        assert response.text == after
++        assert response.headers["content-length"] == str(len(after))
++    # A same-size edit that keeps the old modification time (cp -p, tar)
++    path = tmp_path / "small.txt"
++    stat = path.stat()
++    path.write_text("four!")
++    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
++    response = await ds.client.get("/assets/small.txt")
++    assert response.text == "four!"
++    assert asgi._static_file_cache_size == sum(
++        len(body) for _, body in asgi._static_file_cache.values()
++    )
++
++
+ def test_static_mounts_hash_cache_control():
+     mount_path = pathlib.Path(__file__).parent
+     with make_app_client(static_mounts=[("custom-static", str(mount_path))]) as client:

@@ -1,0 +1,14 @@
+endpoint                      combined    combined_seq
+table_html                   15238.2us  14914.1us    -2%
+table_html_100               15888.1us  15116.9us    -5%
+big_html                     17186.4us  19747.5us   +15%
+big_facets_html              72082.8us  72313.7us    +0%
+big_json_extras              33967.2us  33935.9us    -0%
+
+CPU time per request (process_time, all threads):
+endpoint                      combined    combined_seq
+table_html                   28569.2us  27843.0us    -3%
+table_html_100               26727.6us  26677.5us    -0%
+big_html                     32678.5us  34292.1us    +5%
+big_facets_html             246842.7us 256127.4us    +4%
+big_json_extras             122862.7us 123638.9us    +1%

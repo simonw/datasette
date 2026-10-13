@@ -1,0 +1,29 @@
+tools/micro_gather.py: Database.execute() 300 times, either one at a time
+("sequential") or 10 at a time with asyncio.gather ("gather10").
+Per-query wall time and CPU time (process_time, all threads), medians of 5.
+Python 3.15.0b4 (GIL) and 3.15.0b4t (free-threaded), combined patch tree.
+
+GIL on, num_sql_threads=3
+  1 row          sequential wall    167us cpu    165us | gather10 wall    299us cpu    376us  (cpu x2.28)
+  100 text rows  sequential wall    500us cpu    470us | gather10 wall   1723us cpu   2311us  (cpu x4.91)
+  introspection  sequential wall    309us cpu    300us | gather10 wall   1112us cpu   1493us  (cpu x4.98)
+GIL off, num_sql_threads=3
+  1 row          sequential wall    133us cpu    148us | gather10 wall     58us cpu    110us  (cpu x0.75)
+  100 text rows  sequential wall    330us cpu    323us | gather10 wall     90us cpu    249us  (cpu x0.77)
+  introspection  sequential wall    320us cpu    303us | gather10 wall     75us cpu    188us  (cpu x0.62)
+GIL on, num_sql_threads=1
+  1 row          sequential wall    177us cpu    177us | gather10 wall     94us cpu    101us  (cpu x0.57)
+  100 text rows  sequential wall    355us cpu    347us | gather10 wall    362us cpu    370us  (cpu x1.07)
+  introspection  sequential wall    321us cpu    312us | gather10 wall    321us cpu    331us  (cpu x1.06)
+GIL off, num_sql_threads=1
+  1 row          sequential wall    174us cpu    178us | gather10 wall     94us cpu    134us  (cpu x0.76)
+  100 text rows  sequential wall    366us cpu    386us | gather10 wall    211us cpu    260us  (cpu x0.67)
+  introspection  sequential wall    243us cpu    251us | gather10 wall    145us cpu    197us  (cpu x0.78)
+GIL on, num_sql_threads=8
+  1 row          sequential wall    155us cpu    152us | gather10 wall    395us cpu    551us  (cpu x3.61)
+  100 text rows  sequential wall    496us cpu    473us | gather10 wall   9218us cpu  14903us  (cpu x31.50)
+  introspection  sequential wall    288us cpu    273us | gather10 wall   4853us cpu   7475us  (cpu x27.35)
+GIL off, num_sql_threads=8
+  1 row          sequential wall    142us cpu    152us | gather10 wall     63us cpu    120us  (cpu x0.79)
+  100 text rows  sequential wall    508us cpu    476us | gather10 wall    150us cpu    394us  (cpu x0.83)
+  introspection  sequential wall    409us cpu    384us | gather10 wall     98us cpu    229us  (cpu x0.60)

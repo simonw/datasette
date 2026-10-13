@@ -60,6 +60,7 @@ def main():
     trees = [t.split("=", 1) for t in args.tree]
     endpoints = args.endpoints.split(",")
     samples = {name: {ep: [] for ep in endpoints} for name, _ in trees}
+    cpu = {name: {ep: [] for ep in endpoints} for name, _ in trees}
     statuses = {name: {} for name, _ in trees}
     for r in range(args.rounds):
         order = trees[r % len(trees) :] + trees[: r % len(trees)]
@@ -67,6 +68,8 @@ def main():
             data = run_once(path, endpoints, args.n, {})
             for ep in endpoints:
                 samples[name][ep].append(data[ep]["median_us"])
+                if "cpu_us" in data[ep]:
+                    cpu[name][ep].append(data[ep]["cpu_us"])
                 statuses[name][ep] = (data[ep]["status"], data[ep]["bytes"])
         print(f"round {r + 1}/{args.rounds} done", file=sys.stderr, flush=True)
     result = {}
@@ -83,12 +86,27 @@ def main():
                 "median_us": med,
                 "runs": samples[name][ep],
                 "status_bytes": statuses[name][ep],
+                "cpu_us": statistics.median(cpu[name][ep]) if cpu[name][ep] else None,
+                "cpu_runs": cpu[name][ep],
             }
             if name == base_name:
                 row += f"{med:14.1f}us"
             else:
                 row += f"{med:9.1f}us {100 * (med - base) / base:+5.0f}%"
         print(row)
+    if any(cpu[n][e] for n, _ in trees for e in endpoints):
+        print("\nCPU time per request (process_time, all threads):")
+        print(header)
+        for ep in endpoints:
+            row = f"{ep:22s}"
+            base = statistics.median(cpu[base_name][ep])
+            for name, _ in trees:
+                med = statistics.median(cpu[name][ep])
+                if name == base_name:
+                    row += f"{med:14.1f}us"
+                else:
+                    row += f"{med:9.1f}us {100 * (med - base) / base:+5.0f}%"
+            print(row)
     for ep in endpoints:
         sb = {name: statuses[name][ep] for name, _ in trees}
         if len(set(sb.values())) > 1:

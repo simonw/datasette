@@ -1,0 +1,17 @@
+endpoint                          base        base_seq        combined    combined_seq
+table_html                   43871.0us  43309.3us    -1%  33837.3us   -23%  33373.5us   -24%
+table_html_100               40415.2us  43468.4us    +8%  26724.4us   -34%  26867.7us   -34%
+big_html                     49135.6us  55371.8us   +13%  36299.8us   -26%  40371.8us   -18%
+big_facets_html             436276.1us 451279.6us    +3% 418904.4us    -4% 437213.3us    +0%
+big_json_extras             206230.7us 220080.8us    +7% 207025.7us    +0% 215655.5us    +5%
+
+CPU time per request (process_time, all threads):
+endpoint                          base        base_seq        combined    combined_seq
+table_html                   44955.6us  42346.3us    -6%  35728.0us   -21%  31976.5us   -29%
+table_html_100               42918.7us  42619.1us    -1%  28701.9us   -33%  25400.8us   -41%
+big_html                     51199.6us  53922.4us    +5%  36634.8us   -28%  38581.7us   -25%
+big_facets_html             449273.4us 445378.8us    -1% 427476.8us    -5% 431081.8us    -4%
+big_json_extras             214626.2us 216250.8us    +1% 215221.7us    +0% 212518.2us    -1%
+WARNING: status/bytes differ for table_html_100: {'base': (200, 66669), 'base_seq': (200, 66670), 'combined': (200, 66670), 'combined_seq': (200, 66670)}
+WARNING: status/bytes differ for big_facets_html: {'base': (200, 90956), 'base_seq': (200, 90956), 'combined': (200, 87157), 'combined_seq': (200, 87157)}
+WARNING: status/bytes differ for big_json_extras: {'base': (200, 14468), 'base_seq': (200, 17428), 'combined': (200, 17428), 'combined_seq': (200, 17428)}

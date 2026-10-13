@@ -1,0 +1,15 @@
+endpoint                          base        base_seq        combined    combined_seq
+table_html                   20267.3us  19539.0us    -4%  13410.0us   -34%  12370.8us   -39%
+table_html_100               25633.7us  26993.9us    +5%  15667.6us   -39%  14860.7us   -42%
+big_html                     32140.0us  30629.3us    -5%  18564.9us   -42%  19607.1us   -39%
+big_facets_html             153071.4us 156348.8us    +2% 152529.7us    -0% 146384.6us    -4%
+big_json_extras              69360.6us  74573.0us    +8%  71468.6us    +3%  71755.9us    +3%
+
+CPU time per request (process_time, all threads):
+endpoint                          base        base_seq        combined    combined_seq
+table_html                   32450.7us  32815.1us    +1%  23373.6us   -28%  22529.8us   -31%
+table_html_100               37758.4us  38652.7us    +2%  25699.8us   -32%  23044.6us   -39%
+big_html                     47521.9us  45540.3us    -4%  30912.8us   -35%  30503.3us   -36%
+big_facets_html             430757.7us 436700.9us    +1% 416349.0us    -3% 418970.1us    -3%
+big_json_extras             205427.7us 211874.2us    +3% 200218.6us    -3% 203118.1us    -1%
+WARNING: status/bytes differ for table_html_100: {'base': (200, 66670), 'base_seq': (200, 66670), 'combined': (200, 66670), 'combined_seq': (200, 66669)}

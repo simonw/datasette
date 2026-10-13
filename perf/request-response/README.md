@@ -312,6 +312,142 @@ What this shows:
   monkeypatched in `tools/serve_variant.py`. It is not in `ALL-combined.diff`
   and contributes about 3%.
 
+## Free-threaded Python 3.15 and the table-page extras
+
+Table pages resolve about 30 "extras" (count, facets, suggested facets,
+display columns and so on) through asyncinject with `parallel=True`, so each
+extra is its own asyncio task and several SQL queries are in flight at once.
+On the GIL build, making them sequential (`Registry(parallel=False)`) was
+16–21% faster. This section asks why, and whether free-threaded Python
+changes the answer.
+
+**Setup.** `uv python install 3.15t` gives `3.15.0b4` free-threaded. Every
+dependency installed from wheels (pydantic-core, PyYAML, MarkupSafe and
+sqlite3 all declare free-threading support), and `sys._is_gil_enabled()`
+stays `False` after Datasette starts and serves pages. **The full test
+suite passes on the free-threaded build: 2829 passed**, the same as the GIL
+build.
+
+The benchmark added a 500,000-row table (`BIGDB=1`), so the count and facet
+queries do real SQLite work, plus `CONCURRENCY=8` to keep 8 requests in
+flight. Each cell is ms per page, from 5 interleaved rounds, with all
+patches applied (`ALL-combined.diff`). Each "parallel / sequential" pair was
+measured interleaved in the same run. Different rows come from different
+runs, so compare across rows with about ±10% allowance.
+
+One request at a time (latency):
+
+| Build, SQL threads | Extras | Table page | 100-row page | 500k-row page | 500k, 2 facets |
+|---|---|---:|---:|---:|---:|
+| GIL, 3 (default) | parallel | 36.2 | 27.7 | 37.6 | 429 |
+| GIL, 3 (default) | sequential | **30.0** | **21.9** | **30.5** | 429 |
+| GIL, 1 | parallel | **28.4** | **21.7** | 31.2 | 433 |
+| GIL, 1 | sequential | 29.5 | 25.8 | 34.7 | 427 |
+| Free-threaded, 3 | parallel | 33.8 | 26.7 | **36.3** | 419 |
+| Free-threaded, 3 | sequential | 33.4 | 26.9 | 40.4 | 437 |
+| Free-threaded, 8 | parallel | 35.0 | 28.8 | 36.4 | 419 |
+| Free-threaded, 8 | sequential | 29.8 | 30.1 | 38.9 | 440 |
+
+8 requests in flight (ms per page = wall time ÷ pages served):
+
+| Build, SQL threads | Extras | Table page | 100-row page | 500k-row page | 500k, 2 facets |
+|---|---|---:|---:|---:|---:|
+| GIL, 3 (default) | parallel | 42.0 | 35.1 | 48.1 | 167 |
+| GIL, 3 (default) | sequential | 42.0 | 30.9 | 44.5 | 163 |
+| GIL, 1 | parallel | 22.3 | 19.4 | 26.4 | 424 |
+| GIL, 1 | sequential | 22.5 | 19.5 | 28.0 | 427 |
+| Free-threaded, 3 | parallel | 13.4 | 15.7 | 18.6 | 153 |
+| Free-threaded, 3 | sequential | 12.4 | 14.9 | 19.6 | 146 |
+| Free-threaded, 8 | parallel | 15.2 | 15.9 | **17.2** | **72** |
+| Free-threaded, 8 | sequential | 14.9 | 15.1 | 19.7 | 72 |
+
+Without the patches the picture is the same: on the GIL build sequential
+extras were 14–16% faster on the table and 500k-row pages, and on the
+free-threaded build they were level or 8–13% slower. Under load the
+unpatched table page went from 55.9 ms per page (GIL) to 20.3 ms
+(free-threaded).
+
+### Why parallel extras were slower on the GIL build
+
+It is GIL contention between the SQL worker threads, not the extras
+machinery.
+
+- Python's `sqlite3` releases the GIL around each `sqlite3_step()` and takes
+  it back for every row. Datasette also sets a Python `text_factory`, which
+  runs for every TEXT value. A query that fetches rows therefore wants the GIL
+  constantly.
+- When parallel extras put several queries on the 3-thread pool at once,
+  those threads and the event loop fight over the GIL. Each contended
+  hand-off is a futex wait plus a context switch, and the same work costs
+  far more CPU.
+- **The 3.15 sampler shows it directly.** In `--mode cpu -a` profiles of the
+  table page on the GIL build, sampled CPU per page was 57 ms with parallel
+  extras against 33 ms sequential. The SQL worker function
+  (`sql_operation_in_thread`, with the C sqlite calls charged to it) cost
+  14.5 ms per page against 6.9 ms. On the free-threaded build both were about
+  32 ms.
+- **Shrinking the switch interval tenfold barely helps:** sequential still
+  won by 13% at 0.5 ms, against 17% at the default 5 ms. So the cost is the
+  per-row hand-offs, not the 5 ms interval.
+- `tools/micro_gather.py` isolates it. It runs the same `db.execute()` 10 at
+  a time with `asyncio.gather` instead of one at a time, and reports CPU per
+  query relative to sequential:
+
+| `num_sql_threads` | GIL build | Free-threaded |
+|---|---:|---:|
+| 1 | ×0.57–1.07 | ×0.67–0.78 |
+| 3 (default) | **×2.3–5.0** | ×0.62–0.77 |
+| 8 | **×3.6–31.5** | ×0.60–0.83 |
+
+  With one SQL thread there is no contention, and the GIL penalty
+  disappears. With 8 threads it collapses: ten concurrent 100-row queries
+  take 9.2 ms each instead of 0.5 ms. On the free-threaded build, running
+  queries together is always cheaper per query. Per-query wall time drops
+  2.3–4.3× with 3 threads.
+
+### What this means for the extras question
+
+- **The sequential-extras win is an artefact of the GIL plus a multi-thread
+  SQL pool.** On the free-threaded build, parallel and sequential extras are
+  level within about ±5% on most pages, with no consistent winner: the
+  500k-row page favours parallel by 7–11%, and with 8 threads the small table
+  page favours sequential by 15%. With 1 SQL thread on the GIL build,
+  parallel extras *beat* sequential (sequential is 19% slower on the
+  100-row page). So
+  `critic-3-extras-sequential` should not land as written.
+- **`patches/extras-parallel-only-without-gil.diff`** is the targeted
+  version. It resolves extras in parallel only when `sys._is_gil_enabled()`
+  is false, checked when each registry is first built, so the setting
+  follows the GIL if a later extension import turns it back on. That gives
+  the best-measured arm with the default 3 threads on each build. The full
+  suite passes with it on the GIL build, where its behaviour changes.
+- **The bigger lever on GIL builds is the thread pool itself.** One SQL
+  thread nearly doubled table-page throughput under load (42.0 → 22.3 ms per
+  page). It removes contention between concurrent *requests*, not just
+  between one request's extras. But it serialises long SQLite-bound queries:
+  the 500k-row facet page went from 167 to 424 ms per page. Neither default
+  suits both workloads. Reducing per-row GIL traffic would help either way:
+  dropping the Python `text_factory` for a plain `str` with a fallback on
+  decode errors, the completeness critic's item 8.
+- **Free-threading is the largest throughput change measured in this whole
+  study.** With 8 in flight it served table pages 2.2–3.1× faster than the
+  GIL build with the default pool. Heavy SQLite queries scaled with threads:
+  the 500k-row facet page took 72 ms per page with 8 threads, against 167 ms
+  on the GIL build. The single-request cost is pure-Python overhead: light
+  requests were 40–70% slower (redirect 94 → 160 µs), and single table pages
+  were 11–22% slower than the best GIL configuration. It would pay off for busy deployments and cost a little for
+  quiet ones.
+
+**Correctness under real parallelism.** `tools/ft_stress.py` sent 800
+requests with 16 in flight to 8 table pages on the free-threaded build.
+The pages covered the fixtures tables, the 500k-row table and a named
+in-memory database (the case behind #2189), all with parallel extras. It
+compared every response with the first. That was 3,200 responses across both
+trees and 3 or 8 SQL threads, with **zero failures**. The GIL-build control
+lost one suggested facet in 800 requests: a suggestion query exceeded the
+50 ms `facet_suggest_time_limit_ms` under contention. Suggested facets can
+vary under load on GIL builds for the same reason.
+
 ## Bugs found along the way
 
 Fixed by the patches above:
@@ -360,11 +496,11 @@ not adversarially reviewed or carrying a trade-off to decide first:
   8–13% of server CPU on light requests.
 - **Send `Content-Length` on non-streaming responses.** About 3% end to end.
   It also gives clients sizes and progress.
-- `critic-3-extras-sequential`: table HTML resolves about 30 "extras" as
-  concurrent asyncio tasks (asyncinject `parallel=True`). Running them
-  sequentially measured −18 to −20% on table HTML. This contradicts
-  `run_sequential` in `table.py` (#2189), but the count and facet queries
-  may genuinely benefit from overlapping on large tables.
+- `critic-3-extras-sequential`: always resolve table-page extras
+  sequentially. It measured −16 to −21% on GIL builds, but see
+  [the free-threading section](#free-threaded-python-315-and-the-table-page-extras).
+  The win comes from GIL contention in the SQL pool and disappears on
+  free-threaded Python, so prefer `patches/extras-parallel-only-without-gil.diff`.
 - `critic-5-request-scoped-introspection-memo`: foreign keys are
   introspected 5×, and primary keys and `PRAGMA schema_version` 2×, per
   table HTML request. A request-scoped memo plus a one-trip prefetch

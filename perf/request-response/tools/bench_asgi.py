@@ -4,8 +4,15 @@ profiles show only Datasette's request/response machinery.
 
 Run it with the source tree you want to measure first on PYTHONPATH, e.g.
     PYTHONPATH=/path/to/datasette python bench_asgi.py time --n 1000
-fixtures.db is generated next to this script on first run. Set IMMUTABLE=1
-to open it as an immutable database, NUM_SQL_THREADS to change the pool.
+fixtures.db (and, with BIGDB=1, a 500,000-row bigdb.db) are generated next
+to this script on first run.
+
+Environment variables:
+    IMMUTABLE=1          open the databases as immutable
+    NUM_SQL_THREADS=N    size of Datasette's SQL thread pool (default 3)
+    BIGDB=1              also attach bigdb.db, for the big_* endpoints
+    CONCURRENCY=N        time mode: keep N requests in flight (throughput)
+    SWITCH_INTERVAL=S    sys.setswitchinterval(S) before running
 
 Usage:
     python bench_asgi.py time [--endpoints a,b] [--n 2000] [--rounds 5]
@@ -31,6 +38,36 @@ if not os.path.exists(FIXTURES):
     from datasette.fixtures import write_fixture_database
 
     write_fixture_database(FIXTURES)
+
+
+def write_bigdb(path, rows=500_000):
+    import random
+    import sqlite3
+
+    rnd = random.Random(1)
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "create table big (id integer primary key, category text, city text,"
+        " state text, score integer, name text, created text)"
+    )
+    conn.executemany(
+        "insert into big values (?, ?, ?, ?, ?, ?, ?)",
+        (
+            (
+                i,
+                f"category-{rnd.randrange(12)}",
+                f"city-{rnd.randrange(300)}",
+                f"S{rnd.randrange(50):02d}",
+                rnd.randint(0, 1000),
+                f"name {rnd.random():.8f}",
+                f"2026-{rnd.randint(1, 12):02d}-{rnd.randint(1, 28):02d}",
+            )
+            for i in range(1, rows + 1)
+        ),
+    )
+    conn.commit()
+    conn.close()
+
 
 ENDPOINTS = {
     # name: (method, path, query_string, extra headers, needs actor cookie)
@@ -71,6 +108,15 @@ ENDPOINTS = {
         [],
         False,
     ),
+    "big_html": ("GET", "/bigdb/big", "", [], False),
+    "big_facets_html": ("GET", "/bigdb/big", "_facet=category&_facet=city", [], False),
+    "big_json_extras": (
+        "GET",
+        "/bigdb/big.json",
+        "_facet=category&_extra=count&_extra=facet_results&_extra=suggested_facets",
+        [],
+        False,
+    ),
 }
 
 BROWSER_HEADERS = [
@@ -85,10 +131,20 @@ BROWSER_HEADERS = [
 ]
 
 
+if os.environ.get("SWITCH_INTERVAL"):
+    sys.setswitchinterval(float(os.environ["SWITCH_INTERVAL"]))
+
+
 def make_ds():
+    files = [FIXTURES]
+    if os.environ.get("BIGDB"):
+        bigdb = os.path.join(HERE, "bigdb.db")
+        if not os.path.exists(bigdb):
+            write_bigdb(bigdb)
+        files.append(bigdb)
     return Datasette(
-        [] if os.environ.get("IMMUTABLE") else [FIXTURES],
-        immutables=[FIXTURES] if os.environ.get("IMMUTABLE") else [],
+        [] if os.environ.get("IMMUTABLE") else files,
+        immutables=files if os.environ.get("IMMUTABLE") else [],
         settings={"num_sql_threads": int(os.environ.get("NUM_SQL_THREADS", "3"))},
     )
 
@@ -172,16 +228,33 @@ async def run_time(endpoints, n, rounds):
         for _ in range(min(200, n)):
             await d.request(name)
         per_round = []
-        for _ in range(rounds):
-            t0 = time.perf_counter()
-            for _ in range(n):
+        concurrency = int(os.environ.get("CONCURRENCY", "1"))
+
+        async def worker(count, name=name):
+            for _ in range(count):
                 await d.request(name)
-            per_round.append((time.perf_counter() - t0) / n * 1e6)
+
+        cpu_round = []
+        for _ in range(rounds):
+            c0 = time.process_time()
+            t0 = time.perf_counter()
+            if concurrency == 1:
+                for _ in range(n):
+                    await d.request(name)
+            else:
+                # Throughput: wall time per request with this many in flight
+                await asyncio.gather(
+                    *(worker(n // concurrency) for _ in range(concurrency))
+                )
+            done = n if concurrency == 1 else (n // concurrency) * concurrency
+            per_round.append((time.perf_counter() - t0) / done * 1e6)
+            cpu_round.append((time.process_time() - c0) / done * 1e6)
         results[name] = {
             "status": status,
             "bytes": len(body),
             "median_us": round(statistics.median(per_round), 1),
             "min_us": round(min(per_round), 1),
+            "cpu_us": round(statistics.median(cpu_round), 1),
         }
         print(
             f"{name:22s} {status} {len(body):7d}B  median {results[name]['median_us']:8.1f}us  min {results[name]['min_us']:8.1f}us",

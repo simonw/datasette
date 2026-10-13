@@ -1,0 +1,17 @@
+endpoint                      combined    combined_seq
+table_html                   34975.8us  29762.6us   -15%
+table_html_100               28804.9us  30127.7us    +5%
+big_html                     36421.8us  38917.1us    +7%
+big_facets_html             418525.9us 440381.0us    +5%
+big_json_extras             205540.5us 214527.8us    +4%
+
+CPU time per request (process_time, all threads):
+endpoint                      combined    combined_seq
+table_html                   35247.5us  28326.2us   -20%
+table_html_100               29970.0us  29178.3us    -3%
+big_html                     36884.2us  38048.2us    +3%
+big_facets_html             427737.0us 433207.1us    +1%
+big_json_extras             212786.6us 211274.8us    -1%
+WARNING: status/bytes differ for table_html: {'combined': (200, 26551), 'combined_seq': (200, 26552)}
+WARNING: status/bytes differ for big_html: {'combined': (200, 86458), 'combined_seq': (200, 86459)}
+WARNING: status/bytes differ for big_facets_html: {'combined': (200, 90956), 'combined_seq': (200, 87157)}

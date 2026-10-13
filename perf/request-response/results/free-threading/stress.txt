@@ -1,0 +1,13 @@
+tools/ft_stress.py --concurrency 16 --requests 800: 100 requests each to 8
+table pages (fixtures, a 500k-row table, and a named in-memory database with
+parallel extras), every response compared with the first one (status only
+for the 500k-row pages, whose facet suggestions depend on time limits).
+
+free-threaded, cf113a5, 3 SQL threads         800/800 ok, GIL stayed off
+free-threaded, all patches, 3 SQL threads     800/800 ok, GIL stayed off
+free-threaded, all patches, 8 SQL threads     800/800 ok, GIL stayed off
+free-threaded, cf113a5, 8 SQL threads         800/800 ok, GIL stayed off
+GIL build, all patches, 3 SQL threads (run 1) 799/800 - table_html_100 lost
+    its "pk2" suggested facet: that suggestion query went over the 50 ms
+    facet_suggest_time_limit_ms under GIL contention
+GIL build, all patches, 3 SQL threads (run 2) 800/800 ok

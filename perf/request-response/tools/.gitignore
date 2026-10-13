@@ -1,0 +1,5 @@
+*.db
+__pycache__/
+server_*.log
+server_*.pid
+final_results_*.jsonl

@@ -1,0 +1,36 @@
+diff --git a/datasette/extras.py b/datasette/extras.py
+index fb8c2e0..0e2fbe5 100644
+--- a/datasette/extras.py
++++ b/datasette/extras.py
+@@ -1,4 +1,5 @@
+ import re
++import sys
+ from dataclasses import dataclass
+ from enum import Enum
+ from typing import ClassVar
+@@ -8,6 +9,16 @@ from asyncinject import Registry
+ from datasette.utils.asgi import BadRequest
+ 
+ 
++def _resolve_extras_in_parallel():
++    # With the GIL, resolving extras concurrently puts several queries on the
++    # SQL thread pool at once, and the workers then contend for the GIL on
++    # every fetched row - measured at 2-5x the CPU of running them one at a
++    # time. On a free-threaded build concurrent queries run in parallel.
++    # Checked when a registry is built, since importing an extension module
++    # without free-threading support can turn the GIL back on.
++    return not getattr(sys, "_is_gil_enabled", lambda: True)()
++
++
+ def extra_names_from_request(request):
+     extra_bits = request.args.getlist("_extra")
+     extras = set()
+@@ -96,7 +107,7 @@ class ExtraRegistry:
+     def _registry_for_scope(self, scope):
+         registry = self._scope_registries.get(scope)
+         if registry is None:
+-            registry = Registry()
++            registry = Registry(parallel=_resolve_extras_in_parallel())
+             for cls in self.classes_for_scope(scope):
+                 registry.register(cls().resolve, name=cls.key())
+             self._scope_registries[scope] = registry

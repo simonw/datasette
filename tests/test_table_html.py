@@ -1088,6 +1088,89 @@ async def test_row_delete_action_data_attributes():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "schema_and_rows, link_column, valid_row_path",
+    [
+        (
+            """
+            create table items (id text primary key, name text);
+            insert into items (id, name) values
+                (null, 'Null key'),
+                ('None', 'Literal key');
+            """,
+            "id",
+            "/data/items/None",
+        ),
+        (
+            """
+            create table items (
+                namespace text,
+                id text,
+                name text,
+                primary key (namespace, id)
+            );
+            insert into items (namespace, id, name) values
+                (null, 'item', 'Null key'),
+                ('None', 'item', 'Literal key');
+            """,
+            "Link",
+            "/data/items/None,item",
+        ),
+    ],
+)
+async def test_null_primary_key_rows_have_no_row_link_or_actions(
+    schema_and_rows, link_column, valid_row_path
+):
+    ds = Datasette(
+        [],
+        config={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "items": {
+                            "permissions": {
+                                "update-row": {"id": "root"},
+                                "delete-row": {"id": "root"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    )
+    try:
+        db = ds.add_database(
+            Database(ds, memory_name="test_null_primary_key_rows"), name="data"
+        )
+        await db.execute_write_script(schema_and_rows)
+
+        response = await ds.client.get("/data/items", actor={"id": "root"})
+        assert response.status_code == 200
+        soup = Soup(response.text, "html.parser")
+        rows = soup.select("table.rows-and-columns tbody tr")
+        null_row = next(
+            row
+            for row in rows
+            if row.select_one(".col-name").get_text(strip=True) == "Null key"
+        )
+        literal_row = next(
+            row
+            for row in rows
+            if row.select_one(".col-name").get_text(strip=True) == "Literal key"
+        )
+
+        assert null_row.select_one(f'td[class~="col-{link_column}"] a') is None
+        assert null_row.select("button[data-row-action]") == []
+
+        literal_link = literal_row.select_one(f'td[class~="col-{link_column}"] a')
+        assert literal_link is not None
+        assert literal_link["href"] == valid_row_path
+        assert len(literal_row.select("button[data-row-action]")) == 2
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
 async def test_database_create_table_action_button_and_data():
     ds = Datasette(
         [],

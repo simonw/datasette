@@ -851,3 +851,17 @@ async def test_facet_selection_against_integer_column_in_view():
     assert [row["id"] for row in data["rows"]] == [1, 2]
     results = data["facet_results"]["results"]["n"]["results"]
     assert [(r["value"], r["count"], r["selected"]) for r in results] == [(1, 2, True)]
+
+
+@pytest.mark.asyncio
+async def test_exact_filter_integer_outside_sqlite_range():
+    # Values beyond SQLite 64-bit integers must not be bound as integers
+    ds = Datasette()
+    db = ds.add_memory_database("test_exact_filter_big_int")
+    await db.execute_write("create table t (id integer primary key, code text)")
+    await db.execute_write("insert into t (code) values (?)", ["9223372036854775808"])
+    response = await ds.client.get(
+        "/test_exact_filter_big_int/t.json?code=9223372036854775808"
+    )
+    assert response.status_code == 200
+    assert [row["id"] for row in response.json()["rows"]] == [1]

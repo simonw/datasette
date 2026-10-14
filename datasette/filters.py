@@ -266,7 +266,7 @@ class ExactFilter(TemplatedFilter):
             as_int = int(value)
         except ValueError:
             return sql, param
-        if str(as_int) != value:
+        if str(as_int) != value or not -(2**63) <= as_int < 2**63:
             return sql, param
         # Columns without type affinity (such as expressions in a view) do not
         # convert "1" to 1 for the comparison, so match both representations

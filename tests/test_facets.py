@@ -829,3 +829,25 @@ async def test_facet_only_considers_first_x_rows():
         assert data2["suggested_facets"] == []
     finally:
         Facet.suggest_consider = original_suggest_consider
+
+
+@pytest.mark.asyncio
+async def test_facet_selection_against_integer_column_in_view():
+    # https://github.com/simonw/datasette/issues/2073
+    # View columns computed from expressions have no column affinity, so
+    # comparing them to the string "1" from the querystring does not match 1
+    ds = Datasette()
+    db = ds.add_memory_database("test_facet_integer_view")
+    await db.execute_write("create table t (id integer primary key, n integer)")
+    await db.execute_write_many(
+        "insert into t (n) values (:n)", [{"n": 1}, {"n": 1}, {"n": 2}]
+    )
+    await db.execute_write("create view v as select id, n + 0 as n from t")
+    response = await ds.client.get(
+        "/test_facet_integer_view/v.json?_facet=n&n=1&_extra=facet_results"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert [row["id"] for row in data["rows"]] == [1, 2]
+    results = data["facet_results"]["results"]["n"]["results"]
+    assert [(r["value"], r["count"], r["selected"]) for r in results] == [(1, 2, True)]

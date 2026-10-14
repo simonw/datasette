@@ -301,6 +301,47 @@ async def test_plugin_config(ds_client):
     assert None is ds_client.ds.plugin_config("unknown-plugin")
 
 
+@pytest.mark.parametrize(
+    "database_plugins,table_plugins,fallback,expected",
+    [
+        ({"example": {}}, {}, True, {}),
+        ({"example": {"setting": "database"}}, {}, True, {"setting": "database"}),
+        ({}, {}, True, {"setting": "top"}),
+        ({"example": None}, {}, True, {"setting": "top"}),
+        (
+            {"example": {}},
+            {"example": {"setting": "table"}},
+            True,
+            {"setting": "table"},
+        ),
+        ({"example": {"setting": "database"}}, {"example": {}}, True, {}),
+        ({"example": {}}, {}, False, None),
+        ({"example": {}}, {"example": {}}, False, {}),
+    ],
+)
+def test_plugin_config_table_fallback_preserves_empty_database_config(
+    database_plugins, table_plugins, fallback, expected
+):
+    datasette = Datasette(
+        config={
+            "plugins": {"example": {"setting": "top"}},
+            "databases": {
+                "example_db": {
+                    "plugins": database_plugins,
+                    "tables": {"items": {"plugins": table_plugins}},
+                }
+            },
+        }
+    )
+
+    assert (
+        datasette.plugin_config(
+            "example", database="example_db", table="items", fallback=fallback
+        )
+        == expected
+    )
+
+
 @pytest.mark.asyncio
 async def test_plugin_config_env(ds_client, monkeypatch):
     monkeypatch.setenv("FOO_ENV", "FROM_ENVIRONMENT")

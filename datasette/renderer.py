@@ -6,26 +6,39 @@ from datasette.utils import (
     error_body,
     path_from_row_pks,
     remove_infinites,
-    sqlite3,
     value_as_boolean,
 )
 from datasette.utils.asgi import Response
 
 
+def _load_json_value(value):
+    try:
+        return json.loads(value)
+    except (TypeError, ValueError):
+        return value
+
+
 def convert_specific_columns_to_json(rows, columns, json_cols):
+    if not rows:
+        return rows
+    if columns is None:
+        if not isinstance(rows[0], dict):
+            return rows
+        columns = rows[0].keys()
     json_cols = set(json_cols)
     if not json_cols.intersection(columns):
         return rows
     new_rows = []
     for row in rows:
-        new_row = []
-        for value, column in zip(row, columns):
-            if column in json_cols:
-                try:
-                    value = json.loads(value)
-                except (TypeError, ValueError):
-                    pass
-            new_row.append(value)
+        if isinstance(row, dict):
+            new_row = dict(row)
+            for column in json_cols.intersection(row):
+                new_row[column] = _load_json_value(row[column])
+        else:
+            new_row = [
+                _load_json_value(value) if column in json_cols else value
+                for value, column in zip(row, columns)
+            ]
         new_rows.append(new_row)
     return new_rows
 
@@ -38,9 +51,9 @@ def json_renderer(request, args, data, error, truncated=None):
     json_cols = []
     if "_json" in args:
         json_cols = args.getlist("_json")
-    if json_cols and "rows" in data and "columns" in data:
+    if json_cols and "rows" in data:
         data["rows"] = convert_specific_columns_to_json(
-            data["rows"], data["columns"], json_cols
+            data["rows"], data.get("columns"), json_cols
         )
 
     # unless _json_infinity=1 requested, replace infinity with None
@@ -61,11 +74,10 @@ def json_renderer(request, args, data, error, truncated=None):
     if shape == "arrayfirst":
         if not data["rows"]:
             data = []
-        elif isinstance(data["rows"][0], sqlite3.Row):
-            data = [row[0] for row in data["rows"]]
-        else:
-            assert isinstance(data["rows"][0], dict)
+        elif isinstance(data["rows"][0], dict):
             data = [next(iter(row.values())) for row in data["rows"]]
+        else:
+            data = [row[0] for row in data["rows"]]
     elif shape in ("objects", "object", "array"):
         columns = data.get("columns")
         rows = data.get("rows")
@@ -96,10 +108,10 @@ def json_renderer(request, args, data, error, truncated=None):
     elif shape == "arrays":
         if not data["rows"]:
             pass
-        elif isinstance(data["rows"][0], sqlite3.Row):
-            data["rows"] = [list(row) for row in data["rows"]]
-        else:
+        elif isinstance(data["rows"][0], dict):
             data["rows"] = [list(row.values()) for row in data["rows"]]
+        else:
+            data["rows"] = [list(row) for row in data["rows"]]
     else:
         status_code = 400
         data = error_body(f"Invalid _shape: {shape}", status_code)

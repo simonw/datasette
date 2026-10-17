@@ -231,7 +231,13 @@ def test_uninstall(run_module):
 def test_version():
     runner = CliRunner()
     result = runner.invoke(cli, ["--version"])
-    assert result.output == f"cli, version {__version__}\n"
+    expected_sqlite_version = (
+        sqlite3.connect(":memory:").execute("select sqlite_version()").fetchone()[0]
+    )
+    assert (
+        result.output
+        == f"cli, version {__version__} (SQLite {expected_sqlite_version})\n"
+    )
 
 
 @pytest.mark.parametrize("invalid_port", ["-1", "0.5", "dog", "65536"])

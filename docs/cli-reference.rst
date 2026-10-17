@@ -132,6 +132,8 @@ Use ``--internal PATH`` or the ``DATASETTE_INTERNAL`` environment variable to pe
       --pdb                           Launch debugger on any errors
       -o, --open                      Open Datasette in your web browser
       --create                        Create database files if they do not exist
+      --create-wal                    Create database files if they do not exist, in
+                                      WAL mode
       --crossdb                       Enable cross-database joins using the /_memory
                                       database
       --nolock                        Ignore locking, open locked files in read-only

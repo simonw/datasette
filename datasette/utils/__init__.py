@@ -1146,6 +1146,8 @@ _escape_fts_re = re.compile(r'\s+|(".*?")')
 
 
 def escape_fts(query):
+    # Treat curly double quotes from keyboards as phrase delimiters too.
+    query = query.replace("“", '"').replace("”", '"')
     # If query has unbalanced ", add one at end
     if query.count('"') % 2:
         query += '"'

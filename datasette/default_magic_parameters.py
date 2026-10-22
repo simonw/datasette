@@ -13,7 +13,7 @@ def header(key, request):
 
 def actor(key, request):
     if request.actor is None:
-        raise KeyError
+        raise KeyError(key)
     return request.actor[key]
 
 

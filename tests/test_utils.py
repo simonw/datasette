@@ -605,6 +605,11 @@ def test_format_bytes(bytes, expected):
         # Sensibly handle unbalanced double quotes
         ('cat"', '"cat"'),
         ('"cat dog" "fish', '"cat dog" "fish"'),
+        # Quoted phrases and unbalanced quotes can contain newlines
+        ('"cat\ndog"', '"cat\ndog"'),
+        ('"cat\ndog" fish', '"cat\ndog" "fish"'),
+        ('cat "dog\nfish', '"cat" "dog\nfish"'),
+        ('cat"\n!', '"cat" "\n!"'),
     ],
 )
 def test_escape_fts(query, expected):

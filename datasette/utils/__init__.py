@@ -1142,7 +1142,7 @@ def format_bytes(bytes):
         return f"{current:.1f} {unit}"
 
 
-_escape_fts_re = re.compile(r'\s+|(".*?")')
+_escape_fts_re = re.compile(r'\s+|(".*?")', re.DOTALL)
 
 
 def escape_fts(query):

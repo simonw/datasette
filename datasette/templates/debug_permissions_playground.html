@@ -99,7 +99,11 @@ debugPost.addEventListener('submit', function(ev) {
         }
     }).then(function(response) {
         if (!response.ok) {
-            throw new Error('Request failed with status ' + response.status);
+            // Show the JSON error body (e.g. a 400 for malformed actor JSON)
+            // if there is one, otherwise fall back to the status code
+            return response.json().catch(function() {
+                throw new Error('Request failed with status ' + response.status);
+            });
         }
         return response.json();
     }).then(function(data) {

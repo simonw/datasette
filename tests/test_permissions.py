@@ -1994,6 +1994,89 @@ async def test_permission_check_hypothetical_actor_validation():
 
 
 @pytest.mark.asyncio
+async def test_permissions_debug_post_actor_validation():
+    # https://github.com/simonw/datasette/issues/1948
+    ds = Datasette()
+    ds.root_enabled = True
+    await ds.invoke_startup()
+
+    async def post(actor_json):
+        return await ds.client.post(
+            "/-/permissions",
+            data={"actor": actor_json, "permission": "view-instance"},
+            actor={"id": "root"},
+        )
+
+    response = await post("not-json")
+    assert response.status_code == 400
+    assert response.json()["error"].startswith("Invalid actor JSON:")
+
+    response = await post("[]")
+    assert response.status_code == 400
+    assert response.json()["error"] == "actor must be a JSON object or null"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "restrictions,expected_error",
+    (
+        ("view-table", '"_r" must be an object'),
+        (["vt"], '"_r" must be an object'),
+        ({"a": "view-table"}, '"_r.a" must be a list of action names'),
+        ({"a": [1]}, '"_r.a" must be a list of action names'),
+        ({"a": None}, '"_r.a" must be a list of action names'),
+        ({"d": ["vt"]}, '"_r.d" must be an object mapping database names'),
+        ({"d": {"db": "vt"}}, '"_r.d.db" must be a list of action names'),
+        ({"r": ["vt"]}, '"_r.r" must be an object mapping database names'),
+        ({"r": {"db": ["vt"]}}, '"_r.r.db" must be an object mapping table names'),
+        ({"r": {"db": {"t": "vt"}}}, '"_r.r.db.t" must be a list of action names'),
+    ),
+)
+async def test_permission_debug_malformed_restrictions(restrictions, expected_error):
+    # https://github.com/simonw/datasette/issues/1948
+    ds = Datasette()
+    ds.root_enabled = True
+    await ds.invoke_startup()
+    actor_json = json.dumps({"id": "root", "_r": restrictions})
+
+    response = await ds.client.post(
+        "/-/permissions",
+        data={"actor": actor_json, "permission": "view-instance"},
+        actor={"id": "root"},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"].startswith(expected_error)
+
+    response = await ds.client.get(
+        "/-/check.json?"
+        + urllib.parse.urlencode({"action": "view-instance", "actor": actor_json}),
+        actor={"id": "root"},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"].startswith(expected_error)
+
+
+@pytest.mark.asyncio
+async def test_permission_debug_well_formed_restrictions_still_work():
+    ds = Datasette()
+    ds.root_enabled = True
+    await ds.invoke_startup()
+    actor_json = json.dumps(
+        {
+            "id": "root",
+            "_r": {"a": ["vi"], "d": {"_memory": ["vd"]}, "r": {"_memory": {}}},
+        }
+    )
+    response = await ds.client.post(
+        "/-/permissions",
+        data={"actor": actor_json, "permission": "view-instance"},
+        actor={"id": "root"},
+    )
+    assert response.status_code == 200
+    assert response.json()["allowed"] is True
+
+
+@pytest.mark.asyncio
 async def test_root_allow_block_with_table_restricted_actor():
     """
     Test that root-level allow: blocks are processed for actors with

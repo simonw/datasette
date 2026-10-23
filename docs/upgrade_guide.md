@@ -29,6 +29,23 @@ The URL for executing a SQL query now looks like this:
 
 **This isn't a breaking change.** API calls to the older ``/databasename?sql=...`` endpoint will redirect to the new ``databasename/-/query?sql=...`` endpoint. Upgrading to the new URL is recommended to avoid the overhead of the additional redirect.
 
+(upgrade_guide_v1_row_json)=
+### Row JSON returns a single ``"row"`` object
+
+The JSON for an individual row, such as ``/databasename/tablename/1.json``, previously returned that row as the only item in a ``"rows"`` list. It now returns it as an object in a ``"row"`` key:
+
+```json
+{
+  "ok": true,
+  "row": {
+    "id": 1,
+    "content": "hello"
+  }
+}
+```
+
+Add ``?_shape=objects`` to the URL to get a ``"rows"`` list containing that row instead, or use any other ``?_shape=`` option to get the same shapes as table JSON. See {ref}`json_api_row`.
+
 (upgrade_guide_v1_metadata)=
 ### Metadata changes
 

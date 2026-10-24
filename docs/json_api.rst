@@ -296,6 +296,9 @@ query string arguments:
     JSON. Without this argument those columns will be returned as JSON objects
     that have been double-encoded into a JSON string value.
 
+    With ``_shape=object``, the object keys still use the original database
+    primary-key values, even when a primary-key column is decoded using ``_json``.
+
     Compare `this query without the argument <https://fivethirtyeight.datasettes.com/fivethirtyeight.json?sql=select+%27{%22this+is%22%3A+%22a+json+object%22}%27+as+d&_shape=array>`_ to `this query using the argument <https://fivethirtyeight.datasettes.com/fivethirtyeight.json?sql=select+%27{%22this+is%22%3A+%22a+json+object%22}%27+as+d&_shape=array&_json=d>`_
 
 ``?_json_infinity=on``

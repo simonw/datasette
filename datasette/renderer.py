@@ -51,6 +51,20 @@ def json_renderer(request, args, data, error, truncated=None):
     json_cols = []
     if "_json" in args:
         json_cols = args.getlist("_json")
+    object_keys = None
+    pks = data.get("primary_keys")
+    if (
+        not error
+        and args.get("_shape") == "object"
+        and pks
+        and any(pk in json_cols for pk in pks)
+    ):
+        object_keys = []
+        columns = data.get("columns")
+        for row in data["rows"]:
+            if columns and not isinstance(row, dict):
+                row = dict(zip(columns, row))
+            object_keys.append(path_from_row_pks(row, pks, False))
     if json_cols and "rows" in data:
         data["rows"] = convert_specific_columns_to_json(
             data["rows"], data.get("columns"), json_cols
@@ -95,8 +109,12 @@ def json_renderer(request, args, data, error, truncated=None):
                     )
                 else:
                     object_rows = {}
-                    for row in data["rows"]:
-                        pk_string = path_from_row_pks(row, pks, not pks)
+                    for index, row in enumerate(data["rows"]):
+                        pk_string = (
+                            object_keys[index]
+                            if object_keys is not None
+                            else path_from_row_pks(row, pks, not pks)
+                        )
                         object_rows[pk_string] = row
                     data = object_rows
             if shape_error:

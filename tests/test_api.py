@@ -843,6 +843,59 @@ async def test_json_columns_preserve_other_values(endpoint, value, expected):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("include_columns", [False, True])
+@pytest.mark.parametrize("composite_key", [False, True])
+@pytest.mark.parametrize(
+    "values",
+    [
+        [('"same"', "same"), ("same", "same")],
+        [("null", None), ("None", "None")],
+        [(' {"id":1}', {"id": 1})],
+        [('["x"]', ["x"]), ("['x']", "['x']")],
+    ],
+)
+async def test_json_columns_object_preserves_primary_keys(
+    include_columns, composite_key, values
+):
+    ds = Datasette()
+    db = ds.add_memory_database("json_keys")
+    primary_key = "id, tenant" if composite_key else "id"
+    await db.execute_write(
+        f"CREATE TABLE t (id text, tenant text, payload text, primary key ({primary_key}))"
+    )
+    expected = {}
+    for index, (raw_id, decoded_id) in enumerate(values):
+        payload = f"row-{index}"
+        await db.execute_write(
+            "INSERT INTO t VALUES (?, ?, ?)", [raw_id, '"team"', payload]
+        )
+        key = tilde_encode(raw_id)
+        if composite_key:
+            key += "," + tilde_encode('"team"')
+        expected[key] = {
+            "id": decoded_id,
+            "tenant": "team" if composite_key else '"team"',
+            "payload": payload,
+        }
+    parameters = [("_shape", "object"), ("_json", "id")]
+    if composite_key:
+        parameters.append(("_json", "tenant"))
+    if include_columns:
+        parameters.append(("_extra", "columns"))
+    try:
+        response = await ds.client.get(
+            "/json_keys/t.json?" + urllib.parse.urlencode(parameters)
+        )
+        assert response.status_code == 200
+        assert response.json() == expected
+        for key in expected:
+            detail = await ds.client.get(f"/json_keys/t/{key}.json")
+            assert detail.status_code == 200
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "shape", ["objects", "object", "array", "arrayfirst", "arrays"]
 )

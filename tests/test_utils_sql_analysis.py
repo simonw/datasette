@@ -43,6 +43,15 @@ def table_operation_tuples(analysis):
     ]
 
 
+def non_internal_system_table_operations(analysis):
+    return [
+        operation
+        for operation in analysis.operations
+        if operation.table in {"sqlite_master", "sqlite_schema"}
+        and not operation.internal
+    ]
+
+
 def test_analyze_select_tables(conn):
     analysis = analyze_sql_tables(
         conn,
@@ -121,12 +130,7 @@ def test_analyze_create_table_operation():
         "source": None,
         "internal": False,
     } in [operation_dict(operation) for operation in analysis.operations]
-    assert not [
-        operation
-        for operation in analysis.operations
-        if operation.table in {"sqlite_master", "sqlite_schema"}
-        and not operation.internal
-    ]
+    assert not non_internal_system_table_operations(analysis)
 
 
 def test_analyze_vacuum_operation():

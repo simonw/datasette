@@ -52,6 +52,19 @@ def non_internal_system_table_operations(analysis):
     ]
 
 
+def function_operation_tuples(analysis):
+    return {
+        (
+            operation.operation,
+            operation.target_type,
+            operation.target,
+            operation.database,
+            operation.table,
+        )
+        for operation in analysis.operations
+    }
+
+
 def test_analyze_select_tables(conn):
     analysis = analyze_sql_tables(
         conn,
@@ -221,16 +234,7 @@ def test_analyze_function_operation(conn):
         database_name="data",
     )
 
-    assert {
-        (
-            operation.operation,
-            operation.target_type,
-            operation.target,
-            operation.database,
-            operation.table,
-        )
-        for operation in analysis.operations
-    } == {
+    assert function_operation_tuples(analysis) == {
         ("insert", "table", "dogs", "data", "dogs"),
         ("function", "function", "upper", None, None),
         ("read", "table", "dogs", "data", "dogs"),

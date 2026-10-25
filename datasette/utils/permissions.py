@@ -32,7 +32,11 @@ async def gather_permission_sql_from_hooks(
         return SKIP_PERMISSION_CHECKS
 
     hook_caller = pm.hook.permission_resources_sql
-    hookimpls = hook_caller.get_hookimpls()
+    # pluggy runs hook implementations in reverse registration order (with
+    # tryfirst/trylast already encoded in get_hookimpls()) and appends each
+    # result in that call order, so hook_results[i] pairs with the reversed
+    # implementation list, not get_hookimpls()[i] (#2978).
+    hookimpls = hook_caller.get_hookimpls()[::-1]
     hook_results = list(hook_caller(datasette=datasette, actor=actor, action=action))
 
     collected: list[PermissionSQL] = []

@@ -93,40 +93,40 @@ def test_view_padlock(
 
 
 @pytest.mark.parametrize(
-    "allow,expected_anon,expected_auth",
+    "allow,expected_anon,expected_auth,expected_padlock",
     [
-        (None, 200, 200),
-        ({}, 403, 403),
-        ({"id": "root"}, 403, 200),
+        (None, 200, 200, False),
+        ({}, 403, 403, False),
+        ({"id": "root"}, 403, 200, True),
     ],
 )
 @pytest.mark.parametrize("use_metadata", (True, False))
-def test_view_database(allow, expected_anon, expected_auth, use_metadata):
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/fixtures",
+        "/fixtures/compound_three_primary_keys",
+        "/fixtures/compound_three_primary_keys/a,a,a",
+    ),
+)
+def test_view_database(
+    allow, expected_anon, expected_auth, expected_padlock, use_metadata, path
+):
     key = "metadata" if use_metadata else "config"
     kwargs = {key: {"databases": {"fixtures": {"allow": allow}}}}
     with make_app_client(**kwargs) as client:
-        for path in (
-            "/fixtures",
-            "/fixtures/compound_three_primary_keys",
-            "/fixtures/compound_three_primary_keys/a,a,a",
-        ):
-            anon_response = client.get(path)
-            assert expected_anon == anon_response.status, path
-            if allow and path == "/fixtures" and anon_response.status == 200:
-                # Should be no padlock
-                assert ">fixtures 🔒</h1>" not in anon_response.text
-            auth_response = client.get(
-                path,
-                cookies={"ds_actor": client.actor_cookie({"id": "root"})},
-            )
-            assert expected_auth == auth_response.status
-            if (
-                allow
-                and path == "/fixtures"
-                and expected_anon == 403
-                and expected_auth == 200
-            ):
-                assert ">fixtures 🔒</h1>" in auth_response.text
+        anon_response = client.get(path)
+        assert expected_anon == anon_response.status, path
+        assert ">fixtures 🔒</h1>" not in anon_response.text
+        auth_response = client.get(
+            path,
+            cookies={"ds_actor": client.actor_cookie({"id": "root"})},
+        )
+        assert expected_auth == auth_response.status
+        assert (">fixtures 🔒</h1>" in auth_response.text) == (
+            expected_padlock and path == "/fixtures"
+        )
+
 
 
 def test_database_list_respects_view_database():

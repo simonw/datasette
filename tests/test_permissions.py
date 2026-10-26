@@ -51,11 +51,11 @@ async def perms_ds():
 
 
 @pytest.mark.parametrize(
-    "allow,expected_anon,expected_auth",
+    "allow,expected_anon,expected_auth,expected_padlock",
     [
-        (None, 200, 200),
-        ({}, 403, 403),
-        ({"id": "root"}, 403, 200),
+        (None, 200, 200, False),
+        ({}, 403, 403, False),
+        ({"id": "root"}, 403, 200, True),
     ],
 )
 @pytest.mark.parametrize(
@@ -74,23 +74,22 @@ async def perms_ds():
         ),  # Query
     ),
 )
-def test_view_padlock(allow, expected_anon, expected_auth, path, padlock_client):
+def test_view_padlock(
+    allow, expected_anon, expected_auth, expected_padlock, path, padlock_client
+):
     padlock_client.ds.config["allow"] = allow
     fragment = "🔒</h1>"
     anon_response = padlock_client.get(path)
     assert expected_anon == anon_response.status
-    if allow and anon_response.status == 200:
-        # Should be no padlock
-        assert fragment not in anon_response.text
+    assert fragment not in anon_response.text
     auth_response = padlock_client.get(
         path,
         cookies={"ds_actor": padlock_client.actor_cookie({"id": "root"})},
     )
     assert expected_auth == auth_response.status
-    # Check for the padlock
-    if allow and expected_anon == 403 and expected_auth == 200:
-        assert fragment in auth_response.text
+    assert (fragment in auth_response.text) == expected_padlock
     del padlock_client.ds.config["allow"]
+
 
 
 @pytest.mark.parametrize(

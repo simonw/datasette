@@ -753,6 +753,7 @@ async def test_settings_json(ds_client):
         "max_post_body_bytes": 2 * 1024 * 1024,
         "sql_time_limit_ms": 200,
         "allow_download": True,
+        "allow_row_pages": True,
         "allow_signed_tokens": True,
         "max_signed_tokens_ttl": 0,
         "allow_facet": True,

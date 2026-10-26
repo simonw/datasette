@@ -322,6 +322,27 @@ Should users be able to download the original SQLite database using a link on th
 
     datasette mydatabase.db --setting allow_download off
 
+.. _setting_allow_row_pages:
+
+allow_row_pages
+~~~~~~~~~~~~~~~
+
+.. [[[cog
+    setting_default(cog, "allow_row_pages")
+.. ]]]
+
+Default: ``on``
+
+.. [[[end]]]
+
+Should Datasette serve an HTML page for each individual row, such as ``/fixtures/facetable/1``? Table pages link to these row pages from the primary key column and from foreign key values, which can cause crawlers to request every row in a database one page at a time.
+
+Turning this off causes row pages to return a 404, and table pages display primary keys and foreign key values as plain text instead of links::
+
+    datasette mydatabase.db --setting allow_row_pages off
+
+The JSON, CSV and ``.blob`` row endpoints continue to work, as do the row insert, update and delete APIs.
+
 .. _setting_allow_signed_tokens:
 
 allow_signed_tokens

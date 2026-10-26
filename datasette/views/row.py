@@ -173,6 +173,8 @@ class RowView(BaseView):
             return await self.as_csv(request, database_route)
 
         if format_ == "html":
+            if not self.ds.setting("allow_row_pages"):
+                raise NotFound("Row pages are disabled")
             # HTML views default to expanding all foreign key labels
             data_kwargs["default_labels"] = True
 

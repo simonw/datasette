@@ -469,6 +469,8 @@ async def _query_edit_form_context(
 
 
 async def _inserted_row_url(datasette, db, analysis, cursor):
+    if not datasette.setting("allow_row_pages"):
+        return None
     if cursor.rowcount != 1:
         return None
     lastrowid = getattr(cursor, "lastrowid", None)

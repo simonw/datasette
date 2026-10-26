@@ -326,13 +326,34 @@ def package(
     "--editable",
     help="Install a project in editable mode from this path",
 )
-def install(packages, upgrade, requirement, editable):
+@click.option(
+    "--pre", is_flag=True, help="Include pre-release and development versions"
+)
+@click.option(
+    "--force-reinstall",
+    is_flag=True,
+    help="Reinstall all packages even if they are already up-to-date",
+)
+@click.option(
+    "--no-cache-dir",
+    is_flag=True,
+    help="Disable the cache",
+)
+def install(
+    packages, upgrade, requirement, editable, pre, force_reinstall, no_cache_dir
+):
     """Install plugins and packages from PyPI into the same environment as Datasette"""
     if not packages and not requirement and not editable:
         raise click.UsageError("Please specify at least one package to install")
     args = ["pip", "install"]
     if upgrade:
         args += ["--upgrade"]
+    if pre:
+        args += ["--pre"]
+    if force_reinstall:
+        args += ["--force-reinstall"]
+    if no_cache_dir:
+        args += ["--no-cache-dir"]
     if editable:
         args += ["--editable", editable]
     if requirement:

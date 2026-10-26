@@ -385,6 +385,10 @@ Would install the `datasette-cluster-map <https://datasette.io/plugins/datasette
       -U, --upgrade           Upgrade packages to latest version
       -r, --requirement PATH  Install from requirements file
       -e, --editable TEXT     Install a project in editable mode from this path
+      --pre                   Include pre-release and development versions
+      --force-reinstall       Reinstall all packages even if they are already up-to-
+                              date
+      --no-cache-dir          Disable the cache
       --help                  Show this message and exit.
 
 

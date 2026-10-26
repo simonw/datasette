@@ -25,6 +25,7 @@ To collect telemetry, configure an OpenTelemetry SDK and exporter, then run Data
 Other features
 ~~~~~~~~~~~~~~
 
+- New ``--pre``, ``--force-reinstall``, and ``--no-cache-dir`` options for ``datasette install``. (:issue:`2483`)
 - New :ref:`DatasetteModal JavaScript API <javascript_plugins_modals>` for plugins to create dialogs with Datasette's shared styles, keyboard behavior and focus handling. Datasette's built-in dialogs use the same API. (:issue:`2790`, :pr:`2948`)
 
 Bug fixes

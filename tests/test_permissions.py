@@ -588,9 +588,7 @@ def test_permissions_cascade(cascade_app_client, path, permissions, expected_sta
     deny = {}
     previous_config = cascade_app_client.ds.config
     updated_config = copy.deepcopy(previous_config)
-    actor = {"id": "test"}
-    if "download" in permissions:
-        actor["can_download"] = 1
+    actor = {"id": "test", **({"can_download": 1} if "download" in permissions else {})}
     try:
         # Set up the different allow blocks
         updated_config["allow"] = allow if "instance" in permissions else deny

@@ -56,8 +56,7 @@ def test_conformance_passes_for_a_conforming_workload(otel_spans):
 
 
 def test_conformance_catches_an_unregistered_span(otel_spans):
-    with toy_tracer.start_as_current_span("toyplugin.surprise"):
-        pass
+    toy_tracer.start_span("toyplugin.surprise").end()
     with pytest.raises(AssertionError, match="unregistered span"):
         assert_spans_conform(
             TOY_SPANS, otel_spans.get_finished_spans(), scope_name=SCOPE

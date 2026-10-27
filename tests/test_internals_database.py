@@ -670,15 +670,26 @@ async def test_execute_write_with_returning_return_all(db):
     assert [row["id"] for row in result.fetchall()] == list(range(1, 21))
 
 
+async def wait_for_row_value(db, sql, expected, timeout=1.0, interval=0.005):
+    deadline = asyncio.get_running_loop().time() + timeout
+    while asyncio.get_running_loop().time() < deadline:
+        rows = await db.execute(sql)
+        if rows.rows and rows.rows[0][0] == expected:
+            return rows.rows[0][0]
+        await asyncio.sleep(interval)
+    raise TimeoutError(f"Expected {expected!r} not found within {timeout}s")
+
+
 @pytest.mark.asyncio
 async def test_execute_write_block_false(db):
     await db.execute_write(
         "update roadside_attractions set name = ? where pk = ?",
         ["Mystery!", 1],
     )
-    await asyncio.sleep(0.1)
-    rows = await db.execute("select name from roadside_attractions where pk = 1")
-    assert "Mystery!" == rows.rows[0][0]
+    name = await wait_for_row_value(
+        db, "select name from roadside_attractions where pk = 1", "Mystery!"
+    )
+    assert name == "Mystery!"
 
 
 @pytest.mark.asyncio

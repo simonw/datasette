@@ -235,7 +235,10 @@ async def test_sync_shutdown_hook_variant_works():
 async def test_shutdown_logs_stragglers_that_outlive_the_grace_period(
     caplog, monkeypatch
 ):
+    task_started = asyncio.Event()
+
     async def stubborn(datasette):
+        task_started.set()
         with contextlib.suppress(asyncio.CancelledError):
             await asyncio.sleep(10)
         # Swallowing CancelledError above and returning normally simulates
@@ -291,12 +294,9 @@ async def test_shutdown_logs_stragglers_that_outlive_the_grace_period(
         await queue.put({"type": "lifespan.startup"})
         await asyncio.wait_for(startup_complete.wait(), timeout=5)
 
-        # Let the stubborn background task actually start running and
-        # reach its CancelledError-suppressing sleep before shutdown
-        # cancels it - a task cancelled before it has ever run its first
-        # step never enters that block at all, so it would finish
-        # cancelling immediately instead of behaving like a straggler.
-        await asyncio.sleep(0.05)
+        # Wait until the stubborn background task has started running
+        # before shutdown cancels it.
+        await asyncio.wait_for(task_started.wait(), timeout=5)
 
         with caplog.at_level(logging.WARNING, logger="datasette.background_tasks"):
             await queue.put({"type": "lifespan.shutdown"})

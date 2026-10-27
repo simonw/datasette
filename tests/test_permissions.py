@@ -161,20 +161,17 @@ def test_database_list_respects_view_table():
             "data.db": "create table names (name text); create view v as select * from names"
         },
     ) as client:
-        html_fragments = [
-            ">names</a> 🔒",
-            ">v</a> 🔒",
-        ]
         anon_response_text = client.get("/").text
         assert "0 rows in 0 tables" in anon_response_text
-        for html_fragment in html_fragments:
-            assert html_fragment not in anon_response_text
+        assert ">names</a> 🔒" not in anon_response_text
+        assert ">v</a> 🔒" not in anon_response_text
         auth_response_text = client.get(
             "/",
             cookies={"ds_actor": client.actor_cookie({"id": "root"})},
         ).text
-        for html_fragment in html_fragments:
-            assert html_fragment in auth_response_text
+        assert ">names</a> 🔒" in auth_response_text
+        assert ">v</a> 🔒" in auth_response_text
+
 
 
 @pytest.mark.parametrize(

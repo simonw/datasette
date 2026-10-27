@@ -159,8 +159,9 @@ def test_static_rejects_path_traversal(tmp_path, monkeypatch):
     _setup_static_app_root(tmp_path, monkeypatch, "demo.js", b"")
     ds = Datasette()
 
-    with pytest.raises(ValueError, match="cannot escape static root"):
+    with pytest.raises(ValueError, match="cannot escape static root") as excinfo:
         ds.static("../secret.js")
+    assert "cannot escape static root" in str(excinfo.value)
 
 
 @pytest.mark.asyncio

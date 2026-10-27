@@ -699,14 +699,19 @@ async def test_track_event_with_block_false(ds_with_event_tracking):
         conn.execute("create table if not exists te5 (id integer primary key)")
         track_event(DummyEvent(actor=None, message="non-blocking"))
 
+    event_recorded = asyncio.Event()
+    original_track_event = ds.track_event
+
+    async def recording_track_event(event):
+        await original_track_event(event)
+        event_recorded.set()
+
+    ds.track_event = recording_track_event
+
     task_id = await db.execute_write_fn(my_write, block=False)
     assert task_id is not None
 
-    # Give the background task time to complete
-    for _ in range(50):
-        if ds._tracked_events:
-            break
-        await asyncio.sleep(0.01)
+    await asyncio.wait_for(event_recorded.wait(), timeout=5)
 
     assert len(ds._tracked_events) == 1
     assert ds._tracked_events[0].message == "non-blocking"

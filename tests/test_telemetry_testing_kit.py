@@ -95,8 +95,7 @@ def test_coverage_catches_a_never_emitted_span(otel_spans):
 def test_scope_filter_ignores_other_scopes(otel_spans):
     # Spans from other scopes, including Datasette's own, are ignored:
     other = otel_trace.get_tracer("someone-else", "1.0")
-    with other.start_as_current_span("not.in.the.toy.registry"):
-        pass
+    other.start_span("not.in.the.toy.registry").end()
     _run_workload()
     assert_spans_conform(TOY_SPANS, otel_spans.get_finished_spans(), scope_name=SCOPE)
 

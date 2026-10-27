@@ -221,18 +221,14 @@ def test_table_list_respects_view_table():
             }
         }
     ) as client:
-        html_fragments = [
-            ">compound_three_primary_keys</a> 🔒",
-            ">paginated_view</a> 🔒",
-        ]
-        anon_response = client.get("/fixtures")
-        for html_fragment in html_fragments:
-            assert html_fragment not in anon_response.text
-        auth_response = client.get(
+        anon_response_text = client.get("/fixtures").text
+        assert ">compound_three_primary_keys</a> 🔒" not in anon_response_text
+        assert ">paginated_view</a> 🔒" not in anon_response_text
+        auth_response_text = client.get(
             "/fixtures", cookies={"ds_actor": client.actor_cookie({"id": "root"})}
-        )
-        for html_fragment in html_fragments:
-            assert html_fragment in auth_response.text
+        ).text
+        assert ">compound_three_primary_keys</a> 🔒" in auth_response_text
+        assert ">paginated_view</a> 🔒" in auth_response_text
 
 
 @pytest.mark.parametrize(

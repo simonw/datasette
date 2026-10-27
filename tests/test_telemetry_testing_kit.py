@@ -104,8 +104,7 @@ def test_linked_root_span_kwargs_links_without_parenting(otel_spans):
     with toy_tracer.start_as_current_span("toyplugin.cause") as cause:
         cause_context = cause.get_span_context()
         kwargs = linked_root_span_kwargs()
-    with toy_tracer.start_as_current_span("toyplugin.effect", **kwargs):
-        pass
+    toy_tracer.start_span("toyplugin.effect", **kwargs).end()
     effect = next(
         span for span in _toy_spans(otel_spans) if span.name == "toyplugin.effect"
     )

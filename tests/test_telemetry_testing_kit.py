@@ -44,8 +44,7 @@ def _run_workload():
     with toy_tracer.start_as_current_span(JOB) as span:
         span.set_attribute(OUTCOME, "ok")
         span.set_attribute(JOB_NAME, "nightly")
-    with toy_tracer.start_as_current_span("toyplugin.chat gpt-5"):
-        pass
+    toy_tracer.start_span("toyplugin.chat gpt-5").end()
 
 
 def test_conformance_passes_for_a_conforming_workload(otel_spans):

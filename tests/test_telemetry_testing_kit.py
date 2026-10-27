@@ -117,8 +117,7 @@ def test_linked_root_span_kwargs_links_without_parenting(otel_spans):
 def test_linked_root_span_kwargs_with_no_current_span(otel_spans):
     kwargs = linked_root_span_kwargs()
     assert kwargs["links"] == []
-    with toy_tracer.start_as_current_span("toyplugin.orphanless", **kwargs):
-        pass
+    toy_tracer.start_span("toyplugin.orphanless", **kwargs).end()
     span = _toy_spans(otel_spans)[0]
     assert span.parent is None
     assert span.links == ()

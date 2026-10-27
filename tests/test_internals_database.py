@@ -705,10 +705,10 @@ async def test_execute_write_with_returning_block_false(db):
     )
 
     assert isinstance(task_id, uuid.UUID)
-    await asyncio.sleep(0.1)
-    assert (
-        await db.execute("select name from write_returning_block_false")
-    ).single_value() == "Cleo"
+    name = await wait_for_row_value(
+        db, "select name from write_returning_block_false", "Cleo"
+    )
+    assert name == "Cleo"
 
 
 def test_execute_write_result_closes_cursor_on_fetch_error():

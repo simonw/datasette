@@ -175,16 +175,15 @@ def test_database_list_respects_view_table():
 
 
 @pytest.mark.parametrize(
-    "allow,expected_anon,expected_auth",
+    "allow,expected_anon,expected_auth,expected_padlock",
     [
-        (None, 200, 200),
-        ({}, 403, 403),
-        ({"id": "root"}, 403, 200),
+        (None, 200, 200, False),
+        ({}, 403, 403, False),
+        ({"id": "root"}, 403, 200, True),
     ],
 )
-@pytest.mark.parametrize("use_metadata", (True, False))
-def test_view_table(allow, expected_anon, expected_auth, use_metadata):
-    key = "metadata" if use_metadata else "config"
+@pytest.mark.parametrize("key", ("metadata", "config"))
+def test_view_table(allow, expected_anon, expected_auth, expected_padlock, key):
     kwargs = {
         key: {
             "databases": {
@@ -197,16 +196,15 @@ def test_view_table(allow, expected_anon, expected_auth, use_metadata):
     with make_app_client(**kwargs) as client:
         anon_response = client.get("/fixtures/compound_three_primary_keys")
         assert expected_anon == anon_response.status
-        if allow and anon_response.status == 200:
-            # Should be no padlock
-            assert ">compound_three_primary_keys 🔒</h1>" not in anon_response.text
+        assert ">compound_three_primary_keys 🔒</h1>" not in anon_response.text
         auth_response = client.get(
             "/fixtures/compound_three_primary_keys",
             cookies={"ds_actor": client.actor_cookie({"id": "root"})},
         )
         assert expected_auth == auth_response.status
-        if allow and expected_anon == 403 and expected_auth == 200:
-            assert ">compound_three_primary_keys 🔒</h1>" in auth_response.text
+        assert (
+            ">compound_three_primary_keys 🔒</h1>" in auth_response.text
+        ) == expected_padlock
 
 
 def test_table_list_respects_view_table():

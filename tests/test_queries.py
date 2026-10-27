@@ -36,11 +36,12 @@ def _template_sql(html, table, operation):
 def _template_button_sql(html, operation):
     soup = Soup(html, "html.parser")
     button = soup.select_one(f'button[data-sql-template="{operation}"]')
-    assert button, f"Could not find {operation} template button"
-    assert button.get(
-        "data-template-sql"
-    ), f"Could not find SQL for {operation} template button"
-    return button["data-template-sql"]
+    if not button:
+        raise ValueError(f"Could not find {operation} template button")
+    sql = button.get("data-template-sql")
+    if not sql:
+        raise ValueError(f"Could not find SQL for {operation} template button")
+    return sql
 
 
 async def add_numbered_queries(ds, database, count):

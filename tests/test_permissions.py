@@ -232,14 +232,14 @@ def test_table_list_respects_view_table():
 
 
 @pytest.mark.parametrize(
-    "allow,expected_anon,expected_auth",
+    "allow,expected_anon,expected_auth,expected_padlock",
     [
-        (None, 200, 200),
-        ({}, 403, 403),
-        ({"id": "root"}, 403, 200),
+        (None, 200, 200, False),
+        ({}, 403, 403, False),
+        ({"id": "root"}, 403, 200, True),
     ],
 )
-def test_view_query(allow, expected_anon, expected_auth):
+def test_view_query(allow, expected_anon, expected_auth, expected_padlock):
     with make_app_client(
         config={
             "databases": {
@@ -249,15 +249,12 @@ def test_view_query(allow, expected_anon, expected_auth):
     ) as client:
         anon_response = client.get("/fixtures/q")
         assert expected_anon == anon_response.status
-        if allow and anon_response.status == 200:
-            # Should be no padlock
-            assert "🔒</h1>" not in anon_response.text
+        assert "🔒</h1>" not in anon_response.text
         auth_response = client.get(
             "/fixtures/q", cookies={"ds_actor": client.actor_cookie({"id": "root"})}
         )
         assert expected_auth == auth_response.status
-        if allow and expected_anon == 403 and expected_auth == 200:
-            assert ">fixtures: q 🔒</h1>" in auth_response.text
+        assert (">fixtures: q 🔒</h1>" in auth_response.text) == expected_padlock
 
 
 @pytest.mark.parametrize(

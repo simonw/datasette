@@ -20,7 +20,8 @@ EXPECTED_CREATE_TABLE_TEMPLATE_SQL = "create table new_table (\n  id integer pri
 
 def _template_option_attributes(html, table):
     match = re.search(rf'<option value="{table}"([^>]*)>', html)
-    assert match, f"Could not find template option for {table}"
+    if not match:
+        raise ValueError(f"Could not find template option for {table}")
     return match.group(1)
 
 

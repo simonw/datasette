@@ -28,7 +28,8 @@ def _template_option_attributes(html, table):
 def _template_sql(html, table, operation):
     attrs = _template_option_attributes(html, table)
     match = re.search(rf'data-template-{operation}-sql="([^"]*)"', attrs)
-    assert match, f"Could not find {operation} template for {table}"
+    if not match:
+        raise ValueError(f"Could not find {operation} template for {table}")
     return unescape(match.group(1))
 
 

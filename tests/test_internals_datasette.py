@@ -150,8 +150,9 @@ def test_static_hashes_plugin_static_file(tmp_path, monkeypatch):
 
 def test_static_rejects_plugin_and_mount():
     ds = Datasette()
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as excinfo:
         ds.static("styles.css", plugin="datasette_cluster_map", mount="assets")
+    assert excinfo.type is ValueError
 
 
 def test_static_rejects_path_traversal(tmp_path, monkeypatch):

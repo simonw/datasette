@@ -271,8 +271,9 @@ async def test_datasette_render_template_with_dataclass():
 def test_datasette_error_if_string_not_list(tmpdir):
     # https://github.com/simonw/datasette/issues/1985
     db_path = str(tmpdir / "data.db")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as excinfo:
         Datasette(db_path)
+    assert excinfo.type is ValueError
 
 
 @pytest.mark.asyncio

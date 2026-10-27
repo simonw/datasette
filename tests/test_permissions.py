@@ -501,14 +501,23 @@ def view_instance_client():
     "path",
     [
         "/",
+        "/.json",
         "/fixtures",
+        "/fixtures.json",
         "/fixtures/facetable",
+        "/fixtures/facetable.json",
         "/-/versions",
+        "/-/versions.json",
         "/-/plugins",
+        "/-/plugins.json",
         "/-/settings",
+        "/-/settings.json",
         "/-/threads",
+        "/-/threads.json",
         "/-/tasks",
+        "/-/tasks.json",
         "/-/databases",
+        "/-/databases.json",
         "/-/permissions",
         "/-/messages",
         "/-/patterns",
@@ -517,13 +526,6 @@ def view_instance_client():
 )
 def test_view_instance(path, view_instance_client):
     assert 403 == view_instance_client.get(path).status
-    if path not in (
-        "/-/permissions",
-        "/-/messages",
-        "/-/patterns",
-        "/-/patterns/menus",
-    ):
-        assert 403 == view_instance_client.get(path + ".json").status
 
 
 @pytest.fixture(scope="session")

@@ -3,17 +3,19 @@ import pytest
 from .fixtures import make_app_client
 
 
-@pytest.mark.parametrize("trace_debug", (True, False))
-def test_trace(trace_debug):
-    with make_app_client(settings={"trace_debug": trace_debug}) as client:
+def test_trace_disabled():
+    with make_app_client(settings={"trace_debug": False}) as client:
+        response = client.get("/fixtures/simple_primary_key.json?_trace=1")
+        assert response.status == 200
+    assert "_trace" not in response.json
+
+
+def test_trace_enabled():
+    with make_app_client(settings={"trace_debug": True}) as client:
         response = client.get("/fixtures/simple_primary_key.json?_trace=1")
         assert response.status == 200
 
     data = response.json
-    if not trace_debug:
-        assert "_trace" not in data
-        return
-
     assert "_trace" in data
     trace_info = data["_trace"]
     assert isinstance(trace_info["request_duration_ms"], float)

@@ -349,7 +349,7 @@ def test_registry_holds_instances_weakly():
     import weakref
 
     class FakeDatasette:
-        pass
+        """Stand-in object to test that registration does not hold strong references."""
 
     fake = FakeDatasette()
     telemetry.register_datasette(fake)

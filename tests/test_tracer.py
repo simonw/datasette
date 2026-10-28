@@ -10,6 +10,18 @@ def test_trace_disabled():
     assert "_trace" not in response.json
 
 
+def assert_valid_trace_entries(traces):
+    for trace in traces:
+        assert isinstance(trace["type"], str)
+        assert isinstance(trace["start"], float)
+        assert isinstance(trace["end"], float)
+        assert trace["duration_ms"] == (trace["end"] - trace["start"]) * 1000
+        assert isinstance(trace["traceback"], list)
+        assert isinstance(trace["database"], str)
+        assert isinstance(trace["sql"], str)
+        assert isinstance(trace.get("params"), (list, dict, None.__class__))
+
+
 def test_trace_enabled():
     with make_app_client(settings={"trace_debug": True}) as client:
         response = client.get("/fixtures/simple_primary_key.json?_trace=1")
@@ -24,15 +36,7 @@ def test_trace_enabled():
     assert isinstance(trace_info["traces"], list)
     traces = trace_info["traces"]
     assert len(traces) == trace_info["num_traces"]
-    for trace in traces:
-        assert isinstance(trace["type"], str)
-        assert isinstance(trace["start"], float)
-        assert isinstance(trace["end"], float)
-        assert trace["duration_ms"] == (trace["end"] - trace["start"]) * 1000
-        assert isinstance(trace["traceback"], list)
-        assert isinstance(trace["database"], str)
-        assert isinstance(trace["sql"], str)
-        assert isinstance(trace.get("params"), (list, dict, None.__class__))
+    assert_valid_trace_entries(traces)
 
     sqls = [trace["sql"] for trace in traces if "sql" in trace]
     # There should be SQL statements from request handling in the trace.

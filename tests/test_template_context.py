@@ -95,8 +95,9 @@ def test_from_extra_must_be_available_for_the_scope():
         # count is a TABLE-scope extra, not available for ROW
         count: int = from_extra()
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as excinfo:
         WrongScopeContext.documented_fields()
+    assert excinfo.type is ValueError
 
 
 @pytest.fixture

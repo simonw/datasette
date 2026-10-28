@@ -80,8 +80,9 @@ def test_from_extra_must_match_a_registered_extra():
 
         not_a_real_extra: str = from_extra()
 
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError) as excinfo:
         BadContext.documented_fields()
+    assert excinfo.type is KeyError
 
 
 def test_from_extra_must_be_available_for_the_scope():

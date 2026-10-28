@@ -37,12 +37,17 @@ def test_documented_fields():
     ]
 
 
+def fields_missing_help(klass):
+    return [
+        f"{klass.__name__}.{field.name}"
+        for field in klass.documented_fields()
+        if not field.help
+    ]
+
+
 @pytest.mark.parametrize("klass", PAGES.values(), ids=lambda klass: klass.__name__)
 def test_context_class_fields_all_have_help(klass):
-    for context_field in klass.documented_fields():
-        assert (
-            context_field.help
-        ), f"{klass.__name__}.{context_field.name} is missing documentation"
+    assert fields_missing_help(klass) == []
 
 
 @pytest.mark.parametrize("klass", PAGES.values(), ids=lambda klass: klass.__name__)

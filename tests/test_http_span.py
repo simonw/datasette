@@ -146,7 +146,8 @@ def _server_spans(otel_spans):
 def _route_for(ds, path):
     "The compiled pattern Datasette's own router resolves `path` to."
     match, _view = resolve_routes(ds._routes(), path)
-    assert match is not None, f"{path} matches no route"
+    if match is None:
+        raise ValueError(f"{path} matches no route")
     return match.re.pattern
 
 

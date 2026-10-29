@@ -1343,35 +1343,23 @@ async def test_null_and_compound_foreign_keys_are_not_expanded(ds_client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "path,expected_json,expected_text",
-    [
-        (
-            "/fixtures/binary_data.json?_shape=array",
-            [
-                {"rowid": 1, "data": {"$base64": True, "encoded": "FRwCx60F/g=="}},
-                {"rowid": 2, "data": {"$base64": True, "encoded": "FRwDx60F/g=="}},
-                {"rowid": 3, "data": None},
-            ],
-            None,
-        ),
-        (
-            "/fixtures/binary_data.json?_shape=array&_nl=on",
-            None,
-            (
-                '{"rowid": 1, "data": {"$base64": true, "encoded": "FRwCx60F/g=="}}\n'
-                '{"rowid": 2, "data": {"$base64": true, "encoded": "FRwDx60F/g=="}}\n'
-                '{"rowid": 3, "data": null}'
-            ),
-        ),
-    ],
-)
-async def test_binary_data_in_json(ds_client, path, expected_json, expected_text):
-    response = await ds_client.get(path)
-    if expected_json:
-        assert response.json() == expected_json
-    else:
-        assert response.text == expected_text
+async def test_binary_data_in_json_shape_array(ds_client):
+    response = await ds_client.get("/fixtures/binary_data.json?_shape=array")
+    assert response.json() == [
+        {"rowid": 1, "data": {"$base64": True, "encoded": "FRwCx60F/g=="}},
+        {"rowid": 2, "data": {"$base64": True, "encoded": "FRwDx60F/g=="}},
+        {"rowid": 3, "data": None},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_binary_data_in_json_nl(ds_client):
+    response = await ds_client.get("/fixtures/binary_data.json?_shape=array&_nl=on")
+    assert response.text == (
+        '{"rowid": 1, "data": {"$base64": true, "encoded": "FRwCx60F/g=="}}\n'
+        '{"rowid": 2, "data": {"$base64": true, "encoded": "FRwDx60F/g=="}}\n'
+        '{"rowid": 3, "data": null}'
+    )
 
 
 @pytest.mark.asyncio

@@ -82,7 +82,7 @@ def test_from_extra_must_match_a_registered_extra():
 
     with pytest.raises(KeyError) as excinfo:
         BadContext.documented_fields()
-    assert excinfo.type is KeyError
+    assert "no registered extra of that name" in str(excinfo.value)
 
 
 def test_from_extra_must_be_available_for_the_scope():
@@ -97,7 +97,7 @@ def test_from_extra_must_be_available_for_the_scope():
 
     with pytest.raises(ValueError) as excinfo:
         WrongScopeContext.documented_fields()
-    assert excinfo.type is ValueError
+    assert "is not available for scope" in str(excinfo.value)
 
 
 @pytest.fixture

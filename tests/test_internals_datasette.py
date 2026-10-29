@@ -152,14 +152,14 @@ def test_static_rejects_plugin_and_mount():
     ds = Datasette()
     with pytest.raises(ValueError) as excinfo:
         ds.static("styles.css", plugin="datasette_cluster_map", mount="assets")
-    assert excinfo.type is ValueError
+    assert "Use either plugin= or mount=, not both" in str(excinfo.value)
 
 
 def test_static_rejects_path_traversal(tmp_path, monkeypatch):
     _setup_static_app_root(tmp_path, monkeypatch, "demo.js", b"")
     ds = Datasette()
 
-    with pytest.raises(ValueError, match="cannot escape static root") as excinfo:
+    with pytest.raises(ValueError) as excinfo:
         ds.static("../secret.js")
     assert "cannot escape static root" in str(excinfo.value)
 
@@ -273,7 +273,7 @@ def test_datasette_error_if_string_not_list(tmpdir):
     db_path = str(tmpdir / "data.db")
     with pytest.raises(ValueError) as excinfo:
         Datasette(db_path)
-    assert excinfo.type is ValueError
+    assert "files= must be a list of paths, not a string" in str(excinfo.value)
 
 
 @pytest.mark.asyncio

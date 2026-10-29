@@ -119,8 +119,14 @@ async def test_derived_permission_discovery_error_is_retried(monkeypatch, listin
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("fts_module", ("fts4", "fts5"))
-async def test_external_content_fts_inherits_content_table_view_permission(fts_module):
+@pytest.mark.parametrize(
+    "fts_module,fts_options",
+    (
+        ("fts4", "body, content='secret'"),
+        ("fts5", "body, content='secret', content_rowid='id'"),
+    ),
+)
+async def test_external_content_fts_inherits_content_table_view_permission(fts_module, fts_options):
     actor = {"id": "reader"}
     secret_marker = "ISSUE_17_EXTERNAL_CONTENT_FTS_SECRET"
     ds = Datasette(
@@ -147,9 +153,6 @@ async def test_external_content_fts_inherits_content_table_view_permission(fts_m
         "insert into secret (body) values (?)",
         [secret_marker],
     )
-    fts_options = "body, content='secret'"
-    if fts_module == "fts5":
-        fts_options += ", content_rowid='id'"
     await db.execute_write(
         f"create virtual table secret_fts using {fts_module}({fts_options})"
     )

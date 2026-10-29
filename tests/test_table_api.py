@@ -1164,18 +1164,19 @@ def test_suggest_facets_off():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("nofacet", (True, False))
-async def test_nofacet(ds_client, nofacet):
-    path = "/fixtures/facetable.json?_facet=state&_extra=suggested_facets"
-    if nofacet:
-        path += "&_nofacet=1"
+@pytest.mark.parametrize(
+    "query_param,has_suggested_facets,has_facet_results",
+    (
+        ("&_nofacet=1", False, False),
+        ("", True, True),
+    ),
+)
+async def test_nofacet(ds_client, query_param, has_suggested_facets, has_facet_results):
+    path = f"/fixtures/facetable.json?_facet=state&_extra=suggested_facets{query_param}"
     response = await ds_client.get(path)
-    if nofacet:
-        assert response.json()["suggested_facets"] == []
-        assert response.json()["facet_results"]["results"] == {}
-    else:
-        assert response.json()["suggested_facets"] != []
-        assert response.json()["facet_results"]["results"] != {}
+    data = response.json()
+    assert (len(data["suggested_facets"]) > 0) is has_suggested_facets
+    assert (len(data["facet_results"]["results"]) > 0) is has_facet_results
 
 
 @pytest.mark.asyncio

@@ -3251,6 +3251,35 @@ async def test_execute_write_create_table_uses_create_table_permission():
     assert not await db.table_exists("should_not_exist")
 
 
+async def _verify_alter_table(db):
+    assert "age" in [column.name for column in await db.table_column_details("dogs")]
+    assert "age" not in [column.name for column in await db.table_column_details("cats")]
+
+
+async def _verify_create_index(db):
+    row_dogs = (await db.execute("select 1 from sqlite_master where type = 'index' and name = 'idx_dogs_name'")).first()
+    row_cats = (await db.execute("select 1 from sqlite_master where type = 'index' and name = 'idx_cats_name'")).first()
+    assert row_dogs is not None
+    assert row_cats is None
+
+
+async def _verify_drop_index(db):
+    row_dogs = (await db.execute("select 1 from sqlite_master where type = 'index' and name = 'idx_dogs_name'")).first()
+    row_cats = (await db.execute("select 1 from sqlite_master where type = 'index' and name = 'idx_cats_name'")).first()
+    assert row_dogs is None
+    assert row_cats is not None
+
+
+async def _verify_drop_table(db):
+    assert not await db.table_exists("dogs")
+    assert await db.table_exists("cats")
+
+
+async def _verify_drop_view(db):
+    assert not await db.view_exists("dogs_view")
+    assert await db.view_exists("cats_view")
+
+
 @pytest.mark.parametrize(
     (
         "database_name",
@@ -3259,7 +3288,7 @@ async def test_execute_write_create_table_uses_create_table_permission():
         "denied_sql",
         "expected_error",
         "setup_sqls",
-        "expected_state",
+        "state_verifier",
     ),
     (
         (
@@ -3269,7 +3298,7 @@ async def test_execute_write_create_table_uses_create_table_permission():
             "alter table cats add column age integer",
             "Permission denied: need alter-table on data/cats",
             (),
-            "alter-table",
+            _verify_alter_table,
         ),
         (
             "execute_write_create_index",
@@ -3278,7 +3307,7 @@ async def test_execute_write_create_table_uses_create_table_permission():
             "create index idx_cats_name on cats(name)",
             "Permission denied: need alter-table on data/cats",
             (),
-            "create-index",
+            _verify_create_index,
         ),
         (
             "execute_write_drop_index",
@@ -3290,7 +3319,7 @@ async def test_execute_write_create_table_uses_create_table_permission():
                 "create index idx_dogs_name on dogs(name)",
                 "create index idx_cats_name on cats(name)",
             ),
-            "drop-index",
+            _verify_drop_index,
         ),
         (
             "execute_write_drop_table",
@@ -3299,7 +3328,7 @@ async def test_execute_write_create_table_uses_create_table_permission():
             "drop table cats",
             "Permission denied: need drop-table on data/cats",
             (),
-            "drop-table",
+            _verify_drop_table,
         ),
         (
             "execute_write_drop_view",
@@ -3311,7 +3340,7 @@ async def test_execute_write_create_table_uses_create_table_permission():
                 "create view dogs_view as select * from dogs",
                 "create view cats_view as select * from cats",
             ),
-            "drop-view",
+            _verify_drop_view,
         ),
     ),
     ids=("alter-table", "create-index", "drop-index", "drop-table", "drop-view"),
@@ -3324,7 +3353,7 @@ async def test_execute_write_schema_operations_use_schema_permissions(
     denied_sql,
     expected_error,
     setup_sqls,
-    expected_state,
+    state_verifier,
 ):
     ds = Datasette(
         memory=True,
@@ -3391,25 +3420,7 @@ async def test_execute_write_schema_operations_use_schema_permissions(
     assert denied_response.status_code == 403
     assert denied_response.json()["errors"] == [expected_error]
 
-    if expected_state == "alter-table":
-        assert "age" in [
-            column.name for column in await db.table_column_details("dogs")
-        ]
-        assert "age" not in [
-            column.name for column in await db.table_column_details("cats")
-        ]
-    elif expected_state == "create-index":
-        assert await index_exists("idx_dogs_name")
-        assert not await index_exists("idx_cats_name")
-    elif expected_state == "drop-index":
-        assert not await index_exists("idx_dogs_name")
-        assert await index_exists("idx_cats_name")
-    elif expected_state == "drop-table":
-        assert not await db.table_exists("dogs")
-        assert await db.table_exists("cats")
-    elif expected_state == "drop-view":
-        assert not await db.view_exists("dogs_view")
-        assert await db.view_exists("cats_view")
+    await state_verifier(db)
 
 
 @pytest.mark.asyncio

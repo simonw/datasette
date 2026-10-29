@@ -1197,11 +1197,15 @@ async def test_nosuggest(ds_client, query_param, has_suggested_facets):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("nocount,expected_count", ((True, None), (False, 15)))
-async def test_nocount(ds_client, nocount, expected_count):
-    path = "/fixtures/facetable.json?_extra=count"
-    if nocount:
-        path += "&_nocount=1"
+@pytest.mark.parametrize(
+    "query_param,expected_count",
+    (
+        ("&_nocount=1", None),
+        ("", 15),
+    ),
+)
+async def test_nocount(ds_client, query_param, expected_count):
+    path = f"/fixtures/facetable.json?_extra=count{query_param}"
     response = await ds_client.get(path)
     assert response.json()["count"] == expected_count
 

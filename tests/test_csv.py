@@ -188,8 +188,12 @@ async def test_custom_sql_csv(ds_client):
         ),
     ),
 )
-async def test_custom_sql_csv_errors(ds_client, query_string, expected_error, download_suffix):
-    response = await ds_client.get(f"/fixtures/-/query.csv?{query_string}{download_suffix}")
+async def test_custom_sql_csv_errors(
+    ds_client, query_string, expected_error, download_suffix
+):
+    response = await ds_client.get(
+        f"/fixtures/-/query.csv?{query_string}{download_suffix}"
+    )
     assert response.status_code == 400
     assert response.headers["content-type"] == "text/plain; charset=utf-8"
     assert "content-disposition" not in response.headers

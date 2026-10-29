@@ -65,12 +65,6 @@ def function_operation_tuples(analysis):
     }
 
 
-def find_insert_operation(analysis, table):
-    return next(
-        operation
-        for operation in analysis.operations
-        if operation.operation == "insert" and operation.table == table
-    )
 
 
 def test_analyze_select_tables(conn):
@@ -302,9 +296,9 @@ def test_analyze_table_kind_for_regular_virtual_and_shadow_tables():
     finally:
         conn.close()
 
-    regular_insert = find_insert_operation(regular_analysis, "dogs")
-    virtual_insert = find_insert_operation(virtual_analysis, "docs")
-    shadow_insert = find_insert_operation(shadow_analysis, "docs_config")
+    [regular_insert] = regular_analysis.operations
+    [virtual_insert] = virtual_analysis.operations
+    [shadow_insert] = shadow_analysis.operations
 
     assert regular_insert.table_kind == "table"
     assert virtual_insert.table_kind == "virtual"

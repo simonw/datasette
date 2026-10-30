@@ -418,11 +418,12 @@ async def test_filters_against_untyped_table_columns_and_text(path, expected_ids
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("key", ("_searchfoo", "_search2"))
-async def test_search_invalid_parameter(ds_client, key):
+@pytest.mark.parametrize("valid_search", ("", "&_search=bobcat"))
+async def test_search_invalid_parameter(ds_client, key, valid_search):
     # ?_searchfoo= used to crash with an IndexError from
     # key.split("_search_", 1)[1] - it should return a 400 like every other
     # invalid search parameter
-    response = await ds_client.get(f"/fixtures/searchable.json?{key}=bobcat")
+    response = await ds_client.get(f"/fixtures/searchable.json?{key}=bobcat{valid_search}")
     assert response.status_code == 400
     assert response.json() == {
         "ok": False,

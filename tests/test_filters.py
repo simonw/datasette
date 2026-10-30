@@ -423,7 +423,9 @@ async def test_search_invalid_parameter(ds_client, key, valid_search):
     # ?_searchfoo= used to crash with an IndexError from
     # key.split("_search_", 1)[1] - it should return a 400 like every other
     # invalid search parameter
-    response = await ds_client.get(f"/fixtures/searchable.json?{key}=bobcat{valid_search}")
+    response = await ds_client.get(
+        f"/fixtures/searchable.json?{key}=bobcat{valid_search}"
+    )
     assert response.status_code == 400
     assert response.json() == {
         "ok": False,

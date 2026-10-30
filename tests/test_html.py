@@ -182,6 +182,22 @@ def test_static_mounts_hash_cache_control():
         assert "cache-control" not in response.headers
 
 
+def test_custom_sql_heading_says_more_than_when_truncated():
+    with make_app_client(max_returned_rows=5) as client:
+        # Table has more than 5 rows, so the result is truncated
+        response = client.get(
+            "/fixtures/-/query?sql=select+*+from+compound_three_primary_keys"
+        )
+        h3 = Soup(response.text, "html.parser").find("h3").text
+        assert "returning more than 5 rows" in h3
+        response = client.get(
+            "/fixtures/-/query?sql=select+*+from+compound_three_primary_keys+limit+3"
+        )
+        h3 = Soup(response.text, "html.parser").find("h3").text
+        assert "returning 3 rows" in h3
+        assert "more than" not in h3
+
+
 def test_memory_database_page():
     with make_app_client(memory=True) as client:
         response = client.get("/_memory")

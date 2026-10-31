@@ -1119,8 +1119,9 @@ class JumpView(BaseView):
         return fragments
 
     def _resolve_url(self, url):
+        """Returns (url, kwargs) - kwargs are the datasette.urls arguments, if any"""
         if not url or url.startswith("/"):
-            return url
+            return url, {}
 
         descriptor = json.loads(url)
         if not isinstance(descriptor, dict):
@@ -1140,7 +1141,7 @@ class JumpView(BaseView):
             raise TypeError(f"datasette.urls.{method_name} is not callable")
         kwargs = {key: value for key, value in descriptor.items() if key != "method"}
         try:
-            return method(**kwargs)
+            return method(**kwargs), kwargs
         except TypeError as ex:
             raise TypeError(
                 f"Invalid arguments for datasette.urls.{method_name}(): {ex}"
@@ -1264,14 +1265,19 @@ class JumpView(BaseView):
 
         matches = []
         for row in rows:
+            url, url_kwargs = self._resolve_url(row["url"])
             match = {
                 "name": row["label"],
-                "url": self._resolve_url(row["url"]),
+                "url": url,
                 "type": row["type"],
                 "description": row["description"],
             }
             if row["display_name"]:
                 match["display_name"] = row["display_name"]
+            # Expose datasette.urls arguments such as database and table as fields
+            for key, value in url_kwargs.items():
+                if key not in match and key != "format":
+                    match[key] = value
             matches.append(match)
 
         return Response.json({"ok": True, "matches": matches, "truncated": truncated})

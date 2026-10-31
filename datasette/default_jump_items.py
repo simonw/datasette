@@ -1,5 +1,3 @@
-import json
-
 from datasette import hookimpl
 from datasette.jump import JumpSQL
 
@@ -16,12 +14,6 @@ def jump_items_sql(datasette, actor, request):
         query_sql, query_params = await datasette.allowed_resources_sql(
             action="view-query", actor=actor
         )
-        hidden_tables = []
-        for database_name, db in datasette.databases.items():
-            hidden_tables.extend(
-                [database_name, table_name]
-                for table_name in await db.hidden_table_names()
-            )
         return [
             JumpSQL(
                 sql=f"""
@@ -62,16 +54,12 @@ def jump_items_sql(datasette, actor, request):
                 LEFT JOIN catalog_views
                     ON catalog_views.database_name = allowed_tables.parent
                    AND catalog_views.view_name = allowed_tables.child
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM json_each(:jump_hidden_tables) AS hidden
-                    WHERE json_extract(hidden.value, '$[0]') = allowed_tables.parent
-                      AND json_extract(hidden.value, '$[1]') = allowed_tables.child
-                )
+                LEFT JOIN catalog_tables
+                    ON catalog_tables.database_name = allowed_tables.parent
+                   AND catalog_tables.table_name = allowed_tables.child
+                WHERE NOT COALESCE(catalog_tables.hidden, 0)
                 """,
-                params={
-                    **table_params,
-                    "jump_hidden_tables": json.dumps(hidden_tables),
-                },
+                params=table_params,
             ),
             JumpSQL(
                 sql=f"""

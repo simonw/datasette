@@ -122,8 +122,29 @@ def sqlite_extensions(fn):
     return wrapped
 
 
+def _print_version(ctx, param, value):
+    if not value or ctx.resilient_parsing:
+        return
+    sqlite_version = (
+        sqlite3.connect(":memory:").execute("select sqlite_version()").fetchone()[0]
+    )
+    click.echo(
+        "{}, version {} (SQLite {})".format(
+            ctx.find_root().info_name, __version__, sqlite_version
+        )
+    )
+    ctx.exit()
+
+
 @click.group(cls=DefaultGroup, default="serve", default_if_no_args=True)
-@click.version_option(version=__version__)
+@click.option(
+    "--version",
+    is_flag=True,
+    expose_value=False,
+    is_eager=True,
+    callback=_print_version,
+    help="Show the version and exit.",
+)
 def cli():
     """
     Datasette is an open source multi-tool for exploring and publishing data

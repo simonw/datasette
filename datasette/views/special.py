@@ -1164,7 +1164,9 @@ class JumpView(BaseView):
         }.get(row["type"], 50)
         return (relevance, type_sort, len(display_label), row["label"])
 
-    async def _rows_for_database(self, database_name, indexed_fragments, q, pattern):
+    async def _rows_for_database(
+        self, database_name, indexed_fragments, q, pattern, types=None
+    ):
         params = {"q": q, "pattern": pattern}
         union_parts = []
         for index, fragment in indexed_fragments:
@@ -1186,6 +1188,10 @@ class JumpView(BaseView):
                 )
             """)
             params.update(fragment_params)
+        types_clause = ""
+        if types:
+            types_clause = "\n        AND type IN (SELECT value FROM json_each(:types))"
+            params["types"] = json.dumps(types)
         sql = f"""
         WITH jump_items AS (
             {" UNION ALL ".join(union_parts)}
@@ -1198,8 +1204,10 @@ class JumpView(BaseView):
             search_text,
             display_name
         FROM jump_items
-        WHERE :q = ''
-           OR search_text LIKE :pattern COLLATE NOCASE
+        WHERE (
+            :q = ''
+            OR search_text LIKE :pattern COLLATE NOCASE
+        ){types_clause}
         ORDER BY
             CASE
                 WHEN lower(COALESCE(display_name, label)) = lower(:q) THEN 0
@@ -1229,6 +1237,7 @@ class JumpView(BaseView):
         q = request.args.get("q", "").strip()
         terms = q.split()
         pattern = "%" + "%".join(terms) + "%" if terms else "%"
+        types = [t.strip() for t in request.args.getlist("type") if t.strip()]
         fragments = await self._fragments(request)
 
         fragments_by_database = {}
@@ -1241,7 +1250,7 @@ class JumpView(BaseView):
         truncated = False
         for database_name, indexed_fragments in fragments_by_database.items():
             database_rows = await self._rows_for_database(
-                database_name, indexed_fragments, q, pattern
+                database_name, indexed_fragments, q, pattern, types
             )
             if len(database_rows) > 100:
                 truncated = True

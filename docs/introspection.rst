@@ -189,6 +189,8 @@ Each item includes a ``type`` string used as a category label in the menu. Items
 
 The endpoint supports a ``?q=`` query parameter for filtering items by name.
 
+Use ``?type=`` to return only items of a specific type, for example ``?type=table``. This parameter can be repeated to include multiple types, for example ``?type=table&type=database``. The default item types are ``database``, ``table``, ``view`` and ``query`` - plugins may add their own.
+
 `Jump example <https://latest.datasette.io/-/jump>`_:
 
 .. code-block:: json

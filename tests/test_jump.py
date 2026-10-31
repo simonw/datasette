@@ -98,6 +98,26 @@ async def test_jump_searches_tables_databases_views_and_stored_queries(ds_for_ju
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "type_args,expected_types",
+    (
+        ("", {"database", "table", "view", "query"}),
+        ("&type=table", {"table"}),
+        ("&type=table&type=database", {"table", "database"}),
+        ("&type=view&type=query", {"view", "query"}),
+        ("&type=nonexistent", set()),
+    ),
+)
+async def test_jump_filter_by_type(ds_for_jump, type_args, expected_types):
+    response = await ds_for_jump.client.get(
+        "/-/jump.json?q=content" + type_args, actor={"id": "user"}
+    )
+    assert response.status_code == 200
+    types = {match["type"] for match in response.json()["matches"]}
+    assert types == expected_types
+
+
+@pytest.mark.asyncio
 async def test_jump_uses_stored_query_names_not_titles(ds_for_jump):
     response = await ds_for_jump.client.get(
         "/-/jump.json?q=datasette", actor={"id": "user"}

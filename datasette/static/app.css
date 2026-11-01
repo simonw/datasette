@@ -4116,3 +4116,11 @@ button.column-menu-trigger[aria-expanded="true"] {
         display: none;
     }
 }
+
+@media (max-width: 600px) {
+    .datasette-menu.nav-menu-inner.datasette-menu-floating {
+        width: max-content;
+        min-width: min(14rem, calc(100vw - 24px));
+        max-width: min(18rem, calc(100vw - 24px));
+    }
+}

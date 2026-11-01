@@ -271,12 +271,14 @@ class ColumnFacet(Facet):
                     }
                     selected = bool(selected_args)
                     if selected:
+                        toggle_path = path_with_removed_args(self.request, {"_next"})
                         toggle_path = path_with_removed_args(
-                            self.request, selected_args
+                            self.request, selected_args, path=toggle_path
                         )
                     else:
                         toggle_path = path_with_added_args(
-                            self.request, {column_qs: row["value"]}
+                            self.request,
+                            {column_qs: row["value"], "_next": None},
                         )
                     facet_results_values.append(
                         {
@@ -438,12 +440,16 @@ class ArrayFacet(Facet):
                     value = str(row["value"])
                     selected = (f"{column}__arraycontains", value) in pairs
                     if selected:
+                        toggle_path = path_with_removed_args(self.request, {"_next"})
                         toggle_path = path_with_removed_args(
-                            self.request, {f"{column}__arraycontains": value}
+                            self.request,
+                            {f"{column}__arraycontains": value},
+                            path=toggle_path,
                         )
                     else:
                         toggle_path = path_with_added_args(
-                            self.request, {f"{column}__arraycontains": value}
+                            self.request,
+                            {f"{column}__arraycontains": value, "_next": None},
                         )
                     facet_results_values.append(
                         {
@@ -549,12 +555,16 @@ class DateFacet(Facet):
                 for row in facet_rows:
                     selected = str(args.get(f"{column}__date")) == str(row["value"])
                     if selected:
+                        toggle_path = path_with_removed_args(self.request, {"_next"})
                         toggle_path = path_with_removed_args(
-                            self.request, {f"{column}__date": str(row["value"])}
+                            self.request,
+                            {f"{column}__date": str(row["value"])},
+                            path=toggle_path,
                         )
                     else:
                         toggle_path = path_with_added_args(
-                            self.request, {f"{column}__date": row["value"]}
+                            self.request,
+                            {f"{column}__date": row["value"], "_next": None},
                         )
                     facet_results_values.append(
                         {

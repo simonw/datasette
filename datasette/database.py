@@ -49,7 +49,7 @@ from .telemetry_registry import (
     TRANSACTION,
     TRUNCATED,
 )
-from .tracer import trace
+from .tracer import trace, tracing_active
 from .utils import (
     call_with_supported_arguments,
     detect_fts,
@@ -672,18 +672,33 @@ class Database:
         span.
         """
         self._check_not_closed()
+        # Collect the SQL run by fn so it shows up in ?_trace=1 output
+        traced_sql = [] if tracing_active() else None
 
         def fn_in_execute_span(conn):
             # Runs on the worker thread
             with tracer.start_as_current_span(DB_QUERY_EXECUTE):
-                return fn(conn)
+                if traced_sql is None:
+                    return fn(conn)
+                conn.set_trace_callback(traced_sql.append)
+                try:
+                    return fn(conn)
+                finally:
+                    conn.set_trace_callback(None)
 
-        with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
-            span.set_attribute(DB_SYSTEM, "sqlite")
-            span.set_attribute(DB_NAMESPACE, self.name)
-            span.set_attribute(CALLBACK, callback_name(fn))
-            with record_operation_duration(self.name, "read"):
-                return await self._execute_fn(fn_in_execute_span)
+        with trace(  # noqa: SIM117
+            "sql", database=self.name, sql="", params=None, fn=callback_name(fn)
+        ) as trace_kwargs:
+            with tracer.start_as_current_span(DB_QUERY, kind=DB_QUERY.kind) as span:
+                span.set_attribute(DB_SYSTEM, "sqlite")
+                span.set_attribute(DB_NAMESPACE, self.name)
+                span.set_attribute(CALLBACK, callback_name(fn))
+                try:
+                    with record_operation_duration(self.name, "read"):
+                        return await self._execute_fn(fn_in_execute_span)
+                finally:
+                    if traced_sql:
+                        trace_kwargs["sql"] = ";\n".join(traced_sql)
 
     async def _execute_fn(self, fn):
         self._check_not_closed()

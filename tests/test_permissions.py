@@ -51,11 +51,11 @@ async def perms_ds():
 
 
 @pytest.mark.parametrize(
-    "allow,expected_anon,expected_auth",
+    "allow,expected_anon,expected_auth,expected_padlock",
     [
-        (None, 200, 200),
-        ({}, 403, 403),
-        ({"id": "root"}, 403, 200),
+        (None, 200, 200, False),
+        ({}, 403, 403, False),
+        ({"id": "root"}, 403, 200, True),
     ],
 )
 @pytest.mark.parametrize(
@@ -74,60 +74,59 @@ async def perms_ds():
         ),  # Query
     ),
 )
-def test_view_padlock(allow, expected_anon, expected_auth, path, padlock_client):
+def test_view_padlock(
+    allow, expected_anon, expected_auth, expected_padlock, path, padlock_client
+):
     padlock_client.ds.config["allow"] = allow
     fragment = "🔒</h1>"
     anon_response = padlock_client.get(path)
     assert expected_anon == anon_response.status
-    if allow and anon_response.status == 200:
-        # Should be no padlock
-        assert fragment not in anon_response.text
+    assert fragment not in anon_response.text
     auth_response = padlock_client.get(
         path,
         cookies={"ds_actor": padlock_client.actor_cookie({"id": "root"})},
     )
     assert expected_auth == auth_response.status
-    # Check for the padlock
-    if allow and expected_anon == 403 and expected_auth == 200:
-        assert fragment in auth_response.text
+    assert (fragment in auth_response.text) == expected_padlock
     del padlock_client.ds.config["allow"]
 
 
+
 @pytest.mark.parametrize(
-    "allow,expected_anon,expected_auth",
+    "allow,expected_anon,expected_auth,expected_padlock",
     [
-        (None, 200, 200),
-        ({}, 403, 403),
-        ({"id": "root"}, 403, 200),
+        (None, 200, 200, False),
+        ({}, 403, 403, False),
+        ({"id": "root"}, 403, 200, True),
     ],
 )
 @pytest.mark.parametrize("use_metadata", (True, False))
-def test_view_database(allow, expected_anon, expected_auth, use_metadata):
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/fixtures",
+        "/fixtures/compound_three_primary_keys",
+        "/fixtures/compound_three_primary_keys/a,a,a",
+    ),
+)
+def test_view_database(
+    allow, expected_anon, expected_auth, expected_padlock, use_metadata, path
+):
     key = "metadata" if use_metadata else "config"
     kwargs = {key: {"databases": {"fixtures": {"allow": allow}}}}
     with make_app_client(**kwargs) as client:
-        for path in (
-            "/fixtures",
-            "/fixtures/compound_three_primary_keys",
-            "/fixtures/compound_three_primary_keys/a,a,a",
-        ):
-            anon_response = client.get(path)
-            assert expected_anon == anon_response.status, path
-            if allow and path == "/fixtures" and anon_response.status == 200:
-                # Should be no padlock
-                assert ">fixtures 🔒</h1>" not in anon_response.text
-            auth_response = client.get(
-                path,
-                cookies={"ds_actor": client.actor_cookie({"id": "root"})},
-            )
-            assert expected_auth == auth_response.status
-            if (
-                allow
-                and path == "/fixtures"
-                and expected_anon == 403
-                and expected_auth == 200
-            ):
-                assert ">fixtures 🔒</h1>" in auth_response.text
+        anon_response = client.get(path)
+        assert expected_anon == anon_response.status, path
+        assert ">fixtures 🔒</h1>" not in anon_response.text
+        auth_response = client.get(
+            path,
+            cookies={"ds_actor": client.actor_cookie({"id": "root"})},
+        )
+        assert expected_auth == auth_response.status
+        assert (">fixtures 🔒</h1>" in auth_response.text) == (
+            expected_padlock and path == "/fixtures"
+        )
+
 
 
 def test_database_list_respects_view_database():
@@ -162,33 +161,29 @@ def test_database_list_respects_view_table():
             "data.db": "create table names (name text); create view v as select * from names"
         },
     ) as client:
-        html_fragments = [
-            ">names</a> 🔒",
-            ">v</a> 🔒",
-        ]
         anon_response_text = client.get("/").text
         assert "0 rows in 0 tables" in anon_response_text
-        for html_fragment in html_fragments:
-            assert html_fragment not in anon_response_text
+        assert ">names</a> 🔒" not in anon_response_text
+        assert ">v</a> 🔒" not in anon_response_text
         auth_response_text = client.get(
             "/",
             cookies={"ds_actor": client.actor_cookie({"id": "root"})},
         ).text
-        for html_fragment in html_fragments:
-            assert html_fragment in auth_response_text
+        assert ">names</a> 🔒" in auth_response_text
+        assert ">v</a> 🔒" in auth_response_text
+
 
 
 @pytest.mark.parametrize(
-    "allow,expected_anon,expected_auth",
+    "allow,expected_anon,expected_auth,expected_padlock",
     [
-        (None, 200, 200),
-        ({}, 403, 403),
-        ({"id": "root"}, 403, 200),
+        (None, 200, 200, False),
+        ({}, 403, 403, False),
+        ({"id": "root"}, 403, 200, True),
     ],
 )
-@pytest.mark.parametrize("use_metadata", (True, False))
-def test_view_table(allow, expected_anon, expected_auth, use_metadata):
-    key = "metadata" if use_metadata else "config"
+@pytest.mark.parametrize("key", ("metadata", "config"))
+def test_view_table(allow, expected_anon, expected_auth, expected_padlock, key):
     kwargs = {
         key: {
             "databases": {
@@ -201,16 +196,15 @@ def test_view_table(allow, expected_anon, expected_auth, use_metadata):
     with make_app_client(**kwargs) as client:
         anon_response = client.get("/fixtures/compound_three_primary_keys")
         assert expected_anon == anon_response.status
-        if allow and anon_response.status == 200:
-            # Should be no padlock
-            assert ">compound_three_primary_keys 🔒</h1>" not in anon_response.text
+        assert ">compound_three_primary_keys 🔒</h1>" not in anon_response.text
         auth_response = client.get(
             "/fixtures/compound_three_primary_keys",
             cookies={"ds_actor": client.actor_cookie({"id": "root"})},
         )
         assert expected_auth == auth_response.status
-        if allow and expected_anon == 403 and expected_auth == 200:
-            assert ">compound_three_primary_keys 🔒</h1>" in auth_response.text
+        assert (
+            ">compound_three_primary_keys 🔒</h1>" in auth_response.text
+        ) == expected_padlock
 
 
 def test_table_list_respects_view_table():
@@ -227,29 +221,25 @@ def test_table_list_respects_view_table():
             }
         }
     ) as client:
-        html_fragments = [
-            ">compound_three_primary_keys</a> 🔒",
-            ">paginated_view</a> 🔒",
-        ]
-        anon_response = client.get("/fixtures")
-        for html_fragment in html_fragments:
-            assert html_fragment not in anon_response.text
-        auth_response = client.get(
+        anon_response_text = client.get("/fixtures").text
+        assert ">compound_three_primary_keys</a> 🔒" not in anon_response_text
+        assert ">paginated_view</a> 🔒" not in anon_response_text
+        auth_response_text = client.get(
             "/fixtures", cookies={"ds_actor": client.actor_cookie({"id": "root"})}
-        )
-        for html_fragment in html_fragments:
-            assert html_fragment in auth_response.text
+        ).text
+        assert ">compound_three_primary_keys</a> 🔒" in auth_response_text
+        assert ">paginated_view</a> 🔒" in auth_response_text
 
 
 @pytest.mark.parametrize(
-    "allow,expected_anon,expected_auth",
+    "allow,expected_anon,expected_auth,expected_padlock",
     [
-        (None, 200, 200),
-        ({}, 403, 403),
-        ({"id": "root"}, 403, 200),
+        (None, 200, 200, False),
+        ({}, 403, 403, False),
+        ({"id": "root"}, 403, 200, True),
     ],
 )
-def test_view_query(allow, expected_anon, expected_auth):
+def test_view_query(allow, expected_anon, expected_auth, expected_padlock):
     with make_app_client(
         config={
             "databases": {
@@ -259,15 +249,12 @@ def test_view_query(allow, expected_anon, expected_auth):
     ) as client:
         anon_response = client.get("/fixtures/q")
         assert expected_anon == anon_response.status
-        if allow and anon_response.status == 200:
-            # Should be no padlock
-            assert "🔒</h1>" not in anon_response.text
+        assert "🔒</h1>" not in anon_response.text
         auth_response = client.get(
             "/fixtures/q", cookies={"ds_actor": client.actor_cookie({"id": "root"})}
         )
         assert expected_auth == auth_response.status
-        if allow and expected_anon == 403 and expected_auth == 200:
-            assert ">fixtures: q 🔒</h1>" in auth_response.text
+        assert (">fixtures: q 🔒</h1>" in auth_response.text) == expected_padlock
 
 
 @pytest.mark.parametrize(
@@ -514,14 +501,23 @@ def view_instance_client():
     "path",
     [
         "/",
+        "/.json",
         "/fixtures",
+        "/fixtures.json",
         "/fixtures/facetable",
+        "/fixtures/facetable.json",
         "/-/versions",
+        "/-/versions.json",
         "/-/plugins",
+        "/-/plugins.json",
         "/-/settings",
+        "/-/settings.json",
         "/-/threads",
+        "/-/threads.json",
         "/-/tasks",
+        "/-/tasks.json",
         "/-/databases",
+        "/-/databases.json",
         "/-/permissions",
         "/-/messages",
         "/-/patterns",
@@ -530,13 +526,6 @@ def view_instance_client():
 )
 def test_view_instance(path, view_instance_client):
     assert 403 == view_instance_client.get(path).status
-    if path not in (
-        "/-/permissions",
-        "/-/messages",
-        "/-/patterns",
-        "/-/patterns/menus",
-    ):
-        assert 403 == view_instance_client.get(path + ".json").status
 
 
 @pytest.fixture(scope="session")
@@ -588,9 +577,7 @@ def test_permissions_cascade(cascade_app_client, path, permissions, expected_sta
     deny = {}
     previous_config = cascade_app_client.ds.config
     updated_config = copy.deepcopy(previous_config)
-    actor = {"id": "test"}
-    if "download" in permissions:
-        actor["can_download"] = 1
+    actor = {"id": "test", **({"can_download": 1} if "download" in permissions else {})}
     try:
         # Set up the different allow blocks
         updated_config["allow"] = allow if "instance" in permissions else deny

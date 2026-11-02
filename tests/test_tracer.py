@@ -3,25 +3,14 @@ import pytest
 from .fixtures import make_app_client
 
 
-@pytest.mark.parametrize("trace_debug", (True, False))
-def test_trace(trace_debug):
-    with make_app_client(settings={"trace_debug": trace_debug}) as client:
+def test_trace_disabled():
+    with make_app_client(settings={"trace_debug": False}) as client:
         response = client.get("/fixtures/simple_primary_key.json?_trace=1")
         assert response.status == 200
+    assert "_trace" not in response.json
 
-    data = response.json
-    if not trace_debug:
-        assert "_trace" not in data
-        return
 
-    assert "_trace" in data
-    trace_info = data["_trace"]
-    assert isinstance(trace_info["request_duration_ms"], float)
-    assert isinstance(trace_info["sum_trace_duration_ms"], float)
-    assert isinstance(trace_info["num_traces"], int)
-    assert isinstance(trace_info["traces"], list)
-    traces = trace_info["traces"]
-    assert len(traces) == trace_info["num_traces"]
+def assert_valid_trace_entries(traces):
     for trace in traces:
         assert isinstance(trace["type"], str)
         assert isinstance(trace["start"], float)
@@ -31,6 +20,23 @@ def test_trace(trace_debug):
         assert isinstance(trace["database"], str)
         assert isinstance(trace["sql"], str)
         assert isinstance(trace.get("params"), (list, dict, None.__class__))
+
+
+def test_trace_enabled():
+    with make_app_client(settings={"trace_debug": True}) as client:
+        response = client.get("/fixtures/simple_primary_key.json?_trace=1")
+        assert response.status == 200
+
+    data = response.json
+    assert "_trace" in data
+    trace_info = data["_trace"]
+    assert isinstance(trace_info["request_duration_ms"], float)
+    assert isinstance(trace_info["sum_trace_duration_ms"], float)
+    assert isinstance(trace_info["num_traces"], int)
+    assert isinstance(trace_info["traces"], list)
+    traces = trace_info["traces"]
+    assert len(traces) == trace_info["num_traces"]
+    assert_valid_trace_entries(traces)
 
     sqls = [trace["sql"] for trace in traces if "sql" in trace]
     # There should be SQL statements from request handling in the trace.

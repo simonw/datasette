@@ -260,8 +260,7 @@ def test_request_args():
     assert "missing" not in request.args
     expected = ["multi", "single"]
     assert expected == list(request.args.keys())
-    for i, key in enumerate(request.args):
-        assert expected[i] == key
+    assert list(request.args) == expected
     assert 2 == len(request.args)
     with pytest.raises(KeyError):
         request.args["missing"]

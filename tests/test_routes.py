@@ -48,13 +48,11 @@ def routes():
 )
 def test_routes(routes, path, expected_name, expected_matches):
     match, view = resolve_routes(routes, path)
-    if expected_name is None:
-        assert match is None
-    else:
-        assert (
-            view.__name__ == expected_name or view.view_class.__name__ == expected_name
-        )
-        assert match.groupdict() == expected_matches
+    assert match is not None
+    assert (
+        view.__name__ == expected_name or view.view_class.__name__ == expected_name
+    )
+    assert match.groupdict() == expected_matches
 
 
 @pytest_asyncio.fixture

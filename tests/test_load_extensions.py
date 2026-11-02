@@ -21,20 +21,29 @@ def has_compiled_ext():
     return False
 
 
-@pytest.mark.parametrize("load_fails", (False, True))
-def test_load_extension_is_disabled(load_fails):
+def test_load_extension_is_disabled_success():
     ds = Datasette(sqlite_extensions=[COMPILED_EXTENSION_PATH])
     connection = mock.Mock()
-    if load_fails:
-        connection.load_extension.side_effect = RuntimeError
-
-    if load_fails:
-        with pytest.raises(RuntimeError):
-            ds._prepare_connection(connection, "data")
-    else:
-        ds._prepare_connection(connection, "data")
+    ds._prepare_connection(connection, "data")
 
     # Extensions are loaded using the Python API, never via SQL
+    assert connection.load_extension.mock_calls == [
+        mock.call(COMPILED_EXTENSION_PATH),
+    ]
+    assert connection.enable_load_extension.mock_calls == [
+        mock.call(True),
+        mock.call(False),
+    ]
+
+
+def test_load_extension_is_disabled_failure():
+    ds = Datasette(sqlite_extensions=[COMPILED_EXTENSION_PATH])
+    connection = mock.Mock()
+    connection.load_extension.side_effect = RuntimeError
+
+    with pytest.raises(RuntimeError):
+        ds._prepare_connection(connection, "data")
+
     assert connection.load_extension.mock_calls == [
         mock.call(COMPILED_EXTENSION_PATH),
     ]

@@ -43,6 +43,30 @@ def table_operation_tuples(analysis):
     ]
 
 
+def non_internal_system_table_operations(analysis):
+    return [
+        operation
+        for operation in analysis.operations
+        if operation.table in {"sqlite_master", "sqlite_schema"}
+        and not operation.internal
+    ]
+
+
+def function_operation_tuples(analysis):
+    return {
+        (
+            operation.operation,
+            operation.target_type,
+            operation.target,
+            operation.database,
+            operation.table,
+        )
+        for operation in analysis.operations
+    }
+
+
+
+
 def test_analyze_select_tables(conn):
     analysis = analyze_sql_tables(
         conn,
@@ -121,12 +145,7 @@ def test_analyze_create_table_operation():
         "source": None,
         "internal": False,
     } in [operation_dict(operation) for operation in analysis.operations]
-    assert not [
-        operation
-        for operation in analysis.operations
-        if operation.table in {"sqlite_master", "sqlite_schema"}
-        and not operation.internal
-    ]
+    assert not non_internal_system_table_operations(analysis)
 
 
 def test_analyze_vacuum_operation():
@@ -217,16 +236,7 @@ def test_analyze_function_operation(conn):
         database_name="data",
     )
 
-    assert {
-        (
-            operation.operation,
-            operation.target_type,
-            operation.target,
-            operation.database,
-            operation.table,
-        )
-        for operation in analysis.operations
-    } == {
+    assert function_operation_tuples(analysis) == {
         ("insert", "table", "dogs", "data", "dogs"),
         ("function", "function", "upper", None, None),
         ("read", "table", "dogs", "data", "dogs"),
@@ -286,21 +296,9 @@ def test_analyze_table_kind_for_regular_virtual_and_shadow_tables():
     finally:
         conn.close()
 
-    regular_insert = next(
-        operation
-        for operation in regular_analysis.operations
-        if operation.operation == "insert" and operation.table == "dogs"
-    )
-    virtual_insert = next(
-        operation
-        for operation in virtual_analysis.operations
-        if operation.operation == "insert" and operation.table == "docs"
-    )
-    shadow_insert = next(
-        operation
-        for operation in shadow_analysis.operations
-        if operation.operation == "insert" and operation.table == "docs_config"
-    )
+    [regular_insert] = regular_analysis.operations
+    [virtual_insert] = virtual_analysis.operations
+    [shadow_insert] = shadow_analysis.operations
 
     assert regular_insert.table_kind == "table"
     assert virtual_insert.table_kind == "virtual"

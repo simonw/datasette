@@ -44,8 +44,7 @@ def _run_workload():
     with toy_tracer.start_as_current_span(JOB) as span:
         span.set_attribute(OUTCOME, "ok")
         span.set_attribute(JOB_NAME, "nightly")
-    with toy_tracer.start_as_current_span("toyplugin.chat gpt-5"):
-        pass
+    toy_tracer.start_span("toyplugin.chat gpt-5").end()
 
 
 def test_conformance_passes_for_a_conforming_workload(otel_spans):
@@ -57,8 +56,7 @@ def test_conformance_passes_for_a_conforming_workload(otel_spans):
 
 
 def test_conformance_catches_an_unregistered_span(otel_spans):
-    with toy_tracer.start_as_current_span("toyplugin.surprise"):
-        pass
+    toy_tracer.start_span("toyplugin.surprise").end()
     with pytest.raises(AssertionError, match="unregistered span"):
         assert_spans_conform(
             TOY_SPANS, otel_spans.get_finished_spans(), scope_name=SCOPE
@@ -97,8 +95,7 @@ def test_coverage_catches_a_never_emitted_span(otel_spans):
 def test_scope_filter_ignores_other_scopes(otel_spans):
     # Spans from other scopes, including Datasette's own, are ignored:
     other = otel_trace.get_tracer("someone-else", "1.0")
-    with other.start_as_current_span("not.in.the.toy.registry"):
-        pass
+    other.start_span("not.in.the.toy.registry").end()
     _run_workload()
     assert_spans_conform(TOY_SPANS, otel_spans.get_finished_spans(), scope_name=SCOPE)
 
@@ -107,8 +104,7 @@ def test_linked_root_span_kwargs_links_without_parenting(otel_spans):
     with toy_tracer.start_as_current_span("toyplugin.cause") as cause:
         cause_context = cause.get_span_context()
         kwargs = linked_root_span_kwargs()
-    with toy_tracer.start_as_current_span("toyplugin.effect", **kwargs):
-        pass
+    toy_tracer.start_span("toyplugin.effect", **kwargs).end()
     effect = next(
         span for span in _toy_spans(otel_spans) if span.name == "toyplugin.effect"
     )
@@ -121,8 +117,7 @@ def test_linked_root_span_kwargs_links_without_parenting(otel_spans):
 def test_linked_root_span_kwargs_with_no_current_span(otel_spans):
     kwargs = linked_root_span_kwargs()
     assert kwargs["links"] == []
-    with toy_tracer.start_as_current_span("toyplugin.orphanless", **kwargs):
-        pass
+    toy_tracer.start_span("toyplugin.orphanless", **kwargs).end()
     span = _toy_spans(otel_spans)[0]
     assert span.parent is None
     assert span.links == ()

@@ -37,12 +37,17 @@ def test_documented_fields():
     ]
 
 
+def fields_missing_help(klass):
+    return [
+        f"{klass.__name__}.{field.name}"
+        for field in klass.documented_fields()
+        if not field.help
+    ]
+
+
 @pytest.mark.parametrize("klass", PAGES.values(), ids=lambda klass: klass.__name__)
 def test_context_class_fields_all_have_help(klass):
-    for context_field in klass.documented_fields():
-        assert (
-            context_field.help
-        ), f"{klass.__name__}.{context_field.name} is missing documentation"
+    assert fields_missing_help(klass) == []
 
 
 @pytest.mark.parametrize("klass", PAGES.values(), ids=lambda klass: klass.__name__)
@@ -80,8 +85,9 @@ def test_from_extra_must_match_a_registered_extra():
 
         not_a_real_extra: str = from_extra()
 
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError) as excinfo:
         BadContext.documented_fields()
+    assert "no registered extra of that name" in str(excinfo.value)
 
 
 def test_from_extra_must_be_available_for_the_scope():
@@ -94,8 +100,9 @@ def test_from_extra_must_be_available_for_the_scope():
         # count is a TABLE-scope extra, not available for ROW
         count: int = from_extra()
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as excinfo:
         WrongScopeContext.documented_fields()
+    assert "is not available for scope" in str(excinfo.value)
 
 
 @pytest.fixture

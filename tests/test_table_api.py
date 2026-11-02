@@ -1164,42 +1164,48 @@ def test_suggest_facets_off():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("nofacet", (True, False))
-async def test_nofacet(ds_client, nofacet):
-    path = "/fixtures/facetable.json?_facet=state&_extra=suggested_facets"
-    if nofacet:
-        path += "&_nofacet=1"
+@pytest.mark.parametrize(
+    "query_param,has_suggested_facets,has_facet_results",
+    (
+        ("&_nofacet=1", False, False),
+        ("", True, True),
+    ),
+)
+async def test_nofacet(ds_client, query_param, has_suggested_facets, has_facet_results):
+    path = f"/fixtures/facetable.json?_facet=state&_extra=suggested_facets{query_param}"
     response = await ds_client.get(path)
-    if nofacet:
-        assert response.json()["suggested_facets"] == []
-        assert response.json()["facet_results"]["results"] == {}
-    else:
-        assert response.json()["suggested_facets"] != []
-        assert response.json()["facet_results"]["results"] != {}
+    data = response.json()
+    assert (len(data["suggested_facets"]) > 0) is has_suggested_facets
+    assert (len(data["facet_results"]["results"]) > 0) is has_facet_results
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("nosuggest", (True, False))
-async def test_nosuggest(ds_client, nosuggest):
-    path = "/fixtures/facetable.json?_facet=state&_extra=suggested_facets"
-    if nosuggest:
-        path += "&_nosuggest=1"
+@pytest.mark.parametrize(
+    "query_param,has_suggested_facets",
+    (
+        ("&_nosuggest=1", False),
+        ("", True),
+    ),
+)
+async def test_nosuggest(ds_client, query_param, has_suggested_facets):
+    path = f"/fixtures/facetable.json?_facet=state&_extra=suggested_facets{query_param}"
     response = await ds_client.get(path)
-    if nosuggest:
-        assert response.json()["suggested_facets"] == []
-        # But facets should still be returned:
-        assert response.json()["facet_results"] != {}
-    else:
-        assert response.json()["suggested_facets"] != []
-        assert response.json()["facet_results"] != {}
+    data = response.json()
+    assert (len(data["suggested_facets"]) > 0) is has_suggested_facets
+    # But facets should still be returned:
+    assert data["facet_results"] != {}
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("nocount,expected_count", ((True, None), (False, 15)))
-async def test_nocount(ds_client, nocount, expected_count):
-    path = "/fixtures/facetable.json?_extra=count"
-    if nocount:
-        path += "&_nocount=1"
+@pytest.mark.parametrize(
+    "query_param,expected_count",
+    (
+        ("&_nocount=1", None),
+        ("", 15),
+    ),
+)
+async def test_nocount(ds_client, query_param, expected_count):
+    path = f"/fixtures/facetable.json?_extra=count{query_param}"
     response = await ds_client.get(path)
     assert response.json()["count"] == expected_count
 
@@ -1337,35 +1343,23 @@ async def test_null_and_compound_foreign_keys_are_not_expanded(ds_client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "path,expected_json,expected_text",
-    [
-        (
-            "/fixtures/binary_data.json?_shape=array",
-            [
-                {"rowid": 1, "data": {"$base64": True, "encoded": "FRwCx60F/g=="}},
-                {"rowid": 2, "data": {"$base64": True, "encoded": "FRwDx60F/g=="}},
-                {"rowid": 3, "data": None},
-            ],
-            None,
-        ),
-        (
-            "/fixtures/binary_data.json?_shape=array&_nl=on",
-            None,
-            (
-                '{"rowid": 1, "data": {"$base64": true, "encoded": "FRwCx60F/g=="}}\n'
-                '{"rowid": 2, "data": {"$base64": true, "encoded": "FRwDx60F/g=="}}\n'
-                '{"rowid": 3, "data": null}'
-            ),
-        ),
-    ],
-)
-async def test_binary_data_in_json(ds_client, path, expected_json, expected_text):
-    response = await ds_client.get(path)
-    if expected_json:
-        assert response.json() == expected_json
-    else:
-        assert response.text == expected_text
+async def test_binary_data_in_json_shape_array(ds_client):
+    response = await ds_client.get("/fixtures/binary_data.json?_shape=array")
+    assert response.json() == [
+        {"rowid": 1, "data": {"$base64": True, "encoded": "FRwCx60F/g=="}},
+        {"rowid": 2, "data": {"$base64": True, "encoded": "FRwDx60F/g=="}},
+        {"rowid": 3, "data": None},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_binary_data_in_json_nl(ds_client):
+    response = await ds_client.get("/fixtures/binary_data.json?_shape=array&_nl=on")
+    assert response.text == (
+        '{"rowid": 1, "data": {"$base64": true, "encoded": "FRwCx60F/g=="}}\n'
+        '{"rowid": 2, "data": {"$base64": true, "encoded": "FRwDx60F/g=="}}\n'
+        '{"rowid": 3, "data": null}'
+    )
 
 
 @pytest.mark.asyncio

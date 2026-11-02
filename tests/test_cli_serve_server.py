@@ -81,6 +81,19 @@ def startup(datasette):
 """
 
 
+def poll_for_marker_task(port, timeout=3.0):
+    deadline = time.time() + timeout
+    payload = {}
+    while time.time() < deadline:
+        payload = httpx2.get(
+            f"http://127.0.0.1:{port}/-/marker-task-ran", timeout=1.0
+        ).json()
+        if payload.get("marker_task_ran"):
+            break
+        time.sleep(0.05)
+    return payload
+
+
 @pytest.mark.serial
 def test_startup_hook_background_task_runs_on_serving_loop(serve_with_plugins):
     """
@@ -96,15 +109,7 @@ def test_startup_hook_background_task_runs_on_serving_loop(serve_with_plugins):
     # The fixture has already waited for the server to answer requests. The
     # marker task deliberately awaits before setting its flag, so poll for a
     # moment rather than assuming it landed before the first request arrived.
-    deadline = time.time() + 3.0
-    payload = {}
-    while time.time() < deadline:
-        payload = httpx2.get(
-            f"http://127.0.0.1:{port}/-/marker-task-ran", timeout=1.0
-        ).json()
-        if payload["marker_task_ran"]:
-            break
-        time.sleep(0.05)
+    payload = poll_for_marker_task(port)
     assert payload.get("marker_task_ran"), (
         "The startup hook's asyncio.create_task(...) never ran - "
         "invoke_startup() and the server are not sharing an event loop"
@@ -142,11 +147,8 @@ def test_startup_error_fails_fast_before_port_binds(serve_with_plugins):
     # confirms the socket was not left bound; on its own it cannot prove the
     # failure preceded the bind, since a port nothing ever touched also
     # refuses connections.
-    with (
-        pytest.raises(OSError),
-        socket.create_connection(("127.0.0.1", port), timeout=0.2),
-    ):
-        pass
+    with pytest.raises(OSError):
+        socket.create_connection(("127.0.0.1", port), timeout=0.2)
 
 
 # Verify that SIGTERM and SIGINT sent to `datasette serve` trigger uvicorn's

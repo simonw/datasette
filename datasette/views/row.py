@@ -1,6 +1,5 @@
 import asyncio
 import json
-import textwrap
 import time
 import urllib.parse
 from dataclasses import dataclass, field
@@ -35,7 +34,7 @@ from datasette.utils.asgi import Forbidden, NotFound, PayloadTooLarge, Response
 from datasette.utils.sqlite import check_structured_write_table
 
 from . import Context, from_extra
-from .base import BaseView, DatasetteError, stream_csv
+from .base import BaseView, DatasetteError, query_interrupted_error, stream_csv
 from .table import (
     _table_page_data,
     display_columns_and_rows,
@@ -195,25 +194,7 @@ class RowView(BaseView):
             else:
                 data, extra_template_data, templates = response_or_template_contexts
         except QueryInterrupted as ex:
-            raise DatasetteError(
-                textwrap.dedent(f"""
-                <p>SQL query took too long. The time limit is controlled by the
-                <a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>
-                configuration option.</p>
-                <textarea style="width: 90%">{markupsafe.escape(ex.sql)}</textarea>
-                <script>
-                let ta = document.querySelector("textarea");
-                ta.style.height = ta.scrollHeight + "px";
-                </script>
-            """).strip(),
-                title="SQL Interrupted",
-                status=400,
-                message_is_html=True,
-                plain_message=(
-                    "SQL query took too long. The time limit is"
-                    " controlled by the sql_time_limit_ms setting."
-                ),
-            )
+            raise query_interrupted_error(ex)
         except (sqlite3.OperationalError, InvalidSql) as e:
             raise DatasetteError(str(e), title="Invalid SQL", status=400)
         except DatasetteError:

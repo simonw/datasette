@@ -14,8 +14,10 @@ from datasette.extras import ExtraScope, extra_names_from_request
 from datasette.plugins import pm
 from datasette.resources import DatabaseResource, QueryResource
 from datasette.stored_queries import StoredQuery, stored_query_to_dict
+from datasette.typed_params import TypedParameterError, resolve_typed_parameters
 from datasette.utils import (
     InvalidSql,
+    MultiParams,
     add_cors_headers,
     await_me_maybe,
     call_with_supported_arguments,
@@ -626,16 +628,44 @@ class QueryView(View):
         # Process the POST
         body = await request.post_body()
         body = body.decode("utf-8").strip()
+        args = None
         if body.startswith("{") and body.endswith("}"):
-            params = json.loads(body)
+            # json.loads() collapses repeated object keys, which would hide a
+            # repeated typed parameter or _typed_params flag. Keep the root
+            # object's original pairs for MultiParams duplicate detection while
+            # returning ordinary dicts (nested objects included) so the
+            # existing str(value) conversion below is unchanged.
+            root_pairs = []
+
+            def _collect_root_pairs(pairs):
+                # The hook runs for nested objects first; the top-level object
+                # completes last, leaving its pairs in root_pairs.
+                root_pairs[:] = pairs
+                return dict(pairs)
+
+            params = json.loads(body, object_pairs_hook=_collect_root_pairs)
+            args = MultiParams(root_pairs)
             # But we want key=value strings
             for key, value in params.items():
                 params[key] = str(value)
         else:
-            params = dict(parse_qsl(body, keep_blank_values=True))
+            pairs = parse_qsl(body, keep_blank_values=True)
+            args = MultiParams(pairs)
+            # dict(pairs) keeps the legacy last-value-wins POST semantics;
+            # args is only used below to detect repeated typed keys.
+            params = dict(pairs)
 
         # Don't ever send csrftoken as a SQL parameter
         params.pop("csrftoken", None)
+
+        named_parameters = stored_query.parameters or derive_named_parameters(
+            stored_query.sql
+        )
+        try:
+            typed_params = resolve_typed_parameters(params, named_parameters, args)
+        except TypedParameterError as ex:
+            raise DatasetteError(str(ex), title="Invalid typed parameter", status=400)
+        params = typed_params.params
 
         # Should we return JSON?
         should_return_json = (
@@ -767,7 +797,8 @@ class QueryView(View):
                 raise Forbidden("execute-sql")
 
         # Flattened because of ?sql=&name1=value1&name2=value2 feature
-        params = {key: request.args.get(key) for key in request.args}
+        args = request.args
+        params = {key: args.get(key) for key in args}
         sql = None
 
         if stored_query:
@@ -781,11 +812,24 @@ class QueryView(View):
             named_parameters = stored_query.parameters
         if not named_parameters and sql:
             named_parameters = derive_named_parameters(sql)
-        named_parameter_values = {
-            named_parameter: params.get(named_parameter) or ""
-            for named_parameter in named_parameters
-            if not named_parameter.startswith("_")
-        }
+        try:
+            typed_params = resolve_typed_parameters(params, named_parameters, args)
+        except TypedParameterError as ex:
+            raise DatasetteError(str(ex), title="Invalid typed parameter", status=400)
+        params = typed_params.params
+        # Extras and any consumer replaying the reported SQL bind the SQL base
+        # names, so report base name -> resolved value ("age" -> 0). HTML form
+        # refill and the edit-SQL link keep the query-string spelling with the
+        # type suffix ("age::int" -> 0) so resubmission stays typed.
+        named_parameter_values = {}
+        typed_parameter_values = {}
+        for named_parameter in named_parameters:
+            if named_parameter.startswith("_"):
+                continue
+            value = params.get(named_parameter, "")
+            named_parameter_values[named_parameter] = value
+            refill_name = typed_params.typed_names.get(named_parameter, named_parameter)
+            typed_parameter_values[refill_name] = value
         # Set to blank string if missing from params
         for named_parameter in named_parameters:
             if named_parameter not in params and not named_parameter.startswith("_"):
@@ -1034,16 +1078,14 @@ class QueryView(View):
                 except InvalidSql:
                     pass
                 if allow_execute_sql and is_validated_sql and ":_" not in sql:
+                    edit_sql_values = {"sql": sql, **typed_parameter_values}
+                    if typed_params.enabled:
+                        edit_sql_values["_typed_params"] = "1"
                     edit_sql_url = (
                         datasette.urls.database(database)
                         + "/-/query"
                         + "?"
-                        + urlencode(
-                            {
-                                "sql": sql,
-                                **named_parameter_values,
-                            }
-                        )
+                        + urlencode(edit_sql_values)
                     )
             save_query_url = None
             if (
@@ -1084,6 +1126,7 @@ class QueryView(View):
                         query={
                             "sql": sql,
                             "params": params,
+                            "typed_params_enabled": typed_params.enabled,
                         },
                         stored_query=stored_query.name if stored_query else None,
                         private=private,
@@ -1097,7 +1140,7 @@ class QueryView(View):
                         allow_execute_sql=allow_execute_sql,
                         save_query_url=save_query_url,
                         tables=await get_tables(datasette, request, db, allowed_dict),
-                        named_parameter_values=named_parameter_values,
+                        named_parameter_values=typed_parameter_values,
                         edit_sql_url=edit_sql_url,
                         display_rows=await display_rows(
                             datasette, database, request, rows, columns

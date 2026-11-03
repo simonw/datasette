@@ -4,6 +4,7 @@ import socket
 import subprocess
 import sys
 import time
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import httpx2
 import pytest
@@ -179,6 +180,16 @@ def write_playwright_config(config_path):
                             "create-table": True,
                             "insert-row": True,
                             "set-column-type": True,
+                            "execute-write-sql": True,
+                        },
+                        "queries": {
+                            "ages_above": {
+                                "sql": (
+                                    "select title, score from projects "
+                                    "where score + 1 > :age order by score"
+                                ),
+                                "params": ["age"],
+                            },
                         },
                         "tables": {
                             "projects": {
@@ -2301,3 +2312,374 @@ def test_menu_long_plugin_content_and_no_popover_fallback(page, datasette_server
     assert panel.evaluate("node => node.scrollTop > 0")
     page.keyboard.press("Escape")
     expect(panel).not_to_be_visible()
+
+
+TYPED_AGE_SQL = "select :age as value, typeof(:age) as kind from projects"
+TYPED_AGE_OTHER_SQL = (
+    "select :age as value, typeof(:age) as kind, :other as other from projects"
+)
+TYPED_OTHER_AGE_SQL = (
+    "select :other as other, :age as value, typeof(:age) as kind from projects"
+)
+TYPED_OTHER_AGE_REFRESH_SQL = (
+    "select :other as other, :age as value, typeof(:age) as kind "
+    "from (select * from projects)"
+)
+
+
+def typed_query_url(server, sql, pairs):
+    return f"{server}data/-/query?" + urlencode([("sql", sql)] + list(pairs))
+
+
+def parameter_controls(page):
+    return page.locator("[data-parameter-control]").evaluate_all(
+        """nodes => nodes.map(node => ({
+            name: node.name,
+            dataName: node.dataset.parameterName,
+            value: node.value,
+        }))"""
+    )
+
+
+def set_sql_editor(page, sql):
+    page.evaluate(
+        """sql => {
+            const editor = window.editor;
+            if (!editor) {
+                throw new Error("CodeMirror editor was not initialised");
+            }
+            editor.dispatch({
+                changes: {from: 0, to: editor.state.doc.length, insert: sql},
+            });
+        }""",
+        sql,
+    )
+
+
+def install_delayed_parameter_fetch(page):
+    page.add_init_script("""
+        (() => {
+          const originalFetch = window.fetch;
+          window.__parameterFetchStarted = 0;
+          window.__parameterFetchHeld = 0;
+          window.__parameterFetchReleased = false;
+          window.__parameterFetchWaiters = [];
+          window.fetch = (input, init) => {
+            const url =
+              typeof input === "string"
+                ? input
+                : input.url || input.href || String(input);
+            if (!String(url).includes("/-/query/parameters")) {
+              return originalFetch(input, init);
+            }
+            window.__parameterFetchStarted += 1;
+            return originalFetch(input, init).then(
+              (response) =>
+                new Promise((resolve) => {
+                  window.__parameterFetchHeld += 1;
+                  if (window.__parameterFetchReleased) {
+                    resolve(response);
+                  } else {
+                    window.__parameterFetchWaiters.push(() =>
+                      resolve(response)
+                    );
+                  }
+                })
+            );
+          };
+          window.__releaseParameterFetch = () => {
+            window.__parameterFetchReleased = true;
+            const waiters = window.__parameterFetchWaiters.splice(0);
+            waiters.forEach((release) => release());
+          };
+        })();
+        """)
+
+
+@pytest.mark.playwright
+def test_sql_editor_preserves_typed_parameter_name_and_current_value(
+    page, datasette_server
+):
+    page.goto(
+        typed_query_url(
+            datasette_server,
+            TYPED_AGE_SQL,
+            [("_typed_params", "1"), ("age::int", "0")],
+        )
+    )
+    assert page.locator('input[name="_typed_params"]').input_value() == "1"
+    age = page.locator('input[name="age::int"]')
+    assert age.input_value() == "0"
+    assert age.get_attribute("data-parameter-name") == "age::int"
+
+    # The user changes the current DOM value before the SQL refresh completes.
+    age.fill("-5")
+
+    # Adding a second parameter keeps the surviving typed field and value and
+    # gives the new parameter a plain empty field, without inferring a type.
+    with page.expect_response(
+        lambda response: "/-/query/parameters" in response.url
+    ) as response_info:
+        set_sql_editor(page, TYPED_AGE_OTHER_SQL)
+    assert response_info.value.ok
+    page.wait_for_function(
+        "document.querySelectorAll('[data-parameter-control]').length === 2 "
+        "&& document.querySelectorAll('[data-parameter-control]')[1]"
+        ".dataset.parameterName === 'other'"
+    )
+    assert parameter_controls(page) == [
+        {"name": "age::int", "dataName": "age::int", "value": "-5"},
+        {"name": "other", "dataName": "other", "value": ""},
+    ]
+
+    # Reordering the SQL moves the rows without losing the typed name or value.
+    with page.expect_response(
+        lambda response: "/-/query/parameters" in response.url
+    ) as response_info:
+        set_sql_editor(page, TYPED_OTHER_AGE_SQL)
+    assert response_info.value.ok
+    page.wait_for_function(
+        "document.querySelectorAll('[data-parameter-control]')[0]"
+        ".dataset.parameterName === 'other'"
+    )
+    assert parameter_controls(page) == [
+        {"name": "other", "dataName": "other", "value": ""},
+        {"name": "age::int", "dataName": "age::int", "value": "-5"},
+    ]
+
+    # A second consecutive refresh keeps the current value again.
+    page.evaluate("""() => {
+            window.__parameterRenders = 0;
+            new MutationObserver(() => {
+                window.__parameterRenders += 1;
+            }).observe(
+                document.querySelector("[data-sql-parameters-section]"),
+                {childList: true}
+            );
+        }""")
+    with page.expect_response(
+        lambda response: "/-/query/parameters" in response.url
+    ) as response_info:
+        set_sql_editor(page, TYPED_OTHER_AGE_REFRESH_SQL)
+    assert response_info.value.ok
+    page.wait_for_function("window.__parameterRenders > 0")
+    assert parameter_controls(page) == [
+        {"name": "other", "dataName": "other", "value": ""},
+        {"name": "age::int", "dataName": "age::int", "value": "-5"},
+    ]
+
+    # Submitting after the refresh proves the request keeps the typed key and
+    # current value, and the server binds it as an integer.
+    page.locator('form.sql.core input[type="submit"]').click()
+    page.wait_for_load_state("domcontentloaded")
+    query = parse_qs(urlsplit(page.url).query)
+    assert query["_typed_params"] == ["1"]
+    assert query["age::int"] == ["-5"]
+    result_text = page.locator("table.rows-and-columns").inner_text()
+    assert "integer" in result_text
+    assert "-5" in result_text
+    # The input is rebuilt from the response with the same typed spelling.
+    assert page.locator('input[name="age::int"]').input_value() == "-5"
+
+
+@pytest.mark.playwright
+def test_sql_editor_delete_then_readd_parameter_does_not_revive_typed_key(
+    page, datasette_server
+):
+    page.goto(
+        typed_query_url(
+            datasette_server,
+            TYPED_AGE_SQL,
+            [("_typed_params", "1"), ("age::int", "0")],
+        )
+    )
+    assert page.locator('input[name="age::int"]').count() == 1
+
+    # Deleting :age removes the typed control entirely.
+    with page.expect_response(
+        lambda response: "/-/query/parameters" in response.url
+    ) as response_info:
+        set_sql_editor(page, "select :other as other from projects")
+    assert response_info.value.ok
+    page.wait_for_function(
+        "document.querySelectorAll('[data-parameter-control]').length === 1 "
+        "&& document.querySelector('[data-parameter-control]')"
+        ".dataset.parameterName === 'other'"
+    )
+    assert parameter_controls(page) == [
+        {"name": "other", "dataName": "other", "value": ""},
+    ]
+    assert page.locator('input[name="age::int"]').count() == 0
+
+    # Adding :age back creates a new ordinary empty field; the old typed key
+    # and value are not resurrected.
+    with page.expect_response(
+        lambda response: "/-/query/parameters" in response.url
+    ) as response_info:
+        set_sql_editor(
+            page,
+            "select :age as value, typeof(:age) as kind, "
+            ":other as other from projects",
+        )
+    assert response_info.value.ok
+    page.wait_for_function(
+        "document.querySelectorAll('[data-parameter-control]').length === 2 "
+        "&& document.querySelectorAll('[data-parameter-control]')[0]"
+        ".dataset.parameterName === 'age'"
+    )
+    assert parameter_controls(page) == [
+        {"name": "age", "dataName": "age", "value": ""},
+        {"name": "other", "dataName": "other", "value": ""},
+    ]
+    assert page.locator('input[name="age::int"]').count() == 0
+
+    # Submission no longer carries a typed key for age.
+    page.locator('form.sql.core input[type="submit"]').click()
+    page.wait_for_load_state("domcontentloaded")
+    query = parse_qs(urlsplit(page.url).query, keep_blank_values=True)
+    assert query["_typed_params"] == ["1"]
+    assert "age::int" not in query
+    assert query["age"] == [""]
+
+
+@pytest.mark.playwright
+def test_sql_editor_keeps_edit_made_while_parameter_discovery_is_in_flight(
+    page, datasette_server
+):
+    install_delayed_parameter_fetch(page)
+    page.goto(
+        typed_query_url(
+            datasette_server,
+            TYPED_AGE_SQL,
+            [("_typed_params", "1"), ("age::int", "0")],
+        )
+    )
+    age = page.locator('input[name="age::int"]')
+    assert age.input_value() == "0"
+    page.evaluate(
+        "window.__pendingControl = "
+        "document.querySelector('input[name=\"age::int\"]')"
+    )
+    set_sql_editor(page, TYPED_AGE_OTHER_SQL)
+    page.wait_for_function("window.__parameterFetchHeld === 1")
+
+    # The discovery response is held by the page fixture; the user edits the
+    # still-live field before the response is delivered.
+    age.fill("-11")
+    page.evaluate("window.__releaseParameterFetch()")
+    page.wait_for_function(
+        "document.querySelector('input[name=\"age::int\"]') "
+        "!== window.__pendingControl"
+    )
+    assert parameter_controls(page) == [
+        {"name": "age::int", "dataName": "age::int", "value": "-11"},
+        {"name": "other", "dataName": "other", "value": ""},
+    ]
+
+
+@pytest.mark.playwright
+def test_sql_editor_ordinary_mode_keeps_plain_parameters(page, datasette_server):
+    page.goto(
+        typed_query_url(
+            datasette_server,
+            "select :age as value from projects",
+            [("age", "0")],
+        )
+    )
+    assert page.locator('input[name="_typed_params"]').count() == 0
+    age = page.locator('input[name="age"]')
+    assert age.input_value() == "0"
+    age.fill("-5")
+
+    with page.expect_response(
+        lambda response: "/-/query/parameters" in response.url
+    ) as response_info:
+        set_sql_editor(page, "select :age as value, :other as other from projects")
+    assert response_info.value.ok
+    page.wait_for_function(
+        "document.querySelectorAll('[data-parameter-control]').length === 2"
+    )
+    assert parameter_controls(page) == [
+        {"name": "age", "dataName": "age", "value": "-5"},
+        {"name": "other", "dataName": "other", "value": ""},
+    ]
+
+
+@pytest.mark.playwright
+def test_stored_query_edit_sql_keeps_typed_parameter(page, datasette_server):
+    page.goto(
+        f"{datasette_server}data/ages_above?"
+        + urlencode({"_typed_params": "1", "age::int": "0"})
+    )
+    assert page.locator('input[name="age::int"]').input_value() == "0"
+    assert page.locator('input[name="_typed_params"]').input_value() == "1"
+
+    edit_link = page.locator("a.stored-query-edit-sql")
+    assert edit_link.count() == 1
+    edit_link.click()
+    page.wait_for_load_state("domcontentloaded")
+    assert "/data/-/query?" in page.url
+    query = parse_qs(urlsplit(page.url).query)
+    assert query["_typed_params"] == ["1"]
+    assert query["age::int"] == ["0"]
+    assert page.locator('input[name="age::int"]').input_value() == "0"
+
+
+@pytest.mark.playwright
+def test_execute_write_parameter_prefix_and_expand_collapse_unchanged(
+    page, datasette_server
+):
+    page.goto(
+        f"{datasette_server}data/-/execute-write?"
+        + urlencode({"sql": "update projects set title = :title where id = :id"})
+    )
+    section = page.locator("#execute-write-parameters-section")
+    assert section.get_attribute("data-parameter-name-prefix") == "_sql_param_"
+    assert section.get_attribute("data-allow-expand") == "1"
+    assert page.locator('input[name="_sql_param_title"]').input_value() == ""
+    assert page.locator('input[name="_sql_param_id"]').input_value() == ""
+    page.locator('input[name="_sql_param_title"]').fill("Launched")
+    page.locator('input[name="_sql_param_id"]').fill("1")
+
+    # Expanding and collapsing keeps the prefixed submit name and current value.
+    toggle = section.locator("[data-parameter-toggle]").first
+    toggle.click()
+    title_area = page.locator('textarea[name="_sql_param_title"]')
+    assert title_area.input_value() == "Launched"
+    assert toggle.get_attribute("aria-expanded") == "true"
+    assert toggle.inner_text() == "Collapse"
+    title_area.fill("Launched from textarea")
+    toggle.click()
+    title = page.locator('input[name="_sql_param_title"]')
+    assert title.input_value() == "Launched from textarea"
+    assert toggle.get_attribute("aria-expanded") == "false"
+    assert toggle.inner_text() == "Expand"
+
+    # A normal parameter refresh keeps values and the prefix; the new parameter
+    # is a plain empty field under the same prefix.
+    with page.expect_response(
+        lambda response: "/-/execute-write/analyze" in response.url
+    ) as response_info:
+        set_sql_editor(
+            page,
+            "update projects set title = :title, metadata = :metadata "
+            "where id = :id",
+        )
+    assert response_info.value.ok
+    page.wait_for_function(
+        "document.querySelectorAll("
+        "'#execute-write-parameters-section [data-parameter-control]'"
+        ").length === 3"
+    )
+    assert page.locator('input[name="_sql_param_title"]').input_value() == (
+        "Launched from textarea"
+    )
+    assert page.locator('input[name="_sql_param_id"]').input_value() == "1"
+    assert page.locator('input[name="_sql_param_metadata"]').input_value() == ""
+    assert page.locator(
+        "#execute-write-parameters-section [data-parameter-control]"
+    ).evaluate_all("nodes => nodes.map(node => node.name)") == [
+        "_sql_param_title",
+        "_sql_param_metadata",
+        "_sql_param_id",
+    ]

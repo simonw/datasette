@@ -15,32 +15,55 @@ window.datasetteSqlParameters = (() => {
     return sqlInput ? sqlInput.value : "";
   }
 
+  const TYPED_SEPARATOR = "::";
+
+  // The opt-in typed mode is announced by the server-rendered hidden flag.
+  // Only that form separates the SQL base name ("age") from the submitted
+  // field name ("age::int"); ordinary forms keep the historical behaviour of
+  // using the parameter name for both.
+  function typedParametersEnabled(form) {
+    const flag = form.querySelector('input[name="_typed_params"]');
+    return Boolean(flag && flag.value === "1");
+  }
+
+  function parameterBaseName(manager, name) {
+    if (!manager.typedParameters) {
+      return name;
+    }
+    const separator = name.indexOf(TYPED_SEPARATOR);
+    return separator === -1 ? name : name.slice(0, separator);
+  }
+
   function controlState(control) {
     return {
       value: control.value,
       expanded: control.tagName.toLowerCase() === "textarea",
+      name: control.dataset.parameterName,
     };
+  }
+
+  function rememberControl(manager, control) {
+    manager.parameterState.set(
+      parameterBaseName(manager, control.dataset.parameterName),
+      controlState(control)
+    );
   }
 
   function syncParameterState(manager) {
     manager.parameterState = new Map();
     manager.section
       .querySelectorAll("[data-parameter-control]")
-      .forEach((control) => {
-        manager.parameterState.set(
-          control.dataset.parameterName,
-          controlState(control)
-        );
-      });
+      .forEach((control) => rememberControl(manager, control));
   }
 
   function createControl(parameter, id, state, namePrefix) {
     const control = document.createElement(state.expanded ? "textarea" : "input");
+    const fieldName = state.name || parameter;
     control.id = id;
-    control.name = `${namePrefix || ""}${parameter}`;
+    control.name = `${namePrefix || ""}${fieldName}`;
     control.value = state.value;
     control.setAttribute("data-parameter-control", "");
-    control.dataset.parameterName = parameter;
+    control.dataset.parameterName = fieldName;
     if (state.expanded) {
       control.rows = 5;
     } else {
@@ -74,7 +97,10 @@ window.datasetteSqlParameters = (() => {
     if (selectionStart !== undefined && replacement.setSelectionRange) {
       replacement.setSelectionRange(selectionStart, selectionStart);
     }
-    manager.parameterState.set(parameter, controlState(replacement));
+    manager.parameterState.set(
+      parameterBaseName(manager, replacement.dataset.parameterName),
+      controlState(replacement)
+    );
   }
 
   function renderParameters(manager, parameters) {
@@ -93,9 +119,14 @@ window.datasetteSqlParameters = (() => {
 
     parameters.forEach((parameter, index) => {
       const id = `qp${index + 1}`;
+      // State is keyed by the SQL base name. In typed mode a surviving
+      // parameter keeps the submitted typed name ("age::int") and the value
+      // currently in the DOM; a genuinely new parameter gets a plain empty
+      // field and never infers a type.
       const state = previousState.get(parameter) || {
         value: "",
         expanded: false,
+        name: parameter,
       };
       if (!manager.allowExpand) {
         state.expanded = false;
@@ -107,7 +138,7 @@ window.datasetteSqlParameters = (() => {
 
       const label = document.createElement("label");
       label.htmlFor = id;
-      label.textContent = parameter;
+      label.textContent = state.name || parameter;
 
       const control = createControl(parameter, id, state, manager.namePrefix);
 
@@ -134,10 +165,7 @@ window.datasetteSqlParameters = (() => {
       if (!control.matches || !control.matches("[data-parameter-control]")) {
         return;
       }
-      manager.parameterState.set(
-        control.dataset.parameterName,
-        controlState(control)
-      );
+      rememberControl(manager, control);
     });
 
     if (!manager.allowExpand) {
@@ -244,6 +272,7 @@ window.datasetteSqlParameters = (() => {
             : false
           : options.allowExpand,
       namePrefix: section ? section.dataset.parameterNamePrefix || "" : "",
+      typedParameters: typedParametersEnabled(form),
       parameterState: new Map(),
     };
     if (section) {

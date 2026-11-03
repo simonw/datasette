@@ -36,7 +36,7 @@ You can also provide values for these fields by constructing a URL::
 
 SQLite string escaping rules will be applied to values passed using named parameters - they will be wrapped in quotes and their content will be correctly escaped.
 
-Values from named parameters are treated as SQLite strings. If you need to perform numeric comparisons on them you should cast them to an integer or float first using ``cast(:name as integer)`` or ``cast(:name as real)``, for example:
+By default, values from named parameters are treated as SQLite strings. If you need to perform numeric comparisons on them you can cast them to an integer or float using ``cast(:name as integer)`` or ``cast(:name as real)``, for example:
 
 .. code-block:: sql
 
@@ -45,6 +45,37 @@ Values from named parameters are treated as SQLite strings. If you need to perfo
     and latitude < cast(:max_latitude as real)
 
 Datasette disallows custom SQL queries containing the string PRAGMA (with a small number `of exceptions <https://github.com/simonw/datasette/issues/761>`__) as SQLite pragma statements can be used to change database settings at runtime. If you need to include the string "pragma" in a query you can do so safely using a named parameter.
+
+.. _sql_typed_parameters:
+
+Integer parameter bindings
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To bind a named parameter as a SQLite integer, include ``_typed_params=1`` and add ``::int`` to its request key. Keep the SQL placeholder unchanged: ``age::int=30`` supplies an integer to ``:age``.
+
+For example, this SQL returns ``integer`` and ``30``:
+
+.. code-block:: sql
+
+    select typeof(:age) as bound_type, :age as bound_value
+
+The corresponding URL is::
+
+    /mydatabase/-/query.json?sql=select+typeof(:age)+as+bound_type,+:age+as+bound_value&_typed_params=1&age%3A%3Aint=30
+
+Here ``%3A%3A`` encodes ``::`` in the request key. Only the exact flag value ``1`` enables typed bindings, and ``int`` is the only supported type. Without that flag, keys containing ``::`` keep their ordinary meaning. Unsuffixed parameters such as ``age=30`` remain strings even with the flag enabled; a missing non-underscore parameter in a GET query retains the existing empty-string value. Values are passed using SQLite parameter bindings, rather than inserted into the SQL text.
+
+Integer values must contain ASCII decimal digits, optionally preceded by ``-``, and be between ``-9223372036854775808`` and ``9223372036854775807`` inclusive. Zero, negative values and leading zeros are accepted. Empty values, whitespace, a leading ``+``, fractions, non-decimal values and values outside that range return HTTP ``400``.
+
+With typed bindings enabled, HTTP ``400`` is also returned for an unsupported type suffix, an empty parameter name, a target absent from the query's parameter names, an underscore-prefixed target (including :ref:`magic parameters <queries_magic_parameters>`), a repeated typed key, or both typed and plain keys for the same parameter (such as ``age::int`` and ``age``).
+
+The control parameter ``_typed_params`` may only appear once. Repeating it returns HTTP ``400`` even if neither value is ``1``. This reserves the control name and changes the behavior of requests that previously repeated it. Ordinary duplicate keys retain their existing behavior: the first value wins for GET, and the last value wins for POST form and JSON bodies.
+
+Typed bindings apply to GET custom SQL queries, GET :ref:`stored queries <stored_queries>` (including configured queries), and POST :ref:`writable stored queries <queries_writable>` using form or JSON bodies. They do not apply to table filters or other write APIs. Existing permissions still apply and are checked before typed parameter validation.
+
+To inspect resolved bindings for a GET query, add ``&_extra=query`` to its JSON URL. The response's ``query`` object contains the SQL and parameter values keyed by SQL base name, for example ``"params": {"age": 30}``, rather than ``"age::int"``. This lets a client replay the SQL with those bindings and preserve the integer type. See :ref:`json_api_extra`.
+
+Opening the HTML query page with typed parameters preserves the flag, typed field names and values (including zero) when you submit the form. A stored query's **Edit SQL** link also preserves those bindings. As you edit SQL, parameter fields that remain in the query retain their typed names and current values, including changes made while the editor is discovering parameter names. New parameters start with plain names and empty values. Once a field has been removed, adding that parameter again starts with a plain, empty field. There is no type selector in the editor; use the request keys to opt in.
 
 .. _sql_views:
 
@@ -141,6 +172,8 @@ Stored queries
 Datasette stores both configured queries and user-created queries in the ``queries`` table in the :ref:`internal database <internals_internal>`. Configured queries come from the ``queries`` section of ``datasette.yaml``. User-created stored queries can be created from the SQL query page by actors with the :ref:`actions_store_query` and :ref:`actions_execute_sql` permissions. Writable stored queries also require the permissions needed for the writes they perform.
 
 Stored queries created by users default to private. Private stored queries can only be viewed, updated or deleted by the actor that created them. Broad ``view-query``, ``update-query`` or ``delete-query`` permission grants still do not allow other actors to access another actor's private stored queries.
+
+GET requests to stored queries can use :ref:`integer parameter bindings <sql_typed_parameters>` in the query string. For a stored query with an ``:age`` parameter, use ``/mydatabase/query-name.json?_typed_params=1&age%3A%3Aint=30``.
 
 Editing and deleting stored queries
 +++++++++++++++++++++++++++++++++++
@@ -650,6 +683,18 @@ You can also continue to submit data using regular form encoding, like so::
     POST /mydatabase/add_message
 
     message=Message+goes+here
+
+To use :ref:`integer parameter bindings <sql_typed_parameters>`, put the flag and typed keys in the POST body. For example, a writable query using ``:age`` can receive this JSON body:
+
+.. code-block:: json
+
+    {"_typed_params": "1", "age::int": "30"}
+
+Or the equivalent form body::
+
+    _typed_params=1&age%3A%3Aint=30
+
+The SQL still uses ``:age``, and receives integer ``30``. Invalid typed parameters return HTTP ``400`` before the write executes.
 
 There are three options for specifying that you would like the response to your request to return JSON data, as opposed to an HTTP redirect to another page.
 

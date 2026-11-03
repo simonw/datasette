@@ -105,6 +105,7 @@ async def test_facet_value_link_resets_pagination(ds_client):
     assert second_page["rows"] != first_page["rows"]
 
     results = second_page["facet_results"]["results"]["pk1"]["results"]
+    # "d" rows span both pages, so keeping _next would skip those on page 1
     toggle_url = next(r["toggle_url"] for r in results if r["value"] == "d")
     assert parse_qsl(urlsplit(toggle_url).query) == [
         ("_size", "100"),
@@ -174,6 +175,8 @@ async def test_facet_value_toggle_url_drops_next(
 
 @pytest.mark.asyncio
 async def test_selected_metadata_facet_value_link_removes_only_argument(ds_client):
+    # Facets strip _next before removing the selected value. In the other order,
+    # removing pk1=d leaves "/" and the _next step falls back to the request's ?pk1=d
     facet = ColumnFacet(
         ds_client.ds,
         Request.fake("/?pk1=d"),

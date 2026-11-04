@@ -64,6 +64,13 @@ def register_facet_classes():
     return classes
 
 
+def _path_with_removed_args_and_next(request, args):
+    # Strip _next first: path_with_removed_args() reuses the request's args
+    # when given a path with no "?", which would restore the removed value
+    path = path_with_removed_args(request, {"_next"})
+    return path_with_removed_args(request, args, path=path)
+
+
 class Facet:
     type = None
     # How many rows to consider when suggesting facets:
@@ -271,9 +278,8 @@ class ColumnFacet(Facet):
                     }
                     selected = bool(selected_args)
                     if selected:
-                        toggle_path = path_with_removed_args(self.request, {"_next"})
-                        toggle_path = path_with_removed_args(
-                            self.request, selected_args, path=toggle_path
+                        toggle_path = _path_with_removed_args_and_next(
+                            self.request, selected_args
                         )
                     else:
                         toggle_path = path_with_added_args(
@@ -440,11 +446,8 @@ class ArrayFacet(Facet):
                     value = str(row["value"])
                     selected = (f"{column}__arraycontains", value) in pairs
                     if selected:
-                        toggle_path = path_with_removed_args(self.request, {"_next"})
-                        toggle_path = path_with_removed_args(
-                            self.request,
-                            {f"{column}__arraycontains": value},
-                            path=toggle_path,
+                        toggle_path = _path_with_removed_args_and_next(
+                            self.request, {f"{column}__arraycontains": value}
                         )
                     else:
                         toggle_path = path_with_added_args(
@@ -555,11 +558,8 @@ class DateFacet(Facet):
                 for row in facet_rows:
                     selected = str(args.get(f"{column}__date")) == str(row["value"])
                     if selected:
-                        toggle_path = path_with_removed_args(self.request, {"_next"})
-                        toggle_path = path_with_removed_args(
-                            self.request,
-                            {f"{column}__date": str(row["value"])},
-                            path=toggle_path,
+                        toggle_path = _path_with_removed_args_and_next(
+                            self.request, {f"{column}__date": str(row["value"])}
                         )
                     else:
                         toggle_path = path_with_added_args(

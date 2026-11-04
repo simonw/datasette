@@ -133,3 +133,49 @@ async def test_execute_fn_without_tracing_leaves_trace_callback_alone(ds_client)
         return statements
 
     assert await db.execute_fn(run_with_own_trace_callback) == ["select 1"]
+
+
+@pytest.mark.asyncio
+async def test_traced_execute_fn_preserves_existing_trace_callback():
+    # A trace callback a plugin leaves installed on a pooled connection
+    # should still fire during and after a traced execute_fn() call
+    from datasette.app import Datasette
+    from datasette.tracer import capture_traces
+
+    # num_sql_threads=0 means every call uses the same connection
+    ds = Datasette(settings={"num_sql_threads": 0})
+    db = ds.add_memory_database("trace_callback_chain")
+    plugin_statements = []
+
+    def install_plugin_callback(conn):
+        conn.set_trace_callback(plugin_statements.append)
+
+    await db.execute_fn(install_plugin_callback)
+
+    traces = []
+    with capture_traces(traces):
+        await db.execute_fn(lambda conn: conn.execute("select 1").fetchall())
+    # Traced, and the plugin callback saw the statement too
+    assert [t["sql"] for t in traces if "fn" in t] == ["select 1"]
+    assert plugin_statements == ["select 1"]
+
+    # The plugin callback is still installed after tracing finished
+    await db.execute_fn(lambda conn: conn.execute("select 2").fetchall())
+    assert plugin_statements == ["select 1", "select 2"]
+
+
+@pytest.mark.asyncio
+async def test_traced_execute_fn_keeps_callback_installed_by_fn():
+    from datasette.app import Datasette
+    from datasette.tracer import capture_traces
+
+    ds = Datasette(settings={"num_sql_threads": 0})
+    db = ds.add_memory_database("trace_callback_install")
+    statements = []
+
+    traces = []
+    with capture_traces(traces):
+        await db.execute_fn(lambda conn: conn.set_trace_callback(statements.append))
+    # A callback installed by fn() during a traced call is left in place
+    await db.execute_fn(lambda conn: conn.execute("select 3").fetchall())
+    assert statements == ["select 3"]

@@ -562,6 +562,16 @@ async def test_searchable(ds_client, path, expected_rows):
     assert expected_rows == response.json()["rows"]
 
 
+@pytest.mark.asyncio
+async def test_search_quote_followed_by_newline(ds_client):
+    # A quote followed by a newline used to produce an invalid FTS query
+    response = await ds_client.get(
+        "/fixtures/searchable.json?_shape=arrays&_search=e%22%0A%21"
+    )
+    assert response.status_code == 200
+    assert response.json()["rows"] == []
+
+
 _SEARCHMODE_RAW_RESULTS = [
     [1, "barry cat", "terry dog", "panther"],
     [2, "terry dog", "sara weasel", "puma"],

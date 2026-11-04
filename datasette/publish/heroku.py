@@ -250,5 +250,5 @@ def temporary_heroku_directory(
         yield
 
     finally:
-        tmp.cleanup()
         os.chdir(saved_cwd)
+        tmp.cleanup()

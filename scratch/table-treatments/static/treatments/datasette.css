@@ -391,9 +391,8 @@ html[data-table-treatment="datasette"] table.rows-and-columns .tt-long-toggle:fo
    edges only once content has scrolled under them (.is-scrolled-x/y). Not
    applied to the stacked mobile cards. */
 @media (min-width: 577px) {
-    /* Header buttons: the pin, and the expand-all toggle that datasette.js
-       adds to any column with a clamped value. Both match the gear. */
-    html[data-table-treatment="datasette"] table.rows-and-columns th :is(.tt-pin, .tt-col-expand) {
+    /* The pin matches the gear. */
+    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-pin {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -415,11 +414,7 @@ html[data-table-treatment="datasette"] table.rows-and-columns .tt-long-toggle:fo
         transition: transform 0.15s ease;
     }
 
-    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-col-expand svg {
-        display: block;
-    }
-
-    html[data-table-treatment="datasette"] table.rows-and-columns th :is(.tt-pin, .tt-col-expand):hover {
+    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-pin:hover {
         background: var(--rule);
         color: var(--ink);
     }
@@ -429,25 +424,40 @@ html[data-table-treatment="datasette"] table.rows-and-columns .tt-long-toggle:fo
         outline-offset: 1px;
     }
 
-    /* Expand-all: chevrons apart while any value is collapsed, accent
-       coloured once some are open; chevrons together on the accent tint when
-       all are open, since the next click collapses them. */
-    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-col-expand .tt-icon-collapse,
-    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-col-expand[data-state="all"] .tt-icon-expand {
-        display: none;
-    }
-
-    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-col-expand[data-state="all"] .tt-icon-collapse {
-        display: inline;
-    }
-
-    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-col-expand[data-state="some"] {
+    /* Expand-all: the same pill as the cells' "more", reading "expand all"
+       or "collapse all", so it is clearly part of that feature rather than a
+       sort control. White, to stand out on the header band. */
+    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-col-expand {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.2rem;
+        height: 1.25rem;
+        margin: -2px 0 -2px 6px;
+        padding: 0 0.4rem 0 0.5rem;
+        vertical-align: middle;
+        border: 1px solid var(--rule);
+        border-radius: 999px;
+        background: var(--card);
         color: var(--accent);
+        font: 600 0.75rem/1 system-ui, -apple-system, sans-serif;
+        white-space: nowrap;
+        cursor: pointer;
+        -webkit-user-select: none;
+        user-select: none;
     }
 
-    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-col-expand[data-state="all"] {
-        background: #e8effd;
-        color: var(--accent);
+    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-col-expand svg {
+        display: block;
+        transition: transform 0.15s;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-col-expand[data-state="all"] svg {
+        transform: rotate(180deg);
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-col-expand:hover {
+        border-color: #bfccd9;
+        background: var(--rule);
     }
 
     /* Pinned: upright, filled, in the accent colour on the accent tint used
@@ -563,7 +573,7 @@ html[data-table-treatment="datasette"] table.rows-and-columns .tt-long-toggle:fo
 }
 
 @media (min-width: 577px) and (prefers-reduced-motion: reduce) {
-    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-pin svg {
+    html[data-table-treatment="datasette"] table.rows-and-columns th :is(.tt-pin, .tt-col-expand) svg {
         transition: none;
     }
 }

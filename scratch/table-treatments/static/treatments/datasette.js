@@ -47,12 +47,6 @@
     '<path d="M12 17v5"/>' +
     '<path class="tt-pin-head" d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>';
 
-  // Lucide "chevrons-up-down" (expand) and "chevrons-down-up" (collapse).
-  const expandAllIcon =
-    '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-    '<g class="tt-icon-expand"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></g>' +
-    '<g class="tt-icon-collapse"><path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/></g></svg>';
-
   const table = () => document.querySelector("table.rows-and-columns");
   const active = () => root.dataset.tableTreatment === ID;
   const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -155,9 +149,11 @@
     updateColumnToggle(t, index);
   }
 
-  // Expand-all toggle in the header of every column with a clamped value.
-  // data-state is none / some / all expanded; the label says what a click
-  // will do: collapse when all are open, expand otherwise.
+  // Expand-all toggle in the header of every column with a clamped value: a
+  // pill like the cells' "more" pills, so it reads as part of the same
+  // feature (an icon here looked like a sort control). data-state is none /
+  // some / all expanded; the text says what a click will do: "collapse all"
+  // when all are open, "expand all" otherwise.
   function updateColumnToggle(t, index) {
     const th = t.tHead?.rows[0]?.cells[index];
     if (!th) return;
@@ -175,13 +171,14 @@
       button = document.createElement("button");
       button.type = "button";
       button.className = "tt-col-expand";
-      button.innerHTML = expandAllIcon;
+      button.innerHTML = `<span class="tt-col-expand-label">expand all</span>${chevron}`;
       th.append(button);
       watchHeader(th);
     }
     const open = boxes.filter((box) => box.classList.contains("is-expanded")).length;
     const state = open === 0 ? "none" : open === boxes.length ? "all" : "some";
     button.dataset.state = state;
+    button.querySelector(".tt-col-expand-label").textContent = state === "all" ? "collapse all" : "expand all";
     button.setAttribute("aria-label", `${state === "all" ? "Collapse" : "Expand"} all ${column} values`);
     button.title =
       state === "all"

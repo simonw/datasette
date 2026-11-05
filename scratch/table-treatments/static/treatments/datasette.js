@@ -47,6 +47,12 @@
     '<path d="M12 17v5"/>' +
     '<path class="tt-pin-head" d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>';
 
+  // Lucide "chevrons-up-down" (expand) and "chevrons-down-up" (collapse).
+  const expandAllIcon =
+    '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<g class="tt-icon-expand"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></g>' +
+    '<g class="tt-icon-collapse"><path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/></g></svg>';
+
   const table = () => document.querySelector("table.rows-and-columns");
   const active = () => root.dataset.tableTreatment === ID;
   const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -78,6 +84,34 @@
   function firstVisibleRow(t) {
     const top = visibleTop(t);
     return rows(t).find((tr) => tr.getBoundingClientRect().bottom > top);
+  }
+
+  /* Header controls (shared) -------------------------------------------- */
+
+  // Our header buttons sit after Datasette's gear, in this order. table.js
+  // appends the gear after load, so each header with controls is watched
+  // and re-ordered when its children change.
+  const CONTROLS = ["tt-col-expand", "tt-pin"];
+  const headerObservers = new Map();
+
+  function arrangeControls(th) {
+    const mine = CONTROLS.map((name) => th.querySelector(`:scope > .${name}`)).filter(Boolean);
+    const tail = [...th.children].slice(-mine.length);
+    if (mine.some((el, i) => tail[i] !== el)) th.append(...mine);
+  }
+
+  function watchHeader(th) {
+    arrangeControls(th);
+    if (headerObservers.has(th)) return;
+    const observer = new MutationObserver(() => arrangeControls(th));
+    observer.observe(th, { childList: true });
+    headerObservers.set(th, observer);
+  }
+
+  function unwatchHeader(th) {
+    if (CONTROLS.some((name) => th.querySelector(`:scope > .${name}`))) return;
+    headerObservers.get(th)?.disconnect();
+    headerObservers.delete(th);
   }
 
   /* 1. Long values ------------------------------------------------------ */
@@ -118,6 +152,53 @@
 
   function setColumn(t, index, open) {
     rows(t).forEach((tr) => setState(tr.cells[index], open));
+    updateColumnToggle(t, index);
+  }
+
+  // Expand-all toggle in the header of every column with a clamped value.
+  // data-state is none / some / all expanded; the label says what a click
+  // will do: collapse when all are open, expand otherwise.
+  function updateColumnToggle(t, index) {
+    const th = t.tHead?.rows[0]?.cells[index];
+    if (!th) return;
+    const boxes = rows(t).map((tr) => tr.cells[index]?.querySelector(":scope > .tt-long")).filter(Boolean);
+    let button = th.querySelector(":scope > .tt-col-expand");
+    if (!boxes.length) {
+      if (button) {
+        button.remove();
+        unwatchHeader(th);
+      }
+      return;
+    }
+    const column = th.dataset.column || "column";
+    if (!button) {
+      button = document.createElement("button");
+      button.type = "button";
+      button.className = "tt-col-expand";
+      button.innerHTML = expandAllIcon;
+      th.append(button);
+      watchHeader(th);
+    }
+    const open = boxes.filter((box) => box.classList.contains("is-expanded")).length;
+    const state = open === 0 ? "none" : open === boxes.length ? "all" : "some";
+    button.dataset.state = state;
+    button.setAttribute("aria-label", `${state === "all" ? "Collapse" : "Expand"} all ${column} values`);
+    button.title =
+      state === "all"
+        ? `Collapse all ${column} values\nReturn every long ${column} value on this page to a short preview.`
+        : `Expand all ${column} values\nShow every long ${column} value on this page in full.`;
+  }
+
+  function updateColumnToggles(t) {
+    [...(t.tHead?.rows[0]?.cells || [])].forEach((_, index) => updateColumnToggle(t, index));
+  }
+
+  function removeColumnToggles(t) {
+    t.querySelectorAll("thead .tt-col-expand").forEach((button) => {
+      const th = button.parentElement;
+      button.remove();
+      unwatchHeader(th);
+    });
   }
 
   function wrap(td) {
@@ -174,6 +255,7 @@
       if (fitsFolded[i]) box.classList.add("keeps-breaks");
       addToggle(td, box);
     });
+    updateColumnToggles(t);
   }
 
   let rowObserver = null;
@@ -197,10 +279,21 @@
     delete t.dataset.ttLong;
     rowObserver?.disconnect();
     rowObserver = null;
+    removeColumnToggles(t);
     t.querySelectorAll("tbody td").forEach((td) => {
       if (td.querySelector(":scope > .tt-long")) unwrap(td);
     });
   }
+
+  // The header's expand-all toggle. Keeps the first visible row in place.
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest?.(".tt-col-expand");
+    if (!button || !active()) return;
+    const t = table();
+    const open = button.dataset.state !== "all";
+    keepInPlace(t, firstVisibleRow(t), () => setColumn(t, button.closest("th").cellIndex, open));
+    button.focus({ preventScroll: true });
+  });
 
   document.addEventListener("click", (event) => {
     const button = event.target.closest?.(".tt-long-toggle");
@@ -215,6 +308,7 @@
       if (event.altKey) setColumn(t, td.cellIndex, open);
       else setState(td, open);
     });
+    updateColumnToggle(t, td.cellIndex);
     // Collapsing a value whose top had scrolled out of view: bring its row
     // back to the top.
     const top = visibleTop(t);
@@ -313,11 +407,12 @@
   }
 
   function applyFreeze(on, { keepPlace = false } = {}) {
-    const { t, wrapper, run, pin } = freeze;
+    const { t, wrapper, run, pin, describe } = freeze;
     // Keep the rows the reader is looking at in the same place on screen.
     const topBefore = wrapper.getBoundingClientRect().top;
     const innerBefore = wrapper.scrollTop;
     pin.setAttribute("aria-pressed", String(on));
+    pin.title = describe(on);
     if (on) {
       t.dataset.ttFreeze = String(run.length);
       measureFreeze();
@@ -349,23 +444,17 @@
     if (!run.length || !wrapper) return;
     const keys = run.filter((th) => th.dataset.isPk === "1");
     const th = keys[0];
+    const plural = keys.length > 1;
     const names = keys.map((k) => k.dataset.column).join(" and ");
-    const label = `Freeze the header row and the ${names} column${keys.length > 1 ? "s" : ""}`;
+    const columns = `the ${names} column${plural ? "s" : ""}`;
 
     const pin = document.createElement("button");
     pin.type = "button";
     pin.className = "tt-pin";
-    pin.setAttribute("aria-label", label);
-    pin.title = label;
+    pin.setAttribute("aria-label", `Freeze the header row and ${columns}`);
     pin.innerHTML = pinIcon;
     th.append(pin);
-
-    // Datasette's table.js appends the column gear after load; keep the pin
-    // after it so the gear sits in the same place in every header.
-    const keepLast = new MutationObserver(() => {
-      if (th.lastElementChild !== pin) th.append(pin);
-    });
-    keepLast.observe(th, { childList: true });
+    watchHeader(th);
 
     // Column widths change with the viewport, fonts and expanded values.
     const resize = new ResizeObserver(measureFreeze);
@@ -382,7 +471,13 @@
       pin.focus({ preventScroll: true });
     });
 
-    freeze = { t, wrapper, run, pin, observers: [keepLast, resize], onScroll };
+    // An explanatory tooltip that follows the pin's state (set in applyFreeze).
+    const describe = (on) =>
+      on
+        ? `Unfreeze the header row and ${columns}\nColumn names stay at the top and ${columns} ${plural ? "stay" : "stays"} on the left while you scroll. Click to let them scroll with the table again.`
+        : `Freeze the header row and ${columns}\nKeep column names at the top and ${columns} on the left while you scroll down the rows and across the columns. Applies to every table until you turn it off.`;
+
+    freeze = { t, wrapper, run, pin, describe, observers: [resize], onScroll };
     applyFreeze(prefs.frozen());
   }
 
@@ -393,7 +488,9 @@
     observers.forEach((o) => o.disconnect());
     wrapper.removeEventListener("scroll", onScroll);
     wrapper.classList.remove("is-scrolled-x", "is-scrolled-y");
+    const th = pin.parentElement;
     pin.remove();
+    if (th) unwatchHeader(th);
     freeze = null;
   }
 

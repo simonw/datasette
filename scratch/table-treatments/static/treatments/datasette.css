@@ -391,7 +391,9 @@ html[data-table-treatment="datasette"] table.rows-and-columns .tt-long-toggle:fo
    edges only once content has scrolled under them (.is-scrolled-x/y). Not
    applied to the stacked mobile cards. */
 @media (min-width: 577px) {
-    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-pin {
+    /* Header buttons: the pin, and the expand-all toggle that datasette.js
+       adds to any column with a clamped value. Both match the gear. */
+    html[data-table-treatment="datasette"] table.rows-and-columns th :is(.tt-pin, .tt-col-expand) {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -413,14 +415,39 @@ html[data-table-treatment="datasette"] table.rows-and-columns .tt-long-toggle:fo
         transition: transform 0.15s ease;
     }
 
-    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-pin:hover {
+    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-col-expand svg {
+        display: block;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns th :is(.tt-pin, .tt-col-expand):hover {
         background: var(--rule);
         color: var(--ink);
     }
 
-    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-pin:focus-visible {
+    html[data-table-treatment="datasette"] table.rows-and-columns th :is(.tt-pin, .tt-col-expand):focus-visible {
         outline: 2px solid var(--accent);
         outline-offset: 1px;
+    }
+
+    /* Expand-all: chevrons apart while any value is collapsed, accent
+       coloured once some are open; chevrons together on the accent tint when
+       all are open, since the next click collapses them. */
+    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-col-expand .tt-icon-collapse,
+    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-col-expand[data-state="all"] .tt-icon-expand {
+        display: none;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-col-expand[data-state="all"] .tt-icon-collapse {
+        display: inline;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-col-expand[data-state="some"] {
+        color: var(--accent);
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-col-expand[data-state="all"] {
+        background: #e8effd;
+        color: var(--accent);
     }
 
     /* Pinned: upright, filled, in the accent colour on the accent tint used
@@ -542,7 +569,7 @@ html[data-table-treatment="datasette"] table.rows-and-columns .tt-long-toggle:fo
 }
 
 @media (max-width: 576px) {
-    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-pin {
+    html[data-table-treatment="datasette"] table.rows-and-columns th :is(.tt-pin, .tt-col-expand) {
         display: none;
     }
 }

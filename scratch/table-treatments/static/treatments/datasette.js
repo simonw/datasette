@@ -406,6 +406,18 @@
     if (!el.getAttribute("style")) el.removeAttribute("style");
   }
 
+  // After pinning, glide the box a little in each direction it can scroll
+  // but hasn't yet, so content visibly slides under the frozen header and
+  // columns and their shadows appear: it shows what pinning did.
+  function nudge() {
+    if (!freeze || !freeze.t.dataset.ttFreeze) return;
+    const { wrapper } = freeze;
+    const room = (scroll, size, client) => (scroll === 0 ? Math.max(0, size - client) : 0);
+    const left = Math.min(48, room(wrapper.scrollLeft, wrapper.scrollWidth, wrapper.clientWidth));
+    const top = Math.min(24, room(wrapper.scrollTop, wrapper.scrollHeight, wrapper.clientHeight));
+    if (left || top) wrapper.scrollBy({ left, top, behavior: reducedMotion() ? "instant" : "smooth" });
+  }
+
   function applyFreeze(on, { keepPlace = false } = {}) {
     const { t, wrapper, run, pin, describe } = freeze;
     // Keep the rows the reader is looking at in the same place on screen.
@@ -428,8 +440,19 @@
       // up with the top of the window so it fills the screen.
       if (topBefore < 0) wrapper.scrollTop = -topBefore;
       const top = wrapper.getBoundingClientRect().top - 8;
-      if (Math.abs(top) > 1) {
-        window.scrollBy({ top, behavior: topBefore < 0 || reducedMotion() ? "instant" : "smooth" });
+      const smooth = Math.abs(top) > 1 && topBefore >= 0 && !reducedMotion();
+      if (Math.abs(top) > 1) window.scrollBy({ top, behavior: smooth ? "smooth" : "instant" });
+      // Then nudge, once the page has settled.
+      if (smooth) {
+        let done = false;
+        const go = () => {
+          if (!done) nudge();
+          done = true;
+        };
+        window.addEventListener("scrollend", go, { once: true });
+        setTimeout(go, 800); // in case scrollend never fires
+      } else {
+        nudge();
       }
     } else if (innerBefore > 0) {
       // The box's own scroll position becomes page scroll again.

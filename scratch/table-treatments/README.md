@@ -29,6 +29,7 @@ The primary key column's header has a pin button after its gear. Pressing it fre
 
 - The pin is tilted when off, and upright, filled and in the accent colour when on (`aria-pressed`). Its `title` tooltip explains what it freezes and that the choice applies to every table, and changes once pinned.
 - Pinning lines the card up with the top of the window and hands the page's scroll position to the card, so the rows you were reading stay where they are. Unpinning does the reverse.
+- Pinning then glides the card about 24px down and 48px across, in each direction that has room to scroll and isn't scrolled already, so content visibly slides under the frozen header and columns and their shadows appear. It jumps instead of gliding when reduced motion is on.
 - Hairlines mark the frozen edges, and soft shadows appear once content has scrolled under them.
 - The choice is remembered for every table in localStorage (`datasette-table-freeze`).
 - Below 577px (Datasette's stacked mobile cards) the pin is hidden and nothing is frozen.

@@ -437,20 +437,11 @@
       // up with the top of the window so it fills the screen.
       if (topBefore < 0) wrapper.scrollTop = -topBefore;
       const top = wrapper.getBoundingClientRect().top - 8;
-      const smooth = Math.abs(top) > 1 && topBefore >= 0 && !reducedMotion();
+      const smooth = topBefore >= 0 && !reducedMotion();
       if (Math.abs(top) > 1) window.scrollBy({ top, behavior: smooth ? "smooth" : "instant" });
-      // Then nudge, once the page has settled.
-      if (smooth) {
-        let done = false;
-        const go = () => {
-          if (!done) nudge();
-          done = true;
-        };
-        window.addEventListener("scrollend", go, { once: true });
-        setTimeout(go, 800); // in case scrollend never fires
-      } else {
-        nudge();
-      }
+      // The box is its own scroller, so its nudge runs alongside the page's
+      // glide rather than after it.
+      nudge();
     } else if (innerBefore > 0) {
       // The box's own scroll position becomes page scroll again.
       window.scrollBy({ top: innerBefore + (wrapper.getBoundingClientRect().top - topBefore), behavior: "instant" });

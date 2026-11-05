@@ -10,16 +10,16 @@
      <td>
        <div class="tt-long">
          <div class="tt-long-text">…the cell's original nodes…</div>
-         <button class="tt-long-toggle" aria-expanded="false">more</button>
+         <button class="tt-long-toggle" aria-expanded="false">expand</button>
        </div>
      </td>
 
    Any value taller than the preview (--tt-preview-lines in datasette.css,
    3 by default) is clamped, so no row is taller than that plus padding.
    The preview folds line breaks into spaces, unless the folded value would
-   fit entirely, in which case it keeps them (.keeps-breaks) so "more" always
-   reveals something. "more" expands one value and moves to its top right as
-   "less". The column's gear menu gets "Expand/Collapse long values";
+   fit entirely, in which case it keeps them (.keeps-breaks) so "expand"
+   always reveals something. "expand" opens one value and moves to its top
+   right as "collapse". The column's gear menu gets "Expand/Collapse long values";
    Alt-click on a pill is a shortcut for the same. Rows that Datasette's
    edit and insert dialogs swap in are clamped too.
 
@@ -135,7 +135,7 @@
     // is; collapsed, at the end of the preview's last line.
     if (open && box.firstElementChild !== button) box.prepend(button);
     if (!open && box.lastElementChild !== button) box.append(button);
-    const word = open ? "less" : "more";
+    const word = open ? "collapse" : "expand";
     button.setAttribute("aria-expanded", String(open));
     const row = rowName(td);
     button.setAttribute("aria-label", `${word}: ${columnName(td)}${row ? `, ${row}` : ""}`);
@@ -150,7 +150,7 @@
   }
 
   // Expand-all toggle in the header of every column with a clamped value: a
-  // pill like the cells' "more" pills, so it reads as part of the same
+  // pill like the cells' "expand" pills, so it reads as part of the same
   // feature (an icon here looked like a sort control). data-state is none /
   // some / all expanded; the text says what a click will do: "collapse all"
   // when all are open, "expand all" otherwise.
@@ -221,7 +221,7 @@
     const button = document.createElement("button");
     button.type = "button";
     button.className = "tt-long-toggle";
-    button.innerHTML = `<span class="tt-long-label">more</span>${chevron}`;
+    button.innerHTML = `<span class="tt-long-label">expand</span>${chevron}`;
     box.append(button);
     setState(td, expanded.has(td));
   }

@@ -259,15 +259,34 @@ html[data-table-treatment="datasette"] .table-wrapper {
 }
 
 /* Long values (all widths) --------------------------------------------
-   datasette.js wraps any cell whose value would run past three lines in
+   datasette.js wraps any cell whose value would run past the preview in
    .tt-long > .tt-long-text + button.tt-long-toggle. Collapsed, the value is a
-   three-line preview with line breaks folded into spaces (a README's blank
-   lines would otherwise use up the preview) and its last line fading out
-   under a small "more" pill, so the row stays a predictable height. Expanded,
-   the value shows in full with its original line breaks, and the pill moves
-   below it as "less". */
+   preview of --tt-preview-lines lines (3) with line breaks folded into spaces
+   (a README's blank lines would otherwise use up the preview), its last line
+   fading out under a small "more" pill, so the row stays a predictable
+   height. Values that fit the preview once folded keep their line breaks
+   instead (.keeps-breaks). Expanded, the value shows in full with its
+   original line breaks, and the pill floats to its top right as "less", on
+   the line the reader clicked from. */
+
+/* Registered so that --tt-line: 1lh resolves on .tt-long (the text's line
+   height) and is inherited as that length. Unregistered, it would be
+   re-resolved against the pill's own, smaller line height. */
+@property --tt-line {
+    syntax: "<length>";
+    inherits: true;
+    initial-value: 0px;
+}
+
+html[data-table-treatment="datasette"] table.rows-and-columns {
+    --tt-preview-lines: 3; /* datasette.js reads this too */
+}
+
 html[data-table-treatment="datasette"] table.rows-and-columns .tt-long {
+    --tt-line: 1lh;
+    --tt-pill-h: 1.25rem;
     position: relative;
+    display: flow-root; /* contains the floated "less" pill */
 }
 
 html[data-table-treatment="datasette"] table.rows-and-columns .tt-long-text {
@@ -275,9 +294,12 @@ html[data-table-treatment="datasette"] table.rows-and-columns .tt-long-text {
 }
 
 html[data-table-treatment="datasette"] table.rows-and-columns .tt-long:not(.is-expanded) > .tt-long-text {
-    max-height: 3lh;
+    max-height: calc(var(--tt-preview-lines) * 1lh);
     overflow: hidden;
     white-space: normal;
+    /* Room for focus rings on links at either end of a line. */
+    padding-inline: 3px;
+    margin-inline: -3px;
     /* Fully visible except the end of the last line, which fades out
        behind the pill. */
     -webkit-mask:
@@ -288,14 +310,15 @@ html[data-table-treatment="datasette"] table.rows-and-columns .tt-long:not(.is-e
         linear-gradient(to left, transparent 4.75rem, #000 9rem) left bottom / 100% 1lh no-repeat;
 }
 
+html[data-table-treatment="datasette"] table.rows-and-columns .tt-long.keeps-breaks:not(.is-expanded) > .tt-long-text {
+    white-space: pre-wrap;
+}
+
 html[data-table-treatment="datasette"] table.rows-and-columns .tt-long-toggle {
-    position: absolute;
-    right: 0;
-    bottom: calc((1lh - 1.25rem) / 2);
     display: inline-flex;
     align-items: center;
     gap: 0.2rem;
-    height: 1.25rem;
+    height: var(--tt-pill-h);
     padding: 0 0.4rem 0 0.5rem;
     border: 1px solid var(--rule);
     border-radius: 999px;
@@ -304,10 +327,30 @@ html[data-table-treatment="datasette"] table.rows-and-columns .tt-long-toggle {
     font: 600 0.75rem/1 system-ui, -apple-system, sans-serif;
     white-space: nowrap;
     cursor: pointer;
+    /* Keep "more" / "less" out of copied text. */
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* Collapsed: centred on the preview's last line, over the fade. */
+html[data-table-treatment="datasette"] table.rows-and-columns .tt-long:not(.is-expanded) > .tt-long-toggle {
+    position: absolute;
+    right: 0;
+    bottom: calc((var(--tt-line) - var(--tt-pill-h)) / 2);
+}
+
+/* Expanded: floated to the top right, centred on the first line. */
+html[data-table-treatment="datasette"] table.rows-and-columns .tt-long.is-expanded > .tt-long-toggle {
+    float: right;
+    margin: calc((var(--tt-line) - var(--tt-pill-h)) / 2) 0 0.25rem 0.75rem;
 }
 
 html[data-table-treatment="datasette"] table.rows-and-columns .tt-long-toggle svg {
     transition: transform 0.15s;
+}
+
+html[data-table-treatment="datasette"] table.rows-and-columns .tt-long.is-expanded > .tt-long-toggle svg {
+    transform: rotate(180deg);
 }
 
 html[data-table-treatment="datasette"] table.rows-and-columns .tt-long-toggle:hover {
@@ -320,21 +363,22 @@ html[data-table-treatment="datasette"] table.rows-and-columns .tt-long-toggle:fo
     outline-offset: 1px;
 }
 
-/* Expanded: the pill drops below the value but stays at the right edge,
-   where "more" was, so it is easy to find again. */
-html[data-table-treatment="datasette"] table.rows-and-columns .tt-long.is-expanded {
-    display: flex;
-    flex-direction: column;
+@media (prefers-reduced-motion: reduce) {
+    html[data-table-treatment="datasette"] table.rows-and-columns .tt-long-toggle svg {
+        transition: none;
+    }
 }
 
-html[data-table-treatment="datasette"] table.rows-and-columns .tt-long.is-expanded > .tt-long-toggle {
-    position: static;
-    align-self: flex-end;
-    margin-top: 0.4rem;
-}
+/* A larger touch target on the stacked mobile cards. */
+@media (max-width: 576px) {
+    html[data-table-treatment="datasette"] table.rows-and-columns .tt-long {
+        --tt-pill-h: 1.75rem;
+    }
 
-html[data-table-treatment="datasette"] table.rows-and-columns .tt-long.is-expanded > .tt-long-toggle svg {
-    transform: rotate(180deg);
+    html[data-table-treatment="datasette"] table.rows-and-columns .tt-long-toggle {
+        padding: 0 0.6rem 0 0.75rem;
+        font-size: 0.8125rem;
+    }
 }
 
 /* Freeze ----------------------------------------------------------------

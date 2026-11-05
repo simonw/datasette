@@ -16,9 +16,12 @@ Then open <http://localhost:8821/content/datasette_repos>. Click a style, or pre
 
 On tables such as `pypi_packages`, `repos` and `news`, a single long value (a README in `description`, a release-note `body`) used to make every row hundreds of pixels tall: rows on `pypi_packages` had a median height of 1,235px, and the table was 120,631px tall. `treatments/datasette.js` now clamps any value that renders taller than three lines:
 
-- Collapsed, the value shows as a three-line preview with its line breaks folded into spaces, and the end of the last line fades out under a small "more" pill. Rows are never taller than three lines, so `pypi_packages` rows are 77–78px and the table is 7,821px tall.
-- Clicking "more" expands that one value with its original formatting, and the pill becomes "less" in the same place below it. Alt-click expands or collapses every clamped value in that column.
-- CSS cannot cap a table cell's height, so the script wraps the contents of long cells only, and only while this treatment is active. Switching to another treatment restores the server's markup exactly. Expanded cells stay expanded across a resize or a switch away and back.
+- Collapsed, the value shows as a three-line preview with its line breaks folded into spaces, and the end of the last line fades out under a small "more" pill. If the folded value would fit entirely, the preview keeps its real line breaks instead, so "more" always reveals more text. Rows are never taller than three lines, so `pypi_packages` rows are 77–78px and the table is 7,821px tall.
+- Clicking "more" expands that one value with its original formatting. The pill moves to the value's top right as "less", on the line you clicked from, and keeps keyboard focus. The clicked row stays where it is on screen.
+- Each column's gear menu gains "Expand long values" / "Collapse long values" (through Datasette's `makeColumnActions` JavaScript plugin hook). Alt-click on a pill is a shortcut for the same.
+- The preview length is one setting, `--tt-preview-lines` in `datasette.css`, which the script reads too.
+- Details: cells are chosen by measuring their rendered height, so narrow mobile cards and wide CJK text are handled. Rows that Datasette's edit and insert dialogs swap in are clamped too. Copying a collapsed value copies the original text with its line breaks, without the pill's label. Pills are 28px tall on mobile. Screen-reader labels name the column and row ("more: description, airtable-export").
+- CSS cannot cap a table cell's height, so the script wraps the contents of long cells only, and only while this treatment is active. Switching to another treatment restores the server's markup exactly. Expanded cells stay expanded across a resize or a switch away and back. A resize that only changes the height does nothing, and one that changes the width re-measures and keeps focus on the pill you were on.
 
 ## Freeze pin (Datasette treatment)
 

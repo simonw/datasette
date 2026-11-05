@@ -2,7 +2,7 @@
    <html data-table-treatment="datasette"> is set, and both undo themselves
    completely when another treatment is chosen.
 
-   1. Long values: a three-line preview.
+   1. Long values: a short preview.
 
    CSS cannot cap the height of a table cell, so the contents of long cells
    get a wrapper:
@@ -14,9 +14,14 @@
        </div>
      </td>
 
-   Any value taller than three lines is clamped, so no row is ever taller
-   than three lines plus padding. Clicking "more" expands that value;
-   Alt-click expands or collapses every clamped value in the column.
+   Any value taller than the preview (--tt-preview-lines in datasette.css,
+   3 by default) is clamped, so no row is taller than that plus padding.
+   The preview folds line breaks into spaces, unless the folded value would
+   fit entirely, in which case it keeps them (.keeps-breaks) so "more" always
+   reveals something. "more" expands one value and moves to its top right as
+   "less". The column's gear menu gets "Expand/Collapse long values";
+   Alt-click on a pill is a shortcut for the same. Rows that Datasette's
+   edit and insert dialogs swap in are clamped too.
 
    2. Freeze: a pin button in the primary key column's header.
 
@@ -27,7 +32,6 @@
    header can stick to it. The choice is remembered for every table. */
 (() => {
   const ID = "datasette";
-  const PREVIEW_LINES = 3; // keep in step with max-height: 3lh in datasette.css
   const MAX_FROZEN = 4; // datasette.css has sticky rules for up to four columns
   const FREEZE_KEY = "datasette-table-freeze";
   const root = document.documentElement;
@@ -46,25 +50,74 @@
   const table = () => document.querySelector("table.rows-and-columns");
   const active = () => root.dataset.tableTreatment === ID;
   const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const rows = (t) => [...(t.tBodies[0]?.rows || [])];
+
+  /* Scrolling helpers (shared) ----------------------------------------- */
+
+  // While frozen, the card is the vertical scroller; otherwise the window.
+  function scrollByY(t, dy) {
+    if (Math.abs(dy) < 1) return;
+    const scroller = t.dataset.ttFreeze ? t.closest(".table-wrapper") : window;
+    scroller.scrollBy({ top: dy, behavior: "instant" });
+  }
+
+  // Run fn without moving `anchor` on screen, whatever grows or shrinks.
+  function keepInPlace(t, anchor, fn) {
+    const before = anchor?.getBoundingClientRect().top;
+    fn();
+    if (anchor?.isConnected) scrollByY(t, anchor.getBoundingClientRect().top - before);
+  }
+
+  // Lowest viewport y at which a body row is not hidden behind the header.
+  function visibleTop(t) {
+    if (!t?.dataset.ttFreeze) return 0;
+    const wrapper = t.closest(".table-wrapper");
+    return Math.max(0, wrapper.getBoundingClientRect().top + t.tHead.offsetHeight);
+  }
+
+  function firstVisibleRow(t) {
+    const top = visibleTop(t);
+    return rows(t).find((tr) => tr.getBoundingClientRect().bottom > top);
+  }
 
   /* 1. Long values ------------------------------------------------------ */
 
+  function previewLines(t) {
+    return parseFloat(getComputedStyle(t).getPropertyValue("--tt-preview-lines")) || 3;
+  }
+
   function columnName(td) {
     if (td.dataset.column) return td.dataset.column;
-    const th = table()?.querySelectorAll("thead th")[td.cellIndex];
+    const th = table()?.tHead?.rows[0]?.cells[td.cellIndex];
     return th?.dataset.column || "value";
   }
 
+  function rowName(td) {
+    const tr = td.closest("tr");
+    const label = tr.dataset.rowLabel || (tr.querySelector('td[data-is-pk="1"]') || tr.cells[0])?.textContent;
+    return (label || "").trim().slice(0, 60);
+  }
+
   function setState(td, open) {
-    const box = td.querySelector(":scope > .tt-long");
+    const box = td?.querySelector(":scope > .tt-long");
     if (!box) return;
     const button = box.querySelector(":scope > .tt-long-toggle");
     box.classList.toggle("is-expanded", open);
+    // Expanded, the pill sits at the top right of the value, where the reader
+    // is; collapsed, at the end of the preview's last line.
+    if (open && box.firstElementChild !== button) box.prepend(button);
+    if (!open && box.lastElementChild !== button) box.append(button);
+    const word = open ? "less" : "more";
     button.setAttribute("aria-expanded", String(open));
-    button.setAttribute("aria-label", `${open ? "Show less" : "Show more"}: ${columnName(td)}`);
-    button.querySelector(".tt-long-label").textContent = open ? "less" : "more";
+    const row = rowName(td);
+    button.setAttribute("aria-label", `${word}: ${columnName(td)}${row ? `, ${row}` : ""}`);
+    button.querySelector(".tt-long-label").textContent = word;
     if (open) expanded.add(td);
     else expanded.delete(td);
+  }
+
+  function setColumn(t, index, open) {
+    rows(t).forEach((tr) => setState(tr.cells[index], open));
   }
 
   function wrap(td) {
@@ -90,36 +143,60 @@
     const button = document.createElement("button");
     button.type = "button";
     button.className = "tt-long-toggle";
-    button.title = "Alt-click to expand or collapse this whole column";
     button.innerHTML = `<span class="tt-long-label">more</span>${chevron}`;
     box.append(button);
     setState(td, expanded.has(td));
   }
 
-  // Cheap filter before measuring: long text, or several line breaks.
-  function isCandidate(td) {
+  // Skip measuring cells that cannot reach three lines at any width.
+  function mightBeTall(td) {
     const text = td.textContent;
-    return text.length > 120 || (text.match(/\n/g) || []).length >= PREVIEW_LINES - 1;
+    return text.length > 20 || text.includes("\n");
   }
+
+  // Measure cells as they render unclamped (line breaks and all) and wrap
+  // the ones taller than the preview. Layout reads and DOM writes are
+  // batched: one read pass, one write pass, one read pass, one write pass.
+  function clampRows(t, trs) {
+    const lineHeight = parseFloat(getComputedStyle(t).lineHeight) || 20;
+    const limit = lineHeight * previewLines(t) + 1;
+    const range = document.createRange();
+    const tall = trs
+      .flatMap((tr) => [...tr.cells])
+      .filter((td) => !td.querySelector(":scope > .tt-long") && mightBeTall(td))
+      .filter((td) => {
+        range.selectNodeContents(td);
+        return range.getBoundingClientRect().height > limit;
+      });
+    const boxes = tall.map((td) => [td, wrap(td)]);
+    const fitsFolded = boxes.map(([, box]) => box.firstElementChild.scrollHeight <= limit);
+    boxes.forEach(([td, box], i) => {
+      if (fitsFolded[i]) box.classList.add("keeps-breaks");
+      addToggle(td, box);
+    });
+  }
+
+  let rowObserver = null;
 
   function setupClamp(t) {
     if (t.dataset.ttLong === "on") return;
     t.dataset.ttLong = "on";
-    // Measure each value as it renders unclamped (line breaks and all), in
-    // one read pass, then wrap the ones taller than the preview.
-    const lineHeight = parseFloat(getComputedStyle(t).lineHeight) || 20;
-    const limit = lineHeight * PREVIEW_LINES + 1;
-    const range = document.createRange();
-    const tooTall = [...t.querySelectorAll("tbody td")].filter(isCandidate).filter((td) => {
-      range.selectNodeContents(td);
-      return range.getBoundingClientRect().height > limit;
-    });
-    for (const td of tooTall) addToggle(td, wrap(td));
+    clampRows(t, rows(t));
+    // Datasette's edit and insert dialogs swap rows in after load.
+    if (t.tBodies[0]) {
+      rowObserver = new MutationObserver((records) => {
+        const added = records.flatMap((r) => [...r.addedNodes]).filter((n) => n.nodeName === "TR");
+        if (added.length) clampRows(t, added);
+      });
+      rowObserver.observe(t.tBodies[0], { childList: true });
+    }
   }
 
   function teardownClamp(t) {
     if (t.dataset.ttLong !== "on") return;
     delete t.dataset.ttLong;
+    rowObserver?.disconnect();
+    rowObserver = null;
     t.querySelectorAll("tbody td").forEach((td) => {
       if (td.querySelector(":scope > .tt-long")) unwrap(td);
     });
@@ -128,20 +205,65 @@
   document.addEventListener("click", (event) => {
     const button = event.target.closest?.(".tt-long-toggle");
     if (!button || !active()) return;
+    const t = table();
     const td = button.closest("td");
+    const tr = td.closest("tr");
     const open = !button.closest(".tt-long").classList.contains("is-expanded");
-    if (event.altKey) {
-      const index = td.cellIndex;
-      table().querySelectorAll("tbody tr").forEach((tr) => setState(tr.cells[index], open));
-    } else {
-      setState(td, open);
-    }
-    // Collapsing a tall value can leave the reader far below its row.
-    if (!open && td.getBoundingClientRect().top < visibleTop(table())) {
-      td.scrollIntoView({ block: "nearest" });
+    // Keep the clicked row where it is, even when Alt-click expands every
+    // value above it.
+    keepInPlace(t, tr, () => {
+      if (event.altKey) setColumn(t, td.cellIndex, open);
+      else setState(td, open);
+    });
+    // Collapsing a value whose top had scrolled out of view: bring its row
+    // back to the top.
+    const top = visibleTop(t);
+    if (!open && tr.getBoundingClientRect().top < top) {
+      scrollByY(t, tr.getBoundingClientRect().top - top);
     }
     // The pill has moved; keep focus on it without scrolling to its new spot.
     button.focus({ preventScroll: true });
+  });
+
+  // Copying from a collapsed preview would otherwise lose the value's line
+  // breaks, which are only folded for display.
+  document.addEventListener("copy", (event) => {
+    if (!active()) return;
+    const selection = getSelection();
+    if (!selection.rangeCount || selection.isCollapsed) return;
+    const range = selection.getRangeAt(0);
+    const node = range.commonAncestorContainer;
+    const text = (node.nodeType === 1 ? node : node.parentElement)?.closest(".tt-long-text");
+    const box = text?.parentElement;
+    if (!box || box.classList.contains("is-expanded") || box.classList.contains("keeps-breaks")) return;
+    event.clipboardData.setData("text/plain", range.cloneContents().textContent);
+    event.preventDefault();
+  });
+
+  // "Expand long values" / "Collapse long values" in the column's gear menu,
+  // through Datasette's JavaScript plugin API. Called each time a menu opens.
+  document.addEventListener("datasette_init", (event) => {
+    event.detail.registerPlugin("table-treatment-datasette", {
+      version: 0.1,
+      makeColumnActions(column) {
+        const t = table();
+        if (!active() || !t?.tHead) return [];
+        const index = [...t.tHead.rows[0].cells].findIndex((th) => th.dataset.column === column.columnName);
+        if (index < 0) return [];
+        const boxes = rows(t).map((tr) => tr.cells[index]?.querySelector(":scope > .tt-long")).filter(Boolean);
+        if (!boxes.length) return [];
+        const open = boxes.some((box) => !box.classList.contains("is-expanded"));
+        return [
+          {
+            label: open ? "Expand long values" : "Collapse long values",
+            onClick(evt) {
+              evt.preventDefault();
+              keepInPlace(t, firstVisibleRow(t), () => setColumn(t, index, open));
+            },
+          },
+        ];
+      },
+    });
   });
 
   /* 2. Freeze ----------------------------------------------------------- */
@@ -165,13 +287,6 @@
       else break;
     }
     return run.some((th) => th.dataset.isPk === "1") ? run.slice(0, MAX_FROZEN) : [];
-  }
-
-  // Lowest viewport y at which a body row is not hidden behind the header.
-  function visibleTop(t) {
-    if (!t?.dataset.ttFreeze) return 0;
-    const wrapper = t.closest(".table-wrapper");
-    return Math.max(0, wrapper.getBoundingClientRect().top + t.tHead.offsetHeight);
   }
 
   function measureFreeze() {
@@ -278,7 +393,6 @@
     observers.forEach((o) => o.disconnect());
     wrapper.removeEventListener("scroll", onScroll);
     wrapper.classList.remove("is-scrolled-x", "is-scrolled-y");
-    if (!wrapper.getAttribute("class")) wrapper.removeAttribute("class");
     pin.remove();
     freeze = null;
   }
@@ -297,14 +411,21 @@
     }
   }
 
+  // Re-measure long values only when the width changes (a height-only
+  // resize cannot change line wrapping), and keep focus on a pill.
   let resizeTimer;
+  let lastWidth = innerWidth;
   window.addEventListener("resize", () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
+      if (innerWidth === lastWidth) return;
+      lastWidth = innerWidth;
       const t = table();
       if (!t || !active()) return;
+      const focused = document.activeElement?.closest?.(".tt-long-toggle")?.closest("td");
       teardownClamp(t);
       setupClamp(t);
+      focused?.querySelector(".tt-long-toggle")?.focus({ preventScroll: true });
     }, 200);
   });
 

@@ -45,7 +45,7 @@
       type: th.dataset.columnType || "",
       pk: th.dataset.isPk === "1",
     }));
-    table.querySelectorAll("tbody tr").forEach((tr) => {
+    const annotate = (tr) => {
       [...tr.children].forEach((td, index) => {
         const column = columns[index];
         if (!column) return;
@@ -53,7 +53,14 @@
         td.dataset.columnType = column.type;
         if (column.pk) td.dataset.isPk = "1";
       });
-    });
+    };
+    table.querySelectorAll("tbody tr").forEach(annotate);
+    // Datasette's edit and insert dialogs swap rows in after load.
+    if (table.tBodies[0]) {
+      new MutationObserver((records) => {
+        records.forEach((r) => r.addedNodes.forEach((n) => n.nodeName === "TR" && annotate(n)));
+      }).observe(table.tBodies[0], { childList: true });
+    }
   }
 
   function syncLinks(id) {

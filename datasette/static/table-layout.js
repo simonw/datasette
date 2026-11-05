@@ -22,13 +22,15 @@
    long values"; Alt-click on a pill does the same. Rows that Datasette's edit
    and insert dialogs swap in are clamped too.
 
-   2. Freeze: a pin button in the primary key column's header (table pages).
+   2. Freeze: a pin button in the primary key column's header.
 
    Pressing it freezes the header row and the row's identity columns (the
    leading run of Link and primary key columns: one column for most tables,
    Link + rowid for rowid tables, Link + every key column for compound keys).
-   The table card becomes a scroll box the height of the viewport so the
-   header can stick to it. The choice is remembered for every table. */
+   Tables without leading key columns (query results, views) get the pin in
+   their first column's header, and it freezes the header row only. The
+   table card becomes a scroll box the height of the viewport so the header
+   can stick to it. The choice is remembered for every table. */
 (() => {
   const MAX_FROZEN = 4; // app.css has sticky rules for up to four columns
   const FREEZE_KEY = "datasette-table-freeze";
@@ -433,6 +435,8 @@
   function measureFreeze() {
     if (!freeze || !freeze.t.dataset.freeze) return;
     const { t, wrapper, run } = freeze;
+    wrapper.style.setProperty("--freeze-top", `${t.tHead.offsetHeight}px`);
+    if (!run.length) return; // header row only
     // Differences between offsets, so this is right even mid-scroll.
     const origin = run[0].offsetLeft;
     run.forEach((th, i) =>
@@ -446,7 +450,6 @@
       "--freeze-width",
       `${last.offsetLeft - origin + last.offsetWidth}px`,
     );
-    wrapper.style.setProperty("--freeze-top", `${t.tHead.offsetHeight}px`);
   }
 
   function updateScrolled() {
@@ -463,16 +466,19 @@
 
   // After pinning, glide the box a little in each direction it can scroll
   // but hasn't yet, so content visibly slides under the frozen header and
-  // columns and their shadows appear: it shows what pinning did.
+  // columns and their shadows appear: it shows what pinning did. Sideways
+  // only when there are frozen columns to slide under.
   function nudge() {
     if (!freeze || !freeze.t.dataset.freeze) return;
-    const { wrapper } = freeze;
+    const { wrapper, run } = freeze;
     const room = (scroll, size, client) =>
       scroll === 0 ? Math.max(0, size - client) : 0;
-    const left = Math.min(
-      48,
-      room(wrapper.scrollLeft, wrapper.scrollWidth, wrapper.clientWidth),
-    );
+    const left = run.length
+      ? Math.min(
+          48,
+          room(wrapper.scrollLeft, wrapper.scrollWidth, wrapper.clientWidth),
+        )
+      : 0;
     const top = Math.min(
       24,
       room(wrapper.scrollTop, wrapper.scrollHeight, wrapper.clientHeight),
@@ -527,19 +533,29 @@
 
   function setupFreeze(t) {
     if (freeze) return;
-    const run = keyHeaders(t);
     const wrapper = t.closest(".table-wrapper");
-    if (!run.length || !wrapper) return;
+    const first = t.tHead?.rows[0]?.cells[0];
+    if (!wrapper || !first) return;
+    // Without leading key columns (query results, views) only the header
+    // row freezes, and the pin goes in the first column's header.
+    const run = keyHeaders(t);
     const keys = run.filter((th) => th.dataset.isPk === "1");
-    const th = keys[0];
+    const th = keys[0] || first;
     const plural = keys.length > 1;
     const names = keys.map((k) => k.dataset.column).join(" and ");
-    const columns = `the ${names} column${plural ? "s" : ""}`;
+    const columns = keys.length
+      ? `the ${names} column${plural ? "s" : ""}`
+      : "";
 
     const pin = document.createElement("button");
     pin.type = "button";
     pin.className = "freeze-toggle";
-    pin.setAttribute("aria-label", `Freeze the header row and ${columns}`);
+    pin.setAttribute(
+      "aria-label",
+      columns
+        ? `Freeze the header row and ${columns}`
+        : "Freeze the header row",
+    );
     pin.innerHTML = pinIcon;
     th.append(pin);
     watchHeader(th);
@@ -560,9 +576,13 @@
 
     // An explanatory tooltip that follows the pin's state (set in applyFreeze).
     const describe = (on) =>
-      on
-        ? `Unfreeze the header row and ${columns}\nColumn names stay at the top and ${columns} ${plural ? "stay" : "stays"} on the left while you scroll. Click to let them scroll with the table again.`
-        : `Freeze the header row and ${columns}\nKeep column names at the top and ${columns} on the left while you scroll down the rows and across the columns. Applies to every table until you turn it off.`;
+      !columns
+        ? on
+          ? `Unfreeze the header row\nColumn names stay at the top while you scroll. Click to let them scroll with the table again.`
+          : `Freeze the header row\nKeep column names at the top while you scroll down the rows. Applies to every table until you turn it off.`
+        : on
+          ? `Unfreeze the header row and ${columns}\nColumn names stay at the top and ${columns} ${plural ? "stay" : "stays"} on the left while you scroll. Click to let them scroll with the table again.`
+          : `Freeze the header row and ${columns}\nKeep column names at the top and ${columns} on the left while you scroll down the rows and across the columns. Applies to every table until you turn it off.`;
 
     freeze = { t, wrapper, run, pin, describe };
     applyFreeze(prefs.frozen());

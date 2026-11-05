@@ -2367,8 +2367,23 @@ def test_long_values_are_clamped_on_query_page(page, datasette_server):
         "aria-label", "expand: body, Long"
     )
     expect(page.locator("thead .column-expand-toggle")).to_have_text("expand all")
-    # Query results have no primary key, so there is nothing to freeze
-    expect(page.locator(".freeze-toggle")).to_have_count(0)
+
+
+@pytest.mark.playwright
+def test_freeze_pin_on_query_page_freezes_header_only(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + "data/-/query?sql=select+title,+body+from+long_notes")
+    table = page.locator("table.rows-and-columns")
+    # Query results have no primary key: the pin goes in the first header
+    pin = page.locator("thead th").first.locator(".freeze-toggle")
+    expect(pin).to_have_attribute("aria-label", "Freeze the header row")
+    pin.click()
+    expect(pin).to_have_attribute("aria-pressed", "true")
+    expect(table).to_have_attribute("data-freeze", "0")
+    position = "el => getComputedStyle(el).position"
+    assert page.locator("thead th").first.evaluate(position) == "sticky"
+    assert page.locator("tbody td").first.evaluate(position) == "static"
 
 
 @pytest.mark.playwright

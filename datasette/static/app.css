@@ -948,8 +948,10 @@ table.rows-and-columns .long-value-toggle:focus-visible {
 
 /* Freeze
    table-layout.js adds button.freeze-toggle (a pin) to the primary key
-   header on table pages. Pressed, it sets data-freeze="N" on the table (N =
-   how many leading Link and key columns to freeze, up to 4),
+   header, or to the first header when there is no key column (query
+   results, views). Pressed, it sets data-freeze="N" on the table (N = how
+   many leading Link and key columns to freeze, up to 4; 0 freezes only the
+   header row),
    --freeze-left-2..4 on the table and --freeze-width / --freeze-top on the
    wrapper. The card then becomes a scroll box the height of the window, with
    the header row stuck to its top and the key columns stuck to its left.
@@ -1078,7 +1080,7 @@ table.rows-and-columns .long-value-toggle:focus-visible {
         background: var(--freeze-cell-bg);
     }
 
-    table.rows-and-columns[data-freeze] :is(th, td):nth-child(1),
+    table.rows-and-columns:is([data-freeze="1"], [data-freeze="2"], [data-freeze="3"], [data-freeze="4"]) :is(th, td):nth-child(1),
     table.rows-and-columns:is([data-freeze="2"], [data-freeze="3"], [data-freeze="4"]) :is(th, td):nth-child(2),
     table.rows-and-columns:is([data-freeze="3"], [data-freeze="4"]) :is(th, td):nth-child(3),
     table.rows-and-columns[data-freeze="4"] :is(th, td):nth-child(4) {

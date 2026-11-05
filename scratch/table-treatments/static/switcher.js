@@ -10,13 +10,13 @@
 (() => {
   const TREATMENTS = [
     { id: "current", label: "Current", blurb: "Datasette's table as it ships today, for comparison." },
-    { id: "datasette", label: "Datasette", blurb: "A refresh in Datasette's own design language, borrowing from the modal dialogs and filter panel." },
+    { id: "datasette", label: "Datasette", blurb: "The filter panel's card and the modal's paper header band, with right-aligned numbers and long values wrapped." },
     { id: "agent", label: "Agent markdown", blurb: "Matches how datasette-agent renders markdown tables in chat responses." },
-    { id: "ledger", label: "Ledger", blurb: "Editorial and typographic: hairline rules, tabular numbers, no boxes." },
-    { id: "grid", label: "Data grid", blurb: "Dense spreadsheet: single-line cells, sticky header and first column." },
-    { id: "cards", label: "Row cards", blurb: "Every row becomes a labelled card, even on a wide screen." },
-    { id: "soft", label: "Soft", blurb: "Airy and friendly, with type icons in headers and rounded row highlights." },
-    { id: "terminal", label: "Terminal", blurb: "Dark, monospaced and high-contrast, like a SQL console." },
+    { id: "grid", label: "Data grid", blurb: "A dense spreadsheet in its own scrolling box: row numbers, a sticky header and first column, one-line cells." },
+    { id: "cards", label: "Row cards", blurb: "Each row is a card with a title, a strip of its numbers, then labelled fields. Columns become a sort-by bar of chips." },
+    { id: "soft", label: "Soft", blurb: "An airy product-style look: type glyphs in a rounded header bar, rounded row highlights, ID chips, gear on hover." },
+    { id: "swiss", label: "Swiss", blurb: "A printed data sheet: heavy black rules, uppercase micro-labels, one-line rows, signal red for keys and hover." },
+    { id: "terminal", label: "Terminal", blurb: "A dark console in sqlite3's quoted box style: 'text' in green, peach numbers, dim NULL, wrapping at 80 columns." },
   ];
   const KEY = "datasette-table-treatment";
   const DEFAULT = "datasette";

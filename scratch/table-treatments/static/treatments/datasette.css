@@ -1,0 +1,326 @@
+/* Datasette: the rows-and-columns table in Datasette's own newest design
+   language, so it reads as a sibling of the filter panel above it and the
+   shared modal dialogs.
+
+   Borrowed directly:
+   - Tokens: --ink, --paper, --muted, --rule and --accent from
+     dialog.datasette-modal and .filters (app.css).
+   - The filter panel's 8px radius and 1px --rule border for the card.
+   - The modal header band: --paper background separated by a --rule line.
+   - The column menu's muted slate (#536978) for the gear trigger.
+
+   Layout decisions:
+   - The table sizes to its content (max-content) and scrolls sideways inside
+     the card instead of squeezing columns. That stops wrappable text, such as
+     a JSON array, collapsing into a tall narrow strip.
+   - Every cell is capped at a readable measure and long unbroken values (URLs,
+     hashes) wrap inside it, so one value can no longer blow the table out.
+   - Numbers are right aligned with tabular figures; headers of numeric
+     columns follow them, and numeric cells reserve the gear's width so the
+     label still ends exactly where the digits end.
+   - Soft edge shadows appear only when there is more table to scroll to.
+
+   The table rules sit inside min-width: 577px, so Datasette's stacked mobile
+   cards keep working. A short block at the end themes those cards to match
+   and stops long values running off the edge of a card. */
+
+/* Tokens: the modal and filter panel palette, plus Datasette's link
+   colours and the column menu's slate. Custom properties only, so this block
+   changes nothing on its own at any width. */
+html[data-table-treatment="datasette"] .table-wrapper {
+    --ink: #0f0f0f;
+    --paper: #eef6ff;
+    --muted: #6b6b6b;
+    --rule: #d8e6f5;
+    --accent: #1a56db;
+    --card: #ffffff;
+    --slate: #536978;
+    --link: #276890;
+    --link-visited: #2d7a62;
+    /* #f3f8ff over white, but translucent so the scroll-edge shadows
+       still show through on the hovered row. */
+    --row-hover: rgba(0, 110, 255, 0.047);
+    --cell-measure: 30rem;
+    --shadow: rgba(30, 64, 110, 0.12);
+}
+
+@media (min-width: 577px) {
+    html[data-table-treatment="datasette"] .table-wrapper {
+        box-sizing: border-box;
+        width: fit-content;
+        max-width: 100%;
+        margin: 0 0 1rem;
+        overflow-x: auto;
+        overscroll-behavior-inline: contain;
+        border: 1px solid var(--rule);
+        border-radius: 8px;
+        /* Scroll shadows: the two white covers travel with the content
+           (local), the two shadows stay pinned to the edges (scroll), so a
+           shadow only shows on a side that has more table to reveal. */
+        background:
+            linear-gradient(to right, var(--card) 30%, rgba(255, 255, 255, 0)) left center / 48px 100% no-repeat local,
+            linear-gradient(to left, var(--card) 30%, rgba(255, 255, 255, 0)) right center / 48px 100% no-repeat local,
+            linear-gradient(to right, var(--shadow), rgba(30, 64, 110, 0)) left center / 14px 100% no-repeat scroll,
+            linear-gradient(to left, var(--shadow), rgba(30, 64, 110, 0)) right center / 14px 100% no-repeat scroll,
+            var(--card);
+        box-shadow: 0 1px 2px rgba(15, 40, 70, 0.04);
+    }
+
+    html[data-table-treatment="datasette"] .table-wrapper:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns {
+        width: max-content;
+        min-width: 100%;
+        border-collapse: collapse;
+        color: var(--ink);
+        font-size: 0.875rem;
+        line-height: 1.45;
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* Header band ------------------------------------------------------ */
+
+    html[data-table-treatment="datasette"] table.rows-and-columns th {
+        padding: 0.45rem 0.5rem 0.45rem 0.75rem;
+        border-bottom: 1px solid var(--rule);
+        background: rgba(238, 246, 255, 0.88);
+        color: var(--ink);
+        font-size: 0.8125rem;
+        font-weight: 600;
+        line-height: 1.3;
+        text-align: left;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns th:last-child {
+        padding-right: 0.75rem;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns th a:is(:link, :visited) {
+        color: inherit;
+        text-decoration: none;
+        border-radius: 3px;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns th a:hover {
+        color: var(--accent);
+        text-decoration: underline;
+        text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
+        text-underline-offset: 3px;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns th a:focus-visible {
+        color: var(--accent);
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns th button.column-menu-trigger {
+        width: 22px;
+        min-height: 22px;
+        margin: -3px 0 -3px 3px;
+        color: var(--slate);
+        border-radius: 5px;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns th button.column-menu-trigger svg {
+        width: 15px;
+        height: 15px;
+        opacity: 1;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns th button.column-menu-trigger:hover,
+    html[data-table-treatment="datasette"] table.rows-and-columns th button.column-menu-trigger[aria-expanded="true"] {
+        background: var(--rule);
+        color: var(--ink);
+    }
+
+    /* Body cells ------------------------------------------------------- */
+
+    html[data-table-treatment="datasette"] table.rows-and-columns td {
+        max-width: var(--cell-measure);
+        padding: 0.5rem 0.75rem;
+        border: 0;
+        border-top: 1px solid var(--rule);
+        vertical-align: top;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns tbody tr:first-child td {
+        border-top: 0;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns tbody tr:hover td {
+        background: var(--row-hover);
+    }
+
+    /* Primary key: the row's identity, kept bold as Datasette does today. */
+    html[data-table-treatment="datasette"] table.rows-and-columns td.type-pk {
+        font-weight: 600;
+    }
+
+    /* Numbers: right aligned on tabular figures. Foreign key cells are
+       type-int too but show a label link, so they stay left aligned. The
+       extra right padding reserves the header gear's width (header padding +
+       the word space before the gear + gear margin and width), so a numeric
+       header label ends exactly where digits end. */
+    html[data-table-treatment="datasette"] table.rows-and-columns td:is(.type-int, .type-float):not(:has(a)) {
+        --gear-space: calc(0.5rem + 0.28 * 0.8125rem + 25px);
+        text-align: right;
+        padding-right: var(--gear-space);
+    }
+
+    /* The last header cell has wider right padding; match it. */
+    html[data-table-treatment="datasette"] table.rows-and-columns td:is(.type-int, .type-float):not(:has(a)):last-child {
+        padding-right: calc(var(--gear-space) + 0.25rem);
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns th:is(
+        [data-column-type*="int"],
+        [data-column-type*="real"],
+        [data-column-type*="floa"],
+        [data-column-type*="doub"],
+        [data-column-type*="dec"],
+        [data-column-type="numeric"]
+    ):not([data-is-pk="1"]) {
+        text-align: right;
+    }
+
+    /* ...unless that column's cells hold links (foreign key labels, or a
+       plugin's rendering). Nothing on a <th> says so, so match by position. */
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(1) > a) > thead > tr > th:nth-child(1),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(2) > a) > thead > tr > th:nth-child(2),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(3) > a) > thead > tr > th:nth-child(3),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(4) > a) > thead > tr > th:nth-child(4),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(5) > a) > thead > tr > th:nth-child(5),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(6) > a) > thead > tr > th:nth-child(6),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(7) > a) > thead > tr > th:nth-child(7),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(8) > a) > thead > tr > th:nth-child(8),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(9) > a) > thead > tr > th:nth-child(9),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(10) > a) > thead > tr > th:nth-child(10),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(11) > a) > thead > tr > th:nth-child(11),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(12) > a) > thead > tr > th:nth-child(12),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(13) > a) > thead > tr > th:nth-child(13),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(14) > a) > thead > tr > th:nth-child(14),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(15) > a) > thead > tr > th:nth-child(15),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(16) > a) > thead > tr > th:nth-child(16),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(17) > a) > thead > tr > th:nth-child(17),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(18) > a) > thead > tr > th:nth-child(18),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(19) > a) > thead > tr > th:nth-child(19),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(20) > a) > thead > tr > th:nth-child(20),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(21) > a) > thead > tr > th:nth-child(21),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(22) > a) > thead > tr > th:nth-child(22),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(23) > a) > thead > tr > th:nth-child(23),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(24) > a) > thead > tr > th:nth-child(24),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(25) > a) > thead > tr > th:nth-child(25),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(26) > a) > thead > tr > th:nth-child(26),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(27) > a) > thead > tr > th:nth-child(27),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(28) > a) > thead > tr > th:nth-child(28),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(29) > a) > thead > tr > th:nth-child(29),
+    html[data-table-treatment="datasette"] table.rows-and-columns:has(> tbody > tr > td:nth-child(30) > a) > thead > tr > th:nth-child(30) {
+        text-align: left;
+    }
+
+    /* Links keep Datasette's colour and its no-underline table style, with
+       an underline on hover. Visited is darkened from #54AC8E to pass AA. */
+    html[data-table-treatment="datasette"] table.rows-and-columns td a:link {
+        color: var(--link);
+        text-decoration: none;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns td a:visited {
+        color: var(--link-visited);
+        text-decoration: none;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns td a:hover {
+        text-decoration: underline;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 2px;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns td a:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+        border-radius: 2px;
+    }
+
+    /* Foreign key ids and similar asides. */
+    html[data-table-treatment="datasette"] table.rows-and-columns td em {
+        color: var(--muted);
+        font-size: 0.8125em;
+        font-style: normal;
+    }
+}
+
+/* Small screens: keep Datasette's stacked cards (app.css, max-width: 576px)
+   and dress them in the same tokens. Each card opens with its first field on
+   a --paper band, like a modal header; labels sit above values in the
+   column menu's slate; long values wrap inside the card. */
+@media (max-width: 576px) {
+    html[data-table-treatment="datasette"] table.rows-and-columns {
+        color: var(--ink);
+        font-size: 0.9375rem;
+        line-height: 1.4;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns tr {
+        margin: 0 0 0.75rem;
+        padding: 0;
+        overflow: hidden;
+        border: 1px solid var(--rule);
+        border-radius: 8px;
+        background: var(--card);
+        box-shadow: 0 1px 2px rgba(15, 40, 70, 0.04);
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns td {
+        padding: 0.45rem 0.75rem 0.5rem;
+        border: 0;
+        border-top: 1px solid var(--rule);
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns td:first-child {
+        border-top: 0;
+        background: var(--paper);
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns td:before {
+        margin: 0 0 1px;
+        color: var(--slate);
+        font-size: 0.75rem;
+        font-weight: 600;
+        line-height: 1.4;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns td.type-pk {
+        font-weight: 600;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns td:is(.type-int, .type-float) {
+        font-variant-numeric: tabular-nums;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns td a:link {
+        color: var(--link);
+        text-decoration: none;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns td a:visited {
+        color: var(--link-visited);
+        text-decoration: none;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns td em {
+        color: var(--muted);
+        font-size: 0.8125em;
+        font-style: normal;
+    }
+}

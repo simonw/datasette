@@ -1,0 +1,36 @@
+# Table treatment explorations
+
+Alternative visual treatments for the rows-and-columns table on Datasette's table pages, switchable from a prototype bar above the table. Nothing in `datasette/` is changed: a local plugin adds the switcher and the treatment stylesheets to table pages only.
+
+Start from the repository root:
+
+```sh
+uv run --python 3.15 datasette content.db --reload -p 8821 \
+  --plugins-dir scratch/table-treatments/plugins \
+  --static tt:scratch/table-treatments/static
+```
+
+Then open <http://localhost:8821/content/datasette_repos>. Click a style, or press 1–8. The choice is remembered in localStorage and reflected in the URL as `?_tt=<id>`, so a link can point at a specific treatment. Datasette preserves `_`-prefixed parameters in its sort, facet and export links, so the treatment survives sorting and paging.
+
+## How it works
+
+- `plugins/table_treatments.py` uses `extra_css_urls` and `extra_js_urls` to add `switcher.css`, `switcher.js` and every `static/treatments/*.css` file to table pages (`view_name == "table"`). Each URL carries the file's mtime, so saving a file and reloading shows the change.
+- `static/switcher.js` runs synchronously in `<head>` and sets `<html data-table-treatment="<id>">` before first paint. It also copies each column's name, declared type and primary-key flag from the `<th>` onto every `<td>` as `data-column`, `data-column-type` and `data-is-pk`, which treatments use for labels and type-aware styling.
+- Every treatment is one CSS file whose selectors all start with `html[data-table-treatment="<id>"]`, so they never interfere with each other or with the rest of the page.
+
+## Treatments
+
+| Key | Id | Notes |
+| --- | --- | --- |
+| 1 | `current` | Datasette as it ships today (no CSS). |
+| 2 | `datasette` | The most Datasette-like option, borrowing the modal dialog and filter panel design language. |
+| 3 | `agent` | A direct port of datasette-agent's markdown table styling, checked against computed styles from a real saved conversation. |
+| 4 | `grid` | Dense spreadsheet in a 75vh scrolling box: row numbers, sticky header and first column, one-line cells cut off with an ellipsis. |
+| 5 | `cards` | Each row is a card: a title, a strip of its numbers, then labelled fields. The header row becomes a sticky "Sort by" chip bar. Also replaces the mobile layout. |
+| 6 | `soft` | Product-style UI: type glyphs (`Aa`, `#`, key) in a rounded header bar, ID chips, gear revealed on hover or focus. |
+| 7 | `swiss` | Printed data sheet: heavy black rules, uppercase type annotations under each header, one-line rows, signal red for keys and hover. |
+| 8 | `terminal` | Dark console panel in sqlite3's quoted box style: quoted green text, peach numbers, dim `NULL`, wrapping at 80 columns. |
+
+Selectors are all scoped (checked by script). Each treatment was built by one agent and then reviewed by a separate one, using headless screenshots at 780px, 1280px and 390px, a scrolled view, the column menu open, other tables in `content.db` and a sorted view. Reviewer screenshots are in the session scratchpad, not in this folder.
+
+Known limitations of the CSS-only approach: none of the treatments can make the header stick to the page, because `.table-wrapper` is the horizontal scroll container (`grid` gets round this by giving the table its own scroll box). A descending sort can't be detected from the markup, so only the arrow marks the sorted column. Type-aware alignment depends on the `data-column-type` attribute that `switcher.js` adds, which `_table.html` would need to emit if any of this shipped.

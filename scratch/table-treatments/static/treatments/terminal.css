@@ -1,0 +1,256 @@
+/* Terminal: the results grid printed like sqlite3's quoted box mode, in a
+   dark console window. Only .table-wrapper goes dark; the page stays light.
+
+   - .table-wrapper is the window: rounded dark panel, title-bar strip with
+     generic window dots (::before, sticky so it stays put while the table
+     scrolls sideways inside it).
+   - Monospace throughout. Values are coloured by SQLite value type, the way
+     an editor highlights literals: TEXT is green and wrapped in dim single
+     quotes (so '' and NULL are no longer both blank), INTEGER and REAL are
+     peach and right-aligned when the column is declared numeric, NULL prints
+     as a dim NULL. Links are cyan with the dashed underline terminals use for
+     hyperlinks, solid on hover.
+   - Column rules are hairlines; the header sits on a double rule, the box
+     drawing ═ under a heading row.
+   - Long values: text wraps at 80 columns (classic terminal width) and URLs
+     and other links stay on one line, ellipsised at 50 columns (the href keeps
+     the full value). Most rows on a typical table stay one line high.
+   - Contrast (WCAG AA on #101419 or the lighter header/zebra/hover fills):
+     body text 12+:1, strings 10:1, numbers 9:1, links 10:1, header and sort
+     arrow 10:1, muted quotes/NULL/em 5.4+:1, gear icon 7:1.
+   - Below 577px app.css's stacked cards apply unchanged. */
+
+@media (min-width: 577px) {
+
+html[data-table-treatment="terminal"] .table-wrapper {
+    --term-bg: #101419;
+    --term-chrome: #181d25;
+    --term-head: #151a21;
+    --term-fg: #d3dae3;
+    --term-muted: #8a96a6;
+    --term-rule: #232a34;
+    --term-divider: #46515f;
+    --term-zebra: rgba(255, 255, 255, 0.025);
+    --term-hover: rgba(125, 207, 255, 0.07);
+    --term-head-ink: #f2c46d;
+    --term-str: #a6d189;
+    --term-num: #f5a97f;
+    --term-link: #7dcfff;
+    --term-link-hover: #b8e6ff;
+
+    margin: 0.25rem 0 1.25rem;
+    background: var(--term-bg);
+    border: 1px solid #06080b;
+    border-radius: 10px;
+    box-shadow: 0 1px 2px rgba(15, 20, 25, 0.25), 0 12px 28px -14px rgba(15, 20, 25, 0.55);
+    color-scheme: dark;
+    scrollbar-color: #3a4452 var(--term-bg);
+}
+
+html[data-table-treatment="terminal"] .table-wrapper::before {
+    content: "";
+    display: block;
+    position: sticky;
+    left: 0;
+    height: 30px;
+    border-bottom: 1px solid #0a0d11;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    background:
+        radial-gradient(circle at 18px 50%, #ed6a5e 0 5px, transparent 5.5px),
+        radial-gradient(circle at 36px 50%, #f4bf4f 0 5px, transparent 5.5px),
+        radial-gradient(circle at 54px 50%, #61c554 0 5px, transparent 5.5px),
+        var(--term-chrome);
+}
+
+html[data-table-treatment="terminal"] table.rows-and-columns {
+    border-collapse: separate;
+    border-spacing: 0;
+    width: max-content;
+    margin: 0 0 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.55;
+    font-variant-ligatures: none;
+    color: var(--term-fg);
+}
+
+html[data-table-treatment="terminal"] table.rows-and-columns :is(th, td) {
+    padding: 5px 14px;
+    border: 0;
+    border-left: 1px solid var(--term-rule);
+    text-align: left;
+    vertical-align: top;
+}
+
+html[data-table-treatment="terminal"] table.rows-and-columns :is(th, td):first-child {
+    border-left: 0;
+    padding-left: 18px;
+}
+
+html[data-table-treatment="terminal"] table.rows-and-columns :is(th, td):last-child {
+    padding-right: 18px;
+}
+
+html[data-table-treatment="terminal"] table.rows-and-columns th {
+    padding-top: 8px;
+    padding-bottom: 7px;
+    background: var(--term-head);
+    border-bottom: 3px double var(--term-divider);
+    color: var(--term-head-ink);
+    font-weight: 600;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+html[data-table-treatment="terminal"] table.rows-and-columns td {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    max-width: 80ch;
+}
+
+html[data-table-treatment="terminal"] table.rows-and-columns tbody tr:nth-child(even) td {
+    background: var(--term-zebra);
+}
+
+html[data-table-treatment="terminal"] table.rows-and-columns tbody tr:hover td {
+    background: var(--term-hover);
+}
+
+html[data-table-treatment="terminal"] table.rows-and-columns ::selection {
+    background: rgba(125, 207, 255, 0.28);
+}
+
+/* Value types */
+html[data-table-treatment="terminal"] table.rows-and-columns td.type-str {
+    color: var(--term-str);
+}
+html[data-table-treatment="terminal"] table.rows-and-columns td.type-str::before,
+html[data-table-treatment="terminal"] table.rows-and-columns td.type-str::after {
+    content: "'";
+    color: var(--term-muted);
+}
+html[data-table-treatment="terminal"] table.rows-and-columns td:is(.type-int, .type-float) {
+    color: var(--term-num);
+}
+html[data-table-treatment="terminal"] table.rows-and-columns td.type-pk {
+    font-weight: 600;
+}
+/* Datasette follows NULL with an &nbsp; placeholder: the negative margin
+   tucks it under the last letter, so a right-aligned NULL ends where the
+   digits above it end. */
+html[data-table-treatment="terminal"] table.rows-and-columns td.type-none::before {
+    content: "NULL";
+    color: var(--term-muted);
+    margin-inline-end: -1ch;
+}
+html[data-table-treatment="terminal"] table.rows-and-columns td em {
+    color: var(--term-muted);
+    font-size: inherit;
+}
+
+/* Numeric columns align right, as a console would print them */
+html[data-table-treatment="terminal"] table.rows-and-columns :is(th, td):is([data-column-type*="int"], [data-column-type*="real"], [data-column-type*="floa"], [data-column-type*="doub"], [data-column-type*="numeric"], [data-column-type*="decimal"]) {
+    text-align: right;
+}
+
+/* ...except foreign key columns: their cells print a label link (plus the
+   raw id), not a number, so they read left to right like text. A primary
+   key link stays right-aligned with its header. Nothing on a <th> marks a
+   foreign key, so the whole column (header and any NULL cells too) is
+   matched by position. */
+html[data-table-treatment="terminal"] table.rows-and-columns td:not(.type-pk):has(> a) {
+    text-align: left;
+}
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(1):not(.type-pk) > a) :is(th, td):nth-child(1),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(2):not(.type-pk) > a) :is(th, td):nth-child(2),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(3):not(.type-pk) > a) :is(th, td):nth-child(3),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(4):not(.type-pk) > a) :is(th, td):nth-child(4),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(5):not(.type-pk) > a) :is(th, td):nth-child(5),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(6):not(.type-pk) > a) :is(th, td):nth-child(6),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(7):not(.type-pk) > a) :is(th, td):nth-child(7),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(8):not(.type-pk) > a) :is(th, td):nth-child(8),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(9):not(.type-pk) > a) :is(th, td):nth-child(9),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(10):not(.type-pk) > a) :is(th, td):nth-child(10),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(11):not(.type-pk) > a) :is(th, td):nth-child(11),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(12):not(.type-pk) > a) :is(th, td):nth-child(12),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(13):not(.type-pk) > a) :is(th, td):nth-child(13),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(14):not(.type-pk) > a) :is(th, td):nth-child(14),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(15):not(.type-pk) > a) :is(th, td):nth-child(15),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(16):not(.type-pk) > a) :is(th, td):nth-child(16),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(17):not(.type-pk) > a) :is(th, td):nth-child(17),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(18):not(.type-pk) > a) :is(th, td):nth-child(18),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(19):not(.type-pk) > a) :is(th, td):nth-child(19),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(20):not(.type-pk) > a) :is(th, td):nth-child(20),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(21):not(.type-pk) > a) :is(th, td):nth-child(21),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(22):not(.type-pk) > a) :is(th, td):nth-child(22),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(23):not(.type-pk) > a) :is(th, td):nth-child(23),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(24):not(.type-pk) > a) :is(th, td):nth-child(24),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(25):not(.type-pk) > a) :is(th, td):nth-child(25),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(26):not(.type-pk) > a) :is(th, td):nth-child(26),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(27):not(.type-pk) > a) :is(th, td):nth-child(27),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(28):not(.type-pk) > a) :is(th, td):nth-child(28),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(29):not(.type-pk) > a) :is(th, td):nth-child(29),
+html[data-table-treatment="terminal"] table.rows-and-columns:has(> tbody > tr > td:nth-child(30):not(.type-pk) > a) :is(th, td):nth-child(30) {
+    text-align: left;
+}
+
+/* Links: one line each, ellipsised at the column cap (the href keeps the full value) */
+html[data-table-treatment="terminal"] table.rows-and-columns td > a {
+    display: inline-block;
+    max-width: 50ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: top;
+}
+html[data-table-treatment="terminal"] table.rows-and-columns td.type-str > a {
+    max-width: 48ch;
+}
+html[data-table-treatment="terminal"] table.rows-and-columns td a:is(:link, :visited) {
+    color: var(--term-link);
+    text-decoration: underline dashed;
+    text-decoration-thickness: 1px;
+    text-decoration-color: color-mix(in srgb, var(--term-link) 70%, transparent);
+    text-underline-offset: 3px;
+}
+html[data-table-treatment="terminal"] table.rows-and-columns td a:is(:hover, :focus-visible) {
+    color: var(--term-link-hover);
+    text-decoration-style: solid;
+    text-decoration-color: currentColor;
+}
+html[data-table-treatment="terminal"] table.rows-and-columns th a:is(:link, :visited) {
+    color: inherit;
+    text-decoration: none;
+}
+html[data-table-treatment="terminal"] table.rows-and-columns th a:is(:hover, :focus-visible) {
+    color: #ffe1a3;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+html[data-table-treatment="terminal"] table.rows-and-columns a:focus-visible {
+    outline: 2px solid var(--term-link);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+/* Column menu gear */
+html[data-table-treatment="terminal"] table.rows-and-columns th .column-menu-trigger {
+    width: 22px;
+    min-height: 22px;
+    margin: 0 0 0 6px;
+    color: #9aa6b5;
+    vertical-align: middle;
+}
+html[data-table-treatment="terminal"] table.rows-and-columns th .column-menu-trigger:is(:hover, [aria-expanded="true"]) {
+    background: #273040;
+    color: #e6edf3;
+}
+html[data-table-treatment="terminal"] table.rows-and-columns th .column-menu-trigger:focus-visible {
+    outline: 2px solid var(--term-link);
+    outline-offset: 0;
+}
+html[data-table-treatment="terminal"] table.rows-and-columns th .column-menu-trigger svg {
+    opacity: 1;
+}
+
+}

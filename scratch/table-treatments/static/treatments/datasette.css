@@ -337,6 +337,172 @@ html[data-table-treatment="datasette"] table.rows-and-columns .tt-long.is-expand
     transform: rotate(180deg);
 }
 
+/* Freeze ----------------------------------------------------------------
+   datasette.js adds button.tt-pin to the primary key header. Pressed, it
+   sets data-tt-freeze="N" on the table (N = how many leading Link and key
+   columns to freeze, up to 4), --tt-freeze-left-2..4 on the table and
+   --tt-freeze-width / --tt-freeze-top on the wrapper. The card then becomes
+   a scroll box the height of the window, with the header row stuck to its
+   top and the key columns stuck to its left. Shadows appear on the frozen
+   edges only once content has scrolled under them (.is-scrolled-x/y). Not
+   applied to the stacked mobile cards. */
+@media (min-width: 577px) {
+    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-pin {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        min-height: 22px;
+        margin: -3px 0 -3px 2px;
+        padding: 0;
+        vertical-align: middle;
+        border: 0;
+        border-radius: 5px;
+        background: transparent;
+        color: var(--slate);
+        cursor: pointer;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-pin svg {
+        display: block;
+        transform: rotate(45deg);
+        transition: transform 0.15s ease;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-pin:hover {
+        background: var(--rule);
+        color: var(--ink);
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-pin:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+    }
+
+    /* Pinned: upright, filled, in the accent colour on the accent tint used
+       by Datasette's selected menu items. */
+    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-pin[aria-pressed="true"] {
+        background: #e8effd;
+        color: var(--accent);
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-pin[aria-pressed="true"] svg {
+        transform: none;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-pin[aria-pressed="true"] .tt-pin-head {
+        fill: currentColor;
+    }
+
+    /* The card becomes the scroll box. */
+    html[data-table-treatment="datasette"] .table-wrapper:has(> table.rows-and-columns[data-tt-freeze]) {
+        max-height: calc(100dvh - 1rem);
+        overflow: auto;
+        overscroll-behavior: contain;
+        /* Keyboard focus scrolls cells clear of the frozen parts. */
+        scroll-padding: var(--tt-freeze-top, 0px) 0 0 var(--tt-freeze-width, 0px);
+    }
+
+    /* Collapsed borders stay behind when cells stick; separate ones travel
+       with them. The treatment only uses top/bottom rules, so it looks the
+       same either way. */
+    html[data-table-treatment="datasette"] table.rows-and-columns[data-tt-freeze] {
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns[data-tt-freeze] thead tr {
+        --tt-cell-bg: #f0f7ff; /* the header band, made opaque */
+        --tt-z: 3;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns[data-tt-freeze] tbody tr {
+        --tt-cell-bg: var(--card);
+        --tt-z: 1;
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns[data-tt-freeze] tbody tr:hover {
+        --tt-cell-bg: #f3f8ff; /* --row-hover over white, made opaque */
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns[data-tt-freeze] thead th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: var(--tt-cell-bg);
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns[data-tt-freeze] :is(th, td):nth-child(1),
+    html[data-table-treatment="datasette"] table.rows-and-columns:is([data-tt-freeze="2"], [data-tt-freeze="3"], [data-tt-freeze="4"]) :is(th, td):nth-child(2),
+    html[data-table-treatment="datasette"] table.rows-and-columns:is([data-tt-freeze="3"], [data-tt-freeze="4"]) :is(th, td):nth-child(3),
+    html[data-table-treatment="datasette"] table.rows-and-columns[data-tt-freeze="4"] :is(th, td):nth-child(4) {
+        position: sticky;
+        left: 0;
+        z-index: var(--tt-z);
+        background: var(--tt-cell-bg);
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns[data-tt-freeze] :is(th, td):nth-child(2) {
+        left: var(--tt-freeze-left-2, 0px);
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns[data-tt-freeze] :is(th, td):nth-child(3) {
+        left: var(--tt-freeze-left-3, 0px);
+    }
+
+    html[data-table-treatment="datasette"] table.rows-and-columns[data-tt-freeze] :is(th, td):nth-child(4) {
+        left: var(--tt-freeze-left-4, 0px);
+    }
+
+    /* A hairline on the frozen edge. */
+    html[data-table-treatment="datasette"] table.rows-and-columns[data-tt-freeze="1"] :is(th, td):nth-child(1),
+    html[data-table-treatment="datasette"] table.rows-and-columns[data-tt-freeze="2"] :is(th, td):nth-child(2),
+    html[data-table-treatment="datasette"] table.rows-and-columns[data-tt-freeze="3"] :is(th, td):nth-child(3),
+    html[data-table-treatment="datasette"] table.rows-and-columns[data-tt-freeze="4"] :is(th, td):nth-child(4) {
+        box-shadow: inset -1px 0 0 var(--rule);
+    }
+
+    /* Soft shadows once content has scrolled under a frozen edge. They are
+       gradients on pseudo-elements, not box-shadows, so they run unbroken
+       across cell boundaries. Sticky cells contain them. */
+    html[data-table-treatment="datasette"] .table-wrapper.is-scrolled-x > table.rows-and-columns[data-tt-freeze="1"] :is(th, td):nth-child(1)::before,
+    html[data-table-treatment="datasette"] .table-wrapper.is-scrolled-x > table.rows-and-columns[data-tt-freeze="2"] :is(th, td):nth-child(2)::before,
+    html[data-table-treatment="datasette"] .table-wrapper.is-scrolled-x > table.rows-and-columns[data-tt-freeze="3"] :is(th, td):nth-child(3)::before,
+    html[data-table-treatment="datasette"] .table-wrapper.is-scrolled-x > table.rows-and-columns[data-tt-freeze="4"] :is(th, td):nth-child(4)::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 100%;
+        width: 8px;
+        background: linear-gradient(to right, rgba(30, 64, 110, 0.13), rgba(30, 64, 110, 0));
+        pointer-events: none;
+    }
+
+    html[data-table-treatment="datasette"] .table-wrapper.is-scrolled-y > table.rows-and-columns[data-tt-freeze] thead th::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        height: 8px;
+        background: linear-gradient(rgba(30, 64, 110, 0.13), rgba(30, 64, 110, 0));
+        pointer-events: none;
+    }
+}
+
+@media (min-width: 577px) and (prefers-reduced-motion: reduce) {
+    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-pin svg {
+        transition: none;
+    }
+}
+
+@media (max-width: 576px) {
+    html[data-table-treatment="datasette"] table.rows-and-columns th .tt-pin {
+        display: none;
+    }
+}
+
 /* Small screens: keep Datasette's stacked cards (app.css, max-width: 576px)
    and dress them in the same tokens. Each card opens with its first field on
    a --paper band, like a modal header; labels sit above values in the

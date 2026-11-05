@@ -20,6 +20,17 @@ On tables such as `pypi_packages`, `repos` and `news`, a single long value (a RE
 - Clicking "more" expands that one value with its original formatting, and the pill becomes "less" in the same place below it. Alt-click expands or collapses every clamped value in that column.
 - CSS cannot cap a table cell's height, so the script wraps the contents of long cells only, and only while this treatment is active. Switching to another treatment restores the server's markup exactly. Expanded cells stay expanded across a resize or a switch away and back.
 
+## Freeze pin (Datasette treatment)
+
+The primary key column's header has a pin button after its gear. Pressing it freezes the header row and the row's identity columns, as in the Data grid treatment: the table card becomes a scroll box the height of the window, the header sticks to its top, and the leading Link and primary key columns stick to its left. That is one column for most tables, Link and `rowid` for rowid tables (`news`), and Link plus every key column for compound keys (`stats`), up to four columns.
+
+- The pin is tilted when off, and upright, filled and in the accent colour when on (`aria-pressed`). Its tooltip and accessible name say what it freezes.
+- Pinning lines the card up with the top of the window and hands the page's scroll position to the card, so the rows you were reading stay where they are. Unpinning does the reverse.
+- Hairlines mark the frozen edges, and soft shadows appear once content has scrolled under them.
+- The choice is remembered for every table in localStorage (`datasette-table-freeze`).
+- Below 577px (Datasette's stacked mobile cards) the pin is hidden and nothing is frozen.
+- Switching to another treatment removes the pin and restores the table and wrapper markup exactly.
+
 `--reload` does not watch `--plugins-dir`, so restart the server after editing `plugins/table_treatments.py`. CSS and JS edits only need a page reload.
 
 ## How it works

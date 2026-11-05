@@ -27,7 +27,7 @@ import markupsafe
 import mergedeep
 import yaml
 
-from .sqlite import sqlite3, supports_table_xinfo
+from .sqlite import _fts_external_content_table, sqlite3, supports_table_xinfo
 
 if typing.TYPE_CHECKING:
     from datasette.database import Database
@@ -822,10 +822,21 @@ def detect_fts(conn, table):
     """Detect if table has a corresponding FTS virtual table and return it"""
     sql, params = detect_fts_sql(table)
     rows = conn.execute(sql, params).fetchall()
-    if len(rows) == 0:
-        return None
-    else:
+    if rows:
         return rows[0][0]
+    # detect_fts_sql() only matches content="table" and content=[table], but
+    # SQLite also accepts content=table, content='table' and content=`table`
+    candidates = conn.execute(
+        "select name, sql from sqlite_master where rootpage = 0"
+        " and sql like '%VIRTUAL TABLE%USING FTS%'"
+        " and instr(lower(sql), lower(?))",
+        [table],
+    ).fetchall()
+    for name, fts_sql in candidates:
+        content_table = _fts_external_content_table(fts_sql)
+        if content_table and content_table.lower() == table.lower():
+            return name
+    return None
 
 
 def detect_fts_sql(table):

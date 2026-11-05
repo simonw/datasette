@@ -32,4 +32,8 @@ def extra_css_urls(view_name, datasette):
 def extra_js_urls(view_name, datasette):
     if view_name != "table":
         return []
-    return [_versioned(datasette, "switcher.js")]
+    files = ["switcher.js"] + [
+        f"treatments/{path.name}"
+        for path in sorted((STATIC / "treatments").glob("*.js"))
+    ]
+    return [_versioned(datasette, relative) for relative in files]

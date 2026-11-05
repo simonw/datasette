@@ -258,6 +258,85 @@ html[data-table-treatment="datasette"] .table-wrapper {
     }
 }
 
+/* Long values (all widths) --------------------------------------------
+   datasette.js wraps any cell whose value would run past three lines in
+   .tt-long > .tt-long-text + button.tt-long-toggle. Collapsed, the value is a
+   three-line preview with line breaks folded into spaces (a README's blank
+   lines would otherwise use up the preview) and its last line fading out
+   under a small "more" pill, so the row stays a predictable height. Expanded,
+   the value shows in full with its original line breaks, and the pill moves
+   below it as "less". */
+html[data-table-treatment="datasette"] table.rows-and-columns .tt-long {
+    position: relative;
+}
+
+html[data-table-treatment="datasette"] table.rows-and-columns .tt-long-text {
+    white-space: pre-wrap;
+}
+
+html[data-table-treatment="datasette"] table.rows-and-columns .tt-long:not(.is-expanded) > .tt-long-text {
+    max-height: 3lh;
+    overflow: hidden;
+    white-space: normal;
+    /* Fully visible except the end of the last line, which fades out
+       behind the pill. */
+    -webkit-mask:
+        linear-gradient(#000 0 0) left top / 100% calc(100% - 1lh) no-repeat,
+        linear-gradient(to left, transparent 4.75rem, #000 9rem) left bottom / 100% 1lh no-repeat;
+    mask:
+        linear-gradient(#000 0 0) left top / 100% calc(100% - 1lh) no-repeat,
+        linear-gradient(to left, transparent 4.75rem, #000 9rem) left bottom / 100% 1lh no-repeat;
+}
+
+html[data-table-treatment="datasette"] table.rows-and-columns .tt-long-toggle {
+    position: absolute;
+    right: 0;
+    bottom: calc((1lh - 1.25rem) / 2);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    height: 1.25rem;
+    padding: 0 0.4rem 0 0.5rem;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    background: var(--paper);
+    color: var(--accent);
+    font: 600 0.75rem/1 system-ui, -apple-system, sans-serif;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+html[data-table-treatment="datasette"] table.rows-and-columns .tt-long-toggle svg {
+    transition: transform 0.15s;
+}
+
+html[data-table-treatment="datasette"] table.rows-and-columns .tt-long-toggle:hover {
+    border-color: #bfccd9;
+    background: var(--rule);
+}
+
+html[data-table-treatment="datasette"] table.rows-and-columns .tt-long-toggle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+/* Expanded: the pill drops below the value but stays at the right edge,
+   where "more" was, so it is easy to find again. */
+html[data-table-treatment="datasette"] table.rows-and-columns .tt-long.is-expanded {
+    display: flex;
+    flex-direction: column;
+}
+
+html[data-table-treatment="datasette"] table.rows-and-columns .tt-long.is-expanded > .tt-long-toggle {
+    position: static;
+    align-self: flex-end;
+    margin-top: 0.4rem;
+}
+
+html[data-table-treatment="datasette"] table.rows-and-columns .tt-long.is-expanded > .tt-long-toggle svg {
+    transform: rotate(180deg);
+}
+
 /* Small screens: keep Datasette's stacked cards (app.css, max-width: 576px)
    and dress them in the same tokens. Each card opens with its first field on
    a --paper band, like a modal header; labels sit above values in the

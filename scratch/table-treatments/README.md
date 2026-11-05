@@ -12,6 +12,16 @@ uv run --python 3.15 datasette content.db --reload -p 8821 \
 
 Then open <http://localhost:8821/content/datasette_repos>. Click a style, or press 1–8. The choice is remembered in localStorage and reflected in the URL as `?_tt=<id>`, so a link can point at a specific treatment. Datasette preserves `_`-prefixed parameters in its sort, facet and export links, so the treatment survives sorting and paging.
 
+## Long values (Datasette treatment)
+
+On tables such as `pypi_packages`, `repos` and `news`, a single long value (a README in `description`, a release-note `body`) used to make every row hundreds of pixels tall: rows on `pypi_packages` had a median height of 1,235px, and the table was 120,631px tall. `treatments/datasette.js` now clamps any value that renders taller than three lines:
+
+- Collapsed, the value shows as a three-line preview with its line breaks folded into spaces, and the end of the last line fades out under a small "more" pill. Rows are never taller than three lines, so `pypi_packages` rows are 77–78px and the table is 7,821px tall.
+- Clicking "more" expands that one value with its original formatting, and the pill becomes "less" in the same place below it. Alt-click expands or collapses every clamped value in that column.
+- CSS cannot cap a table cell's height, so the script wraps the contents of long cells only, and only while this treatment is active. Switching to another treatment restores the server's markup exactly. Expanded cells stay expanded across a resize or a switch away and back.
+
+`--reload` does not watch `--plugins-dir`, so restart the server after editing `plugins/table_treatments.py`. CSS and JS edits only need a page reload.
+
 ## How it works
 
 - `plugins/table_treatments.py` uses `extra_css_urls` and `extra_js_urls` to add `switcher.css`, `switcher.js` and every `static/treatments/*.css` file to table pages (`view_name == "table"`). Each URL carries the file's mtime, so saving a file and reloading shows the change.

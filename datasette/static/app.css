@@ -1037,6 +1037,13 @@ button.core[type=button] {
     list-style: none;
     line-height: 1.35;
     word-break: normal;
+    /* Proportion bar: this value's share of the rows in the current result
+       set, from the --facet-proportion set on the li by the template */
+    background-image: linear-gradient(
+        to right,
+        rgba(26, 86, 219, 0.1) var(--facet-proportion, 0%),
+        transparent var(--facet-proportion, 0%)
+    );
 }
 /* The value link stretches to cover the whole row, count included */
 .facet-results .facet-info li > a:first-child {
@@ -1060,7 +1067,7 @@ button.core[type=button] {
     outline-offset: -1px;
 }
 .facet-results .facet-info li:has(> a:first-child):hover {
-    background: #e8effd;
+    background-color: #f3f7fe;
 }
 .facet-results .facet-info li:has(> a:first-child):hover > a:first-child {
     color: #1949b8;
@@ -1074,7 +1081,7 @@ button.core[type=button] {
 }
 .facet-results .facet-info li.facet-selected {
     align-items: center;
-    background: #e8effd;
+    background-color: #e8effd;
     color: #1949b8;
     font-weight: 600;
 }

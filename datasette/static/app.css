@@ -934,46 +934,285 @@ button.core[type=button] {
 
 
 
+/* Facet results: one card per facet, using the same colors, borders and
+   radius as the filter box and the suggested facet chips. */
 .facet-results {
     display: flex;
     flex-direction: row;
     flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin: 0 0 1rem;
 }
 .facet-info {
+    box-sizing: border-box;
     width: 250px;
-    margin-right: 15px;
+    max-width: 100%;
+    padding: 0.3rem;
+    border: 1px solid #d8e6f5;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 0.875rem;
 }
-.facet-info-total {
-    font-size: 0.8em;
-    color: #666;
-    padding-right: 0.25em;
+.facet-info p.facet-info-name {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 1.75rem;
+    margin: 0 0 0.1rem;
+    padding: 0.1rem 0.1rem 0.1rem 0.45rem;
 }
-/* The label may wrap (word-break: break-all on the li) but the count should
-   stay on one line - https://github.com/simonw/datasette/issues/2754 */
-.facet-count {
+.facet-info-name strong {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+}
+.facet-info-type {
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: #eef6ff;
+    color: #6b6b6b;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.7rem;
+    font-weight: 400;
     white-space: nowrap;
 }
-.facet-info li,
-.facet-info ul {
-    margin: 0;
-    padding: 0;
-}
-.facet-info ul {
-    padding-left: 1.25em;
-    margin-bottom: 1em;
+.facet-info-total {
+    margin-left: 0.15rem;
+    color: #6b6b6b;
+    font-size: 0.75rem;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 .facet-info a.cross:link,
 .facet-info a.cross:visited,
 .facet-info a.cross:hover,
 .facet-info a.cross:focus,
 .facet-info a.cross:active {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    border-radius: 5px;
+    color: #6b6b6b;
     text-decoration: none;
 }
-ul li.facet-truncated {
-    list-style-type: none;
+.facet-info a.cross svg {
+    display: block;
+}
+.facet-info-name a.cross:link,
+.facet-info-name a.cross:visited {
+    width: 1.5rem;
+    height: 1.5rem;
+    color: #8a8a8a;
+}
+.facet-info-name a.cross:hover,
+.facet-info-name a.cross:focus-visible {
+    background: #eef6ff;
+    color: #0f0f0f;
+}
+.facet-info a.cross:focus-visible {
+    outline: 2px solid #1a56db;
+    outline-offset: 1px;
+}
+.facet-results .facet-info ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+/* Long labels wrap but the count stays on one line -
+   https://github.com/simonw/datasette/issues/2754 */
+.facet-results .facet-info li {
     position: relative;
-    top: -0.35em;
-    text-indent: 0.85em;
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 0.2rem 0.45rem;
+    border-radius: 4px;
+    list-style: none;
+    line-height: 1.35;
+    word-break: normal;
+}
+/* The value link stretches to cover the whole row, count included */
+.facet-results .facet-info li > a:first-child {
+    flex: 1;
+    min-width: 0;
+    color: #1a56db;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+}
+.facet-results .facet-info li > a:first-child::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 4px;
+}
+.facet-results .facet-info li > a:first-child:focus-visible {
+    outline: none;
+}
+.facet-results .facet-info li > a:first-child:focus-visible::after {
+    outline: 2px solid #1a56db;
+    outline-offset: -1px;
+}
+.facet-results .facet-info li:has(> a:first-child):hover {
+    background: #e8effd;
+}
+.facet-results .facet-info li:has(> a:first-child):hover > a:first-child {
+    color: #1949b8;
+}
+.facet-count {
+    flex: none;
+    margin-left: auto;
+    color: #6b6b6b;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.facet-results .facet-info li.facet-selected {
+    align-items: center;
+    background: #e8effd;
+    color: #1949b8;
+    font-weight: 600;
+}
+.facet-value-label {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.facet-selected .facet-count {
+    font-weight: 400;
+}
+.facet-selected a.cross:link,
+.facet-selected a.cross:visited {
+    width: 1.25rem;
+    height: 1.25rem;
+    margin: -0.1rem -0.25rem -0.1rem -0.35rem;
+    color: #1a56db;
+}
+.facet-selected a.cross:hover,
+.facet-selected a.cross:focus-visible {
+    background: #fff;
+    color: #1949b8;
+}
+.facet-results .facet-info li.facet-truncated {
+    color: #6b6b6b;
+}
+.facet-results .facet-info li.facet-truncated > a:first-child {
+    color: #6b6b6b;
+}
+@media (pointer: coarse) {
+    .facet-results .facet-info li {
+        padding-top: 0.4rem;
+        padding-bottom: 0.4rem;
+    }
+}
+@media only screen and (max-width: 576px) {
+    .facet-info {
+        width: 100%;
+    }
+}
+
+/* Suggested facets: a row of "add facet" chips that reuse the colors
+   and radius of the filter controls above them. */
+.suggested-facets {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.4rem 0.6rem;
+    max-width: 760px;
+    margin: 0 0 1rem;
+    font-size: 0.875rem;
+}
+
+.suggested-facets-label {
+    flex: none;
+    color: #6b6b6b;
+    font-weight: 600;
+    line-height: 1.75rem;
+}
+
+.suggested-facets-list {
+    display: flex;
+    flex: 1 1 16rem;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+}
+
+.suggested-facets-list li {
+    display: flex;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+.suggested-facets a.suggested-facet {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    box-sizing: border-box;
+    max-width: 100%;
+    min-height: 1.75rem;
+    padding: 0.2rem 0.6rem;
+    border: 1px solid #d8e6f5;
+    border-radius: 5px;
+    background: #fff;
+    color: #1a56db;
+    line-height: 1.2;
+    text-decoration: none;
+    transition: background 0.12s, border-color 0.12s;
+}
+
+.suggested-facets a.suggested-facet:hover {
+    border-color: #1a56db;
+    background: #e8effd;
+    color: #1949b8;
+}
+
+.suggested-facets a.suggested-facet:focus-visible {
+    border-color: #1a56db;
+    background: #e8effd;
+    color: #1949b8;
+    outline: 2px solid #1a56db;
+    outline-offset: 2px;
+}
+
+.suggested-facet-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.suggested-facet-type {
+    flex-shrink: 0;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: #eef6ff;
+    color: #6b6b6b;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.7rem;
+}
+
+@media (pointer: coarse) {
+    .suggested-facets-label {
+        line-height: 2.25rem;
+    }
+    .suggested-facets a.suggested-facet {
+        min-height: 2.25rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .suggested-facets a.suggested-facet {
+        transition: none;
+    }
 }
 
 .advanced-export {

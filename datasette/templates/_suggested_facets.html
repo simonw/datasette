@@ -1,3 +1,13 @@
-<p class="suggested-facets">
-    Suggested facets: {% for facet in suggested_facets %}<a href="{{ facet.toggle_url }}#facet-{{ facet.name|to_css_class }}">{{ facet.name }}</a>{% if facet.get("type") %} ({{ facet.type }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
-</p>
+<div class="suggested-facets">
+    <span class="suggested-facets-label" id="suggested-facets-label">Suggested facets</span>
+    <ul class="suggested-facets-list" aria-labelledby="suggested-facets-label">
+        {% for facet in suggested_facets %}
+            <li><a class="suggested-facet" href="{{ facet.toggle_url }}#facet-{{ facet.name|to_css_class }}">
+                <span class="suggested-facet-name">{{ facet.name }}</span>
+                {%- if facet.get("type") %}
+                <span class="suggested-facet-type">{{ facet.type }}</span>
+                {%- endif %}
+            </a></li>
+        {% endfor %}
+    </ul>
+</div>

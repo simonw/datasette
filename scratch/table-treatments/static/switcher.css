@@ -1,0 +1,112 @@
+/* Prototype switcher bar. Uses the same tokens as Datasette's filter panel and
+   modal dialogs; the dashed border marks it as temporary tooling. */
+.tt-switcher {
+    --tt-ink: #0f0f0f;
+    --tt-paper: #eef6ff;
+    --tt-muted: #6b6b6b;
+    --tt-rule: #d8e6f5;
+    --tt-accent: #1a56db;
+    --tt-control-border: #bfccd9;
+    margin: 0 0 1rem;
+    padding: 0.65rem 0.75rem 0.7rem;
+    border: 1px dashed var(--tt-control-border);
+    border-radius: 0.75rem;
+    background: #fff;
+    color: var(--tt-ink);
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 0.875rem;
+    line-height: 1.4;
+}
+.tt-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.5rem;
+    margin-bottom: 0.5rem;
+}
+.tt-title {
+    font-weight: 600;
+}
+.tt-badge {
+    padding: 1px 8px;
+    border-radius: 20px;
+    background: var(--tt-paper);
+    color: var(--tt-muted);
+    font-family: ui-monospace, monospace;
+    font-size: 0.7rem;
+}
+.tt-hint {
+    margin-left: auto;
+    color: var(--tt-muted);
+    font-size: 0.75rem;
+}
+.tt-hint kbd {
+    display: inline-block;
+    min-width: 1.1em;
+    padding: 0 0.25em;
+    border: 1px solid var(--tt-control-border);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    background: #fff;
+    font-family: ui-monospace, monospace;
+    font-size: 0.7rem;
+    text-align: center;
+}
+.tt-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+.tt-options button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 2rem;
+    padding: 0.25rem 0.75rem 0.25rem 0.35rem;
+    border: 1px solid var(--tt-rule);
+    border-radius: 999px;
+    background: var(--tt-paper);
+    color: #24465d;
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.12s, border-color 0.12s, color 0.12s;
+}
+.tt-options button:hover {
+    border-color: var(--tt-control-border);
+    background: #e2ebf1;
+}
+.tt-options button[aria-pressed="true"] {
+    border-color: var(--tt-accent);
+    background: var(--tt-accent);
+    color: #fff;
+}
+.tt-options button:focus-visible {
+    outline: 2px solid var(--tt-accent);
+    outline-offset: 2px;
+}
+.tt-key {
+    display: inline-grid;
+    place-items: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 50%;
+    background: #fff;
+    color: var(--tt-muted);
+    font-family: ui-monospace, monospace;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+.tt-options button[aria-pressed="true"] .tt-key {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+.tt-blurb {
+    margin: 0.5rem 0 0;
+    color: var(--tt-muted);
+}
+@media (max-width: 576px) {
+    .tt-hint {
+        display: none;
+    }
+}

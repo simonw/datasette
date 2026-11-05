@@ -1,0 +1,36 @@
+/* Agent markdown: a direct port of how datasette-agent renders markdown
+   tables inside assistant chat messages.
+
+   Source: datasette-agent/datasette_agent/static/agent.css
+     .agent-message-assistant .agent-message-content table / th / td
+   plus the assistant bubble the table sits on:
+     .agent-message { line-height: 1.5 }
+     .agent-message-assistant { background: #f0f0f0; color: #333 }
+
+   The agent page extends Datasette's base.html, so app.css's reset also
+   applies there: header cells keep normal weight, and nothing overrides the
+   browser's default centred text alignment for th. */
+
+html[data-table-treatment="agent"] table.rows-and-columns {
+    border-collapse: collapse;
+    font-size: 0.9em;
+    line-height: 1.5;
+    color: #333;
+    background: #f0f0f0;
+}
+
+html[data-table-treatment="agent"] table.rows-and-columns th,
+html[data-table-treatment="agent"] table.rows-and-columns td {
+    border: 1px solid #ccc;
+    padding: 0.3em 0.6em;
+}
+
+html[data-table-treatment="agent"] table.rows-and-columns th {
+    background: #e0e0e0;
+    text-align: center;
+}
+
+/* The bubble's links use Datasette's default link colour, not the table's. */
+html[data-table-treatment="agent"] table.rows-and-columns td.type-pk {
+    font-weight: normal;
+}

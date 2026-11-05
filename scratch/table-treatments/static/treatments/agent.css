@@ -1,0 +1,49 @@
+/* Agent markdown: a direct port of how datasette-agent renders markdown
+   tables inside assistant chat messages.
+
+   Source: datasette-agent/datasette_agent/static/agent.css
+     .agent-message-assistant .agent-message-content table / th / td
+   plus the assistant bubble the table sits on:
+     .agent-message { line-height: 1.5 }
+     .agent-message-assistant { background: #f0f0f0; color: #333 }
+
+   Checked against computed styles of a real markdown table in a saved
+   datasette-agent conversation: 14.4px Helvetica Neue on a 21.6px line,
+   #333 text, 1px #ccc borders, 4.32px 8.64px padding, #e0e0e0 header cells,
+   normal-weight left-aligned headers, baseline alignment, normal wrapping. */
+
+html[data-table-treatment="agent"] table.rows-and-columns {
+    border-collapse: collapse;
+    font-size: 0.9em;
+    line-height: 1.5;
+    color: #333;
+    background: #f0f0f0;
+}
+
+html[data-table-treatment="agent"] table.rows-and-columns th,
+html[data-table-treatment="agent"] table.rows-and-columns td {
+    border: 1px solid #ccc;
+    padding: 0.3em 0.6em;
+    vertical-align: baseline;
+}
+
+html[data-table-treatment="agent"] table.rows-and-columns th {
+    background: #e0e0e0;
+    text-align: left;
+    font-weight: normal;
+}
+
+html[data-table-treatment="agent"] table.rows-and-columns td {
+    white-space: normal;
+}
+
+/* Markdown tables have no notion of a primary key column. */
+html[data-table-treatment="agent"] table.rows-and-columns td.type-pk {
+    font-weight: normal;
+}
+
+/* Datasette's column menu button: keep it but let it sit in the header line. */
+html[data-table-treatment="agent"] table.rows-and-columns th .column-menu-trigger {
+    margin-top: 0;
+    margin-bottom: 0;
+}

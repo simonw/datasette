@@ -1,0 +1,327 @@
+/* Data grid: a dense, power-user spreadsheet view of the table.
+
+   - .table-wrapper becomes a bounded viewport that scrolls both ways, with
+     the header row frozen at the top and the row identifier frozen at the
+     left (behind a row-number gutter drawn with CSS counters).
+   - Every cell is a single line: long values truncate with an ellipsis, so
+     every row is the same compact height.
+   - 13px system UI font with tabular figures; numbers right-aligned.
+   - Full gridlines, zebra rows, hover highlight that also lights up the row
+     number, spreadsheet-style column headers with the gear at the right edge.
+   - Frozen header / column grow a soft shadow only once the grid has been
+     scrolled (scroll-state container queries).
+
+   Phones keep Datasette's stock stacked-card layout: everything lives inside
+   a min-width: 577px media query. */
+
+@media (min-width: 577px) {
+
+/* Viewport ----------------------------------------------------------------- */
+
+html[data-table-treatment="grid"] .table-wrapper {
+    --g-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --g-ink: #1d2b36;
+    --g-ink-head: #34444f;
+    --g-muted: #5a6773;
+    --g-line: #e2e8ed;
+    --g-line-head: #d0d9e0;
+    --g-line-strong: #aebcc7;
+    --g-head: #f1f4f7;
+    --g-head-hover: #e6ecf1;
+    --g-cell: #ffffff;
+    --g-zebra: #f4f7f9;
+    --g-hover: #e9f1f8;
+    --g-hover-gutter: #d6e5f0;
+    --g-link: #1f5f86;
+    --g-accent: #276890;
+    --g-gutter-w: 2.75rem;
+    --g-frozen-max: clamp(10rem, 30vw, 20rem);
+    --g-row-h: 1.75rem;
+
+    container: grid-viewport / scroll-state;
+    box-sizing: border-box;
+    width: fit-content;
+    max-width: 100%;
+    max-height: max(20rem, 75vh);
+    overflow: auto;
+    overscroll-behavior-x: contain;
+    /* Keyboard focus scrolls cells clear of the frozen header and first
+       column instead of parking them underneath (WCAG 2.4.11). */
+    scroll-padding: 2.25rem 0 0 calc(var(--g-gutter-w) + var(--g-frozen-max) + 4px);
+    border: 1px solid var(--g-line-strong);
+    border-radius: 6px;
+    background: var(--g-cell);
+    margin-bottom: 0.75rem;
+    box-shadow: 0 1px 2px rgb(16 42 67 / 0.06);
+}
+
+/* Classic, always-visible scrollbars: the grid should look scrollable. */
+html[data-table-treatment="grid"] .table-wrapper::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+    background: var(--g-head);
+}
+html[data-table-treatment="grid"] .table-wrapper::-webkit-scrollbar-thumb {
+    background: #c3ced7;
+    border: 3px solid var(--g-head);
+    border-radius: 6px;
+}
+html[data-table-treatment="grid"] .table-wrapper::-webkit-scrollbar-thumb:hover {
+    background: #9fb0bd;
+}
+html[data-table-treatment="grid"] .table-wrapper::-webkit-scrollbar-corner {
+    background: var(--g-head);
+}
+
+/* Table -------------------------------------------------------------------- */
+
+/* separate + zero spacing: collapsed borders do not travel with sticky cells */
+html[data-table-treatment="grid"] table.rows-and-columns {
+    border-collapse: separate;
+    border-spacing: 0;
+    font-family: var(--g-font);
+    font-size: 13px;
+    line-height: 1.25rem;
+    color: var(--g-ink);
+    font-variant-numeric: tabular-nums;
+    background: var(--g-cell);
+}
+
+html[data-table-treatment="grid"] table.rows-and-columns :is(th, td) {
+    box-sizing: border-box;
+    border: 0;
+    border-right: 1px solid var(--g-line);
+    border-bottom: 1px solid var(--g-line);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+}
+
+/* Body cells --------------------------------------------------------------- */
+
+html[data-table-treatment="grid"] table.rows-and-columns td {
+    height: var(--g-row-h);
+    padding: 0 0.5rem;
+    max-width: 18rem;
+    background: var(--g-cell);
+}
+html[data-table-treatment="grid"] table.rows-and-columns tbody tr:nth-child(even) td {
+    background: var(--g-zebra);
+}
+html[data-table-treatment="grid"] table.rows-and-columns tbody tr:is(:hover, :focus-within) td {
+    background: var(--g-hover);
+}
+
+/* Numbers: right-aligned, never truncated. Foreign keys arrive as int cells
+   holding a label link, so those stay left-aligned like text. */
+html[data-table-treatment="grid"] table.rows-and-columns td:is(.type-int, .type-float):not(:has(a)) {
+    text-align: right;
+    max-width: none;
+}
+
+/* Values that are links (URLs, foreign keys) get a slightly tighter cap */
+html[data-table-treatment="grid"] table.rows-and-columns td:not(.type-pk):has(> a:only-child) {
+    max-width: 16rem;
+}
+
+/* SQL null: show it, quietly, like a database client does */
+html[data-table-treatment="grid"] table.rows-and-columns td.type-none {
+    font-size: 0;
+}
+html[data-table-treatment="grid"] table.rows-and-columns td.type-none::after {
+    content: "null";
+    font-size: 11px;
+    /* The cell's zero-size strut would otherwise lift the label ~3px above
+       the text in neighbouring cells; top-align it in the shared 20px line. */
+    vertical-align: top;
+    font-style: italic;
+    letter-spacing: 0.02em;
+    color: var(--g-muted);
+}
+
+/* Datasette's little grey annotations (foreign key ids, binary sizes) */
+html[data-table-treatment="grid"] table.rows-and-columns td em {
+    font-size: 11px;
+    color: var(--g-muted);
+}
+
+/* Keep rich cell content (lists, images, blocks) on the single line */
+html[data-table-treatment="grid"] table.rows-and-columns td :is(p, div, ul, ol, li, pre, blockquote) {
+    display: inline;
+    margin: 0;
+    padding: 0;
+}
+html[data-table-treatment="grid"] table.rows-and-columns td img {
+    max-height: 1.25rem;
+    width: auto;
+    vertical-align: middle;
+}
+
+/* Links */
+html[data-table-treatment="grid"] table.rows-and-columns td a:is(:link, :visited) {
+    color: var(--g-link);
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, currentColor 30%, transparent);
+    text-underline-offset: 2px;
+}
+html[data-table-treatment="grid"] table.rows-and-columns td a:hover {
+    color: var(--g-accent);
+    text-decoration-color: currentColor;
+}
+html[data-table-treatment="grid"] table.rows-and-columns a:focus-visible {
+    outline: 2px solid #598fce;
+    outline-offset: 1px;
+    border-radius: 2px;
+}
+
+/* Frozen first column: the row's primary key or Datasette's Link column on
+   tables, simply the first column on views. */
+html[data-table-treatment="grid"] table.rows-and-columns tbody td:first-child {
+    position: sticky;
+    left: var(--g-gutter-w);
+    z-index: 1;
+    max-width: var(--g-frozen-max);
+    border-right-color: var(--g-line-strong);
+}
+html[data-table-treatment="grid"] table.rows-and-columns td.type-pk {
+    font-weight: 600;
+}
+
+/* Row-number gutter ---------------------------------------------------------- */
+
+html[data-table-treatment="grid"] table.rows-and-columns tbody {
+    counter-reset: grid-row;
+}
+html[data-table-treatment="grid"] table.rows-and-columns tbody tr {
+    counter-increment: grid-row;
+}
+html[data-table-treatment="grid"] table.rows-and-columns tr::before {
+    display: table-cell;
+    position: sticky;
+    left: 0;
+    box-sizing: border-box;
+    width: var(--g-gutter-w);
+    min-width: var(--g-gutter-w);
+    max-width: var(--g-gutter-w);
+    padding: 0 0.5rem 0 0.25rem;
+    border-right: 1px solid var(--g-line-head);
+    border-bottom: 1px solid var(--g-line-head);
+    background: var(--g-head);
+    color: var(--g-muted);
+    font-size: 11px;
+    text-align: right;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+/* Row numbers are visual only: the empty alt text keeps them (and the "#"
+   corner) out of each row's accessible name. */
+html[data-table-treatment="grid"] table.rows-and-columns tbody tr::before {
+    content: counter(grid-row) / "";
+    z-index: 1;
+}
+html[data-table-treatment="grid"] table.rows-and-columns tbody tr:is(:hover, :focus-within)::before {
+    background: var(--g-hover-gutter);
+    color: var(--g-ink);
+}
+
+/* Header ------------------------------------------------------------------- */
+
+html[data-table-treatment="grid"] table.rows-and-columns thead tr::before {
+    content: "#" / "";
+    top: 0;
+    z-index: 4;
+    text-align: right;
+    border-bottom-color: var(--g-line-strong);
+}
+
+html[data-table-treatment="grid"] table.rows-and-columns th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    height: 2rem;
+    max-width: 20rem;
+    padding: 0 1.875rem 0 0.5rem;
+    background: var(--g-head);
+    border-right-color: var(--g-line-head);
+    border-bottom-color: var(--g-line-strong);
+    color: var(--g-ink-head);
+    font-size: 12px;
+    font-weight: 600;
+    text-align: left;
+    letter-spacing: 0.01em;
+}
+html[data-table-treatment="grid"] table.rows-and-columns th:hover {
+    background: var(--g-head-hover);
+}
+html[data-table-treatment="grid"] table.rows-and-columns th:first-child {
+    left: var(--g-gutter-w);
+    z-index: 3;
+    border-right-color: var(--g-line-strong);
+}
+/* Unsortable columns (e.g. Datasette's Link column) never get a gear */
+html[data-table-treatment="grid"] table.rows-and-columns th:not(:has(> a)) {
+    padding-right: 0.5rem;
+}
+
+html[data-table-treatment="grid"] table.rows-and-columns th a:is(:link, :visited) {
+    color: inherit;
+    text-decoration: none;
+}
+html[data-table-treatment="grid"] table.rows-and-columns th a:hover {
+    color: var(--g-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+/* The gear sits at the right edge of the header, like a spreadsheet filter
+   button; muted until the header is hovered or the menu is open. */
+html[data-table-treatment="grid"] table.rows-and-columns th .column-menu-trigger {
+    position: absolute;
+    top: 50%;
+    right: 0.25rem;
+    width: 22px;
+    min-height: 22px;
+    height: 22px;
+    margin: -11px 0 0 0;
+    color: #73838f;
+    border-radius: 4px;
+}
+html[data-table-treatment="grid"] table.rows-and-columns th .column-menu-trigger svg {
+    width: 14px;
+    height: 14px;
+    opacity: 1;
+}
+html[data-table-treatment="grid"] table.rows-and-columns th:hover .column-menu-trigger,
+html[data-table-treatment="grid"] table.rows-and-columns th .column-menu-trigger:focus-visible {
+    color: var(--g-ink);
+}
+html[data-table-treatment="grid"] table.rows-and-columns th .column-menu-trigger:hover,
+html[data-table-treatment="grid"] table.rows-and-columns th .column-menu-trigger[aria-expanded="true"] {
+    background: #d5e2ec;
+    color: var(--g-ink);
+}
+
+/* Scrolled state: frozen edges lift off the content -------------------------- */
+
+@container grid-viewport scroll-state(scrollable: top) {
+    html[data-table-treatment="grid"] table.rows-and-columns th,
+    html[data-table-treatment="grid"] table.rows-and-columns thead tr::before {
+        box-shadow: 0 6px 6px -6px rgb(16 42 67 / 0.28);
+    }
+}
+@container grid-viewport scroll-state(scrollable: left) {
+    html[data-table-treatment="grid"] table.rows-and-columns tbody td:first-child {
+        box-shadow: 8px 0 8px -8px rgb(16 42 67 / 0.28);
+    }
+    html[data-table-treatment="grid"] table.rows-and-columns th:first-child {
+        box-shadow: 8px 0 8px -8px rgb(16 42 67 / 0.28);
+    }
+}
+@container grid-viewport scroll-state(scrollable: top) and scroll-state(scrollable: left) {
+    html[data-table-treatment="grid"] table.rows-and-columns th:first-child {
+        box-shadow: 8px 0 8px -8px rgb(16 42 67 / 0.28), 0 6px 6px -6px rgb(16 42 67 / 0.28);
+    }
+}
+
+}

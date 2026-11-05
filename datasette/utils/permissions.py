@@ -46,7 +46,9 @@ async def gather_permission_sql_from_hooks(
         for permission_sql in _iter_permission_sql_from_result(resolved, action=action):
             if not permission_sql.source:
                 permission_sql.source = default_source
-            params = permission_sql.params or {}
+            if permission_sql.params is None:
+                permission_sql.params = {}
+            params = permission_sql.params
             params.setdefault("action", action)
             params.setdefault("actor", actor_json)
             params.setdefault("actor_id", actor_id)

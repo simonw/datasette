@@ -1082,8 +1082,17 @@ class _DataImport:
         session = self.session
         target_path = self.target_path
         registry = import_registry(ds)
+        # Only this command line's own inputs: an upload goes into a database
+        # of its own choosing, and is not one of the inputs the summary
+        # counts. The "queued" event fires inside registry.start()
+        ours = {id(source) for source in self.plan.load}
         registry.add_listener(
-            TerminalReporter(sys.stderr, where=self.where, warn_large=is_scratch(db))
+            TerminalReporter(
+                sys.stderr,
+                where=self.where,
+                warn_large=is_scratch(db),
+                accept=lambda job: id(job.source) in ours,
+            )
         )
         _print_notes_once()
         for source in self.plan.reuse:
@@ -1219,10 +1228,14 @@ class _DataImport:
             if kept:
                 summary = (
                     f"Loaded {len(results) - kept} of {len(results)} inputs "
-                    f"({total:,} rows), kept {kept} from the previous load"
+                    f"({total:,} row{'' if total == 1 else 's'}), kept {kept} "
+                    "from the previous load"
                 )
             else:
-                summary = f"Loaded {len(results)} inputs ({total:,} rows)"
+                summary = (
+                    f"Loaded {len(results)} inputs "
+                    f"({total:,} row{'' if total == 1 else 's'})"
+                )
             click.echo(f"{summary} in {elapsed:.2f}s", err=True)
         return results
 

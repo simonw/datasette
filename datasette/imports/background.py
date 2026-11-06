@@ -1111,16 +1111,25 @@ class TerminalReporter:
 
     ``where`` is added after "into table NAME" (`` in data.db``).
     ``warn_large`` warns that big downloads are lost at exit (not with
-    ``--save``).
+    ``--save``). ``accept(job)``, if given, picks the imports to report on:
+    the command line reports on its own inputs, not on uploads, which go
+    into other databases and are not part of its summary.
     """
 
     def __init__(
-        self, stream=None, *, interval: float = 10.0, where="", warn_large=True
+        self,
+        stream=None,
+        *,
+        interval: float = 10.0,
+        where="",
+        warn_large=True,
+        accept=None,
     ):
         self.stream = stream
         self.interval = interval
         self.where = where
         self.warn_large = warn_large
+        self.accept = accept
         self._last = {}
         self._warned = set()
         self._converting = set()
@@ -1139,6 +1148,8 @@ class TerminalReporter:
             pass
 
     def __call__(self, job, event):
+        if self.accept is not None and not self.accept(job):
+            return
         now = time.monotonic()
         if self._started is None:
             self._started = now
@@ -1198,9 +1209,10 @@ class TerminalReporter:
             self._last.pop(job.id, None)
             self._converting.discard(job.id)
             self._write(self.finished_line(job))
-            registry = job.registry
-            if not registry.active() and len(self._seen) > 1:
-                jobs = [j for j in registry.imports() if j.id in self._seen]
+            jobs = [j for j in job.registry.imports() if j.id in self._seen]
+            if any(j.active for j in jobs):
+                return
+            if len(jobs) > 1:
                 done = [j for j in jobs if j.state == "done"]
                 rows = sum(j.rows for j in done)
                 elapsed = now - self._started
@@ -1208,10 +1220,11 @@ class TerminalReporter:
                 extra = f", {problems} failed or cancelled" if problems else ""
                 self._write(
                     f"Imported {len(done)} of {len(jobs)} inputs "
-                    f"({rows:,} rows) in {elapsed:.1f}s{extra}"
+                    f"({_plural(rows, 'row')}) in {elapsed:.1f}s{extra}"
                 )
-                self._seen.clear()
-                self._started = None
+            # The next import starts a batch of its own
+            self._seen.clear()
+            self._started = None
 
     def finished_line(self, job) -> str:
         title = one_line(job.title)

@@ -68,12 +68,18 @@ import contextlib
 import dataclasses
 import inspect
 import json
+import logging
 import math
 import re
 import sqlite3
 import time
 import uuid
-from collections.abc import AsyncIterable, Iterable
+from collections.abc import AsyncIterable, Iterable, Sequence
+
+logger = logging.getLogger(__name__)
+# Clean ups that import_rows() left running after it raised, kept here so
+# they are not garbage collected before they finish
+_BACKGROUND_TASKS = set()
 
 INTEGER = "integer"
 FLOAT = "float"
@@ -103,12 +109,20 @@ _NoneType = type(None)
 
 WIDEN_STRATEGIES = ("auto", "incremental", "schema", "rebuild", "deferred")
 # How long a write() (or convert()) spends converting stored numbers to text
-# after a column widened to text, and the first slice's size in rows, before
-# the speed is known
+# after a column widened to text - its UPDATE, not counting the COMMIT, which
+# measured another 60-80% for dense slices on a WAL file (writing the dirty
+# pages and the automatic checkpoint) - and the slice size in rows before
+# any timing is known. A slice is sized as if every row in it had to be
+# rewritten, see TypedInserter._slice_rows()
 CONVERT_SECONDS = 0.05
 _FIRST_CONVERT_ROWS = 5_000
 _MIN_CONVERT_ROWS = 500
-_MAX_CONVERT_ROWS = 1_000_000
+# A safety net in case a timing is wildly off: 200,000 rows are 160-270ms
+# of rewriting at big-1gb.csv's width
+_MAX_CONVERT_ROWS = 200_000
+# A slice whose rows mostly needed rewriting (at least this fraction of its
+# rowid range) measures the cost of rewriting a row
+_DENSE_FRACTION = 0.25
 
 # SQLite skips these around numbers when applying affinity (sqlite3Isspace)
 _WS_CHARS = " \t\n\v\f\r"
@@ -473,7 +487,15 @@ class TypedInserter:
           before all text; the JSON type of the value; the declared type.
           The table is complete, and passes integrity_check, in every
           committed transaction, and the result after :meth:`finish` is the
-          same as with any other strategy.
+          same as with any other strategy. Unlike a rebuild, which is one
+          transaction, this survives a crash only partly: if the process
+          dies (SIGKILL, power loss) before the backlog is done, the column
+          stays declared ``BLOB`` with numbers in the rows not yet
+          converted, and the original text of the kept spellings, in the
+          ``TEMP`` table, is gone - ``"1.50"`` reads ``1.5``. The table
+          still passes integrity_check, and a ``BLOB`` column that holds
+          numbers is the sign. Use ``"schema"`` or ``"rebuild"`` where that
+          matters more than how long the write lock is held.
         - ``"schema"``: edit in place, with one ``UPDATE`` converting every
           stored number when widening to text, in the transaction that
           widens - which for millions of rows holds the write lock for
@@ -514,8 +536,15 @@ class TypedInserter:
         # widenings: column index -> [first rowid, last rowid] to convert
         self._backlog = {}
         self._convert_rows = convert_rows
-        # Measured conversion speed in rows (of rowid range) per second
-        self._convert_rate = None
+        # Seconds per row of a conversion slice in which every row has to be
+        # rewritten, measured by slices that rewrote most of their rows -
+        # and until one has, the seconds per row of inserting rows into this
+        # table, which measured within 0.7-1.4x of it (see _slice_rows())
+        self._rewrite_cost = None
+        self._insert_cost = None
+        # The rowid of the last row this inserter wrote, to tell that the
+        # table is still the one it wrote (see _table_is_ours())
+        self._last_rowid = 0
         #: Time spent converting stored numbers to text after widenings,
         #: and the longest single slice of that
         self.convert_seconds = 0.0
@@ -526,8 +555,13 @@ class TypedInserter:
         self._keys = ()
         self._known_sql = None
         self._insert_sql = None
+        # Not "_import_spellings_...", the name before import_rows() cleaned
+        # up after itself on cancellation: subprocess_import.py looks for
+        # that name to drop the table after a cancelled import, which would
+        # take the kept spellings away from a conversion that import_rows()
+        # finishes in the background (see import_rows())
         self._spellings_table = "temp." + _quote(
-            f"_import_spellings_{uuid.uuid4().hex[:12]}"
+            f"_datasette_spellings_{uuid.uuid4().hex[:12]}"
         )
         self._spellings_created = False
         # Rows with no keys at all that arrived before any column was known
@@ -578,7 +612,9 @@ class TypedInserter:
         of its values are ``None``. Its keys behave exactly as dictionary
         keys do (new ones add columns at the end, in order), and a later
         chunk can have more ``columns`` (or put them in another order). A
-        dictionary among positional rows is read by its keys.
+        dictionary among positional rows is read by its keys. A row that is
+        a string, or not a sequence at all, raises ``TypeError``; one longer
+        than ``columns`` raises ``ValueError``.
         """
         if self.finished:
             raise ValueError("finish() has already been called")
@@ -640,6 +676,7 @@ class TypedInserter:
             self._spellings_created,
             self._pending_empty,
             {index: list(bounds) for index, bounds in self._backlog.items()},
+            self._last_rowid,
         )
 
     def restore(self, snapshot):
@@ -657,6 +694,7 @@ class TypedInserter:
             self._spellings_created,
             self._pending_empty,
             backlog,
+            self._last_rowid,
         ) = snapshot
         self._backlog = {index: list(bounds) for index, bounds in backlog.items()}
         self._columns = [dataclasses.replace(column) for column in columns]
@@ -699,6 +737,7 @@ class TypedInserter:
             spellings.extend(self._convert(values, *plan))
         table = _quote(self.table)
         base = conn.execute(f"select max(rowid) from {table}").fetchone()[0] or 0
+        began = time.perf_counter()
         try:
             conn.executemany(self._insert_sql, values)
         except UnicodeEncodeError:
@@ -706,9 +745,15 @@ class TypedInserter:
             conn.execute(f"delete from {table} where rowid > ?", [base])
             values = [list(map(_without_surrogates, row)) for row in values]
             conn.executemany(self._insert_sql, values)
+        if len(values) >= 100:
+            cost = (time.perf_counter() - began) / len(values)
+            self._insert_cost = (
+                cost if self._insert_cost is None else (self._insert_cost + cost) / 2
+            )
         if spellings:
             self._keep_spellings(conn, spellings, base, len(values))
         self.rows_written += len(values)
+        self._last_rowid = base + len(values)
         return len(values)
 
     def finish(self, conn):
@@ -737,6 +782,31 @@ class TypedInserter:
         """
         conn.execute(f"DROP TABLE IF EXISTS {self._spellings_table}")
         self._spellings_created = False
+
+    def _conversion_left(self):
+        """
+        Whether :meth:`finish` has stored values to convert: a backlog, or
+        widenings that ``"deferred"`` postponed - O(rows), unlike dropping
+        the kept spellings, which is all that is left otherwise.
+        """
+        return bool(self._backlog) or any(
+            max(column.rank, _I) > column.declared
+            for column in self._columns
+            if column.declared != _NONE
+        )
+
+    def _table_is_ours(self, conn):
+        """
+        Whether the table is still the one this inserter created and wrote:
+        the same definition, and its last row the last one written. Checked
+        before finishing in the background after a cancelled import, when
+        the caller may have dropped the table - and an import may even have
+        created a new one by that name, which must not be "converted".
+        """
+        if not self.created or _table_sql(conn, self.table) != self._known_sql:
+            return False
+        last = conn.execute(f"select max(rowid) from {_quote(self.table)}")
+        return (last.fetchone()[0] or 0) == self._last_rowid
 
     def _finish(self, conn):
         if not self.created and not self._columns:
@@ -828,6 +898,14 @@ class TypedInserter:
                     for key in row:
                         if key not in by_key:
                             self._new_column(key)
+                elif isinstance(row, (str, bytes, bytearray)) or not isinstance(
+                    row, Sequence
+                ):
+                    # A line of a file, say: its characters are not values
+                    raise TypeError(
+                        "Rows with columns= must be lists, tuples or dicts, "
+                        f"not {type(row).__name__}"
+                    )
                 elif len(row) > len(columns):
                     too_long = True
         if too_long:
@@ -1296,13 +1374,53 @@ class TypedInserter:
     # Converting stored numbers to text, a slice at a time -------------
 
     def _slice_rows(self):
-        "Rows for the next slice of the backlog: about CONVERT_SECONDS' worth."
+        """
+        Rows (of rowid range) for the next slice of the backlog: about
+        CONVERT_SECONDS' worth if every one of them has to be rewritten.
+
+        Sized for the worst case because a slice cannot tell in advance how
+        many of its rows hold a number: a column that is NULL for the first
+        4.5M rows of 6M (a key that turns up late) costs 0.13-0.15us a row
+        to skip and 0.8-1.4us a row to rewrite, so a slice sized from the
+        speed of skipping would rewrite ~7x too many rows once it reached
+        the numbers (the first version did, reaching 1M-row slices and
+        380-520ms transactions). Skipping rows is then just quicker than
+        planned: 100 short slices for a 4.5M-row gap.
+
+        The cost of a rewrite comes from slices that rewrote most of their
+        rows: the first such slice sets it, later ones raise it at once or
+        lower it by halves. Until then it is the cost of inserting a row
+        into this table, which scales with the row's width the same way: on
+        big-1gb.csv's rows inserting measured 1.1us a row and rewriting
+        0.8-1.35us.
+        """
         if self._convert_rows:
             return self._convert_rows
-        if self._convert_rate is None:
+        cost = self._rewrite_cost or self._insert_cost
+        if not cost:
             return _FIRST_CONVERT_ROWS
-        rows = int(self._convert_rate * CONVERT_SECONDS)
+        rows = int(CONVERT_SECONDS / cost)
         return min(max(rows, _MIN_CONVERT_ROWS), _MAX_CONVERT_ROWS)
+
+    def _measure_slice(self, covered, rewritten, elapsed):
+        "Learn the cost of rewriting a row from a slice, see _slice_rows()."
+        if covered <= 0 or elapsed <= 0:
+            return
+        if rewritten >= 100 and rewritten >= covered * _DENSE_FRACTION:
+            # An overestimate when not every row needed it, as it includes
+            # skipping the others: at most 1.4x at 25%
+            sample = elapsed / rewritten
+        elif elapsed > CONVERT_SECONDS:
+            # Over time with few rows rewritten: skipping is dearer than
+            # expected (wide rows, a busy machine) - size the next slice so
+            # that this one would have fit
+            sample = elapsed / covered
+        else:
+            return
+        if self._rewrite_cost is None or sample > self._rewrite_cost:
+            self._rewrite_cost = sample
+        else:
+            self._rewrite_cost = (self._rewrite_cost + sample) / 2
 
     def _convert_slice(self, conn, rows):
         """
@@ -1358,12 +1476,12 @@ class TypedInserter:
             if column.spellings:
                 conditions.append(self._spelled(column, ":start AND :end"))
         conn.create_function(_RENDER_FUNCTION, 1, _render_sql, deterministic=True)
-        conn.execute(
+        rewritten = conn.execute(
             "UPDATE {} SET {} WHERE rowid BETWEEN :start AND :end AND ({})".format(
                 _quote(self.table), ", ".join(sets), " OR ".join(conditions)
             ),
             params,
-        )
+        ).rowcount
         completed = False
         for column, low, high in done:
             if column.spellings:
@@ -1386,11 +1504,7 @@ class TypedInserter:
         self.convert_seconds += elapsed
         self.convert_max_seconds = max(self.convert_max_seconds, elapsed)
         covered = max(high for _, _, high in done) - start + 1
-        if elapsed > 0 and covered >= _MIN_CONVERT_ROWS:
-            rate = covered / elapsed
-            self._convert_rate = (
-                rate if self._convert_rate is None else (self._convert_rate + rate) / 2
-            )
+        self._measure_slice(covered, rewritten, elapsed)
 
     def _converting(self, changes):
         "Columns in ``changes`` whose stored numbers have to become text."
@@ -1648,15 +1762,47 @@ class ImportStatus:
     #: cancelled), or None
     error: BaseException | None = None
     #: The call has returned, or raised and finished cleaning up. Every
-    #: other field is final once this is True. A call cancelled again while
-    #: cleaning up raises at once and this becomes True when the clean up,
-    #: which carries on in the background, is done
+    #: other field is final once this is True. A cancelled
+    #: :func:`import_rows` raises before its clean up is over if that has
+    #: stored numbers left to convert (or if it is cancelled again while
+    #: cleaning up): the clean up carries on in the background and this
+    #: becomes True when it is done - :meth:`wait` waits for that
     done: bool = False
+    #: Rows (of rowid range) that may still hold numbers waiting to become
+    #: text, see :attr:`TypedInserter.backlog` - converting them is the last
+    #: part of an import, after every row has been written
+    backlog: int = 0
+    _done_event: object = dataclasses.field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     @property
     def table_exists(self):
         "Whether the table this call created is there."
         return self.created and not self.dropped
+
+    async def wait(self):
+        """
+        Wait until :attr:`done`: after a cancelled :func:`import_rows`, until
+        the clean up that carries on in the background has finished.
+        """
+        if self.done:
+            return
+        if self._done_event is None:
+            self._done_event = (asyncio.get_running_loop(), asyncio.Event())
+            # done may have been set (by insert_rows() in a thread) before
+            # there was an event to set
+            if self.done:
+                return
+        await self._done_event[1].wait()
+
+    def _set_done(self):
+        self.done = True
+        if self._done_event is not None:
+            loop, event = self._done_event
+            with contextlib.suppress(RuntimeError):
+                # Closed loop: nobody is waiting any more
+                loop.call_soon_threadsafe(event.set)
 
 
 ON_ERROR = ("keep", "drop")
@@ -1720,6 +1866,14 @@ def insert_rows(
     ``on_error="drop"`` the table is dropped instead, if this call created
     it. Then the exception is raised again. Pass an :class:`ImportStatus`
     as ``status`` to see what happened.
+
+    Completing the table converts what is left of the stored numbers after
+    a late widening to text, in transactions of their own: about 2.4s per
+    million rows of big-1gb.csv, before the exception is raised again. A
+    second ``KeyboardInterrupt`` stops that, leaving the rest unconverted
+    (the column declared ``BLOB``, numbers in some of its rows, kept
+    spellings lost with the connection). If the table is not wanted after
+    a failure, pass ``on_error="drop"``, which converts nothing.
     """
     if on_error not in ON_ERROR:
         raise ValueError(f"on_error must be one of {ON_ERROR}")
@@ -1741,6 +1895,7 @@ def insert_rows(
             raise
         status.created = inserter.created
         status.rows = inserter.rows_written
+        status.backlog = inserter.backlog
         return result
 
     batches = 0
@@ -1772,7 +1927,7 @@ def insert_rows(
                 committed(lambda: inserter.discard(conn))
         raise
     finally:
-        status.done = True
+        status._set_done()
     return _result(inserter, start, batches)
 
 
@@ -1852,6 +2007,18 @@ async def import_rows(
     clean up is shielded from cancellation. Then the exception is raised
     again. Pass an :class:`ImportStatus` as ``status`` to find out what
     happened, in particular whether this call created the table.
+
+    A cancelled call raises as soon as the write in progress (if any) is
+    done and, with ``on_error="drop"``, the table dropped: a cancellation
+    has to take effect at once, and stop the worker that feeds the rows.
+    With ``on_error="keep"`` and stored numbers left to convert (a late
+    widening to text, about 2.4s of work per million rows of big-1gb.csv),
+    the conversion carries on in the background, a slice per write as
+    before: ``status.done`` becomes True, and :meth:`ImportStatus.wait`
+    returns, when it is over. Each slice first checks that the table is
+    still the one this import wrote, so the caller can drop it meanwhile
+    (that stops the conversion) - but use ``on_error="drop"`` rather than
+    dropping it yourself, which converts nothing.
     """
     if on_error not in ON_ERROR:
         raise ValueError(f"on_error must be one of {ON_ERROR}")
@@ -1894,6 +2061,11 @@ async def import_rows(
     # A write whose outcome is not known yet: (task, snapshot before it)
     in_flight = None
 
+    def update_status():
+        status.created = inserter.created
+        status.rows = inserter.rows_written
+        status.backlog = inserter.backlog
+
     async def write(fn):
         nonlocal in_flight
         snapshot = inserter.snapshot()
@@ -1914,21 +2086,75 @@ async def import_rows(
             inserter.restore(snapshot)
             raise
         in_flight = None
-        status.created = inserter.created
-        status.rows = inserter.rows_written
+        update_status()
         return result
 
-    async def clean_up():
+    async def settle():
+        "Wait for a write of this import that is still running, if any."
+        nonlocal in_flight
+        if in_flight is not None:
+            task, snapshot = in_flight
+            in_flight = None
+            try:
+                await task
+            except BaseException:  # noqa: BLE001 - its outcome, not ours
+                # That write was rolled back
+                inserter.restore(snapshot)
+        update_status()
+
+    def guarded(method):
+        # The caller may drop the table once this call has raised, and
+        # something else may create one by that name: only convert the
+        # table this import wrote
+        def fn(conn):
+            if not inserter._table_is_ours(conn):
+                inserter.discard(conn)
+                return False
+            method(conn)
+            return True
+
+        return fn
+
+    async def complete():
+        "Convert the rest of the backlog, a slice per write, and finish."
+        while inserter.backlog:
+            if not await db.execute_write_fn(guarded(inserter.convert)):
+                return False
+            status.backlog = inserter.backlog
+        return await db.execute_write_fn(guarded(inserter.finish))
+
+    async def complete_in_background():
         try:
-            if in_flight is not None:
-                task, snapshot = in_flight
-                try:
-                    await task
-                except BaseException:  # noqa: BLE001 - its outcome, not ours
-                    # That write was rolled back
-                    inserter.restore(snapshot)
-            status.created = inserter.created
-            status.rows = inserter.rows_written
+            if not await complete():
+                # Most likely the caller dropped it, as it may
+                logger.debug(
+                    "Table %r was dropped or changed while it was being "
+                    "finished after a cancelled import; left as it was",
+                    table,
+                )
+        except Exception:
+            # Nobody to raise it to
+            logger.warning(
+                "Could not finish table %r after a cancelled import",
+                table,
+                exc_info=True,
+            )
+            with contextlib.suppress(Exception):
+                await db.execute_write_fn(inserter.discard)
+        finally:
+            update_status()
+            status._set_done()
+
+    async def clean_up(cancelled):
+        """
+        Returns once the caller can be told: after a cancellation that
+        leaves stored numbers to convert, the rest carries on in the
+        background (its task is returned) - a cancelled call must not wait
+        seconds for that, nor keep a worker that feeds it alive meanwhile.
+        """
+        handed_off = None
+        try:
+            await settle()
             # A failing clean up (a full disk, a closed database) must not
             # hide the original error
             with contextlib.suppress(Exception):
@@ -1936,14 +2162,19 @@ async def import_rows(
                     await db.execute_write_fn(lambda conn: _drop_table(conn, inserter))
                     status.dropped = True
                 elif inserter.created:
-                    while inserter.backlog:
-                        await db.execute_write_fn(inserter.convert)
-                    await db.execute_write_fn(inserter.finish)
+                    if cancelled and inserter._conversion_left():
+                        handed_off = asyncio.ensure_future(complete_in_background())
+                        _BACKGROUND_TASKS.add(handed_off)
+                        handed_off.add_done_callback(_BACKGROUND_TASKS.discard)
+                        return handed_off
+                    await complete()
             if not inserter.finished:
                 with contextlib.suppress(Exception):
                     await db.execute_write_fn(inserter.discard)
         finally:
-            status.done = True
+            if handed_off is None:
+                update_status()
+                status._set_done()
 
     batches = 0
     pending = asyncio.ensure_future(pull(sample_size))
@@ -1973,12 +2204,15 @@ async def import_rows(
             # No more rows are wanted, and an async source (a worker) may
             # take a while to send them
             pending.cancel()
-        cleaning = asyncio.ensure_future(clean_up())
+        cleaning = asyncio.ensure_future(
+            clean_up(isinstance(ex, asyncio.CancelledError))
+        )
         try:
             await asyncio.shield(cleaning)
         except asyncio.CancelledError:
             # Cancelled again: the clean up carries on in the background
-            pass
+            _BACKGROUND_TASKS.add(cleaning)
+            cleaning.add_done_callback(_BACKGROUND_TASKS.discard)
         raise
     finally:
         # Never leave a thread reading from the iterator behind
@@ -1991,5 +2225,5 @@ async def import_rows(
                 await asyncio.wait([reading])
             if not reading.cancelled():
                 reading.exception()
-    status.done = True
+    status._set_done()
     return _result(inserter, start, batches)

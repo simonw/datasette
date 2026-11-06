@@ -1402,17 +1402,23 @@ def test_widening_and_slices_never_scan_the_table():
         assert not any("MULTI-INDEX OR" in step for step in plan), (sql, plan)
 
 
-def test_slices_are_sized_to_take_about_convert_seconds(monkeypatch):
+def test_slices_are_sized_for_rewriting_every_row(monkeypatch):
     conn = sqlite3.connect(":memory:", isolation_level=None)
     inserter = TypedInserter("t")
     inserter.write(conn, [{"a": str(i)} for i in range(20_000)])
+    # Until a slice has measured rewriting rows, slices are sized from the
+    # cost of inserting them
+    insert_cost = inserter._insert_cost
+    assert insert_cost > 0 and inserter._rewrite_cost is None
+    monkeypatch.setattr(inserter_module, "CONVERT_SECONDS", 2_000 * insert_cost)
+    first = inserter._slice_rows()
+    assert 1_900 <= first <= 2_100
     inserter.write(conn, [{"a": "x"}])
-    # The first slice has a fixed size, later ones follow the measured speed
-    assert inserter.backlog == 20_000 - inserter_module._FIRST_CONVERT_ROWS
-    rate = inserter._convert_rate
-    assert rate > 0
-    expected = int(rate * inserter_module.CONVERT_SECONDS)
-    expected = min(max(expected, inserter_module._MIN_CONVERT_ROWS), 1_000_000)
+    assert inserter.backlog == 20_000 - first
+    # That slice rewrote every row it covered: it measured the cost
+    assert inserter._rewrite_cost > 0
+    expected = int(inserter_module.CONVERT_SECONDS / inserter._rewrite_cost)
+    expected = min(max(expected, inserter_module._MIN_CONVERT_ROWS), 200_000)
     assert inserter._slice_rows() == expected
     monkeypatch.setattr(inserter_module, "CONVERT_SECONDS", 0.0)
     assert inserter._slice_rows() == inserter_module._MIN_CONVERT_ROWS
@@ -1421,6 +1427,85 @@ def test_slices_are_sized_to_take_about_convert_seconds(monkeypatch):
     assert inserter.convert(conn, rows=10**9) == 0
     assert inserter.convert(conn) == 0
     assert declared(conn) == {"a": "TEXT"}
+
+
+def test_rewrite_cost_learning():
+    inserter = TypedInserter("t")
+    inserter._insert_cost = 1e-6
+    # 0.05s / 1us
+    assert inserter._slice_rows() == 50_000
+    # Slices that rewrote few of their rows say nothing about rewriting:
+    # skipping rows is cheap, which made the sizing overshoot before
+    for _ in range(20):
+        inserter._measure_slice(50_000, 10, 0.004)
+    assert inserter._rewrite_cost is None
+    assert inserter._slice_rows() == 50_000
+    # A slice that rewrote most of its rows sets the cost...
+    inserter._measure_slice(50_000, 40_000, 0.032)
+    assert inserter._rewrite_cost == pytest.approx(0.8e-6)
+    # ... a dearer one raises it at once, a cheaper one lowers it by half
+    inserter._measure_slice(10_000, 10_000, 0.02)
+    assert inserter._rewrite_cost == pytest.approx(2e-6)
+    inserter._measure_slice(10_000, 10_000, 0.01)
+    assert inserter._rewrite_cost == pytest.approx(1.5e-6)
+    # A slice over time with few rows rewritten: size the next one so that
+    # this one would have fit
+    inserter._measure_slice(20_000, 0, 0.1)
+    assert inserter._rewrite_cost == pytest.approx(5e-6)
+    assert inserter._slice_rows() == 10_000
+    # The limits
+    inserter._rewrite_cost = 1e-12
+    assert inserter._slice_rows() == inserter_module._MAX_CONVERT_ROWS
+    inserter._rewrite_cost = 1.0
+    assert inserter._slice_rows() == inserter_module._MIN_CONVERT_ROWS
+    assert TypedInserter("t", convert_rows=7)._slice_rows() == 7
+    # No timing at all yet
+    assert TypedInserter("t")._slice_rows() == inserter_module._FIRST_CONVERT_ROWS
+
+
+def test_slices_do_not_grow_over_rows_with_nothing_to_convert(monkeypatch):
+    # A key that turns up late: NULL for most of the backlog, then numbers.
+    # Skipping the NULLs is several times quicker than rewriting a row, so
+    # sizing slices from the speed of the first ones made them grow until
+    # one reached the numbers and rewrote far too many in one transaction
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    inserter = TypedInserter("t")
+    rows = [{"id": str(i)} for i in range(30_000)]
+    rows += [{"id": str(i), "x": str(i)} for i in range(30_000, 40_000)]
+    inserter.write(conn, rows)
+    monkeypatch.setattr(inserter_module, "CONVERT_SECONDS", 0.002)
+    inserter._insert_cost = 1e-6
+    inserter.write(conn, [{"id": "1", "x": "late text"}])
+    sizes = []
+    rewritten = []
+    while inserter.backlog:
+        before = inserter.backlog
+        numbers = conn.execute(
+            "select count(*) from t where typeof(x) = 'integer'"
+        ).fetchone()[0]
+        inserter.convert(conn)
+        sizes.append(before - inserter.backlog)
+        rewritten.append(
+            numbers
+            - conn.execute(
+                "select count(*) from t where typeof(x) = 'integer'"
+            ).fetchone()[0]
+        )
+    # Every slice over the NULLs covers what rewriting would allow, 2,000
+    # rows (0.002s at 1us a row), however quickly it ran - and so the first
+    # slice to reach the numbers rewrites at most that many. Then the
+    # measured cost of rewriting decides
+    null_slices = [size for size, count in zip(sizes, rewritten) if count == 0]
+    assert len(null_slices) >= 13
+    # (Smaller only if one ran over time, on a busy machine)
+    assert null_slices[0] == 2_000 and max(null_slices) == 2_000
+    first_numbers = next(count for count in rewritten if count)
+    assert first_numbers <= 2_000
+    assert inserter._rewrite_cost is not None
+    assert conn.execute(
+        "select count(*) from t where typeof(x) not in ('text', 'null')"
+    ).fetchone() == (0,)
+    assert declared(conn) == {"id": "INTEGER", "x": "TEXT"}
 
 
 @pytest.mark.skipif(
@@ -1580,8 +1665,21 @@ def test_positional_rows_errors():
         inserter.write(conn, [[1, 2]], ["a", "a"])
     with pytest.raises(ValueError, match="more values than the 1 columns"):
         inserter.write(conn, [[1, 2]], ["a"])
-    assert not inserter.created
+    # A string is not a row of values (it used to become one per character)
+    for row in ("xy", b"xy", 5, {1, 2}, (v for v in "xy")):
+        with pytest.raises(TypeError, match="lists, tuples or dicts"):
+            inserter.write(conn, [row], ["a", "b"])
+        with pytest.raises(TypeError, match="lists, tuples or dicts"):
+            inserter.write(conn, [["1", "2"], row], ["a", "b"])
+    assert not inserter.created and inserter.columns == {}
     assert inserter.write(conn, [[1]], ["a"]) == 1
+    # Other sequences are fine
+    assert inserter.write(conn, [range(2), {"a": 5}], ["a", "b"]) == 2
+    assert conn.execute("select a, b from t").fetchall() == [
+        (1, None),
+        (0, 1),
+        (5, None),
+    ]
 
 
 def test_positional_rows_with_no_values_yet():
@@ -1756,14 +1854,34 @@ async def test_cancel_while_reading_rows():
     assert await db.execute_fn(lambda conn: declared(conn)) == {"n": "TEXT"}
 
 
+def _backlog_rows(count):
+    # Numbers with spellings to keep ("1.50", blanks next to real NULLs),
+    # then text: the stored numbers of every row before it become text
+    rows = []
+    for i in range(count):
+        if i % 3 == 0:
+            rows.append({"n": f"{i}.50", "b": ""})
+        elif i % 3 == 1:
+            rows.append({"n": str(i), "b": None})
+        else:
+            rows.append({"n": f"{i}.0", "b": str(i)})
+    rows.append({"n": "x", "b": "y"})
+    return rows
+
+
+def _expected_text(rows):
+    return [(row["n"], row.get("b")) for row in rows]
+
+
 @pytest.mark.asyncio
 async def test_cancel_during_the_backlog():
     # Cancelled while stored numbers are still being converted to text:
-    # with on_error="keep" the clean up finishes converting them
+    # with on_error="keep" the call raises at once and the conversion
+    # finishes in the background
     ds = Datasette()
     db = ds.add_memory_database(uuid.uuid4().hex, name="scratch")
     status = inserter_module.ImportStatus()
-    rows = [{"n": str(i)} for i in range(300)] + [{"n": "x"}]
+    rows = _backlog_rows(300)
     converting = asyncio.Event()
 
     async def progress(written):
@@ -1787,11 +1905,121 @@ async def test_cancel_during_the_backlog():
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
-    assert status.done and status.rows == 301
+    assert status.created and status.rows == 301
+    await status.wait()
+    assert status.done and status.backlog == 0
     assert await _temp_tables(db) == []
     types = await db.execute("select typeof(n), count(*) from t group by 1")
     assert [tuple(r) for r in types] == [("text", 301)]
-    assert await db.execute_fn(lambda conn: declared(conn)) == {"n": "TEXT"}
+    assert await db.execute_fn(lambda conn: declared(conn)) == {
+        "n": "TEXT",
+        "b": "TEXT",
+    }
+    values = await db.execute("select n, b from t order by rowid")
+    assert [tuple(r) for r in values] == _expected_text(rows)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("on_error", ("keep", "drop"))
+async def test_cancel_during_a_long_backlog_returns_at_once(slow_writes, on_error):
+    # The rest of the backlog takes 150 writes of 20ms here (seconds, at
+    # 6M rows of big-1gb.csv): a cancelled call used to convert all of it
+    # before raising - and a worker feeding it stayed alive meanwhile
+    slow_writes.seconds = 0.02
+    ds = Datasette()
+    db = ds.add_memory_database(uuid.uuid4().hex, name="scratch")
+    status = inserter_module.ImportStatus()
+    rows = _backlog_rows(300)
+    cancel = asyncio.Event()
+
+    async def progress(written):
+        if written == 301:
+            cancel.set()
+
+    task = asyncio.ensure_future(
+        import_rows(
+            db,
+            "t",
+            rows,
+            sample_size=300,
+            batch_size=1,
+            convert_rows=2,
+            progress=progress,
+            status=status,
+            on_error=on_error,
+        )
+    )
+    await cancel.wait()
+    assert status.backlog > 250
+    cancelled_at = time.perf_counter()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    # At most the write that was running, and a drop
+    assert time.perf_counter() - cancelled_at < 0.5
+    if on_error == "drop":
+        assert status.done and status.dropped
+        assert not await db.table_exists("t")
+        assert await _temp_tables(db) == []
+        return
+    assert not status.done and status.backlog > 200
+    # Readers see the table meanwhile, every row there
+    count = await db.execute("select count(*) from t")
+    assert count.single_value() == 301
+    await asyncio.wait_for(status.wait(), 30)
+    assert status.done and status.backlog == 0 and not status.dropped
+    assert await _temp_tables(db) == []
+    values = await db.execute("select n, b from t order by rowid")
+    assert [tuple(r) for r in values] == _expected_text(rows)
+    assert await db.execute_fn(lambda conn: declared(conn)) == {
+        "n": "TEXT",
+        "b": "TEXT",
+    }
+
+
+@pytest.mark.asyncio
+async def test_background_finish_leaves_a_replaced_table_alone(slow_writes):
+    # After a cancelled import raised, its caller may drop the table - and
+    # another import may create one by the same name. The conversion that
+    # carries on in the background must not touch that one
+    slow_writes.seconds = 0.01
+    ds = Datasette()
+    db = ds.add_memory_database(uuid.uuid4().hex, name="scratch")
+    status = inserter_module.ImportStatus()
+    cancel = asyncio.Event()
+
+    async def progress(written):
+        if written == 301:
+            cancel.set()
+
+    task = asyncio.ensure_future(
+        import_rows(
+            db,
+            "t",
+            _backlog_rows(300),
+            sample_size=300,
+            batch_size=1,
+            convert_rows=2,
+            progress=progress,
+            status=status,
+        )
+    )
+    await cancel.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert not status.done
+
+    def replace(conn):
+        conn.execute("drop table t")
+        conn.execute('CREATE TABLE "t" ("n" BLOB, "b" BLOB)')
+        conn.executemany("insert into t values (?, ?)", [(i, i) for i in range(400)])
+
+    await db.execute_write_fn(replace)
+    await asyncio.wait_for(status.wait(), 30)
+    types = await db.execute("select typeof(n), typeof(b), count(*) from t group by 1")
+    assert [tuple(r) for r in types] == [("integer", "integer", 400)]
+    assert await _temp_tables(db) == []
 
 
 @pytest.mark.asyncio

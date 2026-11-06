@@ -116,7 +116,7 @@ The built-in formats are:
 ``ndjson``
     Newline-delimited JSON, with one object on each line.
 
-Text with no delimiters at all is read as CSV with a single column.
+Text with no delimiters at all is read as CSV with a single column, as long as it has at least two lines: the first line is the column name.
 
 If Datasette can't recognize an input it stops with an error before loading anything::
 
@@ -298,6 +298,8 @@ Datasette creates each table with ``INTEGER``, ``REAL`` (float) and ``TEXT`` col
 
       column ticket_price changed from integer to float at row 5,001
 
+  Rows are inserted in batches, so the row number is the first row of the batch that needed the change, not necessarily the row with the new value in it.
+
 - Numbers with leading zeros, such as ``02134`` or ``007``, are text, so ZIP codes and other codes keep their zeros. So are numbers written with a decimal comma (``1,5``), thousands separators or currency symbols.
 - Empty values become ``NULL`` in integer and float columns. In text columns they stay as empty strings.
 - In JSON, ``true`` and ``false`` are stored as ``1`` and ``0``, and nested arrays and objects are stored as JSON text. You can use SQLite's `JSON functions <https://www.sqlite.org/json1.html>`__ to query them, for example ``select json_extract(owner, '$.name') from pets``.
@@ -305,7 +307,7 @@ Datasette creates each table with ``INTEGER``, ``REAL`` (float) and ``TEXT`` col
 
 Tables are created without a primary key, so their rows are identified by SQLite's ``rowid``. To add a primary key or change column types, save the data with ``--save`` and use a tool such as `sqlite-utils transform <https://sqlite-utils.datasette.io/en/stable/cli.html#transforming-tables>`__.
 
-A CSV or TSV file with a header row and no rows creates a table with ``TEXT`` columns and no rows. A JSON file with no rows creates no table.
+A CSV or TSV file with a header row and no rows creates a table with ``TEXT`` columns and no rows. A file that is just a single column name is not recognized as CSV: add ``:csv`` to load it. A JSON file with no rows creates no table.
 
 .. _importing_messy:
 

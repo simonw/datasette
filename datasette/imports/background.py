@@ -522,15 +522,16 @@ class TableImport:
                 fetched_here = True
                 if copy and self._on_fetched is not None:
                     self._on_fetched(self)
-            if source.loader is None:
-                loop = asyncio.get_running_loop()
-                await loop.run_in_executor(None, sniff, source, self._loaders)
-            self.loader = source.loader.name
             self._set_state("queued", "worker")
-            # Waiters get a slot in the order they asked, so files load in
-            # the order they were given - nothing above waits for a local
-            # file that has been sniffed already
+            # Waiters get a slot in the order they asked, so local files
+            # load in the order they were given: nothing above waits for
+            # one. Sniffing and the check for an existing table wait for a
+            # thread, so they come after
             async with worker_slots(datasette):
+                if source.loader is None:
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(None, sniff, source, self._loaders)
+                self.loader = source.loader.name
                 if await _table_taken(db, self.table):
                     raise TableExists(
                         f"Table {self.table!r} already exists in {db.name}"

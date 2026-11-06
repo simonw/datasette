@@ -97,7 +97,7 @@ async def _settled(job):
     await asyncio.sleep(0)
 
 
-async def _start_stalled(ds, db, tmp_path, table="slow"):
+async def _start_stalled(ds, db, tmp_path, table="slow", on_error="keep"):
     "An import that reaches 40% (four rows) and then waits."
     path = tmp_path / "slow.csv"
     path.write_text("n\n1\n")
@@ -108,6 +108,7 @@ async def _start_stalled(ds, db, tmp_path, table="slow"):
         batch_size=2,
         use_worker=True,
         worker_options={"argv": _stalling_worker(tmp_path)},
+        on_error=on_error,
     )
     await ds.start_background_tasks()
     await _wait_for(lambda: job.state == "importing" and job.rows == 4)
@@ -244,6 +245,28 @@ async def test_queued_for_a_worker_slot(data_dir):
         slots.release()
         assert await registry.wait(20)
         assert [job.state for job in jobs] == ["done", "done"]
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_imports_start_in_the_order_given(tmp_path):
+    ds, db = _scratch_ds()
+    # One slot, so the order they get it in is the order they run in
+    worker_slots(ds, max_workers=1)
+    registry = import_registry(ds)
+    started = []
+    registry.add_listener(
+        lambda job, event: started.append(job.table) if event == "importing" else None
+    )
+    try:
+        names = ["t1", "t2", "t3", "t4"]
+        for name in names:
+            (tmp_path / f"{name}.csv").write_text(CSV)
+            registry.start(db, _source(tmp_path / f"{name}.csv"))
+        await ds.start_background_tasks()
+        assert await registry.wait(20)
+        assert started == names
     finally:
         await ds.invoke_shutdown()
 
@@ -435,6 +458,29 @@ async def test_cancel_action_can_be_granted(tmp_path):
         alice = await ds.client.post(url, json={}, actor={"id": "alice"})
         assert alice.status_code == 200
         assert job.state == "cancelled"
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_cancel_with_drop_removes_the_partial_table(tmp_path):
+    # As for a --save file: a cancelled import leaves nothing behind
+    from datasette.database import Database
+
+    sqlite3.connect(tmp_path / "save.db").execute("vacuum")
+    ds = Datasette()
+    db = ds.add_database(
+        Database(ds, path=str(tmp_path / "save.db"), is_mutable=True), name="save"
+    )
+    try:
+        job = await _start_stalled(ds, db, tmp_path, on_error="drop")
+        assert await db.table_names() == ["slow"]
+        assert job.cancel()
+        assert await job.wait(5)
+        assert job.state == "cancelled"
+        assert not job.table_exists and job.rows_kept == 0
+        assert job.status() == "import cancelled (the table was removed)"
+        assert await db.table_names() == []
     finally:
         await ds.invoke_shutdown()
 

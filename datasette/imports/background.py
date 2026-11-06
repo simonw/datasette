@@ -84,6 +84,7 @@ import weakref
 from collections.abc import Callable
 
 from datasette.imports import loaders as _loaders
+from datasette.imports.inserter import ON_ERROR
 from datasette.imports.scratch import (
     DEFAULT_BATCH_SIZE,
     ImportFailed,
@@ -116,7 +117,6 @@ logger = logging.getLogger(__name__)
 ACTIVE_STATES = ("queued", "downloading", "importing")
 FINISHED_STATES = ("done", "failed", "cancelled")
 STATES = ACTIVE_STATES + FINISHED_STATES
-ON_ERROR = ("keep", "drop")
 # Finished imports kept in the registry, beyond which the oldest are
 # forgotten (an upload endpoint could otherwise grow it without bound)
 MAX_FINISHED = 200

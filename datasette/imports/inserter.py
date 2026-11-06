@@ -1,5 +1,6 @@
 """
-Turn a stream of rows (dictionaries) into a typed SQLite table.
+Turn a stream of rows (dictionaries, or lists of values in the order of a
+list of keys) into a typed SQLite table.
 
 The algorithm:
 
@@ -13,10 +14,13 @@ The algorithm:
    never narrow. New keys add new columns.
 3. Each chunk is meant to be written in its own transaction so readers see
    progress - :func:`import_rows` sends one ``db.execute_write_fn()`` call
-   per chunk, :func:`insert_rows` commits after every chunk.
+   per chunk, :func:`insert_rows` commits after every chunk - and is
+   inserted with as few multi-row ``INSERT`` statements as SQLite's limit
+   on bound parameters allows (see :meth:`TypedInserter._insert`).
 
 Widening changes the declared type in place, which takes well under a
-millisecond at any table size. Widening to text also means the numbers
+millisecond at any table size (if the schema cannot be edited, the table
+is copied instead). Widening to text also means the numbers
 already stored have to become text: that is done a slice of rows at a time,
 by each following write (about 30ms of it each) and then by
 :meth:`TypedInserter.convert` calls of their own, so no single transaction

@@ -74,7 +74,12 @@ import sys
 import time
 import weakref
 
-from datasette.imports.inserter import ImportResult, ImportStatus, import_rows
+from datasette.imports.inserter import (
+    ON_ERROR,
+    ImportResult,
+    ImportStatus,
+    import_rows,
+)
 from datasette.imports.loaders import NOTE_LOG_ATTRIBUTE
 
 logger = logging.getLogger(__name__)
@@ -86,7 +91,6 @@ PROTOCOL_VERSION = 1
 READ_SIZE = 256 * 1024
 # How much of the end of the worker's stderr to keep for error messages
 STDERR_TAIL = 8 * 1024
-ON_ERROR = ("keep", "drop")
 # Size of the pipe the worker writes rows to, where the system allows it
 # (Linux: up to /proc/sys/fs/pipe-max-size, 1MB by default). See _grow_pipe()
 PIPE_SIZE = 1024 * 1024

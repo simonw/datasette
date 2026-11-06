@@ -31,6 +31,8 @@ from .app import (
 from .database import Database
 from .imports.loaders import get_loaders
 from .imports.scratch import (
+    DEFAULT_BATCH_SIZE,
+    SAVE_BATCH_SIZE,
     SCRATCH_NAME,
     MemoryScratchDatabase,
     ReloadSession,
@@ -1023,6 +1025,9 @@ class _DataImport:
                 on_loaded=on_loaded,
                 # Nothing else can be writing yet: load on the write thread
                 exclusive=True,
+                batch_size=(
+                    DEFAULT_BATCH_SIZE if is_scratch(self.db) else SAVE_BATCH_SIZE
+                ),
             )
         except BaseException as ex:
             status.clear()

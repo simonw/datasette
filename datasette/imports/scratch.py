@@ -39,6 +39,11 @@ from datasette.imports.sources import (
 
 SCRATCH_NAME = "scratch"
 DEFAULT_BATCH_SIZE = 1000
+# A --save file keeps SQLite's default journal and synchronous=FULL, so each
+# commit waits for the disk: 6,400 commits cost ~18s of a 6.4M row load,
+# 640 commits ~5s. Nothing reads while the command line loads, so commit
+# less often there (it costs ~17MB more memory)
+SAVE_BATCH_SIZE = 10000
 
 # Set while the import process itself is writing - every other write to a
 # scratch database is refused by the write_wrapper hook in default_hooks

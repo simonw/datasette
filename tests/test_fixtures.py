@@ -1,3 +1,5 @@
+import os
+
 from datasette.fixtures import (
     populate_extra_database,
     populate_fixture_database,
@@ -47,3 +49,16 @@ def test_extra_database_helpers(tmp_path):
         assert count(conn, "searchable") == 2
     finally:
         conn.close()
+
+
+def test_make_app_client_restores_working_directory(tmp_path, monkeypatch):
+    # make_app_client() changes into a temporary directory that is deleted
+    # when it exits: it must change back first, or every later test on the
+    # same worker runs in a directory that no longer exists (#1361)
+    from .fixtures import make_app_client
+
+    monkeypatch.chdir(tmp_path)
+    with make_app_client() as client:
+        assert client.get("/-/versions.json").status == 200
+        assert os.getcwd() != str(tmp_path)
+    assert os.getcwd() == str(tmp_path)

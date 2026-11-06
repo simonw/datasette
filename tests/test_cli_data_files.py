@@ -309,6 +309,18 @@ def test_stderr_summary(data_dir):
     assert "dogs.csv (csv) into table dogs in " in result.stderr
 
 
+def test_stderr_summary_has_the_loaders_notes(data_dir):
+    path = data_dir / "api.json"
+    path.write_text(json.dumps({"total": 2, "results": [{"a": 1}, {"a": 2}]}))
+    result = run([str(path), "--get", "/-/versions.json"])
+    assert result.exit_code == 0
+    lines = result.stderr.splitlines()
+    loaded = next(i for i, line in enumerate(lines) if line.startswith("Loaded 2 rows"))
+    assert lines[loaded + 1] == (
+        "  note: Importing the 2 objects in 'results', ignoring 'total'"
+    )
+
+
 def test_only_scratch_database(data_dir):
     databases = get_json([str(data_dir / "dogs.csv")], "/-/databases.json")
     assert [db["name"] for db in databases["databases"]] == ["scratch"]

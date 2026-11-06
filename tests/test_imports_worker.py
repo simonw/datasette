@@ -632,6 +632,9 @@ async def test_warnings_from_the_worker(db, tmp_path):
     # A loader's note is a note, not just a warning
     assert result.notes == ["Importing the 2 objects in 'results', ignoring 'total'"]
     assert result.warnings == []
+    # The same in-process
+    in_process = await import_file_in_process(db, "t2", path)
+    assert (in_process.notes, in_process.warnings) == (result.notes, [])
 
 
 @pytest.mark.asyncio

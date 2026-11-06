@@ -19,6 +19,7 @@ import threading
 import time
 import urllib.request
 
+import markupsafe
 import pytest
 
 from datasette.app import Datasette
@@ -69,20 +70,25 @@ def _scratch_ds():
     return ds, db
 
 
-def _stalling_worker(tmp_path, rows=4):
+def _stalling_worker(tmp_path, rows=4, note=None):
     """
-    A stand-in for the import worker: sends a header, ``rows`` rows and a
-    progress message saying it has read 40% of the file, then waits to be
-    killed. Gives an import that stays "importing" for as long as a test
-    needs.
+    A stand-in for the import worker: sends a header, ``rows`` rows (and a
+    loader's ``note``) and a progress message saying it has read 40% of the
+    file, then waits to be killed. Gives an import that stays "importing"
+    for as long as a test needs.
     """
     script = tmp_path / "stalling_worker.py"
+    note_line = ""
+    if note:
+        message = {"type": "log", "level": "WARNING", "message": note, "note": True}
+        note_line = f"send({message!r})\n"
     script.write_text(
         "import json, sys, time\n"
         "def send(m): sys.stdout.write(json.dumps(m) + '\\n')\n"
         "send({'type': 'header', 'protocol': 1, 'loader': 'csv', 'size': 1000})\n"
         "send({'type': 'columns', 'add': ['n']})\n"
         f"for i in range({rows}): send([i])\n"
+        f"{note_line}"
         "send({'type': 'progress', 'rows': 4, 'bytes': 400, 'size': 1000})\n"
         "sys.stdout.flush()\n"
         "time.sleep(60)\n"
@@ -105,7 +111,7 @@ async def _settled(job):
     await asyncio.sleep(0)
 
 
-async def _start_stalled(ds, db, tmp_path, table="slow", on_error="keep"):
+async def _start_stalled(ds, db, tmp_path, table="slow", on_error="keep", note=None):
     "An import that reaches 40% (four rows) and then waits."
     path = tmp_path / "slow.csv"
     path.write_text("n\n1\n")
@@ -115,7 +121,7 @@ async def _start_stalled(ds, db, tmp_path, table="slow", on_error="keep"):
         sample_size=2,
         batch_size=2,
         use_worker=True,
-        worker_options={"_argv": _stalling_worker(tmp_path)},
+        worker_options={"_argv": _stalling_worker(tmp_path, note=note)},
         on_error=on_error,
     )
     await ds.start_background_tasks()
@@ -313,6 +319,69 @@ async def test_failure_does_not_affect_other_imports(data_dir):
         assert "imports-notice" not in (await ds.client.get("/scratch/dogs")).text
         # Nothing is running, so nothing polls
         assert "data-poll" not in home
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_worker", (True, False))
+async def test_loader_notes_reach_people(tmp_path, use_worker):
+    # A JSON loader's note about which part of the document held the rows:
+    # on the import, in /-/imports.json, on the terminal and on the page of
+    # the table, once it is complete
+    note = "Importing the 2 objects in 'results', ignoring 'next', 'total'"
+    path = tmp_path / "api.json"
+    path.write_text(json.dumps({"next": None, "total": 2, "results": [{"a": 1}] * 2}))
+    ds, db = _scratch_ds()
+    registry = import_registry(ds)
+    stream = io.StringIO()
+    registry.add_listener(TerminalReporter(stream))
+    try:
+        job = registry.start(db, _source(path), use_worker=use_worker)
+        await ds.start_background_tasks()
+        assert await job.wait(20)
+        assert (job.state, job.rows, job.notes) == ("done", 2, [note])
+        data = (await ds.client.get("/-/imports.json")).json()["imports"][0]
+        assert data["notes"] == [note]
+        lines = stream.getvalue().splitlines()
+        loaded = next(i for i, line in enumerate(lines) if line.startswith("Loaded"))
+        assert lines[loaded + 1] == f"  note: {note}"
+        page = (await ds.client.get("/scratch/api")).text
+        assert "Notes from importing this table:" in page
+        assert markupsafe.escape(note) in page
+        # A complete table without notes has no notice at all
+        assert "imports-notice" not in (await ds.client.get("/scratch")).text
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.asyncio
+async def test_loader_notes_in_progress_and_incomplete_notices(tmp_path):
+    note = "Reading quotes as ordinary characters & <friends>"
+    ds, db = _scratch_ds()
+    stream = io.StringIO()
+    import_registry(ds).add_listener(TerminalReporter(stream))
+    try:
+        job = await _start_stalled(ds, db, tmp_path, note=note)
+        await _wait_for(lambda: job.notes == [note])
+        assert (await ds.client.get("/-/imports.json")).json()["imports"][0][
+            "notes"
+        ] == [note]
+        expected = f'<ul class="import-notes"><li>{markupsafe.escape(note)}</li></ul>'
+        for path in ("/", "/scratch", "/scratch/slow"):
+            page = (await ds.client.get(path)).text
+            assert expected in page, path
+            # The polling script keeps them up to date
+            assert "import-notes" in page.split("<script>", 1)[1], path
+        job.cancel()
+        assert await job.wait(10)
+        # Still there once the import is incomplete
+        assert expected in (await ds.client.get("/scratch/slow")).text
+        lines = stream.getvalue().splitlines()
+        cancelled = next(
+            i for i, line in enumerate(lines) if line.startswith("Cancelled")
+        )
+        assert lines[cancelled + 1] == f"  note: {note}"
     finally:
         await ds.invoke_shutdown()
 

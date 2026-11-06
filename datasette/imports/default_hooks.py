@@ -21,8 +21,10 @@ Background imports (:mod:`datasette.imports.background`):
 
 - ``top_homepage``, ``top_database`` and ``top_table`` show a notice for
   each import that is still running, and for each one that failed or was
-  cancelled (its table is incomplete). While anything is running, a little
-  script polls ``/-/imports.json`` every second and updates the text; it
+  cancelled (its table is incomplete), with the loader's notes about how
+  it read the file. The table page also shows those notes once its import
+  is done. While anything is running, a little script polls
+  ``/-/imports.json`` every second and updates the text and the notes; it
   stops when nothing is running.
 - ``/-/imports`` and ``/-/imports.json`` list the imports the actor can see:
   those into tables they have ``view-table`` for.
@@ -240,7 +242,7 @@ async def _render_notice(
         items.append(
             f'<li data-import-id="{h(job.id)}" data-state="{h(job.state)}">'
             f'{name}: <span class="import-status">{h(job.status())}</span>'
-            f"{progress}{cancel}</li>"
+            f"{progress}{cancel}{_notes_html(job.notes)}</li>"
         )
     poll = f' data-poll="{h(poll_url)}"' if active else ""
     parts = [
@@ -259,8 +261,19 @@ async def _render_notice(
     return markupsafe.Markup("".join(parts))
 
 
-# Updates the notices in place: the status text, the progress bar and the
-# notice's colour. Stops when nothing is running, or after repeated errors
+def _notes_html(notes):
+    "The loader's notes about an import, as a list inside its item."
+    if not notes:
+        return ""
+    h = markupsafe.escape
+    return '<ul class="import-notes">{}</ul>'.format(
+        "".join(f"<li>{h(note)}</li>" for note in notes)
+    )
+
+
+# Updates the notices in place: the status text, the progress bar, the
+# loader's notes and the notice's colour. Stops when nothing is running, or
+# after repeated errors
 _POLL_SCRIPT = (
     """<script>
 (function () {
@@ -281,6 +294,21 @@ _POLL_SCRIPT = (
         status.textContent = job.status;
       }
       item.setAttribute("data-state", job.state);
+      var notes = job.notes || [];
+      var list = item.querySelector(".import-notes");
+      if (notes.length && (!list || list.children.length !== notes.length)) {
+        if (!list) {
+          list = document.createElement("ul");
+          list.className = "import-notes";
+          item.appendChild(list);
+        }
+        list.textContent = "";
+        notes.forEach(function (note) {
+          var li = document.createElement("li");
+          li.textContent = note;
+          list.appendChild(li);
+        });
+      }
       var bar = item.querySelector("progress");
       if (ACTIVE.indexOf(job.state) !== -1) {
         running = true;
@@ -381,6 +409,10 @@ def top_homepage(datasette, request):
 def top_table(datasette, request, database, table):
     registry = _registry(datasette)
     job = registry.get(database, table) if registry is not None else None
+    if job is not None and job.state == "done" and job.table_exists and job.notes:
+        # Complete, but the loader had something to say about how it read
+        # the file
+        return _done_notes_notice(job)
     # Only an import whose rows these are: one still running, or one that
     # failed or was cancelled and left its partial table. Not one that
     # failed because this table was there already, or created no table
@@ -406,6 +438,13 @@ def top_table(datasette, request, database, table):
         )
 
     return inner
+
+
+def _done_notes_notice(job):
+    return markupsafe.Markup(
+        '<div class="imports-notice message-info">'
+        f"<p>Notes from importing this table:</p>{_notes_html(job.notes)}</div>"
+    )
 
 
 @hookimpl

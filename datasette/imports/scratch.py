@@ -284,6 +284,8 @@ class LoadedTable:
     widenings: list = dataclasses.field(default_factory=list)
     #: Kept from an earlier load in this --reload session, not loaded again
     reused: bool = False
+    #: The loader's notes about how it read the file (``LoadResult.notes``)
+    notes: list = dataclasses.field(default_factory=list)
 
 
 def sniff(source: Source, loaders=None):
@@ -506,6 +508,7 @@ async def _load_new_table(db, source, batch_size, sample_size, progress, exclusi
         created=imported.created,
         types=imported.types,
         widenings=list(imported.widenings),
+        notes=list(result.notes),
     )
 
 

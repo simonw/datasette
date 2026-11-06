@@ -1121,6 +1121,7 @@ class _DataImport:
                     rows=job.rows,
                     seconds=job.seconds or 0.0,
                     widenings=list(job.widenings),
+                    notes=list(job.notes),
                 )
             )
 
@@ -1231,8 +1232,9 @@ def _describe_loaded(loaded, where=""):
             f"Kept table {loaded.table}{where} from the previous load: "
             f"{loaded.source.label} has not changed"
         )
+    notes = "".join(f"\n  note: {note}" for note in loaded.notes)
     if not loaded.created:
-        return f"{loaded.source.label} has no rows, so no table was created"
+        return f"{loaded.source.label} has no rows, so no table was created{notes}"
     line = (
         f"Loaded {loaded.rows:,} row{'' if loaded.rows == 1 else 's'} from "
         f"{loaded.source.label} ({loaded.loader}) "
@@ -1243,7 +1245,7 @@ def _describe_loaded(loaded, where=""):
             f"\n  column {widening.column} changed from {widening.from_type} to "
             f"{widening.to_type} at row {widening.at_row + 1:,}"
         )
-    return line
+    return line + notes
 
 
 def _prepare_import(

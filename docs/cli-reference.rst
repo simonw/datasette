@@ -88,6 +88,17 @@ Use ``--internal PATH`` or the ``DATASETTE_INTERNAL`` environment variable to pe
 
       Serve up specified SQLite database files with a web UI
 
+      FILES can also be CSV, TSV, JSON or newline-delimited JSON files, http:// or
+      https:// URLs, or - for standard input. These are loaded into a temporary
+      read-only database called scratch, or into the --save file. Use name:source to
+      pick a table name and source:csv (or tsv, json, ndjson) to skip format
+      detection.
+
+      Examples:
+          datasette events.csv stats.json
+          some-command | datasette -
+          datasette events:https://example.com/a.csv --save data.db
+
     Options:
       -i, --immutable PATH            Database files to open in immutable mode
       -h, --host TEXT                 Host for server. Defaults to 127.0.0.1 which
@@ -140,6 +151,9 @@ Use ``--internal PATH`` or the ``DATASETTE_INTERNAL`` environment variable to pe
       --ssl-certfile TEXT             SSL certificate file
       --internal PATH                 Path to a persistent Datasette internal SQLite
                                       database
+      --save FILE                     Load CSV, TSV, JSON, URL and stdin inputs into
+                                      this SQLite file, created if needed, instead
+                                      of a temporary scratch database
       --help                          Show this message and exit.
 
 

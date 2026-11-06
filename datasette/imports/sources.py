@@ -13,8 +13,10 @@ Argument syntax: ``[table:]source[:format]``
   (``stdin`` also works, as it does for ``sqlite-utils memory``) for
   standard input.
 - ``table:`` sets the table name. A ``:`` followed by ``//`` belongs to a
-  URL (``https://...``) and a single letter followed by ``:\\`` or ``:/`` is
-  a Windows drive (``C:\\data.csv``), so neither is a table name.
+  URL (``https://...``) and a single letter followed by ``:\\`` is a
+  Windows drive (``C:\\data.csv``), so neither is a table name. On Windows
+  a letter followed by ``:/`` is a drive too; elsewhere ``t:/data/a.csv``
+  is table ``t`` from ``/data/a.csv``.
 - ``:format`` names the loader to use instead of sniffing the content, for
   example ``data.txt:csv`` or ``-:ndjson``. It is only recognized when the
   text after the last ``:`` is the name of a loader (or ``nl`` / ``jsonl``,
@@ -167,12 +169,17 @@ def maybe_source(arg: str) -> bool:
     return ":" in arg
 
 
-def _is_drive(text: str, colon: int) -> bool:
-    # C:\data.csv or C:/data.csv - one letter, a colon, then a slash
-    return colon == 1 and text[0].isalpha() and text[2:3] in ("\\", "/")
+def _is_drive(text: str, colon: int, windows: bool) -> bool:
+    # C:\data.csv - one letter, a colon, then a backslash. C:/data.csv only
+    # on Windows: elsewhere t:/data/a.csv is table t from /data/a.csv
+    if colon != 1 or not text[0].isalpha():
+        return False
+    return text[2:3] == "\\" or (windows and text[2:3] == "/")
 
 
-def parse_source(spec: str, formats: Iterable[str] = ()) -> Source:
+def parse_source(
+    spec: str, formats: Iterable[str] = (), *, windows: bool | None = None
+) -> Source:
     """
     Parse ``[table:]source[:format]`` into a :class:`Source`. ``formats`` is
     the set of loader names that a ``:format`` suffix may use. The caller
@@ -196,7 +203,11 @@ def parse_source(spec: str, formats: Iterable[str] = ()) -> Source:
     index = rest.find(":")
     if index != -1 and not rest[index + 1 :].startswith("//"):
         candidate = rest[:index]
-        if not _is_drive(rest, index) and not ("/" in candidate or "\\" in candidate):
+        if windows is None:
+            windows = os.name == "nt"
+        if not _is_drive(rest, index, windows) and not (
+            "/" in candidate or "\\" in candidate
+        ):
             if not candidate.strip():
                 raise SourceError(f"{spec}: the table name before ':' is empty")
             name, rest = candidate.strip(), rest[index + 1 :]

@@ -1166,9 +1166,9 @@ def _prepare_import(ds, source_args, save, reload, reloader, memory):
         ds.add_database(db, name=SCRATCH_NAME)
         db.save_command = save_command(sources)
         db.from_stdin = any(source.kind == "stdin" for source in sources)
-        if "_memory" in ds.databases and not memory and not ds.crossdb:
-            # Datasette adds _memory when no database files are given
-            ds.remove_database("_memory")
+    if "_memory" in ds.databases and not memory and not ds.crossdb:
+        # Datasette adds _memory when no database files are given
+        ds.remove_database("_memory")
     return _DataImport(db, sources, plan, session, target_path, workdir)
 
 

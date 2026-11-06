@@ -412,7 +412,12 @@ def top_table(datasette, request, database, table):
     if job is not None and job.state == "done" and job.table_exists and job.notes:
         # Complete, but the loader had something to say about how it read
         # the file
-        return _done_notes_notice(job)
+        return _done_notes_notice(job.notes)
+    if job is None:
+        # Loaded before Datasette served anything (--get)
+        notes = _loaded_notes(datasette, database, table)
+        if notes:
+            return _done_notes_notice(notes)
     # Only an import whose rows these are: one still running, or one that
     # failed or was cancelled and left its partial table. Not one that
     # failed because this table was there already, or created no table
@@ -440,11 +445,24 @@ def top_table(datasette, request, database, table):
     return inner
 
 
-def _done_notes_notice(job):
+def _done_notes_notice(notes):
     return markupsafe.Markup(
         '<div class="imports-notice message-info">'
-        f"<p>Notes from importing this table:</p>{_notes_html(job.notes)}</div>"
+        f"<p>Notes from importing this table:</p>{_notes_html(notes)}</div>"
     )
+
+
+def _loaded_notes(datasette, database, table):
+    "The notes of the scratch table ``table`` loaded without the registry."
+    from datasette.imports.scratch import is_scratch
+
+    db = datasette.databases.get(database)
+    if db is None or not is_scratch(db):
+        return []
+    for loaded in reversed(db.loaded):
+        if loaded.table == table:
+            return loaded.notes
+    return []
 
 
 @hookimpl

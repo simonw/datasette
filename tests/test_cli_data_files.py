@@ -358,6 +358,22 @@ def test_stderr_summary_has_the_loaders_notes(data_dir):
     assert result.stderr.count("Importing the 2 objects") == 1
 
 
+def test_get_table_page_shows_the_loaders_notes(data_dir):
+    path = data_dir / "api.json"
+    path.write_text(json.dumps({"total": 2, "results": [{"a": 1}, {"a": 2}]}))
+    result = run([str(path), "--get", "/scratch/api"])
+    assert result.exit_code == 0
+    assert "Notes from importing this table:" in result.stdout
+    assert (
+        "<li>Importing the 2 objects in &#39;results&#39;, ignoring &#39;total&#39;"
+        in result.stdout
+    )
+    # No notes, no notice
+    result = run([str(data_dir / "dogs.csv"), "--get", "/scratch/dogs"])
+    assert result.exit_code == 0
+    assert "imports-notice" not in result.stdout
+
+
 def test_only_scratch_database(data_dir):
     databases = get_json([str(data_dir / "dogs.csv")], "/-/databases.json")
     assert [db["name"] for db in databases["databases"]] == ["scratch"]

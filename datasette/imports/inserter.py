@@ -21,8 +21,8 @@ already stored have to become text: that is done a slice of rows at a time,
 by each following write (about 50ms of it each) and then by
 :meth:`TypedInserter.convert` calls of their own, so no single transaction
 holds the write lock for long however big the table is. Until it is done,
-readers can see numbers in some rows of a column that is declared ``TEXT``
-(see :class:`TypedInserter`).
+readers can see numbers in some rows of that column, which is declared
+``BLOB`` meanwhile (see :class:`TypedInserter`).
 
 :class:`TypedInserter` is the synchronous core. It works on a plain
 ``sqlite3.Connection`` supplied by the caller and never commits itself, so
@@ -463,14 +463,17 @@ class TypedInserter:
           transaction each, until none are left) and :meth:`finish`
           converts whatever remains. So the write lock is never held for
           long - but until the backlog is gone, readers see numbers (``5``,
-          ``1.5``) in not yet converted rows of a column declared ``TEXT``,
-          where the finished table has text (``'5'``, ``'1.50'``). A query
-          can notice: ``typeof()``; ``=``, ``<`` or ``IN`` against text,
-          which never matches a number (``?col=5`` in Datasette, and
-          facets, which count ``5`` and ``'5'`` apart); ``ORDER BY``, which
-          sorts numbers before all text; the JSON type of the value. The
-          table itself is complete and consistent in every committed
-          transaction, and the result after :meth:`finish` is the same.
+          ``1.5``) in not yet converted rows, where the finished table has
+          text (``'5'``, ``'1.50'``), and the column is declared ``BLOB``
+          (no affinity: SQLite's integrity_check reports a number in a
+          TEXT column as an error), then ``TEXT``. A query can notice:
+          ``typeof()``; ``=``, ``<`` or ``IN`` against text, which never
+          matches a number (``?col=5`` in Datasette, and facets, which
+          count ``5`` and ``'5'`` apart); ``ORDER BY``, which sorts numbers
+          before all text; the JSON type of the value; the declared type.
+          The table is complete, and passes integrity_check, in every
+          committed transaction, and the result after :meth:`finish` is the
+          same as with any other strategy.
         - ``"schema"``: edit in place, with one ``UPDATE`` converting every
           stored number when widening to text, in the transaction that
           widens - which for millions of rows holds the write lock for
@@ -486,9 +489,10 @@ class TypedInserter:
         widens, if the connection refuses ``PRAGMA writable_schema``
         (``SQLITE_DBCONFIG_DEFENSIVE``) or the table has been changed by
         someone else (indexes, triggers, an edited definition). A rebuild
-        copies every row, holding the write lock for about as long as
-        inserting them took in the first place: seconds for millions of
-        rows, once per widening.
+        copies every row in one transaction, once per widening (a chunk
+        that widens several columns rebuilds once): on big-1gb.csv's 10
+        columns that measured 0.8-1.3s at 1M rows and 9-15s, COMMIT
+        included, at 5.7M - the write lock held throughout.
     :param convert_rows: rows per slice of the conversion to text, instead
         of sizing slices to take about ``CONVERT_SECONDS``
     """

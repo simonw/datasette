@@ -8,10 +8,13 @@ because shared-cache memory fails with "database table is locked" as soon
 as anything reads while an import writes. It is read-only for everyone
 except the import itself: see ``datasette/imports/default_hooks.py``.
 
-:func:`load_source` loads one source into one new table through
-``db.execute_write_fn()`` (so ``write_wrapper`` plugins see every chunk) and
-is the unit a background task can run. :func:`load_sources` loads several,
-all or nothing, for the command line.
+:func:`load_sources` and :func:`load_source` are the ``--get`` path, which
+loads every input before answering: all or nothing, on the write thread
+(``exclusive=True``, one ``db.execute_write_fn()`` call per input). While
+Datasette serves, inputs and uploads load as background imports instead,
+through :mod:`datasette.imports.background` and the worker subprocess -
+not through these. (``exclusive=False``, a write per chunk while parsing
+runs in an executor thread, is only used by tests.)
 """
 
 import asyncio
@@ -458,17 +461,21 @@ async def load_source(
     when that conversion is under way (``status.finishing``) and how much
     of it is left (``status.backlog``).
 
-    By default every chunk is its own ``db.execute_write_fn()`` call while
-    the loader runs in an executor thread, so other writes and reads can
-    happen in between: this is the unit of work a background import task
-    runs. ``exclusive=True`` instead parses and writes on the write thread
-    in one ``execute_write_fn()`` call (still committing every chunk).
-    That is about 30% faster - the parsing and writing threads never
-    actually run in parallel (CPU time equals wall time) and splitting the
-    work across them costs extra CPU in every thread - but holds up every
-    other write to ``db`` until it finishes, so it is only for loading
-    before the server starts.
-    ``write_wrapper`` plugins then see one call for the whole load.
+    This is how ``--get`` loads its inputs, through :func:`load_sources`,
+    with ``exclusive=True``: parsing and writing on the write thread in
+    one ``execute_write_fn()`` call (still committing every chunk), which
+    holds up every other write to ``db`` until it finishes, so it is only
+    for loading before the server starts. ``write_wrapper`` plugins see
+    one call for the whole load. Background imports - while Datasette
+    serves - use :mod:`datasette.imports.background` and the worker
+    subprocess instead.
+
+    With ``exclusive=False`` (only used by tests) every chunk is its own
+    ``db.execute_write_fn()`` call while the loader runs in an executor
+    thread, so other writes and reads can happen in between. That is
+    about 30% slower: the parsing and writing threads never actually run
+    in parallel (CPU time equals wall time) and splitting the work across
+    them costs extra CPU in every thread.
     """
     from datasette.imports.sources import fetch, remove_temporary
 

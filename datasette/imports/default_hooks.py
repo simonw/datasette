@@ -9,23 +9,32 @@ Read-only is enforced twice:
    outranks root's instance-wide allow, and a deny for each table outranks
    a table-level allow from configuration. The UI hides the write actions
    and the JSON write API answers 403.
-2. ``write_wrapper`` refuses any write to a scratch database that the
-   import process did not make itself, which also covers code that skips
-   permission checks: trusted stored queries from configuration, plugins
-   writing directly, ``skip_permission_checks``.
+2. ``write_wrapper`` refuses any write through ``execute_write()``,
+   ``execute_write_script()``, ``execute_write_many()`` or
+   ``execute_write_fn()`` to a scratch database that the import process did
+   not make itself, which also covers code that skips permission checks:
+   trusted stored queries from configuration, plugins writing through those
+   methods, ``skip_permission_checks``. ``Database.execute_isolated_fn()``
+   opens a write connection of its own that ``write_wrapper`` does not
+   see, so it is not covered; nothing reachable over HTTP runs user SQL
+   through it (``analyze_sql`` uses it for an ``EXPLAIN`` and a
+   ``CREATE VIEW`` that is rolled back, which refusing would break).
 
 ``top_database`` shows, on the scratch database page, the ``--save``
-command that would load the same data into a file.
+command that would load the same data into a file, to actors who may view
+every table it loads.
 
 Background imports (:mod:`datasette.imports.background`):
 
 - ``top_homepage``, ``top_database`` and ``top_table`` show a notice for
   each import that is still running, and for each one that failed or was
   cancelled (its table is incomplete), with the loader's notes about how
-  it read the file. The table page also shows those notes once its import
-  is done. While anything is running, a little script polls
-  ``/-/imports.json`` every second and updates the text and the notes; it
-  stops when nothing is running.
+  it read the file - on the homepage and database page not for one whose
+  rows were removed again (an upload), and at most the newest
+  ``MAX_FINISHED_NOTICES`` finished ones. The table page also shows those
+  notes once its import is done. While anything is running, a little
+  script polls ``/-/imports.json`` every second and updates the notices;
+  it stops when nothing is running.
 - ``/-/imports`` and ``/-/imports.json`` list the imports the actor can see:
   those into tables they have ``view-table`` for.
 - ``POST /DATABASE/TABLE/-/cancel-import`` cancels one, for actors with the

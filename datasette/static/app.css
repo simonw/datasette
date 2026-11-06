@@ -3480,6 +3480,52 @@ select.table-create-input {
     font-style: italic;
 }
 
+.table-create-upload[hidden],
+.table-create-upload-progress[hidden],
+.table-create-upload-alternative[hidden] {
+    display: none;
+}
+
+.table-create-upload {
+    display: grid;
+    gap: 10px;
+}
+
+.table-create-upload-summary {
+    color: var(--ink);
+    font-size: 0.9rem;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.table-create-upload-format-field {
+    display: grid;
+    grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
+    gap: 12px;
+    align-items: center;
+}
+
+.table-create-upload-note,
+.table-create-upload-alternative,
+.table-create-upload-status {
+    color: var(--muted);
+    font-size: 0.82rem;
+    margin: 0;
+}
+
+.table-create-upload-alternative .button-as-link {
+    font: inherit;
+}
+
+.table-create-upload-progress {
+    display: grid;
+    gap: 4px;
+}
+
+.table-create-upload-progress-bar {
+    width: 100%;
+}
+
 .table-create-column-list {
     display: grid;
     gap: 8px;
@@ -4359,7 +4405,8 @@ select.table-alter-input {
         padding-top: 0;
     }
 
-    .table-create-data-pk-field {
+    .table-create-data-pk-field,
+    .table-create-upload-format-field {
         grid-template-columns: 1fr;
         gap: 5px;
     }

@@ -523,6 +523,8 @@ def test_create_table_flow(page, datasette_server):
 
 @pytest.mark.playwright
 def test_create_table_from_data_flow(page, datasette_server):
+    from playwright.sync_api import expect
+
     page.goto(f"{datasette_server}data")
     page.locator("details.actions-menu-links summary").click()
     page.locator('button[data-database-action="create-table"]').click()
@@ -559,16 +561,25 @@ def test_create_table_from_data_flow(page, datasette_server):
     )
 
     textarea = dialog.locator(".table-create-data-textarea")
-    dropped_value = textarea.evaluate("""node => new Promise((resolve) => {
-            node.addEventListener("input", () => resolve(node.value), { once: true });
+    textarea.evaluate("""node => {
             const file = new File(["short_id,name\\nx,Ada"], "Repo Export 2026!!.CSV", { type: "text/csv" });
             const dataTransfer = new DataTransfer();
             dataTransfer.items.add(file);
             node.dispatchEvent(new DragEvent("dragenter", { bubbles: true, cancelable: true, dataTransfer }));
             node.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer }));
             node.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
-        })""")
-    assert dropped_value == "short_id,name\nx,Ada"
+        }""")
+    # Uploads are available on this server, so a dropped file is offered
+    # for import on the server first (see test_create_table_upload_flow);
+    # a small one can still be read into the textarea instead
+    upload_panel = dialog.locator(".table-create-upload")
+    upload_panel.wait_for()
+    assert dialog.locator(".table-create-table-name").input_value() == (
+        "Repo_Export_2026"
+    )
+    dialog.locator(".table-create-upload-edit").click()
+    assert upload_panel.is_hidden()
+    expect(textarea).to_have_value("short_id,name\nx,Ada")
     assert dialog.locator(".table-create-table-name").input_value() == (
         "repo_export_2026"
     )
@@ -631,6 +642,237 @@ def test_create_table_from_data_flow(page, datasette_server):
         {"short_id": "b", "name": "Ada", "score": 1},
         {"short_id": "c", "name": "Bob", "score": 2.5},
     ]
+
+
+def wait_for_import(datasette_server, table, timeout=30):
+    deadline = time.monotonic() + timeout
+    while True:
+        response = httpx2.get(
+            f"{datasette_server}-/imports.json",
+            params={"database": "data", "table": table},
+        )
+        response.raise_for_status()
+        imports = response.json()["imports"]
+        if imports and imports[-1]["state"] not in ("queued", "importing"):
+            return imports[-1]
+        assert time.monotonic() < deadline, imports
+        time.sleep(0.1)
+
+
+@pytest.mark.playwright
+def test_create_table_upload_flow(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(f"{datasette_server}data")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-database-action="create-table"]').click()
+    dialog = page.locator("#table-create-dialog")
+    dialog.wait_for()
+    dialog.locator(".table-create-from-data").click()
+    file_input = dialog.locator(".table-create-data-file-input")
+    # Formats are detected from the content, and plugins can add more, so
+    # the file chooser offers every file
+    assert file_input.get_attribute("accept") is None
+
+    # A file whose table exists already: the server's error is shown
+    file_input.set_input_files(
+        files=[
+            {
+                "name": "projects.csv",
+                "mimeType": "text/csv",
+                "buffer": b"id,title\n1,One\n",
+            }
+        ]
+    )
+    upload_panel = dialog.locator(".table-create-upload")
+    expect(upload_panel).to_be_visible()
+    assert dialog.locator(".table-create-data-editor").is_hidden()
+    assert dialog.locator(".table-create-save").inner_text() == "Import file"
+    assert dialog.locator(".table-create-cancel").inner_text() == "Back"
+    dialog.locator(".table-create-save").click()
+    error = dialog.locator(".table-create-error")
+    expect(error).to_have_text(
+        "Table 'projects' already exists in data: choose another table name"
+    )
+    assert upload_panel.is_visible()
+    # Back to the textarea
+    dialog.locator(".table-create-cancel").click()
+    expect(upload_panel).to_be_hidden()
+    assert dialog.locator(".table-create-data-textarea").is_visible()
+    assert dialog.locator(".table-create-cancel").inner_text() == "Cancel"
+
+    rows = "".join(f"{i},name {i},{i}.5\n" for i in range(1, 2001))
+    content = ("id,name,score\n" + rows).encode()
+    file_input.set_input_files(
+        files=[
+            {
+                "name": "Upload Test (2026).csv",
+                "mimeType": "text/csv",
+                "buffer": content,
+            }
+        ]
+    )
+    expect(upload_panel).to_be_visible()
+    table_name = dialog.locator(".table-create-table-name")
+    assert table_name.input_value() == "Upload_Test_2026"
+    summary = dialog.locator(".table-create-upload-summary")
+    size = f"{len(content) / 1024:.1f} KB"
+    expect(summary).to_have_text(
+        f"Import Upload Test (2026).csv ({size}) as table Upload_Test_2026"
+    )
+    formats = dialog.locator(".table-create-upload-format option")
+    assert formats.first.inner_text() == "Detect automatically"
+    assert "Comma-separated values (also semicolon or pipe separated) (csv)" in (
+        formats.all_inner_texts()
+    )
+    table_name.fill("playwright_uploaded")
+    expect(summary).to_contain_text("as table playwright_uploaded")
+    dialog.locator(".table-create-upload-format").select_option("csv")
+    dialog.locator(".table-create-save").click()
+    # Off to the table page, which says how the import is getting on
+    page.wait_for_url("**/data/playwright_uploaded")
+    job = wait_for_import(datasette_server, "playwright_uploaded")
+    assert job["state"] == "done", job
+    assert job["loader"] == "csv"
+    assert job["rows"] == 2000
+    assert job["source"] == "Upload Test (2026).csv"
+    page.reload()
+    assert "playwright_uploaded" in page.locator("h1").inner_text()
+    response = httpx2.get(
+        f"{datasette_server}data/playwright_uploaded.json",
+        params={"_shape": "objects", "_size": 2},
+    )
+    response.raise_for_status()
+    assert response.json()["rows"] == [
+        {"rowid": 1, "id": 1, "name": "name 1", "score": 1.5},
+        {"rowid": 2, "id": 2, "name": "name 2", "score": 2.5},
+    ]
+
+
+@pytest.mark.playwright
+def test_create_table_upload_progress_and_stop(page, browser_name, datasette_server):
+    from playwright.sync_api import expect
+
+    if browser_name != "chromium":
+        pytest.skip("Throttles the upload with the Chrome DevTools Protocol")
+    page.goto(f"{datasette_server}data")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-database-action="create-table"]').click()
+    dialog = page.locator("#table-create-dialog")
+    dialog.wait_for()
+    dialog.locator(".table-create-from-data").click()
+    # 2MB at 100KB a second: long enough to watch, and to stop
+    content = b"n\n" + b"12345\n" * (2 * 1024 * 1024 // 6)
+    dialog.locator(".table-create-data-file-input").set_input_files(
+        files=[{"name": "slow.csv", "mimeType": "text/csv", "buffer": content}]
+    )
+    cdp = page.context.new_cdp_session(page)
+    cdp.send("Network.enable")
+    cdp.send(
+        "Network.emulateNetworkConditions",
+        {
+            "offline": False,
+            "latency": 0,
+            "downloadThroughput": -1,
+            "uploadThroughput": 100 * 1024,
+        },
+    )
+    dialog.locator(".table-create-save").click()
+    status = dialog.locator(".table-create-upload-status")
+    expect(status).to_contain_text("Uploading")
+    expect(status).to_contain_text(" of 2.0 MB)")
+    assert dialog.locator(".table-create-save").inner_text() == "Uploading..."
+    assert dialog.locator(".table-create-save").is_disabled()
+    stop = dialog.locator(".table-create-cancel")
+    assert stop.inner_text() == "Stop upload"
+    # Escape does not close the dialog while uploading
+    page.keyboard.press("Escape")
+    assert dialog.evaluate("node => node.open")
+    stop.click()
+    expect(dialog.locator(".table-create-error")).to_have_text("Upload stopped.")
+    assert dialog.locator(".table-create-save").inner_text() == "Import file"
+    assert dialog.locator(".table-create-cancel").inner_text() == "Back"
+    assert dialog.locator(".table-create-upload-progress").is_hidden()
+    response = httpx2.get(f"{datasette_server}data/slow.json")
+    assert response.status_code == 404
+
+
+@pytest.mark.playwright
+def test_create_table_upload_cannot_be_stopped_once_sent(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(f"{datasette_server}data")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-database-action="create-table"]').click()
+    dialog = page.locator("#table-create-dialog")
+    dialog.wait_for()
+    dialog.locator(".table-create-from-data").click()
+    dialog.locator(".table-create-data-file-input").set_input_files(
+        files=[
+            {
+                "name": "sent.csv",
+                "mimeType": "text/csv",
+                "buffer": b"id,name\n1,One\n2,Two\n",
+            }
+        ]
+    )
+    # Delay the answer by a few seconds after all of the file has been
+    # sent, as while the server saves and checks a large file
+    cdp = page.context.new_cdp_session(page)
+    cdp.send("Network.enable")
+    cdp.send(
+        "Network.emulateNetworkConditions",
+        {
+            "offline": False,
+            "latency": 3000,
+            "downloadThroughput": -1,
+            "uploadThroughput": -1,
+        },
+    )
+    dialog.locator(".table-create-save").click()
+    status = dialog.locator(".table-create-upload-status")
+    expect(status).to_have_text("Uploaded, starting the import...")
+    # The server imports a file it has received whether or not the browser
+    # waits for its answer, so stopping is no longer offered
+    stop = dialog.locator(".table-create-cancel")
+    assert stop.inner_text() == "Stop upload"
+    expect(stop).to_be_disabled()
+    progress = dialog.locator(".table-create-upload-progress-bar")
+    assert progress.evaluate("node => node.value") == 100
+    # A click does nothing: the upload is not stopped and no error is shown
+    stop.click(force=True)
+    assert dialog.locator(".table-create-error").is_hidden()
+    page.wait_for_url("**/data/sent")
+    job = wait_for_import(datasette_server, "sent")
+    assert (job["state"], job["rows"]) == ("done", 2)
+
+
+@pytest.mark.playwright
+def test_create_table_upload_rejected_file(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(f"{datasette_server}data")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-database-action="create-table"]').click()
+    dialog = page.locator("#table-create-dialog")
+    dialog.wait_for()
+    dialog.locator(".table-create-from-data").click()
+    dialog.locator(".table-create-data-file-input").set_input_files(
+        files=[
+            {
+                "name": "mystery.bin",
+                "mimeType": "application/octet-stream",
+                "buffer": bytes(range(256)) * 4,
+            }
+        ]
+    )
+    dialog.locator(".table-create-save").click()
+    expect(dialog.locator(".table-create-error")).to_contain_text(
+        "Could not import mystery.bin: it does not look like any format"
+    )
+    # Nothing to wait for, and the dialog can be used again
+    assert dialog.locator(".table-create-save").is_enabled()
+    assert dialog.locator(".table-create-save").inner_text() == "Import file"
 
 
 @pytest.mark.playwright

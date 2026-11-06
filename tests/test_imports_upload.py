@@ -233,7 +233,7 @@ def stalling_imports(ds, tmp_path, monkeypatch):
             sample_size=2,
             batch_size=2,
             use_worker=True,
-            worker_options={"argv": [sys.executable, str(script)]},
+            worker_options={"_argv": [sys.executable, str(script)]},
         )
         return start(*args, **kwargs)
 

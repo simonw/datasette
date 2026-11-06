@@ -321,7 +321,7 @@ def _cancel_question(job):
         outcome = "The rows imported so far will be removed."
     else:
         outcome = (
-            "The rows imported so far will be kept, and the table marked " "incomplete."
+            "The rows imported so far will be kept, and the table marked incomplete."
         )
     return f"Stop importing {job.table}? {outcome}"
 
@@ -664,8 +664,9 @@ async def _save_banner(datasette, actor, db, database, jobs):
     if jobs:
         names = [
             job.table
-            for job in await _visible(datasette, actor, jobs)
-            if job.table_exists
+            for job in await _visible(
+                datasette, actor, [job for job in jobs if job.table_exists]
+            )
         ]
     else:
         names = [

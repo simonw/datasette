@@ -80,6 +80,9 @@ logger = logging.getLogger(__name__)
 # Clean ups that import_rows() left running after it raised, kept here so
 # they are not garbage collected before they finish
 _BACKGROUND_TASKS = set()
+# How long the conversion that a cancelled import_rows() leaves running in
+# the background waits for the cancelled task to finish first (see there)
+_HANDOFF_SECONDS = 1.0
 
 INTEGER = "integer"
 FLOAT = "float"
@@ -2014,11 +2017,13 @@ async def import_rows(
     With ``on_error="keep"`` and stored numbers left to convert (a late
     widening to text, about 2.4s of work per million rows of big-1gb.csv),
     the conversion carries on in the background, a slice per write as
-    before: ``status.done`` becomes True, and :meth:`ImportStatus.wait`
-    returns, when it is over. Each slice first checks that the table is
-    still the one this import wrote, so the caller can drop it meanwhile
-    (that stops the conversion) - but use ``on_error="drop"`` rather than
-    dropping it yourself, which converts nothing.
+    before, starting once the cancelled task has finished (or after a
+    second, if it carries on): ``status.done`` becomes True, and
+    :meth:`ImportStatus.wait` returns, when it is over. Each slice first
+    checks that the table is still the one this import wrote, so the
+    caller can drop it meanwhile (that stops the conversion) - but pass
+    ``on_error="drop"`` rather than dropping it yourself, which saves a
+    write.
     """
     if on_error not in ON_ERROR:
         raise ValueError(f"on_error must be one of {ON_ERROR}")
@@ -2123,8 +2128,17 @@ async def import_rows(
             status.backlog = inserter.backlog
         return await db.execute_write_fn(guarded(inserter.finish))
 
-    async def complete_in_background():
+    async def complete_in_background(caller):
         try:
+            if caller is not None and not caller.done():
+                # Let the cancelled task finish its own clean up first: it
+                # may drop the table (which leaves nothing to convert), and
+                # its writes would otherwise queue behind slices. Cancelling
+                # a worker import at 1.9M rows took 200-250ms (keep) and
+                # 410-430ms (drop) without this, 125-135ms and 235-250ms
+                # with it. A task can carry on after a cancellation, so not
+                # for long
+                await asyncio.wait([caller], timeout=_HANDOFF_SECONDS)
             if not await complete():
                 # Most likely the caller dropped it, as it may
                 logger.debug(
@@ -2147,7 +2161,7 @@ async def import_rows(
             update_status()
             status._set_done()
 
-    async def clean_up(cancelled):
+    async def clean_up(cancelled, caller):
         """
         Returns once the caller can be told: after a cancellation that
         leaves stored numbers to convert, the rest carries on in the
@@ -2165,7 +2179,9 @@ async def import_rows(
                     status.dropped = True
                 elif inserter.created:
                     if cancelled and inserter._conversion_left():
-                        handed_off = asyncio.ensure_future(complete_in_background())
+                        handed_off = asyncio.ensure_future(
+                            complete_in_background(caller)
+                        )
                         _BACKGROUND_TASKS.add(handed_off)
                         handed_off.add_done_callback(_BACKGROUND_TASKS.discard)
                         return handed_off
@@ -2207,7 +2223,7 @@ async def import_rows(
             # take a while to send them
             pending.cancel()
         cleaning = asyncio.ensure_future(
-            clean_up(isinstance(ex, asyncio.CancelledError))
+            clean_up(isinstance(ex, asyncio.CancelledError), asyncio.current_task())
         )
         try:
             await asyncio.shield(cleaning)

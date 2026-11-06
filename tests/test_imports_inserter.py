@@ -1978,6 +1978,51 @@ async def test_cancel_during_a_long_backlog_returns_at_once(slow_writes, on_erro
 
 
 @pytest.mark.asyncio
+async def test_background_finish_waits_for_the_cancelled_caller(slow_writes):
+    # The cancelled task's own clean up goes first - here it drops the
+    # table, so nothing is converted at all
+    slow_writes.seconds = 0.005
+    ds = Datasette()
+    db = ds.add_memory_database(uuid.uuid4().hex, name="scratch")
+    status = inserter_module.ImportStatus()
+    seen = {}
+    cancel = asyncio.Event()
+
+    async def progress(written):
+        if written == 301:
+            cancel.set()
+
+    async def caller():
+        try:
+            await import_rows(
+                db,
+                "t",
+                _backlog_rows(300),
+                sample_size=300,
+                batch_size=1,
+                convert_rows=2,
+                progress=progress,
+                status=status,
+            )
+        except asyncio.CancelledError:
+            seen["backlog"] = status.backlog
+            await asyncio.sleep(0.05)
+            await db.execute_write("drop table t")
+            raise
+
+    task = asyncio.ensure_future(caller())
+    await cancel.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await asyncio.wait_for(status.wait(), 10)
+    assert seen["backlog"] > 250
+    assert status.backlog == seen["backlog"]
+    assert not await db.table_exists("t")
+    assert await _temp_tables(db) == []
+
+
+@pytest.mark.asyncio
 async def test_background_finish_leaves_a_replaced_table_alone(slow_writes):
     # After a cancelled import raised, its caller may drop the table - and
     # another import may create one by the same name. The conversion that

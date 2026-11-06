@@ -496,14 +496,13 @@ def _grow_pipe(process, size):
     answering requests an iteration can take tens of milliseconds, so the
     import could take only 64KB per iteration. With 1MB it takes up to
     asyncio's 256KB. With the event loop blocked for 10ms per iteration
-    (GIL free), 100,000 rows went from 16,500 to 37,000 rows/s
-    (prototypes/data_csv/bench_background_pipe.py). On a real server under
-    four clients requesting without pause it made no measurable
-    difference: a 1M row import took 40.3, 41.6 and 44.4s with 64KB against
-    42.1, 43.5 and 45.6s with 1MB, runs interleaved (bench_background_load.py
-    --small-pipe). There the import is held up by the GIL - the write
-    thread and the pages being rendered take turns - not by the pipe. It
-    costs 1MB of kernel memory per worker.
+    (GIL free), 100,000 rows went from 16,500 to 37,000 rows/s. On a real
+    server under four clients requesting without pause it made no
+    measurable difference: a 1M row import took 40.3, 41.6 and 44.4s with
+    64KB against 42.1, 43.5 and 45.6s with 1MB, runs interleaved. There the
+    import is held up by the GIL - the write thread and the pages being
+    rendered take turns - not by the pipe. It costs 1MB of kernel memory
+    per worker.
     """
     if not size:
         return

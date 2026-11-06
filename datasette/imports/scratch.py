@@ -5,9 +5,8 @@ file).
 ``scratch`` is a SQLite file in WAL mode in the temporary directory, deleted
 when Datasette exits. WAL rather than a shared-cache in-memory database
 because shared-cache memory fails with "database table is locked" as soon
-as anything reads while an import writes (see prototypes/data_csv). It is
-read-only for everyone except the import itself: see
-``datasette/imports/default_hooks.py``.
+as anything reads while an import writes. It is read-only for everyone
+except the import itself: see ``datasette/imports/default_hooks.py``.
 
 :func:`load_source` loads one source into one new table through
 ``db.execute_write_fn()`` (so ``write_wrapper`` plugins see every chunk) and
@@ -421,10 +420,9 @@ async def load_source(
     in one ``execute_write_fn()`` call (still committing every chunk).
     That is about 30% faster - the parsing and writing threads never
     actually run in parallel (CPU time equals wall time) and splitting the
-    work across them costs extra CPU in every thread (see
-    prototypes/data_csv/bench_cli_pipeline.py) - but holds up every other
-    write to ``db`` until it finishes, so it is only for loading before the
-    server starts.
+    work across them costs extra CPU in every thread - but holds up every
+    other write to ``db`` until it finishes, so it is only for loading
+    before the server starts.
     ``write_wrapper`` plugins then see one call for the whole load.
     """
     from datasette.imports.sources import fetch, remove_temporary

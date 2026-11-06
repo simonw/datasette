@@ -522,6 +522,26 @@ async def test_table_not_created_yet_says_so(data_dir):
         await ds.invoke_shutdown()
 
 
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux pipes")
+@pytest.mark.asyncio
+async def test_worker_pipe_is_bigger_than_the_default():
+    import fcntl
+
+    from datasette.imports.subprocess_import import PIPE_SIZE, WorkerProcess
+
+    with open("/proc/sys/fs/pipe-max-size") as fp:  # noqa: ASYNC230
+        if int(fp.read()) < PIPE_SIZE:
+            pytest.skip("pipe-max-size is smaller")
+    worker = WorkerProcess([sys.executable, "-c", "pass"])
+    await worker.start()
+    try:
+        transport = worker.process._transport.get_pipe_transport(1)
+        fd = transport.get_extra_info("pipe").fileno()
+        assert fcntl.fcntl(fd, fcntl.F_GETPIPE_SZ) == PIPE_SIZE
+    finally:
+        await worker.stop()
+
+
 # Downloads and standard input --------------------------------------------------------
 
 
@@ -890,5 +910,8 @@ def test_ctrl_c_while_reading_stdin(tmp_path):
     finally:
         if process.poll() is None:
             process.kill()
-    assert b"Cancelled import of standard input into table stdin" in stderr
+    assert (
+        b"Stopped importing standard input into table stdin, because Datasette "
+        b"is shutting down" in stderr
+    )
     assert list(tmp_path.iterdir()) == []

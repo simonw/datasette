@@ -89,6 +89,9 @@ READ_SIZE = 256 * 1024
 # How much of the end of the worker's stderr to keep for error messages
 STDERR_TAIL = 8 * 1024
 ON_ERROR = ("keep", "drop")
+# Size of the pipe the worker writes rows to, where the system allows it
+# (Linux: up to /proc/sys/fs/pipe-max-size, 1MB by default). See _grow_pipe()
+PIPE_SIZE = 1024 * 1024
 
 # The C scanner json.loads() uses, called directly: it parses one value at
 # a position in a string and says where the value ended
@@ -466,6 +469,32 @@ def worker_command(
     return argv + list(extra_args) + ["--", os.fspath(path)]
 
 
+def _grow_pipe(process, size):
+    """
+    Make the worker's stdout pipe hold ``size`` bytes (Linux only). asyncio
+    reads a pipe once per event loop iteration, and a Linux pipe holds 64KB
+    by default: about 400 rows of a typical CSV. While the server is busy
+    answering requests an iteration can take tens of milliseconds, so the
+    import could take only 64KB per iteration. With 1MB it takes up to
+    asyncio's 256KB. With the event loop blocked for 10ms per iteration
+    (GIL free), 100,000 rows went from 16,500 to 37,000 rows/s
+    (prototypes/data_csv/bench_background_pipe.py); under four clients
+    hammering a real server, a 1M row import went from 50-53s to 38-47s
+    (bench_background_load.py, on a shared machine).
+    """
+    if not size:
+        return
+    try:
+        import fcntl
+
+        transport = process._transport.get_pipe_transport(1)
+        pipe = transport.get_extra_info("pipe")
+        fcntl.fcntl(pipe.fileno(), fcntl.F_SETPIPE_SZ, size)
+    except (ImportError, AttributeError, OSError, ValueError):
+        # Not Linux, or more than /proc/sys/fs/pipe-max-size allows
+        pass
+
+
 class WorkerProcess:
     """
     A running worker subprocess. Reads its stdout through a
@@ -512,6 +541,7 @@ class WorkerProcess:
             start_new_session=True,
             limit=self.read_size,
         )
+        _grow_pipe(self.process, PIPE_SIZE)
         self._stderr_task = asyncio.ensure_future(self._drain_stderr())
         return self
 

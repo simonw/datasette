@@ -624,6 +624,82 @@ def test_retry_after_rollback(widen):
     assert len(inserter.widenings) == 1
 
 
+def _inserts(conn):
+    "Record the INSERT statements run on ``conn`` into table t."
+    statements = []
+
+    def trace(sql):
+        if sql.startswith('INSERT INTO "t"'):
+            statements.append(sql)
+
+    conn.set_trace_callback(trace)
+    return statements
+
+
+def test_a_chunk_is_one_insert_statement():
+    # executemany() would step a statement per row, releasing and taking
+    # back the GIL each time; one multi-row INSERT does it once
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    statements = _inserts(conn)
+    rows = [{"a": str(i), "b": f"x{i}", "c": i * 1.5} for i in range(1000)]
+    insert_rows(conn, "t", rows, sample_size=1000)
+    assert len(statements) == 1
+    assert conn.execute("select count(*), sum(a), max(c) from t").fetchone() == (
+        1000,
+        499500,
+        999 * 1.5,
+    )
+
+
+def test_insert_statements_respect_the_parameter_limit():
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    # Seven parameters: two rows of three columns a statement
+    conn.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 7)
+    statements = _inserts(conn)
+    inserter = TypedInserter("t")
+    inserter.write(conn, [{"a": str(i), "b": "x", "c": "1.5"} for i in range(9)])
+    assert len(statements) == 5
+    # A fourth column: one row a statement, as executemany() does
+    statements.clear()
+    inserter.write(conn, [{"a": "9", "b": "y", "c": "2", "d": "z"}] * 3)
+    assert len(statements) == 3
+    # Wider than the limit allows for two rows
+    statements.clear()
+    conn.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 4)
+    inserter.write(conn, [{"a": "10"}, {"a": "11"}])
+    assert len(statements) == 2
+    inserter.finish(conn)
+    assert conn.execute("select rowid, a, b, d from t order by rowid").fetchall() == [
+        *((i + 1, i, "x", None) for i in range(9)),
+        (10, 9, "y", "z"),
+        (11, 9, "y", "z"),
+        (12, 9, "y", "z"),
+        (13, 10, None, None),
+        (14, 11, None, None),
+    ]
+
+
+def test_retry_without_the_column_a_rolled_back_chunk_added():
+    # The rolled back chunk added a column; the next one does not have it,
+    # so its INSERT must not name it
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    inserter = TypedInserter("t")
+    inserter.write(conn, [{"a": "1"}, {"a": "2"}])
+    snapshot = inserter.snapshot()
+    conn.execute("BEGIN")
+    inserter.write(conn, [{"a": "3", "b": "new"}, {"a": "4", "b": "new"}])
+    conn.execute("ROLLBACK")
+    inserter.restore(snapshot)
+    inserter.write(conn, [{"a": "5"}, {"a": "6"}])
+    inserter.finish(conn)
+    assert conn.execute("select * from t order by rowid").fetchall() == [
+        (1,),
+        (2,),
+        (5,),
+        (6,),
+    ]
+
+
 def test_write_that_raises_leaves_state_unchanged():
     conn = sqlite3.connect(":memory:", isolation_level=None)
     inserter = TypedInserter("t2")

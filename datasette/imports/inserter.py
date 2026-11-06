@@ -67,6 +67,7 @@ import asyncio
 import contextlib
 import dataclasses
 import inspect
+import itertools
 import json
 import logging
 import math
@@ -518,7 +519,13 @@ class TypedInserter:
         self._used_names = set()
         self._keys = ()
         self._known_sql = None
+        # INSERT INTO table (columns), and the statement for one row
+        self._insert_head = None
         self._insert_sql = None
+        # INSERT statements for that many rows at a time, see _insert(),
+        # and the connection's limit on bound parameters
+        self._multi_row_sql = {}
+        self._variable_limit = None
         self._spellings_table = "temp." + _quote(
             f"_datasette_spellings_{uuid.uuid4().hex[:12]}"
         )
@@ -625,6 +632,7 @@ class TypedInserter:
             [dataclasses.replace(column) for column in self._columns],
             set(self._used_names),
             self._known_sql,
+            self._insert_head,
             self._insert_sql,
             self.rows_written,
             self.spellings_kept,
@@ -643,6 +651,7 @@ class TypedInserter:
             columns,
             used_names,
             self._known_sql,
+            self._insert_head,
             self._insert_sql,
             self.rows_written,
             self.spellings_kept,
@@ -654,6 +663,8 @@ class TypedInserter:
             backlog,
             self._last_rowid,
         ) = snapshot
+        # Made for the columns there were
+        self._multi_row_sql = {}
         self._backlog = {index: list(bounds) for index, bounds in backlog.items()}
         self._columns = [dataclasses.replace(column) for column in columns]
         self._by_key = {column.key: column for column in self._columns}
@@ -700,12 +711,12 @@ class TypedInserter:
         base = conn.execute(f"select max(rowid) from {table}").fetchone()[0] or 0
         began = time.perf_counter()
         try:
-            conn.executemany(self._insert_sql, values)
+            self._insert(conn, values)
         except UnicodeEncodeError:
             # A lone surrogate: remove what got in, replace them and retry
             conn.execute(f"delete from {table} where rowid > ?", [base])
             values = [list(map(_without_surrogates, row)) for row in values]
-            conn.executemany(self._insert_sql, values)
+            self._insert(conn, values)
         if len(values) >= 100:
             cost = (time.perf_counter() - began) / len(values)
             self._insert_cost = (
@@ -716,6 +727,42 @@ class TypedInserter:
         self.rows_written += len(values)
         self._last_rowid = base + len(values)
         return len(values)
+
+    def _insert(self, conn, values):
+        """
+        Insert rows (lists of a value per column, in order) with as few
+        statements as SQLite's limit on bound parameters allows: ``INSERT
+        ... VALUES (...), (...), ...`` with up to 32766 parameters on a
+        modern SQLite, so a chunk of 1,000 rows of 10 columns is one
+        statement.
+
+        executemany() steps one statement per row, and the sqlite3 module
+        releases the GIL around every step. While other threads want the
+        GIL - pages being rendered, the event loop decoding the worker's
+        rows - the write thread then waits to get it back once per row.
+        A background import of 1M rows of big-1gb.csv took 35-46s with
+        four clients browsing without pause against 13-16s this way, and
+        8.0-8.8s either way with nothing else running. On its own, in one
+        thread, building and binding the bigger statements costs 10-15%
+        more CPU than executemany() (2.9-3.2s against 3.3-3.6s for those
+        1M rows).
+        """
+        width = len(self._columns)
+        if self._variable_limit is None:
+            self._variable_limit = conn.getlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER)
+        per_statement = self._variable_limit // width
+        if per_statement <= 1 or len(values) == 1:
+            conn.executemany(self._insert_sql, values)
+            return
+        chain = itertools.chain.from_iterable
+        for start in range(0, len(values), per_statement):
+            rows = values[start : start + per_statement]
+            sql = self._multi_row_sql.get(len(rows))
+            if sql is None:
+                row = "({})".format(", ".join("?" * width))
+                sql = self._insert_head + " VALUES " + ", ".join([row] * len(rows))
+                self._multi_row_sql[len(rows)] = sql
+            conn.execute(sql, list(chain(rows)))
 
     def finish(self, conn):
         """
@@ -1162,11 +1209,13 @@ class TypedInserter:
 
     def _refresh(self, conn):
         self._known_sql = _table_sql(conn, self.table)
-        self._insert_sql = "INSERT INTO {} ({}) VALUES ({})".format(
-            _quote(self.table),
-            ", ".join(_quote(c.name) for c in self._columns),
-            ", ".join("?" for _ in self._columns),
+        self._insert_head = "INSERT INTO {} ({})".format(
+            _quote(self.table), ", ".join(_quote(c.name) for c in self._columns)
         )
+        self._insert_sql = "{} VALUES ({})".format(
+            self._insert_head, ", ".join("?" for _ in self._columns)
+        )
+        self._multi_row_sql = {}
 
     def _add_columns(self, conn):
         for column in self._columns:

@@ -715,6 +715,8 @@ async def display_columns_and_rows(
     }
 
     cell_rows = []
+    # Columns with at least one cell displayed as a link to a foreign key row
+    fk_link_columns = set()
     base_url = datasette.setting("base_url")
     for row in rows:
         cells = []
@@ -841,6 +843,7 @@ async def display_columns_and_rows(
                 )
             elif isinstance(value, dict):
                 # It's an expanded foreign key - display link to other row
+                fk_link_columns.add(column)
                 label = value["label"]
                 value = value["value"]
                 # The table we link to depends on the column
@@ -893,6 +896,9 @@ async def display_columns_and_rows(
             )
         else:
             cell_rows.append(Row(cells))
+
+    for col_dict in columns:
+        col_dict["has_fks"] = col_dict["name"] in fk_link_columns
 
     if link_column:
         # Add the link column header.

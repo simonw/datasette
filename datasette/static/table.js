@@ -455,6 +455,11 @@ function buildColumnActionItems(manager, th, options) {
     });
   }
 
+  // "Expand long values" / "Collapse long values", from table-layout.js
+  if (manager.longValueColumnActions) {
+    columnActions = columnActions.concat(manager.longValueColumnActions(th));
+  }
+
   return columnActions.concat(manager.makeColumnActions(getColumnMeta(th)));
 }
 
@@ -775,7 +780,9 @@ function initAutocompleteForFilterValues(manager) {
     Array.from(facetResults).forEach(function (facetResult) {
       // Use link text from all links in the facet result
       var links = Array.from(
-        facetResult.querySelectorAll("li:not(.facet-truncated) a"),
+        facetResult.querySelectorAll(
+          "li:not(.facet-truncated) a[data-facet-value]",
+        ),
       );
       // Create a datalist element
       var datalist = document.createElement("datalist");

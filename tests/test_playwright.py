@@ -1,5 +1,6 @@
 import base64
 import json
+import re
 import socket
 import subprocess
 import sys
@@ -151,7 +152,20 @@ def write_playwright_database(db_path):
             );
         insert into upsert_items (id, title, metadata) values
             ('existing', 'Existing title', '{"old": true}');
+        create table long_notes (
+            id integer primary key,
+            title text,
+            body text
+        );
         """)
+        conn.execute(
+            "insert into long_notes (title, body) values (?, ?)",
+            ("Long", "\n".join(f"Line {i} of a long note" for i in range(1, 13))),
+        )
+        conn.execute(
+            "insert into long_notes (title, body) values (?, ?)",
+            ("Short", "A short note"),
+        )
         conn.execute(
             "insert into binary_files (name, data) values (?, ?)",
             ("Raw bytes", b"\x00\x01\x02\x03"),
@@ -2301,3 +2315,103 @@ def test_menu_long_plugin_content_and_no_popover_fallback(page, datasette_server
     assert panel.evaluate("node => node.scrollTop > 0")
     page.keyboard.press("Escape")
     expect(panel).not_to_be_visible()
+
+
+@pytest.mark.playwright
+def test_long_values_are_clamped_and_expand(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + "data/long_notes")
+    # Only the twelve-line value is clamped
+    boxes = page.locator("table.rows-and-columns .long-value")
+    expect(boxes).to_have_count(1)
+    assert page.locator("td.col-body").nth(1).inner_text() == "A short note"
+    cell_height = page.locator("td.col-body").first.evaluate(
+        "td => td.getBoundingClientRect().height"
+    )
+    assert cell_height < 100
+
+    toggle = page.locator(".long-value-toggle")
+    expect(toggle).to_have_text("expand")
+    expect(toggle).to_have_attribute("aria-expanded", "false")
+    expect(toggle).to_have_attribute("aria-label", "expand: body, Long")
+    column_toggle = page.locator('th[data-column="body"] .column-expand-toggle')
+    expect(column_toggle).to_have_text("expand all")
+
+    toggle.click()
+    expect(toggle).to_have_text("collapse")
+    expect(toggle).to_have_attribute("aria-expanded", "true")
+    expect(boxes).to_have_class(re.compile(r"\bis-expanded\b"))
+    expect(column_toggle).to_have_text("collapse all")
+    assert (
+        page.locator("td.col-body").first.evaluate(
+            "td => td.getBoundingClientRect().height"
+        )
+        > 200
+    )
+
+    # The column's gear menu can collapse every long value
+    page.locator('th[data-column="body"] .column-menu-trigger').click()
+    page.locator(".column-actions-menu").get_by_text("Collapse long values").click()
+    expect(toggle).to_have_text("expand")
+    expect(column_toggle).to_have_text("expand all")
+
+
+@pytest.mark.playwright
+def test_long_values_are_clamped_on_query_page(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + "data/-/query?sql=select+title,+body+from+long_notes")
+    expect(page.locator("table.rows-and-columns .long-value")).to_have_count(1)
+    expect(page.locator(".long-value-toggle")).to_have_attribute(
+        "aria-label", "expand: body, Long"
+    )
+    expect(page.locator("thead .column-expand-toggle")).to_have_text("expand all")
+
+
+@pytest.mark.playwright
+def test_freeze_pin_on_query_page_freezes_header_only(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + "data/-/query?sql=select+title,+body+from+long_notes")
+    table = page.locator("table.rows-and-columns")
+    # Query results have no primary key: the pin goes in the first header
+    pin = page.locator("thead th").first.locator(".freeze-toggle")
+    expect(pin).to_have_attribute("aria-label", "Freeze the header row")
+    pin.click()
+    expect(pin).to_have_attribute("aria-pressed", "true")
+    expect(table).to_have_attribute("data-freeze", "0")
+    position = "el => getComputedStyle(el).position"
+    assert page.locator("thead th").first.evaluate(position) == "sticky"
+    assert page.locator("tbody td").first.evaluate(position) == "static"
+
+
+@pytest.mark.playwright
+def test_freeze_pin_freezes_header_and_key_column(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(datasette_server + "data/long_notes")
+    table = page.locator("table.rows-and-columns")
+    pin = page.locator('th[data-column="id"] .freeze-toggle')
+    expect(pin).to_have_attribute("aria-pressed", "false")
+    expect(table).not_to_have_attribute("data-freeze", "1")
+
+    pin.click()
+    expect(pin).to_have_attribute("aria-pressed", "true")
+    expect(table).to_have_attribute("data-freeze", "1")
+    assert (
+        page.locator("thead th").first.evaluate("th => getComputedStyle(th).position")
+        == "sticky"
+    )
+    assert page.evaluate("localStorage.getItem('datasette-table-freeze')") == "1"
+
+    # The choice applies to every table, and survives a reload
+    page.goto(datasette_server + "data/projects")
+    expect(page.locator('th[data-column="id"] .freeze-toggle')).to_have_attribute(
+        "aria-pressed", "true"
+    )
+    expect(table).to_have_attribute("data-freeze", "1")
+
+    page.locator('th[data-column="id"] .freeze-toggle').click()
+    expect(table).not_to_have_attribute("data-freeze", "1")
+    assert page.evaluate("localStorage.getItem('datasette-table-freeze')") == "0"

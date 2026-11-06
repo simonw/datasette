@@ -415,6 +415,26 @@ async def test_sort_links(ds_client):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,expected",
+    (
+        # Labels are expanded by default, so _city_id cells link to facet_cities
+        ("/fixtures/facetable", {"_city_id": "1"}),
+        # With labels off the cells are plain numbers
+        ("/fixtures/facetable?_labels=off", {}),
+    ),
+)
+async def test_th_data_has_fks(ds_client, path, expected):
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    ths = Soup(response.text, "html.parser").select("thead th")
+    has_fks = {
+        th["data-column"]: th["data-has-fks"] for th in ths if th.get("data-has-fks")
+    }
+    assert has_fks == expected
+
+
+@pytest.mark.asyncio
 async def test_sort_menu_excludes_unsortable_primary_key():
     # https://github.com/simonw/datasette/issues/1980
     ds = Datasette(
@@ -874,9 +894,45 @@ async def test_table_html_foreign_key_facets(ds_client):
     )
     assert response.status_code == 200
     assert (
-        '<li><a href="http://localhost/fixtures/foreign_key_references?_facet=foreign_key_with_blank_label&amp;foreign_key_with_blank_label=3"'
+        '<li style="--facet-proportion: 50.00%"><a href="http://localhost/fixtures/foreign_key_references?_facet=foreign_key_with_blank_label&amp;foreign_key_with_blank_label=3"'
         ' data-facet-value="3">-</a> <span class="facet-count">1</span></li>'
     ) in response.text
+
+
+@pytest.mark.asyncio
+async def test_facet_proportion_bars(tmp_path):
+    db_path = str(tmp_path / "colors.db")
+    ds = Datasette([db_path])
+    db = ds.get_database("colors")
+    await db.execute_write_script("""
+        create table t (id integer primary key, color text);
+        insert into t (color) values ('red'), ('red'), ('red'), ('blue');
+        """)
+
+    def proportions(html):
+        soup = Soup(html, "html.parser")
+        return [
+            (li.find(["a", "span"]).text, li.get("style"))
+            for li in soup.select('.facet-info[data-column="color"] li')
+        ]
+
+    try:
+        # Each value's share of the rows in the current result set
+        response = await ds.client.get("/colors/t?_facet=color")
+        assert proportions(response.text) == [
+            ("red", "--facet-proportion: 75.00%"),
+            ("blue", "--facet-proportion: 25.00%"),
+        ]
+        # Selected values are measured against the filtered rows
+        response = await ds.client.get("/colors/t?_facet=color&color=red")
+        assert proportions(response.text) == [("red", "--facet-proportion: 100.00%")]
+        # No bars when the total is a capped lower bound
+        db.count_limit = 2
+        response = await ds.client.get("/colors/t?_facet=color&id__gt=0")
+        assert "2+ rows" in response.text
+        assert proportions(response.text) == [("red", None), ("blue", None)]
+    finally:
+        ds.close()
 
 
 @pytest.mark.asyncio

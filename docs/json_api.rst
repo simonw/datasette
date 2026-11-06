@@ -511,7 +511,7 @@ The available table extras are listed below.
         }
 
 ``display_columns``
-    Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type`` and ``column_type_config`` keys.
+    Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type``, ``column_type_config`` and ``has_fks`` keys. ``has_fks`` is true when at least one cell in the column is displayed as a link to a foreign key row.
 
     Shape abbreviated from /fixtures/facetable.json?_size=1&_extra=display_columns.
 

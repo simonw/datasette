@@ -552,38 +552,571 @@ h2 em {
     font-family: monospace;
 }
 
-/* Tables ================================================================== */
+/* Tables ==================================================================
+   Rows-and-columns tables (table, row and query pages) share the design
+   language of the filter panel and modal dialogs:
+   - Tokens: --ink, --paper, --muted, --rule and --accent from
+     dialog.datasette-modal and .filters, plus Datasette's link colours and
+     the column menu's slate.
+   - The filter panel's 8px radius and 1px --rule border for the card.
+   - The modal header band: --paper background separated by a --rule line.
+
+   Layout:
+   - The table sizes to its content (max-content) and scrolls sideways inside
+     the card instead of squeezing columns, so wrappable text such as a JSON
+     array does not collapse into a tall narrow strip.
+   - Every cell is capped at a readable measure and long unbroken values
+     (URLs, hashes) wrap inside it.
+   - Numbers are right aligned with tabular figures; headers of numeric
+     columns follow them, and numeric cells reserve the gear's width so the
+     label still ends exactly where the digits end.
+   - Soft edge shadows appear only when there is more table to scroll to.
+   - table-layout.js clamps long values to a short preview and adds the
+     freeze pin (see "Long values" and "Freeze" below).
+
+   Below 577px the rows become stacked cards: see the max-width: 576px block
+   under Overrides. */
 .table-wrapper {
     overflow-x: auto;
 }
+.table-wrapper,
+table.rows-and-columns {
+    --ink: #0f0f0f;
+    --paper: #eef6ff;
+    --muted: #6b6b6b;
+    --rule: #d8e6f5;
+    --accent: #1a56db;
+    --card: #ffffff;
+    --slate: #536978;
+    --link: #276890;
+    --link-visited: #2d7a62;
+    /* #f3f8ff over white, but translucent so the scroll-edge shadows
+       still show through on the hovered row. */
+    --row-hover: rgba(0, 110, 255, 0.047);
+    --cell-measure: 30rem;
+    --shadow: rgba(30, 64, 110, 0.12);
+}
 table.rows-and-columns {
     border-collapse: collapse;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
 }
 table.rows-and-columns td {
-    border-top: 1px solid #aaa;
-    border-right: 1px solid #eee;
-    padding: 4px;
     vertical-align: top;
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
+/* Primary key: the row's identity. */
 table.rows-and-columns td.type-pk {
-    font-weight: bold;
+    font-weight: 600;
 }
+/* Foreign key ids and similar asides. */
 table.rows-and-columns td em {
+    color: var(--muted);
+    font-size: 0.8125em;
     font-style: normal;
-    font-size: 0.8em;
-    color: #aaa;
 }
-table.rows-and-columns th {
-    padding-right: 1em;
+/* Links keep Datasette's colour and its no-underline table style, with an
+   underline on hover. Visited is darkened from #54AC8E to pass AA. */
+table.rows-and-columns td a:link {
+    color: var(--link);
+    text-decoration: none;
 }
-table.rows-and-columns a:link {
+table.rows-and-columns td a:visited {
+    color: var(--link-visited);
     text-decoration: none;
 }
 .rows-and-columns td ol,
 .rows-and-columns td ul {
     list-style: initial;
     list-style-position: inside;
+}
+
+@media (min-width: 577px) {
+    .table-wrapper:has(> table.rows-and-columns) {
+        box-sizing: border-box;
+        width: fit-content;
+        max-width: 100%;
+        margin: 0 0 1rem;
+        overscroll-behavior-inline: contain;
+        border: 1px solid var(--rule);
+        border-radius: 8px;
+        /* Scroll shadows: the two white covers travel with the content
+           (local), the two shadows stay pinned to the edges (scroll), so a
+           shadow only shows on a side that has more table to reveal. */
+        background:
+            linear-gradient(to right, var(--card) 30%, rgba(255, 255, 255, 0)) left center / 48px 100% no-repeat local,
+            linear-gradient(to left, var(--card) 30%, rgba(255, 255, 255, 0)) right center / 48px 100% no-repeat local,
+            linear-gradient(to right, var(--shadow), rgba(30, 64, 110, 0)) left center / 14px 100% no-repeat scroll,
+            linear-gradient(to left, var(--shadow), rgba(30, 64, 110, 0)) right center / 14px 100% no-repeat scroll,
+            var(--card);
+        box-shadow: 0 1px 2px rgba(15, 40, 70, 0.04);
+    }
+
+    .table-wrapper:has(> table.rows-and-columns):focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+    }
+
+    table.rows-and-columns {
+        width: max-content;
+        min-width: 100%;
+        font-size: 0.875rem;
+        line-height: 1.45;
+    }
+
+    /* Header band */
+
+    table.rows-and-columns th {
+        padding: 0.45rem 0.5rem 0.45rem 0.75rem;
+        border-bottom: 1px solid var(--rule);
+        background: rgba(238, 246, 255, 0.88);
+        color: var(--ink);
+        font-size: 0.8125rem;
+        font-weight: 600;
+        line-height: 1.3;
+        text-align: left;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+
+    /* The narrower right padding leaves room for the column menu's gear,
+       which only table pages have. */
+    table.rows-and-columns th:last-child,
+    body:not(.table) table.rows-and-columns th {
+        padding-right: 0.75rem;
+    }
+
+    table.rows-and-columns th a:is(:link, :visited) {
+        color: inherit;
+        text-decoration: none;
+        border-radius: 3px;
+    }
+
+    table.rows-and-columns th a:hover {
+        color: var(--accent);
+        text-decoration: underline;
+        text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
+        text-underline-offset: 3px;
+    }
+
+    table.rows-and-columns th a:focus-visible {
+        color: var(--accent);
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+    }
+
+    table.rows-and-columns th button.column-menu-trigger {
+        width: 22px;
+        min-height: 22px;
+        margin: -3px 0 -3px 3px;
+        color: var(--slate);
+        border-radius: 5px;
+    }
+
+    table.rows-and-columns th button.column-menu-trigger svg {
+        width: 15px;
+        height: 15px;
+        opacity: 1;
+    }
+
+    table.rows-and-columns th button.column-menu-trigger:hover,
+    table.rows-and-columns th button.column-menu-trigger[aria-expanded="true"] {
+        background: var(--rule);
+        color: var(--ink);
+    }
+
+    /* Body cells */
+
+    table.rows-and-columns td {
+        max-width: var(--cell-measure);
+        padding: 0.5rem 0.75rem;
+        border: 0;
+        border-top: 1px solid var(--rule);
+    }
+
+    table.rows-and-columns tbody tr:first-child td {
+        border-top: 0;
+    }
+
+    table.rows-and-columns tbody tr:hover td {
+        background: var(--row-hover);
+    }
+
+    /* Numbers: right aligned on tabular figures. Foreign key cells are
+       type-int too but show a label link, so they stay left aligned. */
+    table.rows-and-columns td:is(.type-int, .type-float):not(:has(a)) {
+        text-align: right;
+    }
+
+    /* On table pages the extra right padding reserves the header gear's
+       width (header padding + the word space before the gear + gear margin
+       and width), so a numeric header label ends exactly where digits end. */
+    body.table table.rows-and-columns td:is(.type-int, .type-float):not(:has(a)) {
+        --gear-space: calc(0.5rem + 0.28 * 0.8125rem + 25px);
+        padding-right: var(--gear-space);
+    }
+
+    /* The last header cell has wider right padding; match it. */
+    body.table table.rows-and-columns td:is(.type-int, .type-float):not(:has(a)):last-child {
+        padding-right: calc(var(--gear-space) + 0.25rem);
+    }
+
+    /* Numeric headers follow their digits. Primary keys stay left aligned,
+       as do foreign key columns showing labels: the server sets
+       data-has-fks when a column's cells on this page link to other rows. */
+    table.rows-and-columns th:is(
+        [data-column-type*="int"],
+        [data-column-type*="real"],
+        [data-column-type*="floa"],
+        [data-column-type*="doub"],
+        [data-column-type*="dec"],
+        [data-column-type="numeric"]
+    ):not([data-is-pk="1"], [data-has-fks="1"]) {
+        text-align: right;
+    }
+
+    table.rows-and-columns td a:hover {
+        text-decoration: underline;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 2px;
+    }
+
+    table.rows-and-columns td a:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+        border-radius: 2px;
+    }
+}
+
+/* Long values (all widths)
+   table-layout.js wraps any cell whose value would run past the preview in
+   .long-value > .long-value-text + button.long-value-toggle. Collapsed, the
+   value is a preview of --long-value-lines lines (3) with line breaks folded
+   into spaces (a README's blank lines would otherwise use up the preview),
+   its last line fading out under a small "expand" pill, so the row stays a
+   predictable height. Values that fit the preview once folded keep their
+   line breaks instead (.keeps-breaks). Expanded, the value shows in full
+   with its original line breaks, and the pill floats to its top right as
+   "collapse", on the line the reader clicked from. */
+
+/* Registered so that --long-value-line: 1lh resolves on .long-value (the
+   text's line height) and is inherited as that length. Unregistered, it
+   would be re-resolved against the pill's own, smaller line height. */
+@property --long-value-line {
+    syntax: "<length>";
+    inherits: true;
+    initial-value: 0px;
+}
+
+table.rows-and-columns {
+    --long-value-lines: 3; /* table-layout.js reads this too */
+}
+
+table.rows-and-columns .long-value {
+    --long-value-line: 1lh;
+    --long-value-pill-height: 1.25rem;
+    --long-value-fade-clear: 5.5rem; /* the pill's width plus a gap; text fades out over the next 4rem */
+    position: relative;
+    display: flow-root; /* contains the floated "collapse" pill */
+}
+
+table.rows-and-columns .long-value-text {
+    white-space: pre-wrap;
+}
+
+table.rows-and-columns .long-value:not(.is-expanded) > .long-value-text {
+    max-height: calc(var(--long-value-lines) * 1lh);
+    overflow: hidden;
+    white-space: normal;
+    /* Room for focus rings on links at either end of a line. */
+    padding-inline: 3px;
+    margin-inline: -3px;
+    /* Fully visible except the end of the last line, which fades out
+       behind the pill. */
+    -webkit-mask:
+        linear-gradient(#000 0 0) left top / 100% calc(100% - 1lh) no-repeat,
+        linear-gradient(to left, transparent var(--long-value-fade-clear), #000 calc(var(--long-value-fade-clear) + 4rem)) left bottom / 100% 1lh no-repeat;
+    mask:
+        linear-gradient(#000 0 0) left top / 100% calc(100% - 1lh) no-repeat,
+        linear-gradient(to left, transparent var(--long-value-fade-clear), #000 calc(var(--long-value-fade-clear) + 4rem)) left bottom / 100% 1lh no-repeat;
+}
+
+table.rows-and-columns .long-value.keeps-breaks:not(.is-expanded) > .long-value-text {
+    white-space: pre-wrap;
+}
+
+table.rows-and-columns .long-value-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    height: var(--long-value-pill-height);
+    padding: 0 0.4rem 0 0.5rem;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    background: var(--paper);
+    color: var(--accent);
+    font: 600 0.75rem/1 system-ui, -apple-system, sans-serif;
+    white-space: nowrap;
+    cursor: pointer;
+    /* Keep "expand" / "collapse" out of copied text. */
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* Collapsed: centred on the preview's last line, over the fade. */
+table.rows-and-columns .long-value:not(.is-expanded) > .long-value-toggle {
+    position: absolute;
+    right: 0;
+    bottom: calc((var(--long-value-line) - var(--long-value-pill-height)) / 2);
+}
+
+/* Expanded: floated to the top right, centred on the first line. */
+table.rows-and-columns .long-value.is-expanded > .long-value-toggle {
+    float: right;
+    margin: calc((var(--long-value-line) - var(--long-value-pill-height)) / 2) 0 0.25rem 0.75rem;
+}
+
+table.rows-and-columns .long-value-toggle svg {
+    transition: transform 0.15s;
+}
+
+table.rows-and-columns .long-value.is-expanded > .long-value-toggle svg {
+    transform: rotate(180deg);
+}
+
+table.rows-and-columns .long-value-toggle:hover {
+    border-color: #bfccd9;
+    background: var(--rule);
+}
+
+table.rows-and-columns .long-value-toggle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    table.rows-and-columns .long-value-toggle svg {
+        transition: none;
+    }
+}
+
+/* A larger touch target on the stacked mobile cards. */
+@media (max-width: 576px) {
+    table.rows-and-columns .long-value {
+        --long-value-pill-height: 1.75rem;
+        --long-value-fade-clear: 6.5rem;
+    }
+
+    table.rows-and-columns .long-value-toggle {
+        padding: 0 0.6rem 0 0.75rem;
+        font-size: 0.8125rem;
+    }
+}
+
+/* Freeze
+   table-layout.js adds button.freeze-toggle (a pin) to the primary key
+   header, or to the first header when there is no key column (query
+   results, views). Pressed, it sets data-freeze="N" on the table (N = how
+   many leading Link and key columns to freeze, up to 4; 0 freezes only the
+   header row),
+   --freeze-left-2..4 on the table and --freeze-width / --freeze-top on the
+   wrapper. The card then becomes a scroll box the height of the window, with
+   the header row stuck to its top and the key columns stuck to its left.
+   Shadows appear on the frozen edges only once content has scrolled under
+   them (.is-scrolled-x/y). Not applied to the stacked mobile cards. */
+@media (min-width: 577px) {
+    /* The pin matches the gear. */
+    table.rows-and-columns th .freeze-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        min-height: 22px;
+        margin: -3px 0 -3px 2px;
+        padding: 0;
+        vertical-align: middle;
+        border: 0;
+        border-radius: 5px;
+        background: transparent;
+        color: var(--slate);
+        cursor: pointer;
+    }
+
+    table.rows-and-columns th .freeze-toggle svg {
+        display: block;
+        transform: rotate(45deg);
+        transition: transform 0.15s ease;
+    }
+
+    table.rows-and-columns th .freeze-toggle:hover {
+        background: var(--rule);
+        color: var(--ink);
+    }
+
+    table.rows-and-columns th :is(.freeze-toggle, .column-expand-toggle):focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+    }
+
+    /* Expand-all: the same pill as the cells' "expand", reading "expand all"
+       or "collapse all", so it is clearly part of that feature rather than a
+       sort control. White, to stand out on the header band. */
+    table.rows-and-columns th .column-expand-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.2rem;
+        height: 1.25rem;
+        margin: -2px 0 -2px 6px;
+        padding: 0 0.4rem 0 0.5rem;
+        vertical-align: middle;
+        border: 1px solid var(--rule);
+        border-radius: 999px;
+        background: var(--card);
+        color: var(--accent);
+        font: 600 0.75rem/1 system-ui, -apple-system, sans-serif;
+        white-space: nowrap;
+        cursor: pointer;
+        -webkit-user-select: none;
+        user-select: none;
+    }
+
+    table.rows-and-columns th .column-expand-toggle svg {
+        display: block;
+        transition: transform 0.15s;
+    }
+
+    table.rows-and-columns th .column-expand-toggle[data-state="all"] svg {
+        transform: rotate(180deg);
+    }
+
+    table.rows-and-columns th .column-expand-toggle:hover {
+        border-color: #bfccd9;
+        background: var(--rule);
+    }
+
+    /* Pinned: upright, filled, in the accent colour on the accent tint used
+       by Datasette's selected menu items. */
+    table.rows-and-columns th .freeze-toggle[aria-pressed="true"] {
+        background: #e8effd;
+        color: var(--accent);
+    }
+
+    table.rows-and-columns th .freeze-toggle[aria-pressed="true"] svg {
+        transform: none;
+    }
+
+    table.rows-and-columns th .freeze-toggle[aria-pressed="true"] .freeze-toggle-head {
+        fill: currentColor;
+    }
+
+    /* The card becomes the scroll box. */
+    .table-wrapper:has(> table.rows-and-columns[data-freeze]) {
+        max-height: calc(100dvh - 1rem);
+        overflow: auto;
+        overscroll-behavior: contain;
+        /* Keyboard focus scrolls cells clear of the frozen parts. */
+        scroll-padding: var(--freeze-top, 0px) 0 0 var(--freeze-width, 0px);
+    }
+
+    /* Collapsed borders stay behind when cells stick; separate ones travel
+       with them. The table only uses top/bottom rules, so it looks the same
+       either way. */
+    table.rows-and-columns[data-freeze] {
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+
+    table.rows-and-columns[data-freeze] thead tr {
+        --freeze-cell-bg: #f0f7ff; /* the header band, made opaque */
+        --freeze-z: 3;
+    }
+
+    table.rows-and-columns[data-freeze] tbody tr {
+        --freeze-cell-bg: var(--card);
+        --freeze-z: 1;
+    }
+
+    table.rows-and-columns[data-freeze] tbody tr:hover {
+        --freeze-cell-bg: #f3f8ff; /* --row-hover over white, made opaque */
+    }
+
+    table.rows-and-columns[data-freeze] thead th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: var(--freeze-cell-bg);
+    }
+
+    table.rows-and-columns:is([data-freeze="1"], [data-freeze="2"], [data-freeze="3"], [data-freeze="4"]) :is(th, td):nth-child(1),
+    table.rows-and-columns:is([data-freeze="2"], [data-freeze="3"], [data-freeze="4"]) :is(th, td):nth-child(2),
+    table.rows-and-columns:is([data-freeze="3"], [data-freeze="4"]) :is(th, td):nth-child(3),
+    table.rows-and-columns[data-freeze="4"] :is(th, td):nth-child(4) {
+        position: sticky;
+        left: 0;
+        z-index: var(--freeze-z);
+        background: var(--freeze-cell-bg);
+    }
+
+    table.rows-and-columns[data-freeze] :is(th, td):nth-child(2) {
+        left: var(--freeze-left-2, 0px);
+    }
+
+    table.rows-and-columns[data-freeze] :is(th, td):nth-child(3) {
+        left: var(--freeze-left-3, 0px);
+    }
+
+    table.rows-and-columns[data-freeze] :is(th, td):nth-child(4) {
+        left: var(--freeze-left-4, 0px);
+    }
+
+    /* A hairline on the frozen edge. */
+    table.rows-and-columns[data-freeze="1"] :is(th, td):nth-child(1),
+    table.rows-and-columns[data-freeze="2"] :is(th, td):nth-child(2),
+    table.rows-and-columns[data-freeze="3"] :is(th, td):nth-child(3),
+    table.rows-and-columns[data-freeze="4"] :is(th, td):nth-child(4) {
+        box-shadow: inset -1px 0 0 var(--rule);
+    }
+
+    /* Soft shadows once content has scrolled under a frozen edge. They are
+       gradients on pseudo-elements, not box-shadows, so they run unbroken
+       across cell boundaries. Sticky cells contain them. */
+    .table-wrapper.is-scrolled-x > table.rows-and-columns[data-freeze="1"] :is(th, td):nth-child(1)::before,
+    .table-wrapper.is-scrolled-x > table.rows-and-columns[data-freeze="2"] :is(th, td):nth-child(2)::before,
+    .table-wrapper.is-scrolled-x > table.rows-and-columns[data-freeze="3"] :is(th, td):nth-child(3)::before,
+    .table-wrapper.is-scrolled-x > table.rows-and-columns[data-freeze="4"] :is(th, td):nth-child(4)::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 100%;
+        width: 8px;
+        background: linear-gradient(to right, rgba(30, 64, 110, 0.13), rgba(30, 64, 110, 0));
+        pointer-events: none;
+    }
+
+    .table-wrapper.is-scrolled-y > table.rows-and-columns[data-freeze] thead th::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        height: 8px;
+        background: linear-gradient(rgba(30, 64, 110, 0.13), rgba(30, 64, 110, 0));
+        pointer-events: none;
+    }
+}
+
+@media (min-width: 577px) and (prefers-reduced-motion: reduce) {
+    table.rows-and-columns th :is(.freeze-toggle, .column-expand-toggle) svg {
+        transition: none;
+    }
+}
+
+@media (max-width: 576px) {
+    table.rows-and-columns th :is(.freeze-toggle, .column-expand-toggle) {
+        display: none;
+    }
 }
 a.blob-download {
     display: inline-block;
@@ -934,46 +1467,292 @@ button.core[type=button] {
 
 
 
+/* Facet results: one card per facet, using the same colors, borders and
+   radius as the filter box and the suggested facet chips. */
 .facet-results {
     display: flex;
     flex-direction: row;
     flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin: 0 0 1rem;
 }
 .facet-info {
+    box-sizing: border-box;
     width: 250px;
-    margin-right: 15px;
+    max-width: 100%;
+    padding: 0.3rem;
+    border: 1px solid #d8e6f5;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 0.875rem;
 }
-.facet-info-total {
-    font-size: 0.8em;
-    color: #666;
-    padding-right: 0.25em;
+.facet-info p.facet-info-name {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 1.75rem;
+    margin: 0 0 0.1rem;
+    padding: 0.1rem 0.1rem 0.1rem 0.45rem;
 }
-/* The label may wrap (word-break: break-all on the li) but the count should
-   stay on one line - https://github.com/simonw/datasette/issues/2754 */
-.facet-count {
+.facet-info-name strong {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+}
+.facet-info-type {
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: #eef6ff;
+    color: #6b6b6b;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.7rem;
+    font-weight: 400;
     white-space: nowrap;
 }
-.facet-info li,
-.facet-info ul {
-    margin: 0;
-    padding: 0;
-}
-.facet-info ul {
-    padding-left: 1.25em;
-    margin-bottom: 1em;
+.facet-info-total {
+    margin-left: 0.15rem;
+    color: #6b6b6b;
+    font-size: 0.75rem;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 .facet-info a.cross:link,
 .facet-info a.cross:visited,
 .facet-info a.cross:hover,
 .facet-info a.cross:focus,
 .facet-info a.cross:active {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    border-radius: 5px;
+    color: #6b6b6b;
     text-decoration: none;
 }
-ul li.facet-truncated {
-    list-style-type: none;
+.facet-info a.cross svg {
+    display: block;
+}
+.facet-info-name a.cross:link,
+.facet-info-name a.cross:visited {
+    width: 1.5rem;
+    height: 1.5rem;
+    color: #8a8a8a;
+}
+.facet-info-name a.cross:hover,
+.facet-info-name a.cross:focus-visible {
+    background: #eef6ff;
+    color: #0f0f0f;
+}
+.facet-info a.cross:focus-visible {
+    outline: 2px solid #1a56db;
+    outline-offset: 1px;
+}
+.facet-results .facet-info ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+/* Long labels wrap but the count stays on one line -
+   https://github.com/simonw/datasette/issues/2754 */
+.facet-results .facet-info li {
     position: relative;
-    top: -0.35em;
-    text-indent: 0.85em;
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 0.2rem 0.45rem;
+    border-radius: 4px;
+    list-style: none;
+    line-height: 1.35;
+    word-break: normal;
+    /* Proportion bar: this value's share of the rows in the current result
+       set, from the --facet-proportion set on the li by the template */
+    background-image: linear-gradient(
+        to right,
+        rgba(26, 86, 219, 0.1) var(--facet-proportion, 0%),
+        transparent var(--facet-proportion, 0%)
+    );
+}
+/* The value link stretches to cover the whole row, count included */
+.facet-results .facet-info li > a:first-child {
+    flex: 1;
+    min-width: 0;
+    color: #1a56db;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+}
+.facet-results .facet-info li > a:first-child::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 4px;
+}
+.facet-results .facet-info li > a:first-child:focus-visible {
+    outline: none;
+}
+.facet-results .facet-info li > a:first-child:focus-visible::after {
+    outline: 2px solid #1a56db;
+    outline-offset: -1px;
+}
+.facet-results .facet-info li:has(> a:first-child):hover {
+    background-color: #f3f7fe;
+}
+.facet-results .facet-info li:has(> a:first-child):hover > a:first-child {
+    color: #1949b8;
+}
+.facet-count {
+    flex: none;
+    margin-left: auto;
+    color: #6b6b6b;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.facet-results .facet-info li.facet-selected {
+    align-items: center;
+    background-color: #e8effd;
+    color: #1949b8;
+    font-weight: 600;
+}
+.facet-value-label {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.facet-selected .facet-count {
+    font-weight: 400;
+}
+.facet-selected a.cross:link,
+.facet-selected a.cross:visited {
+    width: 1.25rem;
+    height: 1.25rem;
+    margin: -0.1rem -0.25rem -0.1rem -0.35rem;
+    color: #1a56db;
+}
+.facet-selected a.cross:hover,
+.facet-selected a.cross:focus-visible {
+    background: #fff;
+    color: #1949b8;
+}
+.facet-results .facet-info li.facet-truncated {
+    color: #6b6b6b;
+}
+.facet-results .facet-info li.facet-truncated > a:first-child {
+    color: #6b6b6b;
+}
+@media (pointer: coarse) {
+    .facet-results .facet-info li {
+        padding-top: 0.4rem;
+        padding-bottom: 0.4rem;
+    }
+}
+@media only screen and (max-width: 576px) {
+    .facet-info {
+        width: 100%;
+    }
+}
+
+/* Suggested facets: a row of "add facet" chips that reuse the colors
+   and radius of the filter controls above them. */
+.suggested-facets {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.4rem 0.6rem;
+    max-width: 760px;
+    margin: 0 0 1rem;
+    font-size: 0.875rem;
+}
+
+.suggested-facets-label {
+    flex: none;
+    color: #6b6b6b;
+    font-weight: 600;
+    line-height: 1.75rem;
+}
+
+.suggested-facets-list {
+    display: flex;
+    flex: 1 1 16rem;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+}
+
+.suggested-facets-list li {
+    display: flex;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+.suggested-facets a.suggested-facet {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    box-sizing: border-box;
+    max-width: 100%;
+    min-height: 1.75rem;
+    padding: 0.2rem 0.6rem;
+    border: 1px solid #d8e6f5;
+    border-radius: 5px;
+    background: #fff;
+    color: #1a56db;
+    line-height: 1.2;
+    text-decoration: none;
+    transition: background 0.12s, border-color 0.12s;
+}
+
+.suggested-facets a.suggested-facet:hover {
+    border-color: #1a56db;
+    background: #e8effd;
+    color: #1949b8;
+}
+
+.suggested-facets a.suggested-facet:focus-visible {
+    border-color: #1a56db;
+    background: #e8effd;
+    color: #1949b8;
+    outline: 2px solid #1a56db;
+    outline-offset: 2px;
+}
+
+.suggested-facet-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.suggested-facet-type {
+    flex-shrink: 0;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: #eef6ff;
+    color: #6b6b6b;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.7rem;
+}
+
+@media (pointer: coarse) {
+    .suggested-facets-label {
+        line-height: 2.25rem;
+    }
+    .suggested-facets a.suggested-facet {
+        min-height: 2.25rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .suggested-facets a.suggested-facet {
+        transition: none;
+    }
 }
 
 .advanced-export {
@@ -3681,27 +4460,43 @@ select.table-alter-input {
         left: -9999px;
     }
 
+    /* Each row is a card in the same tokens as the desktop table. It opens
+       with its first field on a --paper band, like a modal header; labels
+       sit above values in the column menu's slate. */
+    table.rows-and-columns {
+        font-size: 0.9375rem;
+        line-height: 1.4;
+    }
+
     table.rows-and-columns tr {
-        border: 1px solid #ccc;
-        margin-bottom: 1em;
-        border-radius: 10px;
-        background-color: white;
-        padding: 0.2rem;
+        margin: 0 0 0.75rem;
+        padding: 0;
+        overflow: hidden;
+        border: 1px solid var(--rule);
+        border-radius: 8px;
+        background: var(--card);
+        box-shadow: 0 1px 2px rgba(15, 40, 70, 0.04);
     }
 
     table.rows-and-columns td {
-        /* Behave  like a "row" */
-        border: none;
-        border-bottom: 1px solid #eee;
-        padding: 0;
-        padding-left: 10%;
+        /* Behave like a "row" */
+        padding: 0.45rem 0.75rem 0.5rem;
+        border: 0;
+        border-top: 1px solid var(--rule);
+    }
+
+    table.rows-and-columns td:first-child {
+        border-top: 0;
+        background: var(--paper);
     }
 
     table.rows-and-columns td:before {
         display: block;
-        color: black;
-        margin-left: -10%;
-        font-size: 0.8em;
+        margin: 0 0 1px;
+        color: var(--slate);
+        font-size: 0.75rem;
+        font-weight: 600;
+        line-height: 1.4;
     }
 
     .row-inline-actions {

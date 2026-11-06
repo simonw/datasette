@@ -247,83 +247,62 @@
 
   <p class="export-links">This data as <a href="{{ base_url }}fixtures/roadside_attraction_characteristics.json?characteristic_id=2&amp;_labels=on">json</a>, <a href="{{ base_url }}fixtures/roadside_attraction_characteristics.csv?characteristic_id=2&amp;_labels=on&amp;_size=max">CSV</a> (<a href="#export">advanced</a>)</p>
 
-  <p class="suggested-facets">
-        Suggested facets: <a href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet=complex_array&amp;_facet=tags#facet-tags">tags</a>, <a href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet=complex_array&amp;_facet_date=created#facet-created">created</a> (date), <a href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet=complex_array&amp;_facet_array=tags#facet-tags">tags</a> (array)
-    </p>
+  <div class="suggested-facets">
+    <span class="suggested-facets-label" id="suggested-facets-label">Suggested facets</span>
+    <ul class="suggested-facets-list" aria-labelledby="suggested-facets-label">
+      <li><a class="suggested-facet" href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet=complex_array&amp;_facet=tags#facet-tags">
+        <span class="suggested-facet-name">tags</span>
+      </a></li>
+      <li><a class="suggested-facet" href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet=complex_array&amp;_facet_date=created#facet-created">
+        <span class="suggested-facet-name">created</span>
+        <span class="suggested-facet-type">date</span>
+      </a></li>
+      <li><a class="suggested-facet" href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet=complex_array&amp;_facet_array=tags#facet-tags">
+        <span class="suggested-facet-name">tags</span>
+        <span class="suggested-facet-type">array</span>
+      </a></li>
+    </ul>
+  </div>
 
     <div class="facet-results">
-
-            <div class="facet-info facet-fixtures-facetable-tags" id="facet-tags">
-                <p class="facet-info-name">
-                    <strong>tags (array)</strong>
-
-                        <a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created" class="cross">✖</a>
-
-                </p>
-                <ul>
-
-
-                            <li><a href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;tags__arraycontains=tag1">tag1</a> 2</li>
-
-
-
-                            <li><a href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;tags__arraycontains=tag2">tag2</a> 1</li>
-
-
-
-                            <li><a href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;tags__arraycontains=tag3">tag3</a> 1</li>
-
-
-
-                </ul>
-            </div>
-
-            <div class="facet-info facet-fixtures-facetable-created" id="facet-created">
-                <p class="facet-info-name">
-                    <strong>created</strong>
-
-                        <a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet_array=tags" class="cross">✖</a>
-
-                </p>
-                <ul>
-
-
-                            <li><a href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;created=2019-01-14+08%3A00%3A00">2019-01-14 08:00:00</a> 4</li>
-
-
-
-                            <li><a href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;created=2019-01-15+08%3A00%3A00">2019-01-15 08:00:00</a> 4</li>
-
-
-
-                            <li><a href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;created=2019-01-16+08%3A00%3A00">2019-01-16 08:00:00</a> 2</li>
-
-
-
-                </ul>
-            </div>
-
-            <div class="facet-info facet-fixtures-facetable-city_id" id="facet-city_id">
-                <p class="facet-info-name">
-                    <strong>city_id</strong>
-
-                        <a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=created&amp;_facet_array=tags" class="cross">✖</a>
-
-                </p>
-                <ul>
-
-
-                            <li><a href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;city_id=1">San Francisco</a> 6</li>
-
-
-
-                            <li><a href="http://latest.datasette.io/fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;city_id=2">Los Angeles</a> 4</li>
-
-
-
-                </ul>
-            </div>
-
+        <div class="facet-info facet-fixtures-facetable-tags" id="facet-tags" data-column="tags">
+            <p class="facet-info-name">
+                <strong>tags <span class="facet-info-type">array</span>
+                    <span class="facet-info-total">3</span>
+                </strong>
+                <a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created" class="cross" title="Remove this facet" aria-label="Remove tags facet"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></a>
+            </p>
+            <ul class="tight-bullets">
+                <li style="--facet-proportion: 20.00%"><a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;tags__arraycontains=tag1" data-facet-value="tag1">tag1</a> <span class="facet-count">2</span></li>
+                <li style="--facet-proportion: 10.00%"><a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;tags__arraycontains=tag2" data-facet-value="tag2">tag2</a> <span class="facet-count">1</span></li>
+                <li style="--facet-proportion: 10.00%"><a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;tags__arraycontains=tag3" data-facet-value="tag3">tag3</a> <span class="facet-count">1</span></li>
+            </ul>
+        </div>
+        <div class="facet-info facet-fixtures-facetable-created" id="facet-created" data-column="created">
+            <p class="facet-info-name">
+                <strong>created <span class="facet-info-type">date</span>
+                    <span class="facet-info-total">&gt;2</span>
+                </strong>
+                <a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet_array=tags" class="cross" title="Remove this facet" aria-label="Remove created facet"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></a>
+            </p>
+            <ul class="tight-bullets">
+                <li style="--facet-proportion: 40.00%"><a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet_date=created&amp;_facet_array=tags&amp;created__date=2019-01-14" data-facet-value="2019-01-14">2019-01-14</a> <span class="facet-count">4</span></li>
+                <li style="--facet-proportion: 40.00%"><a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet_date=created&amp;_facet_array=tags&amp;created__date=2019-01-15" data-facet-value="2019-01-15">2019-01-15</a> <span class="facet-count">4</span></li>
+                <li class="facet-truncated"><a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet_date=created&amp;_facet_array=tags&amp;_facet_size=max">Show more…</a></li>
+            </ul>
+        </div>
+        <div class="facet-info facet-fixtures-facetable-city_id" id="facet-city_id" data-column="city_id">
+            <p class="facet-info-name">
+                <strong>city_id
+                    <span class="facet-info-total">2</span>
+                </strong>
+                <a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=created&amp;_facet_array=tags" class="cross" title="Remove this facet" aria-label="Remove city_id facet"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></a>
+            </p>
+            <ul class="tight-bullets">
+                <li class="facet-selected" style="--facet-proportion: 60.00%"><span class="facet-value-label">San Francisco</span> <span class="facet-count">6</span> <a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags" class="cross" title="Remove this filter" aria-label="Remove filter city_id: San Francisco"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></a></li>
+                <li style="--facet-proportion: 40.00%"><a href="{{ base_url }}fixtures/facetable?_where=planet_int%3D1&amp;_where=state%3D%27CA%27&amp;_facet=city_id&amp;_facet=created&amp;_facet_array=tags&amp;city_id=2" data-facet-value="2">Los Angeles</a> <span class="facet-count">4</span></li>
+            </ul>
+        </div>
     </div>
 
     <table class="rows-and-columns">

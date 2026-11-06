@@ -443,6 +443,11 @@ class QueryContext(Context):
             "help": "List of result column names in the order they appear in ``display_rows`` and ``rows``."
         }
     )
+    truncated: bool = field(
+        metadata={
+            "help": "Boolean indicating if the results were cut off at ``max_returned_rows``"
+        }
+    )
     renderers: dict = field(
         metadata={
             "help": "Dictionary mapping output format names such as ``json`` to URLs for this query in that format."
@@ -1108,6 +1113,7 @@ class QueryView(View):
                             else {}
                         ),
                         columns=columns,
+                        truncated=results.truncated if results else False,
                         renderers=renderers,
                         url_csv=datasette.urls.path(
                             path_with_format(

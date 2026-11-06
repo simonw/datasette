@@ -234,6 +234,9 @@ The page for arbitrary SQL queries (/database/-/query?sql=...) and stored querie
 ``top_stored_query`` - ``callable``
     Async callable that renders the ``top_stored_query`` plugin slot for stored queries and returns HTML.
 
+``truncated`` - ``bool``
+    Boolean indicating if the results were cut off at ``max_returned_rows``
+
 ``url_csv`` - ``str``
     URL for CSV export
 

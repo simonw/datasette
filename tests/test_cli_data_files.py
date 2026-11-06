@@ -975,6 +975,48 @@ async def test_reload_session_keeps_unchanged_tables(data_dir, monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("exclusive", (True, False))
+async def test_load_sources_reports_the_conversion_backlog(
+    tmp_path, monkeypatch, exclusive
+):
+    # --get's status line says when a load is converting stored numbers to
+    # text after a column widened in the last chunk
+    from datasette.app import Datasette
+    from datasette.cli import _loading_text
+    from datasette.imports.inserter import TypedInserter
+    from datasette.imports.scratch import load_sources
+
+    monkeypatch.setattr(TypedInserter, "_convert_rows", 1_000)
+    path = tmp_path / "late.csv"
+    lines = ["id,code"] + [f"{i},{i}" for i in range(30_000)] + ["30000,n/a"]
+    path.write_text("\n".join(lines) + "\n")
+    ds = Datasette()
+    db = ds.add_database(ScratchDatabase(ds), name="scratch")
+    try:
+        seen = []
+
+        def on_progress(source, rows, status):
+            text = _loading_text(source, rows, status)
+            seen.append((rows, status.finishing, status.backlog, text))
+
+        sources = _sources(path)
+        for source in sources:
+            source.path = source.location
+        [loaded] = await load_sources(
+            db, plan_loads(None, sources), on_progress=on_progress, exclusive=exclusive
+        )
+        assert loaded.types == {"id": "integer", "code": "text"}
+        assert seen[0][3] == f"Loading {path}: 1,000 rows"
+        finishing = [entry for entry in seen if entry[1] and entry[2]]
+        assert len(finishing) > 10
+        assert all(rows == 30_001 for rows, *_ in finishing)
+        backlog = finishing[0][2]
+        assert finishing[0][3] == f"Finishing late: {backlog:,} rows to convert"
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
 async def test_load_source_never_drops_a_table_it_did_not_create(data_dir):
     from datasette.app import Datasette
     from datasette.imports.scratch import load_source

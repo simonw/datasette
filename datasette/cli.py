@@ -1137,8 +1137,8 @@ class _DataImport:
         def on_start(source):
             status.start(f"Loading {source.label}...")
 
-        def on_progress(source, rows):
-            status.update(f"Loading {source.label}: {rows:,} rows")
+        def on_progress(source, rows, import_status):
+            status.update(_loading_text(source, rows, import_status))
 
         def on_loaded(loaded):
             status.done(_describe_loaded(loaded, where))
@@ -1453,6 +1453,15 @@ def _prepare_import(
     elif db.name != SCRATCH_NAME:
         data_import.where = f" in {db.name}"
     return data_import
+
+
+def _loading_text(source, rows, import_status):
+    "The --get status line while ``source`` loads."
+    if import_status.finishing and import_status.backlog:
+        # A column changed to text after the first rows: its stored numbers
+        # are being turned back into the text they came from
+        return f"Finishing {source.table}: {import_status.backlog:,} rows to convert"
+    return f"Loading {source.label}: {rows:,} rows"
 
 
 def _is_not_an_import_note(record):

@@ -30,7 +30,12 @@ import weakref
 
 from datasette.database import Database
 from datasette.imports import loaders as _loaders
-from datasette.imports.inserter import SQLITE_ERRORS, import_rows, insert_rows
+from datasette.imports.inserter import (
+    SQLITE_ERRORS,
+    ImportStatus,
+    import_rows,
+    insert_rows,
+)
 from datasette.imports.sources import (
     SQLITE_HEADER,
     Source,
@@ -393,6 +398,7 @@ async def load_source(
     progress=None,
     loaders=None,
     exclusive: bool = False,
+    status: ImportStatus | None = None,
 ) -> LoadedTable:
     """
     Load one source into a new table ``source.table`` in ``db``.
@@ -411,7 +417,10 @@ async def load_source(
     :class:`ImportFailed` (or the cancellation) is raised.
     ``progress(rows_written)`` is called after every chunk (and after each
     slice of converting stored numbers to text after the last one, see
-    :func:`~datasette.imports.inserter.import_rows`).
+    :func:`~datasette.imports.inserter.import_rows`). Pass an
+    :class:`~datasette.imports.inserter.ImportStatus` as ``status`` to see
+    when that conversion is under way (``status.finishing``) and how much
+    of it is left (``status.backlog``).
 
     By default every chunk is its own ``db.execute_write_fn()`` call while
     the loader runs in an executor thread, so other writes and reads can
@@ -450,7 +459,7 @@ async def load_source(
         if taken.first():
             raise TableExists(f"Table {source.table!r} already exists in {db.name}")
         return await _load_new_table(
-            db, source, batch_size, sample_size, progress, exclusive
+            db, source, batch_size, sample_size, progress, exclusive, status
         )
     finally:
         release_table(db, source.table)
@@ -461,7 +470,9 @@ async def load_source(
             remove_tree(private_dir)
 
 
-async def _load_new_table(db, source, batch_size, sample_size, progress, exclusive):
+async def _load_new_table(
+    db, source, batch_size, sample_size, progress, exclusive, status
+):
     loop = asyncio.get_running_loop()
     loader = source.loader
     table = source.table
@@ -475,7 +486,14 @@ async def _load_new_table(db, source, batch_size, sample_size, progress, exclusi
         with import_writes():
             if exclusive:
                 imported = await _load_exclusive(
-                    db, table, result.rows, schema, sample_size, batch_size, progress
+                    db,
+                    table,
+                    result.rows,
+                    schema,
+                    sample_size,
+                    batch_size,
+                    progress,
+                    status,
                 )
             else:
                 # on_error="drop": if loading fails or is cancelled, the table
@@ -490,6 +508,7 @@ async def _load_new_table(db, source, batch_size, sample_size, progress, exclusi
                     batch_size=batch_size,
                     progress=progress,
                     on_error="drop",
+                    status=status,
                 )
     except _loaders.LoaderError as ex:
         raise ImportFailed(f"Error loading {source.label}: {ex}") from ex
@@ -514,7 +533,9 @@ class _Cancelled(Exception):
     pass
 
 
-async def _load_exclusive(db, table, rows, schema, sample_size, batch_size, progress):
+async def _load_exclusive(
+    db, table, rows, schema, sample_size, batch_size, progress, status
+):
     # insert_rows() on the write thread, committing every chunk. The write
     # thread cannot be interrupted, so cancellation sets a flag that the
     # progress callback checks after every chunk (and every slice of the
@@ -548,6 +569,7 @@ async def _load_exclusive(db, table, rows, schema, sample_size, batch_size, prog
                 batch_size=batch_size,
                 progress=on_chunk,
                 on_error="drop",
+                status=status,
             )
         except Exception as ex:  # noqa: BLE001 - returned, re-raised below
             return None, ex
@@ -649,10 +671,13 @@ async def load_sources(
     :func:`free_bytes`.) Returns a :class:`LoadedTable` per source, in
     order.
 
-    ``on_start(source)``, ``on_progress(source, rows)`` and
-    ``on_loaded(loaded_table)`` report progress. ``exclusive`` is passed to
-    :func:`load_source` (``on_progress`` is then called from the write
-    thread).
+    ``on_start(source)``, ``on_progress(source, rows, status)`` and
+    ``on_loaded(loaded_table)`` report progress: ``status`` is the
+    source's :class:`~datasette.imports.inserter.ImportStatus`, which says
+    when the rows are all in and stored numbers are being converted to
+    text (``status.finishing``, ``status.backlog``). ``exclusive`` is
+    passed to :func:`load_source` (``on_progress`` is then called from the
+    write thread).
     """
     for table in plan.drop:
         await drop_table(db, table)
@@ -681,10 +706,11 @@ async def load_sources(
             if session:
                 session.remember(target_path, source, complete=False)
             progress = None
+            status = ImportStatus()
             if on_progress:
 
-                def progress(rows, source=source):
-                    on_progress(source, rows)
+                def progress(rows, source=source, status=status):
+                    on_progress(source, rows, status)
 
             result = await load_source(
                 db,
@@ -693,6 +719,7 @@ async def load_sources(
                 batch_size=batch_size,
                 progress=progress,
                 exclusive=exclusive,
+                status=status,
             )
             created.append(source.table)
             if session:

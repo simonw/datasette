@@ -152,6 +152,11 @@ class TableContext(Context):
             "help": "Extra where clauses from ``?_where=`` for display in the UI. Each item has ``text`` for the SQL fragment and ``remove_url`` for a URL that removes that fragment."
         }
     )
+    clear_filters_url: str = field(
+        metadata={
+            "help": "URL for this page with all column filters removed, or None if no column filters are applied. Other arguments such as ``?_search=``, ``?_where=`` and ``?_facet=`` are preserved."
+        }
+    )
     url_csv: str = field(metadata={"help": "URL for the CSV export of this page"})
     url_csv_path: str = field(metadata={"help": "Path portion of the CSV export URL"})
     url_csv_hidden_args: list = field(
@@ -1947,6 +1952,7 @@ async def table_view_traced(datasette, request):
             filter_columns=data["filter_columns"],
             supports_search=data["supports_search"],
             extra_wheres_for_ui=data["extra_wheres_for_ui"],
+            clear_filters_url=data["clear_filters_url"],
             url_csv=data["url_csv"],
             url_csv_path=data["url_csv_path"],
             url_csv_hidden_args=data["url_csv_hidden_args"],
@@ -2441,6 +2447,18 @@ async def table_view_data(
             for table_column in table_columns
             if table_column not in columns
         ]
+        filter_keys = {key for key, _ in filters.pairs}
+        data["clear_filters_url"] = (
+            datasette.urls.path(
+                path_with_removed_args(
+                    request,
+                    filter_keys | {"_next"},
+                    path=request.scope.get("route_path"),
+                )
+            )
+            if filter_keys
+            else None
+        )
         url_labels_extra = {}
         if data.get("expandable_columns"):
             url_labels_extra = {"_labels": "on"}

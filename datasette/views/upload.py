@@ -37,6 +37,7 @@ import logging
 import os
 import re
 import tempfile
+import unicodedata
 import urllib.parse
 
 from datasette.events import (
@@ -64,7 +65,11 @@ _TOO_LARGE_MESSAGES = ("File too large", "Request body too large")
 # The uploaded file is always saved under this name: the name the browser
 # sent is never used as a path
 SAVED_NAME = "upload"
-_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]+")
+# Control and formatting characters: C0 and C1 controls (an 8-bit CSI can
+# drive a terminal the name is printed to), bidirectional overrides and
+# zero-width characters (which make a name display as something else), and
+# line and paragraph separators
+_INVISIBLE_CATEGORIES = {"Cc", "Cf", "Cs", "Zl", "Zp"}
 
 
 class UploadRefused(Exception):
@@ -130,14 +135,22 @@ def upload_ui_context(datasette, db, can_insert_rows) -> dict | None:
     }
 
 
+def _strip_invisible(text: str) -> str:
+    "``text`` without control, formatting or line separator characters."
+    return "".join(
+        ch for ch in text if unicodedata.category(ch) not in _INVISIBLE_CATEGORIES
+    )
+
+
 def display_filename(filename: str | None) -> str:
     """
-    The uploaded file's name, for messages and the import's ``source``:
-    without any directories a browser sent, control characters or
-    excessive length.
+    The uploaded file's name, for messages, the import's ``source`` and
+    the lines printed to the terminal: without any directories a browser
+    sent, control or formatting characters (bidirectional overrides,
+    say) or excessive length.
     """
     name = re.split(r"[\\/]", filename or "")[-1]
-    name = _CONTROL_RE.sub("", name).strip()
+    name = _strip_invisible(name).strip()
     if len(name) > 200:
         name = name[:197] + "..."
     return name or "uploaded file"
@@ -148,7 +161,7 @@ def default_table_name(filename: str | None) -> str:
     from datasette.imports.sources import table_name_for_path
 
     name = re.split(r"[\\/]", filename or "")[-1]
-    return table_name_for_path(_CONTROL_RE.sub("", name))
+    return table_name_for_path(_strip_invisible(name))
 
 
 def check_table_name(name: str) -> None:
@@ -177,25 +190,57 @@ def resolve_format(name: str | None) -> str | None:
     return key
 
 
+def _empty_json_array(first_bytes: bytes) -> bool:
+    """
+    Is this the whole of a JSON array with no rows in it - ``[]``, or
+    objects with no keys? The ``json`` loader reads that without an error,
+    but finds no rows and no columns, so no table could be created.
+    """
+    from datasette.imports.loaders import peek_json
+
+    peek = peek_json(first_bytes)
+    return (
+        peek is not None
+        and peek.complete
+        and not peek.trailing
+        and isinstance(peek.value, list)
+        and all(isinstance(item, dict) and not item for item in peek.value)
+    )
+
+
 def sniff_upload(path: str, filename: str, format_name: str | None):
     """
     The loader for the saved upload, run in a thread: ``format_name``'s if
     given, otherwise the one that recognizes the start of the file. Raises
-    :class:`UploadRefused` for an empty file, a SQLite database or a format
-    nothing recognizes.
+    :class:`UploadRefused` for an empty file, a SQLite database, a format
+    nothing recognizes, or a JSON array with no rows in it.
     """
     from datasette.imports import loaders as _loaders
     from datasette.imports.sources import SQLITE_HEADER
 
     loaders = _loaders.get_loaders()
     with open(path, "rb") as fp:
-        if fp.read(len(SQLITE_HEADER)) == SQLITE_HEADER:
-            raise UploadRefused(
-                f"{filename} is a SQLite database. Uploads create a table from "
-                "a data file - to serve a database file, start Datasette with it"
-            )
+        first_bytes = fp.read(_loaders.SNIFF_BYTES)
+    if first_bytes.startswith(SQLITE_HEADER):
+        raise UploadRefused(
+            f"{filename} is a SQLite database. Uploads create a table from "
+            "a data file - to serve a database file, start Datasette with it"
+        )
     if format_name is not None:
-        return _loaders.get_loader(format_name, loaders)
+        loader = _loaders.get_loader(format_name, loaders)
+    else:
+        loader = _sniff(path, filename, loaders)
+    if loader.name == "json" and _empty_json_array(first_bytes):
+        raise UploadRefused(
+            f"{filename} has no rows to import: it is a JSON array with no "
+            "objects in it, or only empty ones"
+        )
+    return loader
+
+
+def _sniff(path, filename, loaders):
+    from datasette.imports import loaders as _loaders
+
     try:
         first_bytes, scores = _loaders.sniff_path(path, loaders)
         return _loaders.choose_loader(scores, first_bytes)
@@ -227,14 +272,20 @@ async def _save(uploaded: UploadedFile, path: str) -> int:
     return size
 
 
-async def _table_or_view_exists(db, table: str) -> bool:
-    # Case-insensitive, as SQLite compares names
-    result = await db.execute(
-        "select 1 from sqlite_master where type in ('table', 'view') "
-        "and name = ? collate nocase",
-        [table],
-    )
-    return result.first() is not None
+async def _name_taken_by(db, table: str) -> str | None:
+    """
+    The type of what is already called ``table`` - ``"table"``, ``"view"``
+    or ``"index"``, which share one namespace in SQLite - or None.
+    Case-insensitive, as SQLite compares names.
+    """
+    row = (
+        await db.execute(
+            "select type from sqlite_master where type in ('table', 'view', "
+            "'index') and name = ? collate nocase",
+            [table],
+        )
+    ).first()
+    return row[0] if row is not None else None
 
 
 async def _table_schema(db, table: str) -> str | None:
@@ -471,10 +522,11 @@ class DatabaseUploadView(BaseView):
             raise UploadRefused(
                 f"Table {table!r} is already being imported into {db.name}", 409
             )
-        if await _table_or_view_exists(db, table):
+        taken_by = await _name_taken_by(db, table)
+        if taken_by is not None:
             raise UploadRefused(
-                f"Table {table!r} already exists in {db.name}: choose another "
-                "table name",
+                f"{taken_by.capitalize()} {table!r} already exists in "
+                f"{db.name}: choose another table name",
                 409,
             )
 

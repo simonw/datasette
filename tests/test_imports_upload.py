@@ -5,6 +5,7 @@ file, imported in the background. See datasette/views/upload.py.
 
 import asyncio
 import contextlib
+import io
 import json
 import pathlib
 import re
@@ -19,7 +20,7 @@ import pytest_asyncio
 
 from datasette.app import Datasette
 from datasette.imports import subprocess_import
-from datasette.imports.background import import_registry
+from datasette.imports.background import TerminalReporter, import_registry
 from datasette.imports.loaders import get_loaders
 from datasette.imports.scratch import ScratchDatabase
 from datasette.imports.subprocess_import import worker_slots
@@ -79,6 +80,7 @@ def make_ds(tmp_path, *, settings=None, plugins_dir=None):
     conn.executescript("""
         create table existing (id integer primary key);
         create view existing_view as select 1 as one;
+        create index existing_index on existing (id);
         """)
     conn.close()
     frozen = tmp_path / "frozen.db"
@@ -270,6 +272,7 @@ async def test_upload_csv(ds, temp_dir):
         (".hidden", "hidden"),
         ("sqlite_master.csv", "_sqlite_master"),
         ("Café.json", "Café"),
+        ("a\x9bb\u202ec.csv", "abc"),
         ("", "data"),
         (None, "data"),
     ],
@@ -285,6 +288,12 @@ def test_default_table_name(filename, expected):
         ("C:\\fakepath\\dogs.csv", "dogs.csv"),
         ("../../etc/passwd", "passwd"),
         ("a\x00b\nc.csv", "abc.csv"),
+        # C1 controls (an 8-bit CSI), bidirectional overrides and isolates,
+        # zero-width and line separator characters
+        ("c1\x9b31m\u202ered.csv", "c131mred.csv"),
+        ("\u2066evil\u2069\u200b\u2028.csv", "evil.csv"),
+        ("\u202e", "uploaded file"),
+        ("données été.csv", "données été.csv"),
         ("", "uploaded file"),
         ("x" * 300, "x" * 197 + "..."),
     ],
@@ -301,6 +310,22 @@ async def test_default_table_name_from_upload(ds):
     assert job.state == "done"
     assert job.title == "My Dogs (2024).csv"
     assert len(await rows(ds, "My_Dogs_2024")) == 3
+
+
+@pytest.mark.asyncio
+async def test_control_characters_in_the_filename(ds):
+    "Nothing that could drive a terminal or disguise the name gets through."
+    # What the command line prints for imports, uploads included
+    printed = io.StringIO()
+    import_registry(ds).add_listener(TerminalReporter(printed))
+    response = await upload(ds, filename="c1\x9b31m\u202ered.csv")
+    data = response.json()
+    assert (data["table"], data["import"]["source"]) == ("c131mred", "c131mred.csv")
+    job = await finished(ds, response)
+    assert job.title == "c131mred.csv"
+    assert printed.getvalue().splitlines()[0] == (
+        f"Importing c131mred.csv (csv, {len(CSV)} bytes) into table c131mred"
+    )
 
 
 @pytest.mark.asyncio
@@ -485,6 +510,31 @@ async def test_unrecognized_format(ds, temp_dir):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "content,format",
+    [
+        (b"[]", None),
+        (b" [ ]\n", None),
+        (b"[{}, {}]", None),
+        (b"[]", "json"),
+    ],
+)
+async def test_json_array_without_rows(ds, temp_dir, content, format):
+    "It would import no rows and create no table, so it is refused at once."
+    fields = {"format": format} if format else {}
+    response = await upload(ds, content, "nothing.json", **fields)
+    assert response.status_code == 400
+    assert _errors(response) == [
+        (
+            "nothing.json has no rows to import: it is a JSON array with no "
+            "objects in it, or only empty ones"
+        )
+    ]
+    assert upload_dirs(temp_dir) == []
+    assert import_registry(ds).imports() == []
+
+
+@pytest.mark.asyncio
 async def test_sqlite_database_is_refused(ds, tmp_path, temp_dir):
     path = tmp_path / "other.db"
     sqlite3.connect(path).execute("create table t (id integer)").connection.close()
@@ -540,15 +590,25 @@ async def test_get_is_not_allowed(ds):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "table", ["existing", "EXISTING", "existing_view", "Existing_View"]
+    "table,kind",
+    [
+        ("existing", "Table"),
+        ("EXISTING", "Table"),
+        ("existing_view", "View"),
+        ("Existing_View", "View"),
+        # Tables and indexes share one namespace in SQLite
+        ("existing_index", "Index"),
+        ("EXISTING_INDEX", "Index"),
+    ],
 )
-async def test_table_exists(ds, temp_dir, table):
+async def test_table_exists(ds, temp_dir, table, kind):
     response = await upload(ds, table=table)
     assert response.status_code == 409
     assert _errors(response) == [
-        f"Table {table!r} already exists in data: choose another table name"
+        f"{kind} {table!r} already exists in data: choose another table name"
     ]
     assert upload_dirs(temp_dir) == []
+    assert import_registry(ds).imports() == []
 
 
 @pytest.mark.asyncio

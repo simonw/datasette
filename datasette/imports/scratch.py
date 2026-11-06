@@ -20,6 +20,7 @@ import contextlib
 import contextvars
 import dataclasses
 import json
+import logging
 import os
 import pathlib
 import sqlite3
@@ -43,6 +44,8 @@ from datasette.imports.sources import (
     remove_tree,
 )
 from datasette.utils import escape_sqlite
+
+logger = logging.getLogger(__name__)
 
 SCRATCH_NAME = "scratch"
 DEFAULT_BATCH_SIZE = 1000
@@ -143,6 +146,12 @@ class CreatedSaveDatabase(Database):
     down, after the imports have been cancelled), as it is when loading
     before serving fails, instead of leaving an empty database behind.
     ``on_removed(path)`` is called if it was.
+
+    It is in WAL mode, so that pages can be read while rows are written.
+    Closing it checkpoints it, so the data is all in the file itself and
+    the -wal and -shm files are gone: Datasette's read connections are
+    read-only, and when one of them is the last to close, SQLite cannot
+    do that itself - copying just the ``.db`` file would lose every row.
     """
 
     def __init__(self, ds, path, *, on_removed=None):
@@ -159,6 +168,29 @@ class CreatedSaveDatabase(Database):
             self.removed = True
             if self.on_removed is not None:
                 self.on_removed(self.path)
+            return
+        # After remove_if_empty(), whose read-only connection leaves -wal and
+        # -shm files behind if there were none
+        checkpoint(self.path)
+
+
+def checkpoint(path: str) -> None:
+    """
+    Copy everything in the -wal file of the WAL mode database at ``path``
+    into the database file, and remove the -wal and -shm files. Call it
+    once every connection to the file is closed: a connection that can
+    write, closing last, removes them.
+    """
+    if not os.path.exists(path + "-wal"):
+        return
+    try:
+        conn = sqlite3.connect(path)
+        try:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        logger.warning("Could not checkpoint %s", path, exc_info=True)
 
 
 def remove_if_empty(path: str) -> bool:

@@ -1517,6 +1517,58 @@ async def test_cli_save_file_with_nothing_imported_is_removed_at_shutdown(
 
 
 @pytest.mark.asyncio
+async def test_cli_save_file_is_checkpointed_at_shutdown(data_dir):
+    # A --save file this run creates is in WAL mode, and Datasette's read
+    # connections are read-only: when the last of them closed, SQLite could
+    # not checkpoint it, so every row stayed in the -wal file and a copy of
+    # just the .db file had none
+    save = data_dir / "s.db"
+    ds = ds_from_cli(
+        [str(data_dir / "dogs.csv"), "--save", str(save)], _background_imports=True
+    )
+    try:
+        await ds.client.get("/")
+        assert await import_registry(ds).wait(20)
+        rows = (await ds.client.get("/s/dogs.json?_shape=array")).json()
+        assert len(rows) == 3
+        assert (data_dir / "s.db-wal").exists()
+    finally:
+        await ds.invoke_shutdown()
+    assert sorted(p.name for p in data_dir.iterdir() if p.name.startswith("s.")) == [
+        "s.db"
+    ]
+    copy = data_dir / "copy.db"
+    copy.write_bytes(save.read_bytes())
+    conn = sqlite3.connect(copy)
+    try:
+        assert conn.execute("select count(*) from dogs").fetchone() == (3,)
+    finally:
+        conn.close()
+
+
+def test_reload_gives_a_worker_with_inputs_time_to_stop(data_dir, monkeypatch):
+    import hupper
+
+    calls = []
+
+    class FakeReloader:
+        def watch_files(self, files):
+            pass
+
+    def start_reloader(*args, **kwargs):
+        calls.append(kwargs)
+        return FakeReloader()
+
+    monkeypatch.setattr(hupper, "start_reloader", start_reloader)
+    monkeypatch.setattr(hupper, "is_active", lambda: True)
+    monkeypatch.delenv(ReloadSession.ENV, raising=False)
+    ds_from_cli([str(data_dir / "dogs.csv"), "--reload"]).close()
+    ds_from_cli(["--reload"]).close()
+    # hupper's default - a second - for a worker with nothing to import
+    assert calls == [{"shutdown_interval": 10}, {}]
+
+
+@pytest.mark.asyncio
 async def test_cli_reload_session_keeps_finished_tables(data_dir, monkeypatch):
     import hupper
 

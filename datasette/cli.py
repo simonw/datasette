@@ -93,6 +93,9 @@ from .utils.sqlite import sqlite3
 from .utils.testing import TestClient
 from .version import __version__
 
+# How long a --reload worker that loads data has to exit before hupper kills it
+RELOAD_SHUTDOWN_SECONDS = 10
+
 
 def run_sync(coro_func):
     """
@@ -646,11 +649,19 @@ def serve(
     if reload:
         import hupper
 
-        if not hupper.is_active() and any(maybe_source(f) for f in files):
+        has_inputs = any(maybe_source(f) for f in files)
+        if not hupper.is_active() and has_inputs:
             # This is the reloader process: give its workers somewhere to
             # keep downloads, stdin and the scratch database across reloads
             ReloadSession.start()
-        reloader = hupper.start_reloader("datasette.cli.cli")
+        reloader_options = {}
+        if has_inputs:
+            # hupper kills a worker that has not exited a second after it was
+            # asked to (the default), and one that is importing needs longer
+            # to stop: to drop a partly loaded table from a --save file, and
+            # to checkpoint a --save file it created
+            reloader_options["shutdown_interval"] = RELOAD_SHUTDOWN_SECONDS
+        reloader = hupper.start_reloader("datasette.cli.cli", **reloader_options)
         if immutable:
             reloader.watch_files(immutable)
         if config:

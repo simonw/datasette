@@ -1,11 +1,17 @@
 import asyncio
+import atexit
+import contextlib
 import functools
 import json
+import logging
 import os
 import pathlib
 import shutil
+import signal
 import sys
+import tempfile
 import textwrap
+import time
 import webbrowser
 from runpy import run_module
 from subprocess import call
@@ -22,6 +28,48 @@ from .app import (
     SQLITE_LIMIT_ATTACHED,
     Datasette,
     pm,
+)
+from .database import Database
+from .imports.background import TerminalReporter, import_registry
+from .imports.inserter import SQLITE_ERRORS
+from .imports.loaders import NOTE_LOG_ATTRIBUTE, get_loaders
+from .imports.scratch import (
+    DEFAULT_BATCH_SIZE,
+    SAVE_BATCH_SIZE,
+    SCRATCH_NAME,
+    CreatedSaveDatabase,
+    LoadedTable,
+    ReloadSession,
+    ScratchDatabase,
+    check_save_file,
+    create_save_file,
+    drop_table,
+    free_bytes,
+    is_scratch,
+    load_sources,
+    plan_loads,
+    remove_if_empty,
+    sniff,
+)
+from .imports.sources import (
+    LARGE_DOWNLOAD_BYTES,
+    Source,
+    SourceError,
+    StatusLine,
+    assign_table_names,
+    check_stdin_available,
+    download_progress,
+    fetch,
+    human_size,
+    maybe_source,
+    one_line,
+    parse_source,
+    remove_temporary,
+    remove_tree,
+    save_command,
+    spool,
+    suggest_save_path,
+    use_local_file,
 )
 from .inspect import inspect_tables
 from .utils import (
@@ -45,13 +93,34 @@ from .utils.sqlite import sqlite3
 from .utils.testing import TestClient
 from .version import __version__
 
+# How long a --reload worker that loads data has to exit before hupper kills it
+RELOAD_SHUTDOWN_SECONDS = 10
+
 
 def run_sync(coro_func):
-    """Run an async callable to completion on a fresh event loop."""
+    """
+    Run an async callable to completion on a fresh event loop.
+
+    Ctrl+C (or SIGTERM, see :func:`_sigterm_interrupts`) usually arrives
+    while the loop waits for something, and ``run_until_complete()`` then
+    raises ``KeyboardInterrupt`` with the coroutine still suspended, so
+    its ``except`` and ``finally`` blocks would never run - those that drop
+    a partly loaded table or delete a ``--save`` file this run created.
+    The coroutine is cancelled and given the chance to clean up before
+    ``KeyboardInterrupt`` is raised again. A second Ctrl+C stops that.
+    """
     loop = asyncio.new_event_loop()
     try:
         asyncio.set_event_loop(loop)
-        return loop.run_until_complete(coro_func())
+        task = loop.create_task(coro_func())
+        try:
+            return loop.run_until_complete(task)
+        except KeyboardInterrupt:
+            if not task.done():
+                task.cancel()
+                with contextlib.suppress(BaseException):
+                    loop.run_until_complete(task)
+            raise
     finally:
         asyncio.set_event_loop(None)
         loop.close()
@@ -122,7 +191,17 @@ def sqlite_extensions(fn):
     return wrapped
 
 
-@click.group(cls=DefaultGroup, default="serve", default_if_no_args=True)
+class _DatasetteGroup(DefaultGroup):
+    def parse_args(self, ctx, args):
+        if args and args[0] == "--":
+            # datasette -- -:csv: the group's own parser would consume the
+            # --, and serve would then take -:csv for an option. Hand all of
+            # it to serve, whose parser reads the -- itself
+            args.insert(0, self.default_cmd_name)
+        return super().parse_args(ctx, args)
+
+
+@click.group(cls=_DatasetteGroup, default="serve", default_if_no_args=True)
 @click.version_option(version=__version__)
 def cli():
     """
@@ -503,6 +582,14 @@ def uninstall(packages, yes):
     help="Path to a persistent Datasette internal SQLite database",
     envvar="DATASETTE_INTERNAL",
 )
+@click.option(
+    "--save",
+    type=click.Path(dir_okay=False),
+    help=(
+        "Load CSV, TSV, JSON, URL and stdin inputs into this SQLite file, "
+        "created if needed, instead of a temporary scratch database"
+    ),
+)
 def serve(
     files,
     immutable,
@@ -537,9 +624,26 @@ def serve(
     ssl_keyfile,
     ssl_certfile,
     internal,
+    save=None,
     return_instance=False,
+    _background_imports=False,
 ):
-    """Serve up specified SQLite database files with a web UI"""
+    """
+    Serve up specified SQLite database files with a web UI
+
+    FILES can also be CSV, TSV, JSON or newline-delimited JSON files, http://
+    or https:// URLs, or - for standard input. These are loaded into a
+    temporary read-only database called scratch, or into the --save file,
+    in the background while Datasette serves (--get loads them first).
+    Use name:source to pick a table name and source:csv (or tsv, json,
+    ndjson) to skip format detection; for standard input that is stdin:csv.
+
+    \b
+    Examples:
+        datasette events.csv stats.json
+        some-command | datasette -
+        datasette events:https://example.com/a.csv --save data.db
+    """
     if help_settings:
         formatter = formatting.HelpFormatter()
         with formatter.section("Settings"):
@@ -551,10 +655,23 @@ def serve(
             )
         click.echo(formatter.getvalue())
         sys.exit(0)
+    reloader = None
     if reload:
         import hupper
 
-        reloader = hupper.start_reloader("datasette.cli.cli")
+        has_inputs = any(maybe_source(f) for f in files)
+        if not hupper.is_active() and has_inputs:
+            # This is the reloader process: give its workers somewhere to
+            # keep downloads, stdin and the scratch database across reloads
+            ReloadSession.start()
+        reloader_options = {}
+        if has_inputs:
+            # hupper kills a worker that has not exited a second after it was
+            # asked to (the default), and one that is importing needs longer
+            # to stop: to drop a partly loaded table from a --save file, and
+            # to checkpoint a --save file it created
+            reloader_options["shutdown_interval"] = RELOAD_SHUTDOWN_SECONDS
+        reloader = hupper.start_reloader("datasette.cli.cli", **reloader_options)
         if immutable:
             reloader.watch_files(immutable)
         if config:
@@ -606,9 +723,23 @@ def serve(
         "default_deny": default_deny,
     }
 
-    # Separate directories from files
+    # Separate directories from files, and data to load from SQLite files
     directories = [f for f in files if os.path.isdir(f)]
-    file_paths = [f for f in files if not os.path.isdir(f)]
+    source_args = [f for f in files if not os.path.isdir(f) and maybe_source(f)]
+    file_paths = [
+        f for f in files if not os.path.isdir(f) and f not in set(source_args)
+    ]
+    if save and not source_args:
+        raise click.ClickException(
+            "--save needs at least one CSV, TSV, JSON, URL or - input to load"
+        )
+    if save and any(
+        os.path.realpath(save) == os.path.realpath(path) for path in immutable
+    ):
+        raise click.ClickException(
+            f"--save {save}: this file is also opened with -i/--immutable, "
+            "so it cannot be written to"
+        )
 
     # Handle config_dir - only one directory allowed
     if len(directories) > 1:
@@ -664,8 +795,34 @@ def serve(
     except StartupError as e:
         raise click.ClickException(e.args[0])
 
+    data_import = None
+    if source_args:
+        # Without --get, inputs load in the background while Datasette
+        # serves, so only what can fail at once is checked here
+        background = _background_imports if return_instance else not get
+        with _sigterm_interrupts():
+            data_import = _prepare_import(
+                ds,
+                source_args,
+                save,
+                reload,
+                reloader,
+                memory,
+                plugins_dir,
+                background=background,
+            )
+
     if return_instance:
-        # Private utility mechanism for writing unit tests
+        # Private utility mechanism for writing unit tests. Loads the inputs
+        # before returning, unless _background_imports=True: then they are
+        # registered as background tasks, which start with the first request
+        # or ds.start_background_tasks()
+        if data_import:
+            if _background_imports:
+                data_import.start_in_background(ds)
+            else:
+                with _sigterm_interrupts():
+                    run_sync(data_import.run)
         return ds
 
     if headers and not get:
@@ -676,6 +833,9 @@ def serve(
 
     if get:
         # --get means we don't run Uvicorn at all
+        if data_import:
+            with _sigterm_interrupts():
+                run_sync(data_import.run)
         run_sync(lambda: check_databases(ds))
 
         try:
@@ -708,6 +868,18 @@ def serve(
         else:
             click.echo(response.text)
 
+        if data_import and data_import.created_file:
+            # A --save file this run created that nothing was loaded into
+            # (every input had no rows) goes again, as in serve mode. Not
+            # before the request, which may have been about it
+            data_import.db.close()
+            if remove_if_empty(data_import.created_file):
+                click.echo(
+                    f"Removed {data_import.created_file}: nothing was "
+                    "imported into it",
+                    err=True,
+                )
+
         exit_code = 0 if response.status == 200 else 1
         sys.exit(exit_code)
         return
@@ -717,6 +889,11 @@ def serve(
     # on the loop (asyncio.create_task, Lock/Queue/Event objects, ...) is
     # still alive when the server starts handling requests.
     async def _serve_async():
+        # CSV/JSON/URL/stdin inputs load in background tasks, which start
+        # once the server does: see datasette/imports/background.py
+        if data_import:
+            data_import.start_in_background(ds)
+
         # Populate internal catalog tables before invoke_startup
         await check_databases(ds)
 
@@ -890,6 +1067,515 @@ def create_token(
         encoded = token[len("dstok_") :]
         click.echo("\nDecoded:\n")
         click.echo(json.dumps(ds.unsign(encoded, namespace="token"), indent=2))
+
+
+class _DataImport:
+    """
+    Sources from the command line, made local and sniffed, waiting for
+    :meth:`run` to load them into ``db``.
+    """
+
+    def __init__(self, db, sources, plan, session, target_path, workdir):
+        self.db = db
+        self.sources = sources
+        self.plan = plan
+        self.session = session
+        self.target_path = target_path
+        self.workdir = workdir
+        # A --save file that did not exist before, removed if loading fails
+        self.created_file = None
+        # Free space in an existing --save file before loading
+        self.free_before = None
+        #: Appended to "into table T" in the summary
+        self.where = ""
+
+    def start_in_background(self, ds):
+        """
+        Import each source in a background task of its own (see
+        datasette/imports/background.py), printing progress on stderr.
+        Tables kept from earlier in a --reload session are not loaded again.
+
+        A failure or cancellation keeps the rows loaded so far in scratch,
+        where the pages say the table is incomplete, but drops them from a
+        --save file, which has nowhere to say so.
+        """
+        db = self.db
+        session = self.session
+        target_path = self.target_path
+        registry = import_registry(ds)
+        # Only this command line's own inputs: an upload goes into a database
+        # of its own choosing, and is not one of the inputs the summary
+        # counts. The "queued" event fires inside registry.start()
+        ours = {id(source) for source in self.plan.load}
+        registry.add_listener(
+            TerminalReporter(
+                sys.stderr,
+                where=self.where,
+                warn_large=is_scratch(db),
+                accept=lambda job: id(job.source) in ours,
+            )
+        )
+        _print_notes_once()
+        for source in self.plan.reuse:
+            loaded = LoadedTable(
+                source=source,
+                table=source.table,
+                loader="?",
+                rows=0,
+                seconds=0.0,
+                reused=True,
+            )
+            if is_scratch(db):
+                db.loaded.append(loaded)
+            click.echo(_describe_loaded(loaded, self.where), err=True)
+        drops = {table.lower(): table for table in self.plan.drop}
+        for source in self.plan.load:
+            old_table = drops.pop(source.table.lower(), None)
+            registry.start(
+                db,
+                source,
+                workdir=self.workdir,
+                on_error="keep" if is_scratch(db) else "drop",
+                batch_size=(DEFAULT_BATCH_SIZE if is_scratch(db) else SAVE_BATCH_SIZE),
+                before=functools.partial(self._before, source, old_table),
+                on_fetched=self._on_fetched,
+                on_finish=self._on_finish,
+            )
+        if drops:
+            # Tables an earlier --reload worker loaded from inputs that are
+            # no longer there: the command line is the same for every
+            # worker, so in practice there are none
+            async def drop_old(datasette):
+                for table in drops.values():
+                    await drop_table(db, table)
+                    if session:
+                        session.forget(target_path, table)
+
+            ds.add_background_task(drop_old, name=f"drop old tables {db.name}")
+
+    async def _before(self, source, old_table, job):
+        if old_table is not None:
+            # An earlier --reload worker loaded this input before it changed
+            await drop_table(self.db, old_table)
+            if self.session:
+                self.session.forget(self.target_path, old_table)
+        if self.session:
+            # Not complete until on_finish says so: a worker that is
+            # restarted part way through leaves a table to load again
+            self.session.remember(self.target_path, source, complete=False)
+
+    def _on_fetched(self, job):
+        if self.session:
+            # Keep the download or stdin copy for the next --reload worker
+            self.session.remember_copy(job.source)
+            job.source.temporary = False
+
+    def _on_finish(self, job):
+        if job.state != "done":
+            return
+        if self.session:
+            self.session.remember(
+                self.target_path, job.source, complete=True, loader=job.loader
+            )
+        if is_scratch(self.db) and job.table_exists:
+            self.db.loaded.append(
+                LoadedTable(
+                    source=job.source,
+                    table=job.table,
+                    loader=job.loader,
+                    rows=job.rows,
+                    seconds=job.seconds or 0.0,
+                    widenings=list(job.widenings),
+                    notes=list(job.notes),
+                )
+            )
+
+    async def run(self):
+        status = StatusLine(sys.stderr)
+        start = time.perf_counter()
+        where = self.where
+        _print_notes_once()
+
+        def on_start(source):
+            status.start(f"Loading {source.label}...")
+
+        def on_progress(source, rows, import_status):
+            status.update(_loading_text(source, rows, import_status))
+
+        def on_loaded(loaded):
+            status.done(_describe_loaded(loaded, where))
+
+        try:
+            results = await load_sources(
+                self.db,
+                self.plan,
+                session=self.session,
+                target_path=self.target_path,
+                workdir=self.workdir,
+                on_start=on_start,
+                on_progress=on_progress,
+                on_loaded=on_loaded,
+                # Nothing else can be writing yet: load on the write thread
+                exclusive=True,
+                batch_size=(
+                    DEFAULT_BATCH_SIZE if is_scratch(self.db) else SAVE_BATCH_SIZE
+                ),
+            )
+        except BaseException as ex:
+            status.clear()
+            if self.created_file:
+                self.db.close()
+                for suffix in ("", "-journal", "-wal", "-shm"):
+                    with contextlib.suppress(OSError):
+                        os.unlink(self.created_file + suffix)
+            elif self.free_before is not None:
+                self._report_free_space()
+            if isinstance(ex, SourceError):
+                raise click.ClickException(str(ex))
+            raise
+        finally:
+            if not self.session:
+                # The data is in SQLite now
+                remove_temporary(self.sources)
+                remove_tree(self.workdir)
+        order = {id(source): i for i, source in enumerate(self.sources)}
+        results.sort(key=lambda loaded: order[id(loaded.source)])
+        if is_scratch(self.db):
+            self.db.loaded = results
+        if len(results) > 1:
+            total = sum(loaded.rows for loaded in results)
+            kept = sum(1 for loaded in results if loaded.reused)
+            elapsed = time.perf_counter() - start
+            if kept:
+                summary = (
+                    f"Loaded {len(results) - kept} of {len(results)} inputs "
+                    f"({total:,} row{'' if total == 1 else 's'}), kept {kept} "
+                    "from the previous load"
+                )
+            else:
+                summary = (
+                    f"Loaded {len(results)} inputs "
+                    f"({total:,} row{'' if total == 1 else 's'})"
+                )
+            click.echo(f"{summary} in {elapsed:.2f}s", err=True)
+        return results
+
+    def _report_free_space(self):
+        # The tables loaded before the failure were dropped again, but the
+        # pages they used stay in the file until VACUUM
+        try:
+            freed = free_bytes(self.target_path) - self.free_before
+        except Exception:  # noqa: BLE001 - only a hint
+            return
+        if freed >= 1024 * 1024:
+            click.echo(
+                f"{self.target_path} has the same tables as before, but the "
+                f"partly loaded data left {human_size(freed)} of free pages "
+                "in it. SQLite reuses them; VACUUM gives the space back.",
+                err=True,
+            )
+
+
+@contextlib.contextmanager
+def _sigterm_interrupts():
+    """
+    Treat SIGTERM like Ctrl+C while loading, so that the cleanup runs - the
+    scratch file can be gigabytes - instead of the process dying at once.
+    (hupper sends SIGTERM to restart a --reload worker.) Uvicorn installs
+    its own handlers later.
+    """
+    try:
+        previous = signal.signal(signal.SIGTERM, signal.default_int_handler)
+    except ValueError:
+        # Not the main thread
+        yield
+        return
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+
+
+def _describe_loaded(loaded, where=""):
+    # Names, notes and column names can come from the file: one line each,
+    # with no control characters, see one_line()
+    table = one_line(loaded.table)
+    label = one_line(loaded.source.label)
+    if loaded.reused:
+        return (
+            f"Kept table {table}{where} from the previous load: "
+            f"{label} has not changed"
+        )
+    notes = "".join(f"\n  note: {one_line(note)}" for note in loaded.notes)
+    if not loaded.created:
+        return f"{label} has no rows, so no table was created{notes}"
+    line = (
+        f"Loaded {loaded.rows:,} row{'' if loaded.rows == 1 else 's'} from "
+        f"{label} ({loaded.loader}) "
+        f"into table {table}{where} in {loaded.seconds:.2f}s"
+    )
+    for widening in loaded.widenings:
+        line += (
+            f"\n  column {one_line(widening.column)} changed from "
+            f"{widening.from_type} to {widening.to_type} at row "
+            f"{widening.at_row + 1:,}"
+        )
+    return line + notes
+
+
+def _prepare_import(
+    ds, source_args, save, reload, reloader, memory, plugins_dir, background=False
+):
+    """
+    Parse the data source arguments, pick table names, check them against
+    the --save file, download URLs, read stdin and sniff every input - so
+    that bad input fails before anything is loaded - then add the database
+    they load into to ``ds``.
+
+    With ``background=True`` URLs, standard input and pipes are left for
+    their background imports to fetch, so the server can start at once;
+    local files are still checked and sniffed here, because a mistake on
+    the command line is better reported straight away. Standard input is
+    still read here in a --reload session: a reload part way through
+    reading it would lose what had been read.
+    """
+    formats = [loader.name for loader in get_loaders()]
+    try:
+        sources = [
+            (
+                # An existing file is a file, even with colons in its name
+                # - but "-" always means standard input
+                Source(arg, "file", arg)
+                if arg != "-" and os.path.exists(arg)
+                else parse_source(arg, formats)
+            )
+            for arg in source_args
+        ]
+        assign_table_names(sources)
+    except SourceError as ex:
+        raise click.ClickException(str(ex))
+
+    session = ReloadSession.current() if reload else None
+    if save:
+        target_path = save
+    elif session:
+        target_path = session.scratch_path
+    else:
+        target_path = None
+    try:
+        if save:
+            check_save_file(save)
+        plan = plan_loads(target_path, sources, session=session)
+    except SourceError as ex:
+        raise click.ClickException(str(ex))
+
+    if reloader is not None:
+        # Rebuild when an input file changes. URLs and stdin are fetched
+        # once per --reload session, see ReloadSession
+        reloader.watch_files(
+            [
+                os.path.abspath(source.location)
+                for source in sources
+                if source.kind == "file" and not source.needs_copy
+            ]
+        )
+
+    if session:
+        workdir = session.directory
+    elif background:
+        # Nothing is fetched here: each background import that downloads or
+        # copies its input does so into a directory of its own, removed when
+        # the import ends - also when Datasette is stopped with SIGTERM,
+        # which ends the process without running atexit functions
+        workdir = None
+    else:
+        workdir = tempfile.mkdtemp(prefix="datasette-import-")
+        atexit.register(remove_tree, workdir)
+
+    status = StatusLine(sys.stderr)
+    try:
+        for source in plan.load:
+            cached = None
+            if session and source.needs_copy:
+                cached = session.cached_copy(source)
+            if cached:
+                source.path = cached
+                continue
+            if source.kind == "stdin":
+                check_stdin_available()
+                if background and not session:
+                    continue
+                # On the main thread, so Ctrl+C interrupts the read
+                source.path = spool(sys.stdin.buffer, workdir)
+                source.temporary = True
+            elif background and source.needs_copy:
+                if source.kind == "file" and os.path.isdir(source.location):
+                    raise SourceError(
+                        f"{source.spec}: '{source.location}' is a directory"
+                    )
+                continue
+            if source.kind == "file" and use_local_file(source):
+                continue
+            progress = None
+            if source.kind == "url":
+                status.start(f"Downloading {source.label}")
+                progress = _download_progress(source, status, warn=not save)
+            # asyncio.run() turns Ctrl+C into a cancellation, so the
+            # download closes its connection and removes its partial file
+            asyncio.run(fetch(source, workdir, progress=progress))
+            if source.kind == "url":
+                status.done(
+                    f"Downloaded {source.label} "
+                    f"({human_size(os.path.getsize(source.path))})"
+                )
+            if session and source.temporary:
+                session.remember_copy(source)
+                source.temporary = False
+        for source in plan.load:
+            if source.path is not None:
+                sniff(source)
+    except SourceError as ex:
+        status.clear()
+        if not session:
+            remove_temporary(sources)
+        raise click.ClickException(str(ex))
+    except BaseException:
+        status.clear()
+        if not session:
+            remove_temporary(sources)
+        raise
+
+    created_file = None
+    free_before = None
+    if save:
+        try:
+            if create_save_file(save):
+                created_file = save
+                if background:
+                    # Pages are read while rows are written: in the default
+                    # rollback journal mode a long write transaction (a
+                    # column changing type rebuilds the table) locks
+                    # readers out. Only for a file created here: an
+                    # existing database keeps its journal mode
+                    _enable_wal(save)
+            else:
+                free_before = free_bytes(save)
+        except (OSError, *SQLITE_ERRORS, SourceError) as ex:
+            if not session:
+                remove_temporary(sources)
+            if isinstance(ex, SourceError):
+                raise click.ClickException(str(ex))
+            raise click.ClickException(f"--save {save}: {ex}")
+        db = next(
+            (
+                db
+                for db in ds.databases.values()
+                if db.path
+                and not db.is_memory
+                and os.path.realpath(db.path) == os.path.realpath(save)
+            ),
+            None,
+        )
+        if db is None and created_file and background:
+            # Deleted again at shutdown if every input failed or was
+            # cancelled, as it is when loading before serving fails
+            db = ds.add_database(
+                CreatedSaveDatabase(
+                    ds,
+                    save,
+                    on_removed=lambda path: click.echo(
+                        f"Removed {path}: nothing was imported into it", err=True
+                    ),
+                )
+            )
+        elif db is None:
+            db = ds.add_database(Database(ds, path=save, is_mutable=True))
+    else:
+        db = ScratchDatabase(ds, target_path, keep=bool(session))
+        ds.add_database(db, name=SCRATCH_NAME)
+        if db.name != SCRATCH_NAME:
+            click.echo(
+                f"Loading into a database called {db.name}, because "
+                f"{SCRATCH_NAME} is already the name of a database",
+                err=True,
+            )
+        # The command for the scratch page: never suggest a file that
+        # exists, and keep the --plugins-dir that may provide formats
+        save_path = suggest_save_path(
+            [d.path for d in ds.databases.values() if d.path and not d.is_memory]
+        )
+        extra_args = ["--plugins-dir", plugins_dir] if plugins_dir else []
+        db.save_path = save_path
+        db.save_command = save_command(
+            sources, save_path, extra_args=extra_args, redact=True
+        )
+        db.redacted = db.save_command != save_command(
+            sources, save_path, extra_args=extra_args
+        )
+        db.from_stdin = any(source.kind == "stdin" for source in sources)
+        db.save_tables = [source.table for source in sources]
+    if "_memory" in ds.databases and not memory and not ds.crossdb:
+        # Datasette adds _memory when no database files are given
+        ds.remove_database("_memory")
+    data_import = _DataImport(db, sources, plan, session, target_path, workdir)
+    data_import.created_file = created_file
+    data_import.free_before = free_before
+    if save:
+        data_import.where = f" in {save}"
+    elif db.name != SCRATCH_NAME:
+        data_import.where = f" in {db.name}"
+    return data_import
+
+
+def _loading_text(source, rows, import_status):
+    "The --get status line while ``source`` loads."
+    if import_status.finishing and import_status.backlog:
+        # A column changed to text after the first rows: its stored numbers
+        # are being turned back into the text they came from
+        return f"Finishing {source.table}: {import_status.backlog:,} rows to convert"
+    return f"Loading {source.label}: {rows:,} rows"
+
+
+def _is_not_an_import_note(record):
+    return not getattr(record, NOTE_LOG_ATTRIBUTE, None)
+
+
+def _print_notes_once():
+    """
+    The summary lines on stderr show the loaders' notes. A loader logs each
+    one as a warning too, and with no logging configured Python's
+    last-resort handler would print it again: leave notes out of that
+    fallback. Handlers that are configured still get them.
+    """
+    if logging.lastResort is not None:
+        logging.lastResort.addFilter(_is_not_an_import_note)
+
+
+def _enable_wal(path):
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    finally:
+        conn.close()
+
+
+def _download_progress(source, status, warn):
+    progress = download_progress(source.label, status)
+    warned = False
+
+    def callback(done, total):
+        nonlocal warned
+        size = total or done
+        if warn and not warned and size > LARGE_DOWNLOAD_BYTES:
+            warned = True
+            status.done(
+                f"{source.label} is {human_size(size)}"
+                f"{'' if total else ' so far'}. The scratch database is deleted "
+                "when Datasette stops: add --save data.db to keep the data."
+            )
+        progress(done, total)
+
+    return callback
 
 
 pm.hook.register_commands(cli=cli)

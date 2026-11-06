@@ -74,7 +74,7 @@ def free_port():
         return sock.getsockname()[1]
 
 
-def endpoints(table, city, database="scratch"):
+def endpoints(table, city, database="scratch", sort="price"):
     q = urllib.parse.quote
     count = f"select count(*) from [{table}]"
     group = f"select city, count(*) from [{table}] group by city order by 2 desc"
@@ -84,7 +84,7 @@ def endpoints(table, city, database="scratch"):
         "table": f"/{database}/{table}",
         "table.json": f"/{database}/{table}.json?_size=100",
         "facet": f"/{database}/{table}.json?_facet=city&_size=0",
-        "sort": f"/{database}/{table}.json?_sort_desc=price&_size=10",
+        "sort": f"/{database}/{table}.json?_sort_desc={q(sort)}&_size=10",
         "filter": f"/{database}/{table}.json?city={q(city)}&_size=10",
         "count": f"/{database}/-/query.json?sql={q(count)}",
         "group-by": f"/{database}/-/query.json?sql={q(group)}",
@@ -134,6 +134,7 @@ async def main():
     parser.add_argument("--table", required=True, help="Table to query")
     parser.add_argument("--database", default="scratch", help="Its database")
     parser.add_argument("--city", default="Lima", help="Value for the filter")
+    parser.add_argument("--sort", default="price", help="Column to sort by")
     parser.add_argument("--clients", type=int, default=4)
     parser.add_argument(
         "--think", type=float, default=0, help="Seconds between requests"
@@ -188,9 +189,12 @@ async def main():
     process = subprocess.Popen(
         command, stdout=log, stderr=log, env=env, stdin=subprocess.DEVNULL
     )
-    paths = endpoints(args.table, args.city, args.database)
+    paths = endpoints(args.table, args.city, args.database, args.sort)
     results = collections.defaultdict(list)  # (phase, name) -> [(status, ms)]
     errors = collections.defaultdict(collections.Counter)
+    # Requests a 307 sent round again: they looked for the table just
+    # before its first rows were committed
+    redirected = collections.Counter()
     state = State()
     first_response = None
     token_url = None
@@ -281,17 +285,21 @@ async def main():
                 name = names[n % len(names)]
                 n += 1
                 phase = "during" if state.importing else "after"
-                if not state.table_exists and name not in (
-                    "home",
-                    "database",
-                    "imports.json",
-                ):
-                    # Before the table exists, these are a 404 by design
-                    phase = "before-table"
                 t0 = time.perf_counter()
                 try:
-                    r = await client.get(paths[name])
+                    # As a browser would, follow the redirect that a request
+                    # which lost the race with the first rows gets
+                    r = await client.get(paths[name], follow_redirects=True)
                     status = r.status_code
+                    if r.history:
+                        redirected[name] += 1
+                    if status == 404 and (
+                        "imports-notice" in r.text or '"import": {' in r.text
+                    ):
+                        # The table is not there yet and the 404 says so
+                        # (queued, downloading, or importing its first
+                        # rows): by design, so counted on their own
+                        phase = "before-table"
                     if status != 200:
                         text = r.text[:300]
                         match = re.search(r'"error":\s*"([^"]*)"', text)
@@ -375,6 +383,8 @@ async def main():
                 f"{phase:<13}{name:<14}{row['n']:>6}{row['p50']:>9.1f}"
                 f"{row['p95']:>9.1f}{row['max']:>9.1f}  {dict(statuses)}"
             )
+    if redirected:
+        print(f"\nRedirected (307) to try again: {dict(redirected)}")
     any_errors = {k: v for k, v in errors.items() if v}
     if any_errors:
         print("\nNon-200 responses:")
@@ -392,6 +402,7 @@ async def main():
                     "left_workers": left_workers,
                     "left_files": left_files,
                     "summary": summary,
+                    "redirected": dict(redirected),
                     "timeline": state.timeline,
                     "imports": state.imports,
                     "cancel": cancel_result if args.cancel_at else None,

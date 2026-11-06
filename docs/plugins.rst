@@ -345,6 +345,15 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             ]
         },
         {
+            "name": "datasette.imports.loaders",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "register_import_loaders"
+            ]
+        },
+        {
             "name": "datasette.publish.cloudrun",
             "static": false,
             "templates": false,

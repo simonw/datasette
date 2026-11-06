@@ -61,7 +61,7 @@ from datasette.utils.asgi import (
 from datasette.utils.sqlite import check_structured_write_table
 
 from . import Context, from_extra
-from .base import BaseView, DatasetteError, stream_csv
+from .base import BaseView, DatasetteError, query_interrupted_error, stream_csv
 from .database import QueryView
 from .table_create_alter import (
     ALTER_TABLE_COLUMN_TYPES,
@@ -2259,6 +2259,10 @@ async def table_view_data(
     # Execute the main query!
     try:
         results = await db.execute(sql, params, truncate=True, **extra_args)
+    except QueryInterrupted as ex:
+        # A sort or filter that takes longer than sql_time_limit_ms: a 400,
+        # as for the same query on the query page, not a server error
+        raise query_interrupted_error(ex)
     except (sqlite3.OperationalError, InvalidSql) as e:
         raise DatasetteError(str(e), title="Invalid SQL", status=400)
 

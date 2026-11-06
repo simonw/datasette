@@ -2038,12 +2038,76 @@ async def test_cancel_again_while_cleaning_up(slow_writes):
     with pytest.raises(asyncio.CancelledError):
         await task
     # The clean up carries on in the background
-    for _ in range(100):
-        if status.done:
-            break
-        await asyncio.sleep(0.05)
+    await asyncio.wait_for(status.wait(), 10)
     assert status.done and status.created
     assert await _temp_tables(db) == []
+
+
+@pytest.mark.asyncio
+async def test_cancel_with_deferred_widening_finishes_in_the_background(
+    slow_writes,
+):
+    # "deferred" rebuilds the table in finish(): O(rows), so after a
+    # cancellation it happens in the background too
+    slow_writes.seconds = 0.01
+    ds = Datasette()
+    db = ds.add_memory_database(uuid.uuid4().hex, name="scratch")
+    status = inserter_module.ImportStatus()
+    rows = [{"n": str(i)} for i in range(20)] + [{"n": "x"}, {"n": "21"}] * 20
+    cancel = asyncio.Event()
+
+    async def progress(written):
+        if written >= 22:
+            cancel.set()
+            await asyncio.sleep(10)
+
+    task = asyncio.ensure_future(
+        import_rows(
+            db,
+            "t",
+            rows,
+            sample_size=20,
+            batch_size=2,
+            widen="deferred",
+            progress=progress,
+            status=status,
+        )
+    )
+    await cancel.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert status.rows == 22 and not status.done
+    assert await db.execute_fn(lambda conn: declared(conn)) == {"n": "INTEGER"}
+    await asyncio.wait_for(status.wait(), 10)
+    assert await db.execute_fn(lambda conn: declared(conn)) == {"n": "TEXT"}
+    values = await db.execute("select n from t order by rowid")
+    assert [r[0] for r in values] == [str(i) for i in range(20)] + ["x", "21"]
+    assert await _temp_tables(db) == []
+
+
+@pytest.mark.asyncio
+async def test_import_status_wait():
+    ds = Datasette()
+    db = ds.add_memory_database(uuid.uuid4().hex, name="scratch")
+    status = inserter_module.ImportStatus()
+    waiter = asyncio.ensure_future(status.wait())
+    await asyncio.sleep(0)
+    assert not waiter.done()
+    await import_rows(db, "t", [{"a": "1"}], status=status)
+    await asyncio.wait_for(waiter, 5)
+    assert status.done and status.backlog == 0 and status.rows == 1
+    # Done already: returns at once, also for insert_rows() (in a thread)
+    await asyncio.wait_for(status.wait(), 1)
+    other = inserter_module.ImportStatus()
+    waiter = asyncio.ensure_future(other.wait())
+    await asyncio.sleep(0)
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    await asyncio.get_running_loop().run_in_executor(
+        None, lambda: insert_rows(conn, "t", [{"a": "1"}], status=other)
+    )
+    await asyncio.wait_for(waiter, 5)
+    assert other.done
 
 
 @pytest.mark.asyncio

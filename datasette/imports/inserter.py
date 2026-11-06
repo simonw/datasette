@@ -2132,12 +2132,14 @@ async def import_rows(
                     "finished after a cancelled import; left as it was",
                     table,
                 )
-        except Exception:
-            # Nobody to raise it to
-            logger.warning(
+        except Exception:  # noqa: BLE001 - logged, nobody to raise it to
+            # A database closed meanwhile (Datasette shutting down after
+            # cancelling its imports) is no surprise
+            closed = getattr(db, "_closed", False) is True
+            (logger.debug if closed else logger.warning)(
                 "Could not finish table %r after a cancelled import",
                 table,
-                exc_info=True,
+                exc_info=not closed,
             )
             with contextlib.suppress(Exception):
                 await db.execute_write_fn(inserter.discard)
@@ -2168,7 +2170,7 @@ async def import_rows(
                         handed_off.add_done_callback(_BACKGROUND_TASKS.discard)
                         return handed_off
                     await complete()
-            if not inserter.finished:
+            if not inserter.finished and inserter._spellings_created:
                 with contextlib.suppress(Exception):
                     await db.execute_write_fn(inserter.discard)
         finally:

@@ -3,6 +3,7 @@ import atexit
 import contextlib
 import functools
 import json
+import logging
 import os
 import pathlib
 import shutil
@@ -31,7 +32,7 @@ from .app import (
 from .database import Database
 from .imports.background import TerminalReporter, import_registry
 from .imports.inserter import SQLITE_ERRORS
-from .imports.loaders import get_loaders
+from .imports.loaders import NOTE_LOG_ATTRIBUTE, get_loaders
 from .imports.scratch import (
     DEFAULT_BATCH_SIZE,
     SAVE_BATCH_SIZE,
@@ -1052,6 +1053,7 @@ class _DataImport:
         registry.add_listener(
             TerminalReporter(sys.stderr, where=self.where, warn_large=is_scratch(db))
         )
+        _print_notes_once()
         for source in self.plan.reuse:
             loaded = LoadedTable(
                 source=source,
@@ -1130,6 +1132,7 @@ class _DataImport:
         status = StatusLine(sys.stderr)
         start = time.perf_counter()
         where = self.where
+        _print_notes_once()
 
         def on_start(source):
             status.start(f"Loading {source.label}...")
@@ -1450,6 +1453,21 @@ def _prepare_import(
     elif db.name != SCRATCH_NAME:
         data_import.where = f" in {db.name}"
     return data_import
+
+
+def _is_not_an_import_note(record):
+    return not getattr(record, NOTE_LOG_ATTRIBUTE, None)
+
+
+def _print_notes_once():
+    """
+    The summary lines on stderr show the loaders' notes. A loader logs each
+    one as a warning too, and with no logging configured Python's
+    last-resort handler would print it again: leave notes out of that
+    fallback. Handlers that are configured still get them.
+    """
+    if logging.lastResort is not None:
+        logging.lastResort.addFilter(_is_not_an_import_note)
 
 
 def _enable_wal(path):

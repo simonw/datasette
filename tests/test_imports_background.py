@@ -9,6 +9,7 @@ import contextlib
 import http.server
 import io
 import json
+import logging
 import os
 import signal
 import socket
@@ -1169,6 +1170,42 @@ async def test_cli_registers_background_imports(data_dir, capsys):
         )
         assert "table bad has the first 1,500 rows" in stderr
         assert "Imported 1 of 2 inputs (3 rows)" in stderr
+    finally:
+        await ds.invoke_shutdown()
+
+
+@contextlib.contextmanager
+def no_logging_configured():
+    """
+    No handler on the root logger, as in ``datasette serve``, so warnings
+    go to Python's last-resort handler. Use it inside the test: pytest's
+    logging plugin adds its handlers after the fixtures are set up.
+    """
+    root = logging.getLogger()
+    saved = root.handlers[:]
+    root.handlers.clear()
+    try:
+        yield
+    finally:
+        root.handlers[:] = saved
+
+
+@pytest.mark.asyncio
+async def test_cli_prints_each_note_once(tmp_path, capsys):
+    path = tmp_path / "api.json"
+    path.write_text(json.dumps({"total": 2, "results": [{"a": 1}, {"a": 2}]}))
+    ds = ds_from_cli([str(path)], _background_imports=True)
+    try:
+        with no_logging_configured():
+            await ds.client.get("/-/imports.json")
+            assert await import_registry(ds).wait(20)
+        stderr = capsys.readouterr().err
+        lines = stderr.splitlines()
+        loaded = next(i for i, line in enumerate(lines) if line.startswith("Loaded"))
+        note = "Importing the 2 objects in 'results', ignoring 'total'"
+        assert lines[loaded + 1] == f"  note: {note}"
+        # Not also as "Import worker: ..." from the worker's log message
+        assert stderr.count(note) == 1
     finally:
         await ds.invoke_shutdown()
 

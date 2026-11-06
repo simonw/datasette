@@ -782,12 +782,15 @@ class _Import:
                 self.schema = payload["columns"]
             elif kind == "log":
                 text = payload.get("message", "")
+                extra = None
                 if payload.get("note"):
                     self.notes.append(text)
                     report = True
+                    # Marked as the loader marks it, see split_schema()
+                    extra = {NOTE_LOG_ATTRIBUTE: self.loader or "loader"}
                 else:
                     self.warnings.append(text)
-                logger.warning("Import worker: %s", text)
+                logger.warning("Import worker: %s", text, extra=extra)
             elif kind == "end":
                 self.trailer = payload
                 self.bytes = payload.get("bytes", self.bytes)

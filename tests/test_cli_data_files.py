@@ -3,10 +3,12 @@ Tests for loading CSV, TSV, JSON, URLs and stdin from the command line:
 ``datasette data.csv``, see datasette/imports/sources.py and scratch.py.
 """
 
+import contextlib
 import gzip
 import html
 import http.server
 import json
+import logging
 import os
 import sqlite3
 import threading
@@ -325,16 +327,35 @@ def test_stderr_summary(data_dir):
     assert "dogs.csv (csv) into table dogs in " in result.stderr
 
 
+@contextlib.contextmanager
+def no_logging_configured():
+    """
+    No handler on the root logger, as in ``datasette serve``, so warnings
+    go to Python's last-resort handler. Use it inside the test: pytest's
+    logging plugin adds its handlers after the fixtures are set up.
+    """
+    root = logging.getLogger()
+    saved = root.handlers[:]
+    root.handlers.clear()
+    try:
+        yield
+    finally:
+        root.handlers[:] = saved
+
+
 def test_stderr_summary_has_the_loaders_notes(data_dir):
     path = data_dir / "api.json"
     path.write_text(json.dumps({"total": 2, "results": [{"a": 1}, {"a": 2}]}))
-    result = run([str(path), "--get", "/-/versions.json"])
+    with no_logging_configured():
+        result = run([str(path), "--get", "/-/versions.json"])
     assert result.exit_code == 0
     lines = result.stderr.splitlines()
     loaded = next(i for i, line in enumerate(lines) if line.startswith("Loaded 2 rows"))
     assert lines[loaded + 1] == (
         "  note: Importing the 2 objects in 'results', ignoring 'total'"
     )
+    # Only there: not also as the warning the loader logs it as
+    assert result.stderr.count("Importing the 2 objects") == 1
 
 
 def test_only_scratch_database(data_dir):

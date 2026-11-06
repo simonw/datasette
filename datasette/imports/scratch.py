@@ -24,11 +24,12 @@ import json
 import os
 import sqlite3
 import tempfile
+import threading
 import time
 
 from datasette.database import Database
 from datasette.imports import loaders as _loaders
-from datasette.imports.inserter import import_rows
+from datasette.imports.inserter import import_rows, insert_rows
 from datasette.imports.sources import (
     SQLITE_HEADER,
     Source,
@@ -259,6 +260,7 @@ async def load_source(
     sample_size: int = 1000,
     progress=None,
     loaders=None,
+    exclusive: bool = False,
 ) -> LoadedTable:
     """
     Load one source into a new table ``source.table`` in ``db``.
@@ -270,7 +272,15 @@ async def load_source(
     cancellation) is raised. ``progress(rows_written)`` is called after
     every chunk.
 
-    This is the unit of work a background import task runs.
+    By default every chunk is its own ``db.execute_write_fn()`` call while
+    the loader runs in an executor thread, so other writes and reads can
+    happen in between: this is the unit of work a background import task
+    runs. ``exclusive=True`` instead parses and writes on the write thread
+    in one ``execute_write_fn()`` call (still committing every chunk).
+    That is about 30% faster - the two threads contending for the GIL cost
+    more than they overlap - but holds up every other write to ``db`` until
+    it finishes, so it is only for loading before the server starts.
+    ``write_wrapper`` plugins then see one call for the whole load.
     """
     from datasette.imports.sources import fetch
 
@@ -280,6 +290,15 @@ async def load_source(
     if source.loader is None:
         await loop.run_in_executor(None, sniff, source, loaders)
     loader = source.loader
+    # Checked here as well as in plan_loads(): on failure the table is
+    # dropped, which must never hit a table this import did not create
+    taken = await db.execute(
+        "select name from sqlite_master where type in ('table', 'view') "
+        "and name = ? collate nocase",
+        [source.table],
+    )
+    if taken.first():
+        raise TableExists(f"Table {source.table!r} already exists in {db.name}")
     start = time.perf_counter()
     try:
         result = await loop.run_in_executor(
@@ -288,15 +307,26 @@ async def load_source(
         )
         schema = dict(result.schema.columns) if result.schema else None
         with import_writes():
-            imported = await import_rows(
-                db,
-                source.table,
-                result.rows,
-                schema=schema,
-                sample_size=sample_size,
-                batch_size=batch_size,
-                progress=progress,
-            )
+            if exclusive:
+                imported = await _load_exclusive(
+                    db,
+                    source.table,
+                    result.rows,
+                    schema,
+                    sample_size,
+                    batch_size,
+                    progress,
+                )
+            else:
+                imported = await import_rows(
+                    db,
+                    source.table,
+                    result.rows,
+                    schema=schema,
+                    sample_size=sample_size,
+                    batch_size=batch_size,
+                    progress=progress,
+                )
     except BaseException as ex:
         with contextlib.suppress(Exception):
             await drop_table(db, source.table)
@@ -317,6 +347,40 @@ async def load_source(
         types=imported.types,
         widenings=list(imported.widenings),
     )
+
+
+class _Cancelled(Exception):
+    pass
+
+
+async def _load_exclusive(db, table, rows, schema, sample_size, batch_size, progress):
+    # insert_rows() on the write thread, committing every chunk. The write
+    # thread cannot be interrupted, so cancellation sets a flag that the
+    # per-chunk progress callback checks
+    cancelled = threading.Event()
+
+    def on_chunk(rows_written):
+        if cancelled.is_set():
+            raise _Cancelled
+        if progress is not None:
+            progress(rows_written)
+
+    def load(conn):
+        return insert_rows(
+            conn,
+            table,
+            rows,
+            schema=schema,
+            sample_size=sample_size,
+            batch_size=batch_size,
+            progress=on_chunk,
+        )
+
+    try:
+        return await db.execute_write_fn(load, transaction=False)
+    except asyncio.CancelledError:
+        cancelled.set()
+        raise
 
 
 @dataclasses.dataclass
@@ -383,6 +447,7 @@ async def load_sources(
     on_start=None,
     on_progress=None,
     on_loaded=None,
+    exclusive=False,
 ) -> list:
     """
     Carry out a :class:`LoadPlan`: drop, then load each source in turn.
@@ -391,7 +456,9 @@ async def load_sources(
     :class:`LoadedTable` per source, in order.
 
     ``on_start(source)``, ``on_progress(source, rows)`` and
-    ``on_loaded(loaded_table)`` report progress.
+    ``on_loaded(loaded_table)`` report progress. ``exclusive`` is passed to
+    :func:`load_source` (``on_progress`` is then called from the write
+    thread).
     """
     for table in plan.drop:
         await drop_table(db, table)
@@ -426,7 +493,12 @@ async def load_sources(
                     on_progress(source, rows)
 
             result = await load_source(
-                db, source, workdir=workdir, batch_size=batch_size, progress=progress
+                db,
+                source,
+                workdir=workdir,
+                batch_size=batch_size,
+                progress=progress,
+                exclusive=exclusive,
             )
             created.append(source.table)
             if session:

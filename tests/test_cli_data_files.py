@@ -895,6 +895,33 @@ async def test_reload_session_keeps_unchanged_tables(data_dir, monkeypatch):
         scratch_module.remove_tree(session.directory)
 
 
+@pytest.mark.asyncio
+async def test_load_source_never_drops_a_table_it_did_not_create(data_dir):
+    from datasette.app import Datasette
+    from datasette.imports.scratch import load_source
+
+    ds = Datasette()
+    db = ds.add_database(ScratchDatabase(ds), name="scratch")
+    try:
+        with scratch_module.import_writes():
+            await db.execute_write("create table dogs (keep text)")
+            await db.execute_write("insert into dogs values ('me')")
+        source = _sources(data_dir / "dogs.csv")[0]
+        source.path = source.location
+        with pytest.raises(TableExists):
+            await load_source(db, source)
+        assert (await db.execute("select keep from dogs")).first()[0] == "me"
+        # The import's own table is dropped when loading fails part way
+        bad = data_dir / "bad.ndjson"
+        bad.write_text('{"a": 1}\n' * 1500 + "{oops\n")
+        source = _sources(bad)[0]
+        with pytest.raises(scratch_module.ImportFailed):
+            await load_source(db, source, workdir=str(data_dir))
+        assert await db.table_names() == ["dogs"]
+    finally:
+        ds.close()
+
+
 def test_plan_loads_save_conflict_and_session_ownership(data_dir, monkeypatch):
     save = str(data_dir / "s.db")
     conn = sqlite3.connect(save)
@@ -933,3 +960,17 @@ def test_reload_watches_input_files(data_dir, monkeypatch):
     ds.close()
     assert str(data_dir / "dogs.csv") in watched
     assert str(data_dir / "cities.json") in watched
+
+
+def test_sigterm_interrupts_loading_then_handler_is_restored():
+    import signal
+
+    from datasette.cli import _sigterm_interrupts
+
+    previous = signal.getsignal(signal.SIGTERM)
+    with pytest.raises(KeyboardInterrupt), _sigterm_interrupts():
+        os.kill(os.getpid(), signal.SIGTERM)
+        # The handler runs at the next bytecode boundary
+        for _ in range(1000):
+            pass
+    assert signal.getsignal(signal.SIGTERM) is previous

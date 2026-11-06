@@ -1021,6 +1021,8 @@ class _DataImport:
                 on_start=on_start,
                 on_progress=on_progress,
                 on_loaded=on_loaded,
+                # Nothing else can be writing yet: load on the write thread
+                exclusive=True,
             )
         except BaseException as ex:
             status.clear()

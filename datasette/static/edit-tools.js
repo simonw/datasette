@@ -6,6 +6,9 @@ var ROW_EDIT_BINARY_IMAGE_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
 var TABLE_CREATE_DIALOG_ID = "table-create-dialog";
 var tableCreateDialogState = null;
 var TABLE_CREATE_AUTOMATIC_PK = "__datasette_automatic_pk__";
+// Files up to this size can still be read into the textarea, instead of
+// being imported on the server
+var TABLE_CREATE_BROWSER_FILE_MAX_BYTES = 10 * 1024 * 1024;
 var TABLE_ALTER_DIALOG_ID = "table-alter-dialog";
 var tableAlterDialogState = null;
 
@@ -53,6 +56,56 @@ function databaseCreateTableData() {
   return (
     window._datasetteDatabaseData && window._datasetteDatabaseData.createTable
   );
+}
+
+function tableCreateUploadData() {
+  var data = databaseCreateTableData() || {};
+  if (
+    !data.upload ||
+    !data.upload.path ||
+    !window.XMLHttpRequest ||
+    !window.FormData
+  ) {
+    return null;
+  }
+  return data.upload;
+}
+
+function formatTableCreateFileSize(bytes) {
+  if (bytes < 1024) {
+    return bytes.toLocaleString() + " byte" + (bytes === 1 ? "" : "s");
+  }
+  var units = ["KB", "MB", "GB"];
+  var value = bytes / 1024;
+  var unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return value.toFixed(1) + " " + units[unit];
+}
+
+// The table name Datasette gives a file on the command line: its name
+// without the extension, with runs of anything other than letters, digits
+// and underscores replaced by a single underscore
+function tableCreateUploadTableName(fileName) {
+  var baseName = (fileName || "")
+    .replace(/[\\/]+$/, "")
+    .split(/[\\/]/)
+    .pop();
+  var stem = /\./.test(baseName.replace(/^\.+/, ""))
+    ? baseName.replace(/\.[^.]*$/, "")
+    : baseName;
+  var name = (stem.normalize ? stem.normalize("NFC") : stem)
+    .replace(/[^\p{L}\p{N}_]+/gu, "_")
+    .replace(/^_+|_+$/g, "");
+  if (!name) {
+    return "data";
+  }
+  if (/^sqlite_/i.test(name)) {
+    name = "_" + name;
+  }
+  return name;
 }
 
 function tableCreateColumnTypes() {
@@ -818,6 +871,9 @@ function tableCreateIsDataMode(state) {
 
 function tableCreateSaveButtonText(state) {
   if (tableCreateIsDataMode(state)) {
+    if (state.uploadFile) {
+      return "Import file";
+    }
     return state.dataPreviewReady ? "Create table" : "Preview rows";
   }
   return "Create table";
@@ -833,9 +889,11 @@ function syncTableCreateModeUi(state) {
     return;
   }
   var isDataMode = tableCreateIsDataMode(state);
+  var hasUpload = isDataMode && !!state.uploadFile;
   state.columnsPanel.hidden = isDataMode;
   state.dataPanel.hidden = !isDataMode;
-  state.dataEditor.hidden = !isDataMode || state.dataPreviewReady;
+  state.dataEditor.hidden = !isDataMode || state.dataPreviewReady || hasUpload;
+  state.uploadPanel.hidden = !hasUpload;
   state.dataPreview.hidden = !isDataMode || !state.dataPreviewReady;
   state.createFromDataLink.hidden = isDataMode || !tableCreateCanInsertRows();
   state.manualCreateLink.hidden = !isDataMode;
@@ -846,14 +904,26 @@ function updateTableCreateDialogButtons(state) {
     return;
   }
   syncTableCreateModeUi(state);
-  state.cancelButton.disabled = state.isSaving;
+  // An upload in progress can be stopped
+  state.cancelButton.disabled = state.isSaving && !state.uploadRequest;
   state.saveButton.disabled = state.isSaving;
   state.addColumnButton.disabled = state.isSaving;
-  state.cancelButton.textContent =
-    tableCreateIsDataMode(state) && state.dataPreviewReady ? "Back" : "Cancel";
-  state.saveButton.textContent = state.isSaving
-    ? "Creating..."
-    : tableCreateSaveButtonText(state);
+  if (state.uploadRequest) {
+    state.cancelButton.textContent = "Stop upload";
+  } else {
+    state.cancelButton.textContent =
+      tableCreateIsDataMode(state) &&
+      (state.dataPreviewReady || state.uploadFile)
+        ? "Back"
+        : "Cancel";
+  }
+  if (state.isSaving) {
+    state.saveButton.textContent = state.uploadRequest
+      ? "Uploading..."
+      : "Creating...";
+  } else {
+    state.saveButton.textContent = tableCreateSaveButtonText(state);
+  }
 }
 
 function tableCreateDialogSignature(state) {
@@ -863,6 +933,9 @@ function tableCreateDialogSignature(state) {
   var signature = {
     table: state.tableName.value,
     data: state.dataTextarea ? state.dataTextarea.value : "",
+    upload: state.uploadFile
+      ? state.uploadFile.name + ":" + state.uploadFile.size
+      : "",
     dataPrimaryKey: state.dataPkSelect
       ? state.dataPkSelect.value
       : TABLE_CREATE_AUTOMATIC_PK,
@@ -1292,6 +1365,7 @@ function resetTableCreateDialog(state) {
   state.nextColumnIndex = 0;
   state.tableName.value = "";
   state.dataTextarea.value = "";
+  state.uploadFile = null;
   resetTableCreateDataPreview(state);
   state.columnList.textContent = "";
   addTableCreateColumn(state, {
@@ -1887,6 +1961,218 @@ async function loadTableCreateDataTextFile(state, file) {
   }
 }
 
+// A file chosen or dropped in the dialog: imported on the server, with
+// Datasette's import loaders, where that is available - otherwise read
+// into the textarea and parsed here
+async function handleTableCreateDataFile(state, file) {
+  if (!file) {
+    return;
+  }
+  if (tableCreateUploadData()) {
+    showTableCreateUploadOffer(state, file);
+    return;
+  }
+  await loadTableCreateDataTextFile(state, file);
+}
+
+function populateTableCreateUploadFormats(state) {
+  var upload = tableCreateUploadData() || {};
+  var select = state.uploadFormatSelect;
+  select.textContent = "";
+  var detect = document.createElement("option");
+  detect.value = "";
+  detect.textContent = "Detect automatically";
+  select.appendChild(detect);
+  (upload.formats || []).forEach(function (format) {
+    var option = document.createElement("option");
+    option.value = format.name;
+    option.textContent =
+      format.description && format.description !== format.name
+        ? format.description + " (" + format.name + ")"
+        : format.name;
+    select.appendChild(option);
+  });
+  select.value = "";
+}
+
+function renderTableCreateUploadSummary(state) {
+  var file = state.uploadFile;
+  var summary = state.uploadSummary;
+  summary.textContent = "";
+  if (!file) {
+    return;
+  }
+  var fileName = document.createElement("strong");
+  fileName.textContent = file.name;
+  var tableName = document.createElement("strong");
+  tableName.textContent = state.tableName.value.trim() || "...";
+  summary.appendChild(document.createTextNode("Import "));
+  summary.appendChild(fileName);
+  summary.appendChild(
+    document.createTextNode(
+      " (" + formatTableCreateFileSize(file.size) + ") as table ",
+    ),
+  );
+  summary.appendChild(tableName);
+}
+
+function showTableCreateUploadOffer(state, file) {
+  var upload = tableCreateUploadData();
+  clearTableCreateDialogError(state);
+  if (!file.size) {
+    showTableCreateDialogError(state, file.name + " is empty.");
+    return;
+  }
+  if (upload.maxBytes && file.size > upload.maxBytes) {
+    showTableCreateDialogError(
+      state,
+      file.name +
+        " is " +
+        formatTableCreateFileSize(file.size) +
+        ", larger than the " +
+        formatTableCreateFileSize(upload.maxBytes) +
+        " limit for uploads.",
+    );
+    return;
+  }
+  state.uploadFile = file;
+  state.uploadFormatSelect.value = "";
+  state.uploadAlternative.hidden =
+    file.size > TABLE_CREATE_BROWSER_FILE_MAX_BYTES;
+  hideTableCreateUploadProgress(state);
+  state.tableName.value = tableCreateUploadTableName(file.name);
+  state.tableName.dispatchEvent(new Event("input", { bubbles: true }));
+  renderTableCreateUploadSummary(state);
+  updateTableCreateDialogButtons(state);
+  state.saveButton.focus();
+}
+
+function clearTableCreateUpload(state) {
+  state.uploadFile = null;
+  hideTableCreateUploadProgress(state);
+  renderTableCreateUploadSummary(state);
+  updateTableCreateDialogButtons(state);
+}
+
+function hideTableCreateUploadProgress(state) {
+  state.uploadProgress.hidden = true;
+  state.uploadProgressBar.value = 0;
+  state.uploadStatus.textContent = "";
+}
+
+function showTableCreateUploadProgress(state, loaded, total) {
+  state.uploadProgress.hidden = false;
+  if (!total) {
+    state.uploadProgressBar.removeAttribute("value");
+    state.uploadStatus.textContent = "Uploading...";
+    return;
+  }
+  var percent = Math.min(100, Math.floor((loaded / total) * 100));
+  state.uploadProgressBar.value = percent;
+  if (loaded >= total) {
+    // Saved and checked on the server before it answers
+    state.uploadStatus.textContent = "Uploaded, starting the import...";
+    return;
+  }
+  state.uploadStatus.textContent =
+    "Uploading " +
+    percent +
+    "% (" +
+    formatTableCreateFileSize(loaded) +
+    " of " +
+    formatTableCreateFileSize(total) +
+    ")";
+}
+
+function finishTableCreateUpload(state) {
+  state.uploadRequest = null;
+  setTableCreateDialogSaving(state, false);
+}
+
+function startTableCreateUpload(state) {
+  var upload = tableCreateUploadData();
+  var file = state.uploadFile;
+  if (!upload || !file) {
+    return;
+  }
+  var tableName = state.tableName.value.trim();
+  var tableNameError = validateTableCreateTableName(tableName);
+  if (tableNameError) {
+    showTableCreateDialogError(state, tableNameError);
+    return;
+  }
+  clearTableCreateDialogError(state);
+  var form = new FormData();
+  form.append("table", tableName);
+  if (state.uploadFormatSelect.value) {
+    form.append("format", state.uploadFormatSelect.value);
+  }
+  form.append("file", file, file.name);
+
+  var request = new XMLHttpRequest();
+  state.uploadRequest = request;
+  setTableCreateDialogSaving(state, true);
+  showTableCreateUploadProgress(state, 0, file.size);
+  request.upload.addEventListener("progress", function (ev) {
+    if (state.uploadRequest === request && ev.lengthComputable) {
+      showTableCreateUploadProgress(state, ev.loaded, ev.total);
+    }
+  });
+  request.addEventListener("load", function () {
+    if (state.uploadRequest !== request) {
+      return;
+    }
+    var data = null;
+    try {
+      data = JSON.parse(request.responseText);
+    } catch (_error) {
+      data = null;
+    }
+    if (request.status >= 200 && request.status < 300 && data && data.ok) {
+      // The table page shows how the import is getting on
+      state.uploadStatus.textContent = "Uploaded. Opening the table...";
+      var tableUrl =
+        data.table_url || fallbackTableUrl(data.table || tableName);
+      state.modal.close({ restoreFocus: false });
+      if (tableUrl) {
+        location.href = tableUrl;
+      } else {
+        location.reload();
+      }
+      return;
+    }
+    finishTableCreateUpload(state);
+    hideTableCreateUploadProgress(state);
+    showTableCreateDialogError(
+      state,
+      rowMutationRequestError({ status: request.status }, data).message,
+    );
+  });
+  request.addEventListener("error", function () {
+    if (state.uploadRequest !== request) {
+      return;
+    }
+    finishTableCreateUpload(state);
+    hideTableCreateUploadProgress(state);
+    showTableCreateDialogError(
+      state,
+      "The upload failed: could not reach the server.",
+    );
+  });
+  request.addEventListener("abort", function () {
+    if (state.uploadRequest !== request) {
+      return;
+    }
+    finishTableCreateUpload(state);
+    hideTableCreateUploadProgress(state);
+    state.uploadStatus.textContent = "";
+    showTableCreateDialogError(state, "Upload stopped.");
+  });
+  request.open("POST", upload.path);
+  request.setRequestHeader("Accept", "application/json");
+  request.send(form);
+}
+
 function previewTableCreateDataRows(state) {
   clearTableCreateDialogError(state);
   resetTableCreateDataPreview(state);
@@ -2069,7 +2355,9 @@ async function saveTableCreateDialog(state) {
     return;
   }
   if (tableCreateIsDataMode(state)) {
-    if (!state.dataPreviewReady) {
+    if (state.uploadFile) {
+      startTableCreateUpload(state);
+    } else if (!state.dataPreviewReady) {
       previewTableCreateDataRows(state);
     } else {
       await createTableFromDataPreview(state);
@@ -2180,6 +2468,19 @@ function ensureTableCreateDialog(manager) {
             <input class="table-create-data-file-input" type="file" accept=".csv,.tsv,.json,.txt,text/csv,text/tab-separated-values,application/json,text/plain" hidden>
             <textarea class="table-create-input table-create-data-textarea" id="table-create-data-textarea" name="_create_rows" rows="12" spellcheck="false"></textarea>
           </div>
+          <div class="table-create-upload" hidden>
+            <p class="table-create-upload-summary"></p>
+            <div class="table-create-upload-format-field">
+              <label class="table-create-data-label" for="table-create-upload-format">Format</label>
+              <select class="table-create-input table-create-upload-format" id="table-create-upload-format"></select>
+            </div>
+            <p class="table-create-upload-note">The file is uploaded and imported on the server, which works out the column types. The new table opens while its rows load.</p>
+            <div class="table-create-upload-progress" hidden>
+              <progress class="table-create-upload-progress-bar" max="100" value="0"></progress>
+              <span class="table-create-upload-status" role="status" aria-live="polite"></span>
+            </div>
+            <p class="table-create-upload-alternative" hidden>Or <button type="button" class="button-as-link table-create-upload-edit">edit the data here instead</button>.</p>
+          </div>
           <div class="table-create-data-preview" hidden></div>
         </div>
       </div>
@@ -2210,6 +2511,16 @@ function ensureTableCreateDialog(manager) {
     dataOpenFileButton: dialog.querySelector(".table-create-data-open-file"),
     dataFileInput: dialog.querySelector(".table-create-data-file-input"),
     dataPreview: dialog.querySelector(".table-create-data-preview"),
+    uploadPanel: dialog.querySelector(".table-create-upload"),
+    uploadSummary: dialog.querySelector(".table-create-upload-summary"),
+    uploadFormatSelect: dialog.querySelector(".table-create-upload-format"),
+    uploadProgress: dialog.querySelector(".table-create-upload-progress"),
+    uploadProgressBar: dialog.querySelector(
+      ".table-create-upload-progress-bar",
+    ),
+    uploadStatus: dialog.querySelector(".table-create-upload-status"),
+    uploadAlternative: dialog.querySelector(".table-create-upload-alternative"),
+    uploadEditButton: dialog.querySelector(".table-create-upload-edit"),
     createFromDataLink: dialog.querySelector(".table-create-from-data"),
     manualCreateLink: dialog.querySelector(".table-create-manual"),
     cancelButton: dialog.querySelector(".table-create-cancel"),
@@ -2220,6 +2531,9 @@ function ensureTableCreateDialog(manager) {
     dataPreviewColumns: [],
     dataPreviewReady: false,
     dataPkSelect: null,
+    // A file to import on the server, and its upload while in progress
+    uploadFile: null,
+    uploadRequest: null,
     initialSignature: "",
     nextColumnIndex: 0,
     foreignKeyTargets: [],
@@ -2243,6 +2557,20 @@ function ensureTableCreateDialog(manager) {
   });
 
   tableCreateDialogState.cancelButton.addEventListener("click", function () {
+    if (tableCreateDialogState.uploadRequest) {
+      tableCreateDialogState.uploadRequest.abort();
+      return;
+    }
+    if (
+      tableCreateIsDataMode(tableCreateDialogState) &&
+      tableCreateDialogState.uploadFile &&
+      !tableCreateDialogState.isSaving
+    ) {
+      clearTableCreateUpload(tableCreateDialogState);
+      clearTableCreateDialogError(tableCreateDialogState);
+      tableCreateDialogState.dataTextarea.focus();
+      return;
+    }
     if (
       tableCreateIsDataMode(tableCreateDialogState) &&
       tableCreateDialogState.dataPreviewReady &&
@@ -2274,6 +2602,44 @@ function ensureTableCreateDialog(manager) {
 
   tableCreateDialogState.tableName.addEventListener("input", function () {
     clearTableCreateDialogError(tableCreateDialogState);
+    renderTableCreateUploadSummary(tableCreateDialogState);
+  });
+
+  if (tableCreateUploadData()) {
+    // Import loaders read the content, whatever the file is called, and
+    // plugins can add formats: offer every file
+    tableCreateDialogState.dataFileInput.removeAttribute("accept");
+    populateTableCreateUploadFormats(tableCreateDialogState);
+  }
+
+  tableCreateDialogState.uploadEditButton.addEventListener(
+    "click",
+    async function () {
+      var file = tableCreateDialogState.uploadFile;
+      clearTableCreateUpload(tableCreateDialogState);
+      await loadTableCreateDataTextFile(tableCreateDialogState, file);
+    },
+  );
+
+  ["dragenter", "dragover"].forEach(function (eventName) {
+    tableCreateDialogState.uploadPanel.addEventListener(
+      eventName,
+      function (ev) {
+        if (!tableCreateDialogState.isSaving) {
+          ev.preventDefault();
+        }
+      },
+    );
+  });
+
+  tableCreateDialogState.uploadPanel.addEventListener("drop", function (ev) {
+    ev.preventDefault();
+    var files = ev.dataTransfer && ev.dataTransfer.files;
+    if (tableCreateDialogState.isSaving || !files || !files.length) {
+      return;
+    }
+    // Another file instead
+    showTableCreateUploadOffer(tableCreateDialogState, files[0]);
   });
 
   tableCreateDialogState.dataOpenFileButton.addEventListener(
@@ -2287,7 +2653,7 @@ function ensureTableCreateDialog(manager) {
     "change",
     async function (ev) {
       var files = ev.target.files;
-      await loadTableCreateDataTextFile(
+      await handleTableCreateDataFile(
         tableCreateDialogState,
         files && files.length ? files[0] : null,
       );
@@ -2335,7 +2701,7 @@ function ensureTableCreateDialog(manager) {
       if (!files || !files.length) {
         return;
       }
-      await loadTableCreateDataTextFile(tableCreateDialogState, files[0]);
+      await handleTableCreateDataFile(tableCreateDialogState, files[0]);
     },
   );
 

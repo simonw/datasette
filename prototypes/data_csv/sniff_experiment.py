@@ -15,6 +15,7 @@ WORK_DIR is where extra edge-case files are written.
 import io
 import json
 import os
+import random
 import sqlite3
 import statistics
 import sys
@@ -145,6 +146,95 @@ def make_edge_cases(work):
             for i in range(3)
         ),
     )
+    # Cases from the adversarial review of the first version
+    write(
+        "bigfield.csv",
+        f'id,body,n\n1,"{"x" * 200_000}",3\n2,short,4\n'.encode(),
+    )
+    write(
+        "ragged-short.csv",
+        (
+            "\n".join(["a,b,c"] + [("1,2,3" if i % 3 else "1,2") for i in range(30)])
+            + "\n"
+        ).encode(),
+    )
+    write(
+        "ragged-long.csv",
+        ("\n".join(["a,b"] + ["1,2"] * 19 + ["3,4,5,6"]) + "\n").encode(),
+    )
+    ndjson = [f'{{"id": {i}, "name": "n{i}", "v": {i * 2}}}' for i in range(20)]
+    bad = list(ndjson)
+    bad[10] = '{"id": 10, "name": "truncated'
+    write("ndjson-one-bad-line.ndjson", ("\n".join(bad) + "\n").encode())
+    write(
+        "ndjson-truncated-last.ndjson",
+        ("\n".join(ndjson[:5] + ['{"id": 5, "na']) + "\n").encode(),
+    )
+    write("array-of-arrays.json", b'[["id","name"],[1,"a"],[2,"b"]]')
+    write("scalars.json", b"[1,2,3]")
+    write("arrays.jsonl", b"[1,2]\n[3,4]\n[5,6]\n")
+    write("concatenated-jq.json", b'{\n  "a": 1\n}\n{\n  "a": 2\n}\n')
+    write("dup-headers.csv", b"name,name,age\nalice,smith,3\nbob,jones,4\n")
+    write("blank-header.csv", b",a\n1,2\n3,4\n")
+    write("header-only.csv", b"id,name,age\n")
+    write(
+        "quotes.tsv",
+        b'name\tsize\n"Big" TV\t55\nscreen 5" wide\t7\n"unbalanced\t1\nnext\t2\n',
+    )
+    columns = ["a,b"] + [f"column_{i:05d}" for i in range(8000)]
+    write(
+        "wide-semicolon-comma.csv",
+        (
+            "\n".join([";".join(columns)] + [";".join("1" for _ in columns)] * 3) + "\n"
+        ).encode(),
+    )
+    write("nul-in-csv.csv", b"a,b\n1,x\x00y\n2,z\n")
+    write("latin1.ndjson", '{"name": "café"}\n{"name": "naïve"}\n'.encode("cp1252"))
+    line = json.dumps({"id": 1, "blob": "x" * 1_200_000})
+    write("ndjson-1.2mb-lines.ndjson", (line + "\n" + line + "\n").encode())
+    write(
+        "meta-and-rows.json",
+        b'{"total": 2, "next": null, "results": [{"id": 1}, {"id": 2}]}',
+    )
+    rng = random.Random(1)
+    ring = [
+        [round(rng.uniform(-180, 180), 6), round(rng.uniform(-90, 90), 6)]
+        for _ in range(60_000)
+    ]
+    big_features = [
+        {
+            "type": "Feature",
+            "properties": {"name": "big", "pop": 1},
+            "geometry": {"type": "Polygon", "coordinates": [ring]},
+        }
+    ] + [
+        {
+            "type": "Feature",
+            "properties": {"name": f"p{i}", "pop": i},
+            "geometry": {"type": "Point", "coordinates": [1.0, 2.0]},
+        }
+        for i in range(10)
+    ]
+    write(
+        "geojson-sorted-big-geometry.json",
+        json.dumps(
+            {"type": "FeatureCollection", "features": big_features}, sort_keys=True
+        ).encode(),
+    )
+    # Inputs that keep the window growing to 1MB: worst cases for sniff cost
+    write(
+        "dict-of-objects.json",
+        json.dumps(
+            {f"id{i}": {"name": f"n{i}", "v": i} for i in range(150_000)}
+        ).encode(),
+    )
+    write("many-keys.json", json.dumps({f"k{i}": i for i in range(300_000)}).encode())
+    inner = "[" + ",".join(str(i) for i in range(400_000)) + "]"
+    write("deep-then-long.json", ('{"a":' * 31 + inner + "}" * 31).encode())
+    write(
+        "one-line-prose.txt",
+        ("hello, world " * 160_000).encode(),
+    )
     # A SQLite database file: should be unrecognized
     db_path = os.path.join(work, "binary.db")
     if os.path.exists(db_path):
@@ -264,7 +354,11 @@ def main(data_dir, work_dir):
                 f"| {grow} ({grow_size}) | {grow_naive} ({grow_naive_size}) |"
             )
 
-    print("\n## sniff() time per loader (median of 20 runs, ms)\n")
+    print(
+        "\n## sniff() time per loader (median of 20 runs, ms; the shared "
+        "peek_json() cache is cleared before each call, so each loader pays "
+        "for its own parse and 'all' overstates a real scoring pass)\n"
+    )
     print("| file | window | " + " | ".join(names) + " | all |")
     print("|" + "---|" * (len(names) + 3))
     for name in [
@@ -282,6 +376,7 @@ def main(data_dir, work_dir):
             for loader in sorted(loaders, key=lambda loader: names.index(loader.name)):
                 runs = []
                 for _ in range(20):
+                    L._peek.cache_clear()
                     start = time.perf_counter()
                     loader.sniff(first)
                     runs.append(time.perf_counter() - start)
@@ -289,6 +384,37 @@ def main(data_dir, work_dir):
                 total += median
                 cells.append(f"{median:.2f}")
             print(f"| {name} | {size} | " + " | ".join(cells) + f" | {total:.2f} |")
+
+    print(
+        "\n## sniff_path() total time, all 5 loaders, window growth included "
+        "(median of 7 runs, ms)\n"
+    )
+    print("| file | bytes sniffed | winner | ms |")
+    print("|---|---|---|---|")
+    for name in [
+        "events-100k.csv",
+        "events-100k.json",
+        "events-100k.ndjson",
+        "places.geojson",
+        "places-type-last.json",
+        "geojson-5mb-type-last.json",
+        "geojson-sorted-big-geometry.json",
+        "ndjson-long-lines.ndjson",
+        "dict-of-objects.json",
+        "many-keys.json",
+        "deep-then-long.json",
+        "one-line-prose.txt",
+        "wide-semicolon-comma.csv",
+    ]:
+        runs = []
+        for _ in range(7):
+            start = time.perf_counter()
+            first, scores = L.sniff_path(files[name], loaders)
+            runs.append(time.perf_counter() - start)
+        print(
+            f"| {name} | {len(first)} | {choose(first, scores)} "
+            f"| {statistics.median(runs) * 1000:.1f} |"
+        )
 
     print("\n## Messy data\n")
     print(
@@ -315,6 +441,25 @@ def main(data_dir, work_dir):
         "whitespace-and-bom.csv",
         "binary.db",
         "latin1-late.csv",
+        "bigfield.csv",
+        "ragged-short.csv",
+        "ragged-long.csv",
+        "ndjson-one-bad-line.ndjson",
+        "ndjson-truncated-last.ndjson",
+        "array-of-arrays.json",
+        "scalars.json",
+        "arrays.jsonl",
+        "concatenated-jq.json",
+        "dup-headers.csv",
+        "blank-header.csv",
+        "header-only.csv",
+        "quotes.tsv",
+        "wide-semicolon-comma.csv",
+        "nul-in-csv.csv",
+        "latin1.ndjson",
+        "ndjson-1.2mb-lines.ndjson",
+        "meta-and-rows.json",
+        "geojson-sorted-big-geometry.json",
     ]
     for name in messy:
         print(

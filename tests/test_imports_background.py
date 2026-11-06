@@ -401,6 +401,80 @@ async def test_drop_on_error(data_dir):
         assert not job.table_exists and job.rows_kept == 0
         assert "the table was removed" in job.status()
         assert await db.table_names() == []
+        # Nothing is left incomplete, so the shared pages say nothing about
+        # it; /-/imports does
+        for path in ("/", "/scratch"):
+            assert "imports-notice" not in (await ds.client.get(path)).text
+        assert "import failed" in (await ds.client.get("/-/imports")).text
+    finally:
+        await ds.invoke_shutdown()
+
+
+@pytest.mark.parametrize("background", (True, False))
+def test_scratch_page_hides_tables_the_actor_cannot_view(tmp_path, background):
+    # The "Loaded:" list names only tables the actor may view, and the
+    # --save command - which names every input - is only shown to an actor
+    # who may view all of them
+    (tmp_path / "dogs.csv").write_text(CSV)
+    (tmp_path / "secret_plans.csv").write_text(CSV)
+    config = tmp_path / "config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "databases": {
+                    "scratch": {"tables": {"secret_plans": {"allow": {"id": "root"}}}}
+                }
+            }
+        )
+    )
+    args = [str(tmp_path / "dogs.csv"), str(tmp_path / "secret_plans.csv")]
+    ds = ds_from_cli([*args, "--config", str(config)], _background_imports=background)
+
+    async def check():
+        try:
+            if background:
+                await ds.client.get("/-/imports.json")
+                assert await import_registry(ds).wait(20)
+            anonymous = (await ds.client.get("/scratch")).text
+            banner = anonymous.split('<div class="scratch-save"', 1)[1]
+            banner = banner.split("</div>", 1)[0]
+            assert 'href="/scratch/dogs"' in banner
+            assert "secret_plans" not in banner
+            assert "scratch-save-command" not in banner
+            # (The SQL editor's autocomplete lists every table, as it does
+            # for any database: anyone who can run SQL can list them)
+            assert "secret_plans.csv" not in anonymous
+            assert 'href="/scratch/secret_plans"' not in anonymous
+            root = (await ds.client.get("/scratch", actor=ROOT)).text
+            assert 'href="/scratch/secret_plans"' in root
+            assert "secret_plans.csv --save data.db" in root
+        finally:
+            await ds.invoke_shutdown()
+
+    asyncio.run(check())
+
+
+@pytest.mark.asyncio
+async def test_shared_pages_list_the_newest_ten_finished_imports(tmp_path):
+    ds, db = _scratch_ds()
+    registry = import_registry(ds)
+    try:
+        jobs = []
+        for i in range(12):
+            path = tmp_path / f"bad_{i}.ndjson"
+            path.write_text('{"a": 1}\n{oops\n')
+            jobs.append(registry.start(db, _source(path), use_worker=False))
+        await ds.start_background_tasks()
+        assert await registry.wait(20)
+        assert {job.state for job in jobs} == {"failed"}
+        for path in ("/", "/scratch"):
+            page = (await ds.client.get(path)).text
+            listed = [job.table for job in jobs if f">{job.table}</a>:" in page]
+            assert listed == [f"bad_{i}" for i in range(2, 12)], path
+            assert "2 older finished imports not listed here" in page
+            assert '<a href="/-/imports">all imports</a>' in page
+        page = (await ds.client.get("/-/imports")).text
+        assert all(f">{job.table}</a>:" in page for job in jobs)
     finally:
         await ds.invoke_shutdown()
 

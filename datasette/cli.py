@@ -1448,6 +1448,7 @@ def _prepare_import(
             sources, save_path, extra_args=extra_args
         )
         db.from_stdin = any(source.kind == "stdin" for source in sources)
+        db.save_tables = [source.table for source in sources]
     if "_memory" in ds.databases and not memory and not ds.crossdb:
         # Datasette adds _memory when no database files are given
         ds.remove_database("_memory")

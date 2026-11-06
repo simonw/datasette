@@ -743,6 +743,28 @@ async def test_max_upload_mb_zero_means_no_limit(tmp_path, temp_dir):
         await _teardown(ds)
 
 
+@pytest.mark.asyncio
+async def test_failed_uploads_leave_no_notice_on_shared_pages(ds):
+    # An upload that fails drops its table: nothing is incomplete, so the
+    # homepage and database page - which every visitor sees - say nothing,
+    # whatever its table name says. /-/imports still lists it
+    tables = ["SECURITY NOTICE: sign in again at https://evil.example/login"]
+    tables += [f"bad_{i}" for i in range(3)]
+    for table in tables:
+        response = await upload(
+            ds, b"{bad\n", "bad.ndjson", table=table, format="ndjson"
+        )
+        job = await finished(ds, response)
+        assert job.state == "failed" and not job.table_exists
+    for path in ("/", "/data"):
+        page = (await ds.client.get(path, actor=ROOT)).text
+        assert "imports-notice" not in page, path
+        assert "evil.example" not in page, path
+    listed = (await ds.client.get("/-/imports.json", actor=ROOT)).json()["imports"]
+    assert [job["table"] for job in listed] == tables
+    assert "evil.example" in (await ds.client.get("/-/imports", actor=ROOT)).text
+
+
 # Permissions -----------------------------------------------------------------------
 
 

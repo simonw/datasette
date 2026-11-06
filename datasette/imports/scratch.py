@@ -106,6 +106,9 @@ class ScratchDatabase(Database):
         self.loaded = []
         #: The ``datasette ... --save data.db`` command for these sources
         self.save_command = None
+        #: The tables those sources load into: the command is only shown to
+        #: actors who may view all of them
+        self.save_tables = []
         self.from_stdin = False
         if not keep:
             atexit.register(self.delete_files)

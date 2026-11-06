@@ -64,6 +64,9 @@ REASON = "The scratch database is read-only: only the import process writes to i
 CANCEL_ACTION = "cancel-import"
 # How often the progress notices poll /-/imports.json while anything runs
 POLL_MILLISECONDS = 1000
+# Finished imports listed on the homepage and database page, newest first;
+# the rest are on /-/imports
+MAX_FINISHED_NOTICES = 10
 
 
 def _scratch_names(datasette):
@@ -209,11 +212,13 @@ def _notice_class(jobs):
 
 
 async def _render_notice(
-    datasette, request, jobs, *, intro=None, poll_url, link_tables=True
+    datasette, request, jobs, *, intro=None, poll_url, link_tables=True, left_out=0
 ):
     """
     HTML for a list of imports, with cancel buttons for actors allowed to
     cancel, and the polling script if any import is still running.
+    ``left_out`` older finished imports are not listed: a link to
+    ``/-/imports`` says so.
     """
     h = markupsafe.escape
     active = any(job.active for job in jobs)
@@ -250,6 +255,12 @@ async def _render_notice(
         f"<p>{intro}</p>" if intro else "",
         f'<ul class="import-list">{"".join(items)}</ul>',
     ]
+    if left_out:
+        parts.append(
+            f'<p class="imports-more">{left_out:,} older finished '
+            f"import{'' if left_out == 1 else 's'} not listed here: see "
+            f'<a href="{h(datasette.urls.path("-/imports"))}">all imports</a>.</p>'
+        )
     if active:
         parts.append(
             '<p class="imports-finished" hidden>Finished: '
@@ -374,18 +385,52 @@ def _incomplete(job):
     return job.state in ("failed", "cancelled") and job.table_exists
 
 
+def _left_nothing(job):
+    """
+    A failed or cancelled import whose rows were removed with its table
+    (``on_error="drop"``: an upload, or an import into a ``--save``
+    file): nothing on the site is incomplete because of it.
+    """
+    return (
+        job.state in ("failed", "cancelled")
+        and job.on_error == "drop"
+        and not job.table_exists
+    )
+
+
 def _shown(jobs):
     """
     Of the imports that say what state each table is in
-    (``registry.tables()``): running imports, and failed or cancelled ones
-    - their tables are incomplete, or were never created. Finished ones too
-    while others run, so the list does not jump about. Never an import that
-    failed because its table was there already: it did nothing to it.
+    (``registry.tables()``), those the homepage and database page show:
+    running imports, and failed or cancelled ones whose tables are
+    incomplete, or were never created. Finished ones too while others run,
+    so the list does not jump about. Never an import that failed because
+    its table was there already (it did nothing to it), or one whose rows
+    were removed again (anyone could otherwise leave a message there for
+    every visitor by uploading a file that fails). ``/-/imports`` lists
+    them all.
     """
-    jobs = [job for job in jobs if not job.existing_table]
+    jobs = [job for job in jobs if not job.existing_table and not _left_nothing(job)]
     if any(job.active for job in jobs):
         return [job for job in jobs if job.table_exists or job.state != "done"]
     return [job for job in jobs if job.state in ("failed", "cancelled")]
+
+
+async def _shown_to(datasette, actor, jobs):
+    """
+    :func:`_shown` for what ``actor`` may see, but for the oldest finished
+    imports beyond ``MAX_FINISHED_NOTICES``. Returns the imports and how
+    many were left out. Permissions are checked only for imports that
+    :func:`_shown` keeps.
+    """
+    # Again for the visible ones: "while others run" is about what this
+    # actor can see running
+    jobs = _shown(await _visible(datasette, actor, _shown(jobs)))
+    finished = [job for job in jobs if not job.active]
+    if len(finished) <= MAX_FINISHED_NOTICES:
+        return jobs, 0
+    left_out = {job.id for job in finished[:-MAX_FINISHED_NOTICES]}
+    return [job for job in jobs if job.id not in left_out], len(left_out)
 
 
 @hookimpl
@@ -395,11 +440,15 @@ def top_homepage(datasette, request):
         return None
 
     async def inner():
-        jobs = _shown(await _visible(datasette, request.actor, registry.tables()))
+        jobs, left_out = await _shown_to(datasette, request.actor, registry.tables())
         if not jobs:
             return None
         return await _render_notice(
-            datasette, request, jobs, poll_url=_poll_url(datasette)
+            datasette,
+            request,
+            jobs,
+            poll_url=_poll_url(datasette),
+            left_out=left_out,
         )
 
     return inner
@@ -479,7 +528,7 @@ def top_database(datasette, request, database):
 
     async def inner():
         parts = []
-        shown = _shown(await _visible(datasette, request.actor, jobs))
+        shown, left_out = await _shown_to(datasette, request.actor, jobs)
         if shown:
             parts.append(
                 await _render_notice(
@@ -487,23 +536,49 @@ def top_database(datasette, request, database):
                     request,
                     shown,
                     poll_url=_poll_url(datasette, database),
+                    left_out=left_out,
                 )
             )
         if is_scratch(db) and db.save_command:
-            parts.append(_save_banner(datasette, db, database, jobs))
+            parts.append(
+                await _save_banner(datasette, request.actor, db, database, jobs)
+            )
         return markupsafe.Markup("".join(parts))
 
     return inner
 
 
-def _save_banner(datasette, db, database, jobs):
+async def _can_view_table(datasette, actor, database, table):
+    return await datasette.allowed(
+        action="view-table",
+        resource=_table_resource(database, table),
+        actor=actor,
+    )
+
+
+async def _save_banner(datasette, actor, db, database, jobs):
+    """
+    What the scratch database is, the tables in it that ``actor`` may view,
+    and - if they may view every table the command line loads into it - the
+    ``--save`` command that loads the same inputs into a file, which names
+    them all.
+    """
     from datasette.imports.sources import quote_command
 
     h = markupsafe.escape
     if jobs:
-        names = [job.table for job in jobs if job.table_exists]
+        names = [
+            job.table
+            for job in await _visible(datasette, actor, jobs)
+            if job.table_exists
+        ]
     else:
-        names = [loaded.table for loaded in db.loaded if loaded.created]
+        names = [
+            loaded.table
+            for loaded in db.loaded
+            if loaded.created
+            and await _can_view_table(datasette, actor, database, loaded.table)
+        ]
     tables = ", ".join(
         f'<a href="{h(datasette.urls.table(database, name))}">{h(name)}</a>'
         for name in names
@@ -517,6 +592,13 @@ def _save_banner(datasette, db, database, jobs):
             "<p>This is a temporary, read-only database, deleted when "
             f"Datasette stops. Loaded: {tables or 'no tables'}.</p>"
         ),
+    ]
+    for table in getattr(db, "save_tables", None) or ():
+        if not await _can_view_table(datasette, actor, database, table):
+            # The command names every input, this table's source too
+            parts.append("</div>")
+            return "".join(parts)
+    parts += [
         "<p>To keep this data in a SQLite file, run:</p>",
         f'<pre class="scratch-save-command">{h(db.save_command)}</pre>',
     ]

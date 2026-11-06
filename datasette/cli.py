@@ -191,7 +191,17 @@ def sqlite_extensions(fn):
     return wrapped
 
 
-@click.group(cls=DefaultGroup, default="serve", default_if_no_args=True)
+class _DatasetteGroup(DefaultGroup):
+    def parse_args(self, ctx, args):
+        if args and args[0] == "--":
+            # datasette -- -:csv: the group's own parser would consume the
+            # --, and serve would then take -:csv for an option. Hand all of
+            # it to serve, whose parser reads the -- itself
+            args.insert(0, self.default_cmd_name)
+        return super().parse_args(ctx, args)
+
+
+@click.group(cls=_DatasetteGroup, default="serve", default_if_no_args=True)
 @click.version_option(version=__version__)
 def cli():
     """

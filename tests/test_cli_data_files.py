@@ -1239,6 +1239,26 @@ def test_plan_loads_save_conflict_and_session_ownership(data_dir, monkeypatch):
         scratch_module.remove_tree(session.directory)
 
 
+@pytest.mark.parametrize(
+    "args,files",
+    (
+        (["--", "-:csv"], ("-:csv",)),
+        (["--", "-:csv", "a.csv"], ("-:csv", "a.csv")),
+        # As before
+        (["serve", "--", "-:csv"], ("-:csv",)),
+        (["a.csv", "--", "-:csv"], ("a.csv", "-:csv")),
+    ),
+)
+def test_double_dash_goes_to_serve(monkeypatch, args, files):
+    # "-:csv" starts with "-", so it needs "--" before it - which the group
+    # used to take for itself, so that serve saw "-:csv" as an option
+    calls = []
+    monkeypatch.setattr(serve, "callback", lambda **kwargs: calls.append(kwargs))
+    result = CliRunner().invoke(cli, args, catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    assert [call["files"] for call in calls] == [files]
+
+
 def test_reload_watches_input_files(data_dir, monkeypatch):
     watched = []
 

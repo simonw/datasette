@@ -27,7 +27,8 @@ Argument syntax: ``[table:]source[:format]``
   typed. Formats are otherwise detected from the content, never from the
   file extension. (``-:csv`` parses too, but on the command line click
   takes anything starting with ``-`` for an option, so it needs ``--``
-  before it: ``datasette -- -:csv``. ``stdin:csv`` does not.)
+  before it: ``datasette -- -:csv``, with any options before the ``--``.
+  ``stdin:csv`` does not.)
 - An argument that is the path of an existing file is always used as that
   path, even if it contains colons.
 

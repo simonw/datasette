@@ -92,7 +92,7 @@ Use ``--internal PATH`` or the ``DATASETTE_INTERNAL`` environment variable to pe
       https:// URLs, or - for standard input. These are loaded into a temporary
       read-only database called scratch, or into the --save file. Use name:source to
       pick a table name and source:csv (or tsv, json, ndjson) to skip format
-      detection.
+      detection; for standard input that is stdin:csv.
 
       Examples:
           datasette events.csv stats.json

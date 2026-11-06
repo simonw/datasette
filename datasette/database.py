@@ -235,6 +235,11 @@ class Database:
                 try:
                     own = sqlite3.connect(self.path)
                     try:
+                        # No fsync: a temporary file is not kept across a
+                        # crash anyway, and fsync made this 1.2-1.7ms
+                        # (0.08ms without) - on every Datasette(), whose
+                        # internal database is a temp disk one
+                        own.execute("PRAGMA synchronous=OFF")
                         own.execute("PRAGMA journal_mode=WAL")
                     finally:
                         own.close()

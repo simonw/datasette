@@ -668,11 +668,13 @@ async def test_permissions(ds, temp_dir, actor, table, status, message):
 
 @pytest.mark.asyncio
 async def test_token_restricted_to_other_actions_is_refused(ds):
+    # The signed handler: test plugins can register others that sort first
     token = await ds.create_token(
         "root",
         restrictions=TokenRestrictions()
         .allow_all("view-instance")
         .allow_all("create-table"),
+        handler="signed",
     )
     response = await ds.client.post(
         "/data/-/upload",
@@ -686,6 +688,7 @@ async def test_token_restricted_to_other_actions_is_refused(ds):
         restrictions=TokenRestrictions()
         .allow_database("data", "create-table")
         .allow_database("data", "insert-row"),
+        handler="signed",
     )
     response = await ds.client.post(
         "/data/-/upload",

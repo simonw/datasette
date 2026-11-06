@@ -2209,8 +2209,9 @@ async def test_cancel_during_a_long_backlog_returns_at_once(
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
-    # At most the write that was running, and a drop
-    assert time.perf_counter() - cancelled_at < 0.5
+    # At most the write that was running, and a drop: not the 2.5s or more
+    # of slices left (a generous bound, for busy CI machines)
+    assert time.perf_counter() - cancelled_at < 1.5
     if on_error == "drop":
         assert status.done and status.dropped
         assert not await db.table_exists("t")

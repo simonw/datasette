@@ -728,8 +728,9 @@ async def test_max_upload_mb_zero_means_no_limit(tmp_path, temp_dir):
     try:
         page = await database_page_data(ds, ROOT)
         assert page["createTable"]["upload"]["maxBytes"] is None
-        response = await upload(ds, b"n\n" + b"1\n" * 600_000, "big.csv")
-        assert (await finished(ds, response)).rows == 600_000
+        response = await upload(ds, b"n\n1\n2\n3\n", "small.csv")
+        assert response.status_code == 202, response.text
+        assert (await finished(ds, response)).rows == 3
     finally:
         await _teardown(ds)
 

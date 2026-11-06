@@ -43,7 +43,10 @@ async def ds():
             )
             insert into big (value, label) select random(), 'row ' || i from n;
         """)
-        yield ds
+        try:
+            yield ds
+        finally:
+            ds.close()
     finally:
         pm.unregister(name="test_table_sql_time_limit_sleep")
 

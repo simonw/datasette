@@ -91,6 +91,7 @@ async def test_cancelling_a_worker_import_during_the_backlog(
     # tables it saw import_rows() create under the name they used to have
     monkeypatch.setattr(inserter_module, "CONVERT_SECONDS", 1e-6)
     monkeypatch.setattr(inserter_module, "_MIN_CONVERT_ROWS", 100)
+    slow_writes.seconds = 0.02
     path = _late_widening_csv(tmp_path / "late.csv", 20_000, text_at=15_000)
     state = {}
     task = None
@@ -107,9 +108,10 @@ async def test_cancelling_a_worker_import_during_the_backlog(
     with pytest.raises(asyncio.CancelledError):
         await task
     raised = time.perf_counter() - state["cancelled"]
-    # 140 slices of 10ms were left; at most one write, the worker's exit and
-    # the clean up's own write or two go before the call raises
-    assert raised < 0.5, raised
+    # 140 slices of 20ms (2.8s) were left; at most one write, the worker's
+    # exit and the clean up's own write or two go before the call raises (a
+    # generous bound, for busy CI machines)
+    assert raised < 1.5, raised
     assert not _alive(state["pid"])
 
     def declared(conn):

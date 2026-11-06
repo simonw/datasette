@@ -808,6 +808,16 @@ async def test_a_request_that_lost_the_race_with_the_first_rows(tmp_path):
             "Table slow was created while this request was being answered: " "try again"
         )
         assert data["import"]["state"] == "importing"
+        # The same table under another case is an ordinary 404 (Datasette
+        # compares table names exactly): no redirect, which would loop
+        inner = handle_exception(
+            datasette=ds,
+            request=Request.fake("/scratch/SLOW"),
+            exception=TableNotFound("scratch", "SLOW"),
+        )
+        assert await inner() is None
+        response = await ds.client.get("/scratch/SLOW")
+        assert response.status_code == 404
     finally:
         await ds.invoke_shutdown()
 

@@ -16,6 +16,11 @@ per input; an upload endpoint can do the same with the file it saved::
     source = Source(name, "file", path, path=path, temporary=True, table=table)
     job = import_registry(datasette).start(db, source, title=name)
 
+Only background imports are in the registry. ``--get``, which loads its
+inputs before answering, uses :func:`~datasette.imports.scratch.load_sources`
+directly, so ``/-/imports.json`` is empty there: there is nothing to show
+progress to.
+
 An import into a table that exists already fails (``existing_table`` is
 then True) and leaves that table alone; it does not replace the import that
 created the table as the one :meth:`~ImportRegistry.get` returns, so a

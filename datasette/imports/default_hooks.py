@@ -505,6 +505,11 @@ def handle_exception(datasette, request, exception):
         is_json = request.path.endswith(".json")
         db = datasette.databases.get(job.database)
         if job.table_exists and db is not None and await db.table_exists(job.table):
+            if not await db.table_exists(exception.table):
+                # There, but under another case (/scratch/EVENTS for
+                # events): resolve_table() compares names exactly, so this
+                # is an ordinary 404 - and redirecting would loop
+                return None
             # A race, not a stale read: resolve_table() looked in
             # sqlite_master just before the import's first chunk was
             # committed, and the table is there now. A page asks the
@@ -632,7 +637,9 @@ async def cancel_import_view(datasette, request):
     ``POST /DATABASE/TABLE/-/cancel-import`` cancels the import into that
     table and waits (up to five seconds) for it to stop. A form post
     redirects back to the page it came from, with a message; anything
-    else gets JSON: ``{"ok": true, "import": {...}}``.
+    else gets JSON: ``{"ok": true, "import": {...}}``, with ``import`` only
+    for actors who may also view the table. Needs ``cancel-import``: 403
+    without it, or 404 for an actor who cannot see the table either.
     """
     from datasette.utils import tilde_decode
     from datasette.utils.asgi import Response

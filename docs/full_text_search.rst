@@ -21,6 +21,13 @@ Table views that support full-text search can be queried using the ``?_search=TE
 
 Try `searching Datasette ecosystem repositories for "csv" <https://datasette.io/content/repos?_search=csv>`__ to find tools for working with CSV files.
 
+Wrap multiple words in double quotes to search for an exact phrase, for example
+``"Rebecca Sugar"``. In the default escaped search mode, curly double quotes
+``“`` and ``”`` are treated as straight double quotes, so ``“Rebecca Sugar”``
+matches the same phrase. This also works for column-specific searches. Single
+quotes and apostrophes are unchanged. In raw search mode (``?_searchmode=raw``),
+queries are passed directly to SQLite without this normalization.
+
 SQLite full-text search supports wildcards. This means you can easily implement prefix auto-complete by including an asterisk at the end of the search term - for example::
 
     /dbname/tablename/?_search=rob*

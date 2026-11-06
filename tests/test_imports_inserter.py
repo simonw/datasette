@@ -10,14 +10,15 @@ import pytest
 
 from datasette.app import Datasette
 from datasette.hookspecs import hookimpl
+from datasette.imports import inserter as inserter_module
 from datasette.imports.inserter import (
     _F,
     _I,
-    _INT_FAST,
-    _REAL_FAST,
     _SQLITE_NUMBER,
     TypedInserter,
     _affinity_text,
+    _canonical,
+    _odd_positions,
     _render_real,
     classify,
     import_rows,
@@ -815,9 +816,12 @@ def _snapshot(conn):
 
 
 @pytest.mark.parametrize("seed", range(40))
-def test_result_does_not_depend_on_chunk_boundaries(seed):
+def test_result_does_not_depend_on_chunk_boundaries(seed, monkeypatch):
     # Whatever the sample size, batch size and widening strategy, the table
-    # must be what you get when the whole input is the sample
+    # must be what you get when the whole input is the sample. Odd seeds
+    # bind floats instead of float text, as on a SQLite whose float parsing
+    # differs from Python's
+    monkeypatch.setattr(inserter_module, "_FLOATS_EXACT", seed % 2 == 0)
     rng = random.Random(seed)
     rows = _tricky_rows(rng, rng.randint(1, 40))
     reference_conn, _ = load(rows, widen="auto", sample_size=len(rows))
@@ -833,8 +837,8 @@ def test_result_does_not_depend_on_chunk_boundaries(seed):
 
 
 def test_fast_patterns_only_match_text_that_round_trips():
-    # A value matching _INT_FAST / _REAL_FAST keeps no spelling, so storing
-    # it in that column and widening to text must give exactly it back
+    # A canonical value keeps no spelling, so storing it in that column and
+    # widening to text must give exactly it back
     rng = random.Random(1)
     conn = sqlite3.connect(":memory:")
     conn.execute("create table t (i INTEGER, r REAL)")
@@ -849,19 +853,26 @@ def test_fast_patterns_only_match_text_that_round_trips():
     matched = {"int": 0, "real": 0}
     for value in sorted(candidates):
         conn.execute("delete from t")
-        if value and _INT_FAST.fullmatch(value):
+        if value and _canonical(value, _I):
             conn.execute("insert into t (i) values (?)", [value])
             stored = conn.execute("select i, typeof(i) from t").fetchone()
             assert stored == (int(value), "integer"), value
             assert str(stored[0]) == value
             matched["int"] += 1
-        if value and _REAL_FAST.fullmatch(value):
+        if value and _canonical(value, _F):
             conn.execute("delete from t")
             conn.execute("insert into t (r) values (?)", [float(value)])
             stored = conn.execute("select r from t").fetchone()[0]
             assert _render_real(stored) == value, value
             matched["real"] += 1
     assert matched["int"] > 100 and matched["real"] > 10000, matched
+    # The column-at-once version finds the same values
+    values = sorted(candidates)
+    for rank in (_I, _F):
+        odd = _odd_positions(values, rank) or []
+        assert odd == [i for i, v in enumerate(values) if not _canonical(v, rank)]
+    assert _odd_positions(["1", "", "22"], _I) is None
+    assert _odd_positions(["1", "", "007", "1.5", ""], _I) == [2, 3]
 
 
 def test_sqlite_number_pattern_matches_affinity():
@@ -891,10 +902,12 @@ def test_sqlite_number_pattern_matches_affinity():
 
 
 def test_sqlite_parses_float_text_like_python():
-    # Values bound as strings into INTEGER columns are parsed by SQLite;
-    # the spellings logic assumes SQLite gets the same float as float()
-    rng = random.Random(3)
+    # Canonical float text is bound as text and parsed by SQLite; keeping no
+    # spelling for it relies on SQLite getting the same float as float().
+    # The inserter checks this at runtime and binds floats if it fails.
     conn = sqlite3.connect(":memory:")
+    assert inserter_module._sqlite_parses_floats_exactly(conn)
+    rng = random.Random(3)
     for _ in range(5000):
         text = repr(rng.uniform(-1e9, 1e9) * 10 ** rng.randint(-12, 12))
         stored = conn.execute("select cast(? as real)", [text]).fetchone()[0]

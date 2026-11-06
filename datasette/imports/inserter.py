@@ -99,16 +99,16 @@ _WS_CHARS = " \t\n\v\f\r"
 _WS = "[ \\t\\n\\v\\f\\r]*"
 # Canonical values: an INTEGER (or REAL) column stores them and gives them
 # back as exactly the same text, so nothing has to be remembered. They are
-# the shapes nearly every value takes, which makes them the fast path. Both
-# also match "". Integers are limited to 15 digits so that they stay exact
-# if the column becomes REAL; decimals to 15 significant digits and the
-# range where repr() does not switch to an exponent.
-_INT_FAST = re.compile(r"(?:0|-?[1-9][0-9]{0,14})?")
+# the shapes nearly every value takes, which makes them the fast path (see
+# _canonical()). Integers are limited to 15 digits so that they stay exact
+# if the column becomes REAL. Decimals must have no superfluous zeros, at
+# most 15 significant digits - guaranteed by _REAL_LENGTH, cheaper than a
+# lookahead - and be in the range where repr() does not use an exponent.
+_INT_FAST = re.compile(r"-?[1-9][0-9]{0,14}|0")
 _REAL_FAST = re.compile(
-    r"(?:0|-?(?:[1-9][0-9]{0,14}"
-    r"|(?=[0-9.]{3,16}\Z)[1-9][0-9]*\.[0-9]*[1-9]"
-    r"|0\.0{0,3}(?=[0-9]{1,15}\Z)[1-9](?:[0-9]*[1-9])?))?"
+    r"-?[1-9][0-9]{0,14}(?:\.[0-9]*[1-9])?|-?0\.0{0,3}[1-9](?:[0-9]*[1-9])?|0"
 )
+_REAL_LENGTH = 16
 # The classification rules, see classify()
 _INT_RE = re.compile(_WS + r"[-+]?(?:0|[1-9][0-9]*)" + _WS)
 _FLOAT_RE = re.compile(
@@ -234,9 +234,87 @@ def _affinity_text(text, declared):
 _BYTES_TYPES = {bytes, bytearray, memoryview}
 _NUMBER_TYPES = {int, float, bool, _NoneType}
 _TEXT_TYPES = {str, bytes, _NoneType}
+_NUMBERS_AND_STR = _NUMBER_TYPES | {str}
+_NULLISH_TYPES = {str, _NoneType}
 _STR = {str}
 # _null_kind() result meaning "no spelling needs to be kept"
 _NO_ENTRY = object()
+
+
+def _canonical(value, rank):
+    "Whether a non-empty string is canonical in an INTEGER or REAL column."
+    if rank <= _I:
+        return _INT_FAST.fullmatch(value) is not None
+    return len(value) <= _REAL_LENGTH and _REAL_FAST.fullmatch(value) is not None
+
+
+def _odd_positions(values, rank):
+    """
+    Positions of the non-empty strings that are not canonical for an INTEGER
+    (``rank`` up to _I) or REAL column, or None if there are none - found at
+    C speed in that case.
+    """
+    if rank <= _I:
+        pattern, too_long = _INT_FAST, False
+    else:
+        pattern, too_long = _REAL_FAST, max(map(len, values)) > _REAL_LENGTH
+    if not too_long and all(map(pattern.fullmatch, filter(None, values))):
+        return None
+    matched = list(map(bool, map(pattern.fullmatch, values)))
+    odd = [i for i in _positions(matched, False) if values[i]]
+    if too_long:
+        odd = sorted(
+            set(odd).union(i for i, v in enumerate(values) if len(v) > _REAL_LENGTH)
+        )
+    return odd
+
+
+def _positions(items, target):
+    "Indexes of ``target`` in ``items`` - a C-speed search per match."
+    positions = []
+    position = -1
+    try:
+        while True:
+            position = items.index(target, position + 1)
+            positions.append(position)
+    except ValueError:
+        return positions
+
+
+# Whether SQLite turns float text into exactly the double float() gives,
+# checked once per process by _sqlite_parses_floats_exactly()
+_FLOATS_EXACT = None
+
+
+def _sqlite_parses_floats_exactly(conn):
+    """
+    A canonical float string is bound as text and keeps no spelling, which
+    relies on SQLite parsing it into the same double as ``float()``: then
+    the stored value turns back into exactly that text. SQLite 3.53 does
+    for every value tested; builds whose text-to-float conversion is less
+    precise exist, so check a sample once and otherwise convert in Python.
+    """
+    global _FLOATS_EXACT
+    if _FLOATS_EXACT is None:
+        import random
+
+        rng = random.Random(0)
+        samples = ["0.1", "0.3", "2.675", "1.005", "9007199254740993"]
+        for _ in range(500):
+            digits = rng.choice((15, 17))
+            mantissa = rng.randrange(10 ** (digits - 1), 10**digits)
+            samples.append(f"{mantissa}e{rng.randint(-25, 5)}")
+        for _ in range(500):
+            samples.append(f"{rng.randrange(10**12)}.{rng.randrange(1000):03d}")
+        exact = True
+        for start in range(0, len(samples), 250):
+            chunk = samples[start : start + 250]
+            parsed = conn.execute(
+                "select " + ", ".join("cast(? as real)" for _ in chunk), chunk
+            ).fetchone()
+            exact = exact and all(a == float(b) for a, b in zip(parsed, chunk))
+        _FLOATS_EXACT = exact
+    return _FLOATS_EXACT
 
 
 def _widest(values, rank):
@@ -395,6 +473,8 @@ class TypedInserter:
         self._spellings_created = False
         # Rows with no keys at all that arrived before any column was known
         self._pending_empty = 0
+        # Bind floats rather than float text, see _sqlite_parses_floats_exactly
+        self._parse_floats = None
         if schema:
             for key, type_ in schema.items():
                 column = self._new_column(key)
@@ -486,6 +566,8 @@ class TypedInserter:
         if self._pending_empty:
             rows = [{}] * self._pending_empty + rows
             self._pending_empty = 0
+        if self._parse_floats is None:
+            self._parse_floats = not _sqlite_parses_floats_exactly(conn)
         values = self._row_values(rows)
         changes, plans = self._scan(values)
         if not self.created:
@@ -624,27 +706,36 @@ class TypedInserter:
             types_present = set(map(type, col_values))
             # Every value is a canonical str, or every value an exact number
             fast = False
+            # For a column of strings: positions of the non-canonical ones
+            odd = None
             if column.fixed or current == _B:
                 new_rank = current
             elif current == _T:
                 # Only bytes can widen a text column
                 new_rank = _B if types_present & _BYTES_TYPES else _T
             elif types_present == _STR:
-                # CSV: check with one regex per value, in C
-                pattern = _INT_FAST if current <= _I else _REAL_FAST
-                if all(map(pattern.fullmatch, col_values)):
+                # CSV: check with one regex per value, in C, and classify
+                # only the values that do not match
+                odd = _odd_positions(col_values, current)
+                new_rank = max(current, _I) if any(col_values) else current
+                if odd is None:
                     fast = True
-                    new_rank = max(current, _I) if any(col_values) else current
                 else:
-                    new_rank = _widest(col_values, current)
-            elif types_present <= _NUMBER_TYPES:
-                # JSON numbers: no per-value Python work
+                    new_rank = _widest([col_values[i] for i in odd], new_rank)
+            elif types_present <= _NUMBERS_AND_STR:
+                # JSON numbers, perhaps with "" for missing values: no
+                # per-value Python work
                 numbers = (
-                    [v for v in col_values if v is not None]
-                    if _NoneType in types_present
+                    [v for v in col_values if v is not None and v != ""]
+                    if types_present & _NULLISH_TYPES
                     else col_values
                 )
-                if not numbers:
+                if (
+                    str in types_present
+                    and not set(map(type, numbers)) <= _NUMBER_TYPES
+                ):
+                    new_rank = _widest(col_values, current)
+                elif not numbers:
                     new_rank = current
                     fast = True
                 elif (
@@ -670,11 +761,13 @@ class TypedInserter:
                 declared = column.declared
             else:
                 declared = logical
-            plans.append((index, col_values, types_present, logical, declared, fast))
+            plans.append(
+                (index, col_values, types_present, logical, declared, fast, odd)
+            )
         return changes, plans
 
     def _convert(
-        self, values, index, col_values, types_present, logical, declared, fast
+        self, values, index, col_values, types_present, logical, declared, fast, odd
     ):
         """
         Make the values of one column storable (in place) in a column that
@@ -684,32 +777,68 @@ class TypedInserter:
         """
         column = self._columns[index]
         if declared >= _T:
-            # TEXT or BLOB: values in their text form, bytes as they are
+            # TEXT or BLOB: values in their text form, bytes as they are.
+            # TEXT affinity turns an integer into the same text str() does.
             if types_present - _TEXT_TYPES:
+                keep_ints = declared == _T
                 for row in values:
                     value = row[index]
-                    if value is not None and type(value) not in (str, bytes):
-                        row[index] = _text_form(value)
+                    kind = type(value)
+                    if kind is str or value is None or kind is bytes:
+                        continue
+                    if kind is int and keep_ints and _INT_MIN <= value <= _INT_MAX:
+                        continue
+                    row[index] = _text_form(value)
             return ()
         if column.fixed:
             self._convert_fixed(values, index, col_values, types_present)
             return ()
         if logical >= _T:
             return self._convert_stale(values, index, column, declared)
-        if not fast:
+        if not fast and odd is None:
             return self._convert_numeric(values, index, column, logical, declared)
-        # The fast paths: canonical strings, or numbers within +-2**53
+        # Canonical strings (but for the odd ones), or numbers within +-2**53
         has_blank = str in types_present and "" in col_values
         spellings = self._nulls(
             values, index, column, has_blank, _NoneType in types_present
         )
-        if logical == _F and str in types_present:
-            # Bind floats, so what is stored is exactly float(text)
-            for row in values:
-                value = row[index]
-                if value is not None:
-                    row[index] = float(value)
+        if logical == _F and str in types_present and self._parse_floats:
+            # The canonical ones; _odd_text() decides about the others
+            skip = set(odd or ())
+            for i, row in enumerate(values):
+                if i not in skip and type(row[index]) is str:
+                    row[index] = float(row[index])
+        if odd:
+            for i in odd:
+                self._odd_text(
+                    values[i], index, i, column, logical, declared, spellings
+                )
         return spellings
+
+    def _odd_text(self, row, index, i, column, logical, declared, spellings):
+        """
+        A non-empty string in an INTEGER or REAL column that may not be
+        canonical: bind it, keeping its text if the stored number will not
+        give it back.
+        """
+        value = row[index]
+        if _canonical(value, logical):
+            # Canonical after all (e.g. "1.5" once the column is float)
+            if logical == _F and self._parse_floats:
+                row[index] = float(value)
+            return
+        if declared == _I and _classify_rank(value) == _I:
+            # SQLite parses integers exactly: bind the text
+            number = int(value)
+            stored = str(number)
+            if not -_EXACT <= number <= _EXACT:
+                column.big_ints = True
+        else:
+            # Bind the float, so the stored value is exactly float()
+            number = row[index] = float(value)
+            stored = _render_real(number)
+        if stored != value:
+            spellings.append((column.index, i, value))
 
     def _null_kind(self, column, blank):
         "Record a NULL stored for a blank or a real NULL; maybe a spelling."
@@ -744,46 +873,54 @@ class TypedInserter:
         return spellings
 
     def _convert_numeric(self, values, index, column, logical, declared):
-        "The slow path for an INTEGER or REAL column: value by value."
+        """
+        An INTEGER or REAL column where some values are not canonical:
+        value by value, with a quick way through for the canonical ones.
+        """
         spellings = []
+        # In a column that is logically float, _REAL_FAST values are also
+        # canonical if it is still declared INTEGER ("deferred")
+        pattern = _INT_FAST if logical == _I else _REAL_FAST
+        limit = _REAL_LENGTH if logical == _F else 20
+        to_float = logical == _F and self._parse_floats
         for i, row in enumerate(values):
             value = row[index]
             kind = type(value)
-            if value is None or value == "" or (kind is float and math.isnan(value)):
+            if kind is str:
+                if value and len(value) <= limit and pattern.fullmatch(value):
+                    if to_float:
+                        row[index] = float(value)
+                elif value:
+                    self._odd_text(row, index, i, column, logical, declared, spellings)
+                else:
+                    row[index] = None
+                    entry = self._null_kind(column, True)
+                    if entry is not _NO_ENTRY:
+                        spellings.append((column.index, i, entry))
+                continue
+            if value is None or (isinstance(value, float) and math.isnan(value)):
                 row[index] = None
-                entry = self._null_kind(column, kind is str)
+                entry = self._null_kind(column, False)
                 if entry is not _NO_ENTRY:
                     spellings.append((column.index, i, entry))
                 continue
-            if kind is str:
-                text = value
-                if declared == _I and _classify_rank(value) == _I:
-                    # SQLite parses integers exactly: bind the text
-                    number = int(value)
-                    stored = str(number)
-                    if logical == _F:
-                        row[index] = number
+            if kind is not int and kind is not float:
+                # bool, subclasses: plain numbers
+                if isinstance(value, float):
+                    row[index] = float(value)
+                elif isinstance(value, int):
+                    value = row[index] = int(value)
                 else:
-                    number = float(value)
-                    row[index] = number
-                    stored = _render_real(number)
-            elif kind is float or isinstance(value, float):
-                # Its text form is defined by the stored value
-                row[index] = float(value)
-                continue
-            elif isinstance(value, int):
-                number = int(value)
-                row[index] = number
-                text = str(number)
-                stored = text if declared == _I else _render_real(float(number))
-            else:
-                # Cannot happen in a numeric column, but stay storable
-                row[index] = _storable(value)
-                continue
-            if declared == _I and type(number) is int and abs(number) > _EXACT:
-                column.big_ints = True
-            if stored != text:
-                spellings.append((column.index, i, text))
+                    # Cannot happen in a numeric column, but stay storable
+                    row[index] = _storable(value)
+                    continue
+            if type(value) is int and not -_EXACT <= value <= _EXACT:
+                if declared == _I:
+                    column.big_ints = True
+                elif _render_real(float(value)) != str(value):
+                    # A REAL rounds it
+                    spellings.append((column.index, i, str(value)))
+            # A float's text form is defined by the float itself
         return spellings
 
     def _convert_stale(self, values, index, column, declared):
@@ -1224,7 +1361,7 @@ class _Transaction:
         # ends it and opens the next one
         self.manual = getattr(self.conn, "autocommit", None) is False
         if not self.manual and not self.conn.in_transaction:
-            self.conn.execute("BEGIN")
+            self.conn.execute("BEGIN IMMEDIATE")
             self.owned = True
 
     def __exit__(self, exc_type, exc, tb):

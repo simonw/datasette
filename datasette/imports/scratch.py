@@ -22,10 +22,12 @@ import contextvars
 import dataclasses
 import json
 import os
+import pathlib
 import sqlite3
 import tempfile
 import threading
 import time
+import weakref
 
 from datasette.database import Database
 from datasette.imports import loaders as _loaders
@@ -150,15 +152,41 @@ def is_scratch(db) -> bool:
 
 
 def check_save_file(path: str) -> None:
-    "Refuse a --save path that exists and is not a SQLite database."
+    """
+    Refuse a --save path that cannot work, before anything is downloaded or
+    read: a directory, a file that is not a SQLite database, a missing or
+    read-only directory, or a name that Datasette's ``file:`` URIs would
+    misread.
+    """
     if os.path.isdir(path):
         raise SourceError(f"--save {path}: this is a directory")
-    if os.path.exists(path) and os.path.getsize(path):
-        with open(path, "rb") as fp:
-            if fp.read(len(SQLITE_HEADER)) != SQLITE_HEADER:
-                raise SourceError(
-                    f"--save {path}: this file exists and is not a SQLite database"
-                )
+    # Database.connect() opens "file:{path}?mode=...": a ? or # would end
+    # the path early and %XX would be decoded, so the data would go to a
+    # different file
+    bad = sorted({c for c in path if c in "?#%"})
+    if bad:
+        raise SourceError(
+            f"--save {path}: Datasette cannot open a database whose path "
+            f"contains {' or '.join(repr(c) for c in bad)}"
+        )
+    if os.path.exists(path):
+        if os.path.getsize(path):
+            with open(path, "rb") as fp:
+                if fp.read(len(SQLITE_HEADER)) != SQLITE_HEADER:
+                    raise SourceError(
+                        f"--save {path}: this file exists and is not a SQLite "
+                        "database"
+                    )
+        if not os.access(path, os.W_OK):
+            raise SourceError(f"--save {path}: this file is not writable")
+        return
+    directory = os.path.dirname(os.path.abspath(path))
+    if not os.path.isdir(directory):
+        raise SourceError(f"--save {path}: directory {directory} does not exist")
+    if not os.access(directory, os.W_OK):
+        raise SourceError(
+            f"--save {path}: cannot create a file in {directory}, " "it is not writable"
+        )
 
 
 def create_save_file(path: str) -> bool:
@@ -182,7 +210,8 @@ def existing_tables(path: str) -> list[str]:
     "Names of the tables and views in the SQLite file at ``path``."
     if path is None or not os.path.exists(path) or not os.path.getsize(path):
         return []
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    uri = pathlib.Path(os.path.abspath(path)).as_uri() + "?mode=ro"
+    conn = sqlite3.connect(uri, uri=True)
     try:
         return [
             row[0]
@@ -190,6 +219,20 @@ def existing_tables(path: str) -> list[str]:
                 "select name from sqlite_master where type in ('table', 'view')"
             )
         ]
+    finally:
+        conn.close()
+
+
+def free_bytes(path: str) -> int:
+    """
+    Bytes of free pages in the SQLite file at ``path``: space that dropped
+    tables leave behind until ``VACUUM`` (SQLite reuses it for new data).
+    """
+    uri = pathlib.Path(os.path.abspath(path)).as_uri() + "?mode=ro"
+    conn = sqlite3.connect(uri, uri=True)
+    try:
+        pages = conn.execute("pragma freelist_count").fetchone()[0]
+        return pages * conn.execute("pragma page_size").fetchone()[0]
     finally:
         conn.close()
 
@@ -222,15 +265,21 @@ def sniff(source: Source, loaders=None):
     """
     loaders = _loaders.get_loaders() if loaders is None else list(loaders)
     try:
-        if source.format:
-            source.loader = _loaders.get_loader(source.format, loaders)
-            return source.loader
         with open(source.path, "rb") as fp:
             if fp.read(len(SQLITE_HEADER)) == SQLITE_HEADER:
+                if source.kind == "file" and not source.needs_copy:
+                    raise ImportFailed(
+                        f"{source.spec}: {source.location} is a SQLite "
+                        "database, not data to load into a table. Pass it on "
+                        f"its own to serve it: datasette {source.location}"
+                    )
                 raise ImportFailed(
                     f"{source.label} is a SQLite database: save it to a file "
                     "and run datasette FILE.db instead"
                 )
+        if source.format:
+            source.loader = _loaders.get_loader(source.format, loaders)
+            return source.loader
         first_bytes, _scores = _loaders.sniff_path(source.path, loaders)
         source.loader = _loaders.pick_loader(first_bytes, loaders)
         return source.loader
@@ -250,10 +299,47 @@ async def drop_table(db, table: str) -> None:
     "Drop ``table`` from ``db`` if it exists, as the import process."
 
     def _drop(conn):
-        conn.execute(f"drop table if exists [{table.replace(']', ']]')}]")
+        conn.execute(f"drop table if exists {_quote(table)}")
 
     with import_writes():
         await db.execute_write_fn(_drop)
+
+
+# Tables that load_source() is loading right now, per database. A name is
+# reserved (synchronously, on the event loop) before anything else happens
+# and released when the load ends, so two imports in this process can never
+# both decide that they are the one creating a table
+_loading = weakref.WeakKeyDictionary()
+
+
+def _reserve(db, table: str) -> None:
+    names = _loading.setdefault(db, set())
+    # SQLite compares table names case-insensitively (ASCII only, so this is
+    # if anything stricter)
+    key = table.lower()
+    if key in names:
+        raise TableExists(f"Table {table!r} is already being loaded into {db.name}")
+    names.add(key)
+
+
+def _release(db, table: str) -> None:
+    names = _loading.get(db)
+    if names is not None:
+        names.discard(table.lower())
+
+
+def _quote(name: str) -> str:
+    return "[{}]".format(name.replace("]", "]]"))
+
+
+def _table_exists(conn, table: str) -> bool:
+    return bool(
+        conn.execute(
+            "select 1 from sqlite_master where type in ('table', 'view') "
+            "and name = ? collate nocase",
+            [table],
+        ).fetchone()
+    )
 
 
 async def load_source(
@@ -271,11 +357,18 @@ async def load_source(
     Load one source into a new table ``source.table`` in ``db``.
 
     Fetches the source first if :func:`~datasette.imports.sources.fetch`
-    has not run yet (into ``workdir``), and sniffs it if no loader has been
-    picked. The table must not exist. If loading fails or is cancelled the
-    partly loaded table is dropped and :class:`ImportFailed` (or the
-    cancellation) is raised. ``progress(rows_written)`` is called after
-    every chunk.
+    has not run yet, and sniffs it if no loader has been picked. A copy
+    that this call downloads or spools itself (into ``workdir``, or a
+    private temporary directory) is deleted again when it returns, loaded
+    or not; copies made beforehand belong to the caller.
+
+    The table must not exist, and no other ``load_source()`` call in this
+    process may be loading a table of the same name (compared
+    case-insensitively): either raises :class:`TableExists` before
+    anything is fetched. If loading fails or is cancelled, the partly
+    loaded table is dropped - only if this call created it - and
+    :class:`ImportFailed` (or the cancellation) is raised.
+    ``progress(rows_written)`` is called after every chunk.
 
     By default every chunk is its own ``db.execute_write_fn()`` call while
     the loader runs in an executor thread, so other writes and reads can
@@ -287,24 +380,58 @@ async def load_source(
     it finishes, so it is only for loading before the server starts.
     ``write_wrapper`` plugins then see one call for the whole load.
     """
-    from datasette.imports.sources import fetch
+    from datasette.imports.sources import fetch, remove_temporary
 
+    if not source.table:
+        raise ValueError("source.table is not set: see assign_table_names()")
     loop = asyncio.get_running_loop()
-    if source.path is None:
-        await fetch(source, workdir or tempfile.gettempdir())
-    if source.loader is None:
-        await loop.run_in_executor(None, sniff, source, loaders)
+    _reserve(db, source.table)
+    fetched_here = source.path is None
+    private_dir = None
+    try:
+        if fetched_here:
+            if workdir is None:
+                private_dir = workdir = tempfile.mkdtemp(prefix="datasette-import-")
+            await fetch(source, workdir)
+        if source.loader is None:
+            await loop.run_in_executor(None, sniff, source, loaders)
+        # Fail early, before parsing anything. The write that creates the
+        # table checks again: see _load_new_table()
+        taken = await db.execute(
+            "select name from sqlite_master where type in ('table', 'view') "
+            "and name = ? collate nocase",
+            [source.table],
+        )
+        if taken.first():
+            raise TableExists(f"Table {source.table!r} already exists in {db.name}")
+        return await _load_new_table(
+            db, source, batch_size, sample_size, progress, exclusive
+        )
+    finally:
+        _release(db, source.table)
+        if fetched_here and source.temporary:
+            # The rows are in SQLite now (or never will be)
+            remove_temporary([source])
+        if private_dir is not None:
+            remove_tree(private_dir)
+
+
+async def _load_new_table(db, source, batch_size, sample_size, progress, exclusive):
+    loop = asyncio.get_running_loop()
     loader = source.loader
-    # Checked here as well as in plan_loads(): on failure the table is
-    # dropped, which must never hit a table this import did not create
-    taken = await db.execute(
-        "select name from sqlite_master where type in ('table', 'view') "
-        "and name = ? collate nocase",
-        [source.table],
-    )
-    if taken.first():
-        raise TableExists(f"Table {source.table!r} already exists in {db.name}")
+    table = source.table
     start = time.perf_counter()
+    # Set once a chunk has been committed. The inserter creates the table
+    # with a plain CREATE TABLE in the same transaction as the first chunk,
+    # so from then on the table is certainly this import's own
+    committed = False
+
+    def on_chunk(rows_written):
+        nonlocal committed
+        committed = True
+        if progress is not None:
+            return progress(rows_written)
+
     try:
         result = await loop.run_in_executor(
             None,
@@ -314,37 +441,40 @@ async def load_source(
         with import_writes():
             if exclusive:
                 imported = await _load_exclusive(
-                    db,
-                    source.table,
-                    result.rows,
-                    schema,
-                    sample_size,
-                    batch_size,
-                    progress,
+                    db, table, result.rows, schema, sample_size, batch_size, progress
                 )
             else:
                 imported = await import_rows(
                     db,
-                    source.table,
+                    table,
                     result.rows,
                     schema=schema,
                     sample_size=sample_size,
                     batch_size=batch_size,
-                    progress=progress,
+                    progress=on_chunk,
                 )
     except BaseException as ex:
-        with contextlib.suppress(Exception):
-            await drop_table(db, source.table)
+        # exclusive=True cleans up on the write thread. Otherwise drop the
+        # table if this import created it. A cancellation can arrive while
+        # the first chunk is still being written: the drop queues behind
+        # it, and in scratch - where nothing but imports writes, and this
+        # name is reserved - a table that exists by then is this one's
+        own_table = committed or (
+            isinstance(ex, asyncio.CancelledError) and is_scratch(db)
+        )
+        if not exclusive and own_table:
+            with contextlib.suppress(Exception):
+                await drop_table(db, table)
         if isinstance(ex, _loaders.LoaderError):
             raise ImportFailed(f"Error loading {source.label}: {ex}") from ex
         if isinstance(ex, sqlite3.Error):
             raise ImportFailed(
-                f"Error loading {source.label} into table {source.table!r}: {ex}"
+                f"Error loading {source.label} into table {table!r}: {ex}"
             ) from ex
         raise
     return LoadedTable(
         source=source,
-        table=source.table,
+        table=table,
         loader=loader.name,
         rows=imported.rows,
         seconds=time.perf_counter() - start,
@@ -361,31 +491,65 @@ class _Cancelled(Exception):
 async def _load_exclusive(db, table, rows, schema, sample_size, batch_size, progress):
     # insert_rows() on the write thread, committing every chunk. The write
     # thread cannot be interrupted, so cancellation sets a flag that the
-    # per-chunk progress callback checks
+    # per-chunk progress callback checks.
+    #
+    # load() drops the table itself if anything goes wrong, but only once a
+    # chunk has been committed: the inserter creates the table with a plain
+    # CREATE TABLE in the first chunk's transaction, so before that there is
+    # no table of this import's to drop (a failed first chunk rolls back),
+    # and after it the table is certainly this import's. load() returns
+    # errors rather than raising them, because the write thread prints
+    # every exception it sees to stderr and the command line would show
+    # each error twice
     cancelled = threading.Event()
 
-    def on_chunk(rows_written):
-        if cancelled.is_set():
-            raise _Cancelled
-        if progress is not None:
-            progress(rows_written)
-
     def load(conn):
-        return insert_rows(
-            conn,
-            table,
-            rows,
-            schema=schema,
-            sample_size=sample_size,
-            batch_size=batch_size,
-            progress=on_chunk,
-        )
+        if _table_exists(conn, table):
+            return None, TableExists(f"Table {table!r} already exists in {db.name}")
+        ours = False
+
+        def on_chunk(rows_written):
+            nonlocal ours
+            ours = True
+            if cancelled.is_set():
+                raise _Cancelled
+            if progress is not None:
+                progress(rows_written)
+
+        try:
+            imported = insert_rows(
+                conn,
+                table,
+                rows,
+                schema=schema,
+                sample_size=sample_size,
+                batch_size=batch_size,
+                progress=on_chunk,
+            )
+            ours = imported.created
+            if cancelled.is_set():
+                raise _Cancelled
+            return imported, None
+        except Exception as ex:  # noqa: BLE001 - returned, re-raised below
+            if ours:
+                with contextlib.suppress(Exception):
+                    if conn.in_transaction:
+                        conn.rollback()
+                    conn.execute(f"drop table if exists {_quote(table)}")
+            return None, ex
 
     try:
-        return await db.execute_write_fn(load, transaction=False)
+        imported, error = await db.execute_write_fn(load, transaction=False)
     except asyncio.CancelledError:
         cancelled.set()
+        # Wait until load() has seen the flag and dropped its table, so the
+        # caller can rely on the table being gone (a write queues behind it)
+        with contextlib.suppress(Exception):
+            await db.execute_write_fn(lambda conn: None, transaction=False)
         raise
+    if error is not None:
+        raise error
+    return imported
 
 
 @dataclasses.dataclass
@@ -431,10 +595,12 @@ def plan_loads(target_path, sources, *, session=None) -> LoadPlan:
         if key in reused:
             continue
         if key in tables and key not in owned:
+            # NAME:source, without the name the source was given
+            unnamed = source.spec.split(":", 1)[1] if source.name else source.spec
             raise TableExists(
                 f"Table {tables[key]!r} already exists in {target_path}, so "
                 f"{source.spec} cannot be loaded into it. Choose another table "
-                f"name with NAME:{source.spec}, use a different --save file "
+                f"name with NAME:{unnamed}, use a different --save file "
                 "or drop that table first."
             )
         plan.load.append(source)
@@ -457,8 +623,11 @@ async def load_sources(
     """
     Carry out a :class:`LoadPlan`: drop, then load each source in turn.
     All or nothing - if one fails, the tables loaded before it are dropped
-    too, so a failed ``--save`` leaves the file as it was. Returns a
-    :class:`LoadedTable` per source, in order.
+    too, so a failed ``--save`` leaves the file with the tables and data it
+    had before. (Not byte for byte: the pages the dropped tables used stay
+    in the file as free pages, which SQLite reuses, until ``VACUUM``; see
+    :func:`free_bytes`.) Returns a :class:`LoadedTable` per source, in
+    order.
 
     ``on_start(source)``, ``on_progress(source, rows)`` and
     ``on_loaded(loaded_table)`` report progress. ``exclusive`` is passed to

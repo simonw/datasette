@@ -39,6 +39,7 @@ from .imports.scratch import (
     ScratchDatabase,
     check_save_file,
     create_save_file,
+    free_bytes,
     is_scratch,
     load_sources,
     plan_loads,
@@ -60,6 +61,7 @@ from .imports.sources import (
     remove_tree,
     save_command,
     spool,
+    suggest_save_path,
 )
 from .inspect import inspect_tables
 from .utils import (
@@ -593,7 +595,7 @@ def serve(
     or https:// URLs, or - for standard input. These are loaded into a
     temporary read-only database called scratch, or into the --save file.
     Use name:source to pick a table name and source:csv (or tsv, json,
-    ndjson) to skip format detection.
+    ndjson) to skip format detection; for standard input that is stdin:csv.
 
     \b
     Examples:
@@ -682,6 +684,13 @@ def serve(
         raise click.ClickException(
             "--save needs at least one CSV, TSV, JSON, URL or - input to load"
         )
+    if save and any(
+        os.path.realpath(save) == os.path.realpath(path) for path in immutable
+    ):
+        raise click.ClickException(
+            f"--save {save}: this file is also opened with -i/--immutable, "
+            "so it cannot be written to"
+        )
 
     # Handle config_dir - only one directory allowed
     if len(directories) > 1:
@@ -741,7 +750,7 @@ def serve(
     if source_args:
         with _sigterm_interrupts():
             data_import = _prepare_import(
-                ds, source_args, save, reload, reloader, memory
+                ds, source_args, save, reload, reloader, memory, plugins_dir
             )
 
     if return_instance:
@@ -999,11 +1008,15 @@ class _DataImport:
         self.workdir = workdir
         # A --save file that did not exist before, removed if loading fails
         self.created_file = None
+        # Free space in an existing --save file before loading
+        self.free_before = None
+        #: Appended to "into table T" in the summary
+        self.where = ""
 
     async def run(self):
         status = StatusLine(sys.stderr)
         start = time.perf_counter()
-        where = "" if is_scratch(self.db) else f" in {self.db.name}"
+        where = self.where
 
         def on_start(source):
             status.start(f"Loading {source.label}...")
@@ -1037,6 +1050,8 @@ class _DataImport:
                 for suffix in ("", "-journal", "-wal", "-shm"):
                     with contextlib.suppress(OSError):
                         os.unlink(self.created_file + suffix)
+            elif self.free_before is not None:
+                self._report_free_space()
             if isinstance(ex, SourceError):
                 raise click.ClickException(str(ex))
             raise
@@ -1062,6 +1077,21 @@ class _DataImport:
                 summary = f"Loaded {len(results)} inputs ({total:,} rows)"
             click.echo(f"{summary} in {elapsed:.2f}s", err=True)
         return results
+
+    def _report_free_space(self):
+        # The tables loaded before the failure were dropped again, but the
+        # pages they used stay in the file until VACUUM
+        try:
+            freed = free_bytes(self.target_path) - self.free_before
+        except Exception:  # noqa: BLE001 - only a hint
+            return
+        if freed >= 1024 * 1024:
+            click.echo(
+                f"{self.target_path} has the same tables as before, but the "
+                f"partly loaded data left {human_size(freed)} of free pages "
+                "in it. SQLite reuses them; VACUUM gives the space back.",
+                err=True,
+            )
 
 
 @contextlib.contextmanager
@@ -1105,7 +1135,7 @@ def _describe_loaded(loaded, where=""):
     return line
 
 
-def _prepare_import(ds, source_args, save, reload, reloader, memory):
+def _prepare_import(ds, source_args, save, reload, reloader, memory, plugins_dir):
     """
     Parse the data source arguments, pick table names, check them against
     the --save file, download URLs, read stdin and sniff every input - so
@@ -1116,8 +1146,10 @@ def _prepare_import(ds, source_args, save, reload, reloader, memory):
     try:
         sources = [
             (
+                # An existing file is a file, even with colons in its name
+                # - but "-" always means standard input
                 Source(arg, "file", arg)
-                if os.path.exists(arg)
+                if arg != "-" and os.path.exists(arg)
                 else parse_source(arg, formats)
             )
             for arg in source_args
@@ -1200,9 +1232,17 @@ def _prepare_import(ds, source_args, save, reload, reloader, memory):
         raise
 
     created_file = None
+    free_before = None
     if save:
-        if create_save_file(save):
-            created_file = save
+        try:
+            if create_save_file(save):
+                created_file = save
+            else:
+                free_before = free_bytes(save)
+        except (OSError, sqlite3.Error, SourceError) as ex:
+            if not session:
+                remove_temporary(sources)
+            raise click.ClickException(f"--save {save}: {ex}")
         db = next(
             (
                 db
@@ -1222,13 +1262,36 @@ def _prepare_import(ds, source_args, save, reload, reloader, memory):
         else:
             db = ScratchDatabase(ds, target_path, keep=bool(session))
         ds.add_database(db, name=SCRATCH_NAME)
-        db.save_command = save_command(sources)
+        if db.name != SCRATCH_NAME:
+            click.echo(
+                f"Loading into a database called {db.name}, because "
+                f"{SCRATCH_NAME} is already the name of a database",
+                err=True,
+            )
+        # The command for the scratch page: never suggest a file that
+        # exists, and keep the --plugins-dir that may provide formats
+        save_path = suggest_save_path(
+            [d.path for d in ds.databases.values() if d.path and not d.is_memory]
+        )
+        extra_args = ["--plugins-dir", plugins_dir] if plugins_dir else []
+        db.save_path = save_path
+        db.save_command = save_command(
+            sources, save_path, extra_args=extra_args, redact=True
+        )
+        db.redacted = db.save_command != save_command(
+            sources, save_path, extra_args=extra_args
+        )
         db.from_stdin = any(source.kind == "stdin" for source in sources)
     if "_memory" in ds.databases and not memory and not ds.crossdb:
         # Datasette adds _memory when no database files are given
         ds.remove_database("_memory")
     data_import = _DataImport(db, sources, plan, session, target_path, workdir)
     data_import.created_file = created_file
+    data_import.free_before = free_before
+    if save:
+        data_import.where = f" in {save}"
+    elif db.name != SCRATCH_NAME:
+        data_import.where = f" in {db.name}"
     return data_import
 
 

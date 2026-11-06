@@ -91,6 +91,17 @@ JSON = json.dumps([{"id": 1, "city": "Lima"}, {"id": 3, "city": "Oslo"}])
         ("data:foo.csv", ("file", "foo.csv", "data", None)),
         # A table name can't contain a slash, so this is a path
         ("dir/a:b.csv", ("file", "dir/a:b.csv", None, None)),
+        # A :format inside a URL's query string or fragment is part of the URL
+        (
+            "https://example.com/search?q=format:csv",
+            ("url", "https://example.com/search?q=format:csv", None, None),
+        ),
+        (
+            "t:https://e.com/a?fields=a,b:json",
+            ("url", "https://e.com/a?fields=a,b:json", "t", None),
+        ),
+        ("https://e.com/a#x:csv", ("url", "https://e.com/a#x:csv", None, None)),
+        ("https://e.com/a.txt:csv", ("url", "https://e.com/a.txt", None, "csv")),
     ),
 )
 def test_parse_source(spec, expected):
@@ -365,7 +376,9 @@ def test_empty_sqlite_file_still_a_database(tmp_path):
     assert [db["name"] for db in databases["databases"]] == ["empty"]
 
 
-def test_scratch_page_shows_save_command(data_dir):
+def test_scratch_page_shows_save_command(data_dir, monkeypatch):
+    # The suggested file name depends on what exists in the current directory
+    monkeypatch.chdir(data_dir)
     result = run(
         [
             str(data_dir / "dogs.csv"),
@@ -510,7 +523,8 @@ def test_url_names_redirects_and_encoding(http_server):
     assert counts == {"owners": 2, "127_0_0_1": 2, "moved": 3, "gzip": 3}
 
 
-def test_url_save_command_and_stderr(http_server):
+def test_url_save_command_and_stderr(http_server, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     url = http_server + "/dogs.csv?a=1&b=2"
     result = run([url, "--get", "/scratch"])
     assert result.exit_code == 0
@@ -1014,3 +1028,346 @@ async def test_cancelling_a_load_drops_the_table(data_dir, exclusive):
         assert await db.table_names() == []
     finally:
         ds.close()
+
+
+# Regression tests for the review of prototype 1 --------------------------------
+
+
+def _many_rows(path, count=20_000):
+    path.write_text("".join(f'{{"id": {i}, "v": "row {i}"}}\n' for i in range(count)))
+    return path
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("exclusive", (False, True))
+async def test_concurrent_loads_of_one_table_name(data_dir, exclusive):
+    # Two background imports that want the same table: the second is
+    # refused at once, and must not drop the first one's table
+    import asyncio
+
+    from datasette.app import Datasette
+    from datasette.imports.scratch import load_source
+
+    ds = Datasette()
+    db = ds.add_database(ScratchDatabase(ds), name="scratch")
+    try:
+        big = _many_rows(data_dir / "big.ndjson")
+        a = Source(str(big), "file", str(big), table="events")
+        b = Source(str(data_dir / "dogs.csv"), "file", str(data_dir / "dogs.csv"))
+        b.table = "Events"  # names compare case-insensitively
+        results = await asyncio.gather(
+            load_source(db, a, exclusive=exclusive),
+            load_source(db, b, exclusive=exclusive),
+            return_exceptions=True,
+        )
+        assert results[0].rows == 20_000, results
+        assert isinstance(results[1], TableExists)
+        assert "already being loaded" in str(results[1])
+        assert await db.table_names() == ["events"]
+        count = await db.execute("select count(*) from events")
+        assert count.first()[0] == 20_000
+        # The name is free again once a load has finished
+        c = Source(str(big), "file", str(big), table="events_2")
+        assert (await load_source(db, c, exclusive=exclusive)).rows == 20_000
+    finally:
+        ds.close()
+
+
+class _SneakyLoader:
+    """
+    Creates the target table through another connection after
+    load_source() has checked that it does not exist, then yields rows.
+    """
+
+    name = "sneaky"
+
+    def __init__(self, db_path, table):
+        self.db_path = db_path
+        self.table = table
+
+    def sniff(self, first_bytes):
+        return 0.0
+
+    def load(self, path):
+        conn = sqlite3.connect(self.db_path)
+        conn.execute(f"create table [{self.table}] (theirs text)")
+        conn.execute(f"insert into [{self.table}] values ('keep me')")
+        conn.commit()
+        conn.close()
+        for i in range(5000):
+            yield {"id": i}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("exclusive", (False, True))
+async def test_load_source_keeps_a_table_created_while_it_started(data_dir, exclusive):
+    # A writable --save database: someone else creates the table between
+    # load_source()'s check and its first write. The import fails, and its
+    # cleanup must leave their table alone
+    from datasette.app import Datasette
+    from datasette.database import Database
+    from datasette.imports.scratch import ImportFailed, load_source
+
+    path = str(data_dir / "w.db")
+    sqlite3.connect(path).execute("vacuum").connection.close()
+    ds = Datasette()
+    db = ds.add_database(Database(ds, path=path, is_mutable=True), name="w")
+    try:
+        source = Source(str(data_dir / "dogs.csv"), "file", str(data_dir / "dogs.csv"))
+        source.table = "dogs"
+        source.path = source.location
+        source.loader = _SneakyLoader(path, "dogs")
+        with pytest.raises((ImportFailed, TableExists)):
+            await load_source(db, source, exclusive=exclusive)
+        rows = (await db.execute("select * from dogs")).rows
+        assert [tuple(row) for row in rows] == [("keep me",)]
+    finally:
+        ds.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("workdir", ("given", None))
+async def test_load_source_removes_its_own_downloads(
+    http_server, tmp_path, monkeypatch, workdir
+):
+    import tempfile
+
+    from datasette.app import Datasette
+    from datasette.imports.scratch import ImportFailed, load_source
+    from datasette.imports.sources import fetch
+
+    ds = Datasette()
+    db = ds.add_database(ScratchDatabase(ds, str(tmp_path / "s.db")), name="scratch")
+    # Where load_source() puts downloads when it is given no workdir
+    system_tmp = tmp_path / "system-tmp"
+    system_tmp.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(system_tmp))
+    work = tmp_path / "work"
+    work.mkdir()
+    _Handler.routes["/garbage.json"] = (200, {}, b'[{"a": 1}, {"a": ')
+    try:
+        kwargs = {"workdir": str(work)} if workdir else {}
+        url = http_server + "/dogs.csv"
+        loaded = await load_source(db, Source(url, "url", url, table="dogs"), **kwargs)
+        assert loaded.rows == 3
+        assert list(work.iterdir()) == []
+        assert list(system_tmp.iterdir()) == []
+        # Also when downloading or loading fails
+        bad = http_server + "/broken"
+        with pytest.raises(SourceError):
+            await load_source(db, Source(bad, "url", bad, table="b"), **kwargs)
+        garbage = http_server + "/garbage.json"
+        with pytest.raises(ImportFailed):
+            await load_source(
+                db, Source(garbage, "url", garbage, table="g", format="json"), **kwargs
+            )
+        assert list(work.iterdir()) == []
+        assert list(system_tmp.iterdir()) == []
+        # A copy made before load_source() is the caller's to remove
+        source = Source(url, "url", url, table="kept")
+        await fetch(source, str(work))
+        await load_source(db, source)
+        assert os.path.exists(source.path)
+    finally:
+        _Handler.routes.pop("/garbage.json", None)
+        ds.close()
+
+
+def test_scratch_page_hides_url_credentials(http_server, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    host = http_server.split("://", 1)[1]
+    url = f"http://alice:hunter2@{host}/dogs.csv?api_key=SECRET123&a=1"
+    result = run(["d:" + url, "--get", "/scratch"])
+    assert result.exit_code == 0, result.output
+    page = html.unescape(result.stdout)
+    assert "hunter2" not in page and "SECRET123" not in page
+    assert (
+        f"datasette 'd:http://alice:REDACTED@{host}/dogs.csv?api_key=REDACTED&a=1'"
+        " --save data.db"
+    ) in page
+    assert "shown as <code>REDACTED</code>" in page
+    # Nothing to hide, no note
+    result = run([http_server + "/dogs.csv?a=1", "--get", "/scratch"])
+    assert "REDACTED" not in html.unescape(result.stdout)
+
+
+@pytest.mark.parametrize(
+    "url,expected",
+    (
+        ("https://e.com/a.csv", "https://e.com/a.csv"),
+        ("https://u:p@e.com/a.csv", "https://u:REDACTED@e.com/a.csv"),
+        ("https://ghp_abc@e.com/a.csv", "https://REDACTED@e.com/a.csv"),
+        (
+            (
+                "https://b.s3.amazonaws.com/a.csv?X-Amz-Date=1&X-Amz-Signature=s"
+                "&X-Amz-Credential=c&X-Amz-Security-Token=t"
+            ),
+            (
+                "https://b.s3.amazonaws.com/a.csv?X-Amz-Date=1&X-Amz-Signature=REDACTED"
+                "&X-Amz-Credential=REDACTED&X-Amz-Security-Token=REDACTED"
+            ),
+        ),
+        (
+            "https://e.com/x?author=simon&accessToken=1&sig=2&page=3&apikey=4",
+            (
+                "https://e.com/x?author=simon&accessToken=REDACTED&sig=REDACTED"
+                "&page=3&apikey=REDACTED"
+            ),
+        ),
+    ),
+)
+def test_redact_url(url, expected):
+    from datasette.imports.sources import redact_url
+
+    assert redact_url(url) == expected
+
+
+def test_dash_always_means_stdin(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "-").write_text("id,v\n1,from-file\n")
+    rows = get_json(["-"], "/scratch/stdin.json?_shape=array", input="id,v\n1,piped\n")
+    assert [row["v"] for row in rows] == ["piped"]
+    # ./- is the file
+    rows = get_json(["./-"], "/scratch/data.json?_shape=array")
+    assert [row["v"] for row in rows] == ["from-file"]
+
+
+def test_stdin_format_suffix_on_the_command_line():
+    # Sniffing says TSV; the suffix says CSV, so the tab stays in one column
+    data = "a\tb\n1\t2\n"
+    rows = get_json(["stdin:csv"], "/scratch/stdin.json?_shape=array", input=data)
+    assert rows == [{"rowid": 1, "a\tb": "1\t2"}]
+    # click takes -:csv for an option, so it needs -- in front of it
+    result = run(["--get", "/scratch/stdin.json?_shape=array", "--", "-:csv"], data)
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == [{"rowid": 1, "a\tb": "1\t2"}]
+
+
+def test_stdin_only_once():
+    result = run(["-", "t:stdin", "--get", "/"], input=CSV)
+    assert result.exit_code == 1
+    assert "- and t:stdin both read standard input" in result.stderr
+
+
+def test_pipe_table_name():
+    for path in ("/dev/fd/63", "/proc/self/fd/12", "/proc/1234/fd/3"):
+        assert suggested_table_name(Source(path, "file", path)) == "pipe"
+    assert suggested_table_name(Source("/dev/stdin", "file", "/dev/stdin")) == "stdin"
+
+
+def test_save_path_errors_are_clean(data_dir):
+    csv = str(data_dir / "dogs.csv")
+    cases = [
+        (["--save", str(data_dir / "missing" / "x.db")], "does not exist"),
+        (["--save", str(data_dir / "new#y.db")], "contains '#'"),
+        (["--save", str(data_dir / "q?.db")], "contains '?'"),
+    ]
+    imm = data_dir / "imm.db"
+    sqlite3.connect(imm).execute("vacuum").connection.close()
+    cases.append((["-i", str(imm), "--save", str(imm)], "-i/--immutable"))
+    for extra, message in cases:
+        result = run([csv, *extra, "--get", "/"])
+        assert result.exit_code == 1, (extra, result.output)
+        assert message in result.stderr, (extra, result.stderr)
+        assert "Traceback" not in result.output
+    assert not (data_dir / "new#y.db").exists() and not (data_dir / "new").exists()
+
+
+def test_save_command_round_trips(data_dir, tmp_path, monkeypatch):
+    # data.db is taken (and served), so the page suggests data_2.db, and it
+    # keeps --plugins-dir, which may be where a format comes from
+    import shlex
+
+    monkeypatch.chdir(data_dir)
+    conn = sqlite3.connect(data_dir / "data.db")
+    conn.execute("create table dogs (id)")
+    conn.close()
+    plugins = tmp_path / "plugins"
+    plugins.mkdir()
+    result = run(
+        ["data.db", "dogs.csv", "--plugins-dir", str(plugins), "--get", "/scratch"]
+    )
+    assert result.exit_code == 0, result.output
+    command = f"datasette dogs.csv --plugins-dir {plugins} --save data_2.db"
+    page = html.unescape(result.stdout)
+    assert command in page
+    assert "Then <code>datasette data_2.db</code> opens it" in page
+    # And running it works
+    result = run(shlex.split(command)[1:] + ["--get", "/data_2/dogs.json?_shape=array"])
+    assert result.exit_code == 0, result.output
+    assert len(json.loads(result.stdout)) == 3
+
+
+def test_errors_are_printed_once(tmp_path):
+    # Too many columns for SQLite: the error comes from the write thread
+    path = tmp_path / "wide.csv"
+    path.write_text(",".join(f"c{i}" for i in range(2100)) + "\n" + "1," * 2099 + "1\n")
+    result = run([str(path), "--get", "/"])
+    assert result.exit_code == 1
+    assert result.stderr.count("too many columns") == 1, result.stderr
+
+
+def test_named_sqlite_file_explains(tmp_path):
+    db_path = tmp_path / "data.db"
+    sqlite3.connect(db_path).execute("create table t (a)").connection.close()
+    result = run([f"mydb:{db_path}", "--get", "/"])
+    assert result.exit_code == 1
+    assert "is a SQLite database, not data to load" in result.stderr
+    assert f"datasette {db_path}" in result.stderr
+
+
+def test_scratch_name_taken(data_dir):
+    scratch_db = data_dir / "scratch.db"
+    sqlite3.connect(scratch_db).execute("create table t (a)").connection.close()
+    result = run([str(scratch_db), str(data_dir / "dogs.csv"), "--get", "/"])
+    assert result.exit_code == 0, result.output
+    assert "Loading into a database called scratch_2" in result.stderr
+    assert "into table dogs in scratch_2 in " in result.stderr
+
+
+def test_save_summary_names_the_file(data_dir):
+    save = data_dir / "data.db"
+    result = run([str(data_dir / "dogs.csv"), "--save", str(save), "--get", "/"])
+    assert result.exit_code == 0, result.output
+    assert f"into table dogs in {save} in " in result.stderr
+
+
+def test_failed_save_into_existing_file_reports_free_pages(data_dir):
+    save = data_dir / "keep.db"
+    conn = sqlite3.connect(save)
+    conn.execute("create table keep (id)")
+    conn.execute("insert into keep values (1)")
+    conn.commit()
+    conn.close()
+    big = data_dir / "big.csv"
+    big.write_text("id,text\n" + "".join(f"{i},{'x' * 100}\n" for i in range(30_000)))
+    bad = data_dir / "bad.ndjson"
+    bad.write_text("".join(f'{{"id": {i}}}\n' for i in range(2500)) + "{oops\n")
+    result = run([str(big), str(bad), "--save", str(save), "--get", "/"])
+    assert result.exit_code == 1
+    assert scratch_module.existing_tables(str(save)) == ["keep"]
+    assert "has the same tables as before" in result.stderr
+    assert "VACUUM" in result.stderr
+    conn = sqlite3.connect(save)
+    assert conn.execute("select * from keep").fetchall() == [(1,)]
+    conn.close()
+
+
+def test_existing_table_hint_with_a_name(data_dir):
+    save = data_dir / "existing.db"
+    sqlite3.connect(save).execute("create table dogs (id)").connection.close()
+    result = run(
+        ["DOGS:" + str(data_dir / "dogs.csv"), "--save", str(save), "--get", "/"]
+    )
+    assert result.exit_code == 1
+    assert f"NAME:{data_dir / 'dogs.csv'}," in result.stderr
+    assert "NAME:DOGS:" not in result.stderr
+
+
+def test_crossdb_with_data_inputs(data_dir):
+    sql = "select count(*) as n from scratch.dogs"
+    rows = get_json(
+        [str(data_dir / "dogs.csv"), "--crossdb"],
+        "/_memory/-/query.json?_shape=array&sql=" + urllib.parse.quote(sql),
+    )
+    assert rows == [{"n": 3}]

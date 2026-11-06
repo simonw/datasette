@@ -10,18 +10,24 @@ files - because loaders read from a file path.
 Argument syntax: ``[table:]source[:format]``
 
 - ``source`` is a file path, an ``http://`` or ``https://`` URL, or ``-``
-  (``stdin`` also works, as it does for ``sqlite-utils memory``) for
-  standard input.
+  for standard input. ``-`` always means standard input, even if a file
+  called ``-`` exists (use ``./-`` for that file). ``stdin`` works too, as
+  it does for ``sqlite-utils memory``, unless a file called ``stdin``
+  exists.
 - ``table:`` sets the table name. A ``:`` followed by ``//`` belongs to a
   URL (``https://...``) and a single letter followed by ``:\\`` is a
   Windows drive (``C:\\data.csv``), so neither is a table name. On Windows
   a letter followed by ``:/`` is a drive too; elsewhere ``t:/data/a.csv``
   is table ``t`` from ``/data/a.csv``.
 - ``:format`` names the loader to use instead of sniffing the content, for
-  example ``data.txt:csv`` or ``-:ndjson``. It is only recognized when the
-  text after the last ``:`` is the name of a loader (or ``nl`` / ``jsonl``,
-  for newline-delimited JSON). Formats are otherwise detected from the
-  content, never from the file extension.
+  example ``data.txt:csv`` or ``stdin:ndjson``. It is only recognized when
+  the text after the last ``:`` is the name of a loader (or ``nl`` /
+  ``jsonl``, for newline-delimited JSON), and never inside a URL's query
+  string or fragment: ``https://example.com/q?f=a:csv`` is downloaded as
+  typed. Formats are otherwise detected from the content, never from the
+  file extension. (``-:csv`` parses too, but on the command line click
+  takes anything starting with ``-`` for an option, so it needs ``--``
+  before it: ``datasette -- -:csv``. ``stdin:csv`` does not.)
 - An argument that is the path of an existing file is always used as that
   path, even if it contains colons.
 
@@ -57,6 +63,10 @@ FORMAT_ALIASES = {"nl": "ndjson", "jsonl": "ndjson"}
 LARGE_DOWNLOAD_BYTES = 100 * 1024 * 1024
 
 _SCHEME_RE = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]*)://")
+_URL_ANYWHERE_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://")
+# /dev/fd/63 and /proc/self/fd/63, as made by bash's <(command)
+_FD_PATH_RE = re.compile(r"^/(dev|proc/(self|\d+))/fd/\d+$")
+PIPE_TABLE = "pipe"
 # Looks like a filename: something, a dot, then a short extension
 _FILENAME_RE = re.compile(r"^.+\.[A-Za-z0-9]{1,8}$")
 _NOT_WORD_RE = re.compile(r"\W+")
@@ -194,8 +204,12 @@ def parse_source(
     rest = spec
     format_ = None
     name = None
-    # A trailing :format
+    # A trailing :format - unless that colon is in a URL's query string or
+    # fragment, where it is part of the URL
     head, colon, tail = rest.rpartition(":")
+    url = _URL_ANYWHERE_RE.search(head)
+    if url and any(c in head[url.start() :] for c in "?#"):
+        colon = ""
     if colon and head:
         key = FORMAT_ALIASES.get(tail.lower(), tail.lower())
         if key in formats:
@@ -274,6 +288,10 @@ def suggested_table_name(source: Source) -> str:
         return STDIN_TABLE
     if source.kind == "url":
         return table_name_for_url(source.location)
+    if _FD_PATH_RE.match(source.location):
+        # <(command) gives a different number each time, which makes a
+        # poor table name
+        return PIPE_TABLE
     return table_name_for_path(source.location)
 
 
@@ -294,6 +312,12 @@ def assign_table_names(sources: list[Source]) -> None:
     already taken: ``a/events.csv b/events.csv`` gives ``events`` and
     ``events_2``. Names are compared case-insensitively, as SQLite does.
     """
+    stdin = [source for source in sources if source.kind == "stdin"]
+    if len(stdin) > 1:
+        raise SourceError(
+            f"{stdin[0].spec} and {stdin[1].spec} both read standard input, "
+            "which can only be read once"
+        )
     taken = {}
     for source in sources:
         if source.name is None:
@@ -582,14 +606,112 @@ def quote_command(args: list[str]) -> str:
     return shlex.join(args)
 
 
-def save_command(sources: list[Source], save_path: str = "data.db") -> str:
+REDACTED = "REDACTED"
+# Query string parameters whose values are hidden on the scratch database
+# page: a word of the parameter's name (api_key, X-Amz-Signature,
+# accessToken, sig ...) is one of these, or the name ends in key, token or
+# secret
+_SECRET_WORDS = {
+    "key",
+    "token",
+    "secret",
+    "apikey",
+    "password",
+    "passwd",
+    "pwd",
+    "pass",
+    "auth",
+    "authorization",
+    "sig",
+    "signature",
+    "credential",
+    "credentials",
+    "session",
+    "sessionid",
+    "jwt",
+    "bearer",
+}
+_WORD_RE = re.compile(r"[A-Z]?[a-z0-9]+|[A-Z]+(?![a-z])")
+
+
+def _secret_parameter(name: str) -> bool:
+    words = {word.lower() for word in _WORD_RE.findall(name)}
+    return bool(words & _SECRET_WORDS) or name.lower().endswith(
+        ("key", "token", "secret")
+    )
+
+
+def redact_url(url: str) -> str:
+    """
+    ``url`` with credentials replaced by ``REDACTED``: the password in
+    ``user:password@`` (or the whole user name if there is no password,
+    since tokens are often passed that way), and the values of query
+    string parameters whose names look like keys, tokens, signatures or
+    passwords. Everything else is kept as typed.
+    """
+    parts = urllib.parse.urlsplit(url)
+    netloc = parts.netloc
+    if "@" in netloc:
+        userinfo, host = netloc.rsplit("@", 1)
+        user, colon, _password = userinfo.partition(":")
+        userinfo = f"{user}:{REDACTED}" if colon else REDACTED
+        netloc = f"{userinfo}@{host}"
+    query = parts.query
+    if query:
+        pieces = []
+        for piece in query.split("&"):
+            name, equals, value = piece.partition("=")
+            if equals and value and _secret_parameter(urllib.parse.unquote(name)):
+                piece = f"{name}={REDACTED}"
+            pieces.append(piece)
+        query = "&".join(pieces)
+    if (netloc, query) == (parts.netloc, parts.query):
+        return url
+    return urllib.parse.urlunsplit(
+        (parts.scheme, netloc, parts.path, query, parts.fragment)
+    )
+
+
+def display_spec(source: Source) -> str:
+    "The argument as typed, with any credentials in a URL redacted."
+    if source.kind != "url":
+        return source.spec
+    redacted = redact_url(source.location)
+    if redacted == source.location:
+        return source.spec
+    return source.spec.replace(source.location, redacted, 1)
+
+
+def save_command(
+    sources: list[Source],
+    save_path: str = "data.db",
+    *,
+    extra_args: Iterable[str] = (),
+    redact: bool = False,
+) -> str:
     """
     The ``datasette ... --save data.db`` command that loads the same sources
-    into a file, using the arguments as they were typed.
+    into a file, using the arguments as they were typed, followed by
+    ``extra_args`` (``--plugins-dir`` options that provide formats).
+    ``redact=True`` hides credentials in URLs, see :func:`redact_url`.
     """
-    return quote_command(
-        ["datasette", *[source.spec for source in sources], "--save", save_path]
-    )
+    specs = [display_spec(s) if redact else s.spec for s in sources]
+    return quote_command(["datasette", *specs, *extra_args, "--save", save_path])
+
+
+def suggest_save_path(avoid: Iterable[str] = (), base: str = "data") -> str:
+    """
+    A file name for the ``--save`` suggestion that does not exist yet and
+    is not one of the ``avoid`` paths: ``data.db``, else ``data_2.db`` ...
+    Suggesting a file that exists would add tables to someone's database,
+    or fail because it already has one of them.
+    """
+    avoid = {os.path.realpath(path) for path in avoid}
+    candidate, i = f"{base}.db", 2
+    while os.path.lexists(candidate) or os.path.realpath(candidate) in avoid:
+        candidate = f"{base}_{i}.db"
+        i += 1
+    return candidate
 
 
 def remove_tree(path: str) -> None:

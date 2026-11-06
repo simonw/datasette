@@ -95,6 +95,7 @@ def write_wrapper(datasette, database, request, transaction):
 @hookimpl
 def top_database(datasette, request, database):
     from datasette.imports.scratch import is_scratch
+    from datasette.imports.sources import quote_command
 
     db = datasette.databases.get(database)
     if db is None or not is_scratch(db) or not db.save_command:
@@ -118,13 +119,22 @@ def top_database(datasette, request, database):
         "<p>To keep this data in a SQLite file, run:</p>",
         f'<pre class="scratch-save-command">{h(db.save_command)}</pre>',
     ]
+    if getattr(db, "redacted", False):
+        # Anyone who can see this page can see the command, so passwords,
+        # tokens and signatures in URLs are not shown
+        parts.append(
+            "<p>Passwords, keys and tokens in the URLs are shown as "
+            "<code>REDACTED</code>: put the real values back before "
+            "running it.</p>"
+        )
     if db.from_stdin:
         parts.append(
             "<p>The <code>-</code> argument read standard input, so pipe the "
             "same data in to that command again.</p>"
         )
+    save_path = getattr(db, "save_path", None) or "data.db"
     parts.append(
-        "<p>Then <code>datasette data.db</code> opens it without loading "
-        "anything.</p></div>"
+        f"<p>Then <code>{h(quote_command(['datasette', save_path]))}</code> "
+        "opens it without loading anything.</p></div>"
     )
     return markupsafe.Markup("".join(parts))

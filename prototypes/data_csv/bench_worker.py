@@ -265,8 +265,10 @@ async def one_run(mode, path, batch_size, probe_interval, idle, queries):
 
 def run_all(args):
     results = []
+    batch_sizes = args.batch_sizes or [args.batch_size]
+    runs = [(mode, size) for size in batch_sizes for mode in args.modes]
     for repeat in range(args.repeat):
-        for mode in args.modes:
+        for mode, batch_size in runs:
             command = [
                 sys.executable,
                 __file__,
@@ -276,7 +278,7 @@ def run_all(args):
                 "--file",
                 args.file,
                 "--batch-size",
-                str(args.batch_size),
+                str(batch_size),
                 "--probe-interval",
                 str(args.probe_interval),
                 "--idle",
@@ -292,11 +294,12 @@ def run_all(args):
                 raise SystemExit(f"{mode} failed")
             result = json.loads(output.stdout.strip().splitlines()[-1])
             result["repeat"] = repeat
+            result["batch_size"] = batch_size
             results.append(result)
             print(json.dumps(result), flush=True)
     print()
     header = (
-        f"{'mode':10s} {'rep':>3s} {'seconds':>8s} {'rows/s':>8s} "
+        f"{'mode':10s} {'batch':>6s} {'rep':>3s} {'seconds':>8s} {'rows/s':>8s} "
         f"{'parentCPU':>9s} {'childCPU':>8s} {'lag p50/p99/max ms':>20s} "
         f"{'table p50/p95/max':>20s} {'count p50/p95/max':>20s}"
     )
@@ -310,7 +313,7 @@ def run_all(args):
             return f"{s['p50']}/{s['p95']}/{s['max']}"
 
         print(
-            f"{r['mode']:10s} {r['repeat']:3d} {r['seconds']:8.2f} "
+            f"{r['mode']:10s} {r['batch_size']:6d} {r['repeat']:3d} {r['seconds']:8.2f} "
             f"{r['rows_per_second']:8d} {r['parent_cpu']:9.2f} "
             f"{r['child_cpu']:8.2f} {three(d['lag']):>20s} "
             f"{three(d['table']):>20s} {three(d['count']):>20s}"
@@ -332,6 +335,9 @@ def main():
     parser.add_argument("--modes", nargs="+", default=list(MODES))
     parser.add_argument("--repeat", type=int, default=2)
     parser.add_argument("--batch-size", type=int, default=1000)
+    parser.add_argument(
+        "--batch-sizes", type=int, nargs="+", help="all: run each mode with each"
+    )
     parser.add_argument("--probe-interval", type=float, default=0.1)
     parser.add_argument("--idle", type=float, default=2.0)
     parser.add_argument("--no-queries", action="store_true")

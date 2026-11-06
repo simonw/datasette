@@ -53,6 +53,8 @@ PLUGIN = """
                 yield {"id": i, "name": f"row {i}", "value": i * 1.5}
             if action == "raise":
                 raise LoaderError(f"Gave up after {count} rows")
+            if action == "sleep":
+                time.sleep(30)
             if action == "allocate":
                 hog = []
                 while True:
@@ -184,7 +186,11 @@ async def run_import(ds, db, path, **kwargs):
     outcome = {}
     try:
         result = await import_file_via_worker(db, "t", path, **kwargs)
-        outcome = {"raised": None, "rows": result.rows}
+        outcome = {
+            "raised": None,
+            "rows": result.rows,
+            "worker_max_rss_mb": round(result.worker["max_rss"] / 1e6, 1),
+        }
     except BaseException as ex:  # noqa: BLE001
         outcome = describe(ex)
     outcome["seconds"] = round(time.perf_counter() - start, 2)
@@ -337,12 +343,18 @@ async def memory_json(args):
     probe.kill()
     probe.wait()
     results["worker_vm_at_header_mb"] = round(header_vm / 1e6, 1)
-    for extra_mb in (64, 128, 512):
-        ds, db = await setup()
-        limit = header_vm + extra_mb * 1024 * 1024
-        outcome = await run_import(ds, db, path, memory_limit=limit)
-        outcome.update(await state_of(ds, db))
-        results[f"limit_header_vm_plus_{extra_mb}mb"] = outcome
+    # glibc reserves 64MB of address space for each thread's malloc arena,
+    # which RLIMIT_AS counts: compare with MALLOC_ARENA_MAX=1
+    for arenas in ("default", "1"):
+        env = None if arenas == "default" else {**os.environ, "MALLOC_ARENA_MAX": "1"}
+        for extra_mb in (64, 128, 192, 256, 384):
+            ds, db = await setup()
+            limit = header_vm + extra_mb * 1024 * 1024
+            outcome = await run_import(ds, db, path, memory_limit=limit, env=env)
+            results[f"arenas={arenas} limit=header+{extra_mb}MB"] = {
+                key: outcome.get(key)
+                for key in ("raised", "error_type", "message", "rows", "rows_kept")
+            }
     return results
 
 
@@ -384,14 +396,20 @@ PARENT_SCRIPT = """
 import asyncio, sys
 from datasette.app import Datasette
 from datasette.database import Database
-from datasette.imports.subprocess_import import import_file_via_worker
+from datasette.imports.subprocess_import import import_file_via_worker, worker_command
 
 async def main():
+    path, parent_pid, plugins_dir = sys.argv[1], sys.argv[2] == "yes", sys.argv[3]
+    plugins_dir = None if plugins_dir == "-" else plugins_dir
     ds = Datasette()
     db = ds.add_database(Database(ds, is_temp_disk=True), name="scratch")
+    argv = worker_command(path, plugins_dir=plugins_dir, progress_interval=0.05)
+    if not parent_pid:
+        i = argv.index("--parent-pid")
+        del argv[i : i + 2]
     def progress(p):
         print(p.pid, flush=True)
-    await import_file_via_worker(db, "t", sys.argv[1], progress=progress, argv=sys.argv[2:] or None)
+    await import_file_via_worker(db, "t", path, progress=progress, argv=argv)
 
 asyncio.run(main())
 """
@@ -403,20 +421,19 @@ async def parent_killed(args):
     script = os.path.join(args.work, "parent.py")
     with open(script, "w") as fp:
         fp.write(PARENT_SCRIPT)
-    path = os.path.join(args.data, "big-1gb.csv")
+    big = os.path.join(args.data, "big-1gb.csv")
+    # 5000 rows, then the loader sleeps without writing anything
+    busy = experiment_file(args.work, 5000, "sleep")
+    plugins = plugins_dir(args.work)
     variants = {
-        "with --parent-pid (PR_SET_PDEATHSIG)": [],
-        "without --parent-pid": [
-            sys.executable,
-            "-P",
-            "-m",
-            "datasette.imports.worker",
-            path,
-        ],
+        "CSV, with --parent-pid (PR_SET_PDEATHSIG)": (big, "yes", "-"),
+        "CSV, without --parent-pid": (big, "no", "-"),
+        "busy loader, with --parent-pid": (busy, "yes", plugins),
+        "busy loader, without --parent-pid": (busy, "no", plugins),
     }
-    for name, worker_argv in variants.items():
+    for name, (path, parent_pid, plugin_dir) in variants.items():
         parent = subprocess.Popen(
-            [sys.executable, script, path, *worker_argv],
+            [sys.executable, script, path, parent_pid, plugin_dir],
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
         )
@@ -425,13 +442,15 @@ async def parent_killed(args):
         parent.kill()
         parent.wait()
         killed = time.perf_counter()
-        while process_state(pid) == "running" and time.perf_counter() - killed < 10:
+        while process_state(pid) == "running" and time.perf_counter() - killed < 5:
             await asyncio.sleep(0.005)
+        state = process_state(pid)
         results[name] = {
-            "worker_state": process_state(pid),
-            "worker_gone_after_ms": round((time.perf_counter() - killed) * 1000, 1),
+            # A zombie has exited: it waits for init to reap it
+            "worker_state": "exited" if state in ("gone", "zombie") else state,
+            "after_ms": round((time.perf_counter() - killed) * 1000, 1),
         }
-        if process_state(pid) == "running":
+        if state == "running":
             os.kill(pid, signal.SIGKILL)
     return results
 

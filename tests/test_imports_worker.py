@@ -15,6 +15,7 @@ import signal
 import subprocess
 import sys
 import textwrap
+import time
 
 import pytest
 
@@ -806,3 +807,66 @@ async def test_cancel_with_drop_removes_the_table(db, tmp_path):
     with pytest.raises(asyncio.CancelledError):
         await task
     assert not await db.table_exists("t")
+
+
+@pytest.mark.asyncio
+async def test_failed_import_never_drops_a_table_it_did_not_create(db, tmp_path):
+    # Both imports check that "t" does not exist, then race to create it:
+    # the loser's first write fails, and on_error="drop" must not drop the
+    # winner's table
+    first = events_csv(tmp_path / "first.csv", rows=3000)
+    second = events_csv(tmp_path / "second.csv", rows=3000)
+    results = await asyncio.gather(
+        import_file_via_worker(db, "t", first, on_error="drop"),
+        import_file_via_worker(db, "t", second, on_error="drop"),
+        return_exceptions=True,
+    )
+    succeeded = [r for r in results if not isinstance(r, BaseException)]
+    failed = [r for r in results if isinstance(r, BaseException)]
+    assert len(succeeded) == 1
+    assert len(failed) == 1
+    assert "already exists" in str(failed[0])
+    assert (await db.execute("select count(*) from t")).single_value() == 3000
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="PR_SET_PDEATHSIG is Linux only")
+def test_worker_dies_with_its_parent(tmp_path):
+    # A parent process starts a worker whose loader is stuck, then is killed
+    plugins = plugin_dir(tmp_path, BEHAVIOUR_PLUGIN)
+    path = behaviour_file(tmp_path, 10, "sleep")
+    parent_script = write(
+        tmp_path / "parent.py",
+        textwrap.dedent(f"""
+            import os, subprocess, sys, time
+            worker = subprocess.Popen(
+                {WORKER!r} + [{path!r}, "--plugins-dir", {plugins!r},
+                "--parent-pid", str(os.getpid()), "--progress-interval", "60"],
+                stdout=subprocess.PIPE,
+            )
+            worker.stdout.readline()
+            print(worker.pid, flush=True)
+            time.sleep(60)
+            """),
+    )
+    parent = subprocess.Popen(
+        [sys.executable, parent_script], stdout=subprocess.PIPE, text=True
+    )
+    try:
+        worker_pid = int(parent.stdout.readline())
+        assert os.path.exists(f"/proc/{worker_pid}")
+    finally:
+        parent.kill()
+        parent.wait()
+    for _ in range(200):
+        try:
+            with open(f"/proc/{worker_pid}/stat") as fp:
+                state = fp.read().rsplit(")", 1)[1].split()[0]
+        except OSError:
+            break
+        if state == "Z":
+            # Exited, waiting for init to reap it
+            break
+        time.sleep(0.01)
+    else:
+        os.kill(worker_pid, signal.SIGKILL)
+        raise AssertionError("The worker outlived its parent")

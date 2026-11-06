@@ -443,7 +443,8 @@ class WorkerProcess:
         try:
             # The whole process group, in case a plugin started processes
             os.killpg(self.process.pid, signum)
-        except (ProcessLookupError, PermissionError):
+        except (AttributeError, ProcessLookupError, PermissionError):
+            # No process groups (Windows), or the group is gone
             try:
                 self.process.send_signal(signum)
             except ProcessLookupError:
@@ -509,6 +510,10 @@ class _WatchedDatabase:
         self._db = db
         self._on_failure = on_failure
         self.writes = 0
+        # Writes that inserted rows: TypedInserter.write() returns how many.
+        # Once one succeeded, the table is ours - it did not exist when the
+        # import started, and the first write created it
+        self.row_writes = 0
         self.write_seconds = 0.0
 
     def __getattr__(self, name):
@@ -529,6 +534,8 @@ class _WatchedDatabase:
             self._on_failure()
             raise
         self.writes += 1
+        if type(result) is int and result > 0:
+            self.row_writes += 1
         return result
 
 
@@ -757,7 +764,11 @@ async def import_file_via_worker(
         progress message from the worker
     :param on_error: ``"keep"`` the rows imported before a failure, or
         ``"drop"`` the table
-    :param memory_limit: address space limit for the worker, in bytes
+    :param memory_limit: address space limit (``RLIMIT_AS``) for the worker,
+        in bytes. It counts reserved address space, not memory used: the
+        worker starts at about 65MB (130-200MB with glibc's per-thread
+        malloc arena, which this turns off with ``MALLOC_ARENA_MAX=1``), and
+        the JSON loader needs about five times the file's size
     :param progress_interval: seconds between the worker's progress messages
     :param delete_input: delete ``path`` afterwards, whatever happens - for
         a temporary copy of stdin or a download
@@ -787,6 +798,11 @@ async def import_file_via_worker(
                 memory_limit=memory_limit,
                 progress_interval=progress_interval,
             )
+        if memory_limit and env is None and "MALLOC_ARENA_MAX" not in os.environ:
+            # RLIMIT_AS counts address space glibc reserves but may never
+            # use: 64MB per thread for its own malloc arena. One arena is
+            # plenty for the worker's two threads
+            env = {**os.environ, "MALLOC_ARENA_MAX": "1"}
         worker = WorkerProcess(argv, env=env)
         await worker.start()
         state = _Import(worker, table, progress)
@@ -862,7 +878,7 @@ async def import_file_via_worker(
         if worker is not None:
             worker.abort()
             await asyncio.shield(worker.stop(stop_timeout))
-        if on_error == "drop" and watched is not None and watched.writes:
+        if on_error == "drop" and watched is not None and watched.row_writes:
             await asyncio.shield(_drop_table(db, table))
         raise
     finally:

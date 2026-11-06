@@ -521,6 +521,8 @@ class RowStreamer:
         # key -> position in columns
         self.index = {}
         self.count = 0
+        # True once a row had a list or dict value
+        self.nested = False
 
     def progress(self):
         self.writer.message(
@@ -541,6 +543,7 @@ class RowStreamer:
         encode = _ENCODER.encode
         pending = writer.pending
         interval = self.progress_interval
+        nested = self.nested
         last_progress = time.monotonic()
         try:
             for row in rows:
@@ -578,14 +581,19 @@ class RowStreamer:
                                 while values and values[-1] is None:
                                     values.pop()
                 if line is None:
+                    if nested:
+                        # This input has nested values: flatten first rather
+                        # than encode a big geometry twice
+                        values = _plain(values)
                     try:
                         line = encode(values)
                     except (_BytesValue, ValueError):
                         line = _encode_row_slowly(_plain(values))
                     else:
-                        if _maybe_nested(line):
+                        if not nested and _maybe_nested(line):
                             flat = _plain(values)
                             if flat is not values:
+                                nested = self.nested = True
                                 line = encode_row(flat)
                 pending.append(line)
                 writer.pending_bytes += len(line)

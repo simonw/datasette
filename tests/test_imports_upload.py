@@ -538,9 +538,10 @@ async def test_unrecognized_format(ds, temp_dir):
     response = await upload(ds, b"\x00\x01\x02\xff" * 100, "mystery.bin")
     assert response.status_code == 400
     (message,) = _errors(response)
-    assert message.startswith(
+    assert message == (
         "Could not import mystery.bin: it does not look like any format "
-        "Datasette can read (csv, json, ndjson, tsv)."
+        "Datasette can read (csv, json, ndjson, tsv). To import it as one of "
+        "these, choose that format"
     )
     assert upload_dirs(temp_dir) == []
     assert import_registry(ds).imports() == []

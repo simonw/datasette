@@ -500,6 +500,21 @@ def test_unloadable_files(tmp_path, content, message):
     assert result.exit_code == 1
     assert message in result.stderr
     assert str(path) in result.stderr
+    # Not the loaders' scores, which mean nothing to the reader
+    assert "loader needs at least" not in result.stderr
+
+
+def test_unrecognized_format_says_how_to_name_one(tmp_path):
+    path = tmp_path / "mystery.bin"
+    path.write_bytes(bytes(range(256)) * 4)
+    result = run([str(path), "--get", "/"])
+    assert result.exit_code == 1
+    assert result.stderr.strip() == (
+        f"Error: Could not load {path}: it does not look like any format "
+        "Datasette can read (csv, json, ndjson, tsv). To load it as one of "
+        "these, add the format to the argument: FILE:csv, or stdin:csv for "
+        "standard input"
+    )
 
 
 def test_error_part_way_through(tmp_path):

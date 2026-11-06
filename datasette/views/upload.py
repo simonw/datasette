@@ -243,10 +243,13 @@ def _sniff(path, filename, loaders):
     except _loaders.EmptyFile:
         raise UploadRefused(f"{filename} is empty") from None
     except _loaders.UnrecognizedFormat as ex:
+        # The loaders' scores are for whoever debugs a loader, not the reader
+        logger.debug("Could not recognize %s: %s", filename, ex)
         names = ", ".join(sorted(loader.name for loader in loaders))
         raise UploadRefused(
             f"Could not import {filename}: it does not look like any format "
-            f"Datasette can read ({names}). {ex}"
+            f"Datasette can read ({names}). To import it as one of these, "
+            "choose that format"
         ) from None
 
 

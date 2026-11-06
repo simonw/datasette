@@ -357,10 +357,14 @@ def sniff(source: Source, loaders=None):
     except _loaders.EmptyFile:
         raise ImportFailed(f"{source.label} is empty") from None
     except _loaders.UnrecognizedFormat as ex:
+        # The loaders' scores are for whoever debugs a loader, not the reader
+        logger.debug("Could not recognize %s: %s", source.label, ex)
         names = ", ".join(sorted(loader.name for loader in loaders))
         raise ImportFailed(
             f"Could not load {source.label}: it does not look like any format "
-            f"Datasette can read ({names}). {ex}"
+            f"Datasette can read ({names}). To load it as one of these, add "
+            "the format to the argument: FILE:csv, or stdin:csv for standard "
+            "input"
         ) from None
     except _loaders.LoaderError as ex:
         raise ImportFailed(f"Could not load {source.label}: {ex}") from None

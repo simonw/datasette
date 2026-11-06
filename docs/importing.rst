@@ -182,8 +182,8 @@ While an import runs, Datasette shows its progress:
 - The homepage, the database page and the page for the table show a progress bar for each import, updated every second.
 - The table page shows the rows loaded so far, with a note that counts, facets and sorting will change as more rows arrive. It suggests reloading the page when the import has finished.
 - Visiting a table that has not been created yet, because its import is still queued or downloading, shows a "will appear here soon" page with the progress, with a ``404`` status. If the import failed before it created the table, the page says so.
-- ``/-/imports`` lists every import and ``/-/imports.json`` returns the same information as JSON: see :ref:`introspection_imports`.
-- Each import is a :ref:`background task <datasette_add_background_task>` called ``import DATABASE.TABLE``, listed on the :ref:`/-/tasks <JsonDataView_tasks>` page.
+- ``/-/imports`` lists every import and ``/-/imports.json`` returns the same information as JSON: see :ref:`JsonDataView_imports`.
+- Each import is a :ref:`background task <datasette_add_background_task>` called ``import DATABASE.TABLE``, listed on the :ref:`/-/tasks <JsonDataView_tasks>` page for actors with the ``permissions-debug`` permission.
 - Datasette prints a line to the terminal (standard error) when each import starts, every ten seconds while it runs and when it finishes:
 
 ::
@@ -260,7 +260,7 @@ To cancel an import from a script, send a ``POST`` to ``/DATABASE/TABLE/-/cancel
     curl -X POST http://127.0.0.1:8001/scratch/events/-/cancel-import \
       -H "Authorization: Bearer $TOKEN"
 
-Datasette waits up to five seconds for the import to stop, then responds with the state of the import, in the same format as an item from :ref:`/-/imports.json <introspection_imports>`:
+Datasette waits up to five seconds for the import to stop, then responds with the state of the import, in the same format as an item from :ref:`/-/imports.json <JsonDataView_imports>`:
 
 .. code-block:: json
 

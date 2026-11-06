@@ -314,12 +314,12 @@ Each entry's ``state`` is one of ``registered`` (added but not yet launched), ``
 
 The top-level ``launched`` flag reports whether the instance has run its one-time background task launch (after ``startup`` hooks finish, or via lifespan/first-request/:ref:`start_background_tasks() <datasette_start_background_tasks>`). It distinguishes "no tasks have been registered" (``tasks`` is empty either way) from "tasks are registered but nothing has armed the launch yet" (``launched`` is ``false`` and every task's ``state`` is still ``registered``) - useful when debugging a host that never triggers Datasette's lifespan events.
 
-.. _introspection_imports:
+.. _JsonDataView_imports:
 
 /-/imports
 ----------
 
-Lists the :ref:`background imports <importing_background>` this Datasette instance has run or is running - for example the files passed to ``datasette data.csv`` - with their progress. ``/-/imports`` shows them as a page, with the same progress bars and "Cancel import" buttons as the progress notices on other pages, and ``/-/imports.json`` returns them as JSON.
+Lists the :ref:`background imports <importing_background>` this Datasette instance is running or has run - for example the files passed to ``datasette data.csv`` - with their progress. Up to 200 finished imports are kept. ``/-/imports`` shows them as a page, with the same progress bars and "Cancel import" buttons as the progress notices on other pages, and ``/-/imports.json`` returns them as JSON.
 
 This endpoint needs ``view-instance``, and only lists imports into tables the actor is allowed to view. Add ``?database=name`` to only list imports into that database, and ``?table=name`` to only list imports into tables of that name. Imports that ``--get`` runs before answering its request are not listed, since they have finished by the time any request is handled.
 
@@ -368,10 +368,10 @@ This endpoint needs ``view-instance``, and only lists imports into tables the ac
       ]
     }
 
-``active`` is the number of imports still running. Imports are listed in the order they were started, and each one has these keys:
+``active`` is the number of imports still running. Imports are listed in the order they were added, and each one has these keys:
 
 ``id``
-    An identifier for the import, unique within this Datasette process.
+    An identifier for the import, unique within this Datasette instance.
 
 ``database`` and ``table``
     Where the rows are going.
@@ -395,7 +395,7 @@ This endpoint needs ``view-instance``, and only lists imports into tables the ac
     How far the import has got, from ``0.0`` to ``1.0`` and as a whole percentage, or ``null`` when that is not known - for a JSON array, for example. ``percent`` only reaches ``100`` once the import is ``done``.
 
 ``created_at``, ``started_at`` and ``finished_at``
-    When the import was queued, when it started and when it finished, as ISO 8601 timestamps.
+    When the import was added, when its background task started - before any time spent downloading or waiting for an import worker - and when it finished, as ISO 8601 timestamps.
 
 ``seconds`` and ``waited_seconds``
     How long the import has spent working, and how long it spent waiting for an import worker.
@@ -410,7 +410,7 @@ This endpoint needs ``view-instance``, and only lists imports into tables the ac
     Whether the table that this import created is there. ``rows_kept`` is the number of rows that a failed or cancelled import left in the table: the table is incomplete if this is more than zero.
 
 ``widenings``
-    The columns that changed type part way through the import, as ``{"column": ..., "from": ..., "to": ..., "at_row": ...}`` objects. See :ref:`importing_types`.
+    The columns that changed type part way through the import, as ``{"column": ..., "from": ..., "to": ..., "at_row": ...}`` objects, where ``at_row`` is the number of rows imported before the batch that needed the change. See :ref:`importing_types`.
 
 ``status`` and ``description``
     A sentence describing the state of the import, without and with the table name.

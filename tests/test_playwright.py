@@ -1,6 +1,9 @@
 import base64
+import contextlib
 import json
+import pathlib
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -11,6 +14,8 @@ import pytest
 
 from datasette.fixtures import write_fixture_database
 from datasette.utils.sqlite import sqlite3
+
+GEOJSON_PLUGIN = pathlib.Path(__file__).parent / "geojson_loader_plugin.py"
 
 PNG_1X1_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
@@ -60,6 +65,26 @@ def wait_for_server(process, url, timeout=30):
 
 @pytest.fixture
 def datasette_server(tmp_path):
+    with run_datasette_server(tmp_path) as url:
+        yield url
+
+
+@pytest.fixture
+def small_uploads_server(tmp_path):
+    # Uploads of at most 1 MB, and the GeoJSON import loader plugin
+    def add_plugins(plugins_dir):
+        shutil.copy(GEOJSON_PLUGIN, plugins_dir / "geojson_loader_plugin.py")
+
+    with run_datasette_server(
+        tmp_path,
+        extra_args=["--setting", "max_upload_mb", "1"],
+        add_plugins=add_plugins,
+    ) as url:
+        yield url
+
+
+@contextlib.contextmanager
+def run_datasette_server(tmp_path, extra_args=(), add_plugins=None):
     fixtures_db_path = tmp_path / "fixtures.db"
     write_fixture_database(str(fixtures_db_path))
     data_db_path = tmp_path / "data.db"
@@ -68,6 +93,8 @@ def datasette_server(tmp_path):
     write_playwright_config(config_path)
     plugins_dir = tmp_path / "plugins"
     write_playwright_plugin(plugins_dir)
+    if add_plugins is not None:
+        add_plugins(plugins_dir)
     port = find_free_port()
     process = subprocess.Popen(
         [
@@ -87,6 +114,7 @@ def datasette_server(tmp_path):
             "--setting",
             "num_sql_threads",
             "1",
+            *extra_args,
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -538,9 +566,12 @@ def test_create_table_from_data_flow(page, datasette_server):
     assert dialog.locator(".table-create-columns").is_hidden()
     assert dialog.locator(".table-create-data").is_visible()
     assert dialog.locator(".table-create-save").inner_text() == "Preview rows"
-    assert (
-        dialog.locator(".table-create-data-note").inner_text()
-        == "Paste TSV, CSV, or JSON. You can also open a file or drop it onto this textarea"
+    # Files are imported on the server here (see
+    # test_create_table_data_note_describes_uploads)
+    assert dialog.locator(".table-create-data-note").inner_text() == (
+        "Paste TSV, CSV, or JSON. You can also open a file or drop it onto "
+        "this textarea. A file is uploaded and imported on the server, which "
+        "can also read newline-delimited JSON."
     )
     assert dialog.locator(".table-create-data-open-file").inner_text() == "open a file"
     assert (
@@ -931,6 +962,100 @@ def test_create_table_upload_rejected_file(page, datasette_server):
     # Nothing to wait for, and the dialog can be used again
     assert dialog.locator(".table-create-save").is_enabled()
     assert dialog.locator(".table-create-save").inner_text() == "Import file"
+
+
+def drop_file(locator, name, size):
+    "Drop a file of ``size`` bytes called ``name`` onto ``locator``."
+    locator.evaluate(
+        """(node, [name, size]) => {
+            const file = new File([new Uint8Array(size).fill(65)], name, {
+                type: "text/csv",
+            });
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(file);
+            for (const type of ["dragenter", "dragover", "drop"]) {
+                node.dispatchEvent(new DragEvent(type, {
+                    bubbles: true, cancelable: true, dataTransfer,
+                }));
+            }
+        }""",
+        [name, size],
+    )
+
+
+@pytest.mark.playwright
+def test_create_table_upload_too_large_or_empty_file_replaces_chosen_file(
+    page, small_uploads_server
+):
+    # A file dropped in place of the one already chosen, which cannot be
+    # uploaded: the dialog does not go on offering to import the first one
+    from playwright.sync_api import expect
+
+    page.goto(f"{small_uploads_server}data")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-database-action="create-table"]').click()
+    dialog = page.locator("#table-create-dialog")
+    dialog.wait_for()
+    dialog.locator(".table-create-from-data").click()
+    file_input = dialog.locator(".table-create-data-file-input")
+    upload_panel = dialog.locator(".table-create-upload")
+    summary = dialog.locator(".table-create-upload-summary")
+    save = dialog.locator(".table-create-save")
+    error = dialog.locator(".table-create-error")
+    good = {"name": "good.csv", "mimeType": "text/csv", "buffer": b"id\n1\n2\n"}
+    rejected = [
+        (
+            "big.csv",
+            1024 * 1024 + 1,
+            "big.csv is 1.0 MB, larger than the 1.0 MB limit for uploads.",
+        ),
+        ("empty.csv", 0, "empty.csv is empty."),
+    ]
+    for name, size, message in rejected:
+        file_input.set_input_files(files=[good])
+        expect(summary).to_have_text("Import good.csv (7 bytes) as table good")
+        assert save.inner_text() == "Import file"
+        drop_file(upload_panel, name, size)
+        expect(error).to_have_text(message)
+        # Back to the textarea, with nothing staged to import
+        expect(upload_panel).to_be_hidden()
+        assert summary.inner_text() == ""
+        assert save.inner_text() == "Preview rows"
+        assert dialog.locator(".table-create-cancel").inner_text() == "Cancel"
+        assert dialog.locator(".table-create-data-textarea").is_visible()
+    # Choosing a file that is too large from the textarea leaves nothing
+    # staged either
+    file_input.set_input_files(
+        files=[
+            {
+                "name": "big.csv",
+                "mimeType": "text/csv",
+                "buffer": b"n\n" + b"1\n" * (1024 * 1024),
+            }
+        ]
+    )
+    expect(error).to_contain_text("larger than the 1.0 MB limit for uploads")
+    assert upload_panel.is_hidden()
+    save.click()
+    # Previewing an empty textarea: good.csv was never uploaded
+    expect(error).not_to_contain_text("larger than")
+    assert httpx2.get(f"{small_uploads_server}-/imports.json").json()["imports"] == []
+
+
+@pytest.mark.playwright
+def test_create_table_data_note_describes_uploads(page, small_uploads_server):
+    page.goto(f"{small_uploads_server}data")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-database-action="create-table"]').click()
+    dialog = page.locator("#table-create-dialog")
+    dialog.wait_for()
+    dialog.locator(".table-create-from-data").click()
+    assert dialog.locator(".table-create-data-note").inner_text() == (
+        "Paste TSV, CSV, or JSON. You can also open a file or drop it onto "
+        "this textarea. A file is uploaded and imported on the server, which "
+        "can also read newline-delimited JSON, and these formats from "
+        "plugins: geojson."
+    )
 
 
 @pytest.mark.playwright

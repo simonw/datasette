@@ -2001,6 +2001,32 @@ function populateTableCreateUploadFormats(state) {
   select.value = "";
 }
 
+// The note above the textarea, where files are imported on the server:
+// says so, and names the formats a file can be in that pasted text cannot
+function describeTableCreateUploads(state) {
+  var upload = tableCreateUploadData() || {};
+  var pasted = ["csv", "tsv", "json"];
+  var builtIn = pasted.concat(["ndjson"]);
+  var names = (upload.formats || []).map(function (format) {
+    return format.name;
+  });
+  var fromPlugins = names.filter(function (name) {
+    return builtIn.indexOf(name) === -1;
+  });
+  var also = [];
+  if (names.indexOf("ndjson") !== -1) {
+    also.push("newline-delimited JSON");
+  }
+  if (fromPlugins.length) {
+    also.push("these formats from plugins: " + fromPlugins.join(", "));
+  }
+  var text = ". A file is uploaded and imported on the server";
+  if (also.length) {
+    text += ", which can also read " + also.join(", and ");
+  }
+  state.dataNote.appendChild(document.createTextNode(text + "."));
+}
+
 function renderTableCreateUploadSummary(state) {
   var file = state.uploadFile;
   var summary = state.uploadSummary;
@@ -2025,20 +2051,23 @@ function renderTableCreateUploadSummary(state) {
 function showTableCreateUploadOffer(state, file) {
   var upload = tableCreateUploadData();
   clearTableCreateDialogError(state);
+  var problem = null;
   if (!file.size) {
-    showTableCreateDialogError(state, file.name + " is empty.");
-    return;
-  }
-  if (upload.maxBytes && file.size > upload.maxBytes) {
-    showTableCreateDialogError(
-      state,
+    problem = file.name + " is empty.";
+  } else if (upload.maxBytes && file.size > upload.maxBytes) {
+    problem =
       file.name +
-        " is " +
-        formatTableCreateFileSize(file.size) +
-        ", larger than the " +
-        formatTableCreateFileSize(upload.maxBytes) +
-        " limit for uploads.",
-    );
+      " is " +
+      formatTableCreateFileSize(file.size) +
+      ", larger than the " +
+      formatTableCreateFileSize(upload.maxBytes) +
+      " limit for uploads.";
+  }
+  if (problem) {
+    // This file replaces any chosen before it, which "Import file" would
+    // otherwise go on uploading under an error that names this one
+    clearTableCreateUpload(state);
+    showTableCreateDialogError(state, problem);
     return;
   }
   state.uploadFile = file;
@@ -2532,6 +2561,7 @@ function ensureTableCreateDialog(manager) {
     addColumnButton: dialog.querySelector(".table-create-add-column"),
     dataPanel: dialog.querySelector(".table-create-data"),
     dataEditor: dialog.querySelector(".table-create-data-editor"),
+    dataNote: dialog.querySelector(".table-create-data-note"),
     dataTextarea: dialog.querySelector(".table-create-data-textarea"),
     dataOpenFileButton: dialog.querySelector(".table-create-data-open-file"),
     dataFileInput: dialog.querySelector(".table-create-data-file-input"),
@@ -2639,6 +2669,7 @@ function ensureTableCreateDialog(manager) {
     // plugins can add formats: offer every file
     tableCreateDialogState.dataFileInput.removeAttribute("accept");
     populateTableCreateUploadFormats(tableCreateDialogState);
+    describeTableCreateUploads(tableCreateDialogState);
   }
 
   tableCreateDialogState.uploadEditButton.addEventListener(

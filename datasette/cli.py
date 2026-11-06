@@ -30,6 +30,7 @@ from .app import (
 )
 from .database import Database
 from .imports.background import TerminalReporter, import_registry
+from .imports.inserter import SQLITE_ERRORS
 from .imports.loaders import get_loaders
 from .imports.scratch import (
     DEFAULT_BATCH_SIZE,
@@ -1385,7 +1386,7 @@ def _prepare_import(
                     _enable_wal(save)
             else:
                 free_before = free_bytes(save)
-        except (OSError, sqlite3.Error, SourceError) as ex:
+        except (OSError, *SQLITE_ERRORS, SourceError) as ex:
             if not session:
                 remove_temporary(sources)
             if isinstance(ex, SourceError):

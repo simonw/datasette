@@ -76,7 +76,6 @@ import datetime
 import itertools
 import logging
 import os
-import sqlite3
 import sys
 import tempfile
 import time
@@ -84,7 +83,7 @@ import weakref
 from collections.abc import Callable
 
 from datasette.imports import loaders as _loaders
-from datasette.imports.inserter import ON_ERROR
+from datasette.imports.inserter import ON_ERROR, SQLITE_ERRORS
 from datasette.imports.scratch import (
     DEFAULT_BATCH_SIZE,
     ImportFailed,
@@ -681,12 +680,12 @@ class TableImport:
         except (SourceError, _loaders.LoaderError) as ex:
             self._finish("failed", str(ex))
         except Exception as ex:
-            # sqlite3.Error or OSError from inserting (a full disk, a
+            # An SQLite error or OSError from inserting (a full disk, a
             # write_wrapper plugin refusing), or a bug. The rows committed
             # before it stay, as for a worker failure. Anything but an
-            # sqlite3.Error or OSError is re-raised, so the background task
+            # SQLite error or OSError is re-raised, so the background task
             # supervisor logs its traceback
-            expected = isinstance(ex, (sqlite3.Error, OSError))
+            expected = isinstance(ex, (*SQLITE_ERRORS, OSError))
             try:
                 await asyncio.shield(self._count_kept_rows())
             finally:

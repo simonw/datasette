@@ -26,29 +26,43 @@ from datasette.imports.inserter import (
     iter_chunks,
 )
 from datasette.plugins import pm
+from datasette.utils.sqlite import sqlite3 as datasette_sqlite3
 
 # The ways a column can be widened:
 # - "auto": the declared type is edited in place, and stored numbers that
 #   have to become text are converted in slices of about 30ms
 # - "sliced": the same, converting one row per slice, so the backlog of
 #   stored numbers to turn into text lasts as long as possible
-# - "fallback": the connection refuses writable_schema
-#   (SQLITE_DBCONFIG_DEFENSIVE), so every widening rebuilds the table
+# - "fallback": the declared type cannot be edited, so every widening
+#   rebuilds the table. The connection refuses writable_schema
+#   (SQLITE_DBCONFIG_DEFENSIVE) where Connection.setconfig() exists (Python
+#   3.12+); elsewhere TypedInserter._write_schema() is patched to refuse
 WIDENINGS = ("auto", "sliced", "fallback")
-CAN_REFUSE_WRITABLE_SCHEMA = hasattr(sqlite3.Connection, "setconfig")
+STRATEGIES = AVAILABLE = WIDENINGS
+
+
+def can_refuse_writable_schema(module=sqlite3):
+    "Whether ``module``'s connections can be made to refuse writable_schema."
+    return hasattr(module.Connection, "setconfig")
+
+
 needs_setconfig = pytest.mark.skipif(
-    not CAN_REFUSE_WRITABLE_SCHEMA, reason="Connection.setconfig() is Python 3.12+"
+    not can_refuse_writable_schema(), reason="Connection.setconfig() is Python 3.12+"
 )
-STRATEGIES = ("auto", "sliced", pytest.param("fallback", marks=needs_setconfig))
-AVAILABLE = tuple(
-    widen for widen in WIDENINGS if widen != "fallback" or CAN_REFUSE_WRITABLE_SCHEMA
-)
+
+
+def refuse_writable_schema(conn):
+    conn.setconfig(sqlite3.SQLITE_DBCONFIG_DEFENSIVE, True)
+
+
+def _refused(self, conn):
+    return False
 
 
 def connect(widen="auto", database=":memory:", **kwargs):
     conn = sqlite3.connect(database, **kwargs)
-    if widen == "fallback":
-        conn.setconfig(sqlite3.SQLITE_DBCONFIG_DEFENSIVE, True)
+    if widen == "fallback" and can_refuse_writable_schema():
+        refuse_writable_schema(conn)
     return conn
 
 
@@ -63,7 +77,10 @@ def new_inserter(table, widen, **kwargs):
     "An inserter for ``widen`` - use it with a connection from connect(widen)."
     if widen == "sliced":
         return sliced_inserter(table, 1, **kwargs)
-    return TypedInserter(table, **kwargs)
+    inserter = TypedInserter(table, **kwargs)
+    if widen == "fallback" and not can_refuse_writable_schema():
+        inserter._write_schema = _refused.__get__(inserter)
+    return inserter
 
 
 @contextlib.contextmanager
@@ -73,9 +90,17 @@ def slices_of(convert_rows):
         yield
 
 
-def widening(widen):
-    "What insert_rows() and import_rows() need for ``widen``, as a context."
-    return slices_of(1) if widen == "sliced" else contextlib.nullcontext()
+def widening(widen, module=sqlite3):
+    """
+    What insert_rows() and import_rows() need for ``widen``, as a context,
+    on connections from ``module`` (made by connect(widen) if it is
+    sqlite3).
+    """
+    if widen == "sliced":
+        return slices_of(1)
+    if widen == "fallback" and not can_refuse_writable_schema(module):
+        return mock.patch.object(TypedInserter, "_write_schema", _refused)
+    return contextlib.nullcontext()
 
 
 def declared(conn, table="t"):
@@ -679,6 +704,101 @@ def test_insert_statements_respect_the_parameter_limit():
     ]
 
 
+class WithoutGetlimit:
+    "A connection with no getlimit(), like pysqlite3's."
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def __getattr__(self, name):
+        if name == "getlimit":
+            raise AttributeError(name)
+        return getattr(self._conn, name)
+
+
+def test_connection_without_getlimit():
+    # pysqlite3, which Datasette uses in place of sqlite3 when it is
+    # installed, has no Connection.getlimit(): the limit SQLite was
+    # compiled with applies
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    statements = _inserts(conn)
+    rows = [{"a": str(i), "b": f"x{i}", "c": i * 1.5} for i in range(1000)]
+    result = insert_rows(WithoutGetlimit(conn), "t", rows, sample_size=1000)
+    assert result.rows == 1000
+    compiled = conn.getlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER)
+    assert len(statements) == -(-3000 // (compiled // 3 * 3))
+    assert conn.execute("select count(*), sum(a), max(c) from t").fetchone() == (
+        1000,
+        499500,
+        999 * 1.5,
+    )
+
+
+class FakeConnection:
+    def __init__(self, compile_options, version):
+        self.compile_options = compile_options
+        self.version = version
+
+    def execute(self, sql):
+        if sql == "PRAGMA compile_options":
+            return iter([(option,) for option in self.compile_options])
+        assert sql == "select sqlite_version()"
+        return mock.Mock(fetchone=lambda: (self.version,))
+
+
+@pytest.mark.parametrize(
+    "compile_options,version,expected",
+    (
+        (["THREADSAFE=1", "MAX_VARIABLE_NUMBER=250000"], "3.51.1", 250000),
+        (["THREADSAFE=1"], "3.51.1", 32766),
+        ([], "3.32.0", 32766),
+        ([], "3.31.1", 999),
+        ([], "3.7.17", 999),
+    ),
+)
+def test_variable_limit_without_getlimit(compile_options, version, expected):
+    conn = FakeConnection(compile_options, version)
+    assert inserter_module._variable_limit(conn) == expected
+
+
+def test_pysqlite3_connection():
+    pysqlite3 = pytest.importorskip("pysqlite3")
+    conn = pysqlite3.connect(":memory:", isolation_level=None)
+    rows = [{"a": str(i), "b": "x" if i == 1500 else str(i)} for i in range(2000)]
+    result = insert_rows(conn, "t", rows, sample_size=1000, batch_size=500)
+    assert result.types == {"a": "integer", "b": "text"}
+    assert conn.execute("select count(*), sum(a), max(b) from t").fetchone() == (
+        2000,
+        sum(range(2000)),
+        "x",
+    )
+    assert [w.method for w in result.widenings] == ["incremental"]
+
+    # Its exceptions are not sqlite3's: a refused schema edit still means
+    # rebuilding the table
+    class RefusesSchemaEdits(WithoutGetlimit):
+        def execute(self, sql, *args):
+            if (
+                sql
+                == "UPDATE sqlite_master SET sql = ? WHERE type = 'table' AND name = ?"
+            ):
+                raise pysqlite3.dbapi2.DatabaseError(
+                    "table sqlite_master may not be modified"
+                )
+            return self._conn.execute(sql, *args)
+
+    conn = pysqlite3.connect(":memory:", isolation_level=None)
+    result = insert_rows(
+        RefusesSchemaEdits(conn), "t", rows, sample_size=1000, batch_size=500
+    )
+    assert [w.method for w in result.widenings] == ["rebuild"]
+    assert conn.execute("select count(*), sum(a), max(b) from t").fetchone() == (
+        2000,
+        sum(range(2000)),
+        "x",
+    )
+
+
 def test_retry_without_the_column_a_rolled_back_chunk_added():
     # The rolled back chunk added a column; the next one does not have it,
     # so its INSERT must not name it
@@ -1172,8 +1292,8 @@ async def test_import_rows_into_datasette(widen):
         @staticmethod
         @hookimpl
         def prepare_connection(conn, database, datasette):
-            if widen == "fallback":
-                conn.setconfig(sqlite3.SQLITE_DBCONFIG_DEFENSIVE, True)
+            if widen == "fallback" and can_refuse_writable_schema(datasette_sqlite3):
+                refuse_writable_schema(conn)
 
     progress = []
 
@@ -1184,7 +1304,7 @@ async def test_import_rows_into_datasette(widen):
 
     pm.register(Plugin(), name="test_import_rows_write_wrapper")
     try:
-        with widening(widen):
+        with widening(widen, datasette_sqlite3):
             result = await import_rows(
                 db, "events", events_rows(2500), batch_size=500, progress=on_progress
             )
@@ -1282,7 +1402,7 @@ async def test_import_rows_error_propagates():
     ds = Datasette()
     db = ds.add_memory_database(uuid.uuid4().hex, name="scratch")
     await db.execute_write("create table t (a text)")
-    with pytest.raises(sqlite3.OperationalError, match="already exists"):
+    with pytest.raises(datasette_sqlite3.OperationalError, match="already exists"):
         await import_rows(db, "t", events_rows(50), sample_size=10, batch_size=10)
 
 
@@ -2201,7 +2321,7 @@ async def test_failure_never_drops_a_table_it_did_not_create():
     db = ds.add_memory_database(uuid.uuid4().hex, name="scratch")
     await db.execute_write("create table t (a text)")
     status = inserter_module.ImportStatus()
-    with pytest.raises(sqlite3.OperationalError, match="already exists"):
+    with pytest.raises(datasette_sqlite3.OperationalError, match="already exists"):
         await import_rows(
             db, "t", events_rows(50), sample_size=10, on_error="drop", status=status
         )

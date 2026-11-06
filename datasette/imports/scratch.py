@@ -30,7 +30,7 @@ import weakref
 
 from datasette.database import Database
 from datasette.imports import loaders as _loaders
-from datasette.imports.inserter import import_rows, insert_rows
+from datasette.imports.inserter import SQLITE_ERRORS, import_rows, insert_rows
 from datasette.imports.sources import (
     SQLITE_HEADER,
     Source,
@@ -493,7 +493,7 @@ async def _load_new_table(db, source, batch_size, sample_size, progress, exclusi
                 )
     except _loaders.LoaderError as ex:
         raise ImportFailed(f"Error loading {source.label}: {ex}") from ex
-    except sqlite3.Error as ex:
+    except SQLITE_ERRORS as ex:
         raise ImportFailed(
             f"Error loading {source.label} into table {table!r}: {ex}"
         ) from ex

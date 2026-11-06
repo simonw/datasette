@@ -81,7 +81,17 @@ import time
 import uuid
 from collections.abc import AsyncIterable, Iterable, Sequence
 
+from datasette.utils.sqlite import sqlite3 as _datasette_sqlite3
+
 logger = logging.getLogger(__name__)
+#: The exception classes for errors from SQLite. Datasette's connections come
+#: from pysqlite3 when that is installed (see datasette.utils.sqlite), whose
+#: exceptions are not subclasses of the sqlite3 module's, and callers of
+#: insert_rows() can pass a connection from either module
+SQLITE_ERRORS = tuple({sqlite3.Error, _datasette_sqlite3.Error})
+_SQLITE_DATABASE_ERRORS = tuple(
+    {sqlite3.DatabaseError, _datasette_sqlite3.DatabaseError}
+)
 # Clean ups that import_rows() left running after it raised, kept here so
 # they are not garbage collected before they finish
 _BACKGROUND_TASKS = set()
@@ -333,6 +343,28 @@ def _sqlite_parses_floats_exactly(conn):
             exact = exact and all(a == float(b) for a, b in zip(parsed, chunk))
         _FLOATS_EXACT = exact
     return _FLOATS_EXACT
+
+
+def _variable_limit(conn):
+    """
+    The most parameters one statement can bind on ``conn``.
+
+    pysqlite3's connections have no ``getlimit()``. Without it the limit is
+    the one SQLite was compiled with, which only SQLite's C API can lower:
+    ``PRAGMA compile_options`` lists it if the build set it, and otherwise
+    it is the default, 32766 since SQLite 3.32.0 and 999 before.
+    """
+    getlimit = getattr(conn, "getlimit", None)
+    if getlimit is not None:
+        return getlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER)
+    try:
+        for (option,) in conn.execute("PRAGMA compile_options"):
+            if option.startswith("MAX_VARIABLE_NUMBER="):
+                return int(option.partition("=")[2])
+    except (*SQLITE_ERRORS, ValueError):
+        pass
+    version = conn.execute("select sqlite_version()").fetchone()[0]
+    return 32766 if tuple(map(int, version.split(".")[:3])) >= (3, 32, 0) else 999
 
 
 def _widest(values, rank):
@@ -753,7 +785,7 @@ class TypedInserter:
         """
         width = len(self._columns)
         if self._variable_limit is None:
-            self._variable_limit = conn.getlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER)
+            self._variable_limit = _variable_limit(conn)
         per_statement = self._variable_limit // width
         if per_statement <= 1 or len(values) == 1:
             conn.executemany(self._insert_sql, values)
@@ -1497,7 +1529,7 @@ class TypedInserter:
                 conn.execute(f"PRAGMA schema_version = {version + 1}")
             finally:
                 conn.execute("PRAGMA writable_schema = OFF")
-        except sqlite3.DatabaseError:
+        except _SQLITE_DATABASE_ERRORS:
             # For example when SQLITE_DBCONFIG_DEFENSIVE is on
             return False
         self._refresh(conn)

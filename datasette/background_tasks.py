@@ -68,6 +68,10 @@ class BackgroundTask:
         self.task: asyncio.Task | None = None
         self.exception: BaseException | None = None
         self.started_at: str | None = None
+        #: Optional short description of what the task is doing right now,
+        #: which the task itself keeps up to date (for example "importing:
+        #: 40%, 2,560,000 rows"). ``None`` unless the task sets it.
+        self.status: str | None = None
         self.function = _function_path(func)
         self._func = func
         self._supervisor: BackgroundTaskSupervisor | None = None

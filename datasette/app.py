@@ -2506,6 +2506,7 @@ ORDER BY allowed.parent, allowed.child
                 {
                     "name": t.name,
                     "state": t.state,
+                    "status": t.status,
                     "function": t.function,
                     "started_at": t.started_at,
                     "exception": repr(t.exception) if t.exception else None,

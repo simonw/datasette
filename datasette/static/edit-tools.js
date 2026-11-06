@@ -904,8 +904,11 @@ function updateTableCreateDialogButtons(state) {
     return;
   }
   syncTableCreateModeUi(state);
-  // An upload in progress can be stopped
-  state.cancelButton.disabled = state.isSaving && !state.uploadRequest;
+  // An upload in progress can be stopped - until all of the file has been
+  // sent: the server imports it then, whether or not the browser waits
+  // for its answer
+  state.cancelButton.disabled =
+    state.isSaving && (!state.uploadRequest || state.uploadSent);
   state.saveButton.disabled = state.isSaving;
   state.addColumnButton.disabled = state.isSaving;
   if (state.uploadRequest) {
@@ -1367,6 +1370,7 @@ function resetTableCreateDialog(state) {
   state.dataTextarea.value = "";
   state.uploadFile = null;
   state.uploadRequest = null;
+  state.uploadSent = false;
   hideTableCreateUploadProgress(state);
   resetTableCreateDataPreview(state);
   state.columnList.textContent = "";
@@ -2069,13 +2073,8 @@ function showTableCreateUploadProgress(state, loaded, total) {
     state.uploadStatus.textContent = "Uploading...";
     return;
   }
-  var percent = Math.min(100, Math.floor((loaded / total) * 100));
+  var percent = Math.min(99, Math.floor((loaded / total) * 100));
   state.uploadProgressBar.value = percent;
-  if (loaded >= total) {
-    // Saved and checked on the server before it answers
-    state.uploadStatus.textContent = "Uploaded, starting the import...";
-    return;
-  }
   state.uploadStatus.textContent =
     "Uploading " +
     percent +
@@ -2086,8 +2085,20 @@ function showTableCreateUploadProgress(state, loaded, total) {
     ")";
 }
 
+// All of the file has been sent: it can no longer be stopped
+function markTableCreateUploadSent(state) {
+  if (state.uploadSent) {
+    return;
+  }
+  state.uploadSent = true;
+  state.uploadProgressBar.value = 100;
+  state.uploadStatus.textContent = "Uploaded, starting the import...";
+  updateTableCreateDialogButtons(state);
+}
+
 function finishTableCreateUpload(state) {
   state.uploadRequest = null;
+  state.uploadSent = false;
   setTableCreateDialogSaving(state, false);
 }
 
@@ -2113,11 +2124,22 @@ function startTableCreateUpload(state) {
 
   var request = new XMLHttpRequest();
   state.uploadRequest = request;
+  state.uploadSent = false;
   setTableCreateDialogSaving(state, true);
   showTableCreateUploadProgress(state, 0, file.size);
   request.upload.addEventListener("progress", function (ev) {
-    if (state.uploadRequest === request && ev.lengthComputable) {
+    if (state.uploadRequest !== request || state.uploadSent) {
+      return;
+    }
+    if (ev.lengthComputable && ev.loaded >= ev.total) {
+      markTableCreateUploadSent(state);
+    } else if (ev.lengthComputable) {
       showTableCreateUploadProgress(state, ev.loaded, ev.total);
+    }
+  });
+  request.upload.addEventListener("load", function () {
+    if (state.uploadRequest === request) {
+      markTableCreateUploadSent(state);
     }
   });
   request.addEventListener("load", function () {
@@ -2534,9 +2556,11 @@ function ensureTableCreateDialog(manager) {
     dataPreviewColumns: [],
     dataPreviewReady: false,
     dataPkSelect: null,
-    // A file to import on the server, and its upload while in progress
+    // A file to import on the server, its upload while in progress, and
+    // whether all of the file has been sent
     uploadFile: null,
     uploadRequest: null,
+    uploadSent: false,
     initialSignature: "",
     nextColumnIndex: 0,
     foreignKeyTargets: [],
@@ -2561,7 +2585,9 @@ function ensureTableCreateDialog(manager) {
 
   tableCreateDialogState.cancelButton.addEventListener("click", function () {
     if (tableCreateDialogState.uploadRequest) {
-      tableCreateDialogState.uploadRequest.abort();
+      if (!tableCreateDialogState.uploadSent) {
+        tableCreateDialogState.uploadRequest.abort();
+      }
       return;
     }
     if (

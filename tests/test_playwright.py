@@ -798,6 +798,56 @@ def test_create_table_upload_progress_and_stop(page, browser_name, datasette_ser
 
 
 @pytest.mark.playwright
+def test_create_table_upload_cannot_be_stopped_once_sent(page, datasette_server):
+    from playwright.sync_api import expect
+
+    page.goto(f"{datasette_server}data")
+    page.locator("details.actions-menu-links summary").click()
+    page.locator('button[data-database-action="create-table"]').click()
+    dialog = page.locator("#table-create-dialog")
+    dialog.wait_for()
+    dialog.locator(".table-create-from-data").click()
+    dialog.locator(".table-create-data-file-input").set_input_files(
+        files=[
+            {
+                "name": "sent.csv",
+                "mimeType": "text/csv",
+                "buffer": b"id,name\n1,One\n2,Two\n",
+            }
+        ]
+    )
+    # Delay the answer by a few seconds after all of the file has been
+    # sent, as while the server saves and checks a large file
+    cdp = page.context.new_cdp_session(page)
+    cdp.send("Network.enable")
+    cdp.send(
+        "Network.emulateNetworkConditions",
+        {
+            "offline": False,
+            "latency": 3000,
+            "downloadThroughput": -1,
+            "uploadThroughput": -1,
+        },
+    )
+    dialog.locator(".table-create-save").click()
+    status = dialog.locator(".table-create-upload-status")
+    expect(status).to_have_text("Uploaded, starting the import...")
+    # The server imports a file it has received whether or not the browser
+    # waits for its answer, so stopping is no longer offered
+    stop = dialog.locator(".table-create-cancel")
+    assert stop.inner_text() == "Stop upload"
+    expect(stop).to_be_disabled()
+    progress = dialog.locator(".table-create-upload-progress-bar")
+    assert progress.evaluate("node => node.value") == 100
+    # A click does nothing: the upload is not stopped and no error is shown
+    stop.click(force=True)
+    assert dialog.locator(".table-create-error").is_hidden()
+    page.wait_for_url("**/data/sent")
+    job = wait_for_import(datasette_server, "sent")
+    assert (job["state"], job["rows"]) == ("done", 2)
+
+
+@pytest.mark.playwright
 def test_create_table_upload_rejected_file(page, datasette_server):
     from playwright.sync_api import expect
 

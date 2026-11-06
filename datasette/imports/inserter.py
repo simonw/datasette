@@ -15,6 +15,15 @@ The algorithm:
    progress - :func:`import_rows` sends one ``db.execute_write_fn()`` call
    per chunk, :func:`insert_rows` commits after every chunk.
 
+Widening changes the declared type in place, which takes well under a
+millisecond at any table size. Widening to text also means the numbers
+already stored have to become text: that is done a slice of rows at a time,
+by each following write (about 50ms of it each) and then by
+:meth:`TypedInserter.convert` calls of their own, so no single transaction
+holds the write lock for long however big the table is. Until it is done,
+readers can see numbers in some rows of a column that is declared ``TEXT``
+(see :class:`TypedInserter`).
+
 :class:`TypedInserter` is the synchronous core. It works on a plain
 ``sqlite3.Connection`` supplied by the caller and never commits itself, so
 it can run inside ``Database.execute_write_fn()`` or from a script.
@@ -92,7 +101,14 @@ _TYPE_ALIASES = {
 }
 _NoneType = type(None)
 
-WIDEN_STRATEGIES = ("auto", "schema", "rebuild", "deferred")
+WIDEN_STRATEGIES = ("auto", "incremental", "schema", "rebuild", "deferred")
+# How long a write() (or convert()) spends converting stored numbers to text
+# after a column widened to text, and the first slice's size in rows, before
+# the speed is known
+CONVERT_SECONDS = 0.05
+_FIRST_CONVERT_ROWS = 5_000
+_MIN_CONVERT_ROWS = 500
+_MAX_CONVERT_ROWS = 1_000_000
 
 # SQLite skips these around numbers when applying affinity (sqlite3Isspace)
 _WS_CHARS = " \t\n\v\f\r"
@@ -237,6 +253,7 @@ _TEXT_TYPES = {str, bytes, _NoneType}
 _NUMBERS_AND_STR = _NUMBER_TYPES | {str}
 _NULLISH_TYPES = {str, _NoneType}
 _STR = {str}
+_SEQUENCE_TYPES = {list, tuple}
 # _null_kind() result meaning "no spelling needs to be kept"
 _NO_ENTRY = object()
 
@@ -374,9 +391,11 @@ class Widening:
     to_type: str
     # Rows already written when the widening happened
     at_row: int
-    # "schema", "rebuild", "rebuild (fallback)" or "deferred"
+    # "schema", "incremental", "rebuild", "rebuild (fallback)" or "deferred"
     method: str
-    # Time spent changing the table (shared by columns widened together)
+    # Time spent changing the table (shared by columns widened together).
+    # For "incremental" that is only the declared type: converting the
+    # stored values comes later, see TypedInserter.convert_seconds
     seconds: float = 0.0
 
 
@@ -431,30 +450,54 @@ class TypedInserter:
         zero-row file. Typed columns are never widened.
     :param widen: how to widen a column:
 
-        - ``"auto"`` (default): integer -> float (and text -> blob) edits
-          the declared type in ``sqlite_schema`` in place - no stored value
-          has to change, so this takes well under a millisecond at any table
-          size. Widening to text rebuilds the table: the stored numbers
-          have to become text, which is O(rows) either way, and copying
-          leaves a compact table. Copying measured within about 15% of an
-          in-place ``UPDATE`` - faster on disk for integer columns, slower
-          in memory and for float columns.
-        - ``"schema"``: always edit in place, with an ``UPDATE`` converting
-          stored numbers when widening to text.
-        - ``"rebuild"``: always copy the table into a new one.
+        - ``"auto"`` (default) and ``"incremental"``: edit the declared type
+          in ``sqlite_schema`` in place, which takes well under a
+          millisecond at any table size. For integer -> float (and text ->
+          blob) that is all: no stored value has to change. Widening to
+          text also has to turn the numbers already stored into text,
+          O(rows): this :meth:`write` converts the first slice of them and
+          each later one another slice, about ``CONVERT_SECONDS`` (50ms)
+          of work at a time whatever the row width. :attr:`backlog` says
+          how many rows are left; :meth:`convert` converts a slice on its
+          own (:func:`insert_rows` and :func:`import_rows` call it, one
+          transaction each, until none are left) and :meth:`finish`
+          converts whatever remains. So the write lock is never held for
+          long - but until the backlog is gone, readers see numbers (``5``,
+          ``1.5``) in not yet converted rows of a column declared ``TEXT``,
+          where the finished table has text (``'5'``, ``'1.50'``). A query
+          can notice: ``typeof()``; ``=``, ``<`` or ``IN`` against text,
+          which never matches a number (``?col=5`` in Datasette, and
+          facets, which count ``5`` and ``'5'`` apart); ``ORDER BY``, which
+          sorts numbers before all text; the JSON type of the value. The
+          table itself is complete and consistent in every committed
+          transaction, and the result after :meth:`finish` is the same.
+        - ``"schema"``: edit in place, with one ``UPDATE`` converting every
+          stored number when widening to text, in the transaction that
+          widens - which for millions of rows holds the write lock for
+          seconds.
+        - ``"rebuild"``: always copy the table into a new one, in the
+          transaction that widens (O(rows) for any widening).
         - ``"deferred"``: leave declared types alone while importing and
           rebuild once in :meth:`finish`. Readers see stale types until
           then, and every value that the stale affinity would change
           (``"007"`` in an INTEGER column) has its text kept until then.
 
-        In-place edits fall back to a rebuild if the connection refuses
-        ``PRAGMA writable_schema`` or the table has been changed by someone
-        else (indexes, triggers, an edited definition).
+        In-place edits fall back to a rebuild, in the transaction that
+        widens, if the connection refuses ``PRAGMA writable_schema``
+        (``SQLITE_DBCONFIG_DEFENSIVE``) or the table has been changed by
+        someone else (indexes, triggers, an edited definition). A rebuild
+        copies every row, holding the write lock for about as long as
+        inserting them took in the first place: seconds for millions of
+        rows, once per widening.
+    :param convert_rows: rows per slice of the conversion to text, instead
+        of sizing slices to take about ``CONVERT_SECONDS``
     """
 
-    def __init__(self, table, *, schema=None, widen="auto"):
+    def __init__(self, table, *, schema=None, widen="auto", convert_rows=None):
         if widen not in WIDEN_STRATEGIES:
             raise ValueError(f"widen= must be one of {WIDEN_STRATEGIES}")
+        if convert_rows is not None and convert_rows < 1:
+            raise ValueError("convert_rows= must be at least 1")
         self.table = table
         self.widen = widen
         self.rows_written = 0
@@ -463,6 +506,16 @@ class TypedInserter:
         self.widenings = []
         self.created = False
         self.finished = False
+        # Stored numbers still to be turned into text after "incremental"
+        # widenings: column index -> [first rowid, last rowid] to convert
+        self._backlog = {}
+        self._convert_rows = convert_rows
+        # Measured conversion speed in rows (of rowid range) per second
+        self._convert_rate = None
+        #: Time spent converting stored numbers to text after widenings,
+        #: and the longest single slice of that
+        self.convert_seconds = 0.0
+        self.convert_max_seconds = 0.0
         self._columns = []
         self._by_key = {}
         self._used_names = set()
@@ -494,13 +547,34 @@ class TypedInserter:
         "Mapping of SQL column name to its type."
         return {column.name: column.type for column in self._columns}
 
+    @property
+    def backlog(self):
+        """
+        How many rows (by rowid) may still hold numbers that have to become
+        text after an ``"incremental"`` widening. 0 when there are none.
+        """
+        if not self._backlog:
+            return 0
+        low = min(low for low, _ in self._backlog.values())
+        high = max(high for _, high in self._backlog.values())
+        return high - low + 1
+
     # Writing ------------------------------------------------------------
 
-    def write(self, conn, rows):
+    def write(self, conn, rows, columns=None):
         """
-        Write one chunk of rows (dictionaries). The first non-empty chunk
-        is the sample: types are detected from it and the table is created.
-        Returns the number of rows written. Does not commit.
+        Write one chunk of rows. The first non-empty chunk is the sample:
+        types are detected from it and the table is created. Then convert a
+        slice of the :attr:`backlog`, if there is one. Returns the number
+        of rows written. Does not commit.
+
+        Rows are dictionaries - or, with ``columns`` (a list of keys), lists
+        or tuples of values in that order, which saves building a dictionary
+        per row. A positional row can be shorter than ``columns``: the rest
+        of its values are ``None``. Its keys behave exactly as dictionary
+        keys do (new ones add columns at the end, in order), and a later
+        chunk can have more ``columns`` (or put them in another order). A
+        dictionary among positional rows is read by its keys.
         """
         if self.finished:
             raise ValueError("finish() has already been called")
@@ -508,13 +582,38 @@ class TypedInserter:
             rows = list(rows)
         if not rows:
             return 0
+        if columns is not None:
+            columns = list(columns)
+            if len(set(columns)) != len(columns):
+                raise ValueError(f"columns has duplicate keys: {columns!r}")
         snapshot = self.snapshot()
         try:
-            return self._write(conn, rows)
+            written = self._write(conn, rows, columns)
+            if self._backlog:
+                self._convert_slice(conn, self._slice_rows())
+            return written
         except BaseException:
             # The caller rolls the transaction back; match it
             self.restore(snapshot)
             raise
+
+    def convert(self, conn, rows=None):
+        """
+        Convert the next slice of the :attr:`backlog` - stored numbers that
+        have to become text since their column widened to text - sized to
+        take about ``CONVERT_SECONDS`` unless ``rows`` (or ``convert_rows``)
+        says how many. Returns the backlog left. Does not commit: run each
+        call in its own transaction so other writes can go in between.
+        """
+        if not self._backlog:
+            return 0
+        snapshot = self.snapshot()
+        try:
+            self._convert_slice(conn, rows or self._slice_rows())
+        except BaseException:
+            self.restore(snapshot)
+            raise
+        return self.backlog
 
     def snapshot(self):
         """
@@ -536,6 +635,7 @@ class TypedInserter:
             self.finished,
             self._spellings_created,
             self._pending_empty,
+            {index: list(bounds) for index, bounds in self._backlog.items()},
         )
 
     def restore(self, snapshot):
@@ -552,17 +652,19 @@ class TypedInserter:
             self.finished,
             self._spellings_created,
             self._pending_empty,
+            backlog,
         ) = snapshot
+        self._backlog = {index: list(bounds) for index, bounds in backlog.items()}
         self._columns = [dataclasses.replace(column) for column in columns]
         self._by_key = {column.key: column for column in self._columns}
         self._keys = tuple(column.key for column in self._columns)
         self._used_names = set(used_names)
         del self.widenings[widening_count:]
 
-    def _write(self, conn, rows):
-        if not self._columns and not any(rows):
-            # Only empty dictionaries so far: a table needs at least one
-            # column, so hold on to them until a key turns up
+    def _write(self, conn, rows, columns=None):
+        if not self._columns and not columns and not any(rows):
+            # Only empty rows so far: a table needs at least one column, so
+            # hold on to them until a key turns up
             self._pending_empty += len(rows)
             return 0
         if self._pending_empty:
@@ -570,7 +672,10 @@ class TypedInserter:
             self._pending_empty = 0
         if self._parse_floats is None:
             self._parse_floats = not _sqlite_parses_floats_exactly(conn)
-        values = self._row_values(rows)
+        if columns is None:
+            values = self._row_values(rows)
+        else:
+            values = self._positional_values(rows, columns)
         changes, plans = self._scan(values)
         if not self.created:
             self._create(conn)
@@ -583,6 +688,10 @@ class TypedInserter:
         # widened in this chunk converts, so only now take in this chunk
         spellings = []
         for plan in plans:
+            if plan[0] in self._backlog:
+                # Declared BLOB while its stored numbers become text: store
+                # text forms, there is no TEXT affinity to make them
+                plan = (*plan[:4], _B, *plan[5:])
             spellings.extend(self._convert(values, *plan))
         table = _quote(self.table)
         base = conn.execute(f"select max(rowid) from {table}").fetchone()[0] or 0
@@ -602,8 +711,10 @@ class TypedInserter:
         """
         Complete the import: create the table if no rows arrived (only
         possible if a schema named the columns - otherwise no table is
-        created), apply widening that the ``"deferred"`` strategy postponed
-        and drop the kept spellings. Returns self.
+        created), convert what is left of the :attr:`backlog` (all of it,
+        in this transaction: call :meth:`convert` until it returns 0 first
+        to keep transactions short), apply widening that the ``"deferred"``
+        strategy postponed and drop the kept spellings. Returns self.
         Safe to call more than once. Does not commit.
         """
         if self.finished:
@@ -634,6 +745,8 @@ class TypedInserter:
                 if column.rank == _NONE:
                     column.rank = _T
             self._create(conn)
+        if self._backlog:
+            self._convert_slice(conn, self.backlog)
         pending = {
             column.key: column.rank
             for column in self._columns
@@ -690,6 +803,52 @@ class TypedInserter:
                         self._new_column(key)
                 keys = self._keys
         return [list(map(row.get, keys)) for row in rows]
+
+    def _positional_values(self, rows, columns):
+        """
+        Turn rows of values in ``columns`` order (and any dicts among them)
+        into new lists in table column order, adding new columns.
+        """
+        by_key = self._by_key
+        for key in columns:
+            if key not in by_key:
+                self._new_column(key)
+        kinds = set(map(type, rows))
+        plain = kinds <= _SEQUENCE_TYPES
+        if plain:
+            too_long = max(map(len, rows)) > len(columns)
+        else:
+            too_long = False
+            for row in rows:
+                if isinstance(row, dict):
+                    for key in row:
+                        if key not in by_key:
+                            self._new_column(key)
+                elif len(row) > len(columns):
+                    too_long = True
+        if too_long:
+            raise ValueError(f"A row has more values than the {len(columns)} columns")
+        width = len(self._columns)
+        positions = [by_key[key].index for key in columns]
+        if plain and positions == list(range(len(positions))):
+            # The usual case: the columns are the table's, in its order
+            values = list(map(list, rows))
+            if min(map(len, values)) < width:
+                for row in values:
+                    if len(row) < width:
+                        row.extend([None] * (width - len(row)))
+            return values
+        keys = self._keys
+        values = []
+        for row in rows:
+            if isinstance(row, dict):
+                values.append(list(map(row.get, keys)))
+            else:
+                row_values = [None] * width
+                for position, value in zip(positions, row):
+                    row_values[position] = value
+                values.append(row_values)
+        return values
 
     # Types --------------------------------------------------------------
 
@@ -994,11 +1153,18 @@ class TypedInserter:
 
     # Table changes ------------------------------------------------------
 
+    def _sql_rank(self, column):
+        "The type a column is declared with in the table right now."
+        if column.index in self._backlog:
+            # Still converting to text: no affinity, see _edit_schema()
+            return _B
+        return max(column.declared, _I)
+
     def _create_sql(self, table=None):
         return "CREATE TABLE {} ({})".format(
             _quote(table or self.table),
             ", ".join(
-                f"{_quote(c.name)} {_SQL_TYPES[max(c.declared, _I)]}"
+                f"{_quote(c.name)} {_SQL_TYPES[self._sql_rank(c)]}"
                 for c in self._columns
             ),
         )
@@ -1048,16 +1214,19 @@ class TypedInserter:
             return
         start = time.perf_counter()
         self._keep_big_ints(conn, changes)
-        if method == "auto":
-            converts = any(
-                rank >= _T and self._by_key[key].declared < _T
-                for key, rank in changes.items()
-            )
-            method = "rebuild" if converts else "schema"
+        if method in ("auto", "incremental"):
+            # Only the columns whose stored numbers become text have
+            # something to do after the schema edit
+            converting = {column.name for column in self._converting(changes)}
+            method = "incremental" if converting else "schema"
             for widening in new_widenings:
-                widening.method = method
-        if method == "rebuild" or not self._edit_schema(conn, changes):
-            if method == "schema":
+                widening.method = (
+                    "incremental" if widening.column in converting else "schema"
+                )
+        if method == "rebuild" or not self._edit_schema(
+            conn, changes, incremental=method == "incremental"
+        ):
+            if method != "rebuild":
                 for widening in new_widenings:
                     widening.method = "rebuild (fallback)"
             self._rebuild(conn, changes)
@@ -1087,11 +1256,13 @@ class TypedInserter:
                 self.spellings_kept += cursor.rowcount
                 column.big_ints = False
 
-    def _text_expression(self, column):
+    def _text_expression(self, column, rids=None):
         """
         SQL turning a numeric column's stored values back into the text they
         came from: kept spellings first, then NULL (or "" if the NULLs stand
-        for blanks), then the stored number as text.
+        for blanks), then the stored number as text. ``rids`` is SQL for
+        the range of rowids the statement covers (``":a AND :b"``), so only
+        the spellings in it are looked at.
         """
         name = _quote(column.name)
         null_text = "''" if column.nulls == "blank" else "NULL"
@@ -1103,13 +1274,115 @@ class TypedInserter:
         )
         if not column.spellings:
             return expression
-        spellings = self._spellings_table
         return (
-            f"CASE WHEN rowid IN (SELECT rid FROM {spellings} "
-            f"WHERE col = {column.index}) "
-            f"THEN (SELECT val FROM {spellings} WHERE col = {column.index} "
+            f"CASE WHEN {self._spelled(column, rids)} "
+            f"THEN (SELECT val FROM {self._spellings_table} "
+            f"WHERE col = {column.index} "
             f"AND rid = {_quote(self.table)}.rowid) ELSE {expression} END"
         )
+
+    def _spelled(self, column, rids=None):
+        "SQL: whether this row's value in ``column`` has a kept spelling."
+        within = f" AND rid BETWEEN {rids}" if rids else ""
+        return (
+            f"rowid IN (SELECT rid FROM {self._spellings_table} "
+            f"WHERE col = {column.index}{within})"
+        )
+
+    # Converting stored numbers to text, a slice at a time -------------
+
+    def _slice_rows(self):
+        "Rows for the next slice of the backlog: about CONVERT_SECONDS' worth."
+        if self._convert_rows:
+            return self._convert_rows
+        if self._convert_rate is None:
+            return _FIRST_CONVERT_ROWS
+        rows = int(self._convert_rate * CONVERT_SECONDS)
+        return min(max(rows, _MIN_CONVERT_ROWS), _MAX_CONVERT_ROWS)
+
+    def _convert_slice(self, conn, rows):
+        """
+        Turn stored numbers into text in the next ``rows`` rowids of the
+        backlog, with one UPDATE. Every column with backlog in that range is
+        in it - rewriting a row applies every column's affinity, which
+        would turn a number still waiting in another TEXT column into text
+        SQLite's way, without its kept spelling - each only within its own
+        range: rows before it are converted already (a NULL there is a
+        real NULL), rows after it were inserted as text.
+        """
+        began = time.perf_counter()
+        if conn.execute(
+            "select 1 from sqlite_master where type = 'trigger' and tbl_name = ?",
+            [self.table],
+        ).fetchone():
+            # Someone else's trigger would fire for every converted row:
+            # copy the table instead, which keeps the trigger but runs it
+            # for nothing (rare, and O(rows) in one transaction)
+            self._rebuild(conn, {})
+            self.convert_seconds += time.perf_counter() - began
+            return
+        start = min(low for low, _ in self._backlog.values())
+        end = start + rows - 1
+        sets, conditions = [], []
+        params = {"start": start, "end": end}
+        done = []
+        for index in sorted(self._backlog):
+            low, high = self._backlog[index]
+            if low > end or high < start:
+                continue
+            column = self._columns[index]
+            done.append((column, max(low, start), min(high, end)))
+            name = _quote(column.name)
+            params[f"lo{index}"] = low
+            params[f"hi{index}"] = high
+            in_range = f"rowid BETWEEN :lo{index} AND :hi{index}"
+            sets.append(
+                f"{name} = CASE WHEN {in_range} THEN "
+                f"{self._text_expression(column, ':start AND :end')} "
+                f"ELSE {name} END"
+            )
+            # Only rows with something to change: a number, a NULL that
+            # stands for a blank, or a kept spelling
+            needs = [f"typeof({name}) IN ('integer', 'real')"]
+            if column.nulls == "blank":
+                needs.append(f"{name} IS NULL")
+            if column.spellings:
+                needs.append(self._spelled(column, ":start AND :end"))
+            conditions.append(f"({in_range} AND ({' OR '.join(needs)}))")
+        conn.create_function(_RENDER_FUNCTION, 1, _render_sql, deterministic=True)
+        conn.execute(
+            "UPDATE {} SET {} WHERE rowid BETWEEN :start AND :end AND ({})".format(
+                _quote(self.table), ", ".join(sets), " OR ".join(conditions)
+            ),
+            params,
+        )
+        completed = False
+        for column, low, high in done:
+            if column.spellings:
+                cursor = conn.execute(
+                    f"DELETE FROM {self._spellings_table} "
+                    "WHERE col = ? AND rid BETWEEN ? AND ?",
+                    [column.index, low, high],
+                )
+                column.spellings -= cursor.rowcount
+            bounds = self._backlog[column.index]
+            bounds[0] = end + 1
+            if bounds[0] > bounds[1]:
+                del self._backlog[column.index]
+                completed = completed or column.declared < _B
+        if completed and not self._write_schema(conn):
+            # Columns that are all text now are declared TEXT - if editing
+            # the schema is no longer possible, by copying the table
+            self._rebuild(conn, {})
+        elapsed = time.perf_counter() - began
+        self.convert_seconds += elapsed
+        self.convert_max_seconds = max(self.convert_max_seconds, elapsed)
+        covered = max(high for _, _, high in done) - start + 1
+        if elapsed > 0 and covered >= _MIN_CONVERT_ROWS:
+            rate = covered / elapsed
+            self._convert_rate = (
+                rate if self._convert_rate is None else (self._convert_rate + rate) / 2
+            )
 
     def _converting(self, changes):
         "Columns in ``changes`` whose stored numbers have to become text."
@@ -1129,13 +1402,14 @@ class TypedInserter:
                 )
                 column.spellings = 0
 
-    def _edit_schema(self, conn, changes):
+    def _write_schema(self, conn):
         """
-        Change declared types in place by editing sqlite_schema, following
-        https://www.sqlite.org/lang_altertable.html#otheralter - safe only
-        because this inserter created the table, so no index, trigger or
-        constraint depends on column affinity. Returns False (having changed
-        nothing) if that cannot be guaranteed or the edit is refused.
+        Make the table's definition in sqlite_schema :meth:`_create_sql`,
+        following https://www.sqlite.org/lang_altertable.html#otheralter -
+        safe only because this inserter created the table, so no index,
+        trigger or constraint depends on column affinity. Returns False,
+        having changed nothing, if that cannot be guaranteed (someone else
+        changed the table) or the edit is refused.
         """
         if _table_sql(conn, self.table) != self._known_sql:
             return False
@@ -1146,10 +1420,6 @@ class TypedInserter:
         ).fetchone()[0]
         if dependents:
             return False
-        converting = self._converting(changes)
-        old_declared = {c.key: c.declared for c in self._columns}
-        for key in changes:
-            self._by_key[key].declared = changes[key]
         new_sql = self._create_sql()
         version = conn.execute("PRAGMA schema_version").fetchone()[0]
         try:
@@ -1165,13 +1435,48 @@ class TypedInserter:
                 conn.execute("PRAGMA writable_schema = OFF")
         except sqlite3.DatabaseError:
             # For example when SQLITE_DBCONFIG_DEFENSIVE is on
+            return False
+        self._refresh(conn)
+        return True
+
+    def _edit_schema(self, conn, changes, incremental=False):
+        """
+        Change declared types in place (:meth:`_write_schema`). Returns
+        False, having changed nothing, if that is not possible.
+
+        Changing a declared type does not rewrite stored values: an integer
+        stored under REAL affinity reads back as a float, but numbers under
+        TEXT affinity stay numbers until they are converted. They are
+        converted at once by one ``UPDATE``, or with ``incremental`` added
+        to the backlog that :meth:`_convert_slice` works through. Until its
+        backlog is done such a column is declared ``BLOB``, an affinity that
+        changes nothing: SQLite's integrity_check reports a number stored in
+        a TEXT column as an error ("NUMERIC value in t.c"), so that would
+        make a perfectly good table fail it until the conversion is over,
+        and for good if the process died first.
+        """
+        converting = self._converting(changes)
+        old_declared = {c.key: c.declared for c in self._columns}
+        old_backlog = dict(self._backlog)
+        for key in changes:
+            self._by_key[key].declared = changes[key]
+        bounds = None
+        if converting and incremental:
+            low, high = conn.execute(
+                f"select min(rowid), max(rowid) from {_quote(self.table)}"
+            ).fetchone()
+            if high is not None:
+                bounds = [low, high]
+                for column in converting:
+                    self._backlog[column.index] = list(bounds)
+        if not self._write_schema(conn):
             for key, rank in old_declared.items():
                 self._by_key[key].declared = rank
+            self._backlog = old_backlog
             return False
-        # Changing a declared type does not rewrite stored values: an integer
-        # stored under REAL affinity reads back as a float, but numbers under
-        # TEXT affinity stay numbers until they are converted
-        if converting:
+        if bounds is not None:
+            return True
+        if converting and not incremental:
             # One UPDATE for all of them: writing a row applies every
             # column's affinity, so updating one column would let SQLite turn
             # the numbers of the next one into text its own way first
@@ -1189,21 +1494,32 @@ class TypedInserter:
                 )
             )
         self._converted(conn, converting)
-        self._refresh(conn)
         return True
 
     def _rebuild(self, conn, changes):
-        "Copy the table into a new one declaring the new types."
+        """
+        Copy the table into a new one declaring the new types, converting
+        the stored numbers of columns that become text - and whatever is
+        left of the backlog.
+        """
         converting = self._converting(changes)
         indexes = {column.index for column in converting}
-        selects = [
-            (
-                self._text_expression(column)
-                if column.index in indexes
-                else _quote(column.name)
-            )
-            for column in self._columns
-        ]
+        selects = []
+        for column in self._columns:
+            if column.index in indexes:
+                selects.append(self._text_expression(column))
+            elif column.index in self._backlog:
+                low, high = self._backlog[column.index]
+                rids = f"{int(low)} AND {int(high)}"
+                selects.append(
+                    f"CASE WHEN rowid BETWEEN {rids} THEN "
+                    f"{self._text_expression(column, rids)} "
+                    f"ELSE {_quote(column.name)} END"
+                )
+                converting.append(column)
+            else:
+                selects.append(_quote(column.name))
+        self._backlog = {}
         for column in self._columns:
             column.declared = max(column.rank, _I)
         if converting:
@@ -1295,6 +1611,43 @@ class ImportResult:
     seconds: float
     # Values whose original text had to be kept until the import finished
     spellings_kept: int = 0
+    # Time spent turning stored numbers into text after columns widened to
+    # text, in all slices together, and the longest slice
+    convert_seconds: float = 0.0
+    convert_max_seconds: float = 0.0
+
+
+@dataclasses.dataclass
+class ImportStatus:
+    """
+    What an :func:`import_rows` or :func:`insert_rows` call has done, kept
+    up to date while it runs. Pass one in as ``status=`` to find out after
+    the call raised an exception or was cancelled.
+    """
+
+    #: True once this call's ``CREATE TABLE`` has been committed: the table
+    #: is this import's (it did not exist before, and the call creates it)
+    created: bool = False
+    #: Rows committed so far
+    rows: int = 0
+    #: ``on_error="drop"`` dropped the table after a failure
+    dropped: bool = False
+    #: The exception the call raised (``CancelledError`` if it was
+    #: cancelled), or None
+    error: BaseException | None = None
+    #: The call has returned, or raised and finished cleaning up. Every
+    #: other field is final once this is True. A call cancelled again while
+    #: cleaning up raises at once and this becomes True when the clean up,
+    #: which carries on in the background, is done
+    done: bool = False
+
+    @property
+    def table_exists(self):
+        "Whether the table this call created is there."
+        return self.created and not self.dropped
+
+
+ON_ERROR = ("keep", "drop")
 
 
 def _result(inserter, start, batches):
@@ -1308,7 +1661,14 @@ def _result(inserter, start, batches):
         batches=batches,
         seconds=time.perf_counter() - start,
         spellings_kept=inserter.spellings_kept,
+        convert_seconds=inserter.convert_seconds,
+        convert_max_seconds=inserter.convert_max_seconds,
     )
+
+
+def _drop_table(conn, inserter):
+    inserter.discard(conn)
+    conn.execute(f"DROP TABLE IF EXISTS {_quote(inserter.table)}")
 
 
 def insert_rows(
@@ -1321,33 +1681,86 @@ def insert_rows(
     batch_size=100,
     widen="auto",
     progress=None,
+    columns=None,
+    convert_rows=None,
+    on_error="keep",
+    status=None,
 ):
     """
     Import ``rows`` into a new ``table`` using a plain
-    ``sqlite3.Connection``, committing after every chunk.
+    ``sqlite3.Connection``, committing after every chunk - and after every
+    slice of converting stored numbers to text that is left when the rows
+    run out (see :class:`TypedInserter`).
 
     If the connection already has a transaction open (``sqlite3``'s legacy
     transaction control) the caller owns it and nothing is committed.
     ``progress``, if provided, is called with the number of rows written so
     far after each chunk.
+
+    ``columns`` makes rows lists or tuples of values in that order, as for
+    :meth:`TypedInserter.write`; it is read again for every chunk, so it
+    can be a list that grows while the rows are read.
+
+    If anything raises (``KeyboardInterrupt`` too), the chunks already
+    committed stay and, with ``on_error="keep"`` (the default), the table
+    is completed as :meth:`TypedInserter.finish` would - numbers converted,
+    kept spellings dropped - so it holds exactly the rows committed. With
+    ``on_error="drop"`` the table is dropped instead, if this call created
+    it. Then the exception is raised again. Pass an :class:`ImportStatus`
+    as ``status`` to see what happened.
     """
+    if on_error not in ON_ERROR:
+        raise ValueError(f"on_error must be one of {ON_ERROR}")
     start = time.perf_counter()
-    inserter = TypedInserter(table, schema=schema, widen=widen)
+    inserter = TypedInserter(
+        table, schema=schema, widen=widen, convert_rows=convert_rows
+    )
+    if status is None:
+        status = ImportStatus()
+
+    def committed(fn):
+        snapshot = inserter.snapshot()
+        try:
+            with _Transaction(conn):
+                result = fn()
+        except BaseException:
+            # The COMMIT can fail after fn() returned
+            inserter.restore(snapshot)
+            raise
+        status.created = inserter.created
+        status.rows = inserter.rows_written
+        return result
+
     batches = 0
     try:
         for chunk in iter_chunks(rows, sample_size, batch_size):
-            with _Transaction(conn):
-                inserter.write(conn, chunk)
+            names = None if columns is None else list(columns)
+            committed(
+                lambda chunk=chunk, names=names: inserter.write(conn, chunk, names)
+            )
             batches += 1
             if progress is not None:
                 progress(inserter.rows_written)
-        with _Transaction(conn):
-            inserter.finish(conn)
-    except BaseException:
+        while inserter.backlog:
+            committed(lambda: inserter.convert(conn))
+        committed(lambda: inserter.finish(conn))
+    except BaseException as ex:
+        status.error = ex
         # Keep the original error
-        with contextlib.suppress(Exception), _Transaction(conn):
-            inserter.discard(conn)
+        with contextlib.suppress(Exception):
+            if on_error == "drop" and inserter.created:
+                committed(lambda: _drop_table(conn, inserter))
+                status.dropped = True
+            elif inserter.created:
+                while inserter.backlog:
+                    committed(lambda: inserter.convert(conn))
+                committed(lambda: inserter.finish(conn))
+        if not inserter.finished:
+            with contextlib.suppress(Exception):
+                committed(lambda: inserter.discard(conn))
         raise
+    finally:
+        status.done = True
     return _result(inserter, start, batches)
 
 
@@ -1386,6 +1799,10 @@ async def import_rows(
     batch_size=100,
     widen="auto",
     progress=None,
+    columns=None,
+    convert_rows=None,
+    on_error="keep",
+    status=None,
 ):
     """
     Import ``rows`` into a new ``table`` in a Datasette
@@ -1393,7 +1810,9 @@ async def import_rows(
 
     Each chunk is written by its own ``await db.execute_write_fn()`` call, so
     each is a committed transaction: readers see rows arrive, other writes
-    can run in between and ``write_wrapper`` plugins see every chunk.
+    can run in between and ``write_wrapper`` plugins see every chunk. So is
+    each slice of converting stored numbers to text that is left when the
+    rows run out (see :class:`TypedInserter`), then ``finish()``.
 
     ``rows`` can be a regular iterable (for example from
     ``sqlite_utils.utils.rows_from_file()``), which is consumed in a thread
@@ -1401,14 +1820,41 @@ async def import_rows(
     iterable, for example rows parsed from a worker subprocess. The next
     chunk is read while the current one is being written.
 
+    ``columns`` makes rows lists or tuples of values in that order, as for
+    :meth:`TypedInserter.write`. It is read as each chunk is sent to be
+    written, so it can be a list that grows (only ever at the end) while
+    rows arrive, like the column list of the worker protocol: a row read
+    before columns were added is just shorter.
+
     ``progress``, if provided, is called (and awaited, if that returns an
     awaitable) with the number of rows written so far after every chunk.
-    """
-    start = time.perf_counter()
-    inserter = TypedInserter(table, schema=schema, widen=widen)
 
+    If anything raises - a write, the rows, ``progress`` - or the call is
+    cancelled, the chunks already committed stay and the clean up goes
+    through the write queue, after any write of this import that is still
+    running (a write the caller stopped waiting for still runs): with
+    ``on_error="keep"`` (the default) the table is completed as
+    ``finish()`` would - stored numbers converted, the ``TEMP`` table of
+    kept spellings dropped - so it holds exactly the rows committed; with
+    ``on_error="drop"`` the table is dropped if this call created it. The
+    clean up is shielded from cancellation. Then the exception is raised
+    again. Pass an :class:`ImportStatus` as ``status`` to find out what
+    happened, in particular whether this call created the table.
+    """
+    if on_error not in ON_ERROR:
+        raise ValueError(f"on_error must be one of {ON_ERROR}")
+    start = time.perf_counter()
+    inserter = TypedInserter(
+        table, schema=schema, widen=widen, convert_rows=convert_rows
+    )
+    if status is None:
+        status = ImportStatus()
+
+    # The thread reading a chunk from a regular iterable, if any
+    reading = None
     if isinstance(rows, AsyncIterable):
         async_iterator = rows.__aiter__()
+        is_async = True
 
         async def pull(size):
             chunk = []
@@ -1422,12 +1868,70 @@ async def import_rows(
     elif isinstance(rows, Iterable):
         iterator = iter(rows)
         loop = asyncio.get_running_loop()
+        is_async = False
 
         async def pull(size):
-            return await loop.run_in_executor(None, _take, iterator, size)
+            nonlocal reading
+            reading = loop.run_in_executor(None, _take, iterator, size)
+            # Cancelling the pull can't stop the thread: keep its future
+            return await asyncio.shield(reading)
 
     else:
         raise TypeError("rows must be an iterable or an async iterable")
+
+    # A write whose outcome is not known yet: (task, snapshot before it)
+    in_flight = None
+
+    async def write(fn):
+        nonlocal in_flight
+        snapshot = inserter.snapshot()
+        # Its own task, so that cancelling this call doesn't lose the result
+        # of a write that the write thread will run anyway
+        task = asyncio.ensure_future(db.execute_write_fn(fn))
+        in_flight = (task, snapshot)
+        try:
+            result = await asyncio.shield(task)
+        except asyncio.CancelledError:
+            if task.cancelled():
+                in_flight = None
+            raise
+        except BaseException:
+            in_flight = None
+            # The transaction may have been rolled back after fn returned,
+            # by a write_wrapper or a failed COMMIT
+            inserter.restore(snapshot)
+            raise
+        in_flight = None
+        status.created = inserter.created
+        status.rows = inserter.rows_written
+        return result
+
+    async def clean_up():
+        try:
+            if in_flight is not None:
+                task, snapshot = in_flight
+                try:
+                    await task
+                except BaseException:  # noqa: BLE001 - its outcome, not ours
+                    # That write was rolled back
+                    inserter.restore(snapshot)
+            status.created = inserter.created
+            status.rows = inserter.rows_written
+            # A failing clean up (a full disk, a closed database) must not
+            # hide the original error
+            with contextlib.suppress(Exception):
+                if on_error == "drop" and inserter.created:
+                    await db.execute_write_fn(lambda conn: _drop_table(conn, inserter))
+                    status.dropped = True
+                elif inserter.created:
+                    while inserter.backlog:
+                        await db.execute_write_fn(inserter.convert)
+                    await db.execute_write_fn(inserter.finish)
+            if not inserter.finished:
+                with contextlib.suppress(Exception):
+                    await db.execute_write_fn(inserter.discard)
+        finally:
+            status.done = True
 
     batches = 0
     pending = asyncio.ensure_future(pull(sample_size))
@@ -1437,27 +1941,32 @@ async def import_rows(
             if not chunk:
                 break
             pending = asyncio.ensure_future(pull(batch_size))
-            snapshot = inserter.snapshot()
-            try:
-                await db.execute_write_fn(
-                    lambda conn, chunk=chunk: inserter.write(conn, chunk)
+            names = None if columns is None else list(columns)
+            await write(
+                lambda conn, chunk=chunk, names=names: inserter.write(
+                    conn, chunk, names
                 )
-            except Exception:
-                # The transaction may have been rolled back after write()
-                # returned, by a write_wrapper or a failed COMMIT. (Not on
-                # cancellation: the write thread may still be running it.)
-                inserter.restore(snapshot)
-                raise
+            )
             batches += 1
             if progress is not None:
                 outcome = progress(inserter.rows_written)
                 if inspect.isawaitable(outcome):
                     await outcome
-        await db.execute_write_fn(inserter.finish)
-    except Exception:
-        # Don't leave the kept spellings behind on the write connection
-        with contextlib.suppress(Exception):
-            await db.execute_write_fn(inserter.discard)
+        while inserter.backlog:
+            await write(inserter.convert)
+        await write(inserter.finish)
+    except BaseException as ex:
+        status.error = ex
+        if is_async and not pending.done():
+            # No more rows are wanted, and an async source (a worker) may
+            # take a while to send them
+            pending.cancel()
+        cleaning = asyncio.ensure_future(clean_up())
+        try:
+            await asyncio.shield(cleaning)
+        except asyncio.CancelledError:
+            # Cancelled again: the clean up carries on in the background
+            pass
         raise
     finally:
         # Never leave a thread reading from the iterator behind
@@ -1465,4 +1974,10 @@ async def import_rows(
             await asyncio.wait([pending])
         if not pending.cancelled():
             pending.exception()
+        if reading is not None:
+            if not reading.done():
+                await asyncio.wait([reading])
+            if not reading.cancelled():
+                reading.exception()
+    status.done = True
     return _result(inserter, start, batches)

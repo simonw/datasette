@@ -7,7 +7,7 @@ const DATASETTE_EVENTS = {
 // Plugins will have greater stability if they use the functional hooks- but if they do decide to hook into
 // literal DOM selectors, they'll have an easier time using these addresses.
 const DOM_SELECTORS = {
-  /** Should have one match */
+  /** The first match is the default JSON export link */
   jsonExportLink: ".export-links a[href*=json]",
 
   /** Event listeners that go outside of the main table, e.g. existing scroll listener */

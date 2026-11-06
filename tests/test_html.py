@@ -394,14 +394,105 @@ async def test_row_json_export_link(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_query_json_csv_export_links(ds_client):
-    response = await ds_client.get("/fixtures/-/query?sql=select+1")
-    assert response.status_code == 200
-    assert '<a href="/fixtures/-/query.json?sql=select+1">json</a>' in response.text
-    assert (
-        '<a href="/fixtures/-/query.csv?sql=select+1&amp;_size=max">CSV</a>'
-        in response.text
+async def test_query_export_dialog(ds_client):
+    response = await ds_client.get(
+        "/fixtures/-/query?sql=select+:name+as+n&name=hello&_hide_sql=1"
     )
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    assert "This data as" not in response.text
+    button = soup.select_one(".table-tools button.export-data-button")
+    assert button["commandfor"] == "export-dialog"
+    dialog = soup.select_one("datasette-modal > dialog#export-dialog")
+    assert dialog.select_one(".modal-meta").text == "fixtures"
+    assert dialog.select_one(".export-scope").get_text() == (
+        'Query results from this SQL query with name = "hello"'
+    )
+    # Queries are not paginated, so every format returns these rows
+    assert {el.text for el in dialog.select("[data-export-rows]")} == {"All 1 row"}
+    assert not dialog.has_attr("data-count-url")
+    # No object shape: queries have no primary keys
+    assert [
+        (
+            row.select_one(".export-option-name").text,
+            row.select_one('[data-export-action="view"]').get("href"),
+        )
+        for row in dialog.select("li.export-option")
+        if not row["data-export-format"].startswith("format-")
+    ] == [
+        (
+            "JSON",
+            "/fixtures/-/query.json?sql=select+:name+as+n&name=hello&_hide_sql=1",
+        ),
+        (
+            "JSON array",
+            "/fixtures/-/query.json?sql=select+:name+as+n&name=hello&_hide_sql=1&_shape=array",
+        ),
+        (
+            "Newline-delimited JSON",
+            "/fixtures/-/query.json?sql=select+:name+as+n&name=hello&_hide_sql=1&_shape=array&_nl=on",
+        ),
+        ("CSV", None),
+    ]
+    # Downloads are named after the database for arbitrary SQL
+    assert [
+        el.get("download") or el.get("data-filename")
+        for el in dialog.select('[data-export-action="download"]')
+    ][:4] == ["fixtures.json", "fixtures.json", "fixtures.jsonl", "fixtures.csv"]
+    # No CSV options: labels and streaming do not apply to queries
+    form = dialog.select_one("form.export-csv-form")
+    assert form["action"] == "/fixtures/-/query.csv"
+    assert [str(input) for input in form.find_all("input")] == [
+        '<input name="sql" type="hidden" value="select :name as n"/>',
+        '<input name="name" type="hidden" value="hello"/>',
+        '<input name="_hide_sql" type="hidden" value="1"/>',
+        '<input name="_size" type="hidden" value="max"/>',
+    ]
+    assert soup.find("script", src=re.compile(r"export-dialog\.js"))
+
+
+@pytest.mark.asyncio
+async def test_query_export_dialog_truncated(ds_client):
+    response = await ds_client.get(
+        "/fixtures/-/query?sql=select+*+from+compound_three_primary_keys"
+    )
+    soup = Soup(response.text, "html.parser")
+    # max_returned_rows is 100 for these tests
+    assert "Custom SQL query returning more than 100 rows" in response.text
+    dialog = soup.select_one("dialog#export-dialog")
+    assert {
+        (el.text, el["data-partial"]) for el in dialog.select("[data-export-rows]")
+    } == {("First 100 rows", "true")}
+
+
+@pytest.mark.asyncio
+async def test_stored_query_export_scope(ds_client):
+    response = await ds_client.get("/fixtures/neighborhood_search?text=town")
+    soup = Soup(response.text, "html.parser")
+    assert soup.select_one(".export-scope").get_text() == (
+        'Query results from the neighborhood_search query with text = "town"'
+    )
+
+
+@pytest.mark.asyncio
+async def test_query_export_dialog_keeps_blank_parameters(ds_client):
+    response = await ds_client.get("/fixtures/-/query?sql=select+:name+as+n&name=")
+    soup = Soup(response.text, "html.parser")
+    hidden = soup.select("form.export-csv-form input[type=hidden]")
+    assert [(i["name"], i["value"]) for i in hidden] == [
+        ("sql", "select :name as n"),
+        ("name", ""),
+        ("_size", "max"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_query_export_dialog_not_shown_without_rows(ds_client):
+    response = await ds_client.get("/fixtures/-/query?sql=select+1+where+0")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
+    assert soup.select_one("#export-dialog") is None
+    assert soup.select_one(".export-data-button") is None
 
 
 @pytest.mark.asyncio
@@ -864,10 +955,15 @@ def test_stored_query_show_hide_metadata_option(
             "</span>"
         )[0]
         assert show_hide_fragment == expected_show_hide_fragment
+        # The export dialog's CSV form has hidden inputs too, so only look
+        # at the SQL form
+        sql_form = html.split('<form class="sql core"')[1].split("</form>")[0]
         if expected_hidden:
-            assert f'<input type="hidden" name="{expected_hidden}" value="1">' in html
+            assert (
+                f'<input type="hidden" name="{expected_hidden}" value="1">' in sql_form
+            )
         else:
-            assert '<input type="hidden" ' not in html
+            assert '<input type="hidden" ' not in sql_form
 
 
 @pytest.mark.asyncio

@@ -1143,10 +1143,6 @@ form.sql textarea {
 form.sql label {
     width: 15%;
 }
-.advanced-export input[type=submit] {
-    font-size: 0.6em;
-    margin-left: 1em;
-}
 label.sort_by_desc {
     padding-right: 1em;
 }
@@ -1755,13 +1751,296 @@ button.core[type=button] {
     }
 }
 
-.advanced-export {
-    margin-top: 1em;
-    padding: 0.01em 2em 0.01em 1em;
-    width: auto;
-    display: inline-block;
-    box-shadow: 1px 2px 8px 2px rgba(0,0,0,0.08);
-	background-color: white;
+/* Quiet buttons: low-key secondary actions such as "Export data" and
+   "View and edit SQL", in the suggested facet chips' colours. Works on
+   both <button> and <a>. */
+.table-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0 0 1rem;
+}
+
+.quiet-button,
+a.quiet-button:link,
+a.quiet-button:visited {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    box-sizing: border-box;
+    min-height: 1.75rem;
+    margin: 0;
+    padding: 0.2rem 0.6rem;
+    border: 1px solid #d8e6f5;
+    border-radius: 5px;
+    background: #fff;
+    color: #24465d;
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 400;
+    line-height: 1.2;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.quiet-button svg {
+    display: block;
+    flex-shrink: 0;
+    color: #6b6b6b;
+    transition: color 0.12s;
+}
+
+.quiet-button:hover,
+a.quiet-button:hover,
+.quiet-button:focus-visible {
+    border-color: #1a56db;
+    background: #e8effd;
+    color: #1949b8;
+}
+
+.quiet-button:hover svg,
+.quiet-button:focus-visible svg {
+    color: currentColor;
+}
+
+.quiet-button:focus-visible {
+    outline: 2px solid #1a56db;
+    outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+    .quiet-button,
+    a.quiet-button:link,
+    a.quiet-button:visited {
+        min-height: 2.25rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .quiet-button,
+    .quiet-button svg {
+        transition: none;
+    }
+}
+
+/* Export dialog, opened by the "Export data" quiet button. One row per
+   format: its name and description, then a group of View / Download /
+   Copy / Copy URL actions that wraps below the name on narrow screens. */
+dialog.export-dialog {
+    width: min(660px, calc(100vw - 32px));
+}
+
+.export-dialog .modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+/* Which rows the export covers, e.g. "Filtered rows where state = "CA"" */
+.export-dialog .export-scope {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 6px;
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 0.875rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.export-dialog .export-option-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.15rem 0.5rem;
+}
+
+/* How many rows each format returns: amber when it is not every row */
+.export-dialog .export-rows {
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--paper);
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.export-dialog .export-rows[data-partial="true"] {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.export-dialog .export-options {
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+}
+
+.export-dialog .export-option + .export-option {
+    border-top: 1px solid var(--rule);
+}
+
+.export-dialog .export-option:not(:has(> form)),
+.export-dialog .export-csv-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    padding: 0.6rem 0.75rem;
+}
+
+.export-dialog .export-option-text {
+    display: flex;
+    flex: 1 1 12rem;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+}
+
+.export-dialog .export-option-name {
+    color: var(--ink);
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.export-dialog .export-option-description {
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.export-dialog .export-actions {
+    display: inline-flex;
+    flex-shrink: 0;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    background: var(--card);
+    overflow: hidden;
+}
+
+.export-dialog .export-action {
+    display: inline-grid;
+    place-items: center;
+    box-sizing: border-box;
+    min-height: 1.75rem;
+    margin: 0;
+    padding: 0.2rem 0.6rem;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: var(--accent);
+    font: 500 0.8rem/1.2 system-ui, -apple-system, sans-serif;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+}
+
+.export-dialog .export-action[hidden] {
+    display: none;
+}
+
+.export-dialog .export-action + .export-action:not([hidden]) {
+    border-left: 1px solid var(--rule);
+}
+
+.export-dialog .export-action:hover,
+.export-dialog .export-action:focus-visible {
+    background: var(--paper);
+    color: #1949b8;
+}
+
+.export-dialog .export-action:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
+/* State labels added by export-dialog.js share one grid cell, so a
+   button keeps its width as "Copy" becomes "Copying…" and "Copied". */
+.export-dialog .export-action-label {
+    grid-area: 1 / 1;
+    visibility: hidden;
+}
+
+.export-dialog .export-action[data-state="idle"] > [data-state="idle"],
+.export-dialog .export-action[data-state="busy"] > [data-state="busy"],
+.export-dialog .export-action[data-state="done"] > [data-state="done"],
+.export-dialog .export-action[data-state="error"] > [data-state="error"] {
+    visibility: visible;
+}
+
+.export-dialog .export-action[data-state="busy"] {
+    color: var(--muted);
+    cursor: progress;
+}
+
+.export-dialog .export-action[data-state="done"] {
+    color: #1a7f37;
+}
+
+.export-dialog .export-action[data-state="error"] {
+    color: #b91c1c;
+}
+
+.export-dialog .export-csv-options {
+    display: flex;
+    flex: 1 0 100%;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.1rem;
+}
+
+.export-dialog .export-csv-options label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--ink);
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.export-dialog .export-csv-options input {
+    margin: 0;
+    accent-color: var(--accent);
+}
+
+.export-dialog .export-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+@media (max-width: 576px) {
+    .export-dialog .export-actions {
+        flex: 1 0 100%;
+    }
+    .export-dialog .export-action {
+        flex: 1 1 auto;
+        padding-inline: 0.3rem;
+    }
+}
+
+@media (pointer: coarse) {
+    .export-dialog .export-action {
+        min-height: 2.25rem;
+    }
+    .export-dialog .export-csv-options label {
+        min-height: 2.25rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .export-dialog .export-action {
+        transition: none;
+    }
 }
 
 .download-sqlite em {

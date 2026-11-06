@@ -5,17 +5,29 @@ CSV export
 
 Any Datasette table, view or custom SQL query can be exported as CSV.
 
-To obtain the CSV representation of the table you are looking, click the "this
-data as CSV" link.
+To obtain the CSV representation of the table you are looking at, click the
+"Export data" button below the filters. The dialog that opens offers the data
+in different JSON shapes and as CSV, using the current filters and sort order.
+Custom SQL query pages have the same button above their results.
 
-You can also use the advanced export form for more control over the resulting
-file, which looks like this and has the following options:
+The top of the dialog describes the filters and sort order that the export
+will use. Each format shows how many rows it returns: JSON formats return the
+rows on the current page, CSV returns up to :ref:`setting_max_returned_rows`
+rows, and the **stream all rows** option returns every matching row. If the
+page did not count every row, the dialog counts them when it opens.
 
-.. image:: https://github.com/simonw/datasette-screenshots/blob/0.62/advanced-export.png?raw=true
-   :alt: Advanced export form. You can get the data in different JSON shapes, and CSV options are download file, expand labels and stream all rows.
+Each format in that dialog has four actions:
 
-* **download file** - instead of displaying CSV in your browser, this forces
-  your browser to download the CSV to your downloads directory.
+* **View** - open that format in your browser.
+* **Download** - save it as a file in your downloads directory.
+* **Copy** - copy the data itself to your clipboard.
+* **Copy URL** - copy the URL for that format, for use with other tools.
+
+The two copy actions use the browser clipboard, so they are only shown when
+Datasette is served over HTTPS or from ``localhost``.
+
+The CSV format has the following options. These are only offered for tables
+and views:
 
 * **expand labels** - if your table has any foreign key references this option
   will cause the CSV to gain additional ``COLUMN_NAME_label`` columns with a

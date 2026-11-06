@@ -1,6 +1,19 @@
 Getting started
 ===============
 
+.. _getting_started_your_data:
+
+Try Datasette with your own data
+--------------------------------
+
+The quickest way to try Datasette with your own data is to point it at a CSV file. If you have `uv <https://docs.astral.sh/uv/>`__ installed, this command runs Datasette without installing it first::
+
+    uvx datasette data.csv
+
+Then visit http://127.0.0.1:8001/ to explore the file. If you have already :ref:`installed Datasette <installation>`, run ``datasette data.csv`` instead.
+
+TSV, JSON and newline-delimited JSON files work too, as do URLs and data piped to standard input. See :ref:`importing` for details.
+
 .. _getting_started_demo:
 
 Play with a live demo

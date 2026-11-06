@@ -38,6 +38,7 @@ Contents
    :maxdepth: 3
 
    getting_started
+   importing
    installation
    configuration
    ecosystem

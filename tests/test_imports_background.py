@@ -702,11 +702,17 @@ async def test_a_token_limited_to_cancel_import_can_cancel(tmp_path):
     # cancel, as an insert-row token may insert, but it is not shown what
     # the import is - that takes view-table too
     ds, db = _scratch_ds()
+
+    async def _signed_token(restrictions):
+        # Datasette's own tokens, which carry the restrictions - not those of
+        # a token handler plugin another test may have left registered
+        return await ds.create_token(
+            "root", restrictions=restrictions, handler="signed"
+        )
+
     try:
         job = await _start_stalled(ds, db, tmp_path)
-        token = await ds.create_token(
-            "root", restrictions=TokenRestrictions().allow_all("cancel-import")
-        )
+        token = await _signed_token(TokenRestrictions().allow_all("cancel-import"))
         headers = {"Authorization": f"Bearer {token}"}
         # It cannot list imports: that takes view-instance and view-table
         response = await ds.client.get("/-/imports.json", headers=headers)
@@ -723,7 +729,7 @@ async def test_a_token_limited_to_cancel_import_can_cancel(tmp_path):
         restrictions = TokenRestrictions()
         for action in ("cancel-import", "view-table", "view-instance"):
             restrictions = restrictions.allow_all(action)
-        token = await ds.create_token("root", restrictions=restrictions)
+        token = await _signed_token(restrictions)
         headers = {"Authorization": f"Bearer {token}"}
         listed = (await ds.client.get("/-/imports.json", headers=headers)).json()
         assert [i["table"] for i in listed["imports"]] == ["slow", "slow2"]
@@ -734,9 +740,7 @@ async def test_a_token_limited_to_cancel_import_can_cancel(tmp_path):
         assert response.json()["import"]["state"] == "cancelled"
         assert job2.state == "cancelled"
         # Without cancel-import: 403 if it can see the import, 404 if not
-        token = await ds.create_token(
-            "root", restrictions=TokenRestrictions().allow_all("view-table")
-        )
+        token = await _signed_token(TokenRestrictions().allow_all("view-table"))
         job3 = await _start_stalled(ds, db, tmp_path, table="slow3")
         response = await ds.client.post(
             "/scratch/slow3/-/cancel-import",

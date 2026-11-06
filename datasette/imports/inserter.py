@@ -434,9 +434,11 @@ class TypedInserter:
         - ``"auto"`` (default): integer -> float (and text -> blob) edits
           the declared type in ``sqlite_schema`` in place - no stored value
           has to change, so this takes well under a millisecond at any table
-          size. Widening to text rebuilds the table, because the stored
-          numbers have to become text and copying the table measured faster
-          than an in-place ``UPDATE``.
+          size. Widening to text rebuilds the table: the stored numbers
+          have to become text, which is O(rows) either way, and copying
+          leaves a compact table. Copying measured within about 15% of an
+          in-place ``UPDATE`` - faster on disk for integer columns, slower
+          in memory and for float columns.
         - ``"schema"``: always edit in place, with an ``UPDATE`` converting
           stored numbers when widening to text.
         - ``"rebuild"``: always copy the table into a new one.

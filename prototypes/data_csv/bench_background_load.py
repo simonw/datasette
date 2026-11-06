@@ -23,29 +23,47 @@ and whether anything is left in TMPDIR.
 ``--interrupt-at ROWS`` sends SIGINT part way through instead.
 ``--json OUT`` writes the raw numbers. ``--database NAME`` with
 ``--extra=--save --extra=FILE`` queries a --save file instead of scratch;
-``--clients N --think SECONDS`` sets the load.
+``--clients N --think SECONDS`` sets the load; ``--sort COLUMN`` the column
+the sort request uses (``price`` by default); ``--small-pipe`` leaves the
+worker's stdout pipe at 64KB.
+
+Requests follow redirects, as a browser does: a page requested just before
+the table's first rows were committed is redirected to itself. A 404 that
+says the table is not there yet (it is queued, downloading, or importing its
+first rows) is counted on its own, as "before-table". Every other non-200 is
+listed with the time it happened, and the report says when the table first
+had rows, so an error from before the table existed can be told from one
+during a rebuild.
 
 Results (4 CPUs shared with another agent's tests, load average 1-4):
 
-- First response 0.50-0.53s with a 1GB CSV importing, the same as an empty
-  Datasette (0.47-0.55s, bench_background_startup.py).
+- First response 0.47s with a 1GB CSV importing, the same as an empty
+  Datasette (0.47s; 5 runs each, interleaved, bench_background_startup.py).
 - big-1gb.csv (6.4M rows): 50.7-56.8s with no load, 59.8s with one client
-  making a request about every 0.5s, 199s with four clients requesting
-  without pause (243s before the worker's pipe was grown to 1MB). Loading
-  before serving (--get) takes 41.2s.
-- No request failed because of an import: no "no such table", no schema
-  errors, not during a late integer to text rebuild of a 4M row table, not
-  while 100 columns were added one at a time. The failures seen are
-  Datasette's own: ?_sort_desc on an unindexed column of millions of rows
-  answers 500 (QueryInterrupted not caught by the table view) when it hits
-  the time limit, during the import and after it alike; a group-by hits the
-  1s time limit (400). A table page requested before the first chunk is
-  committed is a 404 that says the table is queued or importing.
-- Under four clients, latency during the import against after it (p50):
-  homepage 117 vs 61ms, table page 399 vs 194ms, table JSON 62 vs 31ms,
-  /-/imports.json 29 vs 13ms; max 0.7-1.9s during.
-- Cancel through the API: 0.13s, rows kept 2,004,000, no worker left.
-  SIGINT part way: 0.5-1.3s to stop, no worker, nothing left in TMPDIR.
+  making a request about every 0.5s, 199-243s with four clients requesting
+  without pause (230.4s in the latest run). Loading before serving (--get)
+  takes 41.2s.
+- The worker's pipe size makes no measurable difference here: 1M rows
+  under four clients took 40.3/41.6/44.4s with 64KB and 42.1/43.5/45.6s
+  with 1MB, interleaved.
+- No request failed because of an import: no "no such table" once the
+  table existed, no schema errors, not during a late integer to text
+  rebuild of a 4M row table (a 3.4s stall at the end), not while 100
+  columns were added one at a time. The failures seen are Datasette's own:
+  ?_sort_desc on an unindexed column of millions of rows answers 500
+  (QueryInterrupted not caught by the table view) when it hits the time
+  limit, during the import and after it alike; a group-by hits the 1s
+  time limit (400). Before the first chunk is committed (the first 0.5-0.8s)
+  a table page is a 404 that says the table is queued or importing, and a
+  SQL query on it a 400 "no such table".
+- Under four clients, latency during the import against after it, p50
+  (85 requests per endpoint after): homepage 107 vs 54ms, table page 358 vs
+  204ms, table JSON 57 vs 31ms, filter 51 vs 32ms, /-/imports.json 28 vs
+  17ms. p95 is about the same during and after (0.2-1.0s): the load itself,
+  not the import, sets the tail.
+- Cancel through the API: 0.09-0.13s, exactly the first N rows kept, no
+  worker left. SIGINT or SIGTERM part way: 0.2-1.3s to stop, no worker,
+  nothing left in TMPDIR.
 """
 
 # Blocking calls in setup and teardown, outside the measured requests, are fine
@@ -108,12 +126,18 @@ class State:
         self.table_exists = False
         self.rows = 0
         self.done_at = None
+        # When /-/imports.json first said the table had rows
+        self.first_rows_at = None
         self.timeline = []
         self.imports = []
 
 
 def _worker_pids(server_pid):
-    # Children of the server running the import worker
+    """
+    Import workers started by this server: its children, and any that
+    outlived it (reparented, but still saying --parent-pid SERVER) - not
+    the workers of anything else running on the machine.
+    """
     try:
         out = subprocess.run(
             ["ps", "-eo", "pid,ppid,args"], check=False, capture_output=True, text=True
@@ -124,7 +148,9 @@ def _worker_pids(server_pid):
     for line in out.splitlines()[1:]:
         parts = line.split(None, 2)
         if len(parts) == 3 and "datasette.imports.worker" in parts[2]:
-            pids.append((int(parts[0]), int(parts[1])))
+            pid, ppid = int(parts[0]), int(parts[1])
+            if ppid == server_pid or f"--parent-pid {server_pid} " in parts[2]:
+                pids.append((pid, ppid))
     return pids
 
 
@@ -195,6 +221,8 @@ async def main():
     # Requests a 307 sent round again: they looked for the table just
     # before its first rows were committed
     redirected = collections.Counter()
+    # (phase, name, text) -> seconds after start of each such response
+    error_times = collections.defaultdict(list)
     state = State()
     first_response = None
     token_url = None
@@ -240,6 +268,8 @@ async def main():
                 if big:
                     state.rows = big[0]["rows"]
                     state.table_exists = big[0]["table_exists"]
+                    if state.rows and state.first_rows_at is None:
+                        state.first_rows_at = now
                 state.timeline.append(
                     (round(now, 2), [(j["table"], j["state"], j["rows"]) for j in jobs])
                 )
@@ -301,14 +331,21 @@ async def main():
                         # rows): by design, so counted on their own
                         phase = "before-table"
                     if status != 200:
-                        text = r.text[:300]
-                        match = re.search(r'"error":\s*"([^"]*)"', text)
-                        errors[(phase, name)][
-                            f"{status}: {match.group(1) if match else text[:120]}"
-                        ] += 1
+                        match = re.search(r'"error":\s*"([^"]*)"', r.text[:300])
+                        notice = re.search(r'class="import-status">([^<]*)<', r.text)
+                        if match:
+                            text = match.group(1)
+                        elif notice:
+                            text = f"(page) {notice.group(1)}"
+                        else:
+                            text = r.text[:120]
+                        text = f"{status}: {text}"
+                        errors[(phase, name)][text] += 1
+                        error_times[(phase, name, text)].append(t0 - started)
                 except httpx2.HTTPError as ex:
                     status = type(ex).__name__
                     errors[(phase, name)][status] += 1
+                    error_times[(phase, name, status)].append(t0 - started)
                 ms = (time.perf_counter() - t0) * 1000
                 results[(phase, name)].append((status, ms))
                 if args.think:
@@ -352,6 +389,8 @@ async def main():
         if state.done_at
         else "\nImports did not finish"
     )
+    if state.first_rows_at is not None:
+        print(f"{args.table} first had rows {state.first_rows_at:.1f}s after start")
     print(f"Shutdown after SIGINT: {shutdown:.2f}s, exit code {process.returncode}")
     print(f"Load average at end: {os.getloadavg()}")
     print(f"Import workers running before SIGINT: {len(workers_before)}")
@@ -390,7 +429,11 @@ async def main():
         print("\nNon-200 responses:")
         for (phase, name), counter in sorted(any_errors.items()):
             for text, count in counter.most_common():
-                print(f"  {phase} {name}: {count} x {text}")
+                times = error_times[(phase, name, text)]
+                print(
+                    f"  {phase} {name}: {count} x {text} "
+                    f"(at {min(times):.1f}-{max(times):.1f}s)"
+                )
     if args.json:
         with open(args.json, "w") as fp:
             json.dump(
@@ -403,6 +446,10 @@ async def main():
                     "left_files": left_files,
                     "summary": summary,
                     "redirected": dict(redirected),
+                    "first_rows_at": state.first_rows_at,
+                    "error_times": {
+                        " | ".join(key): times for key, times in error_times.items()
+                    },
                     "timeline": state.timeline,
                     "imports": state.imports,
                     "cancel": cancel_result if args.cancel_at else None,

@@ -392,7 +392,7 @@ Many of these keys are shared with the :ref:`JSON API <json_api>` for this page.
     Information needed to enable the row insertion UI, or ``None`` if row insertion is not available to the current actor. When present it has ``path``, ``tableName``, ``columns``, ``bulkColumns``, ``primaryKeys`` and ``maxInsertRows`` keys, plus optional ``upsertPath`` if the current actor has permission to update rows. ``columns`` lists columns for the single-row insert form, while ``bulkColumns`` lists columns for the bulk insert form. Each column includes ``name``, ``sqlite_type``, ``notnull``, ``default``, ``has_default``, ``is_pk``, ``is_auto_pk``, ``value_kind`` and ``column_type`` keys.
 
 ``table_page_data`` - ``dict``
-    JSON data used by JavaScript on the table page. Includes ``database``, ``table`` and ``tableUrl``, plus optional ``foreignKeys`` mapping column names to autocomplete URLs, optional ``insertRow`` data and optional ``alterTable`` data.
+    JSON data used by JavaScript on the table page. Includes ``database``, ``table`` and ``tableUrl``, plus optional ``foreignKeys`` mapping column names to autocomplete URLs, optional ``insertRow`` data, optional ``alterTable`` data and optional ``executeSql`` data with ``queryUrl`` and ``editorUrl`` keys, present if the current actor can execute custom SQL against this database. ``executeSql`` also has a ``columns`` list of every column in the table with its ``name`` and declared ``type``, and an optional ``filter`` key with the ``where`` clause, ``params`` and human readable ``description`` of the filters currently applied to the table.
 
 ``top_table`` - ``callable``
     Async callable that renders the ``top_table`` plugin slot for this table or view and returns HTML.

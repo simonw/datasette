@@ -106,9 +106,15 @@ class Source:
 
     @property
     def label(self) -> str:
-        "How to refer to this source in messages."
+        """
+        How to refer to this source in messages: a URL with any credentials
+        redacted (see :func:`redact_url`), since messages end up on pages
+        and in logs. Use :attr:`location` to fetch it.
+        """
         if self.kind == "stdin":
             return "standard input"
+        if self.kind == "url":
+            return redact_url(self.location)
         return self.location
 
     def fingerprint(self):
@@ -481,8 +487,10 @@ async def download(
     """
     import httpx2
 
+    # Error messages end up on pages and in logs: never with credentials
+    shown = redact_url(url)
     if urllib.parse.urlsplit(url).scheme.lower() not in URL_SCHEMES:
-        raise DownloadError(f"{url}: only http:// and https:// URLs are supported")
+        raise DownloadError(f"{shown}: only http:// and https:// URLs are supported")
     from datasette.version import __version__
 
     fd, path = tempfile.mkstemp(dir=directory, prefix="download-")
@@ -496,7 +504,7 @@ async def download(
             async with client, client.stream("GET", url) as response:
                 if response.status_code >= 400:
                     raise DownloadError(
-                        f"{url} returned HTTP {response.status_code} "
+                        f"{shown} returned HTTP {response.status_code} "
                         f"{response.reason_phrase}".rstrip()
                     )
                 total = _content_length(response.headers)
@@ -509,8 +517,9 @@ async def download(
         raise
     except httpx2.HTTPError as ex:
         _unlink(path)
-        message = str(ex) or type(ex).__name__
-        raise DownloadError(f"Could not download {url}: {message}") from ex
+        # httpx can mention the URL, or the one a redirect led to
+        message = redact_urls_in(str(ex)) or type(ex).__name__
+        raise DownloadError(f"Could not download {shown}: {message}") from ex
     except BaseException:
         _unlink(path)
         raise
@@ -769,6 +778,14 @@ def redact_url(url: str) -> str:
     return urllib.parse.urlunsplit(
         (parts.scheme, netloc, parts.path, query, parts.fragment)
     )
+
+
+_URL_IN_TEXT_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s'\"<>]+")
+
+
+def redact_urls_in(text: str) -> str:
+    "``text`` with :func:`redact_url` applied to every URL in it."
+    return _URL_IN_TEXT_RE.sub(lambda match: redact_url(match.group(0)), text)
 
 
 def display_spec(source: Source) -> str:

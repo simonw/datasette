@@ -1347,14 +1347,14 @@ def _prepare_import(
                 continue
             progress = None
             if source.kind == "url":
-                status.start(f"Downloading {source.location}")
+                status.start(f"Downloading {source.label}")
                 progress = _download_progress(source, status, warn=not save)
             # asyncio.run() turns Ctrl+C into a cancellation, so the
             # download closes its connection and removes its partial file
             asyncio.run(fetch(source, workdir, progress=progress))
             if source.kind == "url":
                 status.done(
-                    f"Downloaded {source.location} "
+                    f"Downloaded {source.label} "
                     f"({human_size(os.path.getsize(source.path))})"
                 )
             if session and source.temporary:
@@ -1488,7 +1488,7 @@ def _enable_wal(path):
 
 
 def _download_progress(source, status, warn):
-    progress = download_progress(source.location, status)
+    progress = download_progress(source.label, status)
     warned = False
 
     def callback(done, total):
@@ -1497,7 +1497,7 @@ def _download_progress(source, status, warn):
         if warn and not warned and size > LARGE_DOWNLOAD_BYTES:
             warned = True
             status.done(
-                f"{source.location} is {human_size(size)}"
+                f"{source.label} is {human_size(size)}"
                 f"{'' if total else ' so far'}. The scratch database is deleted "
                 "when Datasette stops: add --save data.db to keep the data."
             )

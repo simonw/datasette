@@ -1081,6 +1081,79 @@ async def test_url_downloads_in_the_task(http_server, tmp_path):
         await ds.invoke_shutdown()
 
 
+class _FailingHandler(http.server.BaseHTTPRequestHandler):
+    "404 for /missing.csv, bytes no loader recognizes for anything else."
+
+    protocol_version = "HTTP/1.0"
+
+    def do_GET(self):
+        if self.path.startswith("/missing.csv"):
+            self.send_error(404, "File not found")
+            return
+        body = bytes(range(256)) * 8
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
+@pytest.mark.asyncio
+async def test_failed_downloads_never_show_url_credentials(capsys):
+    # The error of an import that failed - which every page that lists the
+    # import shows, to anyone who can see the table - must not repeat the
+    # password or token in its URL: not for an HTTP error, a connection
+    # that failed or content no loader recognizes
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _FailingHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host = f"127.0.0.1:{server.server_address[1]}"
+    urls = [
+        f"http://alice:hunter2@{host}/missing.csv?api_key=SEKRIT1&x=1",
+        f"http://u:pw5@{host}/binary.dat",
+        f"http://bob:pw3@127.0.0.1:{_free_port()}/refused.csv?access_token=SEKRIT3",
+    ]
+    secrets = ["hunter2", "SEKRIT1", "pw5", "pw3", "SEKRIT3"]
+    ds = ds_from_cli(urls, _background_imports=True)
+    try:
+        registry = import_registry(ds)
+        await ds.client.get("/-/imports.json")
+        assert await registry.wait(20)
+        jobs = registry.imports()
+        assert [job.state for job in jobs] == ["failed"] * 3
+        assert jobs[0].error == (
+            f"http://alice:REDACTED@{host}/missing.csv?api_key=REDACTED&x=1 "
+            "returned HTTP 404 File not found"
+        )
+        assert jobs[1].error.startswith(
+            f"Could not load http://u:REDACTED@{host}/binary.dat: "
+        )
+        assert jobs[2].error.startswith("Could not download http://bob:REDACTED@")
+        for path in (
+            "/",
+            "/scratch",
+            "/scratch/missing",
+            "/scratch/binary",
+            "/scratch/refused",
+            "/scratch/missing.json",
+            "/-/imports",
+            "/-/imports.json",
+        ):
+            text = (await ds.client.get(path)).text
+            assert "REDACTED" in text, path
+            for secret in secrets:
+                assert secret not in text, (path, secret)
+        stderr = capsys.readouterr().err
+        assert "Failed to import http://alice:REDACTED@" in stderr
+        for secret in secrets:
+            assert secret not in stderr
+    finally:
+        await ds.invoke_shutdown()
+        server.shutdown()
+
+
 @pytest.mark.asyncio
 async def test_spool_in_thread_cancels_without_waiting_for_the_writer(tmp_path):
     read_fd, write_fd = os.pipe()

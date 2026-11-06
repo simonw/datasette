@@ -18,9 +18,11 @@ import urllib.parse
 import pytest
 from click.testing import CliRunner
 
+from datasette import cli as cli_module
 from datasette.cli import cli, serve
 from datasette.imports import scratch as scratch_module
 from datasette.imports.scratch import (
+    LoadedTable,
     ReloadSession,
     ScratchDatabase,
     TableExists,
@@ -1329,6 +1331,60 @@ def test_scratch_page_hides_url_credentials(http_server, tmp_path, monkeypatch):
     # Nothing to hide, no note
     result = run([http_server + "/dogs.csv?a=1", "--get", "/scratch"])
     assert "REDACTED" not in html.unescape(result.stdout)
+
+
+def test_get_lines_hide_url_credentials(http_server, tmp_path, monkeypatch):
+    # The Downloading, Loaded and Error: lines on standard error, as well as
+    # the pages
+    monkeypatch.chdir(tmp_path)
+    host = http_server.split("://", 1)[1]
+    url = f"http://alice:hunter2@{host}/dogs.csv?api_key=SECRET123&a=1"
+    shown = f"http://alice:REDACTED@{host}/dogs.csv?api_key=REDACTED&a=1"
+    loaded = run([url, "--get", "/scratch"])
+    assert loaded.exit_code == 0, loaded.output
+    assert f"Downloading {shown}" in loaded.stderr
+    assert f"Downloaded {shown} (" in loaded.stderr
+    assert f"Loaded 3 rows from {shown} (csv) into table dogs" in loaded.stderr
+    missing = run(
+        [f"http://alice:hunter2@{host}/missing.csv?api_key=SECRET123", "--get", "/"]
+    )
+    assert missing.exit_code == 1
+    assert (
+        f"Error: http://alice:REDACTED@{host}/missing.csv?api_key=REDACTED "
+        "returned HTTP 404 Not Found"
+    ) in missing.stderr
+    refused = run(
+        [
+            f"http://bob:hunter2@127.0.0.1:{_unused_port()}/a.csv?token=SECRET123",
+            "--get",
+            "/",
+        ]
+    )
+    assert refused.exit_code == 1
+    assert "Error: Could not download http://bob:REDACTED@" in refused.stderr
+    for result in (loaded, missing, refused):
+        assert "hunter2" not in result.output and "SECRET123" not in result.output
+
+
+def test_source_label_redacts_url_credentials():
+    # Every message about a source - --reload's "Kept table ..." line too -
+    # uses its label
+    url = "https://u:pw@example.com/a.csv?token=t1&x=2"
+    source = Source(url, "url", url)
+    assert source.label == "https://u:REDACTED@example.com/a.csv?token=REDACTED&x=2"
+    assert source.location == url
+    loaded = LoadedTable(
+        source=source, table="a", loader="csv", rows=0, seconds=0, reused=True
+    )
+    assert "pw" not in cli_module._describe_loaded(loaded)
+
+
+def _unused_port():
+    import socket
+
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
 
 
 @pytest.mark.parametrize(

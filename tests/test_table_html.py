@@ -415,6 +415,26 @@ async def test_sort_links(ds_client):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,expected",
+    (
+        # Labels are expanded by default, so _city_id cells link to facet_cities
+        ("/fixtures/facetable", {"_city_id": "1"}),
+        # With labels off the cells are plain numbers
+        ("/fixtures/facetable?_labels=off", {}),
+    ),
+)
+async def test_th_data_has_fks(ds_client, path, expected):
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    ths = Soup(response.text, "html.parser").select("thead th")
+    has_fks = {
+        th["data-column"]: th["data-has-fks"] for th in ths if th.get("data-has-fks")
+    }
+    assert has_fks == expected
+
+
+@pytest.mark.asyncio
 async def test_sort_menu_excludes_unsortable_primary_key():
     # https://github.com/simonw/datasette/issues/1980
     ds = Datasette(

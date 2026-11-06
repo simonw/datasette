@@ -81,7 +81,7 @@ class RowContext(Context):
     )
     display_columns: list = field(
         metadata={
-            "help": "Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type`` and ``column_type_config`` keys."
+            "help": "Column metadata used by the HTML table display. Each item includes ``name``, ``sortable``, ``is_pk``, ``type``, ``notnull``, ``description``, ``column_type``, ``column_type_config`` and ``has_fks`` keys. ``has_fks`` is true when at least one cell in the column is displayed as a link to a foreign key row."
         }
     )
     display_rows: list = field(

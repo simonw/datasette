@@ -762,6 +762,9 @@ table.rows-and-columns td a:visited {
         padding-right: calc(var(--gear-space) + 0.25rem);
     }
 
+    /* Numeric headers follow their digits. Primary keys stay left aligned,
+       as do foreign key columns showing labels: the server sets
+       data-has-fks when a column's cells on this page link to other rows. */
     table.rows-and-columns th:is(
         [data-column-type*="int"],
         [data-column-type*="real"],
@@ -769,43 +772,8 @@ table.rows-and-columns td a:visited {
         [data-column-type*="doub"],
         [data-column-type*="dec"],
         [data-column-type="numeric"]
-    ):not([data-is-pk="1"]) {
+    ):not([data-is-pk="1"], [data-has-fks="1"]) {
         text-align: right;
-    }
-
-    /* ...unless that column's cells hold links (foreign key labels, or a
-       plugin's rendering). Nothing on a <th> says so, so match by position. */
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(1) > a) > thead > tr > th:nth-child(1),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(2) > a) > thead > tr > th:nth-child(2),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(3) > a) > thead > tr > th:nth-child(3),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(4) > a) > thead > tr > th:nth-child(4),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(5) > a) > thead > tr > th:nth-child(5),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(6) > a) > thead > tr > th:nth-child(6),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(7) > a) > thead > tr > th:nth-child(7),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(8) > a) > thead > tr > th:nth-child(8),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(9) > a) > thead > tr > th:nth-child(9),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(10) > a) > thead > tr > th:nth-child(10),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(11) > a) > thead > tr > th:nth-child(11),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(12) > a) > thead > tr > th:nth-child(12),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(13) > a) > thead > tr > th:nth-child(13),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(14) > a) > thead > tr > th:nth-child(14),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(15) > a) > thead > tr > th:nth-child(15),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(16) > a) > thead > tr > th:nth-child(16),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(17) > a) > thead > tr > th:nth-child(17),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(18) > a) > thead > tr > th:nth-child(18),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(19) > a) > thead > tr > th:nth-child(19),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(20) > a) > thead > tr > th:nth-child(20),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(21) > a) > thead > tr > th:nth-child(21),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(22) > a) > thead > tr > th:nth-child(22),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(23) > a) > thead > tr > th:nth-child(23),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(24) > a) > thead > tr > th:nth-child(24),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(25) > a) > thead > tr > th:nth-child(25),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(26) > a) > thead > tr > th:nth-child(26),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(27) > a) > thead > tr > th:nth-child(27),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(28) > a) > thead > tr > th:nth-child(28),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(29) > a) > thead > tr > th:nth-child(29),
-    table.rows-and-columns:has(> tbody > tr > td:nth-child(30) > a) > thead > tr > th:nth-child(30) {
-        text-align: left;
     }
 
     table.rows-and-columns td a:hover {

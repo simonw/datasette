@@ -41,20 +41,6 @@ from datasette.utils import module_from_path
 WORKER = [sys.executable, "-P", "-m", "datasette.imports.worker"]
 
 
-@pytest.fixture(autouse=True)
-def _existing_working_directory(tmp_path_factory):
-    """
-    make_app_client() in tests/fixtures.py leaves the working directory in a
-    temporary directory that is then deleted, and monkeypatch.chdir() (like
-    anything else that calls os.getcwd()) fails in a later test on the same
-    xdist worker. Start each test from a directory that exists.
-    """
-    try:
-        os.getcwd()
-    except FileNotFoundError:
-        os.chdir(tmp_path_factory.getbasetemp())
-
-
 @pytest.fixture
 def db():
     ds = Datasette()

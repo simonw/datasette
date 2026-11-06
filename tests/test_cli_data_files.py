@@ -44,20 +44,6 @@ from datasette.utils.asgi import Forbidden
 FORMATS = ["csv", "tsv", "json", "ndjson"]
 
 
-@pytest.fixture(autouse=True)
-def _existing_working_directory(tmp_path_factory):
-    """
-    make_app_client() in tests/fixtures.py leaves the working directory in a
-    temporary directory that is then deleted, and monkeypatch.chdir() (like
-    anything else that calls os.getcwd()) fails in a later test on the same
-    xdist worker. Start each test from a directory that exists.
-    """
-    try:
-        os.getcwd()
-    except FileNotFoundError:
-        os.chdir(tmp_path_factory.getbasetemp())
-
-
 CSV = "id,name,score\n1,Cleo,4.5\n2,Pancakes,3\n3,Fido,\n"
 NDJSON = '{"id": 1, "owner": "Ann"}\n{"id": 2, "owner": "Bob"}\n'
 JSON = json.dumps([{"id": 1, "city": "Lima"}, {"id": 3, "city": "Oslo"}])

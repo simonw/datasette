@@ -105,6 +105,28 @@ EXPECTED_PLUGINS = [
 
 
 @contextlib.contextmanager
+def _working_directory(path):
+    "Change into ``path``, and back to where we were (if it still exists)."
+    try:
+        previous = os.getcwd()
+    except OSError:
+        previous = None
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        for directory in (previous, tempfile.gettempdir()):
+            if directory is None:
+                continue
+            try:
+                os.chdir(directory)
+                break
+            except OSError:
+                # Deleted while we were away
+                continue
+
+
+@contextlib.contextmanager
 def make_app_client(
     sql_time_limit_ms=None,
     max_returned_rows=None,
@@ -121,7 +143,9 @@ def make_app_client(
     metadata=None,
     crossdb=False,
 ):
-    with tempfile.TemporaryDirectory() as tmpdir:
+    # Leave the temporary directory before it is deleted, or every later
+    # test on this worker runs in a directory that no longer exists (#1361)
+    with tempfile.TemporaryDirectory() as tmpdir, _working_directory(tmpdir):
         filepath = os.path.join(tmpdir, filename)
         if is_immutable:
             files = []
@@ -143,7 +167,6 @@ def make_app_client(
                     c2.close()
                 # Insert at start to help test /-/databases ordering:
                 files.insert(0, extra_filepath)
-        os.chdir(os.path.dirname(filepath))
         settings = settings or {}
         for key, value in {
             "default_page_size": 50,

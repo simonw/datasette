@@ -441,9 +441,10 @@ def test_to_css_class(s, expected):
     assert expected == utils.to_css_class(s)
 
 
-def test_temporary_docker_directory_uses_hard_link():
+def test_temporary_docker_directory_uses_hard_link(monkeypatch):
     with tempfile.TemporaryDirectory() as td:
-        os.chdir(td)
+        # monkeypatch changes back before later tests: td is deleted
+        monkeypatch.chdir(td)
         with open("hello", "w") as fp:
             fp.write("world")
         # Default usage of this should use symlink
@@ -469,11 +470,13 @@ def test_temporary_docker_directory_uses_hard_link():
 
 
 @patch("os.link")
-def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
+def test_temporary_docker_directory_uses_copy_if_hard_link_fails(
+    mock_link, monkeypatch
+):
     # Copy instead if os.link raises OSError (normally due to different device)
     mock_link.side_effect = OSError
     with tempfile.TemporaryDirectory() as td:
-        os.chdir(td)
+        monkeypatch.chdir(td)
         with open("hello", "w") as fp:
             fp.write("world")
         # Default usage of this should use symlink
@@ -498,9 +501,9 @@ def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
             assert 1 == os.stat(hello).st_nlink
 
 
-def test_temporary_docker_directory_quotes_args():
+def test_temporary_docker_directory_quotes_args(monkeypatch):
     with tempfile.TemporaryDirectory() as td:
-        os.chdir(td)
+        monkeypatch.chdir(td)
         with open("hello", "w") as fp:
             fp.write("world")
         with utils.temporary_docker_directory(

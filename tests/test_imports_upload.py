@@ -397,7 +397,7 @@ async def test_failed_import_drops_the_table(ds, temp_dir):
     response = await upload(ds, content, "bad.ndjson")
     job = await finished(ds, response)
     assert job.state == "failed"
-    assert "line 1501" in job.error or "1501" in job.error, job.error
+    assert job.error.startswith("Line 1501 is not valid JSON"), job.error
     # Nothing half-imported is left behind
     assert not await ds.get_database("data").table_exists("bad")
     assert job.table_exists is False

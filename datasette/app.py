@@ -2565,6 +2565,8 @@ ORDER BY allowed.parent, allowed.child
         context: dict[str, Any] | Context | None = None,
         request: Request | None = None,
         view_name: str | None = None,
+        *,
+        plugin_context: dict[str, Any] | None = None,
     ):
         if not self._startup_invoked:
             raise RuntimeError(
@@ -2583,17 +2585,21 @@ ORDER BY allowed.parent, allowed.child
             context = {
                 f.name: getattr(context, f.name) for f in dataclasses.fields(context)
             }
+        plugin_context = plugin_context or {}
+        hook_context = {
+            "template": template.name,
+            "database": plugin_context.get("database", context.get("database")),
+            "table": plugin_context.get("table", context.get("table")),
+            "columns": plugin_context.get("columns", context.get("columns")),
+            "sql": plugin_context.get("sql"),
+            "params": plugin_context.get("params"),
+            "view_name": view_name,
+            "request": request,
+            "datasette": self,
+        }
         body_scripts = []
         # pylint: disable=no-member
-        for extra_script in pm.hook.extra_body_script(
-            template=template.name,
-            database=context.get("database"),
-            table=context.get("table"),
-            columns=context.get("columns"),
-            view_name=view_name,
-            request=request,
-            datasette=self,
-        ):
+        for extra_script in pm.hook.extra_body_script(**hook_context):
             extra_script = await await_me_maybe(extra_script)
             if isinstance(extra_script, dict):
                 script = extra_script["script"]
@@ -2605,15 +2611,7 @@ ORDER BY allowed.parent, allowed.child
 
         extra_template_vars = {}
         # pylint: disable=no-member
-        for extra_vars in pm.hook.extra_template_vars(
-            template=template.name,
-            database=context.get("database"),
-            table=context.get("table"),
-            columns=context.get("columns"),
-            view_name=view_name,
-            request=request,
-            datasette=self,
-        ):
+        for extra_vars in pm.hook.extra_template_vars(**hook_context):
             extra_vars = await await_me_maybe(extra_vars)
             if extra_vars is None:
                 continue
@@ -2651,12 +2649,8 @@ ORDER BY allowed.parent, allowed.child
             "body_scripts": body_scripts,
             "format_bytes": format_bytes,
             "show_messages": lambda: self._show_messages(request),
-            "extra_css_urls": await self._asset_urls(
-                "extra_css_urls", template, context, request, view_name
-            ),
-            "extra_js_urls": await self._asset_urls(
-                "extra_js_urls", template, context, request, view_name
-            ),
+            "extra_css_urls": await self._asset_urls("extra_css_urls", hook_context),
+            "extra_js_urls": await self._asset_urls("extra_js_urls", hook_context),
             "base_url": self.setting("base_url"),
             "datasette_version": __version__,
             **extra_template_vars,
@@ -2686,19 +2680,11 @@ ORDER BY allowed.parent, allowed.child
     def delete_actor_cookie(self, response: Response):
         response.set_cookie("ds_actor", "", expires=0, max_age=0)
 
-    async def _asset_urls(self, key, template, context, request, view_name):
+    async def _asset_urls(self, key, hook_context):
         # Flatten list-of-lists from plugins:
         seen_urls = set()
         collected = []
-        for hook in getattr(pm.hook, key)(
-            template=template.name,
-            database=context.get("database"),
-            table=context.get("table"),
-            columns=context.get("columns"),
-            view_name=view_name,
-            request=request,
-            datasette=self,
-        ):
+        for hook in getattr(pm.hook, key)(**hook_context):
             hook = await await_me_maybe(hook)
             collected.extend(hook)
         collected.extend((self.config or {}).get(key) or [])

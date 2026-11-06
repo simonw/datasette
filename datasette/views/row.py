@@ -178,22 +178,12 @@ class RowView(BaseView):
 
         extra_template_data = {}
         start = time.perf_counter()
-        status_code = None
         templates = ()
         try:
             response_or_template_contexts = await self.data(request, **data_kwargs)
             if isinstance(response_or_template_contexts, Response):
                 return response_or_template_contexts
-            # If it has four items, it includes an HTTP status code
-            if len(response_or_template_contexts) == 4:
-                (
-                    data,
-                    extra_template_data,
-                    templates,
-                    status_code,
-                ) = response_or_template_contexts
-            else:
-                data, extra_template_data, templates = response_or_template_contexts
+            data, extra_template_data, templates, query = response_or_template_contexts
         except QueryInterrupted as ex:
             raise DatasetteError(
                 textwrap.dedent(f"""
@@ -230,7 +220,8 @@ class RowView(BaseView):
                 datasette=self.ds,
                 columns=data.get("columns") or [],
                 rows=data.get("rows") or [],
-                sql=data.get("query", {}).get("sql", None),
+                sql=query["sql"],
+                params=query["params"],
                 query_name=data.get("query_name"),
                 database=database,
                 table=data.get("table"),
@@ -249,21 +240,18 @@ class RowView(BaseView):
             if isinstance(result, dict):
                 response = Response(
                     body=result.get("body"),
-                    status=result.get("status_code", status_code or 200),
+                    status=result.get("status_code", 200),
                     content_type=result.get("content_type", "text/plain"),
                     headers=result.get("headers"),
                 )
             elif isinstance(result, Response):
                 response = result
-                if status_code is not None:
-                    # Over-ride the status code
-                    response.status = status_code
             else:
                 assert False, f"{result} should be dict or Response"
         elif format_ == "html":
-            response = await self.html(request, data, extra_template_data, templates)
-            if status_code is not None:
-                response.status = status_code
+            response = await self.html(
+                request, data, extra_template_data, templates, query
+            )
         else:
             raise NotFound(f"Invalid format: {format_}")
 
@@ -273,7 +261,7 @@ class RowView(BaseView):
 
         return self.set_response_headers(response, ttl, request)
 
-    async def html(self, request, data, extra_template_data, templates):
+    async def html(self, request, data, extra_template_data, templates, query):
         extras = {}
         if callable(extra_template_data):
             extras = extra_template_data()
@@ -293,7 +281,8 @@ class RowView(BaseView):
                 datasette=self.ds,
                 columns=data.get("columns") or [],
                 rows=data.get("rows") or [],
-                sql=data.get("query", {}).get("sql", None),
+                sql=query["sql"],
+                params=query["params"],
                 query_name=data.get("query_name"),
                 database=data.get("database"),
                 table=data.get("table"),
@@ -378,6 +367,7 @@ class RowView(BaseView):
                 ),
                 request=request,
                 view_name=self.name,
+                plugin_context=query,
             ),
             headers={
                 "Link": f'<{alternate_url_json}>; rel="alternate"; type="application/json+datasette"'
@@ -653,6 +643,7 @@ class RowView(BaseView):
                 f"row-{to_css_class(database)}-{to_css_class(table)}.html",
                 "row.html",
             ),
+            {"sql": resolved.sql, "params": resolved.params},
         )
 
     async def foreign_key_tables(self, database, table, pk_values, *, actor):

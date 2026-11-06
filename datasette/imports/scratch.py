@@ -143,23 +143,33 @@ def is_scratch(db) -> bool:
     return bool(getattr(db, "is_scratch", False))
 
 
-def create_save_file(path: str) -> None:
-    """
-    Create an empty SQLite database at ``path`` if there is nothing there.
-    Refuse to touch a file that is not a SQLite database.
-    """
+def check_save_file(path: str) -> None:
+    "Refuse a --save path that exists and is not a SQLite database."
+    if os.path.isdir(path):
+        raise SourceError(f"--save {path}: this is a directory")
     if os.path.exists(path) and os.path.getsize(path):
         with open(path, "rb") as fp:
             if fp.read(len(SQLITE_HEADER)) != SQLITE_HEADER:
                 raise SourceError(
                     f"--save {path}: this file exists and is not a SQLite database"
                 )
-        return
+
+
+def create_save_file(path: str) -> bool:
+    """
+    Create an empty SQLite database at ``path`` if there is no file there.
+    Returns True if it created one. Refuses to touch a file that is not a
+    SQLite database.
+    """
+    check_save_file(path)
+    if os.path.exists(path):
+        return False
     conn = sqlite3.connect(path)
     try:
         conn.execute("vacuum")
     finally:
         conn.close()
+    return True
 
 
 def existing_tables(path: str) -> list[str]:

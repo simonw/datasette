@@ -1,10 +1,12 @@
 import asyncio
 import atexit
+import contextlib
 import functools
 import json
 import os
 import pathlib
 import shutil
+import signal
 import sys
 import tempfile
 import textwrap
@@ -33,6 +35,7 @@ from .imports.scratch import (
     MemoryScratchDatabase,
     ReloadSession,
     ScratchDatabase,
+    check_save_file,
     create_save_file,
     is_scratch,
     load_sources,
@@ -733,12 +736,16 @@ def serve(
 
     data_import = None
     if source_args:
-        data_import = _prepare_import(ds, source_args, save, reload, reloader, memory)
+        with _sigterm_interrupts():
+            data_import = _prepare_import(
+                ds, source_args, save, reload, reloader, memory
+            )
 
     if return_instance:
         # Private utility mechanism for writing unit tests
         if data_import:
-            run_sync(data_import.run)
+            with _sigterm_interrupts():
+                run_sync(data_import.run)
         return ds
 
     if headers and not get:
@@ -750,7 +757,8 @@ def serve(
     if get:
         # --get means we don't run Uvicorn at all
         if data_import:
-            run_sync(data_import.run)
+            with _sigterm_interrupts():
+                run_sync(data_import.run)
         run_sync(lambda: check_databases(ds))
 
         try:
@@ -795,7 +803,8 @@ def serve(
         # Load CSV/JSON/URL/stdin inputs before anything else, so startup
         # hooks and the first request see the tables
         if data_import:
-            await data_import.run()
+            with _sigterm_interrupts():
+                await data_import.run()
 
         # Populate internal catalog tables before invoke_startup
         await check_databases(ds)
@@ -985,6 +994,8 @@ class _DataImport:
         self.session = session
         self.target_path = target_path
         self.workdir = workdir
+        # A --save file that did not exist before, removed if loading fails
+        self.created_file = None
 
     async def run(self):
         status = StatusLine(sys.stderr)
@@ -992,7 +1003,7 @@ class _DataImport:
         where = "" if is_scratch(self.db) else f" in {self.db.name}"
 
         def on_start(source):
-            status.update(f"Loading {source.label}...", force=True)
+            status.start(f"Loading {source.label}...")
 
         def on_progress(source, rows):
             status.update(f"Loading {source.label}: {rows:,} rows")
@@ -1011,25 +1022,58 @@ class _DataImport:
                 on_progress=on_progress,
                 on_loaded=on_loaded,
             )
-        except SourceError as ex:
+        except BaseException as ex:
             status.clear()
-            raise click.ClickException(str(ex))
+            if self.created_file:
+                self.db.close()
+                for suffix in ("", "-journal", "-wal", "-shm"):
+                    with contextlib.suppress(OSError):
+                        os.unlink(self.created_file + suffix)
+            if isinstance(ex, SourceError):
+                raise click.ClickException(str(ex))
+            raise
         finally:
             if not self.session:
                 # The data is in SQLite now
                 remove_temporary(self.sources)
+                remove_tree(self.workdir)
         order = {id(source): i for i, source in enumerate(self.sources)}
         results.sort(key=lambda loaded: order[id(loaded.source)])
         if is_scratch(self.db):
             self.db.loaded = results
         if len(results) > 1:
             total = sum(loaded.rows for loaded in results)
-            click.echo(
-                f"Loaded {len(results)} inputs ({total:,} rows) in "
-                f"{time.perf_counter() - start:.2f}s",
-                err=True,
-            )
+            kept = sum(1 for loaded in results if loaded.reused)
+            elapsed = time.perf_counter() - start
+            if kept:
+                summary = (
+                    f"Loaded {len(results) - kept} of {len(results)} inputs "
+                    f"({total:,} rows), kept {kept} from the previous load"
+                )
+            else:
+                summary = f"Loaded {len(results)} inputs ({total:,} rows)"
+            click.echo(f"{summary} in {elapsed:.2f}s", err=True)
         return results
+
+
+@contextlib.contextmanager
+def _sigterm_interrupts():
+    """
+    Treat SIGTERM like Ctrl+C while loading, so that the cleanup runs - the
+    scratch file can be gigabytes - instead of the process dying at once.
+    (hupper sends SIGTERM to restart a --reload worker.) Uvicorn installs
+    its own handlers later.
+    """
+    try:
+        previous = signal.signal(signal.SIGTERM, signal.default_int_handler)
+    except ValueError:
+        # Not the main thread
+        yield
+        return
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, previous)
 
 
 def _describe_loaded(loaded, where=""):
@@ -1082,7 +1126,7 @@ def _prepare_import(ds, source_args, save, reload, reloader, memory):
         target_path = None
     try:
         if save:
-            create_save_file(save)
+            check_save_file(save)
         plan = plan_loads(target_path, sources, session=session)
     except SourceError as ex:
         raise click.ClickException(str(ex))
@@ -1117,12 +1161,11 @@ def _prepare_import(ds, source_args, save, reload, reloader, memory):
                 check_stdin_available()
             progress = None
             if source.kind == "url":
+                status.start(f"Downloading {source.location}")
                 progress = _download_progress(source, status, warn=not save)
-
-            async def _fetch(source=source, progress=progress):
-                await fetch(source, workdir, progress=progress)
-
-            run_sync(_fetch)
+            # asyncio.run() turns Ctrl+C into a cancellation, so the
+            # download closes its connection and removes its partial file
+            asyncio.run(fetch(source, workdir, progress=progress))
             if source.kind == "url":
                 status.done(
                     f"Downloaded {source.location} "
@@ -1144,7 +1187,10 @@ def _prepare_import(ds, source_args, save, reload, reloader, memory):
             remove_temporary(sources)
         raise
 
+    created_file = None
     if save:
+        if create_save_file(save):
+            created_file = save
         db = next(
             (
                 db
@@ -1169,7 +1215,9 @@ def _prepare_import(ds, source_args, save, reload, reloader, memory):
     if "_memory" in ds.databases and not memory and not ds.crossdb:
         # Datasette adds _memory when no database files are given
         ds.remove_database("_memory")
-    return _DataImport(db, sources, plan, session, target_path, workdir)
+    data_import = _DataImport(db, sources, plan, session, target_path, workdir)
+    data_import.created_file = created_file
+    return data_import
 
 
 def _download_progress(source, status, warn):

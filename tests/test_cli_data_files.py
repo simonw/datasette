@@ -682,8 +682,26 @@ def test_save_is_all_or_nothing(data_dir):
     )
     assert result.exit_code == 1
     assert f"Error loading {bad}" in result.stderr
-    # dogs was loaded first, then dropped again
-    assert scratch_module.existing_tables(str(save)) == []
+    # The file did not exist before, so it is gone again
+    assert not save.exists()
+    # An existing file: dogs was loaded first, then dropped again
+    sqlite3.connect(save).execute("create table keep (id)").connection.close()
+    result = run(
+        [str(data_dir / "dogs.csv"), str(bad), "--save", str(save), "--get", "/"]
+    )
+    assert result.exit_code == 1
+    assert scratch_module.existing_tables(str(save)) == ["keep"]
+
+
+def test_save_failing_before_load_creates_nothing(data_dir):
+    save = data_dir / "never.db"
+    (data_dir / "empty.csv").write_text("")
+    result = run(
+        [str(data_dir / "dogs.csv"), str(data_dir / "empty.csv"), "--save", str(save)]
+    )
+    assert result.exit_code == 1
+    assert "empty.csv is empty" in result.stderr
+    assert not save.exists()
 
 
 def test_save_refuses_non_sqlite_file(data_dir):

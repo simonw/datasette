@@ -532,6 +532,14 @@ class StatusLine:
         self.stream.write("\r" + text + padding)
         self.stream.flush()
 
+    def start(self, text: str) -> None:
+        "Announce a step: rewritten in place on a terminal, a line elsewhere."
+        if self.interactive:
+            self.update(text, force=True)
+        else:
+            self.stream.write(text + "\n")
+            self.stream.flush()
+
     def clear(self) -> None:
         if self.interactive and self._width:
             self.stream.write("\r" + " " * self._width + "\r")
